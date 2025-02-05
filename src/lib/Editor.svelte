@@ -5,21 +5,14 @@
         keymap,
         highlightSpecialChars,
         drawSelection,
-        highlightActiveLine,
         dropCursor,
         rectangularSelection,
-        crosshairCursor,
-        lineNumbers,
-        highlightActiveLineGutter,
     } from "@codemirror/view";
     import { onMount } from "svelte";
     import {
         defaultHighlightStyle,
         syntaxHighlighting,
-        indentOnInput,
         bracketMatching,
-        foldGutter,
-        foldKeymap,
     } from "@codemirror/language";
     import {
         defaultKeymap,
@@ -39,10 +32,10 @@
     import { lintKeymap } from "@codemirror/lint";
 
     let element: HTMLDivElement;
-    const theme = EditorView.baseTheme({
-        "&.cm-focused": { outline: "none" },
-        "&": { "font-family": "Arial" },
-    });
+    // const theme = EditorView.baseTheme({
+    //     "&.cm-focused": { outline: "none" },
+    //     "&": { "font-family": "Arial" },
+    // });
     const extensions = [
         highlightSpecialChars(),
         history(),
@@ -64,6 +57,12 @@
             ...completionKeymap,
             ...lintKeymap,
         ]),
+        EditorView.lineWrapping,
+        EditorView.contentAttributes.of({
+            spellcheck: "true",
+            autocorrect: "on",
+            autocapitalize: "on",
+        }),
     ];
     onMount(() => {
         let startState = EditorState.create({
@@ -79,7 +78,7 @@
 </script>
 
 <div
-    class="mx-6 mt-12 bg-white rounded-lg shadow-xl h-screen p-3"
+    class="mx-auto w-[816px] h-[1056px] mt-12 bg-white rounded-lg shadow-xl p-3"
     bind:this={element}
 ></div>
 
@@ -104,5 +103,8 @@
             sans-serif;
         letter-spacing: 0.05em; /* Adjust spacing between characters */
         line-height: 1.5; /* Improve vertical spacing */
+    }
+    :global(.cm-content) {
+        text-indent: 2em;
     }
 </style>
