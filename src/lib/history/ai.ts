@@ -56,25 +56,6 @@ export const historyKeymap: readonly KeyBinding[] = [
     // {key: "Mod-u", run: undoSelection, preventDefault: true},
     // {key: "Alt-u", mac: "Mod-Shift-u", run: redoSelection, preventDefault: true}
   ]
-function treeHistory(): Extension {
-    return [
-        treeHistoryField,
-        EditorView.updateListener.of(update => {
-            if (update.docChanged) {
-                const currentDoc = update.state.doc.toString();
-                const newNode: HistoryNode = {
-                    doc: currentDoc,
-                    parent: null,
-                    children: []
-                };
-                update.view.dispatch({
-                    effects: pushHistoryEffect.of(newNode)
-                });
-            }
-        }),
-        keymap.of(historyKeymap)
-    ];
-}
 
 export function undoTree(view: EditorView) {
     const state = view.state;
@@ -101,5 +82,21 @@ export function redoTree(view: EditorView, childIndex = 0) {
 }
 
 export function treeHistoryExtension(): Extension {
-    return treeHistory();
+    return [
+        treeHistoryField,
+        EditorView.updateListener.of(update => {
+            if (update.docChanged) {
+                const currentDoc = update.state.doc.toString();
+                const newNode: HistoryNode = {
+                    doc: currentDoc,
+                    parent: null,
+                    children: []
+                };
+                update.view.dispatch({
+                    effects: pushHistoryEffect.of(newNode)
+                });
+            }
+        }),
+        keymap.of(historyKeymap)
+    ];
 }
