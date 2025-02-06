@@ -3,7 +3,6 @@
   import { EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
   import { getExtensions } from "./extensions";
-  import { exists, BaseDirectory } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
   import { historyField } from "./history";
   // when using `"withGlobalTauri": true`, you may use
