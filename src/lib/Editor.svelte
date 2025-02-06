@@ -1,24 +1,8 @@
 <script lang="ts">
     import { EditorState } from "@codemirror/state";
-    import {
-        EditorView,
-        keymap,
-        highlightSpecialChars,
-        drawSelection,
-        dropCursor,
-        rectangularSelection,
-    } from "@codemirror/view";
+    import { EditorView } from "@codemirror/view";
     import { onMount } from "svelte";
-    import {
-        defaultHighlightStyle,
-        syntaxHighlighting,
-        bracketMatching,
-    } from "@codemirror/language";
-    import {
-        defaultKeymap,
-        history,
-        historyKeymap,
-    } from "@codemirror/commands";
+    import { getExtensions } from "./extensions";
     import { exists, BaseDirectory } from "@tauri-apps/plugin-fs";
     // when using `"withGlobalTauri": true`, you may use
     // const { exists, BaseDirectory } = window.__TAURI__.fs;
@@ -29,51 +13,30 @@
     //     searchKeymap,
     //     highlightSelectionMatches,
     // } from "@codemirror/search";
-    import {
-        autocompletion,
-        completionKeymap,
-        closeBrackets,
-        closeBracketsKeymap,
-    } from "@codemirror/autocomplete";
-    import { lintKeymap } from "@codemirror/lint";
 
     let element: HTMLDivElement;
     // const theme = EditorView.baseTheme({
     //     "&.cm-focused": { outline: "none" },
     //     "&": { "font-family": "Arial" },
     // });
-    const extensions = [
-        highlightSpecialChars(),
-        history(),
-        drawSelection(),
-        dropCursor(),
-        EditorState.allowMultipleSelections.of(true),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        bracketMatching(),
-        closeBrackets(),
-        autocompletion(),
-        rectangularSelection(),
-        // highlightSelectionMatches(),
-        keymap.of([
-            ...closeBracketsKeymap,
-            ...defaultKeymap,
-            // ...searchKeymap,
-            ...historyKeymap,
-            // ...foldKeymap,
-            ...completionKeymap,
-            ...lintKeymap,
-        ]),
-        EditorView.lineWrapping,
-        EditorView.contentAttributes.of({
-            spellcheck: "true",
-            autocorrect: "on",
-            autocapitalize: "on",
-        }),
-    ];
     onMount(() => {
+        // How the saving algorithm should work
+        // (don't implement it yet as it doesnt really matter)
+        // on a change, initiate a save
+        // if there is already a save action in progress, mark it as cancelled
+        // and/by queueing a new save
+        //
+        // in the save code, when atomic saving the file (writing to file first and then moving it)
+        // and there's a cancellation, delete the temporary file and abort
+        // and then use the newest queued action.
+        // however, if there hasn't been a save in the past ___ seconds,
+        // ignore the change in queue size and write to disk first, and then skip to the latest
+        //
+        // start autosave action when typing debounce (when we implement multiple documents lol)
+        // but save cache on every single time history gets updated
         let startState = EditorState.create({
             doc: "Hello World",
-            extensions: extensions,
+            extensions: getExtensions(),
         });
 
         let view = new EditorView({
@@ -84,7 +47,7 @@
 </script>
 
 <div
-    class="mx-auto w-[816px] h-[1056px] mt-12 bg-white rounded-lg shadow-xl p-3"
+    class="mx-auto w-[816px] h-[1056px] mt-12 bg-white rounded-lg shadow-xl py-3"
     bind:this={element}
 ></div>
 
