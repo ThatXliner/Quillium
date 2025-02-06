@@ -4,7 +4,7 @@
   import { onMount } from "svelte";
   import { getExtensions } from "./extensions";
   import { invoke } from "@tauri-apps/api/core";
-  import { historyField } from "./history";
+  import { historyField } from "./plugins/history";
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
 

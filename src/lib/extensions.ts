@@ -6,7 +6,7 @@ import {
 	drawSelection,
 	dropCursor,
 	rectangularSelection,
-	ViewUpdate,
+	type ViewUpdate,
 } from "@codemirror/view";
 import {
 	defaultHighlightStyle,
@@ -14,7 +14,7 @@ import {
 	bracketMatching,
 } from "@codemirror/language";
 import { defaultKeymap } from "@codemirror/commands";
-import { history, historyKeymap, historyField } from "./history";
+import { history, historyKeymap, historyField } from "./plugins/history";
 import {
 	autocompletion,
 	completionKeymap,
