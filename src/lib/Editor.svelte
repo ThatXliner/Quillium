@@ -4,6 +4,8 @@
   import { onMount } from "svelte";
   import { getExtensions } from "./extensions";
   import { exists, BaseDirectory } from "@tauri-apps/plugin-fs";
+  import { invoke } from "@tauri-apps/api/core";
+  import { historyField } from "./history";
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
 
@@ -15,43 +17,39 @@
   // } from "@codemirror/search";
 
   let element: HTMLDivElement;
-  let state = $state(
-    EditorState.create({
-      doc: "Hello World",
-      extensions: getExtensions(),
-    })
-  );
-  // const theme = EditorView.baseTheme({
-  //     "&.cm-focused": { outline: "none" },
-  //     "&": { "font-family": "Arial" },
-  // });
+  let fromSave = invoke("load").then((data: string | null) => {
+    let state: EditorState;
+    if (data) {
+      console.log("from data", data);
+      state = EditorState.fromJSON(
+        JSON.parse(data),
+        { extensions: getExtensions() },
+        { historyField }
+      );
+    } else {
+      state = EditorState.create({
+        doc: "Hello World",
+        extensions: getExtensions(),
+      });
+    }
+    return state;
+  });
   onMount(() => {
-    // How the saving algorithm should work
-    // (don't implement it yet as it doesnt really matter)
-    // on a change, initiate a save
-    // if there is already a save action in progress, mark it as cancelled
-    // and/by queueing a new save
-    //
-    // in the save code, when atomic saving the file (writing to file first and then moving it)
-    // and there's a cancellation, delete the temporary file and abort
-    // and then use the newest queued action.
-    // however, if there hasn't been a save in the past ___ seconds,
-    // ignore the change in queue size and write to disk first, and then skip to the latest
-    //
-    // start autosave action when typing debounce (when we implement multiple documents lol)
-    // but save cache on every single time history gets updated
-
-    let view = new EditorView({
-      state: state,
-      parent: element,
+    fromSave.then((state) => {
+      let view = new EditorView({
+        state,
+        parent: element,
+      });
     });
   });
 </script>
 
-<div
-  class="mx-auto w-[816px] h-[1056px] mt-12 bg-white rounded-lg shadow-xl py-3"
-  bind:this={element}
-></div>
+{#await fromSave then}
+  <div
+    class="mx-auto w-[816px] h-[1056px] mt-12 bg-white rounded-lg shadow-xl py-3"
+    bind:this={element}
+  ></div>
+{/await}
 
 <style>
   :global(.cm-editor.cm-focused) {
