@@ -1,11 +1,15 @@
 <script>
-    import Editor from "../lib/Editor.svelte";
+  import Comments from "$lib/Comments.svelte";
+  import Editor from "../lib/Editor.svelte";
 </script>
 
-<Editor />
+<div class="flex">
+  <Editor />
+  <Comments />
+</div>
 
 <style>
-    :global(html) {
-        background-color: lightgray;
-    }
+  :global(html) {
+    background-color: lightgray;
+  }
 </style>

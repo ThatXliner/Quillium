@@ -24,19 +24,23 @@ import {
 import { lintKeymap } from "@codemirror/lint";
 import { invoke } from "@tauri-apps/api/core";
 
-export const getExtensions = () => [
+interface GetExtensionOptions {
+	onSaved?: (state: EditorState) => void;
+}
+export const getExtensions = (options?: GetExtensionOptions) => [
 	highlightSpecialChars(),
 	// Default is 500 milliseconds
 	// but I find that too long
 	history({ newGroupDelay: 250 }),
-	drawSelection(),
+	// May re-enable if it's needed
+	// for a better UX when I add decorations/annotations
+	// drawSelection(),
 	dropCursor(),
 	EditorState.allowMultipleSelections.of(true),
-	syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 	bracketMatching(),
 	closeBrackets(),
 	autocompletion(),
-	rectangularSelection(),
+	// rectangularSelection(),
 	// highlightSelectionMatches(),
 	keymap.of([
 		...closeBracketsKeymap,

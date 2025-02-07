@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { EditorState } from "@codemirror/state";
+  import { EditorState, StateEffect } from "@codemirror/state";
   import { EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
   import { getExtensions } from "./extensions";
@@ -43,12 +43,21 @@
   });
 </script>
 
-{#await fromSave then}
-  <div
-    class="mx-auto w-[816px] h-[1056px] mt-12 bg-white rounded-lg shadow-xl py-3"
-    bind:this={element}
-  ></div>
-{/await}
+<div class="w-full">
+  <!-- Stats (todo: rethink UI.. should it even be sticky in the first place?) -->
+  <div class="sticky top-4">
+    <div class="w-fit mx-auto justify-center p-5 backdrop-blur-md rounded-full">
+      file saved Word count: . Characters. WPM, Average WPM graph
+    </div>
+  </div>
+
+  {#await fromSave then}
+    <div
+      class="mx-auto w-[816px] z-[-1] h-[1056px] mt-12 bg-white rounded-lg shadow-xl py-3 px-1"
+      bind:this={element}
+    ></div>
+  {/await}
+</div>
 
 <style>
   :global(.cm-editor.cm-focused) {
@@ -56,6 +65,8 @@
   }
   :global(.cm-content) {
     font-family:
+      /* Garamond,
+      Georgia, */
       Arial,
       Helvetica,
       system-ui,
