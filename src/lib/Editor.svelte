@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { EditorState, StateEffect } from "@codemirror/state";
+  import { EditorState } from "@codemirror/state";
   import { EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
   import { getExtensions, savedFields } from "./extensions";
   import { invoke } from "@tauri-apps/api/core";
-  import { historyField } from "./plugins/history";
   import { canCreateNewComment, comments, editorView } from "./stores";
   import "$lib/plugins/comments/default.css";
   import type { ListenerOptions } from "./plugins/listeners";
-  import { commentField } from "./plugins/comments";
+  import { commentField, commentsChanged } from "./plugins/comments";
+  import type { ViewUpdate } from "@codemirror/view";
+
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
 
@@ -21,10 +22,13 @@
 
   let element: HTMLDivElement;
   const getExtensionOptions: ListenerOptions = {
-    onCommentChanged(newComments) {
-      $comments = newComments;
-      $canCreateNewComment =
-        $comments.length === 0 || $comments[$comments.length - 1].text !== "";
+    updateListener(update: ViewUpdate) {
+      const newComments = update.state.field(commentField);
+      if (commentsChanged(update)) {
+        $comments = newComments;
+        $canCreateNewComment =
+          $comments.length === 0 || $comments[$comments.length - 1].text !== "";
+      }
     },
   };
   let fromSave = invoke("load").then((data: string | null) => {

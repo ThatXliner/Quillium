@@ -1,7 +1,6 @@
 <script lang="ts">
   import { canCreateNewComment, comments, editorView } from "./stores";
   import {
-    addComment as addCommentEffect,
     removeComment as removeCommentEffect,
     updateComment,
   } from "$lib/plugins/comments";
@@ -67,7 +66,8 @@
         onkeydown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
             addComment();
-            e.target?.blur?.();
+            // @ts-ignore
+            e.target.blur();
           }
         }}
         placeholder="Add a comment..."

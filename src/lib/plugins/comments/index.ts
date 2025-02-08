@@ -4,9 +4,7 @@
 // update handlers via Facets.
 import {
 	type EditorView,
-	keymap,
 	type ViewUpdate,
-	type Command,
 	type KeyBinding,
 	type DecorationSet,
 	Decoration,
@@ -17,9 +15,7 @@ import {
 	StateEffect,
 	type Transaction,
 	EditorSelection,
-	Facet,
 	type StateCommand,
-	EditorState,
 	RangeSetBuilder,
 	type SelectionRange,
 } from "@codemirror/state";

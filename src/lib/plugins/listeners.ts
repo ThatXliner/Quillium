@@ -11,7 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Comment } from "./comments";
 export interface ListenerOptions {
 	updateListener?: (update: ViewUpdate) => void;
-	onCommentChanged?: (comments: Comment[]) => void;
+	// onCommentChanged?: (comments: Comment[]) => void;
 }
 
 const save =
@@ -51,17 +51,11 @@ const save =
 			});
 		}
 	});
-const onCommentChanged = (handler: (comments: Comment[]) => void) =>
-	EditorView.updateListener.of((update: ViewUpdate) => {
-		if (commentsChanged(update)) {
-			handler(update.state.field(commentField));
-		}
-	});
 export const listeners = (options?: ListenerOptions) => [
 	save,
-	...(options?.onCommentChanged
-		? [onCommentChanged(options.onCommentChanged)]
-		: []),
+	// ...(options?.onCommentChanged
+	// 	? [onCommentChanged(options.onCommentChanged)]
+	// 	: []),
 	...(options?.updateListener
 		? [EditorView.updateListener.of(options.updateListener)]
 		: []),
