@@ -8,6 +8,8 @@ import {
 	type ViewUpdate,
 	type Command,
 	type KeyBinding,
+	type DecorationSet,
+	Decoration,
 } from "@codemirror/view";
 import {
 	StateField,
@@ -17,10 +19,12 @@ import {
 	Facet,
 	type StateCommand,
 } from "@codemirror/state";
+import { canCreateNewComment } from "$lib/stores";
+import { get } from "svelte/store";
 
 export interface Comment {
 	selection: EditorSelection;
-	text?: string;
+	text: string;
 }
 
 // XXX: No idea if this is the best way to do it
@@ -32,13 +36,13 @@ export const addComment = StateEffect.define<Comment>();
 export const updateComment = StateEffect.define<Comment>();
 //  TODO: maybe use IDs to optimize
 export const removeComment = StateEffect.define<Comment>();
-// // StateField to track comments
-const commentField = StateField.define<Comment[]>({
+// StateField to track comment data
+export const commentField = StateField.define<Comment[]>({
 	create(): Comment[] {
 		return [];
 	},
-	update(state: Comment[], tr: Transaction): Comment[] {
-		let comments = state;
+	update(oldComments: Comment[], tr: Transaction): Comment[] {
+		let comments = oldComments;
 		for (const e of tr.effects) {
 			if (e.is(addComment)) {
 				// XXX: Not sure if this is the right attribute to use
@@ -63,32 +67,65 @@ const commentField = StateField.define<Comment[]>({
 		return value as Comment[];
 	},
 });
-// const createCommentCommand: Command = (view) => {
-// 	view.dispatch({selection:view.state.selection})
-// 	dispatch({state.selection})
-// 	return true;
-// };
-// Command to add a comment
-// function addCommentCommand(state: EditorView): boolean {
-// 	let { from, to } = view.state.selection.main;
-// 	let text = prompt("Enter comment:");
-// 	if (text) {
-// 		view.dispatch({
-// 			effects: addComment.of({ from, to, text }),
-// 		});
-// 	}
-// 	return true;
-// }
+const commentMark = Decoration.mark({ class: "cm-comment" });
+const commentDecorations = StateField.define<DecorationSet>({
+	create() {
+		return Decoration.none;
+	},
+	update(oldDecorations, tr) {
+		// Map our old decorations to the new state
+		// ranges, as we don't want our comments/highlighted portion
+		// to be static markers of a row and column but instead change with text
+		let decorations = oldDecorations.map(tr.changes);
+		// state = state.map(tr.changes);
+		for (const e of tr.effects) {
+			if (e.is(addComment)) {
+				decorations = decorations.update({
+					add: e.value.selection.ranges.map((range) =>
+						// Create a decoration for each range of selections
+						// (multiple selections are possible)
+						commentMark.range(range.from, range.to),
+					),
+				});
+			}
+			// There is no check for e.is(removeComment) because
+			// Using the keybinding will always create a comment
+
+			// There is no check for e.is(updateComment) because
+			// this StateField only handles the visual representations
+			// of comments within the document, not the contents of
+			// the comments themselves
+		}
+		return decorations;
+	},
+	provide: (f) => EditorView.decorations.from(f),
+});
+export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+	if (!get(canCreateNewComment)) {
+		return false;
+	}
+	dispatch(
+		state.update({
+			effects: [addComment.of({ selection: state.selection, text: "" })],
+		}),
+	);
+	// Can only create one comment at a time
+	canCreateNewComment.set(false);
+	// canCreateNewComment will be set back to true when the text
+	// input is finished
+	return true;
+};
 // TODO: a faucet for storing config
-// export const commentKeymap: KeyBinding[] = [
-// 	{
-// 		key: "Mod-Alt-m",
-// 		run: createCommentCommand,
-// 	},
-// ];
+export const commentKeymap: KeyBinding[] = [
+	{
+		key: "Mod-Alt-m",
+		run: createCommentCommand,
+	},
+];
 // Extension
 export const comments = () => [
 	commentField,
+	commentDecorations,
 	// EditorView.domEventHandlers({
 	// 	contextmenu: (event: MouseEvent, view: EditorView) => {
 	// 		event.preventDefault();

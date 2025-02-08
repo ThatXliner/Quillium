@@ -24,7 +24,7 @@ import {
 import { lintKeymap } from "@codemirror/lint";
 import { invoke } from "@tauri-apps/api/core";
 import { search, searchKeymap } from "@codemirror/search";
-import { comments } from "./plugins/comments";
+import { commentKeymap, comments } from "./plugins/comments";
 
 interface GetExtensionOptions {
 	onSaved?: (state: EditorState) => void;
@@ -53,6 +53,7 @@ export const getExtensions = (options?: GetExtensionOptions) => [
 		// ...foldKeymap,
 		...completionKeymap,
 		...lintKeymap,
+		...commentKeymap,
 	]),
 	EditorView.lineWrapping,
 	EditorView.contentAttributes.of({

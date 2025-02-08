@@ -5,6 +5,8 @@
   import { getExtensions } from "./extensions";
   import { invoke } from "@tauri-apps/api/core";
   import { historyField } from "./plugins/history";
+  import { canCreateNewComment } from "./stores";
+  import "$lib/plugins/comments/default.css";
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
 
@@ -58,6 +60,7 @@
     ></div>
   {/await}
 </div>
+<input type="checkbox" name="" id="" bind:checked={$canCreateNewComment} />
 
 <style>
   :global(.cm-editor.cm-focused) {
