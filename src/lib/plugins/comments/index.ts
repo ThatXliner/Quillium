@@ -18,6 +18,7 @@ import {
 	type EditorSelection,
 	Facet,
 	type StateCommand,
+	EditorState,
 } from "@codemirror/state";
 import { canCreateNewComment } from "$lib/stores";
 import { get } from "svelte/store";
@@ -47,13 +48,13 @@ export const commentField = StateField.define<Comment[]>({
 			if (e.is(addComment)) {
 				// XXX: Not sure if this is the right attribute to use
 				comments = [...comments, e.value];
-				console.log("Added comment", e.value);
 			} else if (e.is(removeComment)) {
 				comments = comments.filter(
 					(c) =>
 						!(c.selection.eq(e.value.selection) && e.value.text === c.text),
 				);
 			} else if (e.is(updateComment)) {
+				console.log("updated");
 				comments = comments.map((c) =>
 					c.selection.eq(e.value.selection) ? { ...c, text: e.value.text } : c,
 				);
@@ -101,6 +102,20 @@ const commentDecorations = StateField.define<DecorationSet>({
 	},
 	provide: (f) => EditorView.decorations.from(f),
 });
+// export function redecorateComments(view: EditorView) {
+// 	const state = view.state;
+// 	const comments = state.field(commentField);
+// 	// biome-ignore lint/complexity/noForEach: I like forEach
+// 	comments.forEach((comment) => {
+// 		state.field(commentDecorations).update({
+// 			add: comment.selection.ranges.map((range) =>
+// 				// Create a decoration for each range of selections
+// 				// (multiple selections are possible)
+// 				commentMark.range(range.from, range.to),
+// 			),
+// 		});
+// 	});
+// }
 export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 	if (!get(canCreateNewComment)) {
 		return false;

@@ -33,12 +33,10 @@ import {
 	updateComment,
 	type Comment,
 } from "./plugins/comments";
+import { listeners, type ListenerOptions } from "./plugins/listeners";
 export const savedFields = { historyField, commentField };
-export interface GetExtensionOptions {
-	updateListener?: (update: ViewUpdate) => void;
-	onCommentChanged?: (comments: Comment[]) => void;
-}
-export const getExtensions = (options?: GetExtensionOptions) => [
+
+export const getExtensions = (options?: ListenerOptions) => [
 	highlightSpecialChars(),
 	// Default is 500 milliseconds
 	// but I find that too long
@@ -70,51 +68,7 @@ export const getExtensions = (options?: GetExtensionOptions) => [
 		autocorrect: "on",
 		autocapitalize: "on",
 	}),
-	// There are 3 different approaches to
-	// reacting to state changes or transactions. This is what Claude says
-	// > Here's how these approaches differ:
-	// > 1. `EditorView.updateListener`:
-	// >    - Runs after the transaction is applied
-	// >    - Best for reactive updates like UI changes
-	// >    - Cannot modify the transaction
-	// >    - Simpler to implement
-	// >    - Good for most use cases where you just need to respond to changes
-	// > 2. `EditorState.transactionFilter`:
-	// >    - Runs before the transaction is applied
-	// >    - Can modify or cancel the transaction
-	// >    - Access to both previous and new state
-	// >    - Good for validation or preventing certain history changes
-	// >    - More complex but more powerful
-	// > 3. `EditorState.transactionExtender`:
-	// >    - Runs after filters but before the transaction is applied
-	// >    - Can add effects but cannot modify the transaction
-	// >    - Good for adding metadata or triggering side effects
-	// >    - Middle ground between filter and listener
-	//
-	// > For most cases where you just want to track history changes, `EditorView.updateListener` is probably the simplest and most straightforward approach. Use `transactionFilter` if you need to:
-	// > - Prevent certain undo/redo operations
-	// > - Modify the history state before it changes
-	// > - Need access to both the previous and new state
-	//
-	// Therefore, I use the simplest approach. In the future,
-	// I might want to debounce this
-	EditorView.updateListener.of((update: ViewUpdate) => {
-		if (update.docChanged) {
-			const state = JSON.stringify(update.state.toJSON(savedFields));
-			invoke("save", { state }).then((success) => {
-				console.log("saved", success);
-			});
-		}
-		if (
-			update.transactions.some((tr) =>
-				tr.effects.some(
-					(e) => e.is(addComment) || e.is(updateComment) || e.is(removeComment),
-				),
-			)
-		) {
-			options?.onCommentChanged?.(update.state.field(commentField));
-		}
-	}),
+	listeners(options),
 	comments(),
 	...(options?.updateListener
 		? [EditorView.updateListener.of(options.updateListener)]
