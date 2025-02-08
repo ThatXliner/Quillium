@@ -120,7 +120,8 @@ const commentDecorations = ViewPlugin.fromClass(
 			// TODO: optimize algorithm to be linear time complexity
 			// using some sort of greedy algorithm
 			const builder = new RangeSetBuilder<Decoration>();
-			const cursorPos = view.state.selection.main.head;
+			const cursor = view.state.selection.main;
+			const cursorPos = cursor.head;
 			const commentRanges = view.state
 				.field(commentField)
 				// We can assume a single selection
@@ -134,7 +135,14 @@ const commentDecorations = ViewPlugin.fromClass(
 
 			const highlightedRanges: SelectionRange[] = [];
 			for (const range of smallestRangeFirst)
-				if (positionIntersects(cursorPos, range)) {
+				if (
+					positionIntersects(cursorPos, range) &&
+					// Having this extra condition makes it feel like Google docs
+					// Basically what this is doing that if the cursor is a selection,
+					// we only want to show the comment if the entire selection is within
+					// a single comment
+					(!cursor.empty ? positionIntersects(cursor.anchor, range) : true)
+				) {
 					highlightedRanges.push(range);
 					// Eventually we want to support multi-cursor
 					// and multi-selection comments
