@@ -27,7 +27,7 @@ import { search, searchKeymap } from "@codemirror/search";
 import { commentKeymap, comments } from "./plugins/comments";
 
 interface GetExtensionOptions {
-	onSaved?: (state: EditorState) => void;
+	updateListener?: (update: ViewUpdate) => void;
 }
 export const getExtensions = (options?: GetExtensionOptions) => [
 	highlightSpecialChars(),
@@ -87,7 +87,8 @@ export const getExtensions = (options?: GetExtensionOptions) => [
 	// > - Modify the history state before it changes
 	// > - Need access to both the previous and new state
 	//
-	// Therefore, I use the simplest approach
+	// Therefore, I use the simplest approach. In the future,
+	// I might want to debounce this
 	EditorView.updateListener.of((update: ViewUpdate) => {
 		if (update.docChanged) {
 			const state = JSON.stringify(update.state.toJSON({ historyField }));
@@ -97,4 +98,7 @@ export const getExtensions = (options?: GetExtensionOptions) => [
 		}
 	}),
 	comments(),
+	...(options?.updateListener
+		? [EditorView.updateListener.of(options.updateListener)]
+		: []),
 ];
