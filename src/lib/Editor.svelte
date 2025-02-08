@@ -23,7 +23,8 @@
   const getExtensionOptions: ListenerOptions = {
     onCommentChanged(newComments) {
       $comments = newComments;
-      $canCreateNewComment = $comments[$comments.length - 1].text !== "";
+      $canCreateNewComment =
+        $comments.length === 0 || $comments[$comments.length - 1].text !== "";
     },
   };
   let fromSave = invoke("load").then((data: string | null) => {
@@ -35,7 +36,8 @@
         savedFields
       );
       $comments = state.field(commentField);
-      $canCreateNewComment = $comments[$comments.length - 1].text !== "";
+      $canCreateNewComment =
+        $comments.length === 0 || $comments[$comments.length - 1].text !== "";
     } else {
       state = EditorState.create({
         doc: "Hello World",
