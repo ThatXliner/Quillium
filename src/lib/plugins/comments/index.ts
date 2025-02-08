@@ -151,7 +151,6 @@ const commentDecorations = ViewPlugin.fromClass(
 			// If you don't add comments in order, the plugin will crash
 			commentRanges.sort((a, b) => a.from - b.from);
 
-			let prevEnd = -1;
 			// TODO: care about multiple selections
 			for (const range of commentRanges) {
 				if (highlightedRanges.includes(range)) {
@@ -161,10 +160,14 @@ const commentDecorations = ViewPlugin.fromClass(
 						Decoration.mark({ class: "cm-highlight-active" }),
 					);
 				} else {
-					const from =
-						range.from > prevEnd && prevEnd !== -1 ? prevEnd : range.from;
-					const intersectingHighlightedRange = highlightedRanges.find(
-						(highlighted) => positionIntersects(range.to, highlighted),
+					let intersectingHighlightedRange = highlightedRanges.find(
+						(highlighted) => positionIntersects(range.from, highlighted),
+					);
+					const from = intersectingHighlightedRange
+						? intersectingHighlightedRange.to
+						: range.from;
+					intersectingHighlightedRange = highlightedRanges.find((highlighted) =>
+						positionIntersects(range.to, highlighted),
 					);
 					const to = intersectingHighlightedRange
 						? intersectingHighlightedRange.from
@@ -172,7 +175,6 @@ const commentDecorations = ViewPlugin.fromClass(
 
 					builder.add(from, to, Decoration.mark({ class: "cm-highlight" }));
 				}
-				prevEnd = Math.max(prevEnd, range.to);
 			}
 
 			return builder.finish();
