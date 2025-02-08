@@ -23,6 +23,7 @@ import {
 } from "@codemirror/autocomplete";
 import { lintKeymap } from "@codemirror/lint";
 import { invoke } from "@tauri-apps/api/core";
+import { search, searchKeymap } from "@codemirror/search";
 
 interface GetExtensionOptions {
 	onSaved?: (state: EditorState) => void;
@@ -40,12 +41,13 @@ export const getExtensions = (options?: GetExtensionOptions) => [
 	bracketMatching(),
 	closeBrackets(),
 	autocompletion(),
+	search(),
 	// rectangularSelection(),
 	// highlightSelectionMatches(),
 	keymap.of([
 		...closeBracketsKeymap,
 		...defaultKeymap,
-		// ...searchKeymap,
+		...searchKeymap,
 		...historyKeymap,
 		// ...foldKeymap,
 		...completionKeymap,
@@ -86,7 +88,6 @@ export const getExtensions = (options?: GetExtensionOptions) => [
 	// Therefore, I use the simplest approach
 	EditorView.updateListener.of((update: ViewUpdate) => {
 		if (update.docChanged) {
-			const history = update.state.field(historyField);
 			const state = JSON.stringify(update.state.toJSON({ historyField }));
 			invoke("save", { state }).then((success) => {
 				console.log("saved", success);
