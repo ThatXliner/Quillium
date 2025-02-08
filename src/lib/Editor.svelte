@@ -5,7 +5,7 @@
   import { getExtensions } from "./extensions";
   import { invoke } from "@tauri-apps/api/core";
   import { historyField } from "./plugins/history";
-  import { canCreateNewComment } from "./stores";
+  import { canCreateNewComment, editorState } from "./stores";
   import "$lib/plugins/comments/default.css";
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
@@ -19,27 +19,27 @@
 
   let element: HTMLDivElement;
   let fromSave = invoke("load").then((data: string | null) => {
-    let state: EditorState;
     if (data) {
       console.log("from data", data);
-      state = EditorState.fromJSON(
+      $editorState = EditorState.fromJSON(
         JSON.parse(data),
         { extensions: getExtensions() },
         { historyField }
       );
     } else {
-      state = EditorState.create({
+      $editorState = EditorState.create({
         doc: "Hello World",
         extensions: getExtensions(),
       });
     }
-    return state;
   });
   onMount(() => {
     fromSave.then((state) => {
-      let view = new EditorView({
-        state,
-        parent: element,
+      editorState.subscribe((state) => {
+        let view = new EditorView({
+          state,
+          parent: element,
+        });
       });
     });
   });
