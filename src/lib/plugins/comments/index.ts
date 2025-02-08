@@ -88,36 +88,10 @@ export const commentField = StateField.define<Comment[]>({
 		})) as Comment[];
 	},
 });
-// const commentMark = Decoration.mark({ class: "cm-comment" });
-// const commentDecorations = StateField.define<DecorationSet>({
-// 	create() {
-// 		return Decoration.none;
-// 	},
-// 	update(oldDecorations, tr) {
-// 		let decorations = oldDecorations.map(tr.changes);
-// 		// state = state.map(tr.changes);
-// 		for (const e of tr.effects) {
-// 			if (e.is(addComment)) {
-// 				decorations = decorations.update({
-// 					add: e.value.selection.ranges.map((range) =>
-// 						// Create a decoration for each range of selections
-// 						// (multiple selections are possible)
-// 						commentMark.range(range.from, range.to),
-// 					),
-// 				});
-// 			}
-// 			// There is no check for e.is(removeComment) because
-// 			// Using the keybinding will always create a comment
+// export function getActiveComment(state: EditorState) {
+// 	return state.selection.main. state.field(commentField);
+// }
 
-// 			// There is no check for e.is(updateComment) because
-// 			// this StateField only handles the visual representations
-// 			// of comments within the document, not the contents of
-// 			// the comments themselves
-// 		}
-// 		return decorations;
-// 	},
-// 	provide: (f) => EditorView.decorations.from(f),
-// });
 export const commentsChanged = (update: ViewUpdate) =>
 	update.transactions.some((tr) =>
 		tr.effects.some(
@@ -126,12 +100,6 @@ export const commentsChanged = (update: ViewUpdate) =>
 	);
 function positionIntersects(position: number, selection: SelectionRange) {
 	return selection.from <= position && position <= selection.to;
-}
-function clip(a: SelectionRange, b: SelectionRange) {
-	return {
-		from: Math.max(a.from, b.from),
-		to: Math.min(a.to, b.to),
-	};
 }
 const commentDecorations = ViewPlugin.fromClass(
 	class {
