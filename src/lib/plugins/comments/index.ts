@@ -26,7 +26,7 @@ export interface Comment {
 	selection: EditorSelection;
 	text: string;
 }
-
+// TODO: def use IDs...
 // XXX: No idea if this is the best way to do it
 // Since I have my viewed contained elsewhere,
 // a view plugin is not it.
@@ -47,6 +47,7 @@ export const commentField = StateField.define<Comment[]>({
 			if (e.is(addComment)) {
 				// XXX: Not sure if this is the right attribute to use
 				comments = [...comments, e.value];
+				console.log("Added comment", e.value);
 			} else if (e.is(removeComment)) {
 				comments = comments.filter(
 					(c) =>

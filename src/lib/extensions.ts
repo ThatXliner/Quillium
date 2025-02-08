@@ -24,10 +24,19 @@ import {
 import { lintKeymap } from "@codemirror/lint";
 import { invoke } from "@tauri-apps/api/core";
 import { search, searchKeymap } from "@codemirror/search";
-import { commentKeymap, comments } from "./plugins/comments";
-
-interface GetExtensionOptions {
+import {
+	addComment,
+	commentField,
+	commentKeymap,
+	comments,
+	removeComment,
+	updateComment,
+	type Comment,
+} from "./plugins/comments";
+export const savedFields = { historyField, commentField };
+export interface GetExtensionOptions {
 	updateListener?: (update: ViewUpdate) => void;
+	onCommentChanged?: (comments: Comment[]) => void;
 }
 export const getExtensions = (options?: GetExtensionOptions) => [
 	highlightSpecialChars(),
@@ -91,10 +100,19 @@ export const getExtensions = (options?: GetExtensionOptions) => [
 	// I might want to debounce this
 	EditorView.updateListener.of((update: ViewUpdate) => {
 		if (update.docChanged) {
-			const state = JSON.stringify(update.state.toJSON({ historyField }));
+			const state = JSON.stringify(update.state.toJSON(savedFields));
 			invoke("save", { state }).then((success) => {
 				console.log("saved", success);
 			});
+		}
+		if (
+			update.transactions.some((tr) =>
+				tr.effects.some(
+					(e) => e.is(addComment) || e.is(updateComment) || e.is(removeComment),
+				),
+			)
+		) {
+			options?.onCommentChanged?.(update.state.field(commentField));
 		}
 	}),
 	comments(),

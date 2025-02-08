@@ -2,10 +2,14 @@
   import { EditorState, StateEffect } from "@codemirror/state";
   import { EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { getExtensions } from "./extensions";
+  import {
+    getExtensions,
+    savedFields,
+    type GetExtensionOptions,
+  } from "./extensions";
   import { invoke } from "@tauri-apps/api/core";
   import { historyField } from "./plugins/history";
-  import { canCreateNewComment, editorState } from "./stores";
+  import { canCreateNewComment, comments, editorState } from "./stores";
   import "$lib/plugins/comments/default.css";
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
@@ -18,18 +22,23 @@
   // } from "@codemirror/search";
 
   let element: HTMLDivElement;
+  const getExtensionOptions: GetExtensionOptions = {
+    onCommentChanged(newComments) {
+      $comments = newComments;
+    },
+  };
   let fromSave = invoke("load").then((data: string | null) => {
     if (data) {
-      console.log("from data", data);
+      console.log(data);
       $editorState = EditorState.fromJSON(
         JSON.parse(data),
-        { extensions: getExtensions() },
-        { historyField }
+        { extensions: getExtensions(getExtensionOptions) },
+        savedFields
       );
     } else {
       $editorState = EditorState.create({
         doc: "Hello World",
-        extensions: getExtensions(),
+        extensions: getExtensions(getExtensionOptions),
       });
     }
   });
