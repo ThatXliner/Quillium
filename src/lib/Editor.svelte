@@ -29,7 +29,6 @@
   let fromSave = invoke("load").then((data: string | null) => {
     let state: EditorState;
     if (data) {
-      console.log(data);
       state = EditorState.fromJSON(
         JSON.parse(data),
         { extensions: getExtensions(getExtensionOptions) },

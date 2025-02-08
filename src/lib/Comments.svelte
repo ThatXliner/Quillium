@@ -64,6 +64,12 @@
     <div class="flex flex-col gap-2 mt-3">
       <textarea
         bind:value={commentText}
+        onkeydown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
+            addComment();
+            e.target?.blur?.();
+          }
+        }}
         placeholder="Add a comment..."
         class="resize-none p-3 h-[80px] rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       ></textarea>

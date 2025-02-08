@@ -3,7 +3,7 @@
 // were highlighted. Users of this plugin can provide
 // update handlers via Facets.
 import {
-	EditorView,
+	type EditorView,
 	keymap,
 	type ViewUpdate,
 	type Command,
@@ -21,6 +21,7 @@ import {
 	type StateCommand,
 	EditorState,
 	RangeSetBuilder,
+	type SelectionRange,
 } from "@codemirror/state";
 import { canCreateNewComment } from "$lib/stores";
 import { get } from "svelte/store";
@@ -72,7 +73,6 @@ export const commentField = StateField.define<Comment[]>({
 			selection: x.selection.map(tr.changes),
 			text: x.text,
 		}));
-		console.log("comments", comments);
 		return comments;
 	},
 	toJSON(value: Comment[]) {
@@ -124,6 +124,15 @@ export const commentsChanged = (update: ViewUpdate) =>
 			(e) => e.is(addComment) || e.is(updateComment) || e.is(removeComment),
 		),
 	);
+function positionIntersects(position: number, selection: SelectionRange) {
+	return selection.from <= position && position <= selection.to;
+}
+function clip(a: SelectionRange, b: SelectionRange) {
+	return {
+		from: Math.max(a.from, b.from),
+		to: Math.min(a.to, b.to),
+	};
+}
 const commentDecorations = ViewPlugin.fromClass(
 	class {
 		decorations: DecorationSet;
@@ -135,7 +144,6 @@ const commentDecorations = ViewPlugin.fromClass(
 		update(update: ViewUpdate) {
 			// update.selectionSet also means "if cursor changed"
 			if (update.selectionSet || update.docChanged || commentsChanged(update)) {
-				console.log("updating decorations");
 				this.decorations = this.getDecorations(update.view);
 			}
 		}
@@ -145,41 +153,49 @@ const commentDecorations = ViewPlugin.fromClass(
 			// using some sort of greedy algorithm
 			const builder = new RangeSetBuilder<Decoration>();
 			const cursorPos = view.state.selection.main.head;
-
-			const ranges = view.state
+			const commentRanges = view.state
 				.field(commentField)
 				// We can assume a single selection
 				// because we are not implementing multi-selection support
 				// for now
-				.flatMap((comment) => comment.selection.main)
+				.flatMap((comment) => comment.selection.main);
+
+			const smallestRangeFirst = commentRanges
 				// Smallest range first
 				.toSorted((a, b) => a.to - a.from - (b.to - b.from));
 
-			const highlightedRanges = [];
-			for (const { from, to } of ranges)
-				if (from <= cursorPos && cursorPos <= to) {
-					highlightedRanges.push({ from, to });
+			const highlightedRanges: SelectionRange[] = [];
+			for (const range of smallestRangeFirst)
+				if (positionIntersects(cursorPos, range)) {
+					highlightedRanges.push(range);
 					// Eventually we want to support multi-cursor
 					// and multi-selection comments
 					break;
 				}
-			highlightedRanges.sort((a, b) => a.from - b.from);
-			// Ranges must be added sorted by their starting position
-			// or else this plugin crashes
-			for (const { from, to } of ranges.toSorted((a, b) => a.from - b.from)) {
-				const isCursorInside = cursorPos >= from && cursorPos <= to;
-				// const smallestRange = ranges.find(r => cursorPos >= r.from && cursorPos <= r.to);
-				// if (smallestRange && isCursorInside) {
-				// 	from = smallestRange.from;
-				// 	to = smallestRange.to;
-				// }
-				builder.add(
-					from,
-					to,
-					Decoration.mark({
-						class: isCursorInside ? "cm-highlight-active" : "cm-highlight",
-					}),
-				);
+			commentRanges.sort((a, b) => a.from - b.from);
+
+			let prevEnd = -1;
+			// TODO: care about multiple selections
+			for (const range of commentRanges) {
+				if (highlightedRanges.includes(range)) {
+					builder.add(
+						range.from,
+						range.to,
+						Decoration.mark({ class: "cm-highlight-active" }),
+					);
+				} else {
+					const from =
+						range.from > prevEnd && prevEnd !== -1 ? prevEnd : range.from;
+					const intersectingHighlightedRange = highlightedRanges.find(
+						(highlighted) => positionIntersects(range.to, highlighted),
+					);
+					const to = intersectingHighlightedRange
+						? intersectingHighlightedRange.from
+						: range.to;
+
+					builder.add(from, to, Decoration.mark({ class: "cm-highlight" }));
+				}
+				prevEnd = Math.max(prevEnd, range.to);
 			}
 
 			return builder.finish();
