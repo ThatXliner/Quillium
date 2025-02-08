@@ -9,15 +9,21 @@
   let commentText = "";
 
   function addComment() {
-    const state = $editorView.state;
-    const newComment = { selection: state.selection, text: commentText };
+    const newComment = {
+      selection: $comments[$comments.length - 1].selection,
+      text: commentText,
+    };
 
     $editorView.dispatch(
-      state.update({
+      $editorView.state.update({
         effects: [updateComment.of(newComment)],
       })
     );
     commentText = "";
+    canCreateNewComment.set(true);
+  }
+  function cancelComment() {
+    removeComment($comments.length - 1);
     canCreateNewComment.set(true);
   }
   function removeComment(index: number) {
@@ -29,7 +35,8 @@
   }
 </script>
 
-<div class="w-[300px] m-2 p-2 rounded bg-white">
+<!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->
+<div class="w-[300px] p-2 rounded bg-white h-screen sticky top-0">
   {#each $comments as c, i}
     {#if !(!$canCreateNewComment && i === $comments.length - 1)}
       <div
@@ -60,13 +67,21 @@
         placeholder="Add a comment..."
         class="resize-none p-3 h-[80px] rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       ></textarea>
-      <button
-        disabled={!commentText}
-        onclick={addComment}
-        class="self-end px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:hover:bg-blue-500 text-sm font-medium"
-      >
-        Comment
-      </button>
+      <div class="flex space-x-3">
+        <button
+          disabled={!commentText}
+          onclick={addComment}
+          class="self-end px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:hover:bg-blue-500 text-sm font-medium"
+        >
+          Comment
+        </button>
+        <button
+          onclick={() => cancelComment()}
+          class="self-end px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium mr-2"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   {/if}
 </div>
