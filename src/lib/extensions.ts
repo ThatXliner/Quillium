@@ -41,8 +41,7 @@ export const getExtensions = (options?: ListenerOptions) => [
 	// Default is 500 milliseconds
 	// but I find that too long
 	history({ newGroupDelay: 250 }),
-	// May re-enable if it's needed
-	// for a better UX when I add decorations/annotations
+	// Will re-enable for multi-selection support
 	// drawSelection(),
 	dropCursor(),
 	EditorState.allowMultipleSelections.of(true),

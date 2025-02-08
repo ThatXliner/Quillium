@@ -2,6 +2,7 @@ import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
 	addComment,
 	commentField,
+	commentsChanged,
 	removeComment,
 	updateComment,
 } from "./comments";
@@ -12,12 +13,7 @@ export interface ListenerOptions {
 	updateListener?: (update: ViewUpdate) => void;
 	onCommentChanged?: (comments: Comment[]) => void;
 }
-const commentsChanged = (update: ViewUpdate) =>
-	update.transactions.some((tr) =>
-		tr.effects.some(
-			(e) => e.is(addComment) || e.is(updateComment) || e.is(removeComment),
-		),
-	);
+
 const save =
 	// There are 3 different approaches to
 	// reacting to state changes or transactions. This is what Claude says
