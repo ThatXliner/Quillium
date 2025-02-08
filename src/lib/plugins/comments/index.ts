@@ -148,6 +148,7 @@ const commentDecorations = ViewPlugin.fromClass(
 					// and multi-selection comments
 					break;
 				}
+			// If you don't add comments in order, the plugin will crash
 			commentRanges.sort((a, b) => a.from - b.from);
 
 			let prevEnd = -1;
@@ -185,6 +186,8 @@ export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 	if (!get(canCreateNewComment)) {
 		return false;
 	}
+	// TODO: multi selection support
+	if (state.selection.main.empty) return false;
 	dispatch(
 		state.update({
 			effects: [addComment.of({ selection: state.selection, text: "" })],
