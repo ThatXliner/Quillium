@@ -1,7 +1,11 @@
 <script lang="ts">
   import { canCreateNewComment, comments, editorView } from "./stores";
-  import { addComment as addCommentEffect } from "$lib/plugins/comments";
-
+  import {
+    addComment as addCommentEffect,
+    removeComment as removeCommentEffect,
+    updateComment,
+  } from "$lib/plugins/comments";
+  import { Trash2 } from "lucide-svelte";
   let commentText = "";
 
   function addComment() {
@@ -10,11 +14,18 @@
 
     $editorView.dispatch(
       state.update({
-        effects: [addCommentEffect.of(newComment)],
+        effects: [updateComment.of(newComment)],
       })
     );
     commentText = "";
     canCreateNewComment.set(true);
+  }
+  function removeComment(index: number) {
+    $editorView.dispatch(
+      $editorView.state.update({
+        effects: [removeCommentEffect.of($comments[index])],
+      })
+    );
   }
 </script>
 
@@ -30,21 +41,29 @@
           <span>Just now</span>
           <!-- Add more metadata here if needed -->
         </div>
+        <div class="flex justify-end">
+          <button
+            class="text-gray-400 hover:text-gray-600 transition-colors"
+            onclick={() => removeComment(i)}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
     {/if}
   {/each}
 
   {#if !$canCreateNewComment}
-    <div class="flex flex-col">
+    <div class="flex flex-col gap-2 mt-3">
       <textarea
         bind:value={commentText}
         placeholder="Add a comment..."
-        class="resize-none p-1 h-[40px] mb-1"
+        class="resize-none p-3 h-[80px] rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       ></textarea>
       <button
         disabled={!commentText}
-        on:click={addComment}
-        class="self-end disabled:opacity-50"
+        onclick={addComment}
+        class="self-end px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:hover:bg-blue-500 text-sm font-medium"
       >
         Comment
       </button>

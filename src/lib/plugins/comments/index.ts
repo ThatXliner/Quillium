@@ -15,7 +15,7 @@ import {
 	StateField,
 	StateEffect,
 	type Transaction,
-	type EditorSelection,
+	EditorSelection,
 	Facet,
 	type StateCommand,
 	EditorState,
@@ -27,6 +27,10 @@ export interface Comment {
 	selection: EditorSelection;
 	text: string;
 }
+type RawComment = {
+	selection: EditorSelection["toJSON"];
+	text: string;
+};
 // TODO: def use IDs...
 // XXX: No idea if this is the best way to do it
 // Since I have my viewed contained elsewhere,
@@ -63,10 +67,16 @@ export const commentField = StateField.define<Comment[]>({
 		return comments;
 	},
 	toJSON(value: Comment[]) {
-		return value;
+		return value.map((c) => ({
+			selection: c.selection.toJSON(),
+			text: c.text,
+		}));
 	},
 	fromJSON(value: unknown) {
-		return value as Comment[];
+		return (value as RawComment[]).map((x) => ({
+			selection: EditorSelection.fromJSON(x.selection),
+			text: x.text,
+		})) as Comment[];
 	},
 });
 const commentMark = Decoration.mark({ class: "cm-comment" });
