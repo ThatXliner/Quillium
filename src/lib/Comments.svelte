@@ -65,6 +65,10 @@
         }}
       ></Comment>
     {/if}
+  {:else}
+    <div class="flex items-center justify-center h-full my-auto text-gray-500">
+      No comments
+    </div>
   {/each}
 
   {#if !$canCreateNewComment}
