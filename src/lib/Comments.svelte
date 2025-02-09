@@ -59,7 +59,7 @@
         <div class="text-sm text-gray-700"></div>
         <p class="whitespace-pre-wrap">{c.text}</p>
         <div class="mt-2 text-xs text-gray-500 flex items-center">
-          <span>Just now</span>
+          <span>Insert metadata here</span>
           <!-- Add more metadata here if needed -->
         </div>
         <div class="flex justify-end">

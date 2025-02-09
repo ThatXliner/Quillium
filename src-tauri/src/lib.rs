@@ -1,10 +1,11 @@
 use std::fs;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
-fn save(app_handle: tauri::AppHandle, state: String) -> bool {
+fn save(app: tauri::AppHandle, state: String) -> bool {
+    app.emit("saving", ()).unwrap();
     // How the saving algorithm should work
     // (don't implement it yet as it doesnt really matter)
     // on a change, initiate a save
@@ -19,14 +20,16 @@ fn save(app_handle: tauri::AppHandle, state: String) -> bool {
     //
     // start autosave action when typing debounce (when we implement multiple documents lol)
     // but save cache on every single time history gets updated
-    let dir = app_handle.path().app_local_data_dir().unwrap();
+    let dir = app.path().app_local_data_dir().unwrap();
     {
         // Sec issue because we're cheking perms before creating the dir?
         if !dir.exists() {
             fs::create_dir(&dir).unwrap();
         }
     }
-    fs::write(dir.join("state.json"), state).is_ok()
+    let output = fs::write(dir.join("state.json"), state).is_ok();
+    app.emit("saved", ()).unwrap();
+    output
 }
 #[tauri::command]
 fn load(app_handle: tauri::AppHandle) -> Option<String> {

@@ -18,6 +18,7 @@
     getActiveComment,
   } from "./plugins/comments";
   import type { ViewUpdate } from "@codemirror/view";
+  import StatusBar from "./StatusBar.svelte";
 
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
@@ -30,6 +31,15 @@
   // } from "@codemirror/search";
 
   let element: HTMLDivElement;
+  let stats = $state<{
+    words: number;
+    wpm: number;
+    chars: number;
+  }>({
+    words: 0,
+    wpm: 0,
+    chars: 0,
+  });
   const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
       const newComments = update.state.field(commentField);
@@ -43,8 +53,15 @@
         $activeComment = getActiveComment(update.state);
         console.log($activeComment);
       }
+      const doc = update.state.doc.toString();
+      stats = {
+        words: doc.split(" ").length,
+        wpm: 0,
+        chars: doc.length,
+      };
     },
   };
+
   let fromSave = invoke("load").then((data: string | null) => {
     let state: EditorState;
     if (data) {
@@ -62,6 +79,12 @@
         extensions: getExtensions(getExtensionOptions),
       });
     }
+    const doc = state.doc.toString();
+    stats = {
+      words: doc.split(" ").length,
+      wpm: 0,
+      chars: doc.length,
+    };
     return state;
   });
   onMount(() => {
@@ -70,17 +93,24 @@
         state,
         parent: element,
       });
+      // let startTime = Date.now();
+      // let lastWordCount = state.doc.toString().split(" ").length;
+
+      // // Update WPM every second
+      // setInterval(() => {
+      //   const elapsedMinutes = (Date.now() - startTime) / 60000;
+      //   const wordsTyped = stats.words - lastWordCount;
+      //   if (elapsedMinutes > 0) {
+      //     stats.wpm = Math.round(wordsTyped / elapsedMinutes);
+      //   }
+      //   lastWordCount = stats.words;
+      // }, 1000);
     });
   });
 </script>
 
 <div class="w-full">
-  <!-- Stats (todo: rethink UI.. should it even be sticky in the first place?) -->
-  <div class="sticky top-4">
-    <div class="w-fit mx-auto justify-center p-5 backdrop-blur-md rounded-full">
-      file saved Word count: . Characters. WPM, Average WPM graph
-    </div>
-  </div>
+  <div class="sticky top-4"><StatusBar {...stats} /></div>
 
   {#await fromSave then}
     <div
