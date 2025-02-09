@@ -4,10 +4,19 @@
   import { onMount } from "svelte";
   import { getExtensions, savedFields } from "./extensions";
   import { invoke } from "@tauri-apps/api/core";
-  import { canCreateNewComment, comments, editorView } from "./stores";
+  import {
+    activeComment,
+    canCreateNewComment,
+    comments,
+    editorView,
+  } from "./stores";
   import "$lib/plugins/comments/default.css";
   import type { ListenerOptions } from "./plugins/listeners";
-  import { commentField, commentsChanged } from "./plugins/comments";
+  import {
+    commentField,
+    commentsChanged,
+    getActiveComment,
+  } from "./plugins/comments";
   import type { ViewUpdate } from "@codemirror/view";
 
   // when using `"withGlobalTauri": true`, you may use
@@ -28,6 +37,11 @@
         $comments = newComments;
         $canCreateNewComment =
           $comments.length === 0 || $comments[$comments.length - 1].text !== "";
+      }
+      // OPTIMIZE: Probably needs to optimize
+      if (!update.startState.selection.eq(update.state.selection)) {
+        $activeComment = getActiveComment(update.state);
+        console.log($activeComment);
       }
     },
   };

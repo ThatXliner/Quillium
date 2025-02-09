@@ -1,8 +1,15 @@
 <script lang="ts">
-  import { canCreateNewComment, comments, editorView } from "./stores";
   import {
+    activeComment,
+    canCreateNewComment,
+    comments,
+    editorView,
+  } from "./stores";
+  import {
+    getActiveComment,
     removeComment as removeCommentEffect,
     updateComment,
+    type Comment,
   } from "$lib/plugins/comments";
   import { Trash2 } from "lucide-svelte";
   let commentText = "";
@@ -32,14 +39,22 @@
       })
     );
   }
+  function _compareComments(a: Comment | null, b: Comment) {
+    return a?.selection?.eq?.(b.selection) && a?.text === b.text;
+  }
 </script>
 
 <!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->
-<div class="w-[300px] p-2 rounded bg-white h-screen sticky top-0">
+<div
+  class="w-[300px] p-2 rounded bg-white h-screen overflow-y-scroll sticky top-0"
+>
   {#each $comments as c, i}
+    {@const isActive = _compareComments($activeComment, c)}
     {#if !(!$canCreateNewComment && i === $comments.length - 1)}
       <div
-        class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm border border-gray-200"
+        class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm border {isActive
+          ? 'border-cyan-400'
+          : 'border-gray-500'} border-2"
       >
         <div class="text-sm text-gray-700"></div>
         <p class="whitespace-pre-wrap">{c.text}</p>

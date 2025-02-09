@@ -18,6 +18,7 @@ import {
 	type StateCommand,
 	RangeSetBuilder,
 	type SelectionRange,
+	EditorState,
 } from "@codemirror/state";
 import { canCreateNewComment } from "$lib/stores";
 import { get } from "svelte/store";
@@ -97,6 +98,32 @@ export const commentsChanged = (update: ViewUpdate) =>
 function positionIntersects(position: number, selection: SelectionRange) {
 	return selection.from <= position && position <= selection.to;
 }
+export function getActiveComment(state: EditorState) {
+	const cursor = state.selection.main;
+	const cursorPos = cursor.head;
+	const comments = state.field(commentField);
+	const rangesWhereCursorIsInside: {
+		range: SelectionRange;
+		associatedComment: Comment;
+	}[] = [];
+	for (const comment of comments) {
+		if (comment.text === "") return comment;
+		for (const range of comment.selection.ranges)
+			if (
+				positionIntersects(cursorPos, range) &&
+				// Having this extra condition makes it feel like Google docs
+				// Basically what this is doing that if the cursor is a selection,
+				// we only want to show the comment if the entire selection is within
+				// a single comment
+				(!cursor.empty ? positionIntersects(cursor.anchor, range) : true)
+			) {
+				rangesWhereCursorIsInside.push({ range, associatedComment: comment });
+			}
+	}
+	return rangesWhereCursorIsInside.sort(
+		(a, b) => a.range.to - a.range.from - (b.range.to - b.range.from),
+	)?.[0]?.associatedComment;
+}
 const commentDecorations = ViewPlugin.fromClass(
 	class {
 		decorations: DecorationSet;
@@ -125,54 +152,34 @@ const commentDecorations = ViewPlugin.fromClass(
 				// for now
 				.flatMap((comment) => comment.selection.main);
 
-			const smallestRangeFirst = commentRanges
-				// Smallest range first
-				.toSorted((a, b) => a.to - a.from - (b.to - b.from));
-
-			const highlightedRanges: SelectionRange[] = [];
-			for (const range of smallestRangeFirst)
-				if (
-					positionIntersects(cursorPos, range) &&
-					// Having this extra condition makes it feel like Google docs
-					// Basically what this is doing that if the cursor is a selection,
-					// we only want to show the comment if the entire selection is within
-					// a single comment
-					(!cursor.empty ? positionIntersects(cursor.anchor, range) : true)
-				) {
-					highlightedRanges.push(range);
-					// Eventually we want to support multi-cursor
-					// and multi-selection comments
-					break;
-				}
+			const activeRanges: readonly SelectionRange[] =
+				getActiveComment(view.state)?.selection?.ranges ?? [];
 			// If you don't add comments in order, the plugin will crash
 			commentRanges.sort((a, b) => a.from - b.from);
 
 			// TODO: care about multiple selections
-			for (const range of commentRanges) {
-				if (highlightedRanges.includes(range)) {
-					builder.add(
-						range.from,
-						range.to,
-						Decoration.mark({ class: "cm-highlight-active" }),
-					);
-				} else {
-					let intersectingHighlightedRange = highlightedRanges.find(
-						(highlighted) => positionIntersects(range.from, highlighted),
-					);
-					const from = intersectingHighlightedRange
-						? intersectingHighlightedRange.to
-						: range.from;
-					intersectingHighlightedRange = highlightedRanges.find((highlighted) =>
-						positionIntersects(range.to, highlighted),
-					);
-					const to = intersectingHighlightedRange
-						? intersectingHighlightedRange.from
-						: range.to;
-
-					builder.add(from, to, Decoration.mark({ class: "cm-highlight" }));
-				}
+			const toHighlight = [
+				...commentRanges.map((x) => ({
+					active: false,
+					x,
+				})),
+				...activeRanges.map((x) => ({
+					active: true,
+					x,
+				})),
+			].sort((a, b) => a.x.from - b.x.from);
+			for (const {
+				x: { from, to },
+				active,
+			} of toHighlight) {
+				builder.add(
+					from,
+					to,
+					Decoration.mark({
+						class: active ? "cm-highlight-active" : "cm-highlight",
+					}),
+				);
 			}
-
 			return builder.finish();
 		}
 	},
