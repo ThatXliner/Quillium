@@ -14,7 +14,7 @@ import {
 	bracketMatching,
 } from "@codemirror/language";
 import { defaultKeymap } from "@codemirror/commands";
-import { history, historyKeymap, historyField } from "./plugins/history";
+import { history, historyKeymap, historyField } from "@codemirror/commands";
 import {
 	autocompletion,
 	completionKeymap,
