@@ -79,7 +79,6 @@
       }
       if (!update.startState.selection.eq(update.state.selection)) {
         $activeComment = getActiveComment(update.state);
-        console.log($activeComment);
       }
 
       const doc = update.state.doc.toString();
