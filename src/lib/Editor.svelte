@@ -30,44 +30,9 @@
     wpm: 0,
     chars: 0,
   });
-
-  // WPM tracking with adaptive smoothing
   // I don't think these need to be annotated with $state
   // because they're not being used in the UI
-  let wordTimestamps: number[] = [];
-  let lastUpdate = Date.now();
-  let smoothedWPM = 0; // Holds the exponentially smoothed WPM
-
-  function updateWPM() {
-    const now = Date.now();
-    // Remove keystrokes older than 60 seconds
-    wordTimestamps = wordTimestamps.filter((t) => now - t < 60000);
-
-    const elapsedSeconds = (now - (wordTimestamps[0] || now)) / 1000;
-    const words = wordTimestamps.length;
-    const rawWPM = elapsedSeconds > 0 ? words / (elapsedSeconds / 60) : 0;
-
-    // Exponential moving average (smoothing factor α)
-    const alpha = 0.3;
-    smoothedWPM = alpha * rawWPM + (1 - alpha) * smoothedWPM;
-
-    stats.wpm = smoothedWPM;
-    lastUpdate = now;
-  }
-
-  function decayWPM() {
-    if (Date.now() - lastUpdate > 2000) {
-      // Idle for 2 seconds
-      smoothedWPM *= 0.98; // Exponential decay
-      stats.wpm = smoothedWPM;
-    }
-    if (smoothedWPM < 1 && smoothedWPM !== 0) {
-      smoothedWPM = 0;
-      wordTimestamps = [];
-    }
-    requestAnimationFrame(decayWPM);
-  }
-  requestAnimationFrame(decayWPM); // Start decay loop
+  let firstRenderTime = Date.now();
 
   const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
@@ -87,19 +52,19 @@
         .split(/\s+/g)
         .filter((x) => x).length;
 
-      // Track keystrokes
-      if (newWords > stats.words) {
-        wordTimestamps.push(Date.now());
-        updateWPM();
-      }
-
       stats = {
         words: newWords,
-        wpm: stats.wpm,
+        wpm: newWords / ((Date.now() - firstRenderTime) / 1000 / 60),
         chars: doc.length,
       };
     },
   };
+
+  const loop = () => {
+    stats.wpm = stats.words / ((Date.now() - firstRenderTime) / 1000 / 60);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
 
   let fromSave = invoke("load").then((data: string | null) => {
     let state: EditorState;
