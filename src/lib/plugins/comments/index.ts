@@ -1,28 +1,28 @@
+import { canCreateNewComment } from "$lib/stores";
+import { invertedEffects } from "@codemirror/commands";
+import {
+	EditorSelection,
+	type EditorState,
+	RangeSetBuilder,
+	type SelectionRange,
+	type StateCommand,
+	StateEffect,
+	StateField,
+	type Transaction,
+} from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
 // were highlighted. Users of this plugin can provide
 // update handlers via Facets.
 import {
-	type EditorView,
-	type ViewUpdate,
-	type KeyBinding,
-	type DecorationSet,
 	Decoration,
+	type DecorationSet,
+	type EditorView,
+	type KeyBinding,
 	ViewPlugin,
+	type ViewUpdate,
 } from "@codemirror/view";
-import {
-	StateField,
-	StateEffect,
-	type Transaction,
-	EditorSelection,
-	EditorState,
-	type StateCommand,
-	RangeSetBuilder,
-	type SelectionRange,
-} from "@codemirror/state";
-import { canCreateNewComment } from "$lib/stores";
 import { get } from "svelte/store";
-import { invertedEffects } from "@codemirror/commands";
 
 export interface Comment {
 	selection: EditorSelection;
@@ -44,7 +44,9 @@ export const updateComment = StateEffect.define<Comment>();
 export const removeComment = StateEffect.define<Comment>();
 
 function cleanRangesOf(selection: EditorSelection) {
-	const newRanges = selection.ranges.filter((range) => range.from !== range.to);
+	const newRanges = selection.ranges.filter(
+		(range) => range.from !== range.to,
+	);
 	return newRanges.length > 0
 		? EditorSelection.create(newRanges, selection.mainIndex)
 		: null;
@@ -63,11 +65,16 @@ export const commentField = StateField.define<Comment[]>({
 			} else if (e.is(removeComment)) {
 				comments = comments.filter(
 					(c) =>
-						!(c.selection.eq(e.value.selection) && e.value.text === c.text),
+						!(
+							c.selection.eq(e.value.selection) &&
+							e.value.text === c.text
+						),
 				);
 			} else if (e.is(updateComment)) {
 				comments = comments.map((c) =>
-					c.selection.eq(e.value.selection) ? { ...c, text: e.value.text } : c,
+					c.selection.eq(e.value.selection)
+						? { ...c, text: e.value.text }
+						: c,
 				);
 			}
 		}
@@ -106,7 +113,8 @@ export const commentsChanged = (update: ViewUpdate) =>
 		.every((val, idx) => val === update.state.field(commentField)[idx]) ||
 	update.transactions.some((tr) =>
 		tr.effects.some(
-			(e) => e.is(addComment) || e.is(updateComment) || e.is(removeComment),
+			(e) =>
+				e.is(addComment) || e.is(updateComment) || e.is(removeComment),
 		),
 	); // || update.state.
 // .map((x) => ({
@@ -134,9 +142,14 @@ export function getActiveComment(state: EditorState) {
 				// Basically what this is doing that if the cursor is a selection,
 				// we only want to show the comment if the entire selection is within
 				// a single comment
-				(!cursor.empty ? positionIntersects(cursor.anchor, range) : true)
+				(!cursor.empty
+					? positionIntersects(cursor.anchor, range)
+					: true)
 			) {
-				rangesWhereCursorIsInside.push({ range, associatedComment: comment });
+				rangesWhereCursorIsInside.push({
+					range,
+					associatedComment: comment,
+				});
 			}
 	}
 	return rangesWhereCursorIsInside.sort(
@@ -153,7 +166,11 @@ const commentDecorations = ViewPlugin.fromClass(
 
 		update(update: ViewUpdate) {
 			// update.selectionSet also means "if cursor changed"
-			if (update.selectionSet || update.docChanged || commentsChanged(update)) {
+			if (
+				update.selectionSet ||
+				update.docChanged ||
+				commentsChanged(update)
+			) {
 				this.decorations = this.getDecorations(update.view);
 			}
 		}
@@ -244,12 +261,13 @@ export const comments = () => [
 					// biome-ignore lint/style/noNonNullAssertion: Guaranteed to exist
 					text: transaction.startState
 						.field(commentField)
-						.find((c) => c.selection.eq(effect.value.selection))!.text,
+						.find((c) => c.selection.eq(effect.value.selection))!
+						.text,
 				}),
 			];
 		}
 	}),
-  // EditorState.transactionExtender.of((transaction: Transaction) => { })
+	// EditorState.transactionExtender.of((transaction: Transaction) => { })
 	// EditorView.domEventHandlers({
 	// 	contextmenu: (event: MouseEvent, view: EditorView) => {
 	// 		event.preventDefault();

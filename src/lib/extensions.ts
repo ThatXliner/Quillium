@@ -1,39 +1,39 @@
+import {
+	autocompletion,
+	closeBrackets,
+	closeBracketsKeymap,
+	completionKeymap,
+} from "@codemirror/autocomplete";
+import { defaultKeymap } from "@codemirror/commands";
+import { history, historyField, historyKeymap } from "@codemirror/commands";
+import {
+	bracketMatching,
+	defaultHighlightStyle,
+	syntaxHighlighting,
+} from "@codemirror/language";
+import { lintKeymap } from "@codemirror/lint";
+import { search, searchKeymap } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import {
 	EditorView,
-	keymap,
-	highlightSpecialChars,
+	type ViewUpdate,
 	drawSelection,
 	dropCursor,
+	highlightSpecialChars,
+	keymap,
 	rectangularSelection,
-	type ViewUpdate,
 } from "@codemirror/view";
-import {
-	defaultHighlightStyle,
-	syntaxHighlighting,
-	bracketMatching,
-} from "@codemirror/language";
-import { defaultKeymap } from "@codemirror/commands";
-import { history, historyKeymap, historyField } from "@codemirror/commands";
-import {
-	autocompletion,
-	completionKeymap,
-	closeBrackets,
-	closeBracketsKeymap,
-} from "@codemirror/autocomplete";
-import { lintKeymap } from "@codemirror/lint";
 import { invoke } from "@tauri-apps/api/core";
-import { search, searchKeymap } from "@codemirror/search";
 import {
+	type Comment,
 	addComment,
 	commentField,
 	commentKeymap,
 	comments,
 	removeComment,
 	updateComment,
-	type Comment,
 } from "./plugins/comments";
-import { listeners, type ListenerOptions } from "./plugins/listeners";
+import { type ListenerOptions, listeners } from "./plugins/listeners";
 export const savedFields = { historyField, commentField };
 
 export const getExtensions = (options?: ListenerOptions) => [

@@ -1,24 +1,24 @@
 <script lang="ts">
-  import { Trash2 } from "lucide-svelte";
+import { Trash2 } from "lucide-svelte";
 
-  const {
-    text,
-    isActive,
-    removeComment,
-    updateComment,
-  }: {
-    text: string;
-    isActive: boolean;
-    removeComment: () => void;
-    updateComment: (text: string) => void;
-  } = $props();
+const {
+	text,
+	isActive,
+	removeComment,
+	updateComment,
+}: {
+	text: string;
+	isActive: boolean;
+	removeComment: () => void;
+	updateComment: (text: string) => void;
+} = $props();
 
-  let commentText = $state(text);
-  let isEditing = $state(false);
-  function save() {
-    updateComment(commentText);
-    isEditing = false;
-  }
+const commentText = $state(text);
+let isEditing = $state(false);
+function save() {
+	updateComment(commentText);
+	isEditing = false;
+}
 </script>
 
 <div

@@ -1,48 +1,48 @@
 <script lang="ts">
-  import Comment from "./Comment.svelte";
+import Comment from "./Comment.svelte";
 
-  import {
-    activeComment,
-    canCreateNewComment,
-    comments,
-    editorView,
-  } from "./stores";
-  import {
-    getActiveComment,
-    removeComment as removeCommentEffect,
-    updateComment,
-    type Comment as CommentType,
-  } from "$lib/plugins/comments";
-  let commentText = "";
+import {
+	type Comment as CommentType,
+	getActiveComment,
+	removeComment as removeCommentEffect,
+	updateComment,
+} from "$lib/plugins/comments";
+import {
+	activeComment,
+	canCreateNewComment,
+	comments,
+	editorView,
+} from "./stores";
+let commentText = "";
 
-  function addComment() {
-    const newComment = {
-      selection: $comments[$comments.length - 1].selection,
-      text: commentText,
-    };
+function addComment() {
+	const newComment = {
+		selection: $comments[$comments.length - 1].selection,
+		text: commentText,
+	};
 
-    $editorView.dispatch(
-      $editorView.state.update({
-        effects: [updateComment.of(newComment)],
-      })
-    );
-    commentText = "";
-    canCreateNewComment.set(true);
-  }
-  function cancelComment() {
-    removeComment($comments.length - 1);
-    canCreateNewComment.set(true);
-  }
-  function removeComment(index: number) {
-    $editorView.dispatch(
-      $editorView.state.update({
-        effects: [removeCommentEffect.of($comments[index])],
-      })
-    );
-  }
-  function _compareComments(a: CommentType | null, b: CommentType) {
-    return a?.selection?.eq?.(b.selection) && a?.text === b.text;
-  }
+	$editorView.dispatch(
+		$editorView.state.update({
+			effects: [updateComment.of(newComment)],
+		}),
+	);
+	commentText = "";
+	canCreateNewComment.set(true);
+}
+function cancelComment() {
+	removeComment($comments.length - 1);
+	canCreateNewComment.set(true);
+}
+function removeComment(index: number) {
+	$editorView.dispatch(
+		$editorView.state.update({
+			effects: [removeCommentEffect.of($comments[index])],
+		}),
+	);
+}
+function _compareComments(a: CommentType | null, b: CommentType) {
+	return a?.selection?.eq?.(b.selection) && a?.text === b.text;
+}
 </script>
 
 <!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->

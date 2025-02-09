@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { listen } from "@tauri-apps/api/event";
-  const { words, chars, wpm } = $props();
-  let fileSaved = $state<boolean>(true);
-  listen("saved", () => {
-    fileSaved = true;
-  });
-  listen("saving", () => {
-    fileSaved = true;
-  });
+import { listen } from "@tauri-apps/api/event";
+const { words, chars, wpm } = $props();
+let fileSaved = $state<boolean>(true);
+listen("saved", () => {
+	fileSaved = true;
+});
+listen("saving", () => {
+	fileSaved = true;
+});
 </script>
 
 <div class="sticky top-0">
