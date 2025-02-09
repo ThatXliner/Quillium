@@ -52,9 +52,9 @@
     {@const isActive = _compareComments($activeComment, c)}
     {#if !(!$canCreateNewComment && i === $comments.length - 1)}
       <div
-        class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm border {isActive
-          ? 'border-cyan-400'
-          : 'border-gray-500'} border-2"
+        class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm ring-2 {isActive
+          ? 'ring-blue-500 ring-4'
+          : 'ring-gray-500'}"
       >
         <div class="text-sm text-gray-700"></div>
         <p class="whitespace-pre-wrap">{c.text}</p>

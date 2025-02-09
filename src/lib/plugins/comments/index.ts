@@ -18,7 +18,7 @@ import {
 	type StateCommand,
 	RangeSetBuilder,
 	type SelectionRange,
-	EditorState,
+	type EditorState,
 } from "@codemirror/state";
 import { canCreateNewComment } from "$lib/stores";
 import { get } from "svelte/store";
@@ -41,6 +41,13 @@ export const addComment = StateEffect.define<Comment>();
 export const updateComment = StateEffect.define<Comment>();
 //  TODO: maybe use IDs to optimize
 export const removeComment = StateEffect.define<Comment>();
+
+function cleanRangesOf(selection: EditorSelection) {
+	const newRanges = selection.ranges.filter((range) => range.from !== range.to);
+	return newRanges.length > 0
+		? EditorSelection.create(newRanges, selection.mainIndex)
+		: null;
+}
 // StateField to track comment data
 export const commentField = StateField.define<Comment[]>({
 	create(): Comment[] {
@@ -66,10 +73,13 @@ export const commentField = StateField.define<Comment[]>({
 		// Map our old comments to the new state
 		// ranges, as we don't want our comments/highlighted portion
 		// to be static markers of a row and column but instead change with te
-		comments = comments.map((x) => ({
-			selection: x.selection.map(tr.changes),
-			text: x.text,
-		}));
+		comments = comments
+			.map((x) => ({
+				selection: cleanRangesOf(x.selection.map(tr.changes)),
+				text: x.text,
+			}))
+			.filter((x) => x.selection !== null) as Comment[];
+
 		return comments;
 	},
 	toJSON(value: Comment[]) {
@@ -90,11 +100,19 @@ export const commentField = StateField.define<Comment[]>({
 // }
 
 export const commentsChanged = (update: ViewUpdate) =>
+	update.startState
+		.field(commentField)
+		.every((val, idx) => val === update.state.field(commentField)[idx]) ||
 	update.transactions.some((tr) =>
 		tr.effects.some(
 			(e) => e.is(addComment) || e.is(updateComment) || e.is(removeComment),
 		),
-	);
+	); // || update.state.
+// .map((x) => ({
+// 	selection: cleanRangesOf(x.selection.map(tr.changes)),
+// 	text: x.text,
+// }))
+// .filter((x) => x.selection.ranges.length > 0);
 function positionIntersects(position: number, selection: SelectionRange) {
 	return selection.from <= position && position <= selection.to;
 }
