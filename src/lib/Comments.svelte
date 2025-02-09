@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Comment from "./Comment.svelte";
+
   import {
     activeComment,
     canCreateNewComment,
@@ -9,9 +11,8 @@
     getActiveComment,
     removeComment as removeCommentEffect,
     updateComment,
-    type Comment,
+    type Comment as CommentType,
   } from "$lib/plugins/comments";
-  import { Trash2 } from "lucide-svelte";
   let commentText = "";
 
   function addComment() {
@@ -39,7 +40,7 @@
       })
     );
   }
-  function _compareComments(a: Comment | null, b: Comment) {
+  function _compareComments(a: CommentType | null, b: CommentType) {
     return a?.selection?.eq?.(b.selection) && a?.text === b.text;
   }
 </script>
@@ -51,26 +52,18 @@
   {#each $comments as c, i}
     {@const isActive = _compareComments($activeComment, c)}
     {#if !(!$canCreateNewComment && i === $comments.length - 1)}
-      <div
-        class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm ring-2 {isActive
-          ? 'ring-blue-500 ring-4'
-          : 'ring-gray-500'}"
-      >
-        <div class="text-sm text-gray-700"></div>
-        <p class="whitespace-pre-wrap">{c.text}</p>
-        <div class="mt-2 text-xs text-gray-500 flex items-center">
-          <span>Insert metadata here</span>
-          <!-- Add more metadata here if needed -->
-        </div>
-        <div class="flex justify-end">
-          <button
-            class="text-gray-400 hover:text-gray-600 transition-colors"
-            onclick={() => removeComment(i)}
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
+      <Comment
+        text={c.text}
+        {isActive}
+        removeComment={removeComment.bind(null, i)}
+        updateComment={(text: string) => {
+          $editorView.dispatch(
+            $editorView.state.update({
+              effects: [updateComment.of({ text, selection: c.selection })],
+            })
+          );
+        }}
+      ></Comment>
     {/if}
   {/each}
 
