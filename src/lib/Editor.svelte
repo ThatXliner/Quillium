@@ -20,16 +20,6 @@
   import type { ViewUpdate } from "@codemirror/view";
   import StatusBar from "./StatusBar.svelte";
 
-  // when using `"withGlobalTauri": true`, you may use
-  // const { exists, BaseDirectory } = window.__TAURI__.fs;
-
-  // Check if the `$APPDATA/avatar.png` file exists
-  // await exists("avatar.png", { baseDir: BaseDirectory.AppData });
-  // import {
-  //     searchKeymap,
-  //     highlightSelectionMatches,
-  // } from "@codemirror/search";
-
   let element: HTMLDivElement;
   let stats = $state<{
     words: number;
@@ -40,6 +30,45 @@
     wpm: 0,
     chars: 0,
   });
+
+  // WPM tracking with adaptive smoothing
+  // I don't think these need to be annotated with $state
+  // because they're not being used in the UI
+  let wordTimestamps: number[] = [];
+  let lastUpdate = Date.now();
+  let smoothedWPM = 0; // Holds the exponentially smoothed WPM
+
+  function updateWPM() {
+    const now = Date.now();
+    // Remove keystrokes older than 60 seconds
+    wordTimestamps = wordTimestamps.filter((t) => now - t < 60000);
+
+    const elapsedSeconds = (now - (wordTimestamps[0] || now)) / 1000;
+    const words = wordTimestamps.length;
+    const rawWPM = elapsedSeconds > 0 ? words / (elapsedSeconds / 60) : 0;
+
+    // Exponential moving average (smoothing factor α)
+    const alpha = 0.3;
+    smoothedWPM = alpha * rawWPM + (1 - alpha) * smoothedWPM;
+
+    stats.wpm = smoothedWPM;
+    lastUpdate = now;
+  }
+
+  function decayWPM() {
+    if (Date.now() - lastUpdate > 2000) {
+      // Idle for 2 seconds
+      smoothedWPM *= 0.98; // Exponential decay
+      stats.wpm = smoothedWPM;
+    }
+    if (smoothedWPM < 1 && smoothedWPM !== 0) {
+      smoothedWPM = 0;
+      wordTimestamps = [];
+    }
+    requestAnimationFrame(decayWPM);
+  }
+  requestAnimationFrame(decayWPM); // Start decay loop
+
   const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
       const newComments = update.state.field(commentField);
@@ -48,15 +77,26 @@
         $canCreateNewComment =
           $comments.length === 0 || $comments[$comments.length - 1].text !== "";
       }
-      // OPTIMIZE: Probably needs to optimize
       if (!update.startState.selection.eq(update.state.selection)) {
         $activeComment = getActiveComment(update.state);
         console.log($activeComment);
       }
+
       const doc = update.state.doc.toString();
+      const newWords = doc
+        .trim()
+        .split(/\s+/g)
+        .filter((x) => x).length;
+
+      // Track keystrokes
+      if (newWords > stats.words) {
+        wordTimestamps.push(Date.now());
+        updateWPM();
+      }
+
       stats = {
-        words: doc.split(" ").length,
-        wpm: 0,
+        words: newWords,
+        wpm: stats.wpm,
         chars: doc.length,
       };
     },
@@ -87,24 +127,15 @@
     };
     return state;
   });
+
   onMount(() => {
+    // Must be inside onMount
+    // since element may not be defined yet
     fromSave.then((state) => {
       $editorView = new EditorView({
         state,
         parent: element,
       });
-      // let startTime = Date.now();
-      // let lastWordCount = state.doc.toString().split(" ").length;
-
-      // // Update WPM every second
-      // setInterval(() => {
-      //   const elapsedMinutes = (Date.now() - startTime) / 60000;
-      //   const wordsTyped = stats.words - lastWordCount;
-      //   if (elapsedMinutes > 0) {
-      //     stats.wpm = Math.round(wordsTyped / elapsedMinutes);
-      //   }
-      //   lastWordCount = stats.words;
-      // }, 1000);
     });
   });
 </script>
@@ -126,8 +157,6 @@
   }
   :global(.cm-content) {
     font-family:
-      /* Garamond,
-      Georgia, */
       Arial,
       Helvetica,
       system-ui,
@@ -141,8 +170,8 @@
       "Open Sans",
       "Helvetica Neue",
       sans-serif;
-    letter-spacing: 0.05em; /* Adjust spacing between characters */
-    line-height: 1.5; /* Improve vertical spacing */
+    letter-spacing: 0.05em;
+    line-height: 1.5;
   }
   :global(.cm-content) {
     text-indent: 2em;

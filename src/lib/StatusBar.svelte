@@ -27,6 +27,6 @@
     <div class="w-px h-8 bg-black/20"></div>
     <span class="text-sm text-black/90">Characters: {chars}</span>
     <div class="w-px h-8 bg-black/20"></div>
-    <span class="text-sm text-black/90">WPM: {wpm}</span>
+    <span class="text-sm text-black/90">WPM: {wpm.toFixed(1)}</span>
   </div>
 </div>
