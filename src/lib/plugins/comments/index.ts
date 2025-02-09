@@ -15,13 +15,14 @@ import {
 	StateEffect,
 	type Transaction,
 	EditorSelection,
+	EditorState,
 	type StateCommand,
 	RangeSetBuilder,
 	type SelectionRange,
-	type EditorState,
 } from "@codemirror/state";
 import { canCreateNewComment } from "$lib/stores";
 import { get } from "svelte/store";
+import { invertedEffects } from "@codemirror/commands";
 
 export interface Comment {
 	selection: EditorSelection;
@@ -229,6 +230,26 @@ export const commentKeymap: KeyBinding[] = [
 export const comments = () => [
 	commentField,
 	commentDecorations,
+	invertedEffects.of((transaction: Transaction) => {
+		for (const effect of transaction.effects) {
+			if (effect.is(addComment)) {
+				return [removeComment.of(effect.value)];
+			}
+			if (effect.is(removeComment)) {
+				return [addComment.of(effect.value)];
+			}
+			return [
+				updateComment.of({
+					...effect.value,
+					// biome-ignore lint/style/noNonNullAssertion: Guaranteed to exist
+					text: transaction.startState
+						.field(commentField)
+						.find((c) => c.selection.eq(effect.value.selection))!.text,
+				}),
+			];
+		}
+	}),
+  // EditorState.transactionExtender.of((transaction: Transaction) => { })
 	// EditorView.domEventHandlers({
 	// 	contextmenu: (event: MouseEvent, view: EditorView) => {
 	// 		event.preventDefault();
