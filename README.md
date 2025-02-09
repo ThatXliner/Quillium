@@ -14,3 +14,6 @@ This template should help get you started developing with Tauri, SvelteKit and T
 - Comments/annotations
 - Revisions
 - AI suggestions
+
+
+- TODO: undo/redo add comments

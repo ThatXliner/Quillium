@@ -1,0 +1,9 @@
+.cm-highlight {
+  background-color: #FEF2CD;
+}
+.cm-highlight-active {
+  background-color: #FCBC05;
+}
+.cm-highlight-active .cm-highlight {
+  background-color: #FCBC05;
+}

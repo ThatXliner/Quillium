@@ -1,10 +1,24 @@
 <script lang="ts">
-  import { EditorState, StateEffect } from "@codemirror/state";
+  import { EditorState } from "@codemirror/state";
   import { EditorView } from "@codemirror/view";
   import { onMount } from "svelte";
-  import { getExtensions } from "./extensions";
+  import { getExtensions, savedFields } from "./extensions";
   import { invoke } from "@tauri-apps/api/core";
-  import { historyField } from "./plugins/history";
+  import {
+    activeComment,
+    canCreateNewComment,
+    comments,
+    editorView,
+  } from "./stores";
+  import "$lib/plugins/comments/default.css";
+  import type { ListenerOptions } from "./plugins/listeners";
+  import {
+    commentField,
+    commentsChanged,
+    getActiveComment,
+  } from "./plugins/comments";
+  import type { ViewUpdate } from "@codemirror/view";
+
   // when using `"withGlobalTauri": true`, you may use
   // const { exists, BaseDirectory } = window.__TAURI__.fs;
 
@@ -16,26 +30,43 @@
   // } from "@codemirror/search";
 
   let element: HTMLDivElement;
+  const getExtensionOptions: ListenerOptions = {
+    updateListener(update: ViewUpdate) {
+      const newComments = update.state.field(commentField);
+      if (commentsChanged(update)) {
+        $comments = newComments;
+        $canCreateNewComment =
+          $comments.length === 0 || $comments[$comments.length - 1].text !== "";
+      }
+      // OPTIMIZE: Probably needs to optimize
+      if (!update.startState.selection.eq(update.state.selection)) {
+        $activeComment = getActiveComment(update.state);
+        console.log($activeComment);
+      }
+    },
+  };
   let fromSave = invoke("load").then((data: string | null) => {
     let state: EditorState;
     if (data) {
-      console.log("from data", data);
       state = EditorState.fromJSON(
         JSON.parse(data),
-        { extensions: getExtensions() },
-        { historyField }
+        { extensions: getExtensions(getExtensionOptions) },
+        savedFields
       );
+      $comments = state.field(commentField);
+      $canCreateNewComment =
+        $comments.length === 0 || $comments[$comments.length - 1].text !== "";
     } else {
       state = EditorState.create({
         doc: "Hello World",
-        extensions: getExtensions(),
+        extensions: getExtensions(getExtensionOptions),
       });
     }
     return state;
   });
   onMount(() => {
     fromSave.then((state) => {
-      let view = new EditorView({
+      $editorView = new EditorView({
         state,
         parent: element,
       });
