@@ -83,7 +83,7 @@ export const commentField = StateField.define<Comment[]>({
 		// to be static markers of a row and column but instead change with te
 		comments = comments
 			.map((x) => ({
-				selection: cleanRangesOf(x.selection.map(tr.changes)),
+				selection: cleanRangesOf(x.selection.map(tr.changes, 1)),
 				text: x.text,
 			}))
 			.filter((x) => x.selection !== null) as Comment[];
@@ -266,6 +266,7 @@ export const comments = () => [
 				}),
 			];
 		}
+		return [];
 	}),
 	// EditorState.transactionExtender.of((transaction: Transaction) => { })
 	// EditorView.domEventHandlers({
