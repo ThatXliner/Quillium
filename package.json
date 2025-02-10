@@ -10,7 +10,9 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
-    "biome": "biome check --write"
+    "format": "biome format --write",
+    "lint": "biome lint --write",
+    "biome": "bun run format && bun run lint"
   },
   "license": "MIT",
   "dependencies": {

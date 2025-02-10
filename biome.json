@@ -39,6 +39,17 @@
         "indentWidth": 2,
         "indentStyle": "space"
       }
+    },
+    {
+      "include": ["*.svelte", "*.astro", "*.vue"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useConst": "off",
+            "useImportType": "off"
+          }
+        }
+      }
     }
   ]
 }

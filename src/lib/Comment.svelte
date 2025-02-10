@@ -13,7 +13,7 @@ const {
 	updateComment: (text: string) => void;
 } = $props();
 
-const commentText = $state(text);
+let commentText = $state(text);
 let isEditing = $state(false);
 function save() {
 	updateComment(commentText);

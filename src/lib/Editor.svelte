@@ -83,16 +83,16 @@ const fromSave = invoke("load").then((data: string | null) => {
 			{ extensions: getExtensions(getExtensionOptions) },
 			savedFields,
 		);
-		$comments = state.field(commentField);
-		$canCreateNewComment =
-			$comments.length === 0 ||
-			$comments[$comments.length - 1].text !== "";
 	} else {
 		state = EditorState.create({
 			doc: "Hello World",
 			extensions: getExtensions(getExtensionOptions),
 		});
 	}
+	$comments = state.field(commentField);
+	console.log($comments);
+	$canCreateNewComment =
+		$comments.length === 0 || $comments[$comments.length - 1].text !== "";
 	const doc = state.doc.toString();
 	stats = {
 		words: getWordCount(doc),
