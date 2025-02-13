@@ -13,8 +13,9 @@ import {
 	comments,
 	editorView,
 } from "./stores";
+import { tick } from "svelte";
 let commentText = "";
-
+let textarea: HTMLTextAreaElement;
 function addComment() {
 	const newComment = {
 		selection: $comments[$comments.length - 1].selection,
@@ -32,6 +33,7 @@ function addComment() {
 function cancelComment() {
 	removeComment($comments.length - 1);
 	canCreateNewComment.set(true);
+	commentText = "";
 }
 function removeComment(index: number) {
 	$editorView.dispatch(
@@ -43,6 +45,14 @@ function removeComment(index: number) {
 function _compareComments(a: CommentType | null, b: CommentType) {
 	return a?.selection?.eq?.(b.selection) && a?.text === b.text;
 }
+canCreateNewComment.subscribe((value) => {
+	console.log(value);
+	if (!value) {
+		tick().then(() => {
+			textarea.focus();
+		});
+	}
+});
 </script>
 
 <!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->
@@ -74,6 +84,8 @@ function _compareComments(a: CommentType | null, b: CommentType) {
   {#if !$canCreateNewComment}
     <div class="flex flex-col gap-2 mt-3">
       <textarea
+        tabindex="0"
+        bind:this={textarea}
         bind:value={commentText}
         onkeydown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
