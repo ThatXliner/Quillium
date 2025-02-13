@@ -21,7 +21,7 @@ import {
 } from "./plugins/comments";
 import type { ListenerOptions } from "./plugins/listeners";
 
-let element: HTMLDivElement;
+let element = $state<HTMLDivElement>();
 let stats = $state<{
 	words: number;
 	wpm: number;
@@ -132,6 +132,7 @@ onMount(() => {
     }
     :global(.cm-content) {
         font-family:
+            "SF Pro Text",
             Arial,
             Helvetica,
             system-ui,
@@ -145,8 +146,7 @@ onMount(() => {
             "Open Sans",
             "Helvetica Neue",
             sans-serif;
-        letter-spacing: 0.05em;
-        line-height: 1.5;
+        font-size: 18px;
     }
     :global(.cm-content) {
         text-indent: 2em;
