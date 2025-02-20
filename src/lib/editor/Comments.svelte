@@ -3,7 +3,6 @@ import Comment from "./Comment.svelte";
 
 import {
 	type Comment as CommentType,
-	getActiveComment,
 	removeComment as removeCommentEffect,
 	updateComment,
 } from "$lib/plugins/comments";
@@ -12,7 +11,7 @@ import {
 	canCreateNewComment,
 	comments,
 	editorView,
-} from "./stores";
+} from "$lib/stores";
 import { tick } from "svelte";
 let commentText = "";
 let textarea: HTMLTextAreaElement;

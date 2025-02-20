@@ -16,24 +16,12 @@ import { search, searchKeymap } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import {
 	EditorView,
-	type ViewUpdate,
-	drawSelection,
 	dropCursor,
 	highlightSpecialChars,
 	keymap,
-	rectangularSelection,
 } from "@codemirror/view";
-import { invoke } from "@tauri-apps/api/core";
-import {
-	type Comment,
-	addComment,
-	commentField,
-	commentKeymap,
-	comments,
-	removeComment,
-	updateComment,
-} from "./plugins/comments";
-import { type ListenerOptions, listeners } from "./plugins/listeners";
+import { commentField, commentKeymap, comments } from "./plugins/comments";
+import { type ListenerOptions, listeners } from "./listeners";
 export const savedFields = { historyField, commentField };
 
 export const getExtensions = (options?: ListenerOptions) => [

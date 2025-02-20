@@ -1,6 +1,6 @@
 <script>
-import Comments from "$lib/Comments.svelte";
-import Editor from "../lib/Editor.svelte";
+import Comments from "$lib/editor/Comments.svelte";
+import Editor from "$lib/editor/Editor.svelte";
 </script>
 
 <div class="flex">

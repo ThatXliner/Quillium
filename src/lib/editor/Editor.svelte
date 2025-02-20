@@ -9,8 +9,8 @@ import {
 	canCreateNewComment,
 	comments,
 	editorView,
-} from "./stores";
-import "$lib/plugins/comments/default.css";
+} from "$lib/stores";
+import "./plugins/comments/default.css";
 import { historyField } from "@codemirror/commands";
 import type { ViewUpdate } from "@codemirror/view";
 import StatusBar from "./StatusBar.svelte";
@@ -19,7 +19,7 @@ import {
 	commentsChanged,
 	getActiveComment,
 } from "./plugins/comments";
-import type { ListenerOptions } from "./plugins/listeners";
+import type { ListenerOptions } from "./listeners";
 
 let element = $state<HTMLDivElement>();
 let stats = $state<{

@@ -1,14 +1,7 @@
-import { savedFields } from "$lib/extensions";
+import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
-import {
-	addComment,
-	commentField,
-	commentsChanged,
-	removeComment,
-	updateComment,
-} from "./comments";
-import type { Comment } from "./comments";
+import { commentsChanged } from "./plugins/comments";
 export interface ListenerOptions {
 	updateListener?: (update: ViewUpdate) => void;
 	// onCommentChanged?: (comments: Comment[]) => void;
