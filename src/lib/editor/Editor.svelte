@@ -116,11 +116,11 @@ onMount(() => {
 </script>
 
 <div class="w-full">
-    <div class="sticky top-4"><StatusBar {...stats} /></div>
+    <div class="sticky top-4 z-50"><StatusBar {...stats} /></div>
 
     {#await fromSave then}
         <div
-            class="mx-auto w-[816px] z-[-1] h-[1056px] mt-12 bg-white rounded-lg shadow-xl py-3 px-1"
+            class="mx-auto w-[816px] h-[1056px] mt-12 bg-white rounded-lg shadow-xl py-3 px-1"
             bind:this={element}
         ></div>
     {/await}
@@ -147,6 +147,10 @@ onMount(() => {
             "Helvetica Neue",
             sans-serif;
         font-size: 18px;
+    }
+    :global(.cm-editor) {
+        z-index: 0 !important;
+        position: absolute;
     }
     :global(.cm-content) {
         text-indent: 2em;
