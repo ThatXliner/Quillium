@@ -16,4 +16,4 @@ This template should help get you started developing with Tauri, SvelteKit and T
 - AI suggestions
 
 
-- TODO: undo/redo add comments
+- TODO: make comments generic into suggestions/comments/revisions

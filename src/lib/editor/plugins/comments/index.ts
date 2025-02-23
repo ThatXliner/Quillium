@@ -1,5 +1,6 @@
 import { canCreateNewComment } from "$lib/stores";
 import { invertedEffects } from "@codemirror/commands";
+import { SearchCursor } from "@codemirror/search";
 import {
 	EditorSelection,
 	type EditorState,
@@ -223,6 +224,47 @@ const commentDecorations = ViewPlugin.fromClass(
 		decorations: (v) => v.decorations,
 	},
 );
+export function createComment({
+	targetText,
+	editorSelection,
+	comment,
+	view,
+}: {
+	targetText?: string;
+	editorSelection?: EditorSelection;
+	comment: string;
+	view: EditorView;
+}) {
+	const state = view.state;
+
+	let selection = editorSelection;
+	if (editorSelection && targetText) {
+		throw new Error("Cannot specify both targetText and editorSelection");
+	}
+	if (!editorSelection) {
+		if (!targetText) {
+			throw new Error(
+				"Must specify at least either targetText or editorSelection",
+			);
+		}
+		const query = new SearchCursor(state.doc, targetText);
+		const selections = [...query].map(({ from: anchor, to: head }) =>
+			EditorSelection.range(anchor, head),
+		);
+		selection = EditorSelection.create(selections);
+	}
+	view.dispatch(
+		state.update({
+			effects: [
+				addComment.of({
+					selection: selection as EditorSelection,
+					text: comment,
+				}),
+			],
+		}),
+	);
+}
+
 export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 	if (!get(canCreateNewComment)) {
 		return false;
