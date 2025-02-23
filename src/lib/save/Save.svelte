@@ -10,6 +10,7 @@ import { Save, ChevronDown, FileEdit, Images, FolderPlus } from "lucide-svelte";
 
   <DropdownMenu.Content class="w-48 bg-white rounded-lg shadow-xl border border-gray-100 py-2 z-[99]!important"
       strategy="absolute"
+      preventScroll={false}
 
   >
     <div class="px-4 py-2 flex items-center space-x-2 border-b border-gray-100">
