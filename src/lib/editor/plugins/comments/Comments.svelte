@@ -5,7 +5,7 @@ import {
 	type Comment as CommentType,
 	removeComment as removeCommentEffect,
 	updateComment,
-} from "$lib/plugins/comments";
+} from "$lib/editor/plugins/comments";
 import {
 	activeComment,
 	canCreateNewComment,

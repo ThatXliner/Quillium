@@ -1,5 +1,5 @@
 <script>
-import Comments from "$lib/editor/Comments.svelte";
+import Comments from "$lib/editor/plugins/comments/Comments.svelte";
 import Editor from "$lib/editor/Editor.svelte";
 </script>
 

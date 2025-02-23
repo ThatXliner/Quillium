@@ -23,6 +23,7 @@
     "@codemirror/view": "^6.36.2",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
+    "ai": "^4.1.45",
     "lucide-svelte": "^0.475.0"
   },
   "devDependencies": {
