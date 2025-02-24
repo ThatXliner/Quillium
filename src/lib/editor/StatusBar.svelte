@@ -7,7 +7,7 @@ listen("saved", () => {
 	fileSaved = true;
 });
 listen("saving", () => {
-	fileSaved = true;
+	fileSaved = false;
 });
 </script>
 

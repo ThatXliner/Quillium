@@ -1,10 +1,46 @@
 <script>
+import { invoke } from "@tauri-apps/api/core";
 import { DropdownMenu } from "bits-ui";
-import { Save, ChevronDown, Images, FolderPlus } from "lucide-svelte";
+import {
+	Trash2,
+	ChevronDown,
+	Images,
+	FolderPlus,
+	SaveIcon,
+	FlameIcon,
+} from "lucide-svelte";
 const options = [
-	{ name: "New draft", icon: Save },
-	{ name: "New project", icon: FolderPlus },
-	{ name: "See gallery", icon: Images },
+	// {
+	// 	name: "Clear history",
+	// 	icon: FlameIcon,
+	// 	props: {
+	// 		onclick: () => {
+	//
+	// 		},
+	// 	},
+	// },
+	{
+		name: "Scrap draft",
+		icon: Trash2,
+		props: {
+			onclick: () => {
+				invoke("scrap").then(() => {
+					// TODO: a popup when loaded
+					window.location.reload();
+				});
+			},
+		},
+	},
+	// {
+	// 	name: "New project",
+	// 	icon: FolderPlus,
+	// 	props: { onclick: () => console.log("New project") },
+	// },
+	// {
+	// 	name: "See gallery",
+	// 	icon: Images,
+	// 	props: { onclick: () => console.log("See gallery") },
+	// },
 ];
 </script>
 
@@ -12,7 +48,7 @@ const options = [
     <DropdownMenu.Trigger
         class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors"
     >
-        <Save size={20} />
+        <SaveIcon size={20} />
     </DropdownMenu.Trigger>
 
     <DropdownMenu.Content
@@ -20,19 +56,11 @@ const options = [
         strategy="absolute"
         preventScroll={false}
     >
-        <!-- <div class="px-4 py-2 flex items-center space-x-2 border-b border-gray-100">
-      <input
-        type="text"
-        placeholder="Delete"
-        class="w-full text-sm text-gray-700 focus:outline-none"
-      />
-      <ChevronDown size={16} class="text-gray-400" />
-    </div> -->
-
         <DropdownMenu.Group>
             {#each options as option}
                 <DropdownMenu.Item
                     class="w-full px-3 py-1 text-sm text-left text-gray-700 outline-none"
+                    {...option.props}
                 >
                     <div
                         class="flex items-center space-x-2 p-2 px-3 rounded-lg hover:inset-shadow-white hover:bg-white/60 hover:inset-shadow-sm"

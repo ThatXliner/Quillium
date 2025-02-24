@@ -1,5 +1,6 @@
 use std::fs;
 
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -32,6 +33,29 @@ fn save(app: tauri::AppHandle, state: String) -> bool {
     output
 }
 #[tauri::command]
+fn scrap(app: tauri::AppHandle) -> bool {
+    app.emit("saving", ()).unwrap();
+    let dir = app.path().app_local_data_dir().unwrap();
+    let scrap_dir = dir.join("scrapped");
+    {
+        // Sec issue because we're cheking perms before creating the dir?
+        if !scrap_dir.exists() {
+            fs::create_dir_all(&scrap_dir).unwrap();
+        }
+    }
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let output = fs::rename(
+        dir.join("state.json"),
+        scrap_dir.join(format!("{}.json", current_time)),
+    )
+    .is_ok();
+    app.emit("saved", ()).unwrap();
+    output
+}
+#[tauri::command]
 fn load(app_handle: tauri::AppHandle) -> Option<String> {
     fs::read_to_string(
         app_handle
@@ -47,7 +71,7 @@ fn load(app_handle: tauri::AppHandle) -> Option<String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![save, load])
+        .invoke_handler(tauri::generate_handler![save, load, scrap])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
