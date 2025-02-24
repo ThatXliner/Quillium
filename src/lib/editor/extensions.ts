@@ -4,7 +4,7 @@ import {
 	closeBracketsKeymap,
 	completionKeymap,
 } from "@codemirror/autocomplete";
-import { defaultKeymap } from "@codemirror/commands";
+import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { history, historyField, historyKeymap } from "@codemirror/commands";
 import {
 	bracketMatching,
@@ -48,6 +48,7 @@ export const getExtensions = (options?: ListenerOptions) => [
 		...completionKeymap,
 		...lintKeymap,
 		...commentKeymap,
+		indentWithTab,
 	]),
 	EditorView.lineWrapping,
 	EditorView.contentAttributes.of({
