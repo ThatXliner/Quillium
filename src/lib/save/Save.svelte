@@ -59,11 +59,11 @@ const options = [
         <DropdownMenu.Group>
             {#each options as option}
                 <DropdownMenu.Item
-                    class="w-full px-3 py-1 text-sm text-left text-gray-700 outline-none"
+                    class="w-full"
                     {...option.props}
                 >
                     <div
-                        class="flex items-center space-x-2 p-2 px-3 rounded-lg hover:inset-shadow-white hover:bg-white/60 hover:inset-shadow-sm"
+                        class="flex items-center space-x-2 p-2 px-3 mx-3 my-1 text-sm text-left text-gray-700 rounded-lg hover:inset-shadow-white hover:bg-white/60 hover:inset-shadow-sm"
                     >
                         <!-- <div class="flex items-center space-x-2 p-2 px-3 rounded-lg hover:inset-shadow-gray-400 hover:inset-shadow-sm"> -->
                         <svelte:component this={option.icon} size={16} />

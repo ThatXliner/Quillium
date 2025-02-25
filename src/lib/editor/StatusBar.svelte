@@ -12,7 +12,7 @@ listen("saving", () => {
 </script>
 
 <div
-    class="w-fit mx-auto py-4 px-8 backdrop-blur-md rounded-full bg-white/20 border border-white/30 shadow-lg flex gap-4 items-center justify-center"
+    class="w-fit mx-auto py-4 px-8 backdrop-blur-md rounded-full bg-gray-300/70 border border-white/30 shadow-lg flex gap-4 items-center justify-center"
 >
     <div class="flex items-center gap-2">
         <div
