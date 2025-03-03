@@ -1,7 +1,7 @@
 import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
-import { commentsChanged } from "./plugins/comments";
+import { annotationsChanged } from "./plugins/annotations";
 export interface ListenerOptions {
 	updateListener?: (update: ViewUpdate) => void;
 	// onCommentChanged?: (comments: Comment[]) => void;
@@ -37,7 +37,7 @@ const save =
 	// Therefore, I use the simplest approach. In the future,
 	// I might want to debounce this
 	EditorView.updateListener.of((update: ViewUpdate) => {
-		if (update.docChanged || commentsChanged(update)) {
+		if (update.docChanged || annotationsChanged(update)) {
 			const state = JSON.stringify(update.state.toJSON(savedFields));
 			invoke("save", { state }).then((success) => {
 				console.log("saved", success);
