@@ -4,6 +4,8 @@ import Comment from "./Comment.svelte";
 import {
 	removeAnnotation as removeCommentEffect,
 	updateAnnotation,
+	type Annotation,
+	type Comment as CommentType,
 } from "$lib/editor/plugins/annotations";
 import {
 	activeComment,
@@ -16,7 +18,7 @@ import { isEqual } from "lodash-es";
 let commentText = "";
 let textarea: HTMLTextAreaElement;
 function addComment() {
-	const newComment = {
+	const newComment: Annotation<CommentType> = {
 		selection: $comments[$comments.length - 1].selection,
 		value: { thread: [commentText], type: "comment" },
 	};
