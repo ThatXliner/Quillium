@@ -2,10 +2,9 @@
 import Comment from "./Comment.svelte";
 
 import {
-	type Comment as CommentType,
-	removeComment as removeCommentEffect,
-	updateComment,
-} from "$lib/editor/plugins/comments";
+	removeAnnotation as removeCommentEffect,
+	updateAnnotation,
+} from "$lib/editor/plugins/annotations";
 import {
 	activeComment,
 	canCreateNewComment,
@@ -13,17 +12,18 @@ import {
 	editorView,
 } from "$lib/stores";
 import { tick } from "svelte";
+import { isEqual } from "lodash-es";
 let commentText = "";
 let textarea: HTMLTextAreaElement;
 function addComment() {
 	const newComment = {
 		selection: $comments[$comments.length - 1].selection,
-		text: commentText,
+		value: { thread: [commentText], type: "comment" },
 	};
 
 	$editorView.dispatch(
 		$editorView.state.update({
-			effects: [updateComment.of(newComment)],
+			effects: [updateAnnotation.of(newComment)],
 		}),
 	);
 	commentText = "";
@@ -41,9 +41,6 @@ function removeComment(index: number) {
 		}),
 	);
 }
-function _compareComments(a: CommentType | null, b: CommentType) {
-	return a?.selection?.eq?.(b.selection) && a?.text === b.text;
-}
 canCreateNewComment.subscribe((value) => {
 	console.log(value);
 	if (!value) {
@@ -59,16 +56,16 @@ canCreateNewComment.subscribe((value) => {
   class="w-[300px] p-2 pl-5 rounded bg-white h-screen overflow-y-scroll sticky top-0 space-y-4 flex flex-col"
 >
   {#each $comments as c, i}
-    {@const isActive = _compareComments($activeComment, c)}
+    {@const isActive = isEqual($activeComment, c)}
     {#if !(!$canCreateNewComment && i === $comments.length - 1)}
       <Comment
-        text={c.text}
+        thread={c.value.thread}
         {isActive}
         removeComment={removeComment.bind(null, i)}
-        updateComment={(text: string) => {
+        updateComment={(thread: string[]) => {
           $editorView.dispatch(
             $editorView.state.update({
-              effects: [updateComment.of({ text, selection: c.selection })],
+              effects: [updateAnnotation.of({ value: { thread }, selection: c.selection })],
             })
           );
         }}

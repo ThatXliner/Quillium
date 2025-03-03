@@ -10,15 +10,15 @@ import {
 	comments,
 	editorView,
 } from "$lib/stores";
-import "./plugins/comments/default.css";
+import "./plugins/annotations/default.css";
 import { historyField } from "@codemirror/commands";
 import type { ViewUpdate } from "@codemirror/view";
 import StatusBar from "./StatusBar.svelte";
 import {
-	commentField,
-	commentsChanged,
+	annotationField,
+	annotationsChanged,
 	getActiveComment,
-} from "./plugins/comments";
+} from "./plugins/annotations";
 import type { ListenerOptions } from "./listeners";
 
 let element = $state<HTMLDivElement>();
@@ -46,12 +46,12 @@ function getWordCount(doc: string) {
 }
 const getExtensionOptions: ListenerOptions = {
 	updateListener(update: ViewUpdate) {
-		const newComments = update.state.field(commentField);
-		if (commentsChanged(update)) {
+		const newComments = update.state.field(annotationField);
+		if (annotationsChanged(update)) {
 			$comments = newComments;
 			$canCreateNewComment =
 				$comments.length === 0 ||
-				$comments[$comments.length - 1].text !== "";
+				$comments[$comments.length - 1].value.thread.length !== 0;
 		}
 		if (!update.startState.selection.eq(update.state.selection)) {
 			$activeComment = getActiveComment(update.state);
@@ -89,10 +89,11 @@ const fromSave = invoke("load").then((data: string | null) => {
 			extensions: getExtensions(getExtensionOptions),
 		});
 	}
-	$comments = state.field(commentField);
+	$comments = state.field(annotationField);
 	console.log($comments);
 	$canCreateNewComment =
-		$comments.length === 0 || $comments[$comments.length - 1].text !== "";
+		$comments.length === 0 ||
+		$comments[$comments.length - 1].value.thread.length !== 0;
 	const doc = state.doc.toString();
 	stats = {
 		words: getWordCount(doc),

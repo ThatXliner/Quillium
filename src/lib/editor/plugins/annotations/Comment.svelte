@@ -2,21 +2,22 @@
 import { SparklesIcon, Trash2 } from "lucide-svelte";
 
 const {
-	text,
+	thread,
 	isActive,
 	removeComment,
 	updateComment,
 }: {
-	text: string;
+	thread: string[];
 	isActive: boolean;
 	removeComment: () => void;
-	updateComment: (text: string) => void;
+	updateComment: (thread: string[]) => void;
 } = $props();
 
-let commentText = $state(text);
+let commentText = $state(thread[0]);
 let isEditing = $state(false);
 function save() {
-	updateComment(commentText);
+	// TODO: proper thread
+	updateComment([commentText]);
 	isEditing = false;
 }
 </script>
