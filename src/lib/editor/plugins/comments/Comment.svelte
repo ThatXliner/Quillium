@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Trash2 } from "lucide-svelte";
+import { SparklesIcon, Trash2 } from "lucide-svelte";
 
 const {
 	text,
@@ -61,6 +61,14 @@ function save() {
         }}
       >
         Edit
+      </button>
+      <button
+        class="text-gray-400 hover:text-gray-600 transition-colors"
+        onclick={() => {
+          isEditing = true;
+        }}
+      >
+        <SparklesIcon/>
       </button>
       <button
         class="text-gray-400 hover:text-gray-600 transition-colors"
