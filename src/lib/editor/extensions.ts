@@ -20,11 +20,8 @@ import {
 	highlightSpecialChars,
 	keymap,
 } from "@codemirror/view";
-import {
-	annotationField,
-	annotationKeymap,
-	annotations,
-} from "./plugins/annotations";
+import { annotationField } from "./plugins/annotations";
+import { comments, commentKeymap } from "./plugins/annotations/comment";
 import { type ListenerOptions, listeners } from "./listeners";
 export const savedFields = { historyField, annotationField };
 
@@ -51,7 +48,7 @@ export const getExtensions = (options?: ListenerOptions) => [
 		// ...foldKeymap,
 		...completionKeymap,
 		...lintKeymap,
-		...annotationKeymap,
+		...commentKeymap,
 		indentWithTab,
 	]),
 	EditorView.lineWrapping,
@@ -61,7 +58,7 @@ export const getExtensions = (options?: ListenerOptions) => [
 		autocapitalize: "on",
 	}),
 	listeners(options),
-	annotations(),
+	comments(),
 	...(options?.updateListener
 		? [EditorView.updateListener.of(options.updateListener)]
 		: []),

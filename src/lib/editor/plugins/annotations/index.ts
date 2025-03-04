@@ -1,8 +1,5 @@
-import { canCreateNewComment } from "$lib/stores";
 import { invertedEffects } from "@codemirror/commands";
-import { SearchCursor } from "@codemirror/search";
 import {
-	AnnotationType,
 	EditorSelection,
 	type EditorState,
 	RangeSetBuilder,
@@ -16,25 +13,19 @@ import {
 // Highlight text and store which selections (including sub-selections)
 // were highlighted. Users of this plugin can provide
 // update handlers via Facets.
-import {
-	Decoration,
-	type DecorationSet,
-	type EditorView,
-	type KeyBinding,
-	ViewPlugin,
-	type ViewUpdate,
-} from "@codemirror/view";
-import { get } from "svelte/store";
+import type { ViewUpdate } from "@codemirror/view";
 import isMatch from "lodash-es/isMatch";
 // what about multiple authors and stuff???
 export type Comment = { type: "comment"; thread: string[] };
-export type Suggestion = { type: "suggestion"; text: string };
+export type Suggestion = { type: "suggestion"; text: string; thread: string[] };
 export type Revision = {
 	type: "revision";
 	currentlySelected: number;
 	versions: string[];
+	thread: string[];
 };
 export type AnnotationTypes = Comment | Suggestion | Revision;
+type AnnotationType = AnnotationTypes["type"];
 export interface Annotation<Type extends AnnotationTypes = AnnotationTypes> {
 	selection: EditorSelection;
 	value: Type;
@@ -138,7 +129,10 @@ export const annotationsChanged = (update: ViewUpdate) =>
 function positionIntersects(position: number, selection: SelectionRange) {
 	return selection.from <= position && position <= selection.to;
 }
-export function getActiveComment(state: EditorState) {
+export function getActiveAnnotation(
+	state: EditorState,
+	type: AnnotationType = "comment",
+) {
 	const cursor = state.selection.main;
 	const cursorPos = cursor.head;
 	const annotations = state.field(annotationField);
@@ -148,8 +142,12 @@ export function getActiveComment(state: EditorState) {
 	}[] = [];
 	for (const annotation of annotations) {
 		// todo: edit for comment only
-		if (annotation.value.type !== "comment") continue;
-		if (annotation.value.thread.length === 0) return annotation;
+		if (annotation.value.type !== type) continue;
+		const t = annotation.value.type;
+		if (t === "comment" && annotation.value.thread.length === 0) return;
+		if (t === "revision" && annotation.value.versions.length === 0) return;
+		// if (t === "suggestion" && annotation.value.text === "")
+		// 	return;
 		for (const range of annotation.selection.ranges)
 			if (
 				positionIntersects(cursorPos, range) &&
@@ -171,144 +169,10 @@ export function getActiveComment(state: EditorState) {
 		(a, b) => a.range.to - a.range.from - (b.range.to - b.range.from),
 	)?.[0]?.associatedAnnotation;
 }
-const commentDecorations = ViewPlugin.fromClass(
-	class {
-		decorations: DecorationSet;
 
-		constructor(view: EditorView) {
-			this.decorations = this.getDecorations(view);
-		}
-
-		update(update: ViewUpdate) {
-			// update.selectionSet also means "if cursor changed"
-			if (
-				update.selectionSet ||
-				update.docChanged ||
-				annotationsChanged(update)
-			) {
-				this.decorations = this.getDecorations(update.view);
-			}
-		}
-
-		getDecorations(view: EditorView): DecorationSet {
-			// TODO: optimize algorithm to be linear time complexity
-			// using some sort of greedy algorithm
-			const builder = new RangeSetBuilder<Decoration>();
-			const cursor = view.state.selection.main;
-			const cursorPos = cursor.head;
-			const annotationRanges = view.state
-				.field(annotationField)
-				.filter((annotation) => annotation.value.type === "comment")
-				// We can assume a single selection
-				// because we are not implementing multi-selection support
-				// for now
-				.flatMap((annotation) => annotation.selection.main);
-
-			const activeRanges: readonly SelectionRange[] =
-				getActiveComment(view.state)?.selection?.ranges ?? [];
-			// If you don't add annotations in order, the plugin will crash
-			annotationRanges.sort((a, b) => a.from - b.from);
-
-			// TODO: care about multiple selections
-			const toHighlight = [
-				...annotationRanges.map((x) => ({
-					active: false,
-					x,
-				})),
-				...activeRanges.map((x) => ({
-					active: true,
-					x,
-				})),
-			].sort((a, b) => a.x.from - b.x.from);
-			for (const {
-				x: { from, to },
-				active,
-			} of toHighlight) {
-				builder.add(
-					from,
-					to,
-					Decoration.mark({
-						class: active ? "cm-highlight-active" : "cm-highlight",
-					}),
-				);
-			}
-			return builder.finish();
-		}
-	},
-	{
-		decorations: (v) => v.decorations,
-	},
-);
-export function createComment({
-	targetText,
-	editorSelection,
-	comment,
-	view,
-}: {
-	targetText?: string;
-	editorSelection?: EditorSelection;
-	comment: string;
-	view: EditorView;
-}) {
-	const state = view.state;
-
-	let selection = editorSelection;
-	if (editorSelection && targetText) {
-		throw new Error("Cannot specify both targetText and editorSelection");
-	}
-	if (!editorSelection) {
-		if (!targetText) {
-			throw new Error(
-				"Must specify at least either targetText or editorSelection",
-			);
-		}
-		const query = new SearchCursor(state.doc, targetText);
-		const selections = [...query].map(({ from: anchor, to: head }) =>
-			EditorSelection.range(anchor, head),
-		);
-		selection = EditorSelection.create(selections);
-	}
-	view.dispatch(
-		state.update({
-			effects: [
-				addAnnotation.of({
-					selection: selection as EditorSelection,
-					value: { type: "comment", thread: [comment] },
-				}),
-			],
-		}),
-	);
-}
-
-export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
-	if (!get(canCreateNewComment)) {
-		return false;
-	}
-	// TODO: multi selection support
-	if (state.selection.main.empty) return false;
-	dispatch(
-		state.update({
-			effects: [
-				addAnnotation.of({
-					selection: state.selection,
-					value: { type: "comment", thread: [] },
-				}),
-			],
-		}),
-	);
-	return true;
-};
-// TODO: a faucet for storing config
-export const annotationKeymap: KeyBinding[] = [
-	{
-		key: "Mod-Alt-m",
-		run: createCommentCommand,
-	},
-];
 // Extension
 export const annotations = () => [
 	annotationField,
-	commentDecorations,
 	// todo: revamp
 	invertedEffects.of((transaction: Transaction) => {
 		for (const effect of transaction.effects) {
@@ -330,11 +194,4 @@ export const annotations = () => [
 		}
 		return [];
 	}),
-	// EditorState.transactionExtender.of((transaction: Transaction) => { })
-	// EditorView.domEventHandlers({
-	// 	contextmenu: (event: MouseEvent, view: EditorView) => {
-	// 		event.preventDefault();
-	// 		addAnnotationCommand(view);
-	// 	},
-	// }),
 ];

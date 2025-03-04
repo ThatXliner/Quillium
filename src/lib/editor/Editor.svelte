@@ -17,7 +17,7 @@ import StatusBar from "./StatusBar.svelte";
 import {
 	annotationField,
 	annotationsChanged,
-	getActiveComment,
+	getActiveAnnotation,
 } from "./plugins/annotations";
 import type { ListenerOptions } from "./listeners";
 
@@ -54,7 +54,7 @@ const getExtensionOptions: ListenerOptions = {
 				$comments[$comments.length - 1].value.thread.length !== 0;
 		}
 		if (!update.startState.selection.eq(update.state.selection)) {
-			$activeComment = getActiveComment(update.state);
+			$activeComment = getActiveAnnotation(update.state, "comment");
 		}
 
 		const doc = update.state.doc.toString();
