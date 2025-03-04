@@ -21,7 +21,7 @@ import {
 	keymap,
 } from "@codemirror/view";
 import { annotationField } from "./plugins/annotations";
-import { comments, commentKeymap } from "./plugins/annotations/comment";
+import { comments, commentKeymap } from "./plugins/annotations";
 import { type ListenerOptions, listeners } from "./listeners";
 export const savedFields = { historyField, annotationField };
 

@@ -171,6 +171,140 @@ export function getActiveAnnotation(
 		(a, b) => a.range.to - a.range.from - (b.range.to - b.range.from),
 	)?.[0]?.associatedAnnotation;
 }
+const commentDecorations = ViewPlugin.fromClass(
+	class {
+		decorations: DecorationSet;
+
+		constructor(view: EditorView) {
+			this.decorations = this.getDecorations(view);
+		}
+
+		update(update: ViewUpdate) {
+			// update.selectionSet also means "if cursor changed"
+			if (
+				update.selectionSet ||
+				update.docChanged ||
+				annotationsChanged(update)
+			) {
+				this.decorations = this.getDecorations(update.view);
+			}
+		}
+
+		getDecorations(view: EditorView): DecorationSet {
+			// TODO: optimize algorithm to be linear time complexity
+			// using some sort of greedy algorithm
+			const builder = new RangeSetBuilder<Decoration>();
+			const cursor = view.state.selection.main;
+			const annotationRanges = view.state
+				.field(annotationField)
+				.filter((annotation) => annotation.value.type === "comment")
+				// We can assume a single selection
+				// because we are not implementing multi-selection support
+				// for now
+				.flatMap((annotation) => annotation.selection.main);
+
+			const activeRanges: readonly SelectionRange[] =
+				getActiveAnnotation(view.state, "comment")?.selection?.ranges ??
+				[];
+			// If you don't add annotations in order, the plugin will crash
+			annotationRanges.sort((a, b) => a.from - b.from);
+
+			// TODO: care about multiple selections
+			const toHighlight = [
+				...annotationRanges.map((x) => ({
+					active: false,
+					x,
+				})),
+				...activeRanges.map((x) => ({
+					active: true,
+					x,
+				})),
+			].sort((a, b) => a.x.from - b.x.from);
+			for (const {
+				x: { from, to },
+				active,
+			} of toHighlight) {
+				builder.add(
+					from,
+					to,
+					Decoration.mark({
+						class: active ? "cm-highlight-active" : "cm-highlight",
+					}),
+				);
+			}
+			return builder.finish();
+		}
+	},
+	{
+		decorations: (v) => v.decorations,
+	},
+);
+export function createComment({
+	targetText,
+	editorSelection,
+	comment,
+	view,
+}: {
+	targetText?: string;
+	editorSelection?: EditorSelection;
+	comment: string;
+	view: EditorView;
+}) {
+	const state = view.state;
+
+	let selection = editorSelection;
+	if (editorSelection && targetText) {
+		throw new Error("Cannot specify both targetText and editorSelection");
+	}
+	if (!editorSelection) {
+		if (!targetText) {
+			throw new Error(
+				"Must specify at least either targetText or editorSelection",
+			);
+		}
+		const query = new SearchCursor(state.doc, targetText);
+		const selections = [...query].map(({ from: anchor, to: head }) =>
+			EditorSelection.range(anchor, head),
+		);
+		selection = EditorSelection.create(selections);
+	}
+	view.dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of({
+					selection: selection as EditorSelection,
+					value: { type: "comment", thread: [comment] },
+				}),
+			],
+		}),
+	);
+}
+
+export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+	if (!get(canCreateNewComment)) {
+		return false;
+	}
+	// TODO: multi selection support
+	if (state.selection.main.empty) return false;
+	dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of({
+					selection: state.selection,
+					value: { type: "comment", thread: [] },
+				}),
+			],
+		}),
+	);
+	return true;
+};
+export const commentKeymap: KeyBinding[] = [
+	{
+		key: "Mod-Alt-m",
+		run: createCommentCommand,
+	},
+];
+export const comments = () => [annotations(), commentDecorations];
 
 // Extension
 export const annotations = () => [
