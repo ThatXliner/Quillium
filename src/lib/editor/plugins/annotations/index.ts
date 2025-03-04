@@ -144,8 +144,10 @@ export function getActiveAnnotation(
 		// todo: edit for comment only
 		if (annotation.value.type !== type) continue;
 		const t = annotation.value.type;
-		if (t === "comment" && annotation.value.thread.length === 0) return;
-		if (t === "revision" && annotation.value.versions.length === 0) return;
+		if (t === "comment" && annotation.value.thread.length === 0)
+			return annotation;
+		if (t === "revision" && annotation.value.versions.length === 0)
+			return annotation;
 		// if (t === "suggestion" && annotation.value.text === "")
 		// 	return;
 		for (const range of annotation.selection.ranges)
