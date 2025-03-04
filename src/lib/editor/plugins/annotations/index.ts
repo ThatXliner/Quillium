@@ -13,7 +13,13 @@ import {
 // Highlight text and store which selections (including sub-selections)
 // were highlighted. Users of this plugin can provide
 // update handlers via Facets.
-import type { ViewUpdate } from "@codemirror/view";
+import {
+	Decoration,
+	EditorView,
+	ViewPlugin,
+	type DecorationSet,
+	type ViewUpdate,
+} from "@codemirror/view";
 import isMatch from "lodash-es/isMatch";
 // what about multiple authors and stuff???
 export type Comment = { type: "comment"; thread: string[] };
