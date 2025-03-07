@@ -1,4 +1,6 @@
+import { canCreateNewComment } from "$lib/stores";
 import { invertedEffects } from "@codemirror/commands";
+import { SearchCursor } from "@codemirror/search";
 import {
 	EditorSelection,
 	type EditorState,
@@ -15,12 +17,14 @@ import {
 // update handlers via Facets.
 import {
 	Decoration,
-	EditorView,
+	type EditorView,
 	ViewPlugin,
 	type DecorationSet,
 	type ViewUpdate,
+	type KeyBinding,
 } from "@codemirror/view";
 import isMatch from "lodash-es/isMatch";
+import { get } from "svelte/store";
 // what about multiple authors and stuff???
 export type Comment = { type: "comment"; thread: string[] };
 export type Suggestion = { type: "suggestion"; text: string; thread: string[] };
@@ -66,6 +70,7 @@ function equalAnnotationsType(a: Annotation, b: Annotation) {
 	return a.selection.eq(b.selection) && a.value.type === b.value.type;
 }
 // StateField to track annotation data
+// TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
 export const annotationField = StateField.define<Annotation[]>({
 	create(): Annotation[] {
 		return [];
