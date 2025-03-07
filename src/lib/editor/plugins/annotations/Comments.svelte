@@ -2,7 +2,6 @@
 import Comment from "./Comment.svelte";
 
 import {
-	createComment,
 	removeAnnotation as removeCommentEffect,
 	updateAnnotation,
 	type Annotation,
@@ -71,7 +70,7 @@ canCreateNewComment.subscribe((value) => {
         thread={c.value.thread}
         {isActive}
         removeComment={removeComment.bind(null, i)}
-        updateComment={(thread: Thread) => {
+        updateThread={(thread: Thread) => {
           $editorView.dispatch(
             $editorView.state.update({
               effects: [updateAnnotation.of({ value: { type: "comment", thread }, selection: c.selection })],

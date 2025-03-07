@@ -1,24 +1,25 @@
 <script lang="ts">
 import { SparklesIcon, Trash2 } from "lucide-svelte";
 import type { Thread } from ".";
+import CommentThread from "./CommentThread.svelte";
 
 const {
 	thread,
 	isActive,
 	removeComment,
-	updateComment,
+	updateThread,
 }: {
 	thread: Thread;
 	isActive: boolean;
 	removeComment: () => void;
-	updateComment: (thread: Thread) => void;
+	updateThread: (thread: Thread) => void;
 } = $props();
 
 let commentText = $state(thread[0]);
 let isEditing = $state(false);
 function save() {
 	// TODO: proper thread
-	updateComment([commentText]);
+	updateThread([commentText]);
 	isEditing = false;
 }
 </script>
@@ -51,7 +52,7 @@ function save() {
       </button>
     </div>
   {:else}
-    <p class="whitespace-pre-wrap">{commentText?.message}</p>
+    <CommentThread thread={thread} updateThread={updateThread}/>
     <div class="mt-2 text-xs text-gray-500 flex items-center">
       <span>Insert metadata here</span>
     </div>
