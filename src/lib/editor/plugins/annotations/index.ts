@@ -25,14 +25,17 @@ import {
 } from "@codemirror/view";
 import isMatch from "lodash-es/isMatch";
 import { get } from "svelte/store";
+
 // what about multiple authors and stuff???
-export type Comment = { type: "comment"; thread: string[] };
-export type Suggestion = { type: "suggestion"; text: string; thread: string[] };
+export type ThreadMessage = { message: string; author: string; time: number };
+export type Thread = ThreadMessage[];
+export type Comment = { type: "comment"; thread: Thread };
+export type Suggestion = { type: "suggestion"; text: string; thread: Thread };
 export type Revision = {
 	type: "revision";
 	currentlySelected: number;
 	versions: string[];
-	thread: string[];
+	thread: Thread;
 };
 export type AnnotationTypes = Comment | Suggestion | Revision;
 type AnnotationType = AnnotationTypes["type"];
@@ -254,11 +257,13 @@ export function createComment({
 	targetText,
 	editorSelection,
 	comment,
+	author = "AI",
 	view,
 }: {
 	targetText?: string;
 	editorSelection?: EditorSelection;
 	comment: string;
+	author?: string;
 	view: EditorView;
 }) {
 	const state = view.state;
@@ -284,7 +289,12 @@ export function createComment({
 			effects: [
 				addAnnotation.of({
 					selection: selection as EditorSelection,
-					value: { type: "comment", thread: [comment] },
+					value: {
+						type: "comment",
+						thread: [
+							{ message: comment, author, time: Date.now() },
+						],
+					},
 				}),
 			],
 		}),

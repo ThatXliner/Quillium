@@ -1,5 +1,6 @@
 <script lang="ts">
-import { Trash2 } from "lucide-svelte";
+import { SparklesIcon, Trash2 } from "lucide-svelte";
+import type { Thread } from ".";
 
 const {
 	thread,
@@ -7,10 +8,10 @@ const {
 	removeComment,
 	updateComment,
 }: {
-	thread: string[];
+	thread: Thread;
 	isActive: boolean;
 	removeComment: () => void;
-	updateComment: (thread: string[]) => void;
+	updateComment: (thread: Thread) => void;
 } = $props();
 
 let commentText = $state(thread[0]);
@@ -50,7 +51,7 @@ function save() {
       </button>
     </div>
   {:else}
-    <p class="whitespace-pre-wrap">{commentText}</p>
+    <p class="whitespace-pre-wrap">{commentText?.message}</p>
     <div class="mt-2 text-xs text-gray-500 flex items-center">
       <span>Insert metadata here</span>
     </div>
@@ -67,8 +68,15 @@ function save() {
         class="text-gray-400 hover:text-gray-600 transition-colors"
         onclick={() => removeComment()}
       >
+        <SparklesIcon size={16} />
+      </button>
+      <button
+        class="text-gray-400 hover:text-gray-600 transition-colors"
+        onclick={() => removeComment()}
+      >
         <Trash2 size={16} />
       </button>
+
     </div>
   {/if}
 </div>

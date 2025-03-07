@@ -2,10 +2,12 @@
 import Comment from "./Comment.svelte";
 
 import {
+	createComment,
 	removeAnnotation as removeCommentEffect,
 	updateAnnotation,
 	type Annotation,
 	type Comment as CommentType,
+	type Thread,
 } from "$lib/editor/plugins/annotations";
 import {
 	activeComment,
@@ -15,12 +17,17 @@ import {
 } from "$lib/stores";
 import { tick } from "svelte";
 import { isEqual } from "lodash-es";
-let commentText = "";
-let textarea: HTMLTextAreaElement;
+let commentText = $state("");
+let textarea = $state<HTMLTextAreaElement | undefined>();
 function addComment() {
 	const newComment: Annotation<CommentType> = {
 		selection: $comments[$comments.length - 1].selection,
-		value: { thread: [commentText], type: "comment" },
+		value: {
+			thread: [
+				{ message: commentText, author: "User", time: Date.now() },
+			],
+			type: "comment",
+		},
 	};
 
 	$editorView.dispatch(
@@ -47,7 +54,7 @@ canCreateNewComment.subscribe((value) => {
 	console.log(value);
 	if (!value) {
 		tick().then(() => {
-			textarea.focus();
+			textarea?.focus();
 		});
 	}
 });
@@ -64,10 +71,10 @@ canCreateNewComment.subscribe((value) => {
         thread={c.value.thread}
         {isActive}
         removeComment={removeComment.bind(null, i)}
-        updateComment={(thread: string[]) => {
+        updateComment={(thread: Thread) => {
           $editorView.dispatch(
             $editorView.state.update({
-              effects: [updateAnnotation.of({ value: { thread }, selection: c.selection })],
+              effects: [updateAnnotation.of({ value: { type: "comment", thread }, selection: c.selection })],
             })
           );
         }}
