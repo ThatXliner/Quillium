@@ -3,9 +3,8 @@ import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
 import type { Annotation, Comment, Thread } from ".";
 import CommentThread from "./CommentThread.svelte";
 import { generateText } from "ai";
-import { createOpenAI, openai } from "@ai-sdk/openai";
+import { openai } from "$lib/ai";
 import { editorView } from "$lib/stores";
-import { PUBLIC_INSECURE_API_KEY } from "$env/static/public";
 
 const {
 	comment,
@@ -38,7 +37,13 @@ async function aiSuggestion() {
 		prompt += " conversation thread:\n";
 	}
 	prompt += "```\n";
-	prompt += thread.map((message) => message.message).join("\n");
+	if (thread.length === 1) {
+		prompt += thread[0].message;
+	} else {
+		prompt += thread
+			.map((message) => `${message.author}: ${message.message}`)
+			.join("\n");
+	}
 	prompt += "\n```\n";
 	prompt +=
 		"For context, here is the selected text the previous comment is referring to:\n";
@@ -61,7 +66,7 @@ async function aiSuggestion() {
 	prompt += "```\n";
 	prompt += "Be concise.";
 	const response = await generateText({
-		model: createOpenAI({ apiKey: PUBLIC_INSECURE_API_KEY })("o3-mini"),
+		model: openai("gpt-4o"),
 		prompt,
 	});
 
