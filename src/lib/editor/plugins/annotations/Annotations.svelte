@@ -1,26 +1,29 @@
 <script lang="ts">
+// TODO: input/create annotations in relative order
 import Comment from "./Comment.svelte";
 
 import {
-	removeAnnotation as removeCommentEffect,
+	removeAnnotation,
 	updateAnnotation,
 	type Annotation,
 	type Comment as CommentType,
+	type Revision as RevisionType,
 	type Thread,
 } from "$lib/editor/plugins/annotations";
 import {
 	activeComment,
 	canCreateNewComment,
-	comments,
+	annotations,
 	editorView,
 } from "$lib/stores";
 import { tick } from "svelte";
 import { isEqual } from "lodash-es";
+import Revision from "./Revision.svelte";
 let commentText = $state("");
 let textarea = $state<HTMLTextAreaElement | undefined>();
 function addComment() {
 	const newComment: Annotation<CommentType> = {
-		selection: $comments[$comments.length - 1].selection,
+		selection: $annotations[$annotations.length - 1].selection,
 		value: {
 			thread: [
 				{ message: commentText, author: "User", time: Date.now() },
@@ -38,14 +41,14 @@ function addComment() {
 	canCreateNewComment.set(true);
 }
 function cancelComment() {
-	removeComment($comments.length - 1);
+	removeComment($annotations.length - 1);
 	canCreateNewComment.set(true);
 	commentText = "";
 }
-function removeComment(index: number) {
+function remove(index: number) {
 	$editorView.dispatch(
 		$editorView.state.update({
-			effects: [removeCommentEffect.of($comments[index])],
+			effects: [removeAnnotation.of($annotations[index])],
 		}),
 	);
 }
@@ -63,13 +66,13 @@ canCreateNewComment.subscribe((value) => {
 <div
   class="w-[300px] p-2 pl-5 rounded bg-white h-screen overflow-y-scroll sticky top-0 space-y-4 flex flex-col"
 >
-  {#each $comments as c, i}
+  {#each $annotations as c, i}
     {@const isActive = isEqual($activeComment, c)}
-    {#if !(!$canCreateNewComment && i === $comments.length - 1)}
+    {#if c.value.type === "comment" && !(!$canCreateNewComment && i === $annotations.length - 1)}
       <Comment
-        comment={c}
+        comment={c as Annotation<CommentType>}
         {isActive}
-        removeComment={removeComment.bind(null, i)}
+        removeComment={remove.bind(null, i)}
         updateThread={(thread: Thread) => {
           $editorView.dispatch(
             $editorView.state.update({
@@ -79,9 +82,23 @@ canCreateNewComment.subscribe((value) => {
         }}
       ></Comment>
     {/if}
+    {#if c.value.type === "revision"}
+      <Revision
+        revision={c as Annotation<RevisionType>}
+        isActive={true}
+        remove={remove.bind(null, i)}
+        updateThread={(thread: Thread) => {
+          $editorView.dispatch(
+            $editorView.state.update({
+              effects: [updateAnnotation.of({ value: { type: "comment", thread }, selection: c.selection })],
+            })
+          );
+        }}
+      ></Revision>
+    {/if}
   {:else}
     <div class="flex items-center justify-center h-full my-auto text-gray-500">
-      No comments
+      No annotations
     </div>
   {/each}
 

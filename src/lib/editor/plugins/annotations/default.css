@@ -1,9 +1,9 @@
-.cm-highlight {
-	background-color: #fef2cd;
+.cm-comment {
+    background-color: #fef2cd;
 }
-.cm-highlight-active {
-	background-color: #fcbc05;
+.cm-comment-active {
+    background-color: #fcbc05;
 }
-.cm-highlight-active .cm-highlight {
-	background-color: #fcbc05;
+.cm-comment-active .cm-comment {
+    background-color: #fcbc05;
 }

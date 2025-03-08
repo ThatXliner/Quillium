@@ -7,7 +7,7 @@ import { getExtensions, savedFields } from "./extensions";
 import {
 	activeComment,
 	canCreateNewComment,
-	comments,
+	annotations,
 	editorView,
 } from "$lib/stores";
 import "./plugins/annotations/default.css";
@@ -48,10 +48,10 @@ const getExtensionOptions: ListenerOptions = {
 	updateListener(update: ViewUpdate) {
 		const newComments = update.state.field(annotationField);
 		if (annotationsChanged(update)) {
-			$comments = newComments;
+			$annotations = newComments;
 			$canCreateNewComment =
-				$comments.length === 0 ||
-				$comments[$comments.length - 1].value.thread.length !== 0;
+				$annotations.length === 0 ||
+				$annotations[$annotations.length - 1].value.thread.length !== 0;
 		}
 		if (!update.startState.selection.eq(update.state.selection)) {
 			$activeComment = getActiveAnnotation(update.state, "comment");
@@ -89,11 +89,11 @@ const fromSave = invoke("load").then((data: string | null) => {
 			extensions: getExtensions(getExtensionOptions),
 		});
 	}
-	$comments = state.field(annotationField);
-	console.log($comments);
+	$annotations = state.field(annotationField);
+	console.log($annotations);
 	$canCreateNewComment =
-		$comments.length === 0 ||
-		$comments[$comments.length - 1].value.thread.length !== 0;
+		$annotations.length === 0 ||
+		$annotations[$annotations.length - 1].value.thread.length !== 0;
 	const doc = state.doc.toString();
 	stats = {
 		words: getWordCount(doc),

@@ -143,6 +143,11 @@ export const annotationsChanged = (update: ViewUpdate) =>
 function positionIntersects(position: number, selection: SelectionRange) {
 	return selection.from <= position && position <= selection.to;
 }
+function getActiveAnnotations(state: EditorState) {
+	return (["comment", "revision"] as const).map(
+		getActiveAnnotation.bind(null, state),
+	);
+}
 export function getActiveAnnotation(
 	state: EditorState,
 	type: AnnotationType = "comment",
@@ -185,7 +190,7 @@ export function getActiveAnnotation(
 		(a, b) => a.range.to - a.range.from - (b.range.to - b.range.from),
 	)?.[0]?.associatedAnnotation;
 }
-const commentDecorations = ViewPlugin.fromClass(
+const annotationDecorations = ViewPlugin.fromClass(
 	class {
 		decorations: DecorationSet;
 
@@ -242,7 +247,7 @@ const commentDecorations = ViewPlugin.fromClass(
 					from,
 					to,
 					Decoration.mark({
-						class: active ? "cm-highlight-active" : "cm-highlight",
+						class: active ? "cm-comment-active" : "cm-comment",
 					}),
 				);
 			}
@@ -301,7 +306,7 @@ export function createComment({
 	);
 }
 
-export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 	if (!get(canCreateNewComment)) {
 		return false;
 	}
@@ -319,17 +324,82 @@ export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 	);
 	return true;
 };
+// QUESTION: Should we have some sort of global annotation mutex
+const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+	dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of({
+					selection: state.selection,
+					value: {
+						type: "revision",
+						currentlySelected: 0,
+						versions: [
+							state.sliceDoc(
+								state.selection.main.from,
+								state.selection.main.to,
+							),
+						],
+						thread: [],
+					},
+				}),
+			],
+		}),
+	);
+	return true;
+};
+export function changeRevision({
+	// maybe use ID instead
+	revision,
+	to,
+	view,
+}: {
+	revision: Annotation<Revision>;
+	to: number;
+	view: EditorView;
+}) {
+	const state = view.state;
+	const original = state
+		.field(annotationField)
+		.find((x) => equalAnnotationsType(x, revision)) as Annotation<Revision>;
+	console.assert(original.value.versions === revision.value.versions);
+	view.dispatch(
+		state.update({
+			effects: [
+				updateAnnotation.of({
+					selection: revision.selection,
+					value: {
+						...revision.value,
+						currentlySelected: to,
+					},
+				}),
+			],
+		}),
+	);
+	// TODO: replace with something more granular
+	view.dispatch({
+		changes: {
+			from: original.selection.main.from,
+			insert: original.value.versions[to],
+		},
+	});
+}
+
 export const commentKeymap: KeyBinding[] = [
 	{
 		key: "Mod-Alt-m",
 		run: createCommentCommand,
 	},
+	{
+		key: "Mod-Alt-k",
+		run: createRevisionCommand,
+	},
 ];
-export const comments = () => [annotations(), commentDecorations];
 
 // Extension
 export const annotations = () => [
 	annotationField,
+	annotationDecorations,
 	// todo: revamp
 	invertedEffects.of((transaction: Transaction) => {
 		for (const effect of transaction.effects) {

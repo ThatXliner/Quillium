@@ -10,26 +10,6 @@ let {
 	thread: Thread;
 	updateThread: (thread: Thread) => void;
 } = $props();
-
-let editingIndex: number | null = $state(null);
-let editMessage = $state("");
-
-function startEditing(index: number) {
-	editingIndex = index;
-	editMessage = thread[index].message;
-}
-
-function saveEdit() {
-	if (editingIndex !== null) {
-		const newThread = [...thread];
-		newThread[editingIndex] = {
-			...thread[editingIndex],
-			message: editMessage,
-		};
-		updateThread(newThread);
-		editingIndex = null;
-	}
-}
 </script>
 
 <div class="space-y-4">
