@@ -67,7 +67,7 @@ canCreateNewComment.subscribe((value) => {
     {@const isActive = isEqual($activeComment, c)}
     {#if !(!$canCreateNewComment && i === $comments.length - 1)}
       <Comment
-        thread={c.value.thread}
+        comment={c}
         {isActive}
         removeComment={removeComment.bind(null, i)}
         updateThread={(thread: Thread) => {

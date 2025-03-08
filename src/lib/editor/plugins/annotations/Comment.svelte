@@ -1,26 +1,74 @@
 <script lang="ts">
-import { SparklesIcon, Trash2 } from "lucide-svelte";
-import type { Thread } from ".";
+import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+import type { Annotation, Comment, Thread } from ".";
 import CommentThread from "./CommentThread.svelte";
+import { generateText } from "ai";
+import { createOpenAI, openai } from "@ai-sdk/openai";
+import { editorView } from "$lib/stores";
+import { PUBLIC_INSECURE_API_KEY } from "$env/static/public";
 
 const {
-	thread,
+	comment,
 	isActive,
 	removeComment,
 	updateThread,
 }: {
-	thread: Thread;
+	comment: Annotation<Comment>;
 	isActive: boolean;
 	removeComment: () => void;
 	updateThread: (thread: Thread) => void;
 } = $props();
+const thread = $derived(comment.value.thread);
 
-let commentText = $state(thread[0]);
-let isEditing = $state(false);
+let newMessage = $state("");
 function save() {
 	// TODO: proper thread
-	updateThread([commentText]);
-	isEditing = false;
+	updateThread([
+		...thread,
+		{ message: newMessage, author: "User", time: Date.now() },
+	]);
+	newMessage = "";
+}
+async function aiSuggestion() {
+	// TODO: implement AI suggestion
+	let prompt = "Provide suggestions based on the following";
+	if (thread.length === 1) {
+		prompt += " comment:\n";
+	} else {
+		prompt += " conversation thread:\n";
+	}
+	prompt += "```\n";
+	prompt += thread.map((message) => message.message).join("\n");
+	prompt += "\n```\n";
+	prompt +=
+		"For context, here is the selected text the previous comment is referring to:\n";
+	prompt += "```\n";
+	const selectionText = $editorView.state.sliceDoc(
+		comment.selection.main.from,
+		comment.selection.main.to,
+	);
+	prompt += selectionText;
+	prompt += "```\n";
+	prompt += "And here is the paragraph the selection is in:\n";
+	prompt += "```\n";
+	const selectionFrom = comment.selection.main.from;
+	const selectionTo = comment.selection.main.to;
+	const doc = $editorView.state.doc.toString();
+	const paragraphMatch = doc.match(
+		new RegExp(`[^\n]*${doc.slice(selectionFrom, selectionTo)}[^\n]*`, "m"),
+	);
+	prompt += paragraphMatch ? paragraphMatch[0] : "";
+	prompt += "```\n";
+	prompt += "Be concise.";
+	const response = await generateText({
+		model: createOpenAI({ apiKey: PUBLIC_INSECURE_API_KEY })("o3-mini"),
+		prompt,
+	});
+
+	updateThread([
+		...thread,
+		{ message: response.text, author: "AI", time: Date.now() },
+	]);
 }
 </script>
 
@@ -30,44 +78,34 @@ function save() {
     : 'ring-gray-500'}"
 >
   <div class="text-sm text-gray-700"></div>
-  {#if isEditing}
-    <textarea
-      bind:value={commentText}
-      class="w-full resize-none p-2 rounded border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      onkeydown={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-          save();
-        }
-      }}
-    >
-    </textarea>
-    <div class="mt-2 flex justify-end gap-2">
+
+    <CommentThread thread={thread} updateThread={updateThread}/>
+    <div class="relative my-3">
+      <textarea
+        bind:value={newMessage}
+        class="w-full resize-none border p-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 h-fit"
+        onkeydown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            save();
+          }
+        }}
+        placeholder="Type a message..."
+      >
+      </textarea>
       <button
-        class="text-sm text-gray-600 hover:text-gray-800"
+        disabled={!newMessage}
+        class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white bg-blue-500 rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         onclick={() => {
           save();
         }}
       >
-        Save
+        <SendHorizonalIcon size={16}/>
       </button>
-    </div>
-  {:else}
-    <CommentThread thread={thread} updateThread={updateThread}/>
-    <div class="mt-2 text-xs text-gray-500 flex items-center">
-      <span>Insert metadata here</span>
     </div>
     <div class="flex justify-end gap-2">
       <button
         class="text-gray-400 hover:text-gray-600 transition-colors"
-        onclick={() => {
-          isEditing = true;
-        }}
-      >
-        Edit
-      </button>
-      <button
-        class="text-gray-400 hover:text-gray-600 transition-colors"
-        onclick={() => removeComment()}
+        onclick={() => aiSuggestion()}
       >
         <SparklesIcon size={16} />
       </button>
@@ -79,5 +117,4 @@ function save() {
       </button>
 
     </div>
-  {/if}
 </div>
