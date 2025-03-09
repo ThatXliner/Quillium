@@ -41,7 +41,7 @@ function addComment() {
 	canCreateNewComment.set(true);
 }
 function cancelComment() {
-	removeComment($annotations.length - 1);
+	remove($annotations.length - 1);
 	canCreateNewComment.set(true);
 	commentText = "";
 }
