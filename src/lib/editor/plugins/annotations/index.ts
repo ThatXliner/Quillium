@@ -4,6 +4,7 @@ import { SearchCursor } from "@codemirror/search";
 import {
 	EditorSelection,
 	type EditorState,
+	RangeSet,
 	RangeSetBuilder,
 	type SelectionRange,
 	type StateCommand,
@@ -17,7 +18,7 @@ import {
 // update handlers via Facets.
 import {
 	Decoration,
-	type EditorView,
+	EditorView,
 	ViewPlugin,
 	type DecorationSet,
 	type ViewUpdate,
@@ -104,9 +105,16 @@ export const annotationField = StateField.define<Annotation[]>({
 		annotations = annotations
 			.map((x) => ({
 				...x,
-				selection: cleanRangesOf(x.selection.map(tr.changes, 0)),
+				selection: cleanRangesOf(
+					x.selection.map(
+						tr.changes,
+						x.value.type === "revision" ? -1 : 0,
+					),
+				),
 			}))
 			.filter((x) => x.selection !== null) as Annotation[];
+		// TODO: run on every character update
+		annotations = updateAnnotationsWithUpdatedText(tr.state, annotations);
 
 		return annotations;
 	},
@@ -124,6 +132,31 @@ export const annotationField = StateField.define<Annotation[]>({
 		})) as Annotation[];
 	},
 });
+export function updateAnnotationsWithUpdatedText(
+	state: EditorState,
+	annotations: Annotation[],
+) {
+	return annotations.map((x) =>
+		x.value.type === "revision"
+			? {
+					...x,
+					value: {
+						...x.value,
+						versions: x.value.versions.toSpliced(
+							x.value.currentlySelected,
+							1,
+							state.doc
+								.slice(
+									x.selection.main.from,
+									x.selection.main.to,
+								)
+								.toString(),
+						),
+					},
+				}
+			: x,
+	);
+}
 
 export const annotationsChanged = (update: ViewUpdate) =>
 	update.startState.field(annotationField).every((val, idx) =>
@@ -143,15 +176,15 @@ export const annotationsChanged = (update: ViewUpdate) =>
 function positionIntersects(position: number, selection: SelectionRange) {
 	return selection.from <= position && position <= selection.to;
 }
-function getActiveAnnotations(state: EditorState) {
-	return (["comment", "revision"] as const).map(
-		getActiveAnnotation.bind(null, state),
-	);
-}
-export function getActiveAnnotation(
+// function getActiveAnnotations(state: EditorState) {
+// 	return (["comment", "revision"] as const).map(
+// 		getActiveAnnotation.bind(null, state),
+// 	);
+// }
+export function getActiveAnnotation<T extends AnnotationTypes = Comment>(
 	state: EditorState,
-	type: AnnotationType = "comment",
-) {
+	type: T["type"] = "comment",
+): Annotation<T> {
 	const cursor = state.selection.main;
 	const cursorPos = cursor.head;
 	const annotations = state.field(annotationField);
@@ -195,7 +228,11 @@ const annotationDecorations = ViewPlugin.fromClass(
 		decorations: DecorationSet;
 
 		constructor(view: EditorView) {
-			this.decorations = this.getDecorations(view);
+			this.decorations = this.getDecorations(
+				view,
+				"comment",
+				"cm-comment",
+			);
 		}
 
 		update(update: ViewUpdate) {
@@ -205,26 +242,32 @@ const annotationDecorations = ViewPlugin.fromClass(
 				update.docChanged ||
 				annotationsChanged(update)
 			) {
-				this.decorations = this.getDecorations(update.view);
+				this.decorations = RangeSet.join([
+					this.getDecorations(update.view, "comment", "cm-comment"),
+					this.getDecorations(update.view, "revision", "cm-revision"),
+				]);
 			}
 		}
 
-		getDecorations(view: EditorView): DecorationSet {
+		getDecorations(
+			view: EditorView,
+			type: AnnotationType,
+			classPrefix: string,
+		): DecorationSet {
 			// TODO: optimize algorithm to be linear time complexity
 			// using some sort of greedy algorithm
 			const builder = new RangeSetBuilder<Decoration>();
 			const cursor = view.state.selection.main;
 			const annotationRanges = view.state
 				.field(annotationField)
-				.filter((annotation) => annotation.value.type === "comment")
+				.filter((annotation) => annotation.value.type === type)
 				// We can assume a single selection
 				// because we are not implementing multi-selection support
 				// for now
 				.flatMap((annotation) => annotation.selection.main);
 
 			const activeRanges: readonly SelectionRange[] =
-				getActiveAnnotation(view.state, "comment")?.selection?.ranges ??
-				[];
+				getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
 			// If you don't add annotations in order, the plugin will crash
 			annotationRanges.sort((a, b) => a.from - b.from);
 
@@ -247,7 +290,7 @@ const annotationDecorations = ViewPlugin.fromClass(
 					from,
 					to,
 					Decoration.mark({
-						class: active ? "cm-comment-active" : "cm-comment",
+						class: active ? `${classPrefix}-active` : classPrefix,
 					}),
 				);
 			}
@@ -348,7 +391,46 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
 	);
 	return true;
 };
-export function changeRevision({
+export function addAndChangeToVersion({
+	revision,
+	newVersion,
+	view,
+}: { revision: Annotation<Revision>; newVersion: string; view: EditorView }) {
+	const newA = addVersion({ revision, newVersion, view });
+	const newVersionID = revision.value.versions.length;
+	console.log(
+		"adfsafafsadfdas",
+		newVersionID,
+		newA,
+		newA.value.versions[newVersionID],
+	);
+	changeRevisionVersion({
+		revision: newA,
+		to: newVersionID,
+		view,
+	});
+}
+export function addVersion({
+	revision,
+	newVersion,
+	view,
+}: { revision: Annotation<Revision>; newVersion: string; view: EditorView }) {
+	const state = view.state;
+	const newAnnotation = {
+		selection: revision.selection,
+		value: {
+			...revision.value,
+			versions: [...revision.value.versions, newVersion],
+		},
+	};
+	view.dispatch(
+		state.update({
+			effects: [updateAnnotation.of(newAnnotation)],
+		}),
+	);
+	return newAnnotation;
+}
+export function changeRevisionVersion({
 	// maybe use ID instead
 	revision,
 	to,
@@ -363,6 +445,7 @@ export function changeRevision({
 		.field(annotationField)
 		.find((x) => equalAnnotationsType(x, revision)) as Annotation<Revision>;
 	console.assert(original.value.versions === revision.value.versions);
+	console.log("changing", original.value.versions[to]);
 	view.dispatch(
 		state.update({
 			effects: [
@@ -374,15 +457,14 @@ export function changeRevision({
 					},
 				}),
 			],
+			changes: state.changes({
+				from: original.selection.main.from,
+				to: original.selection.main.to,
+				insert: original.value.versions[to],
+			}),
 		}),
 	);
-	// TODO: replace with something more granular
-	view.dispatch({
-		changes: {
-			from: original.selection.main.from,
-			insert: original.value.versions[to],
-		},
-	});
+	console.log("wtfff");
 }
 
 export const commentKeymap: KeyBinding[] = [

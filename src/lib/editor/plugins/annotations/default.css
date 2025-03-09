@@ -7,3 +7,16 @@
 .cm-comment-active .cm-comment {
     background-color: #fcbc05;
 }
+.cm-revision {
+    padding: 0.25rem;
+    background-color: lightgray;
+    border-radius: 24px;
+}
+.cm-revision-active .cm-revision {
+    background-color: gray;
+    border-radius: 24px;
+}
+.cm-revision-active {
+    background-color: gray;
+    border-radius: 24px;
+}

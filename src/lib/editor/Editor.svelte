@@ -49,9 +49,14 @@ const getExtensionOptions: ListenerOptions = {
 		const newComments = update.state.field(annotationField);
 		if (annotationsChanged(update)) {
 			$annotations = newComments;
-			$canCreateNewComment =
-				$annotations.length === 0 ||
-				$annotations[$annotations.length - 1].value.thread.length !== 0;
+			if (
+				$annotations[$annotations.length - 1].value.type === "comment"
+			) {
+				$canCreateNewComment =
+					$annotations.length === 0 ||
+					$annotations[$annotations.length - 1].value.thread
+						.length !== 0;
+			}
 		}
 		if (!update.startState.selection.eq(update.state.selection)) {
 			$activeComment = getActiveAnnotation(update.state, "comment");

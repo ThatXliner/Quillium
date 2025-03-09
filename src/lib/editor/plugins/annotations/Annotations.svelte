@@ -60,6 +60,7 @@ canCreateNewComment.subscribe((value) => {
 		});
 	}
 });
+$inspect($annotations);
 </script>
 
 <!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->
