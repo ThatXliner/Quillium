@@ -1,11 +1,11 @@
 <script>
-import Comments from "$lib/editor/plugins/annotations/Comments.svelte";
+import Annotations from "$lib/editor/plugins/annotations/Annotations.svelte";
 import Editor from "$lib/editor/Editor.svelte";
 </script>
 
 <div class="flex">
   <Editor />
-  <Comments />
+  <Annotations />
 </div>
 
 <style>
