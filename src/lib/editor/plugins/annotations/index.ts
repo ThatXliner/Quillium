@@ -103,15 +103,25 @@ export const annotationField = StateField.define<Annotation[]>({
 		// ranges, as we don't want our annotations/highlighted portion
 		// to be static markers of a row and column but instead change with te
 		annotations = annotations
-			.map((x) => ({
-				...x,
-				selection: cleanRangesOf(
-					x.selection.map(
-						tr.changes,
-						x.value.type === "revision" ? -1 : 0,
-					),
-				),
-			}))
+			.map((x) => {
+				const newSelection = x.selection.map(
+					tr.changes,
+					x.value.type === "revision" ? 1 : 0,
+				);
+				console.log(newSelection, x.selection, tr.changes);
+				// if (x.value.type === "revision") {
+				// 	newSelection = newSelection.addRange(
+				// 		newSelection.main.extend(
+				// 			newSelection.main.from,
+				// 			newSelection.main.to,
+				// 		),
+				// 	);
+				// }
+				return {
+					...x,
+					selection: cleanRangesOf(newSelection),
+				};
+			})
 			.filter((x) => x.selection !== null) as Annotation[];
 		// TODO: run on every character update
 		annotations = updateAnnotationsWithUpdatedText(tr.state, annotations);
@@ -286,11 +296,14 @@ const annotationDecorations = ViewPlugin.fromClass(
 				x: { from, to },
 				active,
 			} of toHighlight) {
+				console.log("Decor", from, to, type);
 				builder.add(
 					from,
 					to,
 					Decoration.mark({
 						class: active ? `${classPrefix}-active` : classPrefix,
+						inclusive: true,
+						// inclusive: type === "revision",
 					}),
 				);
 			}
