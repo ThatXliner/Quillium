@@ -53,7 +53,7 @@ const getExtensionOptions: ListenerOptions = {
 				$annotations.length !== 0 &&
 				$annotations[$annotations.length - 1].value.type === "comment"
 			) {
-			    // A hacky way since our markers of a new and in-progress annotation are kind of scuffed
+				// A hacky way since our markers of a new and in-progress annotation are kind of scuffed
 				$canCreateNewComment =
 					$annotations.length === 0 ||
 					$annotations[$annotations.length - 1].value.thread
