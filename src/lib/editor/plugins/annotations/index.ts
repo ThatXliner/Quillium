@@ -26,28 +26,21 @@ import {
 } from "@codemirror/view";
 import isMatch from "lodash-es/isMatch";
 import { get } from "svelte/store";
+import type {
+  Annotation,
+  AnnotationType,
+  AnnotationTypes,
+  Comment,
+  RawAnnotation,
+  Revision,
+} from "./models";
+import {
+  cleanRangesOf,
+  equalAnnotationsType,
+  positionIntersects,
+  updateAnnotationsWithUpdatedText,
+} from "./utils";
 
-// what about multiple authors and stuff???
-export type ThreadMessage = { message: string; author: string; time: number };
-export type Thread = ThreadMessage[];
-export type Comment = { type: "comment"; thread: Thread };
-export type Suggestion = { type: "suggestion"; text: string; thread: Thread };
-export type Revision = {
-  type: "revision";
-  currentlySelected: number;
-  versions: string[];
-  thread: Thread;
-};
-export type AnnotationTypes = Comment | Suggestion | Revision;
-type AnnotationType = AnnotationTypes["type"];
-export interface Annotation<Type extends AnnotationTypes = AnnotationTypes> {
-  selection: EditorSelection;
-  value: Type;
-}
-type RawAnnotation = {
-  selection: EditorSelection["toJSON"];
-  value: AnnotationTypes;
-};
 // TODO: def use IDs...
 // XXX: No idea if this is the best way to do it
 // Since I have my viewed contained elsewhere,
@@ -60,17 +53,6 @@ export const updateAnnotation = StateEffect.define<Annotation>();
 // todo: these may be changed
 export const removeAnnotation = StateEffect.define<Annotation>();
 
-function cleanRangesOf(selection: EditorSelection) {
-  const newRanges = selection.ranges.filter((range) => range.from !== range.to);
-  return newRanges.length > 0
-    ? EditorSelection.create(newRanges, selection.mainIndex)
-    : null;
-}
-// Equal type and selection
-function equalAnnotationsType(a: Annotation, b: Annotation) {
-  console.log(a, b);
-  return a.selection.eq(b.selection) && a.value.type === b.value.type;
-}
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
 export const annotationField = StateField.define<Annotation[]>({
@@ -136,28 +118,6 @@ export const annotationField = StateField.define<Annotation[]>({
     })) as Annotation[];
   },
 });
-export function updateAnnotationsWithUpdatedText(
-  state: EditorState,
-  annotations: Annotation[],
-) {
-  return annotations.map((x) =>
-    x.value.type === "revision"
-      ? {
-          ...x,
-          value: {
-            ...x.value,
-            versions: x.value.versions.toSpliced(
-              x.value.currentlySelected,
-              1,
-              state.doc
-                .slice(x.selection.main.from, x.selection.main.to)
-                .toString(),
-            ),
-          },
-        }
-      : x,
-  );
-}
 
 export const annotationsChanged = (update: ViewUpdate) =>
   update.startState.field(annotationField).every((val, idx) =>
@@ -172,9 +132,6 @@ export const annotationsChanged = (update: ViewUpdate) =>
     ),
   );
 
-function positionIntersects(position: number, selection: SelectionRange) {
-  return selection.from <= position && position <= selection.to;
-}
 // function getActiveAnnotations(state: EditorState) {
 // 	return (["comment", "revision"] as const).map(
 // 		getActiveAnnotation.bind(null, state),
@@ -386,53 +343,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
   );
   return true;
 };
-export function addAndChangeToVersion({
-  revision,
-  newVersion,
-  view,
-}: {
-  revision: Annotation<Revision>;
-  newVersion: string;
-  view: EditorView;
-}) {
-  const newA = addVersion({ revision, newVersion, view });
-  const newVersionID = revision.value.versions.length;
-  console.log(
-    "adfsafafsadfdas",
-    newVersionID,
-    newA,
-    newA.value.versions[newVersionID],
-  );
-  changeRevisionVersion({
-    revision: newA,
-    to: newVersionID,
-    view,
-  });
-}
-export function addVersion({
-  revision,
-  newVersion,
-  view,
-}: {
-  revision: Annotation<Revision>;
-  newVersion: string;
-  view: EditorView;
-}) {
-  const state = view.state;
-  const newAnnotation = {
-    selection: revision.selection,
-    value: {
-      ...revision.value,
-      versions: [...revision.value.versions, newVersion],
-    },
-  };
-  view.dispatch(
-    state.update({
-      effects: [updateAnnotation.of(newAnnotation)],
-    }),
-  );
-  return newAnnotation;
-}
+
 export function changeRevisionVersion({
   // maybe use ID instead
   revision,
@@ -509,3 +420,4 @@ export const annotations = () => [
     return [];
   }),
 ];
+export type * from "./models";
