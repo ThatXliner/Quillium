@@ -1,3 +1,5 @@
+// TODO: since we've refactored, now we can hone in on the issues
+// but first let's make it based on the id
 import { canCreateNewComment } from "$lib/stores";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
@@ -24,22 +26,25 @@ import {
   type ViewUpdate,
   type KeyBinding,
 } from "@codemirror/view";
-import isMatch from "lodash-es/isMatch";
+
 import { get } from "svelte/store";
-import type {
-  Annotation,
-  AnnotationType,
-  AnnotationTypes,
-  Comment,
-  RawAnnotation,
-  Revision,
-} from "./models";
+
 import {
   cleanRangesOf,
-  equalAnnotationsType,
+  equalAnnotationsSignature,
   positionIntersects,
   updateAnnotationsWithUpdatedText,
 } from "./utils";
+import { isEqual } from "lodash-es";
+import {
+  createNewAnnotation,
+  isAnnotationOfType,
+  type Annotation,
+  type Annotations,
+  type AnnotationType,
+  type GenericAnnotation,
+  type RawAnnotations,
+} from "./models";
 
 // TODO: def use IDs...
 // XXX: No idea if this is the best way to do it
@@ -47,42 +52,43 @@ import {
 // a view plugin is not it.
 // const annotationUpdateHandler = Facet.define<(annotations: Annotation[]) => void>();
 // Effect to CRUD annotations, without the R
-export const addAnnotation = StateEffect.define<Annotation>();
+export const addAnnotation = StateEffect.define<GenericAnnotation>();
 // todo: these may be changed
-export const updateAnnotation = StateEffect.define<Annotation>();
+export const updateAnnotation = StateEffect.define<GenericAnnotation>();
 // todo: these may be changed
-export const removeAnnotation = StateEffect.define<Annotation>();
+export const removeAnnotation = StateEffect.define<GenericAnnotation>();
 
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
-export const annotationField = StateField.define<Annotation[]>({
-  create(): Annotation[] {
+export const annotationField = StateField.define<Annotations>({
+  create(): Annotations {
     return [];
   },
-  update(oldAnnotations: Annotation[], tr: Transaction): Annotation[] {
+  update(oldAnnotations: Annotations, tr: Transaction): Annotations {
     let annotations = oldAnnotations;
+    // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
     for (const e of tr.effects) {
       if (e.is(addAnnotation)) {
         // XXX: Not sure if this is the right attribute to use
-        annotations = [...annotations, e.value];
+        annotations[e.value.id] = e.value;
       } else if (e.is(removeAnnotation)) {
-        annotations = annotations.filter(
-          (c) => !(equalAnnotationsType(c, e.value) && isMatch(c, e.value)),
-        );
+        delete annotations[e.value.id];
       } else if (e.is(updateAnnotation)) {
-        annotations = annotations.map((c) =>
-          equalAnnotationsType(c, e.value) ? e.value : c,
-        );
+        annotations[e.value.id] = e.value;
       }
     }
+    // if (tr.changes.iterChangedRanges(range => {}))
+
     // Map our old annotations to the new state
     // ranges, as we don't want our annotations/highlighted portion
-    // to be static markers of a row and column but instead change with te
+    // to be static markers of a row and column but instead change with the
+    // document
+
     annotations = annotations
       .map((x) => {
         const newSelection = x.selection.map(
           tr.changes,
-          x.value.type === "revision" ? 1 : 0,
+          isAnnotationOfType(x, "revision") ? 1 : 0,
         );
         console.log(newSelection, x.selection, tr.changes);
         // if (x.value.type === "revision") {
@@ -98,33 +104,30 @@ export const annotationField = StateField.define<Annotation[]>({
           selection: cleanRangesOf(newSelection),
         };
       })
-      .filter((x) => x.selection !== null) as Annotation[];
+      // Well I'm too lazy to make TypeScript realize that it won't be null
+      .filter((x) => x.selection !== null) as Annotations;
     // TODO: run on every character update
     annotations = updateAnnotationsWithUpdatedText(tr.state, annotations);
 
     return annotations;
   },
-  toJSON(value: Annotation[]) {
+  toJSON(value: Annotations) {
     return value.map((c) => ({
+      ...c,
       selection: c.selection.toJSON(),
-      // c.value should always be JSON-serializable
-      value: c.value,
     }));
   },
   fromJSON(value: unknown) {
-    return (value as RawAnnotation[]).map((x) => ({
+    // TODO: use Zod to verify?
+    return (value as RawAnnotations).map((x) => ({
+      ...x,
       selection: EditorSelection.fromJSON(x.selection),
-      value: x.value,
-    })) as Annotation[];
+    }));
   },
 });
 
 export const annotationsChanged = (update: ViewUpdate) =>
-  update.startState.field(annotationField).every((val, idx) =>
-    // OPTIMIZE: this may not be performant?
-    // perhaps have a "last updated" field
-    isMatch(val, update.state.field(annotationField)[idx]),
-  ) ||
+  isEqual(update.startState, update.state) ||
   update.transactions.some((tr) =>
     tr.effects.some(
       (e) =>
@@ -132,32 +135,33 @@ export const annotationsChanged = (update: ViewUpdate) =>
     ),
   );
 
-// function getActiveAnnotations(state: EditorState) {
-// 	return (["comment", "revision"] as const).map(
-// 		getActiveAnnotation.bind(null, state),
-// 	);
-// }
-export function getActiveAnnotation<T extends AnnotationTypes = Comment>(
+export function getActiveAnnotation<T extends AnnotationType>(
   state: EditorState,
-  type: T["type"] = "comment",
-): Annotation<T> {
+  type: T,
+): Annotation<T> | undefined {
   const cursor = state.selection.main;
   const cursorPos = cursor.head;
+
   const annotations = state.field(annotationField);
   const rangesWhereCursorIsInside: {
     range: SelectionRange;
-    associatedAnnotation: Annotation;
+    associatedAnnotation: Annotation<T>;
   }[] = [];
   for (const annotation of annotations) {
-    // todo: edit for comment only
-    if (annotation.value.type !== type) continue;
-    const t = annotation.value.type;
-    if (t === "comment" && annotation.value.thread.length === 0)
+    if (!isAnnotationOfType(annotation, type)) continue;
+
+    // TODO: change these "active checks" to use the state machine
+    if (
+      isAnnotationOfType(annotation, "comment") &&
+      annotation.thread.length === 0
+    )
       return annotation;
-    if (t === "revision" && annotation.value.versions.length === 0)
+    if (
+      isAnnotationOfType(annotation, "revision") &&
+      annotation.versions.length === 0
+    )
       return annotation;
-    // if (t === "suggestion" && annotation.value.text === "")
-    // 	return;
+
     for (const range of annotation.selection.ranges)
       if (
         positionIntersects(cursorPos, range) &&
@@ -177,6 +181,7 @@ export function getActiveAnnotation<T extends AnnotationTypes = Comment>(
     (a, b) => a.range.to - a.range.from - (b.range.to - b.range.from),
   )?.[0]?.associatedAnnotation;
 }
+
 const annotationDecorations = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -210,7 +215,7 @@ const annotationDecorations = ViewPlugin.fromClass(
       const cursor = view.state.selection.main;
       const annotationRanges = view.state
         .field(annotationField)
-        .filter((annotation) => annotation.value.type === type)
+        .filter((annotation) => isAnnotationOfType(annotation, type))
         // We can assume a single selection
         // because we are not implementing multi-selection support
         // for now
@@ -254,6 +259,7 @@ const annotationDecorations = ViewPlugin.fromClass(
     decorations: (v) => v.decorations,
   },
 );
+
 export function createComment({
   targetText,
   editorSelection,
@@ -289,11 +295,12 @@ export function createComment({
     state.update({
       effects: [
         addAnnotation.of({
-          selection: selection as EditorSelection,
-          value: {
-            type: "comment",
-            thread: [{ message: comment, author, time: Date.now() }],
-          },
+          ...createNewAnnotation(
+            state.field(annotationField),
+            selection as EditorSelection,
+            "comment",
+          ),
+          thread: [{ message: comment, author, time: Date.now() }],
         }),
       ],
       annotations: Transaction.addToHistory.of(true),
@@ -310,10 +317,13 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
   dispatch(
     state.update({
       effects: [
-        addAnnotation.of({
-          selection: state.selection,
-          value: { type: "comment", thread: [] },
-        }),
+        addAnnotation.of(
+          createNewAnnotation(
+            state.field(annotationField),
+            state.selection,
+            "comment",
+          ),
+        ),
       ],
     }),
   );
@@ -325,18 +335,15 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     state.update({
       effects: [
         addAnnotation.of({
-          selection: state.selection,
-          value: {
-            type: "revision",
-            currentlySelected: 0,
-            versions: [
-              state.sliceDoc(
-                state.selection.main.from,
-                state.selection.main.to,
-              ),
-            ],
-            thread: [],
-          },
+          ...createNewAnnotation(
+            state.field(annotationField),
+            state.selection,
+            "revision",
+          ),
+          currentlySelected: 0,
+          versions: [
+            state.sliceDoc(state.selection.main.from, state.selection.main.to),
+          ],
         }),
       ],
     }),
@@ -344,37 +351,35 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
+// MARK TODO: um i actually don't know what this function does
 export function changeRevisionVersion({
   // maybe use ID instead
   revision,
   to,
   view,
 }: {
-  revision: Annotation<Revision>;
+  revision: Annotation<"revision">;
   to: number;
   view: EditorView;
 }) {
   const state = view.state;
   const original = state
     .field(annotationField)
-    .find((x) => equalAnnotationsType(x, revision)) as Annotation<Revision>;
-  console.assert(original.value.versions === revision.value.versions);
-  console.log("changing", original.value.versions[to]);
+    .find((x) => equalAnnotationsSignature(x, revision)) as RevisionAnnotation;
+  console.assert(original.versions === revision.versions);
+  console.log("changing", original.versions[to]);
   view.dispatch(
     state.update({
       effects: [
         updateAnnotation.of({
-          selection: revision.selection,
-          value: {
-            ...revision.value,
-            currentlySelected: to,
-          },
+          ...revision,
+          currentlySelected: to,
         }),
       ],
       changes: state.changes({
         from: original.selection.main.from,
         to: original.selection.main.to,
-        insert: original.value.versions[to],
+        insert: original.versions[to],
       }),
     }),
   );
@@ -413,7 +418,10 @@ export const annotations = () => [
         updateAnnotation.of(
           transaction.startState
             .field(annotationField)
-            .find((c) => equalAnnotationsType(c, effect.value)) as Annotation,
+            // very flawed
+            .find((c) =>
+              equalAnnotationsSignature(c, effect.value),
+            ) as GenericAnnotation,
         ),
       ];
     }

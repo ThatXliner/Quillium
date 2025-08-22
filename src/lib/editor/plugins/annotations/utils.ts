@@ -3,7 +3,12 @@ import {
   EditorState,
   SelectionRange,
 } from "@codemirror/state";
-import type { Annotation } from "./models";
+import {
+  isAnnotationOfType,
+  type Annotation,
+  type Annotations,
+  type GenericAnnotation,
+} from "./models";
 
 export function cleanRangesOf(selection: EditorSelection) {
   const newRanges = selection.ranges.filter((range) => range.from !== range.to);
@@ -13,9 +18,11 @@ export function cleanRangesOf(selection: EditorSelection) {
 }
 
 // Equal type and selection
-export function equalAnnotationsType(a: Annotation, b: Annotation) {
-  console.log(a, b);
-  return a.selection.eq(b.selection) && a.value.type === b.value.type;
+export function equalAnnotationsSignature(
+  a: GenericAnnotation,
+  b: GenericAnnotation,
+) {
+  return a.selection.eq(b.selection) && a._type === b._type;
 }
 
 export function positionIntersects(
@@ -26,23 +33,14 @@ export function positionIntersects(
 }
 export function updateAnnotationsWithUpdatedText(
   state: EditorState,
-  annotations: Annotation[],
+  annotations: Annotations,
 ) {
-  return annotations.map((x) =>
-    x.value.type === "revision"
-      ? {
-          ...x,
-          value: {
-            ...x.value,
-            versions: x.value.versions.toSpliced(
-              x.value.currentlySelected,
-              1,
-              state.doc
-                .slice(x.selection.main.from, x.selection.main.to)
-                .toString(),
-            ),
-          },
-        }
-      : x,
-  );
+  return annotations.map((x) => {
+    if (isAnnotationOfType(x, "revision")) {
+      x.versions[x.currentlySelected] = state.doc
+        .slice(x.selection.main.from, x.selection.main.to)
+        .toString();
+    }
+    return x;
+  });
 }

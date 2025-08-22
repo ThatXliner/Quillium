@@ -3,9 +3,8 @@
     import {
         changeRevisionVersion,
         updateAnnotation,
-        type Annotation,
-        type Revision,
         type Thread,
+        type Annotation,
     } from ".";
     import CommentThread from "./CommentThread.svelte";
     import { editorView } from "$lib/stores";
@@ -16,33 +15,25 @@
         remove,
         updateThread,
     }: {
-        revision: Annotation<Revision>;
+        revision: Annotation<"revision">;
         isActive: boolean;
         remove: () => void;
         updateThread: (thread: Thread) => void;
     } = $props();
-    const thread = $derived(revision.value.thread);
+    const thread = $derived(revision.thread);
     function newRevision() {
         const state = $editorView.state;
         const newA = {
-            selection: revision.selection,
-            value: {
-                ...revision.value,
-                versions: [...revision.value.versions, "Lorem Ipsum"],
-            },
+            ...revision,
+            versions: [...revision.versions, "Lorem Ipsum"],
         };
         $editorView.dispatch(
             state.update({
                 effects: [updateAnnotation.of(newA)],
             }),
         );
-        const newVersionID = revision.value.versions.length;
-        console.log(
-            "adfsafafsadfdas",
-            newVersionID,
-            newA,
-            newA.value.versions[newVersionID],
-        );
+        const newVersionID = revision.versions.length;
+
         changeRevisionVersion({
             revision: newA,
             to: newVersionID,
@@ -80,8 +71,8 @@
     <CommentThread {thread} {updateThread} />
     <div class="relative my-3">
         Revisions
-        {#each revision.value.versions as version, i}
-            {@const isActive = i == revision.value.currentlySelected}
+        {#each revision.versions as version, i}
+            {@const isActive = i == revision.currentlySelected}
             <button
                 class:bg-blue-400={isActive}
                 class:bg-gray-400={!isActive}
