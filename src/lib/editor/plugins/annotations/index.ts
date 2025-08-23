@@ -20,43 +20,49 @@ import {
 // update handlers via Facets.
 import {
   Decoration,
-  EditorView,
-  ViewPlugin,
   type DecorationSet,
-  type ViewUpdate,
+  EditorView,
   type KeyBinding,
+  ViewPlugin,
+  type ViewUpdate,
 } from "@codemirror/view";
 
 import { get } from "svelte/store";
 
+import { isEqual } from "lodash-es";
+import {
+  type Annotation,
+  type AnnotationType,
+  type Annotations,
+  type GenericAnnotation,
+  type RawAnnotations,
+  type ThreadMessage,
+  createNewAnnotation,
+  isAnnotationOfType,
+} from "./models";
 import {
   cleanRangesOf,
   equalAnnotationsSignature,
   positionIntersects,
   updateAnnotationsWithUpdatedText,
 } from "./utils";
-import { isEqual } from "lodash-es";
-import {
-  createNewAnnotation,
-  isAnnotationOfType,
-  type Annotation,
-  type Annotations,
-  type AnnotationType,
-  type GenericAnnotation,
-  type RawAnnotations,
-} from "./models";
 
-// TODO: def use IDs...
-// XXX: No idea if this is the best way to do it
-// Since I have my viewed contained elsewhere,
-// a view plugin is not it.
-// const annotationUpdateHandler = Facet.define<(annotations: Annotation[]) => void>();
-// Effect to CRUD annotations, without the R
 export const addAnnotation = StateEffect.define<GenericAnnotation>();
-// todo: these may be changed
 export const updateAnnotation = StateEffect.define<GenericAnnotation>();
-// todo: these may be changed
 export const removeAnnotation = StateEffect.define<GenericAnnotation>();
+// or commands?
+export const addThreadToComment = StateEffect.define<{
+  commentId: number;
+  threadMessage: ThreadMessage;
+}>();
+export const addVersionToRevision = StateEffect.define<{
+  revisionAnnotationId: number;
+  newVersion: string;
+}>();
+export const changeActiveVersion = StateEffect.define<{
+  revisionAnnotationId: number;
+  newVersionId: number;
+}>();
 
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
@@ -351,9 +357,12 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
-// MARK TODO: um i actually don't know what this function does
+// The user now wants to the revision of version `to`.
+// So we will update the editor view state to do that
+// we don't manage currentlySelected/couple it in the
+// state outside of CodeMirror because... idk
+// Should I couple this with the updateAnnotation?
 export function changeRevisionVersion({
-  // maybe use ID instead
   revision,
   to,
   view,
@@ -365,7 +374,9 @@ export function changeRevisionVersion({
   const state = view.state;
   const original = state
     .field(annotationField)
-    .find((x) => equalAnnotationsSignature(x, revision)) as RevisionAnnotation;
+    .find((x) =>
+      equalAnnotationsSignature(x, revision),
+    ) as Annotation<"revision">;
   console.assert(original.versions === revision.versions);
   console.log("changing", original.versions[to]);
   view.dispatch(
