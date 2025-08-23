@@ -5,13 +5,10 @@ import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import {
   EditorSelection,
-  type EditorState,
   RangeSet,
   RangeSetBuilder,
   type SelectionRange,
   type StateCommand,
-  StateEffect,
-  StateField,
   Transaction,
 } from "@codemirror/state";
 // All this plugin does is
@@ -33,105 +30,18 @@ import { isEqual } from "lodash-es";
 import {
   type Annotation,
   type AnnotationType,
-  type Annotations,
   type GenericAnnotation,
-  type RawAnnotations,
-  type ThreadMessage,
   createNewAnnotation,
   isAnnotationOfType,
 } from "./models";
+import { equalAnnotationsSignature, getActiveAnnotation } from "./utils";
 import {
-  cleanRangesOf,
-  equalAnnotationsSignature,
-  positionIntersects,
-  updateAnnotationsWithUpdatedText,
-} from "./utils";
-
-export const addAnnotation = StateEffect.define<GenericAnnotation>();
-export const updateAnnotation = StateEffect.define<GenericAnnotation>();
-export const removeAnnotation = StateEffect.define<GenericAnnotation>();
-// or commands?
-export const addThreadToComment = StateEffect.define<{
-  commentId: number;
-  threadMessage: ThreadMessage;
-}>();
-export const addVersionToRevision = StateEffect.define<{
-  revisionAnnotationId: number;
-  newVersion: string;
-}>();
-export const changeActiveVersion = StateEffect.define<{
-  revisionAnnotationId: number;
-  newVersionId: number;
-}>();
-
-// StateField to track annotation data
-// TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
-export const annotationField = StateField.define<Annotations>({
-  create(): Annotations {
-    return [];
-  },
-  update(oldAnnotations: Annotations, tr: Transaction): Annotations {
-    let annotations = oldAnnotations;
-    // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
-    for (const e of tr.effects) {
-      if (e.is(addAnnotation)) {
-        // XXX: Not sure if this is the right attribute to use
-        annotations[e.value.id] = e.value;
-      } else if (e.is(removeAnnotation)) {
-        delete annotations[e.value.id];
-      } else if (e.is(updateAnnotation)) {
-        annotations[e.value.id] = e.value;
-      }
-    }
-    // if (tr.changes.iterChangedRanges(range => {}))
-
-    // Map our old annotations to the new state
-    // ranges, as we don't want our annotations/highlighted portion
-    // to be static markers of a row and column but instead change with the
-    // document
-
-    annotations = annotations
-      .map((x) => {
-        const newSelection = x.selection.map(
-          tr.changes,
-          isAnnotationOfType(x, "revision") ? 1 : 0,
-        );
-        console.log(newSelection, x.selection, tr.changes);
-        // if (x.value.type === "revision") {
-        // 	newSelection = newSelection.addRange(
-        // 		newSelection.main.extend(
-        // 			newSelection.main.from,
-        // 			newSelection.main.to,
-        // 		),
-        // 	);
-        // }
-        return {
-          ...x,
-          selection: cleanRangesOf(newSelection),
-        };
-      })
-      // Well I'm too lazy to make TypeScript realize that it won't be null
-      .filter((x) => x.selection !== null) as Annotations;
-    // TODO: run on every character update
-    annotations = updateAnnotationsWithUpdatedText(tr.state, annotations);
-
-    return annotations;
-  },
-  toJSON(value: Annotations) {
-    return value.map((c) => ({
-      ...c,
-      selection: c.selection.toJSON(),
-    }));
-  },
-  fromJSON(value: unknown) {
-    // TODO: use Zod to verify?
-    return (value as RawAnnotations).map((x) => ({
-      ...x,
-      selection: EditorSelection.fromJSON(x.selection),
-    }));
-  },
-});
-
+  annotationField,
+  addAnnotation,
+  updateAnnotation,
+  removeAnnotation,
+} from "./annotationField";
+export { annotationField };
 export const annotationsChanged = (update: ViewUpdate) =>
   isEqual(update.startState, update.state) ||
   update.transactions.some((tr) =>
@@ -140,53 +50,6 @@ export const annotationsChanged = (update: ViewUpdate) =>
         e.is(addAnnotation) || e.is(updateAnnotation) || e.is(removeAnnotation),
     ),
   );
-
-export function getActiveAnnotation<T extends AnnotationType>(
-  state: EditorState,
-  type: T,
-): Annotation<T> | undefined {
-  const cursor = state.selection.main;
-  const cursorPos = cursor.head;
-
-  const annotations = state.field(annotationField);
-  const rangesWhereCursorIsInside: {
-    range: SelectionRange;
-    associatedAnnotation: Annotation<T>;
-  }[] = [];
-  for (const annotation of annotations) {
-    if (!isAnnotationOfType(annotation, type)) continue;
-
-    // TODO: change these "active checks" to use the state machine
-    if (
-      isAnnotationOfType(annotation, "comment") &&
-      annotation.thread.length === 0
-    )
-      return annotation;
-    if (
-      isAnnotationOfType(annotation, "revision") &&
-      annotation.versions.length === 0
-    )
-      return annotation;
-
-    for (const range of annotation.selection.ranges)
-      if (
-        positionIntersects(cursorPos, range) &&
-        // Having this extra condition makes it feel like Google docs
-        // Basically what this is doing that if the cursor is a selection,
-        // we only want to show the annotation if the entire selection is within
-        // a single annotation
-        (!cursor.empty ? positionIntersects(cursor.anchor, range) : true)
-      ) {
-        rangesWhereCursorIsInside.push({
-          range,
-          associatedAnnotation: annotation,
-        });
-      }
-  }
-  return rangesWhereCursorIsInside.sort(
-    (a, b) => a.range.to - a.range.from - (b.range.to - b.range.from),
-  )?.[0]?.associatedAnnotation;
-}
 
 const annotationDecorations = ViewPlugin.fromClass(
   class {
@@ -226,7 +89,7 @@ const annotationDecorations = ViewPlugin.fromClass(
         // because we are not implementing multi-selection support
         // for now
         .flatMap((annotation) => annotation.selection.main);
-
+      // TODO: use multiple
       const activeRanges: readonly SelectionRange[] =
         getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
       // If you don't add annotations in order, the plugin will crash

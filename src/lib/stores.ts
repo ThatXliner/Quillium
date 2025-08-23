@@ -7,4 +7,6 @@ export const canCreateNewComment = writable(true);
 export const editorView = writable<EditorView>();
 export const annotations = writable<Annotations>();
 // TODO: active annotations
-export const activeComment = writable<Annotation<"comment"> | null>(null);
+export const activeComment = writable<Annotation<"comment"> | undefined>(
+  undefined,
+);
