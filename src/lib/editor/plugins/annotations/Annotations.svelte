@@ -4,10 +4,7 @@ import Comment from "./Comment.svelte";
 
 import {
 	removeAnnotation,
-	updateAnnotation,
 	type Annotation,
-	type Comment as CommentType,
-	type Revision as RevisionType,
 	type Thread,
 } from "$lib/editor/plugins/annotations";
 import {
@@ -22,14 +19,13 @@ import Revision from "./Revision.svelte";
 let commentText = $state("");
 let textarea = $state<HTMLTextAreaElement | undefined>();
 function addComment() {
-	const newComment: Annotation<CommentType> = {
+  // TODO: ok ugh state machine
+	const newComment: Annotation<"comment"> = {
 		selection: $annotations[$annotations.length - 1].selection,
-		value: {
-			thread: [
-				{ message: commentText, author: "User", time: Date.now() },
-			],
-			type: "comment",
-		},
+		thread: [
+			{ message: commentText, author: "User", time: Date.now() },
+		],
+		type: "comment",
 	};
 
 	$editorView.dispatch(

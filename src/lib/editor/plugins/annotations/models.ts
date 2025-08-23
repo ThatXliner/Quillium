@@ -1,3 +1,6 @@
+// Ok so I know this looks like I'm really trying to not use classes
+// but the reason why we're using this is because it needs to be JSON serializable
+// If we can use classes but also JSON serializable, we should do that instead
 import type { EditorSelection } from "@codemirror/state";
 
 // what about multiple authors and stuff???
@@ -24,6 +27,8 @@ export function createNewAnnotation<T extends AnnotationType>(
     id: annotations.length,
     _type: type,
     thread: [],
+    // um this ain't getting serialized baby
+    // sameTypeAs: (annotation: GenericAnnotation) => annotation._type === type,
   };
 }
 // DO NOT COMPARE _type; instead use isAnnotationOfType
