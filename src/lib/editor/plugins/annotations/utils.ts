@@ -33,19 +33,6 @@ export function positionIntersects(
 ) {
   return selection.from <= position && position <= selection.to;
 }
-export function updateAnnotationsWithUpdatedText(
-  state: EditorState,
-  annotations: Annotations,
-) {
-  return annotations.map((x) => {
-    if (isAnnotationOfType(x, "revision")) {
-      x.versions[x.currentlySelected] = state.doc
-        .slice(x.selection.main.from, x.selection.main.to)
-        .toString();
-    }
-    return x;
-  });
-}
 
 export function getActiveAnnotation<T extends AnnotationType>(
   state: EditorState,

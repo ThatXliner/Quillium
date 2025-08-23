@@ -38,17 +38,14 @@ import { equalAnnotationsSignature, getActiveAnnotation } from "./utils";
 import {
   annotationField,
   addAnnotation,
-  updateAnnotation,
   removeAnnotation,
 } from "./annotationField";
-export { annotationField };
+
+export * from "./annotationField";
 export const annotationsChanged = (update: ViewUpdate) =>
   isEqual(update.startState, update.state) ||
   update.transactions.some((tr) =>
-    tr.effects.some(
-      (e) =>
-        e.is(addAnnotation) || e.is(updateAnnotation) || e.is(removeAnnotation),
-    ),
+    tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
   );
 
 const annotationDecorations = ViewPlugin.fromClass(
@@ -284,6 +281,8 @@ export const annotations = () => [
       if (effect.is(removeAnnotation)) {
         console.log("what we have here ", effect.value);
         return [addAnnotation.of(effect.value)];
+        // TODO: test this
+        // return [addAnnotation.of(transaction.startState.field(annotationField)[effect.value.id])];
       }
       // transaction.changes.iterChanges((fromA, toA) => {
       //   // if (transaction.state(annotationField))
