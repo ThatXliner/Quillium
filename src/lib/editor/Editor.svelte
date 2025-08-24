@@ -47,7 +47,6 @@
             };
             $annotations = update.state.field(annotationField);
             $activeComment = getActiveAnnotation($editorView.state, "comment");
-            console.log(update.state.field(historyField));
         },
     };
 

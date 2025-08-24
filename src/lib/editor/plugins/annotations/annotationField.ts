@@ -122,7 +122,6 @@ export const annotationField = StateField.define<Annotations>({
           tr.changes,
           isAnnotationOfType(x, "revision") ? 1 : 0,
         );
-        console.log(newSelection, x.selection, tr.changes);
 
         // Idk how adding to the end of a revision version should work
         // which is why this code is currently commented out

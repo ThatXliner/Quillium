@@ -108,7 +108,6 @@ const annotationDecorations = ViewPlugin.fromClass(
         x: { from, to },
         active,
       } of toHighlight) {
-        console.log("Decor", from, to, type);
         builder.add(
           from,
           to,
@@ -178,7 +177,6 @@ export function createComment({
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
   // locks it so that we can't have multiple pending states
   if (!canCreateNewComment(state.field(annotationField))) {
-    console.log("Cannot create new comment");
     return false;
   }
   // TODO: multi selection support

@@ -9,7 +9,6 @@
     annotations.subscribe((a) => {
         if (!a) return;
         const value = canCreateNewComment(a);
-        console.log(value);
         if (!value) {
             tick().then(() => {
                 textarea?.focus();
