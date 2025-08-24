@@ -10,9 +10,9 @@ import {
   type GenericAnnotation,
   type RawAnnotations,
   type Thread,
-  type ThreadMessage,
 } from "./models";
 import { cleanRangesOf } from "./utils";
+// lowk I might change this to our own state machine so we can have that sweet sweet typesafety
 // === For all annotations ===
 export const addAnnotation = StateEffect.define<GenericAnnotation>();
 // The reason why we store the whole annotation here instead
