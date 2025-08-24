@@ -4,12 +4,14 @@
     import { invoke } from "@tauri-apps/api/core";
     import { onMount } from "svelte";
     import { getExtensions, savedFields } from "./extensions";
-    import { editorView } from "$lib/stores";
+    import { editorView, annotations, activeComment } from "$lib/stores";
     import "./plugins/annotations/default.css";
     import { historyField } from "@codemirror/commands";
     import type { ViewUpdate } from "@codemirror/view";
     import StatusBar from "./StatusBar.svelte";
     import type { ListenerOptions } from "./listeners";
+    import { annotationField } from "./plugins/annotations";
+    import { getActiveAnnotation } from "./plugins/annotations/utils";
 
     let element = $state<HTMLDivElement>();
     let stats = $state<{
@@ -43,6 +45,8 @@
                 wpm: getWPM(newWords),
                 chars: doc.length,
             };
+            $annotations = update.state.field(annotationField);
+            $activeComment = getActiveAnnotation($editorView.state, "comment");
             console.log(update.state.field(historyField));
         },
     };

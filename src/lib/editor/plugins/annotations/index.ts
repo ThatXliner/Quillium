@@ -178,6 +178,7 @@ export function createComment({
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
   // locks it so that we can't have multiple pending states
   if (!canCreateNewComment(state.field(annotationField))) {
+    console.log("Cannot create new comment");
     return false;
   }
   // TODO: multi selection support
@@ -235,32 +236,32 @@ export const annotations = () => [
   annotationField,
   annotationDecorations,
   // todo: revamp
-  invertedEffects.of((transaction: Transaction) => {
-    for (const effect of transaction.effects) {
-      if (effect.is(addAnnotation)) {
-        return [removeAnnotation.of(effect.value)];
-      }
-      if (effect.is(removeAnnotation)) {
-        console.log("what we have here ", effect.value);
-        return [addAnnotation.of(effect.value)];
-        // TODO: test this
-        // return [addAnnotation.of(transaction.startState.field(annotationField)[effect.value.id])];
-      }
-      // transaction.changes.iterChanges((fromA, toA) => {
-      //   // if (transaction.state(annotationField))
-      // });
-      return [
-        updateAnnotation.of(
-          transaction.startState
-            .field(annotationField)
-            // very flawed
-            .find((c) =>
-              equalAnnotationsSignature(c, effect.value),
-            ) as GenericAnnotation,
-        ),
-      ];
-    }
-    return [];
-  }),
+  // invertedEffects.of((transaction: Transaction) => {
+  //   for (const effect of transaction.effects) {
+  //     // if (effect.is(addAnnotation)) {
+  //     //   return [removeAnnotation.of(effect.value)];
+  //     // }
+  //     // if (effect.is(removeAnnotation)) {
+  //     //   console.log("what we have here ", effect.value);
+  //     //   return [addAnnotation.of(effect.value)];
+  //     //   // TODO: test this
+  //     //   // return [addAnnotation.of(transaction.startState.field(annotationField)[effect.value.id])];
+  //     // }
+  //     // transaction.changes.iterChanges((fromA, toA) => {
+  //     //   // if (transaction.state(annotationField))
+  //     // });
+  //     // return [
+  //     //   updateAnnotation.of(
+  //     //     transaction.startState
+  //     //       .field(annotationField)
+  //     //       // very flawed
+  //     //       .find((c) =>
+  //     //         equalAnnotationsSignature(c, effect.value),
+  //     //       ) as GenericAnnotation,
+  //     //   ),
+  //     // ];
+  //   }
+  //   return [];
+  // }),
 ];
 export * from "./models";

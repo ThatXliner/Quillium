@@ -44,8 +44,11 @@
     {#if $annotations}
         {#each $annotations as c, i}
             {@const isActive = $activeComment?.id === c.id}
-            <!-- I don't remember why the conditional is like this but whatever -->
-            {#if isAnnotationOfType(c, "comment") && !canCreateNewComment($annotations) && i !== $annotations.length - 1}
+            {@const isPendingComment = !(
+                !canCreateNewComment($annotations) &&
+                i === $annotations.length - 1
+            )}
+            {#if isAnnotationOfType(c, "comment") && isPendingComment}
                 <Comment
                     comment={c}
                     {isActive}
