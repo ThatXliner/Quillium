@@ -9,6 +9,7 @@ import {
   type Annotations,
   type GenericAnnotation,
   type RawAnnotations,
+  type Thread,
   type ThreadMessage,
 } from "./models";
 import { cleanRangesOf } from "./utils";
@@ -28,19 +29,23 @@ export const removeAnnotation = StateEffect.define<GenericAnnotation>();
 
 // TODO: figure if delete can just need ID or not
 // === Generic annotation thread management ===
-export const addThreadToAnnotation = StateEffect.define<{
+export const updateThread = StateEffect.define<{
   annotationId: number;
-  threadMessage: ThreadMessage;
+  newThread: Thread;
 }>();
-export const deleteThreadFromAnnotation = StateEffect.define<{
-  annotationId: number;
-  threadMessageId: number;
-}>();
-export const updateThreadMessage = StateEffect.define<{
-  annotationId: number;
-  threadMessageId: number;
-  newThreadMessage: ThreadMessage;
-}>();
+// export const addThreadToAnnotation = StateEffect.define<{
+// 	annotationId: number;
+// 	threadMessage: ThreadMessage;
+// }>();
+// export const deleteThreadFromAnnotation = StateEffect.define<{
+// 	annotationId: number;
+// 	threadMessageId: number;
+// }>();
+// export const updateThreadMessage = StateEffect.define<{
+// 	annotationId: number;
+// 	threadMessageId: number;
+// 	newThreadMessage: ThreadMessage;
+// }>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 export const addVersionToRevision = StateEffect.define<{
@@ -53,7 +58,7 @@ export const deleteVersionFromRevision = StateEffect.define<{
 }>();
 export const updateActiveRevisionVersion = StateEffect.define<{
   annotationId: number;
-  versionId: number;
+  to: number;
 }>();
 // There is no "updateRevisionVersion" since we sniff that from document changes
 // TODO: do stuff for suggestions?
@@ -72,25 +77,31 @@ export const annotationField = StateField.define<Annotations>({
         annotations[e.value.id] = e.value;
       } else if (e.is(removeAnnotation)) {
         delete annotations[e.value.id];
-      } else if (e.is(addThreadToAnnotation)) {
-        annotations[e.value.annotationId].thread.push(e.value.threadMessage);
-      } else if (e.is(deleteThreadFromAnnotation)) {
-        annotations[e.value.annotationId].thread.splice(
-          e.value.threadMessageId,
-          1,
-        );
-      } else if (e.is(updateThreadMessage)) {
-        annotations[e.value.annotationId].thread[e.value.threadMessageId] =
-          e.value.newThreadMessage;
+      } else if (e.is(updateThread)) {
+        annotations[e.value.annotationId].thread = e.value.newThread;
+        // } else if (e.is(addThreadToAnnotation)) {
+        //   annotations[e.value.annotationId].thread.push(e.value.threadMessage);
+        // } else if (e.is(deleteThreadFromAnnotation)) {
+        //   annotations[e.value.annotationId].thread.splice(
+        //     e.value.threadMessageId,
+        //     1,
+        //   );
+        // } else if (e.is(updateThreadMessage)) {
+        //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
+        //     e.value.newThreadMessage;
       } else {
         let annotation = annotations[e.value.annotationId];
         if (isAnnotationOfType(annotation, "revision")) {
           if (e.is(addVersionToRevision)) {
             annotation.versions.push(e.value.newVersion);
+            annotation.currentlySelected = annotation.versions.length - 1;
           } else if (e.is(deleteVersionFromRevision)) {
             annotation.versions.splice(e.value.versionId, 1);
+            if (annotation.currentlySelected === e.value.versionId) {
+              annotation.currentlySelected = Math.max(0, e.value.versionId - 1);
+            }
           } else if (e.is(updateActiveRevisionVersion)) {
-            annotation.currentlySelected = e.value.versionId;
+            annotation.currentlySelected = e.value.to;
           }
         }
         // well uh i think this is unnecessary since

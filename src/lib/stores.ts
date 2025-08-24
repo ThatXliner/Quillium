@@ -1,12 +1,16 @@
 import type { EditorView } from "@codemirror/view";
-import { writable } from "svelte/store";
-import type { Annotation, Annotations } from "$lib/editor/plugins/annotations";
+import { writable, derived } from "svelte/store";
 
-// Might migrate this into Runes some time later
-export const canCreateNewComment = writable(true);
+import { getActiveAnnotation } from "./editor/plugins/annotations/utils";
+import { annotationField } from "./editor/plugins/annotations";
+
 export const editorView = writable<EditorView>();
-export const annotations = writable<Annotations>();
 // TODO: active annotations
-export const activeComment = writable<Annotation<"comment"> | undefined>(
-  undefined,
-);
+export const activeComment = derived(editorView, ($editorView) => {
+	if (!$editorView) return undefined;
+	return getActiveAnnotation($editorView.state, "comment");
+});
+export const annotations = derived(editorView, ($editorView) => {
+	if (!$editorView) return undefined;
+	return $editorView.state.field(annotationField);
+});

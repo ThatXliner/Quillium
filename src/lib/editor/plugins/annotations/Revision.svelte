@@ -1,10 +1,10 @@
 <script lang="ts">
     import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import {
-        changeRevisionVersion,
-        updateAnnotation,
         type Thread,
         type Annotation,
+        addVersionToRevision,
+        updateActiveRevisionVersion,
     } from ".";
     import CommentThread from "./CommentThread.svelte";
     import { editorView } from "$lib/stores";
@@ -21,25 +21,6 @@
         updateThread: (thread: Thread) => void;
     } = $props();
     const thread = $derived(revision.thread);
-    function newRevision() {
-        const state = $editorView.state;
-        const newA = {
-            ...revision,
-            versions: [...revision.versions, "Lorem Ipsum"],
-        };
-        $editorView.dispatch(
-            state.update({
-                effects: [updateAnnotation.of(newA)],
-            }),
-        );
-        const newVersionID = revision.versions.length;
-
-        changeRevisionVersion({
-            revision: newA,
-            to: newVersionID,
-            view: $editorView,
-        });
-    }
 
     // let textarea = $state<HTMLTextAreaElement | undefined>();
 
@@ -78,15 +59,33 @@
                 class:bg-gray-400={!isActive}
                 disabled={isActive}
                 onclick={() => {
-                    changeRevisionVersion({
-                        revision,
-                        to: i,
-                        view: $editorView,
-                    });
+                    $editorView.dispatch(
+                        $editorView.state.update({
+                            effects: [
+                                updateActiveRevisionVersion.of({
+                                    annotationId: revision.id,
+                                    to: i,
+                                }),
+                            ],
+                        }),
+                    );
                 }}>{version}</button
             >
         {/each}
-        <button onclick={newRevision}>New revision</button>
+        <button
+            onclick={() => {
+                $editorView.dispatch(
+                    $editorView.state.update({
+                        effects: [
+                            addVersionToRevision.of({
+                                annotationId: revision.id,
+                                newVersion: "Lorem Ipsum",
+                            }),
+                        ],
+                    }),
+                );
+            }}>New revision</button
+        >
         <!-- <textarea
         bind:value={newMessage}
         bind:this={textarea}

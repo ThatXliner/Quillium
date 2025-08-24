@@ -4,21 +4,11 @@
     import { invoke } from "@tauri-apps/api/core";
     import { onMount } from "svelte";
     import { getExtensions, savedFields } from "./extensions";
-    import {
-        activeComment,
-        canCreateNewComment,
-        annotations,
-        editorView,
-    } from "$lib/stores";
+    import { editorView } from "$lib/stores";
     import "./plugins/annotations/default.css";
     import { historyField } from "@codemirror/commands";
     import type { ViewUpdate } from "@codemirror/view";
     import StatusBar from "./StatusBar.svelte";
-    import {
-        annotationField
-        annotationsChanged,
-        getActiveAnnotation,
-    } from "./plugins/annotations";
     import type { ListenerOptions } from "./listeners";
 
     let element = $state<HTMLDivElement>();
@@ -46,28 +36,8 @@
     }
     const getExtensionOptions: ListenerOptions = {
         updateListener(update: ViewUpdate) {
-            const newComments = update.state.field(annotationField);
-            if (annotationsChanged(update)) {
-                $annotations = newComments;
-                if (
-                    $annotations.length !== 0 &&
-                    $annotations[$annotations.length - 1].value.type ===
-                        "comment"
-                ) {
-                    // A hacky way since our markers of a new and in-progress annotation are kind of scuffed
-                    $canCreateNewComment =
-                        $annotations.length === 0 ||
-                        $annotations[$annotations.length - 1].value.thread
-                            .length !== 0;
-                }
-            }
-            if (!update.startState.selection.eq(update.state.selection)) {
-                $activeComment = getActiveAnnotation(update.state, "comment");
-            }
-
             const doc = update.state.doc.toString();
             const newWords = getWordCount(doc);
-
             stats = {
                 words: newWords,
                 wpm: getWPM(newWords),
@@ -83,9 +53,10 @@
     };
     requestAnimationFrame(loop);
 
-    const fromSave = invoke("load").then((data: string | null) => {
+    const fromSave = invoke("load").then((d: unknown) => {
+        const data = d as string | null;
         let state: EditorState;
-        if (data) {
+        if (data && false) {
             state = EditorState.fromJSON(
                 JSON.parse(data),
                 { extensions: getExtensions(getExtensionOptions) },
@@ -97,11 +68,6 @@
                 extensions: getExtensions(getExtensionOptions),
             });
         }
-        $annotations = state.field(annotationField);
-        console.log($annotations);
-        $canCreateNewComment =
-            $annotations.length === 0 ||
-            $annotations[$annotations.length - 1].value.thread.length !== 0;
         const doc = state.doc.toString();
         stats = {
             words: getWordCount(doc),

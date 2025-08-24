@@ -1,6 +1,6 @@
 // TODO: since we've refactored, now we can hone in on the issues
 // but first let's make it based on the id
-import { canCreateNewComment } from "$lib/stores";
+
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import {
@@ -24,8 +24,6 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 
-import { get } from "svelte/store";
-
 import { isEqual } from "lodash-es";
 import {
   type Annotation,
@@ -34,7 +32,11 @@ import {
   createNewAnnotation,
   isAnnotationOfType,
 } from "./models";
-import { equalAnnotationsSignature, getActiveAnnotation } from "./utils";
+import {
+  canCreateNewComment,
+  equalAnnotationsSignature,
+  getActiveAnnotation,
+} from "./utils";
 import {
   annotationField,
   addAnnotation,
@@ -78,7 +80,6 @@ const annotationDecorations = ViewPlugin.fromClass(
       // TODO: optimize algorithm to be linear time complexity
       // using some sort of greedy algorithm
       const builder = new RangeSetBuilder<Decoration>();
-      const cursor = view.state.selection.main;
       const annotationRanges = view.state
         .field(annotationField)
         .filter((annotation) => isAnnotationOfType(annotation, type))
@@ -175,7 +176,8 @@ export function createComment({
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
-  if (!get(canCreateNewComment)) {
+  // locks it so that we can't have multiple pending states
+  if (!canCreateNewComment(state.field(annotationField))) {
     return false;
   }
   // TODO: multi selection support
@@ -216,46 +218,6 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
   );
   return true;
 };
-
-// The user now wants to the revision of version `to`.
-// So we will update the editor view state to do that
-// we don't manage currentlySelected/couple it in the
-// state outside of CodeMirror because... idk
-// Should I couple this with the updateAnnotation?
-export function changeRevisionVersion({
-  revision,
-  to,
-  view,
-}: {
-  revision: Annotation<"revision">;
-  to: number;
-  view: EditorView;
-}) {
-  const state = view.state;
-  const original = state
-    .field(annotationField)
-    .find((x) =>
-      equalAnnotationsSignature(x, revision),
-    ) as Annotation<"revision">;
-  console.assert(original.versions === revision.versions);
-  console.log("changing", original.versions[to]);
-  view.dispatch(
-    state.update({
-      effects: [
-        updateAnnotation.of({
-          ...revision,
-          currentlySelected: to,
-        }),
-      ],
-      changes: state.changes({
-        from: original.selection.main.from,
-        to: original.selection.main.to,
-        insert: original.versions[to],
-      }),
-    }),
-  );
-  console.log("wtfff");
-}
 
 export const commentKeymap: KeyBinding[] = [
   {
@@ -301,4 +263,4 @@ export const annotations = () => [
     return [];
   }),
 ];
-export type * from "./models";
+export * from "./models";
