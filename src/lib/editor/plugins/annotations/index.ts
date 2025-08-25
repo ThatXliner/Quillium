@@ -1,7 +1,6 @@
 // TODO: since we've refactored, now we can hone in on the issues
 // but first let's make it based on the id
 
-import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import {
   EditorSelection,
@@ -26,21 +25,16 @@ import {
 
 import { isEqual } from "lodash-es";
 import {
-  type Annotation,
   type AnnotationType,
-  type GenericAnnotation,
   createNewAnnotation,
   isAnnotationOfType,
 } from "./models";
-import {
-  canCreateNewComment,
-  equalAnnotationsSignature,
-  getActiveAnnotation,
-} from "./utils";
+import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import {
   annotationField,
   addAnnotation,
   removeAnnotation,
+  invertedAnnotationFieldEffects,
 } from "./annotationField";
 
 export * from "./annotationField";
@@ -233,33 +227,6 @@ export const commentKeymap: KeyBinding[] = [
 export const annotations = () => [
   annotationField,
   annotationDecorations,
-  // todo: revamp
-  // invertedEffects.of((transaction: Transaction) => {
-  //   for (const effect of transaction.effects) {
-  //     // if (effect.is(addAnnotation)) {
-  //     //   return [removeAnnotation.of(effect.value)];
-  //     // }
-  //     // if (effect.is(removeAnnotation)) {
-  //     //   console.log("what we have here ", effect.value);
-  //     //   return [addAnnotation.of(effect.value)];
-  //     //   // TODO: test this
-  //     //   // return [addAnnotation.of(transaction.startState.field(annotationField)[effect.value.id])];
-  //     // }
-  //     // transaction.changes.iterChanges((fromA, toA) => {
-  //     //   // if (transaction.state(annotationField))
-  //     // });
-  //     // return [
-  //     //   updateAnnotation.of(
-  //     //     transaction.startState
-  //     //       .field(annotationField)
-  //     //       // very flawed
-  //     //       .find((c) =>
-  //     //         equalAnnotationsSignature(c, effect.value),
-  //     //       ) as GenericAnnotation,
-  //     //   ),
-  //     // ];
-  //   }
-  //   return [];
-  // }),
+  invertedAnnotationFieldEffects,
 ];
 export * from "./models";

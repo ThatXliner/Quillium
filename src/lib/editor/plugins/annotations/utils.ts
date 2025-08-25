@@ -1,4 +1,5 @@
 import {
+  ChangeDesc,
   EditorSelection,
   EditorState,
   SelectionRange,
@@ -89,4 +90,13 @@ export function canCreateNewComment(annotations: Annotations) {
         annotation.thread.length === 0,
     )
   );
+}
+export function mapRange(range: GenericAnnotation, change: ChangeDesc) {
+  let newRanges = cleanRangesOf(range.selection.map(change));
+  if (newRanges) {
+    range.selection = newRanges;
+    return range;
+  } else {
+    return undefined;
+  }
 }

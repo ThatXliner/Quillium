@@ -11,14 +11,19 @@ import {
   type RawAnnotations,
   type Thread,
 } from "./models";
-import { cleanRangesOf } from "./utils";
+import { cleanRangesOf, mapRange } from "./utils";
+import { invertedEffects } from "@codemirror/commands";
 // lowk I might change this to our own state machine so we can have that sweet sweet typesafety
 // === For all annotations ===
-export const addAnnotation = StateEffect.define<GenericAnnotation>();
+export const addAnnotation = StateEffect.define<GenericAnnotation>({
+  map: mapRange,
+});
 // The reason why we store the whole annotation here instead
 // of just the ID? I haven't tested getting the previous
 // state ala .startState yet...
-export const removeAnnotation = StateEffect.define<GenericAnnotation>();
+export const removeAnnotation = StateEffect.define<GenericAnnotation>({
+  map: mapRange,
+});
 // Mutations on annotations
 // Why we separate actions instead of having a single updateAnnotation or
 // mutateAnnotation? This makes the logic to implement undo/redo easier.
@@ -74,6 +79,7 @@ export const annotationField = StateField.define<Annotations>({
     // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
     for (const e of tr.effects) {
       if (e.is(addAnnotation)) {
+        console.log("Adding annotation!", e.value);
         annotations[e.value.id] = e.value;
       } else if (e.is(removeAnnotation)) {
         delete annotations[e.value.id];
@@ -89,7 +95,11 @@ export const annotationField = StateField.define<Annotations>({
         // } else if (e.is(updateThreadMessage)) {
         //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
         //     e.value.newThreadMessage;
-      } else {
+      } else if (
+        e.is(addVersionToRevision) ||
+        e.is(deleteVersionFromRevision) ||
+        e.is(updateActiveRevisionVersion)
+      ) {
         let annotation = annotations[e.value.annotationId];
         if (isAnnotationOfType(annotation, "revision")) {
           if (e.is(addVersionToRevision)) {
@@ -117,10 +127,12 @@ export const annotationField = StateField.define<Annotations>({
     // document
     annotations = annotations
       .map((x) => {
-        // HELP: what does .map do through deletions?
-        const newSelection = x.selection.map(
-          tr.changes,
-          isAnnotationOfType(x, "revision") ? 1 : 0,
+        // Run it through deletions
+        const newSelection = cleanRangesOf(
+          x.selection.map(
+            tr.changes,
+            isAnnotationOfType(x, "revision") ? 1 : 0,
+          ),
         );
 
         // Idk how adding to the end of a revision version should work
@@ -133,14 +145,12 @@ export const annotationField = StateField.define<Annotations>({
         // 		),
         // 	);
         // }
-        return {
-          ...x,
-          // account for deletions...
-          selection: cleanRangesOf(newSelection),
-        };
+        if (newSelection) {
+          return { ...x, selection: newSelection };
+        }
+        return null;
       })
-      // Well I'm too lazy to make TypeScript realize that it won't be null
-      .filter((x) => x.selection !== null) as Annotations;
+      .filter((x) => x !== null);
     // TODO: run on every character update?
     annotations = annotations.map((x) => {
       if (isAnnotationOfType(x, "revision")) {
@@ -169,3 +179,88 @@ export const annotationField = StateField.define<Annotations>({
     }));
   },
 });
+export const invertedAnnotationFieldEffects = invertedEffects.of(
+  (transaction: Transaction) => {
+    let effects = [];
+    const oldAnnotations = transaction.startState.field(annotationField);
+    for (const effect of transaction.effects) {
+      if (effect.is(addAnnotation)) {
+        effects.push(removeAnnotation.of(effect.value));
+      } else if (effect.is(removeAnnotation)) {
+        effects.push(addAnnotation.of(effect.value));
+      } else if (effect.is(updateThread)) {
+        let oldAnnotation = oldAnnotations[effect.value.annotationId];
+        // Was a comment in the "pending" state
+        if (oldAnnotation.thread.length == 0) {
+          effects.push(
+            removeAnnotation.of(oldAnnotations[effect.value.annotationId]),
+          );
+        } else {
+          effects.push(
+            updateThread.of({
+              ...effect.value,
+              newThread: oldAnnotations[effect.value.annotationId].thread,
+            }),
+          );
+        }
+        // } else if (effect.is(addThreadToAnnotation)) {
+        //   annotations[e.value.annotationId].thread.push(e.value.threadMessage);
+        // } else if (effect.is(deleteThreadFromAnnotation)) {
+        //   annotations[e.value.annotationId].thread.splice(
+        //     e.value.threadMessageId,
+        //     1,
+        //   );
+        // } else if (effect.is(updateThreadMessage)) {
+        //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
+        //     e.value.newThreadMessage;
+      } else if (
+        effect.is(addVersionToRevision) ||
+        effect.is(deleteVersionFromRevision) ||
+        effect.is(updateActiveRevisionVersion)
+      ) {
+        let oldAnnotation = oldAnnotations[effect.value.annotationId];
+        if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
+        if (effect.is(addVersionToRevision)) {
+          effects.push(
+            deleteVersionFromRevision.of({
+              annotationId: oldAnnotation.id,
+              // TODO: is this right? or is it - 2?
+              versionId: oldAnnotation.versions.length - 1,
+            }),
+          );
+        } else if (effect.is(deleteVersionFromRevision)) {
+          effects.push(
+            addVersionToRevision.of({
+              annotationId: oldAnnotation.id,
+              newVersion: oldAnnotation.versions[effect.value.versionId],
+            }),
+          );
+        } else if (effect.is(updateActiveRevisionVersion)) {
+          effects.push(
+            updateActiveRevisionVersion.of({
+              annotationId: oldAnnotation.id,
+              to: oldAnnotation.currentlySelected,
+            }),
+          );
+        }
+      }
+    }
+    // transaction.changes.iterChangedRanges((chFrom, chTo) => {
+    //   oldAnnotations.forEach((oldAnnotation) => {
+    //     // TODO: support multiple selections???
+    //     // what about partial comment deletion... is that ok?
+    //     let { from: rFrom, to: rTo } = oldAnnotation.selection.main;
+    //     let from = Math.max(chFrom, rFrom),
+    //       to = Math.min(chTo, rTo);
+    //     if (from < to) {
+    //       effects.push(
+    //         addAnnotation.of(
+    //           oldAnnotation.selection.replaceRange({ from, to }),
+    //         ),
+    //       );
+    //     }
+    //   });
+    // });
+    return effects;
+  },
+);
