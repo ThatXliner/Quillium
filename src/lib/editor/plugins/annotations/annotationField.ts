@@ -109,7 +109,7 @@ export function createNewRevision(state: EditorState, annotationId: number) {
   });
 }
 // There is no "updateRevisionVersion" since we sniff that from document changes
-// TODO: do stuff for suggestions?
+// === TODO: do stuff for suggestions? ===
 
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
@@ -249,16 +249,6 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             }),
           );
         }
-        // } else if (effect.is(addThreadToAnnotation)) {
-        //   annotations[e.value.annotationId].thread.push(e.value.threadMessage);
-        // } else if (effect.is(deleteThreadFromAnnotation)) {
-        //   annotations[e.value.annotationId].thread.splice(
-        //     e.value.threadMessageId,
-        //     1,
-        //   );
-        // } else if (effect.is(updateThreadMessage)) {
-        //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
-        //     e.value.newThreadMessage;
       } else if (
         effect.is(_addVersionToRevision) ||
         effect.is(_deleteVersionFromRevision) ||
