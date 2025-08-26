@@ -2,11 +2,17 @@
 // but the reason why we're using this is because it needs to be JSON serializable
 // If we can use classes but also JSON serializable, we should do that instead
 // TODO yea I really want to make my own class. What if we extend RangeValue
-import type { EditorSelection } from "@codemirror/state";
+import { EditorSelection } from "@codemirror/state";
 
 // what about multiple authors and stuff???
 export type ThreadMessage = { message: string; author: string; time: number };
 export type Thread = ThreadMessage[];
+export function clone(annotation: GenericAnnotation): GenericAnnotation {
+  return {
+    ...structuredClone(annotation),
+    selection: EditorSelection.fromJSON(annotation.selection.toJSON()),
+  };
+}
 export function isAnnotationOfType<T extends AnnotationType>(
   annotation: GenericAnnotation,
   type: T,

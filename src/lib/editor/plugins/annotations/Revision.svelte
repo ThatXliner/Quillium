@@ -3,8 +3,8 @@
     import {
         type Thread,
         type Annotation,
-        addVersionToRevision,
-        updateActiveRevisionVersion,
+        createNewRevision,
+        setActiveRevisionVersion,
     } from ".";
     import CommentThread from "./CommentThread.svelte";
     import { editorView } from "$lib/stores";
@@ -60,14 +60,11 @@
                 disabled={isActive}
                 onclick={() => {
                     $editorView.dispatch(
-                        $editorView.state.update({
-                            effects: [
-                                updateActiveRevisionVersion.of({
-                                    annotationId: revision.id,
-                                    to: i,
-                                }),
-                            ],
-                        }),
+                        setActiveRevisionVersion(
+                            $editorView.state,
+                            revision.id,
+                            i,
+                        ),
                     );
                 }}>{version}</button
             >
@@ -75,14 +72,7 @@
         <button
             onclick={() => {
                 $editorView.dispatch(
-                    $editorView.state.update({
-                        effects: [
-                            addVersionToRevision.of({
-                                annotationId: revision.id,
-                                newVersion: "Lorem Ipsum",
-                            }),
-                        ],
-                    }),
+                    createNewRevision($editorView.state, revision.id),
                 );
             }}>New revision</button
         >

@@ -1,5 +1,6 @@
 import {
   EditorSelection,
+  EditorState,
   StateEffect,
   StateField,
   Transaction,
@@ -53,18 +54,60 @@ export const updateThread = StateEffect.define<{
 // }>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
-export const addVersionToRevision = StateEffect.define<{
+const _addVersionToRevision = StateEffect.define<{
   annotationId: number;
   newVersion: string;
 }>();
-export const deleteVersionFromRevision = StateEffect.define<{
+const _deleteVersionFromRevision = StateEffect.define<{
   annotationId: number;
   versionId: number;
 }>();
-export const updateActiveRevisionVersion = StateEffect.define<{
+const _updateActiveRevisionVersion = StateEffect.define<{
   annotationId: number;
   to: number;
 }>();
+export function setActiveRevisionVersion(
+  state: EditorState,
+  annotationId: number,
+  to: number,
+) {
+  const original = state.field(annotationField)[annotationId];
+  if (!isAnnotationOfType(original, "revision")) {
+    throw new Error("Annotation is not a revision");
+  }
+  return state.update({
+    effects: [
+      _updateActiveRevisionVersion.of({
+        annotationId,
+        to,
+      }),
+    ],
+    changes: state.changes({
+      from: original.selection.main.from,
+      to: original.selection.main.to,
+      insert: original.versions[to],
+    }),
+  });
+}
+export function createNewRevision(state: EditorState, annotationId: number) {
+  const original = state.field(annotationField)[annotationId];
+  if (!isAnnotationOfType(original, "revision")) {
+    throw new Error("Annotation is not a revision");
+  }
+  return state.update({
+    effects: [
+      _addVersionToRevision.of({
+        annotationId,
+        newVersion: "Lorem Ipsum",
+      }),
+    ],
+    changes: state.changes({
+      from: original.selection.main.from,
+      to: original.selection.main.to,
+      insert: "Lorem Ipsum",
+    }),
+  });
+}
 // There is no "updateRevisionVersion" since we sniff that from document changes
 // TODO: do stuff for suggestions?
 
@@ -76,50 +119,6 @@ export const annotationField = StateField.define<Annotations>({
   },
   update(oldAnnotations: Annotations, tr: Transaction): Annotations {
     let annotations = oldAnnotations;
-    // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
-    for (const e of tr.effects) {
-      if (e.is(addAnnotation)) {
-        console.log("Adding annotation!", e.value);
-        annotations[e.value.id] = e.value;
-      } else if (e.is(removeAnnotation)) {
-        delete annotations[e.value.id];
-      } else if (e.is(updateThread)) {
-        annotations[e.value.annotationId].thread = e.value.newThread;
-        // } else if (e.is(addThreadToAnnotation)) {
-        //   annotations[e.value.annotationId].thread.push(e.value.threadMessage);
-        // } else if (e.is(deleteThreadFromAnnotation)) {
-        //   annotations[e.value.annotationId].thread.splice(
-        //     e.value.threadMessageId,
-        //     1,
-        //   );
-        // } else if (e.is(updateThreadMessage)) {
-        //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
-        //     e.value.newThreadMessage;
-      } else if (
-        e.is(addVersionToRevision) ||
-        e.is(deleteVersionFromRevision) ||
-        e.is(updateActiveRevisionVersion)
-      ) {
-        let annotation = annotations[e.value.annotationId];
-        if (isAnnotationOfType(annotation, "revision")) {
-          if (e.is(addVersionToRevision)) {
-            annotation.versions.push(e.value.newVersion);
-            annotation.currentlySelected = annotation.versions.length - 1;
-          } else if (e.is(deleteVersionFromRevision)) {
-            annotation.versions.splice(e.value.versionId, 1);
-            if (annotation.currentlySelected === e.value.versionId) {
-              annotation.currentlySelected = Math.max(0, e.value.versionId - 1);
-            }
-          } else if (e.is(updateActiveRevisionVersion)) {
-            annotation.currentlySelected = e.value.to;
-          }
-        }
-        // well uh i think this is unnecessary since
-        // JavaScript would give annotation a reference to the annotation object
-        // but just in case, you know.
-        annotations[e.value.annotationId] = annotation;
-      }
-    }
 
     // Map our old annotations to the new state
     // ranges, as we don't want our revision/highlighted/etc
@@ -151,18 +150,74 @@ export const annotationField = StateField.define<Annotations>({
         return null;
       })
       .filter((x) => x !== null);
-    // TODO: run on every character update?
-    annotations = annotations.map((x) => {
-      if (isAnnotationOfType(x, "revision")) {
-        // the revision version's associated internal text needs to be updated
-        x.versions[x.currentlySelected] = tr.state.doc
-          .slice(x.selection.main.from, x.selection.main.to)
-          // TODO: maybe even include comments!??
-          .toString();
-      }
-      return x;
-    });
 
+    // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
+    let doUpdateRevision = true;
+    for (const e of tr.effects) {
+      if (e.is(addAnnotation)) {
+        console.log("Adding annotation!", e.value);
+        annotations[e.value.id] = e.value;
+      } else if (e.is(removeAnnotation)) {
+        delete annotations[e.value.id];
+      } else if (e.is(updateThread)) {
+        annotations[e.value.annotationId].thread = e.value.newThread;
+        // } else if (e.is(addThreadToAnnotation)) {
+        //   annotations[e.value.annotationId].thread.push(e.value.threadMessage);
+        // } else if (e.is(deleteThreadFromAnnotation)) {
+        //   annotations[e.value.annotationId].thread.splice(
+        //     e.value.threadMessageId,
+        //     1,
+        //   );
+        // } else if (e.is(updateThreadMessage)) {
+        //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
+        //     e.value.newThreadMessage;
+      } else {
+        let annotation = annotations[e.value.annotationId];
+        if (isAnnotationOfType(annotation, "revision")) {
+          if (
+            e.is(_addVersionToRevision) ||
+            e.is(_deleteVersionFromRevision) ||
+            e.is(_updateActiveRevisionVersion)
+          ) {
+            doUpdateRevision = false;
+            if (e.is(_addVersionToRevision)) {
+              annotation.versions.push(e.value.newVersion);
+              annotation.currentlySelected = annotation.versions.length - 1;
+            } else if (e.is(_deleteVersionFromRevision)) {
+              annotation.versions.splice(e.value.versionId, 1);
+              if (annotation.currentlySelected === e.value.versionId) {
+                annotation.currentlySelected = Math.max(
+                  0,
+                  e.value.versionId - 1,
+                );
+              }
+            } else if (e.is(_updateActiveRevisionVersion)) {
+              annotation.currentlySelected = e.value.to;
+            }
+          }
+          // well uh i think this is unnecessary since
+          // JavaScript would give annotation a reference to the annotation object
+          // but just in case, you know.
+          annotations[e.value.annotationId] = annotation;
+        }
+      }
+    }
+    // doc -> revision
+    if (doUpdateRevision) {
+      // TODO: run on every character update?
+      annotations = annotations.map((x) => {
+        if (isAnnotationOfType(x, "revision")) {
+          // the revision version's associated internal text needs to be updated
+          x.versions[x.currentlySelected] = tr.state.doc
+            .slice(x.selection.main.from, x.selection.main.to)
+            // TODO: maybe even include comments!??
+            .toString();
+        }
+        return x;
+      });
+    } else {
+      // revision -> doc
+    }
     return annotations;
   },
   toJSON(value: Annotations) {
@@ -214,30 +269,30 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
         //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
         //     e.value.newThreadMessage;
       } else if (
-        effect.is(addVersionToRevision) ||
-        effect.is(deleteVersionFromRevision) ||
-        effect.is(updateActiveRevisionVersion)
+        effect.is(_addVersionToRevision) ||
+        effect.is(_deleteVersionFromRevision) ||
+        effect.is(_updateActiveRevisionVersion)
       ) {
         let oldAnnotation = oldAnnotations[effect.value.annotationId];
         if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
-        if (effect.is(addVersionToRevision)) {
+        if (effect.is(_addVersionToRevision)) {
           effects.push(
-            deleteVersionFromRevision.of({
+            _deleteVersionFromRevision.of({
               annotationId: oldAnnotation.id,
               // TODO: is this right? or is it - 2?
               versionId: oldAnnotation.versions.length - 1,
             }),
           );
-        } else if (effect.is(deleteVersionFromRevision)) {
+        } else if (effect.is(_deleteVersionFromRevision)) {
           effects.push(
-            addVersionToRevision.of({
+            _addVersionToRevision.of({
               annotationId: oldAnnotation.id,
               newVersion: oldAnnotation.versions[effect.value.versionId],
             }),
           );
-        } else if (effect.is(updateActiveRevisionVersion)) {
+        } else if (effect.is(_updateActiveRevisionVersion)) {
           effects.push(
-            updateActiveRevisionVersion.of({
+            _updateActiveRevisionVersion.of({
               annotationId: oldAnnotation.id,
               to: oldAnnotation.currentlySelected,
             }),
