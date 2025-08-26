@@ -158,7 +158,7 @@ export const annotationField = StateField.define<Annotations>({
         console.log("Adding annotation!", e.value);
         annotations[e.value.id] = e.value;
       } else if (e.is(removeAnnotation)) {
-        delete annotations[e.value.id];
+        annotations = annotations.splice(e.value.id, 1);
       } else if (e.is(updateThread)) {
         annotations[e.value.annotationId].thread = e.value.newThread;
         // } else if (e.is(addThreadToAnnotation)) {
