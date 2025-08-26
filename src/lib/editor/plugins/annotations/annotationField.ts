@@ -240,14 +240,12 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
         let oldAnnotation = oldAnnotations[effect.value.annotationId];
         // Was a comment in the "pending" state
         if (oldAnnotation.thread.length == 0) {
-          effects.push(
-            removeAnnotation.of(oldAnnotations[effect.value.annotationId]),
-          );
+          effects.push(removeAnnotation.of(oldAnnotation));
         } else {
           effects.push(
             updateThread.of({
               ...effect.value,
-              newThread: oldAnnotations[effect.value.annotationId].thread,
+              newThread: oldAnnotation.thread,
             }),
           );
         }
@@ -272,7 +270,6 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
           effects.push(
             _deleteVersionFromRevision.of({
               annotationId: oldAnnotation.id,
-              // TODO: is this right? or is it - 2?
               versionId: oldAnnotation.versions.length - 1,
             }),
           );
