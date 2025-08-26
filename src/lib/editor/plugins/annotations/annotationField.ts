@@ -171,35 +171,30 @@ export const annotationField = StateField.define<Annotations>({
         // } else if (e.is(updateThreadMessage)) {
         //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
         //     e.value.newThreadMessage;
-      } else {
+      } else if (
+        e.is(_addVersionToRevision) ||
+        e.is(_deleteVersionFromRevision) ||
+        e.is(_updateActiveRevisionVersion)
+      ) {
         let annotation = annotations[e.value.annotationId];
-        if (isAnnotationOfType(annotation, "revision")) {
-          if (
-            e.is(_addVersionToRevision) ||
-            e.is(_deleteVersionFromRevision) ||
-            e.is(_updateActiveRevisionVersion)
-          ) {
-            doUpdateRevision = false;
-            if (e.is(_addVersionToRevision)) {
-              annotation.versions.push(e.value.newVersion);
-              annotation.currentlySelected = annotation.versions.length - 1;
-            } else if (e.is(_deleteVersionFromRevision)) {
-              annotation.versions.splice(e.value.versionId, 1);
-              if (annotation.currentlySelected === e.value.versionId) {
-                annotation.currentlySelected = Math.max(
-                  0,
-                  e.value.versionId - 1,
-                );
-              }
-            } else if (e.is(_updateActiveRevisionVersion)) {
-              annotation.currentlySelected = e.value.to;
-            }
+        if (!isAnnotationOfType(annotation, "revision")) continue;
+        doUpdateRevision = false;
+        if (e.is(_addVersionToRevision)) {
+          annotation.versions.push(e.value.newVersion);
+          annotation.currentlySelected = annotation.versions.length - 1;
+        } else if (e.is(_deleteVersionFromRevision)) {
+          annotation.versions.splice(e.value.versionId, 1);
+          if (annotation.currentlySelected === e.value.versionId) {
+            annotation.currentlySelected = Math.max(0, e.value.versionId - 1);
           }
-          // well uh i think this is unnecessary since
-          // JavaScript would give annotation a reference to the annotation object
-          // but just in case, you know.
-          annotations[e.value.annotationId] = annotation;
+        } else if (e.is(_updateActiveRevisionVersion)) {
+          annotation.currentlySelected = e.value.to;
         }
+
+        // well uh i think this is unnecessary since
+        // JavaScript would give annotation a reference to the annotation object
+        // but just in case, you know.
+        annotations[e.value.annotationId] = annotation;
       }
     }
     // doc -> revision
@@ -215,8 +210,6 @@ export const annotationField = StateField.define<Annotations>({
         }
         return x;
       });
-    } else {
-      // revision -> doc
     }
     return annotations;
   },
