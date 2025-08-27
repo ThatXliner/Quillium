@@ -19,6 +19,8 @@ export function isAnnotationOfType<T extends AnnotationType>(
 ): annotation is Annotation<T> {
   return annotation._type === type;
 }
+// TODO: replace this with either a single Selection or a Range
+// unless we want to keep it as an EditorSelection so we can extend the range?
 type BaseAnnotation = {
   selection: EditorSelection;
   id: number;
@@ -45,7 +47,7 @@ type CommentAnnotation = BaseAnnotation & {
 // TODO: statuses for Revision and comment (might make it a FSM)
 type SuggestionAnnotation = BaseAnnotation & {
   _type: "suggestion";
-  replacement: string;
+  replacements: string[];
 };
 type RevisionAnnotation = BaseAnnotation & {
   _type: "revision";

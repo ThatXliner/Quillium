@@ -1,11 +1,13 @@
 import {
   EditorSelection,
   EditorState,
+  SelectionRange,
   StateEffect,
   StateField,
   Transaction,
 } from "@codemirror/state";
 import {
+  createNewAnnotation,
   isAnnotationOfType,
   type Annotations,
   type GenericAnnotation,
@@ -14,6 +16,7 @@ import {
 } from "./models";
 import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
+import { SearchCursor } from "@codemirror/search";
 // lowk I might change this to our own state machine so we can have that sweet sweet typesafety
 // === For all annotations ===
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
@@ -54,6 +57,7 @@ export const updateThread = StateEffect.define<{
 // }>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
+// There is no "updateRevisionVersion" since we sniff that from document changes
 const _addVersionToRevision = StateEffect.define<{
   annotationId: number;
   newVersion: string;
@@ -108,8 +112,11 @@ export function createNewRevision(state: EditorState, annotationId: number) {
     }),
   });
 }
-// There is no "updateRevisionVersion" since we sniff that from document changes
-// === TODO: do stuff for suggestions? ===
+// === For suggestions ===
+export const addSuggestion = StateEffect.define<{
+  targetText: string;
+  replacements: string[];
+}>();
 
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
@@ -156,6 +163,7 @@ export const annotationField = StateField.define<Annotations>({
     for (const e of tr.effects) {
       if (e.is(addAnnotation)) {
         console.log("Adding annotation!", e.value);
+        // TODO: what if we just annotations.push
         annotations[e.value.id] = e.value;
       } else if (e.is(removeAnnotation)) {
         annotations = annotations.splice(e.value.id, 1);
@@ -195,6 +203,19 @@ export const annotationField = StateField.define<Annotations>({
         // JavaScript would give annotation a reference to the annotation object
         // but just in case, you know.
         annotations[e.value.annotationId] = annotation;
+      } else if (e.is(addSuggestion)) {
+        const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
+        for (const { from, to } of cursor) {
+          // Search through the document for the text
+          annotations.push({
+            ...createNewAnnotation(
+              annotations,
+              EditorSelection.single(from, to),
+              "suggestion",
+            ),
+            replacements: e.value.replacements,
+          });
+        }
       }
     }
     // doc -> revision
@@ -249,6 +270,9 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             }),
           );
         }
+      } else if (effect.is(addSuggestion)) {
+        let oldAnnotation = oldAnnotations[oldAnnotations.length - 1];
+        effects.push(removeAnnotation.of(oldAnnotation));
       } else if (
         effect.is(_addVersionToRevision) ||
         effect.is(_deleteVersionFromRevision) ||
