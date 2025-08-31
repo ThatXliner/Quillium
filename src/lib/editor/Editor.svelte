@@ -4,7 +4,13 @@
     import { invoke } from "@tauri-apps/api/core";
     import { onMount } from "svelte";
     import { getExtensions, savedFields } from "./extensions";
-    import { editorView, annotations, activeComment, documentContent, selectedText } from "$lib/stores";
+    import {
+        editorView,
+        annotations,
+        activeComment,
+        documentContent,
+        selectedText,
+    } from "$lib/stores";
     import "./plugins/annotations/default.css";
     import { historyField } from "@codemirror/commands";
     import type { ViewUpdate } from "@codemirror/view";
@@ -47,11 +53,13 @@
             };
             $annotations = update.state.field(annotationField);
             $activeComment = getActiveAnnotation($editorView.state, "comment");
-            
+
             // Sync document content and selection for AI chat
             $documentContent = doc;
             const selection = update.state.selection.main;
-            $selectedText = selection.empty ? "" : update.state.sliceDoc(selection.from, selection.to);
+            $selectedText = selection.empty
+                ? ""
+                : update.state.sliceDoc(selection.from, selection.to);
         },
     };
 

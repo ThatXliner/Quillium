@@ -169,6 +169,7 @@ export function createComment({
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+  console.log("what");
   // locks it so that we can't have multiple pending states
   if (!canCreateNewComment(state.field(annotationField))) {
     return false;
