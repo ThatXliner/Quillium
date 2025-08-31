@@ -2,8 +2,6 @@
     import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import type { Annotation, Thread } from ".";
     import CommentThread from "./CommentThread.svelte";
-    import { generateText } from "ai";
-    // import { openai } from "$lib/ai";
     import { editorView } from "$lib/stores";
 
     const {
@@ -28,57 +26,97 @@
         ]);
         newMessage = "";
     }
-    // async function aiSuggestion() {
-    //     // TODO: make this into a mustache template
-    //     // TODO: implement AI suggestion
-    //     let prompt = "Provide suggestions based on the following";
-    //     if (thread.length === 1) {
-    //         prompt += " comment:\n";
-    //     } else {
-    //         prompt += " conversation thread:\n";
-    //     }
-    //     prompt += "```\n";
-    //     if (thread.length === 1) {
-    //         prompt += thread[0].message;
-    //     } else {
-    //         prompt += thread
-    //             .map((message) => `${message.author}: ${message.message}`)
-    //             .join("\n");
-    //     }
-    //     prompt += "\n```\n";
-    //     prompt +=
-    //         "For context, here is the selected text the previous comment is referring to:\n";
-    //     prompt += "```\n";
-    //     const selectionText = $editorView.state.sliceDoc(
-    //         comment.selection.main.from,
-    //         comment.selection.main.to,
-    //     );
-    //     prompt += selectionText;
-    //     prompt += "```\n";
-    //     prompt += "And here is the paragraph the selection is in:\n";
-    //     prompt += "```\n";
-    //     const selectionFrom = comment.selection.main.from;
-    //     const selectionTo = comment.selection.main.to;
-    //     const doc = $editorView.state.doc.toString();
-    //     const paragraphMatch = doc.match(
-    //         new RegExp(
-    //             `[^\n]*${doc.slice(selectionFrom, selectionTo)}[^\n]*`,
-    //             "m",
-    //         ),
-    //     );
-    //     prompt += paragraphMatch ? paragraphMatch[0] : "";
-    //     prompt += "```\n";
-    //     prompt += "Be concise.";
-    //     const response = await generateText({
-    //         model: openai("gpt-5"),
-    //         prompt,
-    //     });
+    async function aiSuggestion() {
+        let prompt = "Provide suggestions based on the following";
+        if (thread.length === 1) {
+            prompt += " comment:\n";
+        } else {
+            prompt += " conversation thread:\n";
+        }
+        prompt += "```\n";
+        if (thread.length === 1) {
+            prompt += thread[0].message;
+        } else {
+            prompt += thread
+                .map((message) => `${message.author}: ${message.message}`)
+                .join("\n");
+        }
+        prompt += "\n```\n";
+        prompt +=
+            "For context, here is the selected text the comment is referring to:\n";
+        prompt += "```\n";
+        const selectionText = $editorView.state.sliceDoc(
+            comment.selection.main.from,
+            comment.selection.main.to,
+        );
+        prompt += selectionText;
+        prompt += "```\n";
+        prompt += "And here is the paragraph the selection is in:\n";
+        prompt += "```\n";
+        const selectionFrom = comment.selection.main.from;
+        const selectionTo = comment.selection.main.to;
+        const doc = $editorView.state.doc.toString();
+        const paragraphMatch = doc.match(
+            new RegExp(
+                `[^\n]*${doc.slice(selectionFrom, selectionTo)}[^\n]*`,
+                "m",
+            ),
+        );
+        prompt += paragraphMatch ? paragraphMatch[0] : "";
+        prompt += "```\n";
+        prompt += "Be concise.";
 
-    //     updateThread([
-    //         ...thread,
-    //         { message: response.text, author: "AI", time: Date.now() },
-    //     ]);
-    // }
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    messages: [{ role: "user", content: prompt }]
+                }),
+            });
+
+            if (!response.ok) throw new Error("Failed to get AI response");
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("No response body");
+
+            const decoder = new TextDecoder();
+            let done = false;
+            let aiResponse = "";
+
+            while (!done) {
+                const { value, done: streamDone } = await reader.read();
+                done = streamDone;
+
+                if (value) {
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+                    for (const line of lines) {
+                        if (line.startsWith('0:')) {
+                            try {
+                                const content = JSON.parse(line.slice(2));
+                                aiResponse += content;
+                            } catch (e) {
+                                // Skip parsing errors
+                            }
+                        }
+                    }
+                }
+            }
+
+            updateThread([
+                ...thread,
+                { message: aiResponse, author: "AI", time: Date.now() },
+            ]);
+        } catch (error) {
+            console.error("Error getting AI suggestion:", error);
+            updateThread([
+                ...thread,
+                { message: "Sorry, I encountered an error generating a suggestion.", author: "AI", time: Date.now() },
+            ]);
+        }
+    }
 </script>
 
 <div
