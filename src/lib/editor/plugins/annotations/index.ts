@@ -25,7 +25,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 
-import { isEqual } from "lodash-es";
+import { filter, flatMap, isEqual } from "lodash-es";
 import {
   type AnnotationType,
   createNewAnnotation,
@@ -76,13 +76,15 @@ const annotationDecorations = ViewPlugin.fromClass(
       // TODO: optimize algorithm to be linear time complexity
       // using some sort of greedy algorithm
       const builder = new RangeSetBuilder<Decoration>();
-      const annotationRanges = view.state
-        .field(annotationField)
-        .filter((annotation) => isAnnotationOfType(annotation, type))
+      const annotationRanges = flatMap(
+        filter(Object.values(view.state.field(annotationField)), (annotation) =>
+          isAnnotationOfType(annotation, type),
+        ),
         // We can assume a single selection
         // because we are not implementing multi-selection support
         // for now
-        .flatMap((annotation) => annotation.selection.main);
+        (annotation) => annotation.selection.main,
+      );
       // TODO: use multiple
       const activeRanges: readonly SelectionRange[] =
         getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
