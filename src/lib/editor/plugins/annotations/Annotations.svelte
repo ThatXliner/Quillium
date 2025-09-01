@@ -43,7 +43,8 @@
     class="p-2 pl-5 rounded bg-white min-h-screen overflow-y-scroll sticky top-0 space-y-4 flex flex-col"
 >
     {#if $annotations}
-        {#each $annotations as c, i}
+        {#each $annotations as c}
+            {@const i = c.id}
             {@const isActive = $activeComment?.id === c.id}
             {@const isPendingComment = !(
                 !canCreateNewComment($annotations) &&

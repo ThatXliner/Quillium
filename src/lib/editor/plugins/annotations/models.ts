@@ -26,14 +26,20 @@ type BaseAnnotation = {
   id: number;
   thread: Thread;
 };
+
+export function getNewId(annotations: Annotations) {
+  return Object.keys(annotations).length;
+}
+
 export function createNewAnnotation<T extends AnnotationType>(
   annotations: Annotations,
   selection: EditorSelection,
   type: T,
 ) {
+  const newId = getNewId(annotations);
   return {
     selection,
-    id: annotations.length,
+    id: newId,
     _type: type,
     thread: [],
     // um this ain't getting serialized baby
@@ -70,5 +76,5 @@ export type AnnotationType = GenericAnnotation["_type"];
 export type RawAnnotation = GenericAnnotation & {
   selection: EditorSelection["toJSON"];
 };
-export type RawAnnotations = RawAnnotation[];
-export type Annotations = GenericAnnotation[];
+export type RawAnnotations = { [id: number]: RawAnnotation };
+export type Annotations = { [id: number]: GenericAnnotation };
