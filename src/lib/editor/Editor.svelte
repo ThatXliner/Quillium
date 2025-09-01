@@ -51,7 +51,7 @@
                 wpm: getWPM(newWords),
                 chars: doc.length,
             };
-            $annotations = update.state.field(annotationField);
+            $annotations = Object.values(update.state.field(annotationField));
             $activeComment = getActiveAnnotation($editorView.state, "comment");
 
             // Sync document content and selection for AI chat
