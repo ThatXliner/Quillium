@@ -149,22 +149,19 @@
 
     <!-- Input form -->
     <div class="border-t border-gray-200 p-4">
-        <form
-            onsubmit={handleSubmit}
-            class="flex space-x-2 flex-wrap space-y-2"
-        >
+        <form onsubmit={handleSubmit} class="flex flex-col flex-wrap space-y-2">
             <input
                 bind:value={input}
                 name="message"
                 placeholder="Ask about your document..."
                 disabled={isLoading}
-                class="flex-1 w-fit p-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                 autocomplete="off"
             />
             <button
                 type="submit"
                 disabled={isLoading}
-                class="px-4 w-full py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                class="w-full py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             >
                 Send
             </button>
