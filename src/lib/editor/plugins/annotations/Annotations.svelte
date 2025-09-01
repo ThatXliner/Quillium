@@ -39,7 +39,7 @@
 
 <!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->
 <div
-    class="w-[300px] p-2 pl-5 rounded bg-white h-screen overflow-y-scroll sticky top-0 space-y-4 flex flex-col"
+    class="p-2 pl-5 rounded bg-white h-screen overflow-y-scroll sticky top-0 space-y-4 flex flex-col"
 >
     {#if $annotations}
         {#each $annotations as c, i}
