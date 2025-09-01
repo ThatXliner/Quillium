@@ -17,7 +17,7 @@ import {
 import {
   Decoration,
   type DecorationSet,
-  EditorView,
+  type EditorView,
   type KeyBinding,
   ViewPlugin,
   type ViewUpdate,
@@ -215,11 +215,11 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
 
 export const commentKeymap: KeyBinding[] = [
   {
-    key: "Mod-Alt-m",
+    key: "Mod-Shift-c",
     run: createCommentCommand,
   },
   {
-    key: "Mod-Alt-k",
+    key: "Mod-k",
     run: createRevisionCommand,
   },
 ];
