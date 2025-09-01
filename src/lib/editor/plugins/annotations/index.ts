@@ -41,7 +41,10 @@ import {
 
 export * from "./annotationField";
 export const annotationsChanged = (update: ViewUpdate) =>
-  isEqual(update.startState, update.state) ||
+  !isEqual(
+    update.startState.field(annotationField),
+    update.state.field(annotationField),
+  ) ||
   update.transactions.some((tr) =>
     tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
   );
@@ -51,7 +54,11 @@ const annotationDecorations = ViewPlugin.fromClass(
     decorations: DecorationSet;
 
     constructor(view: EditorView) {
-      this.decorations = this.getDecorations(view, "comment", "cm-comment");
+      this.decorations = RangeSet.join([
+        this.getDecorations(view, "comment", "cm-comment"),
+        this.getDecorations(view, "revision", "cm-revision"),
+        this.getDecorations(view, "suggestion", "cm-suggestion"),
+      ]);
     }
 
     update(update: ViewUpdate) {
@@ -64,6 +71,7 @@ const annotationDecorations = ViewPlugin.fromClass(
         this.decorations = RangeSet.join([
           this.getDecorations(update.view, "comment", "cm-comment"),
           this.getDecorations(update.view, "revision", "cm-revision"),
+          this.getDecorations(update.view, "suggestion", "cm-suggestion"),
         ]);
       }
     }
