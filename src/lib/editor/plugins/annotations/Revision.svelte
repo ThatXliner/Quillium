@@ -1,7 +1,7 @@
 <script lang="ts">
     import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import {
-        type Thread,
+        type Thread as ThreadType,
         type Annotation,
         createNewRevision,
         setActiveRevisionVersion,
@@ -18,7 +18,7 @@
         revision: Annotation<"revision">;
         isActive: boolean;
         remove: () => void;
-        updateThread: (thread: Thread) => void;
+        updateThread: (thread: ThreadType) => void;
     } = $props();
     const thread = $derived(revision.thread);
 </script>
