@@ -30,6 +30,9 @@ type BaseAnnotation = {
 export function getNewId(annotations: Annotations) {
   return Object.keys(annotations).length;
 }
+export function getLastId(annotations: Annotations) {
+  return Object.keys(annotations).length - 1;
+}
 
 export function createNewAnnotation<T extends AnnotationType>(
   annotations: Annotations,

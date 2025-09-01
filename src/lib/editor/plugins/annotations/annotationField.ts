@@ -1,4 +1,5 @@
 import {
+  Annotation,
   EditorSelection,
   EditorState,
   SelectionRange,
@@ -8,6 +9,7 @@ import {
 } from "@codemirror/state";
 import {
   createNewAnnotation,
+  getLastId,
   getNewId,
   isAnnotationOfType,
   type Annotations,
@@ -119,7 +121,10 @@ export const addSuggestion = StateEffect.define<{
   targetText: string;
   replacements: string[];
 }>();
-
+export const applySuggestion = StateEffect.define<{
+  annotationId: number;
+  replacementIndex: number;
+}>();
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
 export const annotationField = StateField.define<Annotations>({
@@ -226,6 +231,8 @@ export const annotationField = StateField.define<Annotations>({
             replacements: e.value.replacements,
           };
         }
+      } else if (e.is(applySuggestion)) {
+        delete annotations[e.value.annotationId];
       }
     }
     // doc -> revision
@@ -313,6 +320,29 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             }),
           );
         }
+      } else if (effect.is(addSuggestion)) {
+        const annotations = transaction.startState.field(annotationField);
+        effects.push(removeAnnotation.of(annotations[getLastId(annotations)]));
+      } else if (effect.is(applySuggestion)) {
+        // TODO: undoApplySuggestion
+        // What's going to be necessary is "diffing"
+        // the old doc, using some sort of marker undoApplySuggestion,
+        // and then waiting for that in the listener
+        // console.log(
+        //   "undo apply suggestion",
+        //   transaction.startState.field(annotationField)[
+        //     effect.value.annotationId
+        //   ],
+        //   transaction,
+        // );
+        // effects.push(
+        //   // XXX: or some undoApplySuggestion?
+        //   addAnnotation.of(
+        //     transaction.startState.field(annotationField)[
+        //       effect.value.annotationId
+        //     ],
+        //   ),
+        // );
       }
     }
     // transaction.changes.iterChangedRanges((chFrom, chTo) => {
