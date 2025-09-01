@@ -121,10 +121,28 @@ export const addSuggestion = StateEffect.define<{
   targetText: string;
   replacements: string[];
 }>();
-export const applySuggestion = StateEffect.define<{
+const _applySuggestion = StateEffect.define<{
   annotationId: number;
   replacementIndex: number;
 }>();
+export function applySuggestion(
+  state: EditorState,
+  annotationId: number,
+  replacementIndex: number,
+) {
+  const annotation = state.field(annotationField)[annotationId];
+  if (!isAnnotationOfType(annotation, "suggestion")) {
+    throw new Error("Invalid annotation type");
+  }
+  return state.update({
+    effects: [_applySuggestion.of({ annotationId, replacementIndex })],
+    changes: state.changes({
+      from: annotation.selection.main.from,
+      to: annotation.selection.main.to,
+      insert: annotation.replacements[replacementIndex],
+    }),
+  });
+}
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
 export const annotationField = StateField.define<Annotations>({
@@ -231,7 +249,7 @@ export const annotationField = StateField.define<Annotations>({
             replacements: e.value.replacements,
           };
         }
-      } else if (e.is(applySuggestion)) {
+      } else if (e.is(_applySuggestion)) {
         delete annotations[e.value.annotationId];
       }
     }
@@ -323,26 +341,9 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
       } else if (effect.is(addSuggestion)) {
         const annotations = transaction.startState.field(annotationField);
         effects.push(removeAnnotation.of(annotations[getLastId(annotations)]));
-      } else if (effect.is(applySuggestion)) {
-        // TODO: undoApplySuggestion
-        // What's going to be necessary is "diffing"
-        // the old doc, using some sort of marker undoApplySuggestion,
-        // and then waiting for that in the listener
-        // console.log(
-        //   "undo apply suggestion",
-        //   transaction.startState.field(annotationField)[
-        //     effect.value.annotationId
-        //   ],
-        //   transaction,
-        // );
-        // effects.push(
-        //   // XXX: or some undoApplySuggestion?
-        //   addAnnotation.of(
-        //     transaction.startState.field(annotationField)[
-        //       effect.value.annotationId
-        //     ],
-        //   ),
-        // );
+      } else if (effect.is(_applySuggestion)) {
+        const annotations = transaction.startState.field(annotationField);
+        effects.push(addAnnotation.of(annotations[effect.value.annotationId]));
       }
     }
     // transaction.changes.iterChangedRanges((chFrom, chTo) => {

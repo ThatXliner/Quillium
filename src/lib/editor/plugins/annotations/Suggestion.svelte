@@ -45,14 +45,13 @@
                 <button
                     class="w-full text-left p-2 rounded bg-white border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-colors text-sm"
                     onclick={() => {
-                        $editorView.dispatch({
-                            effects: [
-                                applySuggestion.of({
-                                    annotationId: suggestion.id,
-                                    replacementIndex: index,
-                                }),
-                            ],
-                        });
+                        $editorView.dispatch(
+                            applySuggestion(
+                                $editorView.state,
+                                suggestion.id,
+                                index,
+                            ),
+                        );
                     }}
                 >
                     {replacement}

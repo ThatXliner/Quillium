@@ -1,13 +1,7 @@
 import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  annotationField,
-  annotationsChanged,
-  applySuggestion,
-  isAnnotationOfType,
-} from "./plugins/annotations";
-import { ChangeSet, EditorState, Transaction } from "@codemirror/state";
+import { annotationsChanged } from "./plugins/annotations";
 export interface ListenerOptions {
   updateListener?: (update: ViewUpdate) => void;
   // onCommentChanged?: (comments: Comment[]) => void;
@@ -53,35 +47,6 @@ const save =
   });
 export const listeners = (options?: ListenerOptions) => [
   save,
-  EditorState.transactionFilter.of((tr: Transaction) => {
-    for (const e of tr.effects) {
-      if (e.is(applySuggestion)) {
-        const suggestion =
-          tr.startState.field(annotationField)[e.value.annotationId];
-        // Should never happen
-        if (!isAnnotationOfType(suggestion, "suggestion")) continue;
-        return [
-          tr,
-          tr.startState.update({
-            changes: [
-              {
-                from: suggestion.selection.main.from,
-                to: suggestion.selection.main.to,
-                insert: suggestion.replacements[e.value.replacementIndex],
-              },
-            ],
-          }),
-        ];
-        // TODO: replace the selection with the suggestion
-        // tr.state.update
-      }
-      // const state = JSON.stringify(state.toJSON(savedFields));
-      // invoke("save", { state }).then((success) => {
-      //   console.log("saved", success);
-      // });
-    }
-    return tr;
-  }),
   // ...(options?.onCommentChanged
   // 	? [onCommentChanged(options.onCommentChanged)]
   // 	: []),
