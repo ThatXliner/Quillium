@@ -1,7 +1,7 @@
 <script lang="ts">
     import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
-    import type { Annotation, Thread } from ".";
-    import CommentThread from "./CommentThread.svelte";
+    import type { Annotation, Thread as ThreadType } from ".";
+    import Thread from "./Thread.svelte";
     import { editorView } from "$lib/stores";
 
     const {
@@ -13,7 +13,7 @@
         comment: Annotation<"comment">;
         isActive: boolean;
         removeComment: () => void;
-        updateThread: (thread: Thread) => void;
+        updateThread: (thread: ThreadType) => void;
     } = $props();
     const thread = $derived(comment.thread);
 
@@ -71,7 +71,7 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    messages: [{ role: "user", content: prompt }]
+                    messages: [{ role: "user", content: prompt }],
                 }),
             });
 
@@ -90,10 +90,12 @@
 
                 if (value) {
                     const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+                    const lines = chunk
+                        .split("\n")
+                        .filter((line) => line.trim() !== "");
 
                     for (const line of lines) {
-                        if (line.startsWith('0:')) {
+                        if (line.startsWith("0:")) {
                             try {
                                 const content = JSON.parse(line.slice(2));
                                 aiResponse += content;
@@ -113,7 +115,12 @@
             console.error("Error getting AI suggestion:", error);
             updateThread([
                 ...thread,
-                { message: "Sorry, I encountered an error generating a suggestion.", author: "AI", time: Date.now() },
+                {
+                    message:
+                        "Sorry, I encountered an error generating a suggestion.",
+                    author: "AI",
+                    time: Date.now(),
+                },
             ]);
         }
     }
@@ -126,7 +133,7 @@
 >
     <div class="text-sm text-gray-700"></div>
 
-    <CommentThread {thread} {updateThread} />
+    <Thread {thread} {updateThread} />
     <div class="relative my-3">
         <textarea
             bind:value={newMessage}

@@ -21,7 +21,7 @@ import {
   keymap,
 } from "@codemirror/view";
 import { annotationField } from "./plugins/annotations";
-import { annotations, commentKeymap } from "./plugins/annotations";
+import { annotations, annotationKeymap } from "./plugins/annotations";
 import { type ListenerOptions, listeners } from "./listeners";
 export const savedFields = { historyField, annotationField };
 
@@ -48,7 +48,7 @@ export const getExtensions = (options?: ListenerOptions) => [
     // ...foldKeymap,
     ...completionKeymap,
     ...lintKeymap,
-    ...commentKeymap,
+    ...annotationKeymap,
     indentWithTab,
   ]),
   EditorView.lineWrapping,

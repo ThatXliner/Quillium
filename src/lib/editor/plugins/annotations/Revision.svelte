@@ -6,7 +6,7 @@
         createNewRevision,
         setActiveRevisionVersion,
     } from ".";
-    import CommentThread from "./CommentThread.svelte";
+    import Thread from "./Thread.svelte";
     import { editorView } from "$lib/stores";
 
     const {
@@ -69,7 +69,7 @@
             {/each}
         </div>
     </div>
-    <CommentThread {thread} {updateThread} />
+    <Thread {thread} {updateThread} />
     <div class="flex justify-end pt-3 border-t border-gray-200">
         <button
             class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors group"

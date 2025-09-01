@@ -9,6 +9,8 @@ import {
   type SelectionRange,
   type StateCommand,
   Transaction,
+  Text,
+  EditorState,
 } from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
@@ -119,7 +121,33 @@ const annotationDecorations = ViewPlugin.fromClass(
     decorations: (v) => v.decorations,
   },
 );
-
+function getSelection({
+  editorSelection,
+  targetText,
+  document,
+}: {
+  editorSelection?: EditorSelection;
+  targetText?: string;
+  document: Text;
+}) {
+  let selection = editorSelection;
+  if (editorSelection && targetText) {
+    throw new Error("Cannot specify both targetText and editorSelection");
+  }
+  if (!selection) {
+    if (!targetText) {
+      throw new Error(
+        "Must specify at least either targetText or editorSelection",
+      );
+    }
+    const query = new SearchCursor(document, targetText);
+    const selections = [...query].map(({ from: anchor, to: head }) =>
+      EditorSelection.range(anchor, head),
+    );
+    selection = EditorSelection.create(selections);
+  }
+  return selection;
+}
 export function createComment({
   targetText,
   editorSelection,
@@ -135,32 +163,65 @@ export function createComment({
 }) {
   const state = view.state;
 
-  let selection = editorSelection;
-  if (editorSelection && targetText) {
-    throw new Error("Cannot specify both targetText and editorSelection");
-  }
-  if (!editorSelection) {
-    if (!targetText) {
-      throw new Error(
-        "Must specify at least either targetText or editorSelection",
-      );
-    }
-    const query = new SearchCursor(state.doc, targetText);
-    const selections = [...query].map(({ from: anchor, to: head }) =>
-      EditorSelection.range(anchor, head),
-    );
-    selection = EditorSelection.create(selections);
-  }
+  let selection = getSelection({
+    editorSelection,
+    targetText,
+    document: state.doc,
+  });
   view.dispatch(
     state.update({
       effects: [
         addAnnotation.of({
           ...createNewAnnotation(
             state.field(annotationField),
-            selection as EditorSelection,
+            selection,
             "comment",
           ),
           thread: [{ message: comment, author, time: Date.now() }],
+        }),
+      ],
+      annotations: Transaction.addToHistory.of(true),
+    }),
+  );
+}
+export function createSuggestion({
+  targetText,
+  editorSelection,
+  replacements,
+  comment,
+  author = "AI",
+  // TODO: replace this with the simpler
+  // view because this was originally being
+  // mocked as a command
+  dispatch,
+  state,
+}: {
+  state: EditorState;
+  dispatch: (transaction: Transaction) => void;
+  replacements: string[];
+  targetText?: string;
+  editorSelection?: EditorSelection;
+  author?: string;
+  comment?: string;
+}) {
+  let selection = getSelection({
+    editorSelection,
+    targetText,
+    document: state.doc,
+  });
+  dispatch(
+    state.update({
+      effects: [
+        addAnnotation.of({
+          ...createNewAnnotation(
+            state.field(annotationField),
+            selection,
+            "suggestion",
+          ),
+          replacements,
+          thread: comment
+            ? [{ message: comment, author, time: Date.now() }]
+            : [],
         }),
       ],
       annotations: Transaction.addToHistory.of(true),
@@ -176,6 +237,7 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
   }
   // TODO: multi selection support
   if (state.selection.main.empty) return false;
+
   dispatch(
     state.update({
       effects: [
@@ -212,8 +274,19 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
   );
   return true;
 };
-
-export const commentKeymap: KeyBinding[] = [
+const dev_dontuseinprod_createSuggestion: StateCommand = ({
+  state,
+  dispatch,
+}) => {
+  createSuggestion({
+    editorSelection: state.selection,
+    state,
+    dispatch,
+    replacements: ["ur mother"],
+  });
+  return true;
+};
+export const annotationKeymap: KeyBinding[] = [
   {
     key: "Mod-Shift-c",
     run: createCommentCommand,
@@ -221,6 +294,10 @@ export const commentKeymap: KeyBinding[] = [
   {
     key: "Mod-k",
     run: createRevisionCommand,
+  },
+  {
+    key: "Mod-b",
+    run: dev_dontuseinprod_createSuggestion,
   },
 ];
 
