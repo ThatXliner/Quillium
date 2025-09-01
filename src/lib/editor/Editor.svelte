@@ -72,7 +72,7 @@
     const fromSave = invoke("load").then((d: unknown) => {
         const data = d as string | null;
         let state: EditorState;
-        if (data) {
+        if (data && false) {
             state = EditorState.fromJSON(
                 JSON.parse(data),
                 { extensions: getExtensions(getExtensionOptions) },

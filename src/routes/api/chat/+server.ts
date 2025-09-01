@@ -1,15 +1,24 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { streamText } from "ai";
+import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { OPENAI_API_KEY } from "$env/static/private";
+import { injectDocumentContext } from "$lib/utils";
 
 const openai = createOpenAI({ apiKey: OPENAI_API_KEY });
 
 export async function POST({ request }) {
-  const { messages } = await request.json();
+  const {
+    messages,
+    documentContent,
+    selectedText,
+  }: { messages: UIMessage[]; documentContent: string; selectedText: string } =
+    await request.json();
 
   const result = streamText({
     model: openai("gpt-4o-mini"),
-    messages,
+    messages: [
+      ...convertToModelMessages(messages),
+      injectDocumentContext({ documentContent, selectedText }),
+    ],
     system: `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
 
         When providing feedback:
@@ -22,5 +31,5 @@ export async function POST({ request }) {
         Keep responses concise but thorough.`,
   });
 
-  return result.toDataStreamResponse();
+  return result.toUIMessageStreamResponse();
 }

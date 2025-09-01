@@ -1,5 +1,7 @@
 <script lang="ts">
     import Chat from "./Chat.svelte";
+    import Feedback from "./Feedback.svelte";
+    import Revise from "./Revise.svelte";
     import { selectedText, documentContent } from "$lib/stores";
 
     type Action = null | "chat" | "feedback" | "revise";
@@ -115,8 +117,8 @@
             </button>
             <h2 class="text-lg font-semibold text-gray-900">Feedback</h2>
         </div>
-        <div class="p-4">
-            <p class="text-gray-600">Feedback functionality coming soon...</p>
+        <div class="flex-1 flex flex-col min-h-0">
+            <Feedback />
         </div>
     {:else if action === "revise"}
         <!-- Revise interface -->
@@ -129,8 +131,8 @@
             </button>
             <h2 class="text-lg font-semibold text-gray-900">Revise</h2>
         </div>
-        <div class="p-4">
-            <p class="text-gray-600">Revision functionality coming soon...</p>
+        <div class="flex-1 flex flex-col min-h-0">
+            <Revise />
         </div>
     {/if}
 </div>

@@ -43,12 +43,12 @@
     class="p-2 pl-5 rounded bg-white min-h-screen overflow-y-scroll sticky top-0 space-y-4 flex flex-col"
 >
     {#if $annotations}
-        {#each $annotations as c}
+        {@const a = Object.values($annotations)}
+        {#each a as c}
             {@const i = c.id}
             {@const isActive = $activeComment?.id === c.id}
             {@const isPendingComment = !(
-                !canCreateNewComment($annotations) &&
-                i === $annotations.length - 1
+                !canCreateNewComment($annotations) && i === a.length - 1
             )}
             {#if isAnnotationOfType(c, "comment") && isPendingComment}
                 <Comment
