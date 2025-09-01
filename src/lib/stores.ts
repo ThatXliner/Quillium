@@ -13,6 +13,7 @@ export const editorView = writable<EditorView>();
 export const annotations = writable<Annotations | undefined>();
 // For similar reasons (getActiveAnnotation relies on editor.state, which relies on editorView)
 // we have to manually manage and sync our own version of activeComment
+// TODO: activeAnnotation instead?
 export const activeComment = writable<Annotation<"comment"> | undefined>();
 
 // Manually synced document content and selection for AI chat context
