@@ -1,6 +1,6 @@
 <script lang="ts">
     import { documentContent, selectedText } from "$lib/stores";
-    import { renderMarkdown } from "$lib/utils";
+    import { renderMarkdown } from "$lib/ai/utils";
     import { DefaultChatTransport } from "ai";
     import { Chat } from "@ai-sdk/svelte";
 

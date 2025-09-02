@@ -33,24 +33,27 @@ The main application follows a three-panel design:
 ### File Structure
 
 ```
+# Some insignificant/self-explanatory files have been omitted for brevity.
 src/
 ├── lib/
-│   ├── editor/                 # Core editor components
-│   │   ├── Editor.svelte       # Main CodeMirror wrapper
-│   │   ├── StatusBar.svelte    # Writing statistics
-│   │   ├── extensions.ts       # CodeMirror configuration
-│   │   └── plugins/
-│   │       └── annotations/    # Annotation system
-│   ├── ai/                     # AI integration
-│   │   ├── AISidebar.svelte    # AI chat interface
-│   │   ├── Chat.svelte         # Conversation UI
-│   │   └── index.ts           # AI client config
-│   ├── stores.ts              # Global Svelte stores
-│   └── utils.ts               # Shared utilities
-├── routes/
-│   ├── +page.svelte           # Main application layout
-│   └── api/chat/+server.ts    # AI API endpoint
-└── app.html                   # HTML template
+│   ├── ai/
+│   │   ├── AISidebar.svelte  # AI chat picker interface
+│   │   ├── Chat.svelte  # The AI chat
+│   │   ├── Feedback.svelte  # The AI chat but for feedback
+│   │   └── Revise.svelte  # The AI chat but for revisions
+│   ├── editor/
+│   │   ├── Editor.svelte  # Main CodeMirror-Svelte wrapper
+│   │   ├── extensions.ts  # CodeMirror configuration
+│   │   ├── listeners.ts  # Event listeners for CodeMirror (used by extensions.ts)
+│   │   ├── plugins/
+│   │   │   ├── annotations/  # Annotation plugin
+│   │   │   └── dont-use-for-now-history/  # A currently non-functional history reimplementation
+│   │   └── StatusBar.svelte  # Writing statistics
+│   ├── save/
+│   │   └── Save.svelte  # Save icon. Separated into its own component for future extension
+│   └── stores.ts  # Global Svelte stores
+└── routes/
+    └── api/  # AI API endpoints
 ```
 
 ## State Management
@@ -62,21 +65,20 @@ Quillium uses a hybrid state management approach to handle the complexity of edi
 Used for editor-specific state that needs to be part of the undo/redo history:
 
 ```typescript
-// Example: Annotation state field
-const annotationField = StateField.define<AnnotationState>({
-    create() {
-        return { annotations: [] };
-    },
-    update(value, tr) {
-        // Handle annotation updates
-        return newValue;
-    }
-});
+// Annotation state field (excerpt from src/lib/editor/plugins/annotations/annotationField.ts)
+export const annotationField = StateField.define<Annotations>({
+  create(): Annotations {
+    return [];
+  },
+  update(oldAnnotations: Annotations, tr: Transaction): Annotations {
+    // ...
+  }
+}
 ```
 
 **Manages:**
 - Document content and editing history
-- Annotations (comments, revisions) 
+- Annotations (comments, revisions)
 - Editor selections and decorations
 - Extension state
 
@@ -105,66 +107,33 @@ The challenge is keeping CodeMirror state and Svelte stores in sync. This is han
 2. **Manual Sync**: Critical state changes trigger explicit synchronization
 3. **Event System**: Custom events for complex state changes
 
-```typescript
-// In Editor.svelte
-const updateListener = EditorView.updateListener.of((update) => {
-    if (update.docChanged || update.selectionSet) {
-        // Sync CodeMirror state to Svelte stores
-        syncAnnotations();
-        updateActiveComment();
-    }
-});
-```
+See `src/lib/editor/listeners.ts` and `src/lib/editor/Editor.svelte`.
 
 ## Editor System
 
-### CodeMirror 6 Integration
-
-CodeMirror 6 provides the core editing experience with a modern extension architecture:
-
-```typescript
-// Extension configuration in extensions.ts
-const extensions = [
-    basicSetup,
-    markdown(),
-    annotationPlugin,
-    aiAssistancePlugin,
-    customTheme,
-    // ... other extensions
-];
-```
+We use [CodeMirror 6](https://codemirror.net/) for the core editing library.
 
 ### Annotation System
 
-The annotation system layers comments, revisions, and suggestions onto the document:
-
-```typescript
-interface Annotation {
-    id: string;
-    type: 'comment' | 'revision' | 'suggestion';
-    range: { from: number; to: number };
-    content: string;
-    metadata: AnnotationMetadata;
-}
-```
+The annotation system is a CodeMirror extension that layers comments, revisions, and suggestions onto the document.
 
 **Key Components:**
 - `annotationField.ts`: StateField managing annotation data
 - `Annotations.svelte`: Side panel for displaying annotations
-- `Comment.svelte` / `Revision.svelte`: Individual annotation components
+- `Suggestion.svelte` / `Comment.svelte` / `Revision.svelte`: Individual annotation components
+  - I honestly need to organize the whole `src/lib/editor/plugins/annotations` folder better
 
 ### Non-linear Editing
 
-The revision system enables non-linear editing by:
-
-1. **Version Tracking**: Each revision creates a new version without destroying the original
-2. **Branching**: Multiple versions can exist for the same text segment
-3. **Context Preservation**: Annotations maintain references across versions
+The revision system enables non-linear editing currently by the revision system (similar to takes in Final Cut Pro). Eventualy we're going to explore alternative interfaces such as a tree view.
 
 ## AI Integration
 
 ### Architecture
 
+TODO. This may be subject to change and is currently under ongoing development.
+
+<!--
 AI integration follows a provider-agnostic approach using the Universal AI SDK:
 
 ```typescript
@@ -192,17 +161,16 @@ The AI system maintains awareness of document context:
 function injectDocumentContext(message: string, document: string): string {
     return `Document context:\n${document}\n\nUser message: ${message}`;
 }
-```
+```-->
 
 ## Data Flow
 
-### Editing Flow
+TK. There's currently really bad AI generated docs that are commented out. Beware it may be misleading.
+
+<!--### Editing Flow
 
 1. User types in CodeMirror editor
 2. CodeMirror dispatches document change
-3. Update listener syncs changes to Svelte stores
-4. UI components react to store changes
-5. Annotations update based on new document state
 
 ### AI Interaction Flow
 
@@ -215,14 +183,16 @@ function injectDocumentContext(message: string, document: string): string {
 ### Annotation Flow
 
 1. User creates annotation (comment/revision)
-2. Annotation stored in CodeMirror StateField
+2. Annotation updated in CodeMirror StateField
 3. UI components subscribe to annotation changes
 4. Side panel updates to show new annotation
-5. Editor decorations render visual indicators
+5. Editor decorations render visual indicators-->
 
 ## Performance Considerations
 
-### Editor Performance
+TK. Performance is the least of our priorities right now (especially considering that this is a JavaScript application).
+
+<!--### Editor Performance
 
 - **Lazy Loading**: Extensions loaded only when needed
 - **Efficient Updates**: Minimal re-renders via targeted state updates
@@ -232,7 +202,7 @@ function injectDocumentContext(message: string, document: string): string {
 
 - **Debounced Updates**: Prevent excessive sync operations
 - **Selective Updates**: Only sync changed state portions
-- **Memory Management**: Clean up unused annotation references
+- **Memory Management**: Clean up unused annotation references-->
 
 ## Development Workflow
 
@@ -252,17 +222,11 @@ function injectDocumentContext(message: string, document: string): string {
 
 ## Future Architecture Plans
 
-### Enhanced State Management
-
-- **Unified State**: Single source of truth for all application state
-- **Time Travel**: Full undo/redo across all state changes
-- **Persistence**: Automatic state preservation and restoration
-
-### Plugin Architecture
+<!--### Plugin Architecture
 
 - **Extension API**: Public API for third-party extensions
 - **Plugin Manager**: Runtime plugin loading and management
-- **Sandboxing**: Safe execution environment for community plugins
+- **Sandboxing**: Safe execution environment for community plugins-->
 
 ### Collaboration
 
