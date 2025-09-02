@@ -6,6 +6,7 @@
     } from "$lib/editor/plugins/annotations";
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
+    import { renderMarkdown } from "$lib/utils";
 
     let input = $state("");
 
