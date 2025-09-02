@@ -1,18 +1,27 @@
 # Quillium
 
-> A modern writing application that reimagines how we create and edit prose
+> Next Generation Prose.
 
-Quillium explores what writing could be if we weren't constrained by the linear nature of traditional text editors. Built on the idea that thoughts rarely emerge in perfect sequence, Quillium enables writers to explore multiple versions, track revisions as branches rather than replacements, and seamlessly integrate AI assistance into their creative process.
+<!--Most writing tools force you to think linearly, but human creativity is inherently non-linear. Editing itself (which writers will be spending most of their time on) is a process... -->
 
-At its core, Quillium addresses a fundamental limitation: most writing tools force you to think linearly, but human creativity is inherently non-linear. Whether you're crafting an essay, drafting a proposal, or exploring ideas, Quillium provides the flexibility to develop your thoughts naturally while maintaining a clear path back to any previous state.
+Quillium is the world's first non-linear editor for prose. Built on the idea that thoughts rarely emerge in perfect sequence, Quillium enables you to explore multiple versions of text as a first-class feature, track revisions as branches rather than replacements, and seamlessly integrate AI assistance into the creative process whilst maintaining your voice.
+
+Quillium is not just an app; it's a vision towards a new way of writing. Whether you're crafting an essay, drafting a proposal, or exploring ideas, Quillium provides the flexibility to develop your thoughts naturally, freely, and quickly.
 
 ## Key Innovations
 
 - **Non-linear editing**: Maintain multiple versions of text segments and explore different directions without losing work
-- **Branching revisions**: Version history that mirrors how writers actually think - not just a simple undo/redo stack
-- **Contextual AI assistance**: AI integration that understands your document's context and provides relevant suggestions
-- **Annotation system**: Comments, suggestions, and revisions that layer onto your text without disrupting flow
-- **Real-time collaboration**: Built for the modern workflow of multiple reviewers and collaborative editing
+<!--- **Branching revisions**: Version history that mirrors how writers actually think - not just a simple undo/redo stack-->
+- **Contextual AI assistance**: AI integration without the context switching. This includes:
+  - Acting as a second set of eyes for review and revisions, offering insights into what your audience may perceive
+  - Helping you figure out the right words to express what you're trying to say
+  - Providing relevant suggestions and feedback for a variety of goals and styles, including but not limited to grammar, conciseness, clarity, and tone
+- **Annotations**: A familiar comments and suggestions system that layer onto your text without disrupting flow
+
+
+...and all of this packaged into a performant, friendly, and efficient interface. Keyboard-first!
+
+<!--- **Real-time collaboration**: Built for the modern workflow of multiple reviewers and collaborative editing-->
 
 ## Technical Foundation
 
@@ -25,7 +34,7 @@ Built with modern web technologies for cross-platform compatibility:
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+ and npm/bun
+- Bun
 - Rust toolchain (for Tauri builds)
 
 ### Development Setup
@@ -36,23 +45,23 @@ git clone https://github.com/ThatXliner/Quillium.git
 cd Quillium
 
 # Install dependencies
-npm install
+bun install
 
 # Start development server
-npm run dev
+bun run dev
 
 # Or run with Tauri for desktop development
-npm run tauri dev
+bun run tauri dev
 ```
 
 ### Building
 
 ```bash
 # Build web version
-npm run build
+bun run build
 
 # Build desktop application
-npm run tauri build
+bun run tauri build
 ```
 
 ## Development Environment
@@ -61,7 +70,7 @@ For the best development experience, we recommend:
 
 [VS Code](https://code.visualstudio.com/) with the following extensions:
 - [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode)
-- [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) 
+- [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
 - [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
 ## Contributing
@@ -72,18 +81,19 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ```bash
 # Format and lint code
-npm run format    # Format with Biome
-npm run lint      # Lint with Biome
-npm run biome     # Run both format and lint
+bun run format    # Format with Biome
+bun run lint      # Lint with Biome
+bun run biome     # Run both format and lint
 
 # Type checking
-npm run check           # One-time check
-npm run check:watch     # Watch mode
+bun run check           # One-time check
+bun run check:watch     # Watch mode
 ```
 
 ## Project Vision
 
 ### Current State
+
 Quillium is in active development, focusing on building robust foundations:
 - ✅ Core editor with CodeMirror 6 integration
 - ✅ Basic annotation system (comments and revisions)
@@ -94,14 +104,13 @@ Quillium is in active development, focusing on building robust foundations:
 - **Robust data persistence**: Never lose your work, even during crashes
 - **Enhanced revision system**: True non-linear editing with branching histories
 - **Improved AI integration**: Support for multiple AI providers with configurable behavior
-- **Offline-first architecture**: Work without internet connectivity
-- **Better collaboration tools**: Real-time collaborative editing
+<!--- **Offline-first architecture**: Work without internet connectivity-->
 
 ### Long-term Vision
+- **Better collaboration tools**: Real-time collaborative editing
 - **Mind mapping integration**: Visual representation of document structure and relationships
 - **Advanced analytics**: Writing insights, productivity metrics, and style analysis
 - **Plugin ecosystem**: Extensible architecture for community contributions
-- **Cross-document linking**: Connect ideas across multiple documents
 
 ## Architecture
 
