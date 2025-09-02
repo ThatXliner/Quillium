@@ -74,130 +74,120 @@
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
-    <!-- Context info -->
-    <div class="p-4 border-b border-gray-200 bg-gray-50">
-        <div class="text-sm text-gray-600 space-y-2">
-            <div>
-                Document: {$documentContent
-                    ? `${$documentContent.length} characters`
-                    : "No content"}
+    <!-- Quick actions -->
+    <div
+        class="p-3 sm:p-4 border-b border-gray-200 bg-gradient-to-b from-purple-50 to-white"
+    >
+        <button
+            onclick={reviseText}
+            disabled={chat.status !== "ready" || !$documentContent}
+            class="w-full p-2.5 bg-white hover:bg-purple-50 rounded-lg border border-purple-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
+        >
+            <div class="text-sm font-medium text-purple-800">
+                {$selectedText ? "Revise selection" : "Revise document"}
             </div>
-            {#if $selectedText}
-                <div class="bg-yellow-50 p-2 rounded border border-yellow-200">
-                    <div class="font-medium text-yellow-800">
-                        Selected text:
-                    </div>
-                    <div class="text-yellow-700 text-xs">
-                        "{$selectedText.slice(0, 100)}{$selectedText.length >
-                        100
-                            ? "..."
-                            : ""}"
-                    </div>
-                </div>
-            {/if}
-        </div>
-
-        <!-- Quick actions -->
-        <div class="mt-3 space-y-2">
-            <button
-                onclick={reviseText}
-                disabled={chat.status !== "ready" || !$documentContent}
-                class="w-full p-2 text-left bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                <div class="text-sm font-medium text-purple-900">
-                    {$selectedText ? "Revise selection" : "Revise document"}
-                </div>
-            </button>
-
-            <!-- Quick prompts -->
-            <div class="grid grid-cols-1 gap-1">
-                {#each quickPrompts as prompt}
-                    <button
-                        onclick={() => useQuickPrompt(prompt)}
-                        disabled={chat.status !== "ready" || !$documentContent}
-                        class="p-1.5 text-xs text-left bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {prompt}
-                    </button>
-                {/each}
+            <div class="text-xs text-purple-600 mt-0.5">
+                {$documentContent
+                    ? `Document: ${$documentContent.length.toLocaleString()} characters`
+                    : "Add content to revise"}
             </div>
+        </button>
+
+        <!-- Quick prompts -->
+        <div class="mt-2 grid grid-cols-2 gap-1.5">
+            {#each quickPrompts as prompt}
+                <button
+                    onclick={() => useQuickPrompt(prompt)}
+                    disabled={chat.status !== "ready" || !$documentContent}
+                    class="px-2 py-1.5 text-xs bg-white hover:bg-purple-50 rounded border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                >
+                    {prompt}
+                </button>
+            {/each}
         </div>
     </div>
 
     <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message, messageIndex (messageIndex)}
-            <div
-                class="flex {message.role === 'user'
-                    ? 'justify-end'
-                    : 'justify-start'}"
-            >
-                <div
-                    class="max-w-xs lg:max-w-md px-3 py-2 rounded-lg {message.role ===
-                    'user'
-                        ? 'bg-purple-500 text-white'
-                        : 'bg-gray-200 text-gray-800'}"
-                >
-                    <div class="text-sm whitespace-pre-wrap">
-                        {#each message.parts as part, partIndex (partIndex)}
-                            {#if part.type === "text"}
-                                {part.text}
-                            {/if}
-                        {/each}
+            {#each message.parts as part, partIndex (partIndex)}
+                {#if part.type === "text"}
+                    {@const rendered = renderMarkdown(part.text)}
+                    <div
+                        class="flex {message.role === 'user'
+                            ? 'justify-end'
+                            : 'justify-start'}"
+                    >
+                        <div
+                            class="relative max-w-[85%] sm:max-w-[75%] lg:max-w-[70%] px-3 py-2 rounded-lg {message.role ===
+                            'user'
+                                ? 'bg-purple-500 text-white'
+                                : 'bg-gray-100 text-gray-800'}"
+                        >
+                            <div
+                                class="text-sm whitespace-pre-wrap break-words"
+                            >
+                                {@html rendered}
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
+                {/if}
+            {/each}
         {/each}
 
         {#if chat.status === "streaming"}
             <div class="flex justify-start">
-                <div class="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg">
-                    <div class="text-sm">Revising...</div>
+                <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
+                    <div class="bg-gray-100 text-gray-800 px-3 py-2 rounded-lg">
+                        <div class="flex items-center space-x-2">
+                            <span class="inline-block animate-pulse">●</span>
+                            <span class="text-sm">Revising...</span>
+                        </div>
+                    </div>
                 </div>
+            </div>
+        {/if}
+
+        {#if chat.messages.length === 0}
+            <div
+                class="flex-1 flex items-center justify-center text-gray-400 text-sm"
+            >
+                Click "Revise" or choose a quick action to start
             </div>
         {/if}
     </div>
 
-    <div class="border-t border-gray-200 p-4">
-        <form onsubmit={handleSubmit} class="flex flex-col flex-wrap space-y-2">
+    <!-- Input -->
+    <div class="border-t border-gray-200 p-3 sm:p-4 bg-white">
+        {#if $selectedText}
+            <div
+                class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"
+            >
+                <span class="text-yellow-700">
+                    Context: "{$selectedText.slice(
+                        0,
+                        60,
+                    )}{$selectedText.length > 60 ? "..." : ""}"
+                </span>
+            </div>
+        {/if}
+
+        <form onsubmit={handleSubmit} class="flex flex-col gap-2">
             <input
                 bind:value={input}
                 name="message"
-                placeholder="Ask about your document..."
+                placeholder="Describe how to revise..."
                 disabled={chat.status !== "ready"}
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready"}
-                class="w-full py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                disabled={chat.status !== "ready" || !input.trim()}
+                class="w-full py-2 bg-purple-500 text-white text-sm font-medium rounded-md hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Revise
             </button>
-            {#if $selectedText}
-                <div
-                    class="text-xs bg-yellow-50 p-2 rounded border border-yellow-200"
-                >
-                    <div class="font-medium text-yellow-800">
-                        Selected text:
-                    </div>
-                    <div class="text-yellow-700 text-xs">
-                        "{$selectedText.slice(0, 100)}{$selectedText.length >
-                        100
-                            ? "..."
-                            : ""}"
-                    </div>
-                </div>
-            {/if}
         </form>
-        <!-- {#if $selectedText}
-            <div class="mt-2 text-xs text-gray-500">
-                Selected: "{$selectedText.slice(0, 50)}{$selectedText.length >
-                50
-                    ? "..."
-                    : ""}"
-            </div>
-        {/if} -->
     </div>
 </div>
