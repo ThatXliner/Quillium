@@ -7,8 +7,7 @@ Thank you for your interest in contributing to Quillium! This guide will help yo
 ### Prerequisites
 
 Before you begin, ensure you have the following installed:
-- **Node.js** (version 18 or higher)
-- **npm** or **bun** package manager  
+- **Bun** package manager and JavaScript runtime
 - **Rust toolchain** (for Tauri desktop builds)
 - **Git** for version control
 
@@ -22,42 +21,37 @@ Before you begin, ensure you have the following installed:
 
 2. **Install Dependencies**
    ```bash
-   npm install
-   # or if you prefer bun
    bun install
    ```
 
 3. **Environment Setup**
-   
+
    For AI features, create a `.env` file in the project root:
    ```bash
    OPENAI_API_KEY=your_openai_api_key_here
    ```
-   
+
    > **Note**: AI features are optional for most development work. The app will function without API keys.
 
 4. **Start Development Server**
    ```bash
-   npm run dev
-   # Opens web version at http://localhost:5173
-   
    # For desktop development
-   npm run tauri dev
+   bun tauri dev
    ```
 
 ### Development Commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start development server (web) |
-| `npm run tauri dev` | Start Tauri development mode (desktop) |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build |
-| `npm run check` | TypeScript type checking |
-| `npm run check:watch` | Type checking in watch mode |
-| `npm run format` | Format code with Biome |
-| `npm run lint` | Lint code with Biome |
-| `npm run biome` | Run both format and lint |
+| `bun run dev` | Start development server (web) |
+| `bun run tauri dev` | Start Tauri development mode (desktop) |
+| `bun run build` | Build for production |
+| `bun run preview` | Preview production build |
+| `bun run check` | TypeScript type checking |
+| `bun run check:watch` | Type checking in watch mode |
+| `bun run format` | Format code with Biome |
+| `bun run lint` | Lint code with Biome |
+| `bun run biome` | Run both format and lint |
 
 ## Code Style & Standards
 
@@ -72,8 +66,10 @@ Quillium uses [Biome](https://biomejs.dev/) for consistent code formatting and l
 - **Import organization**: Automatic sorting and grouping
 
 **Before submitting a PR, always run:**
+
 ```bash
-npm run biome
+bun run check
+bun run lint
 ```
 
 ### TypeScript
@@ -92,16 +88,7 @@ npm run biome
 
 ### File Organization
 
-```
-src/lib/
-├── editor/           # Core editor functionality
-│   ├── plugins/     # Editor plugins and extensions
-│   └── components/  # Editor-specific components
-├── ai/              # AI integration components
-├── components/      # Shared UI components
-├── stores/          # Global state management
-└── utils/           # Utility functions
-```
+See [architecture](./ARCHITECTURE.md)
 
 ## Contribution Workflow
 
@@ -126,9 +113,9 @@ Before starting work:
 
 3. **Run quality checks**
    ```bash
-   npm run check      # TypeScript validation
-   npm run biome      # Format and lint
-   npm run build      # Ensure build works
+   bun run check      # TypeScript validation
+   bun run biome      # Format and lint
+   bun run tauri build      # Ensure build works
    ```
 
 ### 3. Commit Guidelines
@@ -144,7 +131,7 @@ type(scope): brief description
 
 **Types:**
 - `feat`: New features
-- `fix`: Bug fixes  
+- `fix`: Bug fixes
 - `docs`: Documentation changes
 - `style`: Code style/formatting changes
 - `refactor`: Code restructuring without behavior changes
@@ -196,7 +183,7 @@ docs(contributing): update development setup instructions
 - **Scope**: Start small, iterate and improve
 
 ### 📚 Documentation
-- **Code comments**: Document complex logic and architectural decisions  
+- **Code comments**: Document complex logic and architectural decisions
 - **API documentation**: Keep interfaces and types well-documented
 - **User guides**: Help users understand how to use features
 - **Architecture docs**: Explain design decisions and patterns
