@@ -1,22 +1,35 @@
 .cm-comment {
-	background-color: #fef2cd;
+    background-color: #fef2cd;
 }
 .cm-comment-active {
-	background-color: #fcbc05;
+    background-color: #fcbc05;
 }
 .cm-comment-active .cm-comment {
-	background-color: #fcbc05;
+    background-color: #fcbc05;
 }
 .cm-revision {
-	padding: 0.25rem;
-	background-color: lightgray;
-	border-radius: 24px;
+    padding: 0.25rem;
+    background-color: lightgray;
+    border-radius: 24px;
 }
 .cm-revision-active .cm-revision {
-	background-color: gray;
-	border-radius: 24px;
+    background-color: gray;
+    border-radius: 24px;
 }
 .cm-revision-active {
-	background-color: gray;
-	border-radius: 24px;
+    background-color: gray;
+    border-radius: 24px;
+}
+.cm-suggestion {
+    background-color: #f0fdf4;
+    text-decoration-color: #5a9d70;
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+}
+.cm-suggestion-active .cm-suggestion {
+    background-color: #dbf9e2;
+    padding-top: 2px;
+    text-decoration-thickness: 4px;
+    padding-bottom: 2px;
+    border-radius: 6px;
 }

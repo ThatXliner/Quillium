@@ -1,11 +1,16 @@
 import {
+  Annotation,
   EditorSelection,
   EditorState,
+  SelectionRange,
   StateEffect,
   StateField,
   Transaction,
 } from "@codemirror/state";
 import {
+  createNewAnnotation,
+  getLastId,
+  getNewId,
   isAnnotationOfType,
   type Annotations,
   type GenericAnnotation,
@@ -14,6 +19,8 @@ import {
 } from "./models";
 import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
+import { SearchCursor } from "@codemirror/search";
+import { filter, mapValues } from "lodash-es";
 // lowk I might change this to our own state machine so we can have that sweet sweet typesafety
 // === For all annotations ===
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
@@ -54,6 +61,7 @@ export const updateThread = StateEffect.define<{
 // }>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
+// There is no "updateRevisionVersion" since we sniff that from document changes
 const _addVersionToRevision = StateEffect.define<{
   annotationId: number;
   newVersion: string;
@@ -108,9 +116,33 @@ export function createNewRevision(state: EditorState, annotationId: number) {
     }),
   });
 }
-// There is no "updateRevisionVersion" since we sniff that from document changes
-// === TODO: do stuff for suggestions? ===
-
+// === For suggestions ===
+export const addSuggestion = StateEffect.define<{
+  targetText: string;
+  replacements: string[];
+}>();
+const _applySuggestion = StateEffect.define<{
+  annotationId: number;
+  replacementIndex: number;
+}>();
+export function applySuggestion(
+  state: EditorState,
+  annotationId: number,
+  replacementIndex: number,
+) {
+  const annotation = state.field(annotationField)[annotationId];
+  if (!isAnnotationOfType(annotation, "suggestion")) {
+    throw new Error("Invalid annotation type");
+  }
+  return state.update({
+    effects: [_applySuggestion.of({ annotationId, replacementIndex })],
+    changes: state.changes({
+      from: annotation.selection.main.from,
+      to: annotation.selection.main.to,
+      insert: annotation.replacements[replacementIndex],
+    }),
+  });
+}
 // StateField to track annotation data
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
 export const annotationField = StateField.define<Annotations>({
@@ -124,41 +156,50 @@ export const annotationField = StateField.define<Annotations>({
     // ranges, as we don't want our revision/highlighted/etc
     // to be static markers of a row and column but instead change with the
     // document
-    annotations = annotations
-      .map((x) => {
-        // Run it through deletions
-        const newSelection = cleanRangesOf(
-          x.selection.map(
-            tr.changes,
-            isAnnotationOfType(x, "revision") ? 1 : 0,
-          ),
-        );
+    annotations = Object.fromEntries(
+      filter(
+        Object.entries(
+          mapValues(annotations, (x) => {
+            // Run it through deletions
+            const newSelection = cleanRangesOf(
+              x.selection.map(
+                tr.changes,
+                isAnnotationOfType(x, "revision") ? 1 : 0,
+              ),
+            );
 
-        // Idk how adding to the end of a revision version should work
-        // which is why this code is currently commented out
-        // if (x.value.type === "revision") {
-        // 	newSelection = newSelection.addRange(
-        // 		newSelection.main.extend(
-        // 			newSelection.main.from,
-        // 			newSelection.main.to,
-        // 		),
-        // 	);
-        // }
-        if (newSelection) {
-          return { ...x, selection: newSelection };
-        }
-        return null;
-      })
-      .filter((x) => x !== null);
+            // Idk how adding to the end of a revision version should work
+            // which is why this code is currently commented out
+            // if (x.value.type === "revision") {
+            // 	newSelection = newSelection.addRange(
+            // 		newSelection.main.extend(
+            // 			newSelection.main.from,
+            // 			newSelection.main.to,
+            // 		),
+            // 	);
+            // }
+            if (newSelection) {
+              return { ...x, selection: newSelection };
+            }
+            return null;
+          }),
+        ),
+        ([k, v]) => v !== null,
+      ),
+      // Too lazy to tell TypeScript that value will never be null
+    ) as Annotations;
 
     // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
     let doUpdateRevision = true;
     for (const e of tr.effects) {
       if (e.is(addAnnotation)) {
         console.log("Adding annotation!", e.value);
+        // TODO: what if we just annotations.push
         annotations[e.value.id] = e.value;
       } else if (e.is(removeAnnotation)) {
-        annotations = annotations.splice(e.value.id, 1);
+        console.log("Removing annotation internally");
+        delete annotations[e.value.id];
+        console.log(annotations);
       } else if (e.is(updateThread)) {
         annotations[e.value.annotationId].thread = e.value.newThread;
         // } else if (e.is(addThreadToAnnotation)) {
@@ -195,12 +236,27 @@ export const annotationField = StateField.define<Annotations>({
         // JavaScript would give annotation a reference to the annotation object
         // but just in case, you know.
         annotations[e.value.annotationId] = annotation;
+      } else if (e.is(addSuggestion)) {
+        const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
+        for (const { from, to } of cursor) {
+          // Search through the document for the text
+          annotations[getNewId(annotations)] = {
+            ...createNewAnnotation(
+              annotations,
+              EditorSelection.single(from, to),
+              "suggestion",
+            ),
+            replacements: e.value.replacements,
+          };
+        }
+      } else if (e.is(_applySuggestion)) {
+        delete annotations[e.value.annotationId];
       }
     }
     // doc -> revision
     if (doUpdateRevision) {
       // TODO: run on every character update?
-      annotations = annotations.map((x) => {
+      annotations = mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision")) {
           // the revision version's associated internal text needs to be updated
           x.versions[x.currentlySelected] = tr.state.doc
@@ -214,14 +270,14 @@ export const annotationField = StateField.define<Annotations>({
     return annotations;
   },
   toJSON(value: Annotations) {
-    return value.map((c) => ({
+    return mapValues(value, (c) => ({
       ...c,
       selection: c.selection.toJSON(),
     }));
   },
   fromJSON(value: unknown) {
     // TODO: use Zod to verify?
-    return (value as RawAnnotations).map((x) => ({
+    return mapValues(value as RawAnnotations, (x) => ({
       ...x,
       selection: EditorSelection.fromJSON(x.selection),
     }));
@@ -249,6 +305,10 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             }),
           );
         }
+      } else if (effect.is(addSuggestion)) {
+        let oldAnnotation =
+          oldAnnotations[Math.max(...Object.keys(oldAnnotations).map(Number))];
+        effects.push(removeAnnotation.of(oldAnnotation));
       } else if (
         effect.is(_addVersionToRevision) ||
         effect.is(_deleteVersionFromRevision) ||
@@ -278,6 +338,12 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             }),
           );
         }
+      } else if (effect.is(addSuggestion)) {
+        const annotations = transaction.startState.field(annotationField);
+        effects.push(removeAnnotation.of(annotations[getLastId(annotations)]));
+      } else if (effect.is(_applySuggestion)) {
+        const annotations = transaction.startState.field(annotationField);
+        effects.push(addAnnotation.of(annotations[effect.value.annotationId]));
       }
     }
     // transaction.changes.iterChangedRanges((chFrom, chTo) => {

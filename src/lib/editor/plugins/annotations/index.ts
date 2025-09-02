@@ -9,6 +9,8 @@ import {
   type SelectionRange,
   type StateCommand,
   Transaction,
+  Text,
+  EditorState,
 } from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
@@ -17,13 +19,13 @@ import {
 import {
   Decoration,
   type DecorationSet,
-  EditorView,
+  type EditorView,
   type KeyBinding,
   ViewPlugin,
   type ViewUpdate,
 } from "@codemirror/view";
 
-import { isEqual } from "lodash-es";
+import { filter, flatMap, isEqual } from "lodash-es";
 import {
   type AnnotationType,
   createNewAnnotation,
@@ -39,7 +41,10 @@ import {
 
 export * from "./annotationField";
 export const annotationsChanged = (update: ViewUpdate) =>
-  isEqual(update.startState, update.state) ||
+  !isEqual(
+    update.startState.field(annotationField),
+    update.state.field(annotationField),
+  ) ||
   update.transactions.some((tr) =>
     tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
   );
@@ -49,7 +54,11 @@ const annotationDecorations = ViewPlugin.fromClass(
     decorations: DecorationSet;
 
     constructor(view: EditorView) {
-      this.decorations = this.getDecorations(view, "comment", "cm-comment");
+      this.decorations = RangeSet.join([
+        this.getDecorations(view, "comment", "cm-comment"),
+        this.getDecorations(view, "revision", "cm-revision"),
+        this.getDecorations(view, "suggestion", "cm-suggestion"),
+      ]);
     }
 
     update(update: ViewUpdate) {
@@ -62,6 +71,7 @@ const annotationDecorations = ViewPlugin.fromClass(
         this.decorations = RangeSet.join([
           this.getDecorations(update.view, "comment", "cm-comment"),
           this.getDecorations(update.view, "revision", "cm-revision"),
+          this.getDecorations(update.view, "suggestion", "cm-suggestion"),
         ]);
       }
     }
@@ -74,13 +84,15 @@ const annotationDecorations = ViewPlugin.fromClass(
       // TODO: optimize algorithm to be linear time complexity
       // using some sort of greedy algorithm
       const builder = new RangeSetBuilder<Decoration>();
-      const annotationRanges = view.state
-        .field(annotationField)
-        .filter((annotation) => isAnnotationOfType(annotation, type))
+      const annotationRanges = flatMap(
+        filter(Object.values(view.state.field(annotationField)), (annotation) =>
+          isAnnotationOfType(annotation, type),
+        ),
         // We can assume a single selection
         // because we are not implementing multi-selection support
         // for now
-        .flatMap((annotation) => annotation.selection.main);
+        (annotation) => annotation.selection.main,
+      );
       // TODO: use multiple
       const activeRanges: readonly SelectionRange[] =
         getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
@@ -119,7 +131,33 @@ const annotationDecorations = ViewPlugin.fromClass(
     decorations: (v) => v.decorations,
   },
 );
-
+function getSelection({
+  editorSelection,
+  targetText,
+  document,
+}: {
+  editorSelection?: EditorSelection;
+  targetText?: string;
+  document: Text;
+}) {
+  let selection = editorSelection;
+  if (editorSelection && targetText) {
+    throw new Error("Cannot specify both targetText and editorSelection");
+  }
+  if (!selection) {
+    if (!targetText) {
+      throw new Error(
+        "Must specify at least either targetText or editorSelection",
+      );
+    }
+    const query = new SearchCursor(document, targetText);
+    const selections = [...query].map(({ from: anchor, to: head }) =>
+      EditorSelection.range(anchor, head),
+    );
+    selection = EditorSelection.create(selections);
+  }
+  return selection;
+}
 export function createComment({
   targetText,
   editorSelection,
@@ -135,29 +173,18 @@ export function createComment({
 }) {
   const state = view.state;
 
-  let selection = editorSelection;
-  if (editorSelection && targetText) {
-    throw new Error("Cannot specify both targetText and editorSelection");
-  }
-  if (!editorSelection) {
-    if (!targetText) {
-      throw new Error(
-        "Must specify at least either targetText or editorSelection",
-      );
-    }
-    const query = new SearchCursor(state.doc, targetText);
-    const selections = [...query].map(({ from: anchor, to: head }) =>
-      EditorSelection.range(anchor, head),
-    );
-    selection = EditorSelection.create(selections);
-  }
+  let selection = getSelection({
+    editorSelection,
+    targetText,
+    document: state.doc,
+  });
   view.dispatch(
     state.update({
       effects: [
         addAnnotation.of({
           ...createNewAnnotation(
             state.field(annotationField),
-            selection as EditorSelection,
+            selection,
             "comment",
           ),
           thread: [{ message: comment, author, time: Date.now() }],
@@ -167,14 +194,60 @@ export function createComment({
     }),
   );
 }
+export function createSuggestion({
+  targetText,
+  editorSelection,
+  replacements,
+  comment,
+  author = "AI",
+  // TODO: replace this with the simpler
+  // view because this was originally being
+  // mocked as a command
+  dispatch,
+  state,
+}: {
+  state: EditorState;
+  dispatch: (transaction: Transaction) => void;
+  replacements: string[];
+  targetText?: string;
+  editorSelection?: EditorSelection;
+  author?: string;
+  comment?: string;
+}) {
+  let selection = getSelection({
+    editorSelection,
+    targetText,
+    document: state.doc,
+  });
+  dispatch(
+    state.update({
+      effects: [
+        addAnnotation.of({
+          ...createNewAnnotation(
+            state.field(annotationField),
+            selection,
+            "suggestion",
+          ),
+          replacements,
+          thread: comment
+            ? [{ message: comment, author, time: Date.now() }]
+            : [],
+        }),
+      ],
+      annotations: Transaction.addToHistory.of(true),
+    }),
+  );
+}
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+  console.log("what");
   // locks it so that we can't have multiple pending states
   if (!canCreateNewComment(state.field(annotationField))) {
     return false;
   }
   // TODO: multi selection support
   if (state.selection.main.empty) return false;
+
   dispatch(
     state.update({
       effects: [
@@ -211,15 +284,30 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
   );
   return true;
 };
-
-export const commentKeymap: KeyBinding[] = [
+const dev_dontuseinprod_createSuggestion: StateCommand = ({
+  state,
+  dispatch,
+}) => {
+  createSuggestion({
+    editorSelection: state.selection,
+    state,
+    dispatch,
+    replacements: ["ur mother"],
+  });
+  return true;
+};
+export const annotationKeymap: KeyBinding[] = [
   {
-    key: "Mod-Alt-m",
+    key: "Mod-Shift-c",
     run: createCommentCommand,
   },
   {
-    key: "Mod-Alt-k",
+    key: "Mod-k",
     run: createRevisionCommand,
+  },
+  {
+    key: "Mod-b",
+    run: dev_dontuseinprod_createSuggestion,
   },
 ];
 

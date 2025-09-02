@@ -1,12 +1,12 @@
 <script lang="ts">
     import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import {
-        type Thread,
+        type Thread as ThreadType,
         type Annotation,
         createNewRevision,
         setActiveRevisionVersion,
     } from ".";
-    import CommentThread from "./CommentThread.svelte";
+    import Thread from "./Thread.svelte";
     import { editorView } from "$lib/stores";
 
     const {
@@ -18,7 +18,7 @@
         revision: Annotation<"revision">;
         isActive: boolean;
         remove: () => void;
-        updateThread: (thread: Thread) => void;
+        updateThread: (thread: ThreadType) => void;
     } = $props();
     const thread = $derived(revision.thread);
 </script>
@@ -69,7 +69,7 @@
             {/each}
         </div>
     </div>
-    <CommentThread {thread} {updateThread} />
+    <Thread {thread} {updateThread} />
     <div class="flex justify-end pt-3 border-t border-gray-200">
         <button
             class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors group"

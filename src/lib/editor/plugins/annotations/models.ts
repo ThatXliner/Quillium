@@ -19,19 +19,30 @@ export function isAnnotationOfType<T extends AnnotationType>(
 ): annotation is Annotation<T> {
   return annotation._type === type;
 }
+// TODO: replace this with either a single Selection or a Range
+// unless we want to keep it as an EditorSelection so we can extend the range?
 type BaseAnnotation = {
   selection: EditorSelection;
   id: number;
   thread: Thread;
 };
+
+export function getNewId(annotations: Annotations) {
+  return Object.keys(annotations).length;
+}
+export function getLastId(annotations: Annotations) {
+  return Object.keys(annotations).length - 1;
+}
+
 export function createNewAnnotation<T extends AnnotationType>(
   annotations: Annotations,
   selection: EditorSelection,
   type: T,
 ) {
+  const newId = getNewId(annotations);
   return {
     selection,
-    id: annotations.length,
+    id: newId,
     _type: type,
     thread: [],
     // um this ain't getting serialized baby
@@ -45,7 +56,7 @@ type CommentAnnotation = BaseAnnotation & {
 // TODO: statuses for Revision and comment (might make it a FSM)
 type SuggestionAnnotation = BaseAnnotation & {
   _type: "suggestion";
-  replacement: string;
+  replacements: string[];
 };
 type RevisionAnnotation = BaseAnnotation & {
   _type: "revision";
@@ -68,5 +79,5 @@ export type AnnotationType = GenericAnnotation["_type"];
 export type RawAnnotation = GenericAnnotation & {
   selection: EditorSelection["toJSON"];
 };
-export type RawAnnotations = RawAnnotation[];
-export type Annotations = GenericAnnotation[];
+export type RawAnnotations = { [id: number]: RawAnnotation };
+export type Annotations = { [id: number]: GenericAnnotation };

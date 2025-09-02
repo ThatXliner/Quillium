@@ -47,7 +47,7 @@ export function getActiveAnnotation<T extends AnnotationType>(
     range: SelectionRange;
     associatedAnnotation: Annotation<T>;
   }[] = [];
-  for (const annotation of annotations) {
+  for (const annotation of Object.values(annotations)) {
     if (!isAnnotationOfType(annotation, type)) continue;
 
     // TODO: change these "active checks" to use the state machine
@@ -81,10 +81,11 @@ export function getActiveAnnotation<T extends AnnotationType>(
     (a, b) => a.range.to - a.range.from - (b.range.to - b.range.from),
   )?.[0]?.associatedAnnotation;
 }
+
 export function canCreateNewComment(annotations: Annotations) {
   return (
-    annotations.length === 0 ||
-    !annotations.some(
+    Object.values(annotations).length === 0 ||
+    !Object.values(annotations).some(
       (annotation) =>
         isAnnotationOfType(annotation, "comment") &&
         annotation.thread.length === 0,

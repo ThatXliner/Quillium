@@ -1,9 +1,7 @@
 <script lang="ts">
     import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
-    import type { Annotation, Thread } from ".";
-    import CommentThread from "./CommentThread.svelte";
-    import { generateText } from "ai";
-    import { openai } from "$lib/ai";
+    import type { Annotation, Thread as ThreadType } from ".";
+    import Thread from "./Thread.svelte";
     import { editorView } from "$lib/stores";
 
     const {
@@ -15,7 +13,7 @@
         comment: Annotation<"comment">;
         isActive: boolean;
         removeComment: () => void;
-        updateThread: (thread: Thread) => void;
+        updateThread: (thread: ThreadType) => void;
     } = $props();
     const thread = $derived(comment.thread);
 
@@ -29,8 +27,6 @@
         newMessage = "";
     }
     async function aiSuggestion() {
-        // TODO: make this into a mustache template
-        // TODO: implement AI suggestion
         let prompt = "Provide suggestions based on the following";
         if (thread.length === 1) {
             prompt += " comment:\n";
@@ -47,7 +43,7 @@
         }
         prompt += "\n```\n";
         prompt +=
-            "For context, here is the selected text the previous comment is referring to:\n";
+            "For context, here is the selected text the comment is referring to:\n";
         prompt += "```\n";
         const selectionText = $editorView.state.sliceDoc(
             comment.selection.main.from,
@@ -69,15 +65,64 @@
         prompt += paragraphMatch ? paragraphMatch[0] : "";
         prompt += "```\n";
         prompt += "Be concise.";
-        const response = await generateText({
-            model: openai("gpt-5"),
-            prompt,
-        });
 
-        updateThread([
-            ...thread,
-            { message: response.text, author: "AI", time: Date.now() },
-        ]);
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    messages: [{ role: "user", content: prompt }],
+                }),
+            });
+
+            if (!response.ok) throw new Error("Failed to get AI response");
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("No response body");
+
+            const decoder = new TextDecoder();
+            let done = false;
+            let aiResponse = "";
+
+            while (!done) {
+                const { value, done: streamDone } = await reader.read();
+                done = streamDone;
+
+                if (value) {
+                    const chunk = decoder.decode(value);
+                    const lines = chunk
+                        .split("\n")
+                        .filter((line) => line.trim() !== "");
+
+                    for (const line of lines) {
+                        if (line.startsWith("0:")) {
+                            try {
+                                const content = JSON.parse(line.slice(2));
+                                aiResponse += content;
+                            } catch (e) {
+                                // Skip parsing errors
+                            }
+                        }
+                    }
+                }
+            }
+
+            updateThread([
+                ...thread,
+                { message: aiResponse, author: "AI", time: Date.now() },
+            ]);
+        } catch (error) {
+            console.error("Error getting AI suggestion:", error);
+            updateThread([
+                ...thread,
+                {
+                    message:
+                        "Sorry, I encountered an error generating a suggestion.",
+                    author: "AI",
+                    time: Date.now(),
+                },
+            ]);
+        }
     }
 </script>
 
@@ -88,7 +133,7 @@
 >
     <div class="text-sm text-gray-700"></div>
 
-    <CommentThread {thread} {updateThread} />
+    <Thread {thread} {updateThread} />
     <div class="relative my-3">
         <textarea
             bind:value={newMessage}
