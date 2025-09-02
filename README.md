@@ -1,29 +1,112 @@
 # Quillium
 
-> The Non-linear Prose Editor
+> A modern writing application that reimagines how we create and edit prose
 
-Quillium is not just an app; it's a vision towards a new way of writing. It's the world's first non-linear prose editor which allows you to explore different ways of crafting your writings, whether it be essays or articles, CVs or emails, etc.
+Quillium explores what writing could be if we weren't constrained by the linear nature of traditional text editors. Built on the idea that thoughts rarely emerge in perfect sequence, Quillium enables writers to explore multiple versions, track revisions as branches rather than replacements, and seamlessly integrate AI assistance into their creative process.
 
-While Quillium's main feature is its revision system which allows for non-linear editing, it's designed to bring your ideas into words as fast as possible. We have tight integration with AI to help you find what you want to say.
+At its core, Quillium addresses a fundamental limitation: most writing tools force you to think linearly, but human creativity is inherently non-linear. Whether you're crafting an essay, drafting a proposal, or exploring ideas, Quillium provides the flexibility to develop your thoughts naturally while maintaining a clear path back to any previous state.
 
-This integration of AI will also let Quillium act as a second set of eyes when it comes to the review stage of writing. It can provide inline feedback and suggestions, all of which can accepted or dismissed by a single click.
+## Key Innovations
 
-Writing clear, concise, and coherent has never been this easy. Join the revolution now.
+- **Non-linear editing**: Maintain multiple versions of text segments and explore different directions without losing work
+- **Branching revisions**: Version history that mirrors how writers actually think - not just a simple undo/redo stack
+- **Contextual AI assistance**: AI integration that understands your document's context and provides relevant suggestions
+- **Annotation system**: Comments, suggestions, and revisions that layer onto your text without disrupting flow
+- **Real-time collaboration**: Built for the modern workflow of multiple reviewers and collaborative editing
 
-## Recommended IDE Setup
+## Technical Foundation
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+Built with modern web technologies for cross-platform compatibility:
+- **Frontend**: SvelteKit + TypeScript + Tailwind CSS
+- **Editor**: CodeMirror 6 for robust text editing
+- **Desktop**: Tauri for native performance
+- **AI**: Flexible integration supporting multiple providers (OpenAI, Anthropic, Google)
 
+## Getting Started
 
-## Roadmap
+### Prerequisites
+- Node.js 18+ and npm/bun
+- Rust toolchain (for Tauri builds)
 
-- Robust storage (never lose data)
-- Infinite history (tree-based undo/redo, see your version history) be able to view your version history
-- TODO (code structure): make comments generic into suggestions/comments/revisions
-- one-click rephrase (with fluid ui to switch between concise or something else)
-- also we have to implement "goals" and "styles" for the document, grammarly style. settings for the ai
-- bring your own key + make sure we can use a mix of Google, Claude, and ChatGPT (ChatGPT glazes too much, Google can get too corporate sometimes, and I don't know how good Claude is for writing just yet).
-- also, offline-first
-- brain mapping?
-- what i need to implement FIRST is non-linear editing
-  - We have that revision system but it's lowk scuffed as it is right now
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/ThatXliner/Quillium.git
+cd Quillium
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Or run with Tauri for desktop development
+npm run tauri dev
+```
+
+### Building
+
+```bash
+# Build web version
+npm run build
+
+# Build desktop application
+npm run tauri build
+```
+
+## Development Environment
+
+For the best development experience, we recommend:
+
+[VS Code](https://code.visualstudio.com/) with the following extensions:
+- [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode)
+- [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) 
+- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on how to get involved.
+
+### Development Commands
+
+```bash
+# Format and lint code
+npm run format    # Format with Biome
+npm run lint      # Lint with Biome
+npm run biome     # Run both format and lint
+
+# Type checking
+npm run check           # One-time check
+npm run check:watch     # Watch mode
+```
+
+## Project Vision
+
+### Current State
+Quillium is in active development, focusing on building robust foundations:
+- ✅ Core editor with CodeMirror 6 integration
+- ✅ Basic annotation system (comments and revisions)
+- ✅ AI integration framework
+- ✅ Cross-platform desktop app via Tauri
+
+### Near-term Goals
+- **Robust data persistence**: Never lose your work, even during crashes
+- **Enhanced revision system**: True non-linear editing with branching histories
+- **Improved AI integration**: Support for multiple AI providers with configurable behavior
+- **Offline-first architecture**: Work without internet connectivity
+- **Better collaboration tools**: Real-time collaborative editing
+
+### Long-term Vision
+- **Mind mapping integration**: Visual representation of document structure and relationships
+- **Advanced analytics**: Writing insights, productivity metrics, and style analysis
+- **Plugin ecosystem**: Extensible architecture for community contributions
+- **Cross-document linking**: Connect ideas across multiple documents
+
+## Architecture
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed technical documentation.
+
+## License
+
+MIT © [ThatXliner](https://github.com/ThatXliner)
