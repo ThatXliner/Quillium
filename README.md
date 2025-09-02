@@ -11,9 +11,6 @@ This template should help get you started developing with Tauri, SvelteKit and T
 
 - Robust storage (never lose data)
 - Infinite history (tree-based undo/redo, see your version history)
-- Comments/annotations
-- Revisions
-- AI suggestions
 
 
 - TODO: make comments generic into suggestions/comments/revisions
