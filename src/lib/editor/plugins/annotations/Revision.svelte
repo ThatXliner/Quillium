@@ -24,9 +24,9 @@
 </script>
 
 <div
-    class="group relative bg-white rounded-lg p-3 my-2 transition-all duration-300 ease-out {isActive
+    class="group relative bg-white rounded-lg p-2.5 transition-all duration-300 ease-out {isActive
         ? 'shadow-xl ring-2 ring-purple-500 scale-[1.02]'
-        : 'shadow-md hover:shadow-lg ring-1 ring-gray-200 hover:ring-gray-300'}"
+        : 'shadow-sm hover:shadow-md ring-1 ring-gray-200 hover:ring-gray-300'}"
     role="button"
     tabindex="0"
     onclick={() => {
@@ -65,7 +65,7 @@
         </span>
     </div>
 
-    <div class="space-y-4 my-4">
+    <div class="space-y-2 my-2">
         <div class="flex items-center justify-between">
             <h3 class="text-sm font-medium text-gray-700">Revisions</h3>
             <button

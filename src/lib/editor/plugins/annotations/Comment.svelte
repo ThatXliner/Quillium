@@ -128,9 +128,9 @@
 </script>
 
 <div
-    class="group relative bg-white rounded-lg p-3 my-2 transition-all duration-300 ease-out {isActive
+    class="group relative bg-white rounded-lg p-2.5 transition-all duration-300 ease-out {isActive
         ? 'shadow-xl ring-2 ring-blue-500 scale-[1.02]'
-        : 'shadow-md hover:shadow-lg ring-1 ring-gray-200 hover:ring-gray-300'}"
+        : 'shadow-sm hover:shadow-md ring-1 ring-gray-200 hover:ring-gray-300'}"
     role="button"
     tabindex="0"
     onclick={() => {
@@ -185,21 +185,21 @@
     </div>
 
     <Thread {thread} {updateThread} />
-    <div class="relative my-3 transition-all duration-200 {isActive ? 'opacity-100' : 'opacity-90'}">
+    <div class="relative my-2 transition-all duration-200 {isActive ? 'opacity-100' : 'opacity-90'}">
         <textarea
             bind:value={newMessage}
-            class="w-full resize-none border p-2 rounded-md border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent h-fit transition-all duration-200"
+            class="w-full resize-none border p-1.5 text-sm rounded-md border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent h-fit transition-all duration-200"
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                     save();
                 }
             }}
-            placeholder="Type a message..."
+            placeholder="Add a reply..."
         >
         </textarea>
         <button
             disabled={!newMessage}
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white bg-blue-500 rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            class="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-white bg-blue-500 rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onclick={() => {
                 save();
             }}

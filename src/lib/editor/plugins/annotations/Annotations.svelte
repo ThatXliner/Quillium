@@ -39,42 +39,113 @@
     }
 
     let containerEl = $state<HTMLDivElement>();
-    let annotationPositions = $state<Map<number, number>>(new Map());
+    let annotationPositions = $state<Map<number, { base: number; adjusted: number }>>(new Map());
     let editorScrollTop = $state(0);
 
-    // Calculate annotation positions based on their location in the editor
+    // Calculate annotation positions with collision detection
     function updateAnnotationPositions() {
         if (!$editorView || !$annotations || !containerEl) return;
 
-        const newPositions = new Map<number, number>();
+        const annotations = Object.values($annotations);
+        if (annotations.length === 0) return;
+
         const scrollTop = $editorView.scrollDOM.scrollTop;
         editorScrollTop = scrollTop;
 
-        for (const annotation of Object.values($annotations)) {
+        // First pass: get base positions from editor
+        const basePositions = new Map<number, number>();
+        for (const annotation of annotations) {
             const coords = $editorView.coordsAtPos(annotation.selection.main.from);
             if (coords) {
-                // Calculate relative position from the top of the viewport
                 const relativeTop = coords.top - $editorView.scrollDOM.getBoundingClientRect().top + scrollTop;
-                newPositions.set(annotation.id, relativeTop);
+                basePositions.set(annotation.id, relativeTop);
             }
         }
 
-        annotationPositions = newPositions;
+        // Sort annotations by their base position
+        const sortedAnnotations = [...annotations].sort((a, b) => {
+            const posA = basePositions.get(a.id) || 0;
+            const posB = basePositions.get(b.id) || 0;
+            return posA - posB;
+        });
+
+        // Second pass: adjust positions to prevent overlap
+        const adjustedPositions = new Map<number, { base: number; adjusted: number }>();
+        const ANNOTATION_MIN_HEIGHT = 120; // Estimated minimum height of annotation
+        const ANNOTATION_MARGIN = 16; // Margin between annotations
+        const GROUP_THRESHOLD = 30; // Annotations within this distance are grouped
+        
+        let lastBottom = -Infinity;
+        let groupStart = -1;
+        let groupAnnotations: typeof sortedAnnotations = [];
+        
+        for (let i = 0; i < sortedAnnotations.length; i++) {
+            const annotation = sortedAnnotations[i];
+            const basePos = basePositions.get(annotation.id) || 0;
+            const nextBasePos = i < sortedAnnotations.length - 1 
+                ? basePositions.get(sortedAnnotations[i + 1].id) || 0 
+                : Infinity;
+            
+            // Check if this is part of a group
+            if (groupStart === -1) {
+                groupStart = basePos;
+                groupAnnotations = [annotation];
+            } else {
+                groupAnnotations.push(annotation);
+            }
+            
+            // Check if we should end the group
+            const shouldEndGroup = nextBasePos - basePos > GROUP_THRESHOLD || i === sortedAnnotations.length - 1;
+            
+            if (shouldEndGroup) {
+                // Position all annotations in the group
+                let groupTop = Math.max(groupStart, lastBottom + ANNOTATION_MARGIN);
+                
+                for (let j = 0; j < groupAnnotations.length; j++) {
+                    const groupAnnotation = groupAnnotations[j];
+                    const adjustedPos = groupTop + (j * (ANNOTATION_MIN_HEIGHT + ANNOTATION_MARGIN));
+                    
+                    adjustedPositions.set(groupAnnotation.id, {
+                        base: basePositions.get(groupAnnotation.id) || 0,
+                        adjusted: adjustedPos
+                    });
+                    
+                    lastBottom = adjustedPos + ANNOTATION_MIN_HEIGHT;
+                }
+                
+                // Reset group
+                groupStart = -1;
+                groupAnnotations = [];
+            }
+        }
+
+        annotationPositions = adjustedPositions;
     }
 
     // Update positions when annotations change
     $effect(() => {
         if ($annotations && $editorView) {
-            updateAnnotationPositions();
+            // Small delay to allow for smooth transitions
+            requestAnimationFrame(() => {
+                updateAnnotationPositions();
+            });
         }
     });
 
-    // Set up scroll listener
+    // Set up scroll listener with debouncing
     onMount(() => {
         if (!$editorView) return;
 
+        let scrollTimeout: ReturnType<typeof setTimeout>;
         const handleScroll = () => {
+            // Immediate update for responsiveness
             updateAnnotationPositions();
+            
+            // Debounced update for final positioning
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => {
+                updateAnnotationPositions();
+            }, 100);
         };
 
         $editorView.scrollDOM.addEventListener('scroll', handleScroll);
@@ -84,6 +155,7 @@
 
         return () => {
             $editorView?.scrollDOM.removeEventListener('scroll', handleScroll);
+            clearTimeout(scrollTimeout);
         };
     });
 </script>
@@ -105,12 +177,32 @@
                 {@const isPendingComment = !(
                     !canCreateNewComment($annotations) && i === a.length - 1
                 )}
-                {@const position = annotationPositions.get(c.id) || 0}
+                {@const positionData = annotationPositions.get(c.id)}
+                {@const position = positionData?.adjusted || 0}
+                {@const basePosition = positionData?.base || 0}
+                {@const isDisplaced = position !== basePosition}
                 
                 <div
-                    class="absolute left-0 right-0 transition-all duration-300 ease-out"
-                    style="top: {position}px; transform: translateY({isActive ? -4 : 0}px);"
+                    class="absolute left-0 right-0 transition-all duration-500 ease-out"
+                    style="top: {position}px; transform: translateY({isActive ? -4 : 0}px); z-index: {isActive ? 10 : 1};"
                 >
+                    <!-- Visual connector line when annotation is displaced -->
+                    {#if isDisplaced && !isActive}
+                        <svg 
+                            class="absolute -left-8 pointer-events-none opacity-30"
+                            style="top: -8px; width: 32px; height: {position - basePosition + 16}px;"
+                        >
+                            <path 
+                                d="M 28 4 Q 16 4, 16 16 L 16 {position - basePosition}"
+                                stroke="currentColor"
+                                stroke-width="1"
+                                fill="none"
+                                stroke-dasharray="2,2"
+                                class="text-gray-400"
+                            />
+                        </svg>
+                    {/if}
+                    
                     {#if isAnnotationOfType(c, "comment") && isPendingComment}
                         <Comment
                             comment={c}

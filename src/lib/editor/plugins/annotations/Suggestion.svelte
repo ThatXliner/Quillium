@@ -33,9 +33,9 @@
 </script>
 
 <div
-    class="group relative bg-white rounded-lg p-3 my-2 transition-all duration-300 ease-out {isActive
+    class="group relative bg-white rounded-lg p-2.5 transition-all duration-300 ease-out {isActive
         ? 'shadow-xl ring-2 ring-green-500 scale-[1.02]'
-        : 'shadow-md hover:shadow-lg ring-1 ring-gray-200 hover:ring-gray-300'}"
+        : 'shadow-sm hover:shadow-md ring-1 ring-gray-200 hover:ring-gray-300'}"
     role="button"
     tabindex="0"
     onclick={() => {
@@ -73,8 +73,8 @@
             Line {Math.max(1, $editorView?.state.doc.lineAt(suggestion.selection.main.from).number || 1)}
         </span>
     </div>
-    <div class="mb-3">
-        <div class="text-xs text-gray-500 mb-2 font-medium">Suggestions:</div>
+    <div class="mb-2">
+        <div class="text-xs text-gray-500 mb-1.5 font-medium">Suggestions:</div>
         <div class="space-y-1">
             {#each suggestion.replacements as replacement, index}
                 <button
