@@ -9,20 +9,19 @@
 
     let input = $state("");
 
-    function handleToolCall(toolCall: any) {
+    function handleToolCall({ toolCall }: any) {
         if (!$editorView) return;
-        console.log(toolCall);
         if (toolCall.toolName === "createComment") {
             createComment({
-                targetText: toolCall.args.targetText,
-                comment: toolCall.args.comment,
+                targetText: toolCall.input.targetText,
+                comment: toolCall.input.comment,
                 view: $editorView,
             });
         } else if (toolCall.toolName === "createSuggestion") {
             createSuggestion({
-                targetText: toolCall.args.targetText,
-                replacements: toolCall.args.replacements,
-                comment: toolCall.args.comment,
+                targetText: toolCall.input.targetText,
+                replacements: toolCall.input.replacements,
+                comment: toolCall.input.comment,
                 state: $editorView.state,
                 dispatch: $editorView.dispatch,
             });
@@ -70,7 +69,7 @@
                     ? `${$documentContent.length} characters`
                     : "No content"}
             </div>
-            {#if $selectedText}
+            <!-- {#if $selectedText}
                 <div class="bg-yellow-50 p-2 rounded border border-yellow-200">
                     <div class="font-medium text-yellow-800">
                         Selected text:
@@ -82,7 +81,7 @@
                             : ""}"
                     </div>
                 </div>
-            {/if}
+            {/if} -->
         </div>
 
         <!-- Quick actions -->
@@ -136,23 +135,46 @@
     </div>
 
     <!-- Input -->
-    <form onsubmit={handleSubmit} class="p-4 border-t border-gray-200">
-        <div class="flex space-x-2">
+    <div class="border-t border-gray-200 p-4">
+        <form onsubmit={handleSubmit} class="flex flex-col flex-wrap space-y-2">
             <input
                 bind:value={input}
                 name="message"
-                placeholder="Ask a specific question about your writing..."
+                placeholder="Ask about your document..."
                 disabled={chat.status !== "ready"}
-                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready" || !input.trim()}
-                class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={chat.status !== "ready"}
+                class="w-full py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             >
                 Send
             </button>
-        </div>
-    </form>
+            {#if $selectedText}
+                <div
+                    class="text-xs bg-yellow-50 p-2 rounded border border-yellow-200"
+                >
+                    <div class="font-medium text-yellow-800">
+                        Selected text:
+                    </div>
+                    <div class="text-yellow-700 text-xs">
+                        "{$selectedText.slice(0, 100)}{$selectedText.length >
+                        100
+                            ? "..."
+                            : ""}"
+                    </div>
+                </div>
+            {/if}
+        </form>
+        <!-- {#if $selectedText}
+            <div class="mt-2 text-xs text-gray-500">
+                Selected: "{$selectedText.slice(0, 50)}{$selectedText.length >
+                50
+                    ? "..."
+                    : ""}"
+            </div>
+        {/if} -->
+    </div>
 </div>
