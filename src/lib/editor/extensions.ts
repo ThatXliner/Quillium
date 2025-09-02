@@ -22,6 +22,7 @@ import {
 } from "@codemirror/view";
 import { annotationField } from "./plugins/annotations";
 import { annotations, annotationKeymap } from "./plugins/annotations";
+import { highlightField, highlightTheme } from "./plugins/annotations/highlightEffect";
 import { type ListenerOptions, listeners } from "./listeners";
 export const savedFields = { historyField, annotationField };
 
@@ -59,6 +60,8 @@ export const getExtensions = (options?: ListenerOptions) => [
   }),
   listeners(options),
   annotations(),
+  highlightField,
+  highlightTheme,
   ...(options?.updateListener
     ? [EditorView.updateListener.of(options.updateListener)]
     : []),

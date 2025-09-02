@@ -112,7 +112,6 @@
         {#each chat.messages as message, messageIndex (messageIndex)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
-                    {@const rendered = renderMarkdown(part.text)}
                     <div
                         class="flex {message.role === 'user'
                             ? 'justify-end'
@@ -127,7 +126,7 @@
                             <div
                                 class="text-sm whitespace-pre-wrap break-words"
                             >
-                                {@html rendered}
+                                {part.text}
                             </div>
                         </div>
                     </div>

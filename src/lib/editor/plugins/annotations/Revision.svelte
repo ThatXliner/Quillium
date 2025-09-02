@@ -24,11 +24,46 @@
 </script>
 
 <div
-    class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm ring-2 {isActive
-        ? 'ring-blue-500 ring-4'
-        : 'ring-gray-500'}"
+    class="group relative bg-white rounded-lg p-3 my-2 transition-all duration-300 ease-out {isActive
+        ? 'shadow-xl ring-2 ring-purple-500 scale-[1.02]'
+        : 'shadow-md hover:shadow-lg ring-1 ring-gray-200 hover:ring-gray-300'}"
+    role="button"
+    tabindex="0"
+    onclick={() => {
+        // Focus the annotation in the editor
+        if ($editorView && revision.selection) {
+            $editorView.dispatch({
+                selection: revision.selection,
+                scrollIntoView: true,
+            });
+        }
+    }}
+    onkeydown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if ($editorView && revision.selection) {
+                $editorView.dispatch({
+                    selection: revision.selection,
+                    scrollIntoView: true,
+                });
+            }
+        }
+    }}
 >
-    <div class="text-sm text-gray-700"></div>
+    <!-- Connection line indicator -->
+    <div class="absolute -left-4 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-gradient-to-r {isActive 
+        ? 'from-purple-500 to-transparent opacity-100' 
+        : 'from-gray-300 to-transparent opacity-0 group-hover:opacity-100'} transition-opacity duration-200"></div>
+    
+    <!-- Annotation type badge -->
+    <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+            Revision
+        </span>
+        <span class="text-xs text-gray-400">
+            Line {Math.max(1, $editorView?.state.doc.lineAt(revision.selection.main.from).number || 1)}
+        </span>
+    </div>
 
     <div class="space-y-4 my-4">
         <div class="flex items-center justify-between">
