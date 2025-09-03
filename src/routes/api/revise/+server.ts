@@ -2,7 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { convertToModelMessages, streamText, tool, type UIMessage } from "ai";
 import { OPENAI_API_KEY } from "$env/static/private";
 import { z } from "zod";
-import { injectDocumentContext } from "$lib/utils";
+import { injectDocumentContext } from "$lib/ai/utils";
 
 const openai = createOpenAI({ apiKey: OPENAI_API_KEY });
 

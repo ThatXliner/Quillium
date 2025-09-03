@@ -6,7 +6,7 @@
     } from "$lib/editor/plugins/annotations";
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
-    import { renderMarkdown } from "$lib/utils";
+    import { renderMarkdown } from "$lib/ai/utils";
 
     let input = $state("");
 
@@ -113,7 +113,7 @@
         {#each chat.messages as message, messageIndex (messageIndex)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
-                    {@const rendered = renderMarkdown(part.text)}
+                    {@const renderPromise = renderMarkdown(part.text)}
                     <div
                         class="flex {message.role === 'user'
                             ? 'justify-end'
@@ -128,7 +128,9 @@
                             <div
                                 class="text-sm whitespace-pre-wrap break-words"
                             >
-                                {rendered}
+                                {#await renderPromise then rendered}
+                                    {@html rendered}
+                                {/await}
                             </div>
                         </div>
                     </div>

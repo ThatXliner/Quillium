@@ -298,11 +298,11 @@ const dev_dontuseinprod_createSuggestion: StateCommand = ({
 };
 export const annotationKeymap: KeyBinding[] = [
   {
-    key: "Mod-Shift-c",
+    key: "Mod-Alt-m",
     run: createCommentCommand,
   },
   {
-    key: "Mod-k",
+    key: "Mod-Alt-k",
     run: createRevisionCommand,
   },
   {

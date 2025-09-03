@@ -1,6 +1,6 @@
 <script lang="ts">
     import { documentContent, selectedText } from "$lib/stores";
-    import { renderMarkdown } from "$lib/utils";
+    import { renderMarkdown } from "$lib/ai/utils";
     import { DefaultChatTransport } from "ai";
     import { Chat } from "@ai-sdk/svelte";
 
@@ -31,7 +31,7 @@
         {#each chat.messages as message (message.id)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
-                    {@const rendered = renderMarkdown(part.text)}
+                    {@const renderPromise = renderMarkdown(part.text)}
                     <div
                         class="flex {message.role === 'user'
                             ? 'justify-end'
@@ -55,8 +55,8 @@
                                         ? 'prose-invert'
                                         : ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                                 >
-                                    {#await rendered then html}
-                                        {@html html}
+                                    {#await renderPromise then rendered}
+                                        {@html rendered}
                                     {/await}
                                 </div>
                             </div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { renderMarkdown } from "$lib/utils";
+    import { renderMarkdown } from "$lib/ai/utils";
     import type { Thread, ThreadMessage } from ".";
     let {
         message,
