@@ -4,7 +4,6 @@
         createComment,
         createSuggestion,
     } from "$lib/editor/plugins/annotations";
-    import { renderMarkdown } from "$lib/utils";
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";

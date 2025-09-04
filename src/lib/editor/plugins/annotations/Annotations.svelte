@@ -39,53 +39,64 @@
     }
 
     let containerEl = $state<HTMLDivElement>();
-    let annotationPositions = $state<Map<number, { base: number; adjusted: number }>>(new Map());
+    let annotationPositions = $state<
+        Map<number, { base: number; adjusted: number }>
+    >(new Map());
     let editorScrollTop = $state(0);
 
     // Calculate annotation positions with collision detection
     function updateAnnotationPositions() {
         if (!$editorView || !$annotations || !containerEl) return;
 
-        const annotations = Object.values($annotations);
-        if (annotations.length === 0) return;
+        const a = Object.values($annotations);
+        if (a.length === 0) return;
 
         const scrollTop = $editorView.scrollDOM.scrollTop;
         editorScrollTop = scrollTop;
 
         // First pass: get base positions from editor
         const basePositions = new Map<number, number>();
-        for (const annotation of annotations) {
-            const coords = $editorView.coordsAtPos(annotation.selection.main.from);
+        for (const annotation of a) {
+            const coords = $editorView.coordsAtPos(
+                annotation.selection.main.from,
+            );
             if (coords) {
-                const relativeTop = coords.top - $editorView.scrollDOM.getBoundingClientRect().top + scrollTop;
+                const relativeTop =
+                    coords.top -
+                    $editorView.scrollDOM.getBoundingClientRect().top +
+                    scrollTop;
                 basePositions.set(annotation.id, relativeTop);
             }
         }
 
         // Sort annotations by their base position
-        const sortedAnnotations = [...annotations].sort((a, b) => {
+        const sortedAnnotations = [...a].sort((a, b) => {
             const posA = basePositions.get(a.id) || 0;
             const posB = basePositions.get(b.id) || 0;
             return posA - posB;
         });
 
         // Second pass: adjust positions to prevent overlap
-        const adjustedPositions = new Map<number, { base: number; adjusted: number }>();
+        const adjustedPositions = new Map<
+            number,
+            { base: number; adjusted: number }
+        >();
         const ANNOTATION_MIN_HEIGHT = 120; // Estimated minimum height of annotation
         const ANNOTATION_MARGIN = 16; // Margin between annotations
         const GROUP_THRESHOLD = 30; // Annotations within this distance are grouped
-        
+
         let lastBottom = -Infinity;
         let groupStart = -1;
         let groupAnnotations: typeof sortedAnnotations = [];
-        
+
         for (let i = 0; i < sortedAnnotations.length; i++) {
             const annotation = sortedAnnotations[i];
             const basePos = basePositions.get(annotation.id) || 0;
-            const nextBasePos = i < sortedAnnotations.length - 1 
-                ? basePositions.get(sortedAnnotations[i + 1].id) || 0 
-                : Infinity;
-            
+            const nextBasePos =
+                i < sortedAnnotations.length - 1
+                    ? basePositions.get(sortedAnnotations[i + 1].id) || 0
+                    : Infinity;
+
             // Check if this is part of a group
             if (groupStart === -1) {
                 groupStart = basePos;
@@ -93,26 +104,33 @@
             } else {
                 groupAnnotations.push(annotation);
             }
-            
+
             // Check if we should end the group
-            const shouldEndGroup = nextBasePos - basePos > GROUP_THRESHOLD || i === sortedAnnotations.length - 1;
-            
+            const shouldEndGroup =
+                nextBasePos - basePos > GROUP_THRESHOLD ||
+                i === sortedAnnotations.length - 1;
+
             if (shouldEndGroup) {
                 // Position all annotations in the group
-                let groupTop = Math.max(groupStart, lastBottom + ANNOTATION_MARGIN);
-                
+                let groupTop = Math.max(
+                    groupStart,
+                    lastBottom + ANNOTATION_MARGIN,
+                );
+
                 for (let j = 0; j < groupAnnotations.length; j++) {
                     const groupAnnotation = groupAnnotations[j];
-                    const adjustedPos = groupTop + (j * (ANNOTATION_MIN_HEIGHT + ANNOTATION_MARGIN));
-                    
+                    const adjustedPos =
+                        groupTop +
+                        j * (ANNOTATION_MIN_HEIGHT + ANNOTATION_MARGIN);
+
                     adjustedPositions.set(groupAnnotation.id, {
                         base: basePositions.get(groupAnnotation.id) || 0,
-                        adjusted: adjustedPos
+                        adjusted: adjustedPos,
                     });
-                    
+
                     lastBottom = adjustedPos + ANNOTATION_MIN_HEIGHT;
                 }
-                
+
                 // Reset group
                 groupStart = -1;
                 groupAnnotations = [];
@@ -140,7 +158,7 @@
         const handleScroll = () => {
             // Immediate update for responsiveness
             updateAnnotationPositions();
-            
+
             // Debounced update for final positioning
             clearTimeout(scrollTimeout);
             scrollTimeout = setTimeout(() => {
@@ -148,13 +166,13 @@
             }, 100);
         };
 
-        $editorView.scrollDOM.addEventListener('scroll', handleScroll);
-        
+        $editorView.scrollDOM.addEventListener("scroll", handleScroll);
+
         // Initial position calculation
         updateAnnotationPositions();
 
         return () => {
-            $editorView?.scrollDOM.removeEventListener('scroll', handleScroll);
+            $editorView?.scrollDOM.removeEventListener("scroll", handleScroll);
             clearTimeout(scrollTimeout);
         };
     });
@@ -168,8 +186,8 @@
     <div class="relative p-4" style="min-height: 100vh;">
         {#if $annotations && Object.keys($annotations).length > 0}
             {@const a = Object.values($annotations)}
-            {@const sortedAnnotations = a.sort((a, b) => 
-                a.selection.main.from - b.selection.main.from
+            {@const sortedAnnotations = a.sort(
+                (a, b) => a.selection.main.from - b.selection.main.from,
             )}
             {#each sortedAnnotations as c (c.id)}
                 {@const i = c.id}
@@ -181,19 +199,24 @@
                 {@const position = positionData?.adjusted || 0}
                 {@const basePosition = positionData?.base || 0}
                 {@const isDisplaced = position !== basePosition}
-                
+
                 <div
                     class="absolute left-0 right-0 transition-all duration-500 ease-out"
-                    style="top: {position}px; transform: translateY({isActive ? -4 : 0}px); z-index: {isActive ? 10 : 1};"
+                    style="top: {position}px; transform: translateY({isActive
+                        ? -4
+                        : 0}px); z-index: {isActive ? 10 : 1};"
                 >
                     <!-- Visual connector line when annotation is displaced -->
                     {#if isDisplaced && !isActive}
-                        <svg 
+                        <svg
                             class="absolute -left-8 pointer-events-none opacity-30"
-                            style="top: -8px; width: 32px; height: {position - basePosition + 16}px;"
+                            style="top: -8px; width: 32px; height: {position -
+                                basePosition +
+                                16}px;"
                         >
-                            <path 
-                                d="M 28 4 Q 16 4, 16 16 L 16 {position - basePosition}"
+                            <path
+                                d="M 28 4 Q 16 4, 16 16 L 16 {position -
+                                    basePosition}"
                                 stroke="currentColor"
                                 stroke-width="1"
                                 fill="none"
@@ -202,7 +225,7 @@
                             />
                         </svg>
                     {/if}
-                    
+
                     {#if isAnnotationOfType(c, "comment") && isPendingComment}
                         <Comment
                             comment={c}
@@ -237,9 +260,7 @@
                 </div>
             {/if}
         {:else}
-            <div
-                class="flex items-center justify-center h-full text-gray-500"
-            >
+            <div class="flex items-center justify-center h-full text-gray-500">
                 No annotations
             </div>
         {/if}
