@@ -47,10 +47,11 @@
         {#each a as c}
             {@const i = c.id}
             {@const isActive = $activeComment?.id === c.id}
-            {@const isPendingComment = !(
-                !canCreateNewComment($annotations) && i === a.length - 1
-            )}
-            {#if isAnnotationOfType(c, "comment") && isPendingComment}
+            <!-- TODO: i need to make annotations a proper class... -->
+            {@const isPendingComment =
+                !canCreateNewComment($annotations) &&
+                i === Math.max(...a.map((x) => x.id))}
+            {#if isAnnotationOfType(c, "comment") && !isPendingComment}
                 <Comment
                     comment={c}
                     {isActive}
