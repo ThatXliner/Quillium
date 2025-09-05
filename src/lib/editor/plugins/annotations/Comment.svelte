@@ -131,8 +131,6 @@
         ? 'ring-blue-500 ring-4'
         : 'ring-gray-500'}"
 >
-    <div class="text-sm text-gray-700"></div>
-
     <Thread {thread} {updateThread} />
     <div class="relative my-3">
         <textarea
