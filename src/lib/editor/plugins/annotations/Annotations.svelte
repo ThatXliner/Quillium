@@ -36,14 +36,23 @@
             }),
         );
     }
+    const sortedAnnotations = $derived(
+        $annotations
+            ? Object.values($annotations).sort(
+                  (a, b) => a.selection.main.from - b.selection.main.from,
+              )
+            : [],
+    );
 </script>
 
 <!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->
 <div
     class="p-2 pl-5 rounded bg-white min-h-screen overflow-y-scroll sticky top-0 space-y-4 flex flex-col"
+    style="scroll-behavior: smooth;"
 >
-    {#if $annotations}
-        {@const a = Object.values($annotations)}
+    <!-- Honestly, the !== undefined is just for the type checker -->
+    {#if sortedAnnotations && $annotations !== undefined}
+        {@const a = Object.values(sortedAnnotations)}
         {#each a as c}
             {@const i = c.id}
             {@const isActive = $activeAnnotation?.id === c.id}
