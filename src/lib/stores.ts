@@ -2,7 +2,11 @@ import type { EditorView } from "@codemirror/view";
 import { writable, derived } from "svelte/store";
 
 import { getActiveAnnotation } from "./editor/plugins/annotations/utils";
-import type { Annotation, Annotations } from "./editor/plugins/annotations";
+import type {
+  Annotation,
+  Annotations,
+  GenericAnnotation,
+} from "./editor/plugins/annotations";
 
 export const editorView = writable<EditorView>();
 // We need to manually hook into when the annotations change
@@ -12,9 +16,8 @@ export const editorView = writable<EditorView>();
 // as opposed to derived from editorView
 export const annotations = writable<Annotations | undefined>();
 // For similar reasons (getActiveAnnotation relies on editor.state, which relies on editorView)
-// we have to manually manage and sync our own version of activeComment
-// TODO: activeAnnotation instead?
-export const activeComment = writable<Annotation<"comment"> | undefined>();
+// we have to manually manage and sync our own version of activeAnnotation
+export const activeAnnotation = writable<GenericAnnotation | undefined>();
 
 // Manually synced document content and selection for AI chat context
 // (similar to how we manually sync annotations)

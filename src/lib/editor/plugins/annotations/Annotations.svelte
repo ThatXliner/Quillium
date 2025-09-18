@@ -8,7 +8,7 @@
         updateThread,
         type Thread,
     } from "$lib/editor/plugins/annotations";
-    import { activeComment, annotations, editorView } from "$lib/stores";
+    import { activeAnnotation, annotations, editorView } from "$lib/stores";
 
     import Revision from "./Revision.svelte";
     import { canCreateNewComment } from "./utils";
@@ -46,7 +46,7 @@
         {@const a = Object.values($annotations)}
         {#each a as c}
             {@const i = c.id}
-            {@const isActive = $activeComment?.id === c.id}
+            {@const isActive = $activeAnnotation?.id === c.id}
             <!-- TODO: i need to make annotations a proper class... -->
             {@const isPendingComment =
                 !canCreateNewComment($annotations) &&

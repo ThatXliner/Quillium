@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { activeComment, annotations, editorView } from "$lib/stores";
+    import { activeAnnotation, annotations, editorView } from "$lib/stores";
     import { tick } from "svelte";
     import { updateThread, removeAnnotation } from "./annotationField";
     import { canCreateNewComment } from "./utils";
+    import { isAnnotationOfType } from "./models";
 
     let commentText = $state("");
     let textarea = $state<HTMLTextAreaElement | undefined>();
@@ -16,14 +17,18 @@
         }
     });
     function addComment() {
-        if (!$activeComment) return;
+        if (
+            !$activeAnnotation ||
+            !isAnnotationOfType($activeAnnotation, "comment")
+        )
+            return;
         $editorView.dispatch(
             $editorView.state.update({
                 effects: [
                     updateThread.of({
-                        annotationId: $activeComment.id,
+                        annotationId: $activeAnnotation.id,
                         newThread: [
-                            ...$activeComment.thread,
+                            ...$activeAnnotation.thread,
                             {
                                 message: commentText,
                                 author: "User",
@@ -37,10 +42,14 @@
         commentText = "";
     }
     function cancelComment() {
-        if (!$activeComment) return;
+        if (
+            !$activeAnnotation ||
+            !isAnnotationOfType($activeAnnotation, "comment")
+        )
+            return;
         $editorView.dispatch(
             $editorView.state.update({
-                effects: [removeAnnotation.of($activeComment)],
+                effects: [removeAnnotation.of($activeAnnotation)],
             }),
         );
         commentText = "";
