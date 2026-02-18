@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { renderMarkdown } from "$lib/ai/utils";
     import type { Thread, ThreadMessage } from ".";
+
     let {
         message,
         thread,
@@ -12,83 +12,74 @@
         thread: Thread;
         index: number;
     } = $props();
-    let editing: boolean = $state(false);
-    let editMessage: string = $state(message.message);
-    function startEditing() {
-        editing = true;
-    }
+
+    let editing = $state(false);
+    let editMessage = $state(message.message);
 
     function saveEdit() {
         const newThread = [...thread];
-        newThread[index] = {
-            ...thread[index],
-            message: editMessage,
-        };
+        newThread[index] = { ...thread[index], message: editMessage };
         updateThread(newThread);
         editing = false;
     }
+
+    function initials(author: string) {
+        return author
+            .split(" ")
+            .map((w) => w[0])
+            .join("")
+            .toUpperCase()
+            .slice(0, 2);
+    }
+
+    function formatTime(ts: number) {
+        return new Intl.DateTimeFormat("default", {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        }).format(new Date(ts));
+    }
 </script>
 
-<div class="bg-white shadow rounded-lg p-4">
-    <div class="flex justify-between items-start">
-        <div class="font-medium text-gray-900">{message.author}</div>
-        <div class="text-sm text-gray-500">
-            {new Intl.DateTimeFormat("default", {
-                dateStyle: "short",
-                timeStyle: "short",
-            }).format(new Date(message.time))}
-        </div>
+<div class="flex gap-2.5">
+    <div class="shrink-0 w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-semibold">
+        {initials(message.author)}
     </div>
+    <div class="flex-1 min-w-0">
+        <div class="flex items-baseline gap-1.5">
+            <span class="text-xs font-semibold text-gray-800">{message.author}</span>
+            <span class="text-[10px] text-gray-400">{formatTime(message.time)}</span>
+        </div>
 
-    {#if editing}
-        <div class="mt-2">
+        {#if editing}
             <textarea
                 bind:value={editMessage}
-                class="w-full p-2 border rounded"
+                class="mt-1 w-full text-xs rounded border border-gray-200 p-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
                 rows="3"
                 onkeydown={(e) => {
-                    if (
-                        (e.metaKey || e.ctrlKey) &&
-                        e.key === "Enter" &&
-                        editMessage
-                    ) {
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && editMessage) {
                         saveEdit();
-                        // @ts-ignore
-                        e.target.blur();
                     }
                 }}
             ></textarea>
-            <div class="mt-2 space-x-2">
+            <div class="flex gap-2 mt-1">
                 <button
                     onclick={saveEdit}
                     disabled={!editMessage}
-                    class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-                >
-                    Save
-                </button>
+                    class="text-xs font-medium text-blue-500 hover:text-blue-700 disabled:opacity-50"
+                >Save</button>
                 <button
-                    onclick={() => {
-                        editing = false;
-                        editMessage = message.message;
-                    }}
-                    class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
-                >
-                    Cancel
-                </button>
+                    onclick={() => { editing = false; editMessage = message.message; }}
+                    class="text-xs text-gray-400 hover:text-gray-600"
+                >Cancel</button>
             </div>
-        </div>
-    {:else}
-        {@const rendered = renderMarkdown(message.message)}
-        <p class="mt-2 whitespace-pre-wrap">
-            {#await rendered then html}
-                {@html html}
-            {/await}
-        </p>
-        <button
-            onclick={() => startEditing()}
-            class="mt-2 text-sm text-blue-500 hover:text-blue-700"
-        >
-            Edit
-        </button>
-    {/if}
+        {:else}
+            <p class="text-xs text-gray-700 mt-0.5 leading-relaxed whitespace-pre-wrap">{message.message}</p>
+            <button
+                onclick={() => (editing = true)}
+                class="text-[10px] text-gray-400 hover:text-gray-600 mt-0.5"
+            >Edit</button>
+        {/if}
+    </div>
 </div>

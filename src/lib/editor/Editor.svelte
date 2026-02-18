@@ -105,7 +105,7 @@
     });
 </script>
 
-<div class="w-full">
+<div class="w-full h-full overflow-y-auto">
     <div class="sticky top-4 z-50"><StatusBar {...stats} /></div>
 
     {#await fromSave then}

@@ -313,25 +313,21 @@
     });
 </script>
 
-<!-- Probably not a good way to make it "sticky".. should probably rethink the entire layout lol -->
 <div
     bind:this={annotationPanelElement}
-    class="p-2 pl-5 rounded bg-white min-h-screen h-full sticky top-0 flex flex-col overflow-visible"
-    style="scroll-behavior: smooth; min-height: calc(100vh + 200px)"
+    class="p-4 bg-white h-full flex flex-col overflow-hidden"
 >
-    <!-- Honestly, the !== undefined is just for the type checker -->
     {#if sortedAnnotations && $annotations !== undefined}
         {@const a = Object.values(sortedAnnotations)}
         {#each a as c}
             {@const i = c.id}
             {@const isActive = $activeAnnotation?.id === c.id}
-            <!-- TODO: i need to make annotations a proper class... -->
             {@const isPendingComment =
                 !canCreateNewComment($annotations) &&
                 i === Math.max(...a.map((x) => x.id))}
             <div
                 bind:this={annotationElements[i]}
-                class="annotation-item absolute transition-transform duration-300 ease-out"
+                class="annotation-item absolute w-[calc(100%-2rem)] transition-transform duration-300 ease-out"
                 class:active={isActive}
                 style="z-index: {isActive ? 10 : 1};"
             >
@@ -343,7 +339,6 @@
                         updateThread={dispatchUpdateThread.bind(null, i)}
                     />
                 {/if}
-                <!-- TODO: replace isActive with activeAnnotation or something like that -->
                 {#if isAnnotationOfType(c, "revision")}
                     <Revision
                         revision={c}
@@ -362,18 +357,17 @@
                 {/if}
             </div>
         {:else}
-            <div
-                class="flex items-center justify-center h-full my-auto text-gray-500"
-            >
-                No annotations
+            <div class="flex flex-col items-center justify-center h-full py-12 gap-2 text-center">
+                <div class="text-gray-300 text-2xl select-none">✎</div>
+                <div class="text-sm text-gray-400">No annotations yet</div>
             </div>
         {/each}
 
         {#if !canCreateNewComment($annotations)}
             {@const bottomPosition = sortedAnnotations.length * 152 + 32}
             <div
-                class="absolute"
-                style="top: {bottomPosition}px; width: calc(100% - 16px);"
+                class="absolute w-[calc(100%-2rem)]"
+                style="top: {bottomPosition}px;"
             >
                 <PreComment />
             </div>

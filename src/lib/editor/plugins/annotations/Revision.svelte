@@ -24,9 +24,9 @@
 </script>
 
 <div
-    class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm ring-2 {isActive
-        ? 'ring-blue-500 ring-4'
-        : 'ring-gray-500'}"
+    class="bg-white rounded-lg p-3 my-2 shadow-sm transition-shadow {isActive
+        ? 'ring-2 ring-blue-500'
+        : 'ring-1 ring-gray-200'}"
 >
     <div class="text-sm text-gray-700"></div>
 
