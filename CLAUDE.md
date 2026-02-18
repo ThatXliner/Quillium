@@ -110,3 +110,42 @@ No specific testing framework is currently configured. When adding tests, check 
 
 ### Build Process
 The application uses a static build process via `@sveltejs/adapter-static` to be compatible with Tauri's requirements. The Tauri configuration handles the build orchestration between frontend and backend.
+
+---
+
+## Design Context
+
+### Users
+Fiction and nonfiction writers doing long-form creative work — novels, essays, personal writing. They open Quillium to enter a focused writing state. The tool should feel like a quiet, trusted companion: present when needed, invisible when not. The job to be done is *getting into flow and staying there*, with AI and annotation assistance that feels natural rather than intrusive.
+
+### Brand Personality
+**Warm. Creative. Focused.**
+
+Quillium has the tactile warmth of a well-made notebook. It respects the writer's headspace — never loud, never demanding — but carries genuine personality. Think Craft or Bear, not Notion. The interface should feel like a workspace a writer would be proud to spend hours in.
+
+### Aesthetic Direction
+- **Theme**: Light only. Warm whites and soft off-whites rather than clinical pure white.
+- **Color**: Blue as primary interaction color, contextual greens/purples for AI features. Accent colors should be desaturated and gentle — not neon or harsh.
+- **Typography**: Generous, readable body text (currently 18px SF Pro). UI chrome uses smaller type but maintains clarity.
+- **Spacing**: Breathable. Panels shouldn't feel cramped. White space is intentional and valued.
+- **Depth**: Subtle — `shadow-sm` for panels, `shadow-xl` for the editor document card. Glass-morphism used sparingly (status bar, save menu).
+- **References**: Bear, Craft, iA Writer for warmth and focus. Not Figma, Jira, or dense productivity tools.
+- **Anti-references**: Avoid harsh primary colors, aggressive gradients, heavy dark chrome, or interfaces that feel like dashboards.
+
+### Design Tokens (Existing)
+- **Editor font**: SF Pro Text, system-ui stack, 18px
+- **Primary**: blue-500 / blue-600 (hover)
+- **Feedback/AI green**: green-500 / green-50 (bg)
+- **Revision/AI purple**: purple-500 / purple-50 (bg)
+- **Comment highlight**: `#fef2cd` (inactive), `#fcbc05` (active)
+- **Suggestion highlight**: `#f0fdf4` (inactive), `#dbf9e2` (active)
+- **Border radius**: `rounded-lg` default; `rounded-full` for pill shapes
+- **Panel padding**: `p-4` standard
+- **Document width**: 816px fixed
+
+### Design Principles
+1. **The writing comes first.** Chrome, controls, and AI features should retreat to the edges. The editor is the product — everything else is scaffolding.
+2. **Warmth over sterility.** Prefer soft backgrounds, gentle shadows, and slightly warm tones. Avoid clinical grays and pure-white flatness.
+3. **Calm interactions.** Transitions should be smooth and unhurried (`transition-colors`, `duration-300`). Avoid jarring state changes or aggressive animations.
+4. **Color with intention.** Each action type has a hue (blue = chat, green = feedback, purple = revise, yellow = comment). Honor these associations consistently throughout the UI.
+5. **WCAG AA as a floor.** Sufficient contrast is required on all text and interactive elements. Focus states must be clearly visible. Don't rely on color alone to convey state.
