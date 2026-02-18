@@ -25,7 +25,7 @@
 </script>
 
 <div
-    class="h-screen overflow-y-scroll sticky top-0 flex flex-col border-r border-gray-200 bg-white"
+    class="min-h-screen h-full overflow-y-scroll sticky top-0 flex flex-col border-r border-gray-200 bg-white"
 >
     {#if action === null}
         <!-- Main menu -->
