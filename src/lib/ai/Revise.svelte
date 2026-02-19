@@ -7,6 +7,7 @@
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
+    import { aiSettings } from "$lib/ai/settings.svelte";
 
     let input = $state("");
 
@@ -29,14 +30,17 @@
             });
         }
     }
-    // XXX: see Feedback.svelte
+
     const chat = new Chat({
         transport: new DefaultChatTransport({
             api: "/api/revise",
-            body: {
+            body: () => ({
                 documentContent: $documentContent,
                 selectedText: $selectedText,
-            },
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                apiKey: aiSettings.apiKey,
+            }),
         }),
         onToolCall: handleToolCall,
     });

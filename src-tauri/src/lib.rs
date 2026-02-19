@@ -3,6 +3,37 @@ use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 
+const KEYCHAIN_SERVICE: &str = "com.bryanhu.quillium";
+
+#[tauri::command]
+fn set_api_key(provider: String, key: String) -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
+        .map_err(|e| e.to_string())?;
+    entry.set_password(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_api_key(provider: String) -> Result<Option<String>, String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
+        .map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(key) => Ok(Some(key)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn delete_api_key(provider: String) -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
+        .map_err(|e| e.to_string())?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn save(app: tauri::AppHandle, state: String) -> bool {
@@ -71,7 +102,7 @@ fn load(app_handle: tauri::AppHandle) -> Option<String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![save, load, scrap])
+        .invoke_handler(tauri::generate_handler![save, load, scrap, set_api_key, get_api_key, delete_api_key])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

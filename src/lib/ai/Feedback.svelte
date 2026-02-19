@@ -7,6 +7,7 @@
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
+    import { aiSettings } from "$lib/ai/settings.svelte";
 
     let input = $state("");
 
@@ -29,16 +30,16 @@
         }
     }
 
-    // TODO: well... should the system message update
-    // upon the update of the documentContent or the selectedtext?
-    // No, right?
     const chat = new Chat({
         transport: new DefaultChatTransport({
             api: "/api/feedback",
-            body: {
+            body: () => ({
                 documentContent: $documentContent,
                 selectedText: $selectedText,
-            },
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                apiKey: aiSettings.apiKey,
+            }),
         }),
         onToolCall: handleToolCall,
     });

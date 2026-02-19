@@ -16,6 +16,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.45",
+    "@ai-sdk/google": "^3.0.30",
     "@ai-sdk/openai": "^2.0.91",
     "@ai-sdk/svelte": "^3.0.136",
     "@codemirror/commands": "^6.10.2",

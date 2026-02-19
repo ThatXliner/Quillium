@@ -3,15 +3,19 @@
     import { renderMarkdown } from "$lib/ai/utils";
     import { DefaultChatTransport } from "ai";
     import { Chat } from "@ai-sdk/svelte";
+    import { aiSettings } from "$lib/ai/settings.svelte";
 
     let input = $state("");
     let chat = new Chat({
         transport: new DefaultChatTransport({
             api: "/api/chat",
-            body: {
+            body: () => ({
                 documentContent: $documentContent,
                 selectedText: $selectedText,
-            },
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                apiKey: aiSettings.apiKey,
+            }),
         }),
     });
 
