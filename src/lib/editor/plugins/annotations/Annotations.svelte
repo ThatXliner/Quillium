@@ -166,6 +166,10 @@
             class="annotation-card"
             class:is-active={isActive}
             style="z-index: {isActive ? 100 : 50};"
+            onclick={() => { if (!isActive) $activeAnnotation = c; }}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") $activeAnnotation = c; }}
         >
             {#if isAnnotationOfType(c, "comment") && !isPendingComment}
                 <Comment
