@@ -4,40 +4,39 @@
 
 <!--Most writing tools force you to think linearly, but human creativity is inherently non-linear. Editing itself (which writers will be spending most of their time on) is a process... -->
 
-Quillium is the world's first non-linear editor for prose. Built on the idea that thoughts rarely emerge in perfect sequence, Quillium enables you to explore multiple versions of text as a first-class feature, track revisions as branches rather than replacements, and seamlessly integrate AI assistance into the creative process whilst maintaining your voice.
+Quillium is the world's first non-linear editor for prose. Built on the belief that thoughts rarely emerge in perfect sequence, it lets you explore multiple versions of text as a first-class feature, track revisions as branches rather than replacements, and weave AI assistance into the creative process without losing your voice.
 
-Quillium is not just an app; it's a vision towards a new way of writing. Whether you're crafting an essay, drafting a proposal, or exploring ideas, Quillium provides the flexibility to develop your thoughts naturally, freely, and quickly.
+Read the [Manifesto](./MANIFESTO.md).
 
-## Key Innovations
+## What Makes Quillium Different
 
-- **Non-linear editing**: Maintain multiple versions of text segments and explore different directions without losing work
+- **Non-linear editing**: Keep multiple versions of text segments alive at once. Explore different directions without losing work.
 <!--- **Branching revisions**: Version history that mirrors how writers actually think - not just a simple undo/redo stack-->
-- **Contextual AI assistance**: AI integration without the context switching. This includes:
-  - Acting as a second set of eyes for review and revisions, offering insights into what your audience may perceive
-  - Helping you figure out the right words to express what you're trying to say
-  - Providing relevant suggestions and feedback for a variety of goals and styles, including but not limited to grammar, conciseness, clarity, and tone
-- **Annotations**: A familiar comments and suggestions system that layer onto your text without disrupting flow
+- **Contextual AI assistance**: A second voice in the room — not a chatbot in a corner. The AI annotates rather than interrupts, responding to your text without pulling you out of it:
+  - Review and revise with a second set of eyes
+  - Find the right words for what you're trying to say
+  - Get targeted feedback on grammar, clarity, conciseness, and tone
+- **Annotations**: Comments, revisions, and suggestions that float beside your text — right where they belong.
 
-
-...and all of this packaged into a performant, friendly, and efficient interface. Keyboard-first!
+All of this in a performant, focused interface. Keyboard-first.
 
 <!--- **Real-time collaboration**: Built for the modern workflow of multiple reviewers and collaborative editing-->
 
 ## Technical Foundation
 
-Built with modern web technologies for cross-platform compatibility:
 - **Frontend**: SvelteKit + TypeScript + Tailwind CSS
-- **Editor**: CodeMirror 6 for robust text editing
-- **Desktop**: Tauri for native performance
-- **AI**: Flexible integration supporting multiple providers (OpenAI, Anthropic, Google)
+- **Editor**: CodeMirror 6
+- **Desktop**: Tauri (cross-platform, native performance)
+- **AI**: Multiple providers supported — OpenAI, Anthropic, Google
 
 ## Getting Started
 
 ### Prerequisites
+
 - Bun
 - Rust toolchain (for Tauri builds)
 
-### Development Setup
+### Development
 
 ```bash
 # Clone the repository
@@ -64,52 +63,51 @@ bun run build
 bun run tauri build
 ```
 
-## Development Environment
-
-For the best development experience, we recommend:
-
-[VS Code](https://code.visualstudio.com/) with the following extensions:
-- [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode)
-- [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
-- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
-
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on how to get involved.
+We welcome contributions. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-### Development Commands
+### Code Commands
 
 ```bash
-# Format and lint code
+# Format and lint
 bun run format    # Format with Biome
 bun run lint      # Lint with Biome
-bun run biome     # Run both format and lint
+bun run biome     # Run both
 
 # Type checking
 bun run check           # One-time check
 bun run check:watch     # Watch mode
 ```
 
-## Project Vision
+### Recommended Editor Setup
 
-### Current State
+[VS Code](https://code.visualstudio.com/) with:
+- [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode)
+- [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
+- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
-Quillium is in active development, focusing on building robust foundations:
+## Project Status
+
+### Current
+
 - ✅ Core editor with CodeMirror 6 integration
 - ✅ Basic annotation system (comments and revisions)
 - ✅ AI integration framework
 - ✅ Cross-platform desktop app via Tauri
 
-### Near-term Goals
-- **Robust data persistence**: Never lose your work, even during crashes
+### Near-term
+
+- **Robust data persistence**: Never lose work, even during crashes
 - **Enhanced revision system**: True non-linear editing with branching histories
-- **Improved AI integration**: Support for multiple AI providers with configurable behavior
+- **Improved AI integration**: Multiple providers with configurable behavior
 <!--- **Offline-first architecture**: Work without internet connectivity-->
 
-### Long-term Vision
-- **Better collaboration tools**: Real-time collaborative editing
-- **Mind mapping integration**: Visual representation of document structure and relationships
-- **Advanced analytics**: Writing insights, productivity metrics, and style analysis
+### Long-term
+
+- **Collaboration tools**: Real-time collaborative editing
+- **Mind mapping**: Visual representation of document structure
+- **Advanced analytics**: Writing insights, productivity metrics, style analysis
 - **Plugin ecosystem**: Extensible architecture for community contributions
 
 ## Architecture

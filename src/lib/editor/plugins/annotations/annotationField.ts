@@ -161,11 +161,10 @@ export const annotationField = StateField.define<Annotations>({
         Object.entries(
           mapValues(annotations, (x) => {
             // Run it through deletions
+            const isRevision = isAnnotationOfType(x, "revision");
             const newSelection = cleanRangesOf(
-              x.selection.map(
-                tr.changes,
-                isAnnotationOfType(x, "revision") ? 1 : 0,
-              ),
+              x.selection.map(tr.changes, isRevision ? 1 : 0),
+              isRevision,
             );
 
             // Idk how adding to the end of a revision version should work
