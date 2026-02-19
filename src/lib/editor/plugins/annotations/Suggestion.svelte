@@ -33,16 +33,17 @@
 </script>
 
 <div
-    class="bg-white rounded-lg p-3 my-2 shadow-sm transition-shadow {isActive
-        ? 'ring-2 ring-blue-500'
-        : 'ring-1 ring-gray-200'}"
+    class="backdrop-blur-md border overflow-hidden transition-all duration-200
+        {isActive
+            ? 'bg-gray-200/80 border-white/50 shadow-xl rounded-[14px]'
+            : 'bg-gray-300/70 border-white/30 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
 >
-    <div class="mb-3">
-        <div class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Suggestions</div>
+    <div class="p-3 space-y-2">
+        <div class="text-xs font-semibold text-black/50 uppercase tracking-wider">Suggestions</div>
         <div class="space-y-1">
             {#each suggestion.replacements as replacement, index}
                 <button
-                    class="w-full text-left px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-colors text-sm text-gray-800"
+                    class="w-full text-left px-3 py-2 rounded-lg bg-white/40 inset-shadow-sm inset-shadow-white border border-white/30 hover:bg-white/60 transition-colors text-xs text-black/80"
                     onclick={() => {
                         $editorView.dispatch(
                             applySuggestion(
@@ -58,15 +59,20 @@
             {/each}
         </div>
     </div>
-    <Thread {thread} {updateThread} />
 
-    <div class="flex justify-end gap-1 mt-2">
+    <div class="w-full h-px bg-black/10"></div>
+
+    <div class="p-3">
+        <Thread {thread} {updateThread} />
+    </div>
+
+    <div class="flex justify-end px-2 pb-2">
         <button
             aria-label="Delete suggestion"
-            class="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            class="p-1.5 rounded-lg text-black/30 hover:text-red-500/70 hover:bg-white/40 transition-colors"
             onclick={() => remove()}
         >
-            <Trash2 size={14} />
+            <Trash2 size={13} />
         </button>
     </div>
 </div>

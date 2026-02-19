@@ -53,11 +53,11 @@
     }
 </script>
 
-<div class="bg-white rounded-lg shadow-md ring-1 ring-black/5 overflow-hidden">
+<div class="backdrop-blur-md bg-gray-200/80 border border-white/50 shadow-xl rounded-[14px] overflow-hidden">
     <!-- Quoted text chip -->
     {#if selectedText}
         <div class="px-3 pt-3">
-            <div class="text-xs text-gray-500 border-l-2 border-yellow-400 pl-2 truncate italic">
+            <div class="text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic">
                 {selectedText.slice(0, 80)}{selectedText.length > 80 ? "…" : ""}
             </div>
         </div>
@@ -65,7 +65,7 @@
 
     <!-- Input -->
     <div class="flex gap-2.5 px-3 py-3">
-        <div class="shrink-0 w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs font-semibold">
+        <div class="shrink-0 w-7 h-7 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white shadow-sm flex items-center justify-center text-black/60 text-xs font-semibold">
             U
         </div>
         <textarea
@@ -80,23 +80,23 @@
                 }
             }}
             placeholder="Add a comment…"
-            class="flex-1 text-xs text-gray-700 placeholder:text-gray-400 bg-transparent resize-none focus:outline-none leading-relaxed"
+            class="flex-1 text-xs text-black/70 placeholder:text-black/30 bg-transparent resize-none focus:outline-none leading-relaxed"
             rows="2"
         ></textarea>
     </div>
 
     <!-- Actions -->
-    <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-gray-100 pt-2">
+    <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-black/10 pt-2">
         <button
             onclick={cancelComment}
-            class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            class="text-xs text-black/40 hover:text-black/60 transition-colors"
         >
             Cancel
         </button>
         <button
             disabled={!commentText}
             onclick={addComment}
-            class="px-3 py-1 bg-blue-500 text-white text-xs font-medium rounded-full hover:bg-blue-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            class="px-3 py-1 bg-blue-500/80 text-white text-xs font-medium rounded-full hover:bg-blue-600/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
             Comment
         </button>
