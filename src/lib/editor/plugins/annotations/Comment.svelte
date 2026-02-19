@@ -122,12 +122,18 @@
     }
 
     function formatTime(ts: number) {
+        const d = new Date(ts);
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 1) return "just now";
+        if (diffMins < 60) return `${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
         return new Intl.DateTimeFormat("default", {
             month: "short",
             day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-        }).format(new Date(ts));
+        }).format(d);
     }
 </script>
 
@@ -176,48 +182,48 @@
 
     <!-- Reply input — only when active -->
     {#if isActive}
-        <div class="flex items-center gap-2 px-3 py-2.5 mt-2 mx-2 mb-1 rounded-[10px] bg-white/40 inset-shadow-sm inset-shadow-white">
-            <div class="shrink-0 w-6 h-6 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white flex items-center justify-center text-black/50 text-[10px] font-semibold">
-                U
+        <div class="mx-3 mt-2 mb-3 rounded-[10px] bg-white/40 inset-shadow-sm inset-shadow-white overflow-hidden">
+            <div class="flex items-center gap-2 px-3 py-2">
+                <input
+                    bind:this={inputEl}
+                    bind:value={newMessage}
+                    onkeydown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            save();
+                        }
+                    }}
+                    placeholder="Reply…"
+                    class="flex-1 text-xs bg-transparent outline-none text-black/70 placeholder:text-black/30 min-w-0"
+                />
+                {#if newMessage}
+                    <button
+                        onclick={save}
+                        class="text-xs font-medium text-blue-600/80 hover:text-blue-700 transition-colors shrink-0"
+                    >
+                        Send
+                    </button>
+                {/if}
             </div>
-            <input
-                bind:this={inputEl}
-                bind:value={newMessage}
-                onkeydown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        save();
-                    }
-                }}
-                placeholder="Reply…"
-                class="flex-1 text-xs bg-transparent outline-none text-black/70 placeholder:text-black/30"
-            />
-            {#if newMessage}
+            <div class="flex items-center justify-between px-2 pb-1.5">
                 <button
-                    onclick={save}
-                    class="text-xs font-medium text-blue-600/80 hover:text-blue-700 transition-colors shrink-0"
+                    aria-label="Get AI suggestion"
+                    title="Get AI suggestion"
+                    class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors"
+                    onclick={() => aiSuggestion()}
                 >
-                    Send
+                    <SparklesIcon size={11} />
+                    <span>Suggest</span>
                 </button>
-            {/if}
-        </div>
-
-        <!-- Actions -->
-        <div class="flex justify-end gap-1 px-2 pb-2">
-            <button
-                aria-label="Get AI suggestion"
-                class="p-1.5 rounded-lg text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
-                onclick={() => aiSuggestion()}
-            >
-                <SparklesIcon size={13} />
-            </button>
-            <button
-                aria-label="Delete comment"
-                class="p-1.5 rounded-lg text-black/30 hover:text-red-500/70 hover:bg-white/40 transition-colors"
-                onclick={() => removeComment()}
-            >
-                <Trash2 size={13} />
-            </button>
+                <button
+                    aria-label="Delete comment"
+                    title="Delete comment"
+                    class="p-1 rounded-md text-black/25 hover:text-red-500/70 hover:bg-white/50 transition-colors"
+                    onclick={() => removeComment()}
+                >
+                    <Trash2 size={11} />
+                </button>
+            </div>
         </div>
     {/if}
 </div>
