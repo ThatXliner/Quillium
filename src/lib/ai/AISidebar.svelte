@@ -2,9 +2,10 @@
     import Chat from "./Chat.svelte";
     import Feedback from "./Feedback.svelte";
     import Revise from "./Revise.svelte";
-    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon } from "lucide-svelte";
+    import AISettings from "./AISettings.svelte";
+    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon } from "lucide-svelte";
 
-    type Action = null | "chat" | "feedback" | "revise";
+    type Action = null | "chat" | "feedback" | "revise" | "settings";
     let action = $state<Action>(null);
 
     const actions: {
@@ -41,6 +42,7 @@
         chat: "Chat with AI",
         feedback: "Get Feedback",
         revise: "Revise & Rewrite",
+        settings: "AI Settings",
     };
 
     const expanded = $derived(action !== null);
@@ -51,7 +53,7 @@
         fixed left-4 top-1/2 -translate-y-1/2 z-50
         backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
         overflow-hidden transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
-        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[164px] rounded-[100px]'}
+        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[200px] rounded-[100px]'}
     "
     >
         <!-- Collapsed pill icons -->
@@ -69,6 +71,15 @@
                     <a.icon size={18} />
                 </button>
             {/each}
+            <div class="flex-1"></div>
+            <button
+                onclick={() => (action = "settings")}
+                aria-label="AI Settings"
+                title="AI Settings"
+                class="p-2 rounded-full text-black/30 hover:text-black/60 transition-colors"
+            >
+                <Settings2Icon size={15} />
+            </button>
         </div>
 
         <!-- Expanded panel -->
@@ -95,6 +106,17 @@
                     {action ? panelTitles[action] : ""}
                 </span>
                 <button
+                    onclick={() => (action = action === "settings" ? null : "settings")}
+                    aria-label="AI Settings"
+                    title="AI Settings"
+                    class="p-1.5 rounded-full transition-colors shrink-0
+                        {action === 'settings'
+                            ? 'text-black/60 bg-white/60'
+                            : 'text-black/30 hover:text-black/60 hover:bg-white/40'}"
+                >
+                    <Settings2Icon size={14} />
+                </button>
+                <button
                     onclick={() => (action = null)}
                     aria-label="Close"
                     class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
@@ -110,6 +132,7 @@
                 <div class="absolute inset-0 flex flex-col {action === 'chat' ? '' : 'hidden'}"><Chat /></div>
                 <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
                 <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
+                <div class="absolute inset-0 flex flex-col {action === 'settings' ? '' : 'hidden'}"><AISettings /></div>
             </div>
         </div>
     </div>
