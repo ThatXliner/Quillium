@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+    import { PlusIcon, SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import {
         type Thread as ThreadType,
         type Annotation,
@@ -30,20 +30,7 @@
             : 'bg-gray-300/70 border-white/30 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
 >
     <div class="p-3 space-y-3">
-        <div class="flex items-center justify-between">
-            <h3 class="text-xs font-semibold text-black/60 uppercase tracking-wider">Revisions</h3>
-            <button
-                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-purple-700/80 bg-white/40 inset-shadow-sm inset-shadow-white rounded-full hover:bg-white/60 transition-colors"
-                onclick={() => {
-                    $editorView.dispatch(
-                        createNewRevision($editorView.state, revision.id),
-                    );
-                }}
-            >
-                <SparklesIcon size={11} />
-                New
-            </button>
-        </div>
+        <h3 class="text-xs font-semibold text-black/60 uppercase tracking-wider">Revisions</h3>
 
         <div class="flex flex-wrap gap-1.5">
             {#each revision.versions as version, i}
@@ -68,6 +55,19 @@
                 </button>
             {/each}
         </div>
+
+        <button
+            class="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-purple-700/70 bg-white/30 hover:bg-white/50 rounded-lg border border-white/30 transition-colors"
+            onclick={() => {
+                $editorView.dispatch(
+                    createNewRevision($editorView.state, revision.id),
+                );
+            }}
+            title="Generate new revision"
+        >
+            <PlusIcon size={11} />
+            <span>New Revision</span>
+        </button>
     </div>
 
     <div class="w-full h-px bg-black/10"></div>

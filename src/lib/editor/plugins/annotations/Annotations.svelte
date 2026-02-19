@@ -108,13 +108,16 @@
 
         const positions = positionedAnnotations();
         const MIN_SPACING = 8;
-        const TOP_CLAMP = 64; // don't go above status bar
+        const TOP_CLAMP = 64;
         const leftPx = getAnnotationLeft();
 
+        // Sort by natural document order (viewportY of anchor)
         const sortedByPos = [...positions].sort(
             (a, b) => a.viewportY - b.viewportY,
         );
 
+        // Forward pass: each card sits at its anchor Y, but never
+        // overlaps the card above it (push down only, never up).
         const adjustedY: { [id: number]: number } = {};
         let lastBottom = TOP_CLAMP;
 
@@ -122,13 +125,8 @@
             const el = annotationElements[annotation.id];
             const height = el ? el.offsetHeight || 80 : 80;
 
-            let y: number;
-            if ($activeAnnotation?.id === annotation.id) {
-                y = Math.max(viewportY, lastBottom, TOP_CLAMP);
-            } else {
-                y = Math.max(lastBottom, TOP_CLAMP);
-            }
-
+            // Every card tries to sit at its anchor; push down if needed.
+            const y = Math.max(viewportY, lastBottom, TOP_CLAMP);
             adjustedY[annotation.id] = y;
             lastBottom = y + height + MIN_SPACING;
         });
