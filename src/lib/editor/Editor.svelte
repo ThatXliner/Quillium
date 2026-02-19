@@ -14,6 +14,7 @@
     import "./plugins/annotations/default.css";
     import type { ViewUpdate } from "@codemirror/view";
     import StatusBar from "./StatusBar.svelte";
+    import Annotations from "./plugins/annotations/Annotations.svelte";
     import type { ListenerOptions } from "./listeners";
     import { annotationField } from "./plugins/annotations";
     import { getActiveAnnotation } from "./plugins/annotations/utils";
@@ -105,7 +106,7 @@
     });
 </script>
 
-<div class="w-full h-full overflow-y-auto">
+<div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50"><StatusBar {...stats} /></div>
 
     {#await fromSave then}
@@ -114,6 +115,8 @@
             bind:this={element}
         ></div>
     {/await}
+
+    <Annotations />
 </div>
 
 <style>
