@@ -52,10 +52,10 @@
         backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
         overflow-hidden
         transition-[max-width,max-height,border-radius]
-        duration-[350ms] ease-[cubic-bezier(0.25,1,0.5,1)]
+        duration-[300ms] ease-[cubic-bezier(0.16,1,0.3,1)]
         {expanded
-            ? 'max-w-[320px] max-h-[520px] rounded-2xl'
-            : 'max-w-[52px] max-h-[164px] rounded-full'}
+            ? 'max-w-[320px] max-h-[520px] rounded-[14px]'
+            : 'max-w-[52px] max-h-[164px] rounded-[100px]'}
     "
 >
     <!-- Collapsed pill icons — always in DOM, fade out when expanded -->
@@ -78,7 +78,7 @@
     <!-- Expanded panel — always in DOM, fade in when expanded -->
     <div
         class="w-[320px] h-[520px] flex flex-col transition-opacity duration-200
-            {expanded ? 'opacity-100 delay-[120ms]' : 'opacity-0 pointer-events-none'}"
+            {expanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}"
     >
         <!-- Header -->
         <div class="flex items-center gap-1 px-3 pt-3 pb-2 shrink-0">
@@ -109,15 +109,11 @@
 
         <div class="w-full h-px bg-black/10 shrink-0"></div>
 
-        <!-- Content -->
-        <div class="flex-1 flex flex-col min-h-0">
-            {#if action === "chat"}
-                <Chat />
-            {:else if action === "feedback"}
-                <Feedback />
-            {:else if action === "revise"}
-                <Revise />
-            {/if}
+        <!-- Content — all three mounted upfront to avoid mount-time jank -->
+        <div class="flex-1 flex flex-col min-h-0 relative">
+            <div class="absolute inset-0 flex flex-col {action === 'chat' ? '' : 'hidden'}"><Chat /></div>
+            <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
+            <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
         </div>
     </div>
 </div>
