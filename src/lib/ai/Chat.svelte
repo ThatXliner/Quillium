@@ -89,7 +89,7 @@
     </div>
 
     <!-- Input form -->
-    <div class="border-t border-gray-200 p-3 sm:p-4 bg-white">
+    <div class="border-t border-black/10 p-3 bg-white/30">
         {#if $selectedText}
             <div
                 class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"

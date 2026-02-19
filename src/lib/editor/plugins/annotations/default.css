@@ -26,10 +26,12 @@
     text-decoration: line-through;
     text-decoration-thickness: 2px;
 }
-.cm-suggestion-active .cm-suggestion {
+.cm-suggestion-active .cm-suggestion,
+.cm-suggestion .cm-suggestion-active {
     background-color: #dbf9e2;
     padding-top: 2px;
     text-decoration-thickness: 4px;
     padding-bottom: 2px;
     border-radius: 6px;
 }
+/*TODO: merged/mixed annotatins??*/

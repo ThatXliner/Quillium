@@ -1,34 +1,39 @@
 <script lang="ts">
-    import { activeComment, annotations, editorView } from "$lib/stores";
+    import { activeAnnotation, annotations, editorView } from "$lib/stores";
     import { tick } from "svelte";
     import { updateThread, removeAnnotation } from "./annotationField";
     import { canCreateNewComment } from "./utils";
+    import { isAnnotationOfType } from "./models";
 
     let commentText = $state("");
     let textarea = $state<HTMLTextAreaElement | undefined>();
+
     annotations.subscribe((a) => {
         if (!a) return;
-        const value = canCreateNewComment(a);
-        if (!value) {
-            tick().then(() => {
-                textarea?.focus();
-            });
+        if (!canCreateNewComment(a)) {
+            tick().then(() => textarea?.focus());
         }
     });
+
+    const selectedText = $derived(
+        $activeAnnotation && $editorView
+            ? $editorView.state.sliceDoc(
+                  $activeAnnotation.selection.main.from,
+                  $activeAnnotation.selection.main.to,
+              )
+            : "",
+    );
+
     function addComment() {
-        if (!$activeComment) return;
+        if (!$activeAnnotation || !isAnnotationOfType($activeAnnotation, "comment")) return;
         $editorView.dispatch(
             $editorView.state.update({
                 effects: [
                     updateThread.of({
-                        annotationId: $activeComment.id,
+                        annotationId: $activeAnnotation.id,
                         newThread: [
-                            ...$activeComment.thread,
-                            {
-                                message: commentText,
-                                author: "User",
-                                time: Date.now(),
-                            },
+                            ...$activeAnnotation.thread,
+                            { message: commentText, author: "User", time: Date.now() },
                         ],
                     }),
                 ],
@@ -36,45 +41,64 @@
         );
         commentText = "";
     }
+
     function cancelComment() {
-        if (!$activeComment) return;
+        if (!$activeAnnotation || !isAnnotationOfType($activeAnnotation, "comment")) return;
         $editorView.dispatch(
             $editorView.state.update({
-                effects: [removeAnnotation.of($activeComment)],
+                effects: [removeAnnotation.of($activeAnnotation)],
             }),
         );
         commentText = "";
     }
 </script>
 
-<div class="flex flex-col gap-2 mt-3">
-    <textarea
-        tabindex="0"
-        bind:this={textarea}
-        bind:value={commentText}
-        onkeydown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
-                addComment();
-                // @ts-ignore
-                e.target.blur();
-            }
-        }}
-        placeholder="Add a comment..."
-        class="resize-none p-3 h-[80px] rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-    ></textarea>
-    <div class="flex space-x-3">
+<div class="backdrop-blur-md bg-gray-200/80 border border-white/50 shadow-xl rounded-[14px] overflow-hidden">
+    <!-- Quoted text chip -->
+    {#if selectedText}
+        <div class="px-3 pt-3">
+            <div class="text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic">
+                {selectedText.slice(0, 80)}{selectedText.length > 80 ? "…" : ""}
+            </div>
+        </div>
+    {/if}
+
+    <!-- Input -->
+    <div class="flex gap-2.5 px-3 py-3">
+        <div class="shrink-0 w-7 h-7 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white shadow-sm flex items-center justify-center text-black/60 text-xs font-semibold">
+            U
+        </div>
+        <textarea
+            tabindex="0"
+            bind:this={textarea}
+            bind:value={commentText}
+            onkeydown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
+                    addComment();
+                    // @ts-ignore
+                    e.target.blur();
+                }
+            }}
+            placeholder="Add a comment…"
+            class="flex-1 text-xs text-black/70 placeholder:text-black/30 bg-transparent resize-none focus:outline-none leading-relaxed"
+            rows="2"
+        ></textarea>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-black/10 pt-2">
+        <button
+            onclick={cancelComment}
+            class="text-xs text-black/40 hover:text-black/60 transition-colors"
+        >
+            Cancel
+        </button>
         <button
             disabled={!commentText}
             onclick={addComment}
-            class="self-end px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:hover:bg-blue-500 text-sm font-medium"
+            class="px-3 py-1 bg-blue-500/80 text-white text-xs font-medium rounded-full hover:bg-blue-600/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
             Comment
-        </button>
-        <button
-            onclick={() => cancelComment()}
-            class="self-end px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium mr-2"
-        >
-            Cancel
         </button>
     </div>
 </div>

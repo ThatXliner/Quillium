@@ -24,36 +24,36 @@
 </script>
 
 <div
-    class="bg-gray-50 rounded-lg p-3 my-2 shadow-sm ring-2 {isActive
-        ? 'ring-blue-500 ring-4'
-        : 'ring-gray-500'}"
+    class="backdrop-blur-md border overflow-hidden transition-all duration-200
+        {isActive
+            ? 'bg-gray-200/80 border-white/50 shadow-xl rounded-[14px]'
+            : 'bg-gray-300/70 border-white/30 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
 >
-    <div class="text-sm text-gray-700"></div>
-
-    <div class="space-y-4 my-4">
+    <div class="p-3 space-y-3">
         <div class="flex items-center justify-between">
-            <h3 class="text-sm font-medium text-gray-700">Revisions</h3>
+            <h3 class="text-xs font-semibold text-black/60 uppercase tracking-wider">Revisions</h3>
             <button
-                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 transition-colors"
+                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-purple-700/80 bg-white/40 inset-shadow-sm inset-shadow-white rounded-full hover:bg-white/60 transition-colors"
                 onclick={() => {
                     $editorView.dispatch(
                         createNewRevision($editorView.state, revision.id),
                     );
                 }}
             >
-                <SparklesIcon size={12} />
-                New revision
+                <SparklesIcon size={11} />
+                New
             </button>
         </div>
 
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-1.5">
             {#each revision.versions as version, i}
-                {@const isActive = i == revision.currentlySelected}
+                {@const versionActive = i == revision.currentlySelected}
                 <button
-                    class="px-3 py-2 text-sm font-medium rounded-md border transition-colors {isActive
-                        ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}"
-                    disabled={isActive}
+                    class="px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all
+                        {versionActive
+                            ? 'bg-purple-500/80 text-white border-purple-400/50 shadow-sm'
+                            : 'bg-white/40 inset-shadow-sm inset-shadow-white text-black/70 border-white/30 hover:bg-white/60'}"
+                    disabled={versionActive}
                     onclick={() => {
                         $editorView.dispatch(
                             setActiveRevisionVersion(
@@ -69,17 +69,20 @@
             {/each}
         </div>
     </div>
-    <Thread {thread} {updateThread} />
-    <div class="flex justify-end pt-3 border-t border-gray-200">
+
+    <div class="w-full h-px bg-black/10"></div>
+
+    <div class="p-3">
+        <Thread {thread} {updateThread} />
+    </div>
+
+    <div class="flex justify-end px-2 pb-2">
         <button
-            class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors group"
+            class="p-1.5 rounded-lg text-black/30 hover:text-red-500/70 hover:bg-white/40 transition-colors"
             onclick={() => remove()}
             title="Delete revision"
         >
-            <Trash2
-                size={16}
-                class="group-hover:scale-105 transition-transform"
-            />
+            <Trash2 size={13} />
         </button>
     </div>
 </div>

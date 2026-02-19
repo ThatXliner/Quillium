@@ -63,9 +63,7 @@
 
 <div class="flex-1 flex flex-col min-h-0">
     <!-- Quick actions -->
-    <div
-        class="p-3 sm:p-4 border-b border-gray-200 bg-gradient-to-b from-green-50 to-white"
-    >
+    <div class="p-3 border-b border-black/10">
         <button
             onclick={askForFeedback}
             disabled={chat.status !== "ready" || !$documentContent}
@@ -137,7 +135,7 @@
     </div>
 
     <!-- Input -->
-    <div class="border-t border-gray-200 p-3 sm:p-4 bg-white">
+    <div class="border-t border-black/10 p-3 bg-white/30">
         {#if $selectedText}
             <div
                 class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"

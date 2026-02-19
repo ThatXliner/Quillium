@@ -7,14 +7,14 @@
     import {
         editorView,
         annotations,
-        activeComment,
         documentContent,
         selectedText,
+        activeAnnotation,
     } from "$lib/stores";
     import "./plugins/annotations/default.css";
-    import { historyField } from "@codemirror/commands";
     import type { ViewUpdate } from "@codemirror/view";
     import StatusBar from "./StatusBar.svelte";
+    import Annotations from "./plugins/annotations/Annotations.svelte";
     import type { ListenerOptions } from "./listeners";
     import { annotationField } from "./plugins/annotations";
     import { getActiveAnnotation } from "./plugins/annotations/utils";
@@ -52,7 +52,7 @@
                 chars: doc.length,
             };
             $annotations = Object.values(update.state.field(annotationField));
-            $activeComment = getActiveAnnotation($editorView.state, "comment");
+            $activeAnnotation = getActiveAnnotation($editorView.state);
 
             // Sync document content and selection for AI chat
             $documentContent = doc;
@@ -106,7 +106,7 @@
     });
 </script>
 
-<div class="w-full">
+<div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50"><StatusBar {...stats} /></div>
 
     {#await fromSave then}
@@ -115,6 +115,8 @@
             bind:this={element}
         ></div>
     {/await}
+
+    <Annotations />
 </div>
 
 <style>
