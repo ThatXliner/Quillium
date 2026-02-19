@@ -164,10 +164,26 @@
             class="annotation-card"
             class:is-active={isActive}
             style="z-index: {isActive ? 100 : 50};"
-            onclick={() => { if (!isActive) $activeAnnotation = c; }}
+            onclick={() => {
+                if (!isActive && $editorView) {
+                    $editorView.dispatch({
+                        selection: { anchor: c.selection.main.from },
+                        scrollIntoView: true,
+                    });
+                    $editorView.focus();
+                }
+            }}
             role="button"
             tabindex="0"
-            onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") $activeAnnotation = c; }}
+            onkeydown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && $editorView) {
+                    $editorView.dispatch({
+                        selection: { anchor: c.selection.main.from },
+                        scrollIntoView: true,
+                    });
+                    $editorView.focus();
+                }
+            }}
         >
             {#if isAnnotationOfType(c, "comment") && !isPendingComment}
                 <Comment
