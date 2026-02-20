@@ -114,6 +114,14 @@ bun run check:watch     # Watch mode
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed technical documentation.
 
+## FAQ
+
+Q: **Why not a website??**
+A: I demand extreme robustness and durability when it comes to writing. Otherwise imagine losing hours of work to a single computer crash or network failure. Quillium is offline-first and saves at aggressive intervals to ensure maximum information integrity. I will explore offering a web version later though.
+
+Q: **Why the name?**
+A: The "ium" ending makes it sound like an element. The element of creativity, the element of thought; Quillium would be the element of writing. It's a nod to the quill pen, a symbol of writing and creativity.
+
 ## License
 
 MIT © [ThatXliner](https://github.com/ThatXliner)
