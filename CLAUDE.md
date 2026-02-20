@@ -121,7 +121,7 @@ Fiction and nonfiction writers doing long-form creative work — novels, essays,
 ### Brand Personality
 **Warm. Creative. Focused.**
 
-Quillium has the tactile warmth of a well-made notebook. It respects the writer's headspace — never loud, never demanding — but carries genuine personality. Think Craft or Bear, not Notion. The interface should feel like a workspace a writer would be proud to spend hours in.
+Quillium has the tactile warmth of a well-made notebook. It respects the writer's headspace — never loud, never demanding — but carries genuine personality. Think Craft or Bear, not Notion. The interface should feel like a workspace a writer would be proud to spend hours in. We use neumorphic/glassmorphic UI interface for a fun and modern experience.
 
 ### Aesthetic Direction
 - **Theme**: Light only. Warm whites and soft off-whites rather than clinical pure white.
