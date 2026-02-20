@@ -12,10 +12,12 @@ import {
   getLastId,
   getNewId,
   isAnnotationOfType,
+  versionText,
   type Annotations,
   type GenericAnnotation,
   type RawAnnotations,
   type Thread,
+  type VersionState,
 } from "./models";
 import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
@@ -65,7 +67,7 @@ export const allowRevisionDocEdit = Annotation.define<boolean>();
 // There is no "updateRevisionVersion" since we sniff that from document changes
 const _addVersionToRevision = StateEffect.define<{
   annotationId: number;
-  newVersion: string;
+  newVersion: VersionState;
   at?: number;
 }>();
 const _deleteVersionFromRevision = StateEffect.define<{
@@ -76,10 +78,10 @@ const _updateActiveRevisionVersion = StateEffect.define<{
   annotationId: number;
   to: number;
 }>();
-const _updateRevisionVersionText = StateEffect.define<{
+const _updateRevisionVersionState = StateEffect.define<{
   annotationId: number;
   versionId: number;
-  text: string;
+  versionState: VersionState;
 }>();
 export function setActiveRevisionVersion(
   state: EditorState,
@@ -104,7 +106,7 @@ export function setActiveRevisionVersion(
     changes: state.changes({
       from: original.selection.main.from,
       to: original.selection.main.to,
-      insert: original.versions[to],
+      insert: versionText(original.versions[to]),
     }),
   });
 }
@@ -114,12 +116,13 @@ export function createNewRevision(state: EditorState, annotationId: number) {
     throw new Error("Annotation is not a revision");
   }
   const placeholder = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
+  const newVersionState: VersionState = { doc: placeholder };
   const from = original.selection.main.from;
   return state.update({
     effects: [
       _addVersionToRevision.of({
         annotationId,
-        newVersion: placeholder,
+        newVersion: newVersionState,
       }),
     ],
     changes: state.changes({
@@ -198,7 +201,7 @@ export function deleteRevisionVersion(
       changes: state.changes({
         from: original.selection.main.from,
         to: original.selection.main.to,
-        insert: nextVersions[nextSelected] ?? "",
+        insert: nextVersions[nextSelected] ? versionText(nextVersions[nextSelected]) : "",
       }),
     });
   }
@@ -207,21 +210,22 @@ export function deleteRevisionVersion(
     annotations,
   });
 }
-export function updateRevisionVersionText(
+export function updateRevisionVersionState(
   state: EditorState,
   annotationId: number,
   versionId: number,
-  text: string,
+  newVersionState: VersionState,
 ) {
   const original = state.field(annotationField)[annotationId];
   if (!isAnnotationOfType(original, "revision")) {
     throw new Error("Annotation is not a revision");
   }
+  const text = versionText(newVersionState);
   const effects = [
-    _updateRevisionVersionText.of({
+    _updateRevisionVersionState.of({
       annotationId,
       versionId,
-      text,
+      versionState: newVersionState,
     }),
   ];
   const annotations = [
@@ -380,9 +384,8 @@ export const annotationField = StateField.define<Annotations>({
                   oldAnnotation.selection.main.from,
                   -1,
               );
-              const versionText =
-                  annotation.versions[e.value.to];
-              const to = from + versionText.length;
+              const vText = versionText(annotation.versions[e.value.to] ?? { doc: "" });
+              const to = from + vText.length;
               annotation.selection = EditorSelection.single(
                   from,
                   to,
@@ -394,11 +397,11 @@ export const annotationField = StateField.define<Annotations>({
         // JavaScript would give annotation a reference to the annotation object
         // but just in case, you know.
         annotations[e.value.annotationId] = annotation;
-      } else if (e.is(_updateRevisionVersionText)) {
+      } else if (e.is(_updateRevisionVersionState)) {
         let annotation = annotations[e.value.annotationId];
         if (!isAnnotationOfType(annotation, "revision")) continue;
         doUpdateRevision = false;
-        annotation.versions[e.value.versionId] = e.value.text;
+        annotation.versions[e.value.versionId] = e.value.versionState;
         if (
           annotation.currentlySelected === e.value.versionId &&
           tr.docChanged
@@ -409,7 +412,8 @@ export const annotationField = StateField.define<Annotations>({
               oldAnnotation.selection.main.from,
               -1,
             );
-            const to = from + e.value.text.length;
+            const text = versionText(e.value.versionState);
+            const to = from + text.length;
             annotation.selection = EditorSelection.single(from, to);
           }
         }
@@ -431,16 +435,17 @@ export const annotationField = StateField.define<Annotations>({
         delete annotations[e.value.annotationId];
       }
     }
-    // doc -> revision
+    // doc -> revision: keep the active version's doc text in sync with the main document
     if (doUpdateRevision) {
-      // TODO: run on every character update?
       annotations = mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision")) {
-          // the revision version's associated internal text needs to be updated
-          x.versions[x.currentlySelected] = tr.state.doc
+          const text = tr.state.doc
             .slice(x.selection.main.from, x.selection.main.to)
-            // TODO: maybe even include comments!??
             .toString();
+          x.versions[x.currentlySelected] = {
+            ...x.versions[x.currentlySelected],
+            doc: text,
+          };
         }
         return x;
       });
@@ -517,14 +522,14 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             }),
           );
         }
-      } else if (effect.is(_updateRevisionVersionText)) {
+      } else if (effect.is(_updateRevisionVersionState)) {
         let oldAnnotation = oldAnnotations[effect.value.annotationId];
         if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
         effects.push(
-          _updateRevisionVersionText.of({
+          _updateRevisionVersionState.of({
             annotationId: oldAnnotation.id,
             versionId: effect.value.versionId,
-            text: oldAnnotation.versions[effect.value.versionId],
+            versionState: oldAnnotation.versions[effect.value.versionId],
           }),
         );
       } else if (effect.is(addSuggestion)) {

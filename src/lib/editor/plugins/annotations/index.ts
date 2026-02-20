@@ -30,6 +30,7 @@ import {
 import { filter, flatMap, isEqual } from "lodash-es";
 import {
   type AnnotationType,
+  type VersionState,
   createNewAnnotation,
   isAnnotationOfType,
 } from "./models";
@@ -478,7 +479,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
           ),
           currentlySelected: 0,
           versions: [
-            state.sliceDoc(state.selection.main.from, state.selection.main.to),
+            { doc: state.sliceDoc(state.selection.main.from, state.selection.main.to) } as VersionState,
           ],
         }),
       ],

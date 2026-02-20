@@ -58,11 +58,19 @@ type SuggestionAnnotation = BaseAnnotation & {
   _type: "suggestion";
   replacements: string[];
 };
+// Serialized EditorState blob produced by EditorState.toJSON(savedFields).
+// Stored as an opaque object — use versionText() to extract the doc string.
+export type VersionState = object & { doc: string };
+
+export function versionText(version: VersionState): string {
+  return version.doc;
+}
+
 type RevisionAnnotation = BaseAnnotation & {
   _type: "revision";
   // this will now refer to an ID
   currentlySelected: number;
-  versions: string[];
+  versions: VersionState[];
 };
 export type GenericAnnotation =
   | CommentAnnotation

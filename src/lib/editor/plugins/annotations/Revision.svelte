@@ -4,21 +4,21 @@
     import { ChevronDown, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
     import { onDestroy, tick } from "svelte";
     import { slide } from "svelte/transition";
-    import { getExtensions } from "$lib/editor/extensions";
+    import { getExtensions, savedFields } from "$lib/editor/extensions";
     import {
         addAnnotation,
         annotationField,
         createNewRevision,
         deleteRevisionVersion,
         setActiveRevisionVersion,
+        updateRevisionVersionState,
         type Annotation,
         type Annotations as AnnotationsMap,
         type GenericAnnotation,
         type Thread as ThreadType,
-        updateRevisionVersionText,
     } from ".";
     import { canCreateNewComment } from "./utils";
-    import { createNewAnnotation, type AnnotationType } from "./models";
+    import { createNewAnnotation, versionText, type AnnotationType, type VersionState } from "./models";
     import { EditorSelection, Transaction } from "@codemirror/state";
     import { getActiveAnnotation } from "./utils";
     import { revisionBoundaryNudge, revisionOpenNestedEditor, type NestedEditorCommand } from "$lib/stores";
@@ -40,9 +40,8 @@
     } = $props();
 
     const thread = $derived(revision.thread);
-    const activeText = $derived(
-        revision.versions[revision.currentlySelected] ?? "",
-    );
+    const activeVersion = $derived(revision.versions[revision.currentlySelected]);
+    const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
     const VERSION_PREVIEW_MAX = 34;
 
     let isEditorOpen = $state(false);
@@ -66,6 +65,7 @@
     let recursiveAnnotations = $state<AnnotationsMap | undefined>(undefined);
     let recursiveActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
     let isSyncingFromAnnotation = false;
+    let previousVersionId = revision.currentlySelected;
 
     // Boundary nudge: show a hint when the user presses delete at the edge
     // of this revision's content in the main document.
@@ -122,6 +122,7 @@
                 );
             } else if (cmd.type === "revision") {
                 const s = recursiveEditor.state;
+                const selectedText = s.sliceDoc(s.selection.main.from, s.selection.main.to);
                 recursiveEditor.dispatch(
                     s.update({
                         effects: [
@@ -132,9 +133,7 @@
                                     "revision",
                                 ),
                                 currentlySelected: 0,
-                                versions: [
-                                    s.sliceDoc(s.selection.main.from, s.selection.main.to),
-                                ],
+                                versions: [{ doc: selectedText } as VersionState],
                             }),
                         ],
                         annotations: Transaction.addToHistory.of(true),
@@ -153,45 +152,42 @@
         recursiveActiveAnnotation = getActiveAnnotation(currentView.state);
     }
 
-    function upsertVersionText(text: string) {
-        if (text === activeText) return;
+    function upsertVersionState(currentEditor: EditorView, versionId = revision.currentlySelected) {
+        const blob = currentEditor.state.toJSON(savedFields) as VersionState;
         view.dispatch(
-            updateRevisionVersionText(
+            updateRevisionVersionState(
                 view.state,
                 revision.id,
-                revision.currentlySelected,
-                text,
+                versionId,
+                blob,
             ),
         );
     }
 
-    function previewVersionText(text: string) {
-        const flattened = text.replace(/\s+/g, " ").trim();
+    function previewVersionText(version: VersionState) {
+        const flattened = versionText(version).replace(/\s+/g, " ").trim();
         if (!flattened) return "(empty)";
         return flattened.length > VERSION_PREVIEW_MAX
             ? `${flattened.slice(0, VERSION_PREVIEW_MAX)}…`
             : flattened;
     }
 
-    function createRecursiveEditor(initialText: string) {
+    function createRecursiveEditor(version: VersionState) {
         if (!recursiveEditorHost || recursiveEditor) return;
-        recursiveEditor = new EditorView({
-            state: EditorState.create({
-                doc: initialText,
-                extensions: getExtensions({
-                    persist: false,
-                    updateListener(update: ViewUpdate) {
-                        if (!recursiveEditor) return;
-                        updateRecursiveMeta(recursiveEditor);
-                        if (!update.docChanged || isSyncingFromAnnotation) {
-                            return;
-                        }
-                        upsertVersionText(update.state.doc.toString());
-                    },
-                }),
-            }),
-            parent: recursiveEditorHost,
+        const extensions = getExtensions({
+            persist: false,
+            updateListener(update: ViewUpdate) {
+                if (!recursiveEditor || isSyncingFromAnnotation) return;
+                updateRecursiveMeta(recursiveEditor);
+                upsertVersionState(recursiveEditor);
+            },
         });
+        // Restore full state (doc + annotations + history) if available,
+        // otherwise create a fresh editor with just the text.
+        const state = "annotationField" in version
+            ? EditorState.fromJSON(version, { extensions }, savedFields)
+            : EditorState.create({ doc: versionText(version), extensions });
+        recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
         updateRecursiveMeta(recursiveEditor);
     }
 
@@ -202,19 +198,28 @@
         recursiveActiveAnnotation = undefined;
     }
 
-    function syncRecursiveEditorToActiveVersion() {
-        if (!recursiveEditor) return;
-        const next = activeText;
-        const current = recursiveEditor.state.doc.toString();
-        if (current === next) return;
+    function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
+        if (!recursiveEditor || !activeVersion) return;
+        const currentText = recursiveEditor.state.doc.toString();
+        const targetText = activeText;
+        if (currentText === targetText) return;
+        // Save the current editor state back to whichever version we're leaving
+        if (previousVersionId !== undefined) {
+            upsertVersionState(recursiveEditor, previousVersionId);
+        }
         isSyncingFromAnnotation = true;
-        recursiveEditor.dispatch({
-            changes: {
-                from: 0,
-                to: recursiveEditor.state.doc.length,
-                insert: next,
+        const extensions = getExtensions({
+            persist: false,
+            updateListener(update: ViewUpdate) {
+                if (!recursiveEditor || isSyncingFromAnnotation) return;
+                updateRecursiveMeta(recursiveEditor);
+                upsertVersionState(recursiveEditor);
             },
         });
+        const nextState = "annotationField" in activeVersion
+            ? EditorState.fromJSON(activeVersion, { extensions }, savedFields)
+            : EditorState.create({ doc: targetText, extensions });
+        recursiveEditor.setState(nextState);
         isSyncingFromAnnotation = false;
         updateRecursiveMeta(recursiveEditor);
     }
@@ -225,15 +230,17 @@
             return;
         }
         tick().then(() => {
-            if (!isEditorOpen) return;
-            createRecursiveEditor(activeText);
+            if (!isEditorOpen || !activeVersion) return;
+            createRecursiveEditor(activeVersion);
             syncRecursiveEditorToActiveVersion();
         });
     });
 
     $effect(() => {
         if (!recursiveEditor || !isEditorOpen) return;
-        syncRecursiveEditorToActiveVersion();
+        const prev = previousVersionId;
+        previousVersionId = revision.currentlySelected;
+        syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined);
     });
 
     onDestroy(() => {
@@ -262,7 +269,7 @@
 
     <!-- Version pills -->
     <div class="px-3 pb-2 flex flex-wrap gap-1">
-        {#each revision.versions as versionText, i}
+        {#each revision.versions as version, i}
             {@const versionActive = i === revision.currentlySelected}
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
@@ -272,14 +279,14 @@
                     class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
                         {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
                     disabled={versionActive}
-                    title={versionText || "(empty)"}
+                    title={versionText(version) || "(empty)"}
                     onclick={() => {
                         view.dispatch(
                             setActiveRevisionVersion(view.state, revision.id, i),
                         );
                     }}
                 >
-                    {previewVersionText(versionText)}
+                    {previewVersionText(version)}
                 </button>
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
