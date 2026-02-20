@@ -37,6 +37,7 @@
     const activeText = $derived(
         revision.versions[revision.currentlySelected] ?? "",
     );
+    const VERSION_PREVIEW_MAX = 34;
 
     let isEditorOpen = $state(false);
     let recursiveEditorHost = $state<HTMLDivElement>();
@@ -66,6 +67,14 @@
                 text,
             ),
         );
+    }
+
+    function previewVersionText(text: string) {
+        const flattened = text.replace(/\s+/g, " ").trim();
+        if (!flattened) return "(empty)";
+        return flattened.length > VERSION_PREVIEW_MAX
+            ? `${flattened.slice(0, VERSION_PREVIEW_MAX)}…`
+            : flattened;
     }
 
     function createRecursiveEditor(initialText: string) {
@@ -161,15 +170,16 @@
         </div>
 
         <div class="flex flex-wrap gap-1.5">
-            {#each revision.versions as _, i}
+            {#each revision.versions as versionText, i}
                 {@const versionActive = i === revision.currentlySelected}
                 <div class="inline-flex items-center rounded-lg border border-white/30 bg-white/40 overflow-hidden">
                     <button
-                        class="px-2 py-1.5 text-xs font-medium transition-colors
+                        class="max-w-36 px-2 py-1.5 text-xs font-medium truncate transition-colors
                             {versionActive
                                 ? 'bg-purple-500/80 text-white'
                                 : 'text-black/70 hover:bg-white/70'}"
                         disabled={versionActive}
+                        title={versionText || "(empty)"}
                         onclick={() => {
                             view.dispatch(
                                 setActiveRevisionVersion(
@@ -180,7 +190,7 @@
                             );
                         }}
                     >
-                        V{i + 1}
+                        {previewVersionText(versionText)}
                     </button>
                     <button
                         class="px-1.5 py-1.5 text-black/40 hover:text-red-500/80 hover:bg-white/70 transition-colors"
