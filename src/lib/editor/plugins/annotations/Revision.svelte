@@ -231,18 +231,20 @@
             <div class="rounded-xl border border-white/35 bg-white/55 p-2 space-y-2">
                 <div
                     bind:this={recursiveEditorHost}
-                    class="revision-recursive-editor min-h-[200px] max-h-[380px] rounded-lg border border-white/45 bg-white/85 shadow-inner overflow-hidden"
+                    class="revision-recursive-editor h-[260px] rounded-lg border border-white/45 bg-white/85 shadow-inner overflow-hidden"
                 ></div>
                 <div class="text-[10px] text-black/45 px-1">
                     Nested annotations for this revision buffer:
                 </div>
                 {#if recursiveEditor && recursiveAnnotations}
-                    <Annotations
-                        view={recursiveEditor}
-                        annotationsData={recursiveAnnotations}
-                        activeAnnotationData={recursiveActiveAnnotation}
-                        layout="inline"
-                    />
+                    <div class="max-h-56 overflow-y-auto overscroll-contain pr-1">
+                        <Annotations
+                            view={recursiveEditor}
+                            annotationsData={recursiveAnnotations}
+                            activeAnnotationData={recursiveActiveAnnotation}
+                            layout="inline"
+                        />
+                    </div>
                 {/if}
             </div>
         {/if}

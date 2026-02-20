@@ -247,6 +247,9 @@
         top: 64px;
         left: 0;
         width: 240px;
+        max-height: calc(100vh - 88px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
         transition: top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
         pointer-events: auto;
     }
