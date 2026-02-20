@@ -67,6 +67,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+    id="ai-sidebar"
     bind:this={container}
     onclick={(e) => e.stopPropagation()}
     class="
@@ -84,6 +85,7 @@
         <div class="flex flex-col gap-1">
             {#each actions as a}
                 <button
+                    id="ai-tab-{a.id}"
                     onclick={() => (action = a.id)}
                     aria-label={a.label}
                     title={a.label}

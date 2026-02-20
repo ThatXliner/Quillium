@@ -103,6 +103,7 @@
 
     {#await fromSave then}
         <div
+            id="editor-document"
             class="mx-auto w-[816px] h-fit mt-12 bg-white rounded-lg shadow-xl py-3 px-1"
             bind:this={element}
         ></div>

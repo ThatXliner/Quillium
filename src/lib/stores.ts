@@ -28,6 +28,9 @@ export const selectedText = writable<string>("");
 // revision — signals that the recursive editor is available for boundary edits.
 export const revisionBoundaryNudge = writable<number | null>(null);
 
+// Controls tutorial visibility
+export const tutorialActive = writable(false);
+
 // Fired when the user triggers an annotation command (comment/revision)
 // while the cursor is inside an active revision in the main document.
 // Carries the revision ID, which command to run, and the selection
