@@ -4,6 +4,7 @@
 import { SearchCursor } from "@codemirror/search";
 import {
   EditorSelection,
+  Prec,
   RangeSet,
   RangeSetBuilder,
   type SelectionRange,
@@ -19,7 +20,8 @@ import {
 import {
   Decoration,
   type DecorationSet,
-  type EditorView,
+  EditorView,
+  keymap,
   type KeyBinding,
   ViewPlugin,
   type ViewUpdate,
@@ -28,6 +30,7 @@ import {
 import { filter, flatMap, isEqual } from "lodash-es";
 import {
   type AnnotationType,
+  type VersionState,
   createNewAnnotation,
   isAnnotationOfType,
 } from "./models";
@@ -35,10 +38,12 @@ import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import {
   annotationField,
   addAnnotation,
+  allowRevisionDocEdit,
   removeAnnotation,
   setActiveRevisionVersion,
   invertedAnnotationFieldEffects,
 } from "./annotationField";
+import { revisionBoundaryNudge, revisionOpenNestedEditor, type NestedEditorCommand } from "$lib/stores";
 
 export * from "./annotationField";
 export const annotationsChanged = (update: ViewUpdate) =>
@@ -50,6 +55,159 @@ export const annotationsChanged = (update: ViewUpdate) =>
     tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
   );
 
+
+function findRevisionAtBoundary(
+  state: EditorState,
+  position: number,
+  direction: "backward" | "forward",
+) {
+  const annotations = Object.values(state.field(annotationField));
+  return annotations.find((annotation) => {
+    if (!isAnnotationOfType(annotation, "revision")) return false;
+    const { from, to } = annotation.selection.main;
+    if (from === to) return false;
+    return direction === "backward" ? to === position : from === position;
+  });
+}
+
+function deleteAdjacentRevision(
+  direction: "backward" | "forward",
+): StateCommand {
+  return ({ state, dispatch }) => {
+    const cursor = state.selection.main;
+    if (!cursor.empty) return false;
+    const target = findRevisionAtBoundary(state, cursor.from, direction);
+    if (!target) return false;
+
+    dispatch(
+      state.update({
+        changes: state.changes({
+          from: target.selection.main.from,
+          to: target.selection.main.to,
+          insert: "",
+        }),
+        effects: [removeAnnotation.of(target)],
+        annotations: [
+          allowRevisionDocEdit.of(true),
+          Transaction.addToHistory.of(true),
+        ],
+      }),
+    );
+    return true;
+  };
+}
+
+// Returns the active revision annotation if the cursor is at one of its
+// content boundaries (first or last character position), null otherwise.
+function getRevisionAtContentBoundary(
+  state: EditorState,
+  direction: "backward" | "forward",
+) {
+  const cursor = state.selection.main;
+  if (!cursor.empty) return null;
+  for (const annotation of Object.values(state.field(annotationField))) {
+    if (!isAnnotationOfType(annotation, "revision")) continue;
+    const { from, to } = annotation.selection.main;
+    if (from === to) continue;
+    // Cursor is inside this revision range
+    if (cursor.from < from || cursor.from > to) continue;
+    if (direction === "backward" && cursor.from === from) return annotation;
+    if (direction === "forward" && cursor.from === to) return annotation;
+  }
+  return null;
+}
+
+function nudgeBoundary(direction: "backward" | "forward"): StateCommand {
+  return ({ state }) => {
+    const target = getRevisionAtContentBoundary(state, direction);
+    if (!target) return false;
+    // Fire the nudge — the Revision card will show the hint.
+    revisionBoundaryNudge.set(target.id);
+    return false; // don't consume — let normal backspace/delete run
+  };
+}
+
+// Returns the revision whose range contains the cursor, if any.
+function getActiveRevisionRange(
+  state: EditorState,
+): SelectionRange | null {
+  const cursor = state.selection.main;
+  for (const annotation of Object.values(state.field(annotationField))) {
+    if (!isAnnotationOfType(annotation, "revision")) continue;
+    const { from, to } = annotation.selection.main;
+    if (from === to) continue;
+    if (cursor.from >= from && cursor.to <= to) return annotation.selection.main;
+  }
+  return null;
+}
+
+// Returns the revision annotation whose range contains the cursor, if any.
+function getActiveRevisionAnnotation(state: EditorState) {
+  const cursor = state.selection.main;
+  for (const annotation of Object.values(state.field(annotationField))) {
+    if (!isAnnotationOfType(annotation, "revision")) continue;
+    const { from, to } = annotation.selection.main;
+    if (from === to) continue;
+    if (cursor.from >= from && cursor.to <= to) return annotation;
+  }
+  return null;
+}
+
+// Intercepts comment/revision creation commands when the cursor is inside
+// an active revision — maps the selection to revision-relative offsets and
+// signals the nested editor to open and run the equivalent command there.
+function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand {
+  return (view) => {
+    const activeRevision = getActiveRevisionAnnotation(view.state);
+    if (!activeRevision) return false; // fall through to original keymap
+    const revFrom = activeRevision.selection.main.from;
+    const sel = view.state.selection.main;
+    revisionOpenNestedEditor.set({
+      revisionId: activeRevision.id,
+      type,
+      selectionFrom: sel.from - revFrom,
+      selectionTo: sel.to - revFrom,
+    });
+    return true;
+  };
+}
+
+
+const revisionAtomicRanges = ViewPlugin.fromClass(
+  class {
+    ranges: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.ranges = this.buildRanges(view.state);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || annotationsChanged(update)) {
+        this.ranges = this.buildRanges(update.state);
+      }
+    }
+
+    buildRanges(state: EditorState): DecorationSet {
+      const builder = new RangeSetBuilder<Decoration>();
+      const revisions = Object.values(state.field(annotationField)).filter(
+        (annotation) => isAnnotationOfType(annotation, "revision"),
+      );
+      for (const revision of revisions) {
+        const { from, to } = revision.selection.main;
+        if (from === to) continue;
+        builder.add(from, to, Decoration.mark({}));
+      }
+      return builder.finish();
+    }
+  },
+  {
+    provide: (plugin) =>
+      EditorView.atomicRanges.of(
+        (view) => view.plugin(plugin)?.ranges ?? Decoration.none,
+      ),
+  },
+);
+
 // When a revision's text is fully deleted (range collapses to from===to),
 // auto-switch to the next available version. If only one version exists,
 // remove the revision entirely.
@@ -57,6 +215,12 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
     class {
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
+            if (
+                update.transactions.some((tr) =>
+                    tr.annotation(allowRevisionDocEdit),
+                )
+            )
+                return;
             const annotations = update.state.field(annotationField);
             for (const annotation of Object.values(annotations)) {
                 if (!isAnnotationOfType(annotation, "revision")) continue;
@@ -315,7 +479,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
           ),
           currentlySelected: 0,
           versions: [
-            state.sliceDoc(state.selection.main.from, state.selection.main.to),
+            { doc: state.sliceDoc(state.selection.main.from, state.selection.main.to) } as VersionState,
           ],
         }),
       ],
@@ -337,8 +501,32 @@ const dev_dontuseinprod_createSuggestion: StateCommand = ({
 };
 export const annotationKeymap: KeyBinding[] = [
   {
+    key: "Backspace",
+    run: nudgeBoundary("backward"),
+  },
+  {
+    key: "Delete",
+    run: nudgeBoundary("forward"),
+  },
+  {
+    key: "Backspace",
+    run: deleteAdjacentRevision("backward"),
+  },
+  {
+    key: "Delete",
+    run: deleteAdjacentRevision("forward"),
+  },
+  {
+    key: "Mod-Alt-m",
+    run: redirectToNestedEditor("comment"),
+  },
+  {
     key: "Mod-Alt-m",
     run: createCommentCommand,
+  },
+  {
+    key: "Mod-Alt-k",
+    run: redirectToNestedEditor("revision"),
   },
   {
     key: "Mod-Alt-k",
@@ -352,6 +540,7 @@ export const annotationKeymap: KeyBinding[] = [
 
 // Extension
 export const annotations = () => [
+  Prec.high(keymap.of(annotationKeymap)),
   annotationField,
   annotationDecorations,
   collapsedRevisionResolver,

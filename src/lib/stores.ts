@@ -24,6 +24,23 @@ export const activeAnnotation = writable<GenericAnnotation | undefined>();
 export const documentContent = writable<string>("");
 export const selectedText = writable<string>("");
 
+// Fired when the user presses a delete key at the boundary of an active
+// revision — signals that the recursive editor is available for boundary edits.
+export const revisionBoundaryNudge = writable<number | null>(null);
+
+// Fired when the user triggers an annotation command (comment/revision)
+// while the cursor is inside an active revision in the main document.
+// Carries the revision ID, which command to run, and the selection
+// mapped to offsets within the revision text so the nested editor
+// can set its selection and run the command immediately.
+export type NestedEditorCommand = {
+    revisionId: number;
+    type: "comment" | "revision";
+    selectionFrom: number;
+    selectionTo: number;
+};
+export const revisionOpenNestedEditor = writable<NestedEditorCommand | null>(null);
+
 // In case we decide to bite the dust with updating editorView every time,
 // here is some code to do that:
 // export const activeComment = derived(editorView, ($editorView) => {

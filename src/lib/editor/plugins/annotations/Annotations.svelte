@@ -1,39 +1,54 @@
 <script lang="ts">
-    /*
-     * FLOATING ANNOTATIONS - GOOGLE DOCS STYLE
-     *
-     * Comments are fixed-positioned to the right of the 816px document card,
-     * vertically aligned with their text selection. They scroll with the page
-     * naturally because positions are recalculated on every scroll event.
-     */
-
+    import type { EditorView } from "@codemirror/view";
     import Comment from "./Comment.svelte";
     import {
+        annotationField,
         isAnnotationOfType,
         removeAnnotation,
         updateThread,
-        type Thread,
+        type Annotations as AnnotationMap,
         type GenericAnnotation,
+        type Thread,
     } from "$lib/editor/plugins/annotations";
     import { activeAnnotation, annotations, editorView } from "$lib/stores";
     import Revision from "./Revision.svelte";
     import { canCreateNewComment } from "./utils";
     import PreComment from "./PreComment.svelte";
     import Suggestion from "./Suggestion.svelte";
-    import { onMount, tick } from "svelte";
+    import { tick } from "svelte";
+
+    const {
+        view = undefined,
+        annotationsData = undefined,
+        activeAnnotationData = undefined,
+        layout = "floating",
+    }: {
+        view?: EditorView;
+        annotationsData?: AnnotationMap;
+        activeAnnotationData?: GenericAnnotation;
+        layout?: "floating" | "inline";
+    } = $props();
+
+    const resolvedView = $derived(view ?? $editorView);
+    const resolvedAnnotations = $derived(annotationsData ?? $annotations);
+    const resolvedActiveAnnotation = $derived(activeAnnotationData ?? $activeAnnotation);
+    const isFloating = $derived(layout === "floating");
 
     function remove(index: number) {
-        if (!$annotations) return;
-        $editorView.dispatch(
-            $editorView.state.update({
-                effects: [removeAnnotation.of($annotations[index])],
+        if (!resolvedView) return;
+        const annotation = resolvedView.state.field(annotationField)[index];
+        if (!annotation) return;
+        resolvedView.dispatch(
+            resolvedView.state.update({
+                effects: [removeAnnotation.of(annotation)],
             }),
         );
     }
 
     function dispatchUpdateThread(annotationId: number, newThread: Thread) {
-        $editorView.dispatch(
-            $editorView.state.update({
+        if (!resolvedView) return;
+        resolvedView.dispatch(
+            resolvedView.state.update({
                 effects: [
                     updateThread.of({
                         annotationId,
@@ -44,16 +59,17 @@
         );
     }
 
-    /**
-     * Returns the viewport Y coordinate for this annotation's text selection.
-     * coordsAtPos() already returns viewport-relative coordinates.
-     */
+    function isInteractiveTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof HTMLElement)) return false;
+        return !!target.closest(
+            "button, input, textarea, select, a[href], [contenteditable='true']",
+        );
+    }
+
     function getAnnotationViewportY(annotation: GenericAnnotation): number {
-        if (!$editorView) return 0;
+        if (!resolvedView) return 0;
         try {
-            const coords = $editorView.coordsAtPos(
-                annotation.selection.main.from,
-            );
+            const coords = resolvedView.coordsAtPos(annotation.selection.main.from);
             if (!coords) return 0;
             return coords.top - 10;
         } catch {
@@ -61,40 +77,51 @@
         }
     }
 
-    /**
-     * Returns the fixed left offset for annotation cards.
-     * Annotations sit 16px to the right of the 816px document card,
-     * which is centered in the editor pane.
-     */
     function getAnnotationLeft(): number {
-        if (!$editorView) return 0;
-        const rect = $editorView.scrollDOM.getBoundingClientRect();
-        // Center of scroll container + half doc width + gap
+        if (!resolvedView) return 0;
+        const rect = resolvedView.scrollDOM.getBoundingClientRect();
         return rect.left + rect.width / 2 + 408 + 16;
     }
 
     const sortedAnnotations = $derived(
-        $annotations
-            ? Object.values($annotations).sort(
+        resolvedAnnotations
+            ? Object.values(resolvedAnnotations).sort(
                   (a, b) => a.selection.main.from - b.selection.main.from,
               )
             : [],
     );
 
     const positionedAnnotations = $derived(() => {
-        if (!sortedAnnotations.length || !$editorView) return [];
+        if (!sortedAnnotations.length || !resolvedView || !isFloating) return [];
         return sortedAnnotations.map((annotation) => ({
             annotation,
             viewportY: getAnnotationViewportY(annotation),
         }));
     });
 
-    let annotationElements: { [id: number]: HTMLDivElement } = {};
+    let annotationElements: { [id: number]: HTMLDivElement } = $state({});
+    let resizeObserver: ResizeObserver | undefined;
 
     $effect(() => {
-        if ($activeAnnotation !== undefined || sortedAnnotations.length) {
+        if (!isFloating) return;
+        if (resolvedActiveAnnotation !== undefined || sortedAnnotations.length) {
             tick().then(updateAnnotationPositions);
         }
+    });
+
+    // Re-run positioning whenever any card changes height (e.g. nested editor toggle).
+    // Re-observes whenever the annotation list changes.
+    $effect(() => {
+        if (!isFloating) return;
+        void sortedAnnotations; // track additions/removals
+        resizeObserver?.disconnect();
+        resizeObserver = new ResizeObserver(() => debouncedUpdatePositions());
+        tick().then(() => {
+            for (const el of Object.values(annotationElements)) {
+                if (el) resizeObserver!.observe(el);
+            }
+        });
+        return () => resizeObserver?.disconnect();
     });
 
     let updateTimeout: number;
@@ -104,28 +131,23 @@
     }
 
     function updateAnnotationPositions() {
-        if (!$editorView) return;
+        if (!resolvedView || !isFloating) return;
 
         const positions = positionedAnnotations();
         const MIN_SPACING = 8;
         const TOP_CLAMP = 64;
         const leftPx = getAnnotationLeft();
 
-        // Sort by natural document order (viewportY of anchor)
         const sortedByPos = [...positions].sort(
             (a, b) => a.viewportY - b.viewportY,
         );
 
-        // Forward pass: each card sits at its anchor Y, but never
-        // overlaps the card above it (push down only, never up).
         const adjustedY: { [id: number]: number } = {};
         let lastBottom = TOP_CLAMP;
 
         sortedByPos.forEach(({ annotation, viewportY }) => {
             const el = annotationElements[annotation.id];
             const height = el ? el.offsetHeight || 80 : 80;
-
-            // Every card tries to sit at its anchor; push down if needed.
             const y = Math.max(viewportY, lastBottom, TOP_CLAMP);
             adjustedY[annotation.id] = y;
             lastBottom = y + height + MIN_SPACING;
@@ -140,92 +162,122 @@
         });
     }
 
-    onMount(() => {
+    $effect(() => {
+        if (!isFloating || !resolvedView) return;
         const update = () => debouncedUpdatePositions();
-        $editorView?.scrollDOM.addEventListener("scroll", update);
+        resolvedView.scrollDOM.addEventListener("scroll", update);
         window.addEventListener("resize", update);
         return () => {
             clearTimeout(updateTimeout);
-            $editorView?.scrollDOM.removeEventListener("scroll", update);
+            resolvedView.scrollDOM.removeEventListener("scroll", update);
             window.removeEventListener("resize", update);
         };
     });
 </script>
 
-{#if sortedAnnotations && $annotations !== undefined}
-    {#each sortedAnnotations as c}
-        {@const i = c.id}
-        {@const isActive = $activeAnnotation?.id === c.id}
-        {@const isPendingComment =
-            !canCreateNewComment($annotations) &&
-            i === Math.max(...sortedAnnotations.map((x) => x.id))}
-        <div
-            bind:this={annotationElements[i]}
-            class="annotation-card"
-            class:is-active={isActive}
-            style="z-index: {isActive ? 100 : 50};"
-            onclick={() => {
-                if (!isActive && $editorView) {
-                    $editorView.dispatch({
-                        selection: { anchor: c.selection.main.from },
-                        scrollIntoView: true,
-                    });
-                    $editorView.focus();
-                }
-            }}
-            role="button"
-            tabindex="0"
-            onkeydown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && $editorView) {
-                    $editorView.dispatch({
-                        selection: { anchor: c.selection.main.from },
-                        scrollIntoView: true,
-                    });
-                    $editorView.focus();
-                }
-            }}
-        >
-            {#if isAnnotationOfType(c, "comment") && !isPendingComment}
-                <Comment
-                    comment={c}
-                    {isActive}
-                    removeComment={remove.bind(null, i)}
-                    updateThread={dispatchUpdateThread.bind(null, i)}
-                />
-            {/if}
-            {#if isAnnotationOfType(c, "revision")}
-                <Revision
-                    revision={c}
-                    {isActive}
-                    remove={remove.bind(null, i)}
-                    updateThread={dispatchUpdateThread.bind(null, i)}
-                />
-            {/if}
-            {#if isAnnotationOfType(c, "suggestion")}
-                <Suggestion
-                    suggestion={c}
-                    {isActive}
-                    remove={remove.bind(null, i)}
-                    updateThread={dispatchUpdateThread.bind(null, i)}
-                />
-            {/if}
-        </div>
-    {/each}
+{#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
+    <div class:annotation-inline-list={!isFloating}>
+        {#each sortedAnnotations as c}
+            {@const i = c.id}
+            {@const isActive = resolvedActiveAnnotation?.id === c.id}
+            {@const isPendingComment =
+                !canCreateNewComment(resolvedAnnotations) &&
+                i === Math.max(...sortedAnnotations.map((x) => x.id))}
+            <div
+                bind:this={annotationElements[i]}
+                class="annotation-card"
+                class:annotation-card-inline={!isFloating}
+                class:is-active={isActive}
+                style={isFloating ? `z-index: ${isActive ? 100 : 50};` : ""}
+                onclick={(e) => {
+                    if (isInteractiveTarget(e.target)) return;
+                    if (!isActive && resolvedView) {
+                        resolvedView.dispatch({
+                            selection: { anchor: c.selection.main.from },
+                            scrollIntoView: true,
+                        });
+                        resolvedView.focus();
+                    }
+                }}
+                role="button"
+                tabindex="0"
+                onkeydown={(e) => {
+                    if (isInteractiveTarget(e.target)) return;
+                    if ((e.key === "Enter" || e.key === " ") && resolvedView) {
+                        resolvedView.dispatch({
+                            selection: { anchor: c.selection.main.from },
+                            scrollIntoView: true,
+                        });
+                        resolvedView.focus();
+                    }
+                }}
+            >
+                {#if isAnnotationOfType(c, "comment") && !isPendingComment}
+                    <Comment
+                        comment={c}
+                        view={resolvedView}
+                        {isActive}
+                        removeComment={remove.bind(null, i)}
+                        updateThread={dispatchUpdateThread.bind(null, i)}
+                    />
+                {/if}
+                {#if isAnnotationOfType(c, "revision")}
+                    <Revision
+                        revision={c}
+                        view={resolvedView}
+                        {isActive}
+                        remove={remove.bind(null, i)}
+                        updateThread={dispatchUpdateThread.bind(null, i)}
+                    />
+                {/if}
+                {#if isAnnotationOfType(c, "suggestion")}
+                    <Suggestion
+                        suggestion={c}
+                        view={resolvedView}
+                        {isActive}
+                        remove={remove.bind(null, i)}
+                        updateThread={dispatchUpdateThread.bind(null, i)}
+                    />
+                {/if}
+            </div>
+        {/each}
 
-    {#if !canCreateNewComment($annotations)}
-        <div class="annotation-card" style="z-index: 50;">
-            <PreComment />
-        </div>
-    {/if}
+        {#if !canCreateNewComment(resolvedAnnotations)}
+            <div class="annotation-card" class:annotation-card-inline={!isFloating}>
+                <PreComment
+                    view={resolvedView}
+                    annotationsData={resolvedAnnotations}
+                    activeAnnotationData={resolvedActiveAnnotation}
+                />
+            </div>
+        {/if}
+    </div>
 {/if}
 
 <style>
+    .annotation-inline-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
     .annotation-card {
         position: fixed;
-        top: 64px; /* initial — overwritten by JS */
-        left: 0;   /* initial — overwritten by JS */
+        top: 64px;
+        left: 0;
         width: 240px;
+        max-height: calc(100vh - 88px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
         transition: top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
         pointer-events: auto;
+    }
+
+    .annotation-card-inline {
+        position: relative;
+        top: auto;
+        left: auto;
+        width: 100%;
+        transition: none;
     }
 </style>

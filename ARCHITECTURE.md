@@ -115,17 +115,166 @@ We use [CodeMirror 6](https://codemirror.net/) for the core editing library.
 
 ### Annotation System
 
-The annotation system is a CodeMirror extension that layers comments, revisions, and suggestions onto the document.
+The annotation system is a CodeMirror extension that layers comments, revisions, and suggestions onto the document. It is multi-layered: a `StateField` holds the data, `StateEffect`s mutate it, `ViewPlugin`s render decorations and enforce editing rules, and Svelte components display the side panel.
 
-**Key Components:**
-- `annotationField.ts`: StateField managing annotation data
-- `Annotations.svelte`: Side panel for displaying annotations
-- `Suggestion.svelte` / `Comment.svelte` / `Revision.svelte`: Individual annotation components
-  - I honestly need to organize the whole `src/lib/editor/plugins/annotations` folder better
+#### File Map
+
+| File | Role |
+|------|------|
+| `models.ts` | Type definitions, factory functions, type guards |
+| `annotationField.ts` | `StateField`, all `StateEffect`s, undo/redo support |
+| `utils.ts` | Range mapping, active annotation detection, `canCreateNewComment` |
+| `index.ts` | Keybindings, `ViewPlugin`s, `annotations()` extension export |
+| `Annotations.svelte` | Floating panel container, card positioning logic |
+| `Comment.svelte` | Comment card with thread + AI suggestion |
+| `Revision.svelte` | Revision card with version pills + nested editor |
+| `Suggestion.svelte` | Suggestion card with replacement buttons |
+| `Thread.svelte` / `ThreadMessage.svelte` | Message list + inline edit |
+| `PreComment.svelte` | Draft form for pending (unfilled) comments |
+| `default.css` | Highlight classes for all annotation types |
+
+#### Data Models
+
+Three annotation types share a common base:
+
+```typescript
+type BaseAnnotation = {
+    selection: EditorSelection; // what text is annotated
+    id: number;
+    thread: Thread;             // discussion messages
+};
+
+type CommentAnnotation    = BaseAnnotation & { _type: "comment" };
+type SuggestionAnnotation = BaseAnnotation & { _type: "suggestion"; replacements: string[] };
+type RevisionAnnotation   = BaseAnnotation & {
+    _type: "revision";
+    currentlySelected: number; // active version index
+    versions: string[];        // all version texts
+};
+
+type GenericAnnotation = CommentAnnotation | SuggestionAnnotation | RevisionAnnotation;
+type Annotations = { [id: number]: GenericAnnotation };
+```
+
+`isAnnotationOfType<T>(annotation, type)` is the type guard used throughout the codebase for safe narrowing.
+
+#### `annotationField` — The State Field
+
+`annotationField` is a `StateField<Annotations>` and is the single source of truth. Its `update()` method does three things on every transaction:
+
+1. **Map positions** — `selection.map(change)` repositions annotations when the document changes. If annotated text is fully deleted, the annotation is removed. Revisions are the exception — they survive empty ranges.
+2. **Process effects** — `StateEffect` dispatches mutate the annotation objects.
+3. **Version text sync** — when text inside an active revision changes in the main document, `versions[currentlySelected]` is updated to match automatically.
+
+The field is fully JSON-serializable (`toJSON`/`fromJSON`) via `EditorSelection.toJSON()`, enabling persistence through Tauri's save system.
+
+#### State Effects
+
+| Effect | Payload | Use |
+|--------|---------|-----|
+| `addAnnotation` | `GenericAnnotation` | Create any annotation |
+| `removeAnnotation` | `GenericAnnotation` | Delete any annotation |
+| `updateThread` | `{ annotationId, newThread }` | Update messages |
+| `addSuggestion` | `{ targetText, replacements }` | Create suggestion |
+| `_addVersionToRevision` | `{ annotationId, newVersion, at? }` | Add revision version |
+| `_deleteVersionFromRevision` | `{ annotationId, versionId }` | Remove a version |
+| `_updateActiveRevisionVersion` | `{ annotationId, to }` | Switch active version |
+| `_updateRevisionVersionText` | `{ annotationId, versionId, text }` | Sync nested editor text |
+
+`_`-prefixed effects are private to `annotationField.ts` and only exposed through public functions (`setActiveRevisionVersion`, `createNewRevision`, etc.). Undo/redo is handled by `invertedAnnotationFieldEffects`, which registers inverse effects so CodeMirror's history can reverse all mutations.
+
+#### Keybindings
+
+| Key | Command |
+|-----|---------|
+| `Ctrl+Alt+M` | Create comment (redirects to nested editor if cursor is inside an active revision) |
+| `Ctrl+Alt+K` | Create revision (same redirect logic) |
+| `Backspace` / `Delete` | Show boundary nudge hint; block deleting into an inactive revision |
+
+Commands use a priority chain: `redirectToNestedEditor` runs first and returns `false` if no active revision is under the cursor, falling through to the real command.
+
+#### ViewPlugins
+
+Four plugins run on every relevant update:
+
+- **`annotationDecorations`** — applies CSS classes (`cm-comment`, `cm-revision`, `cm-suggestion`, with `-active` variants) to annotated text. Active state is determined by `getActiveAnnotation()`, which finds the smallest annotation whose range contains the cursor.
+- **`revisionAtomicRanges`** — marks inactive revision ranges as atomic via `EditorView.atomicRanges`. The cursor skips over them and partial selection is prevented.
+- **`collapsedRevisionResolver`** — when a revision's range collapses to empty (its text was deleted), automatically switches to the next available version or removes the annotation if only one version remained.
+- **`blockDirectRevisionEdits`** — a `transactionFilter` that drops any document change touching an inactive revision range. Transactions annotated with `allowRevisionDocEdit` bypass this guard (used when switching versions programmatically).
+
+#### Floating Panel Layout
+
+Annotation cards float in the right panel. Their Y positions are computed:
+
+1. Each annotation's document position is converted to a viewport Y via `view.coordsAtPos()`
+2. Cards are stacked top-to-bottom with `MIN_SPACING = 8px` and `TOP_CLAMP = 64px`
+3. A `ResizeObserver` watches each card for height changes
+4. All recalculations are debounced at 16ms
+
+Clicking a card dispatches `{ anchor: c.selection.main.from }` to the editor, which moves the cursor and triggers the active annotation to update.
+
+#### Comment Flow
+
+```
+User selects text
+  → Ctrl+Alt+M
+  → canCreateNewComment() check (only one pending comment at a time)
+  → addAnnotation dispatched { thread: [] }
+  → PreComment.svelte renders (pending state: no messages yet)
+  → User types + clicks "Comment"
+  → updateThread dispatched with first message
+  → Comment.svelte renders (thread non-empty)
+```
+
+#### Revision Flow
+
+```
+User selects text
+  → Ctrl+Alt+K
+  → addAnnotation dispatched { versions: ["original text"], currentlySelected: 0 }
+  → Text becomes atomic (cannot be edited directly)
+  → Revision.svelte renders with one version pill
+
+User creates new version:
+  → _addVersionToRevision: copies current version text
+  → Two version pills shown
+
+User clicks version 2:
+  → setActiveRevisionVersion(state, id, 1)
+  → document change: replaces selection with versions[1]
+  → currentlySelected = 1
+  → Selection remapped to span of new text
+
+User opens nested editor (Ctrl+Alt+K inside revision):
+  → redirectToNestedEditor fires first
+  → revisionOpenNestedEditor store set
+  → Revision.svelte opens nested CodeMirror instance
+  → Full annotation support in nested editor
+  → Text changes sync back via _updateRevisionVersionText
+```
+
+#### Persistence
+
+The annotation field participates in full state serialization alongside the history field:
+
+```typescript
+// Save
+const json = editorView.state.toJSON({ historyField, annotationField });
+invoke("save", { state: JSON.stringify(json) });
+
+// Load
+const state = EditorState.fromJSON(
+    JSON.parse(saved),
+    { extensions: getExtensions(...) },
+    { historyField, annotationField },
+);
+```
+
+`EditorSelection` objects serialize to plain JSON and reconstruct on load, preserving annotation positions across sessions.
 
 ### Non-linear Editing
 
-The revision system enables non-linear editing currently by the revision system (similar to takes in Final Cut Pro). Eventualy we're going to explore alternative interfaces such as a tree view.
+The revision system enables non-linear editing (similar to takes in Final Cut Pro). The plan is to eventually explore alternative interfaces such as a tree view.
 
 ## AI Integration
 

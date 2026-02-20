@@ -1,38 +1,47 @@
 <script lang="ts">
-    import { activeAnnotation, annotations, editorView } from "$lib/stores";
+    import type { EditorView } from "@codemirror/view";
     import { tick } from "svelte";
     import { updateThread, removeAnnotation } from "./annotationField";
     import { canCreateNewComment } from "./utils";
-    import { isAnnotationOfType } from "./models";
+    import { isAnnotationOfType, type Annotations, type GenericAnnotation } from "./models";
+
+    const {
+        view,
+        annotationsData,
+        activeAnnotationData,
+    }: {
+        view: EditorView;
+        annotationsData: Annotations;
+        activeAnnotationData?: GenericAnnotation;
+    } = $props();
 
     let commentText = $state("");
     let textarea = $state<HTMLTextAreaElement | undefined>();
 
-    annotations.subscribe((a) => {
-        if (!a) return;
-        if (!canCreateNewComment(a)) {
+    $effect(() => {
+        if (!canCreateNewComment(annotationsData)) {
             tick().then(() => textarea?.focus());
         }
     });
 
     const selectedText = $derived(
-        $activeAnnotation && $editorView
-            ? $editorView.state.sliceDoc(
-                  $activeAnnotation.selection.main.from,
-                  $activeAnnotation.selection.main.to,
+        activeAnnotationData
+            ? view.state.sliceDoc(
+                  activeAnnotationData.selection.main.from,
+                  activeAnnotationData.selection.main.to,
               )
             : "",
     );
 
     function addComment() {
-        if (!$activeAnnotation || !isAnnotationOfType($activeAnnotation, "comment")) return;
-        $editorView.dispatch(
-            $editorView.state.update({
+        if (!activeAnnotationData || !isAnnotationOfType(activeAnnotationData, "comment")) return;
+        view.dispatch(
+            view.state.update({
                 effects: [
                     updateThread.of({
-                        annotationId: $activeAnnotation.id,
+                        annotationId: activeAnnotationData.id,
                         newThread: [
-                            ...$activeAnnotation.thread,
+                            ...activeAnnotationData.thread,
                             { message: commentText, author: "User", time: Date.now() },
                         ],
                     }),
@@ -43,10 +52,10 @@
     }
 
     function cancelComment() {
-        if (!$activeAnnotation || !isAnnotationOfType($activeAnnotation, "comment")) return;
-        $editorView.dispatch(
-            $editorView.state.update({
-                effects: [removeAnnotation.of($activeAnnotation)],
+        if (!activeAnnotationData || !isAnnotationOfType(activeAnnotationData, "comment")) return;
+        view.dispatch(
+            view.state.update({
+                effects: [removeAnnotation.of(activeAnnotationData)],
             }),
         );
         commentText = "";
@@ -54,7 +63,6 @@
 </script>
 
 <div class="backdrop-blur-md bg-gray-200/80 border border-white/50 shadow-xl rounded-[14px] overflow-hidden">
-    <!-- Quoted text chip -->
     {#if selectedText}
         <div class="px-3 pt-3">
             <div class="text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic">
@@ -63,7 +71,6 @@
         </div>
     {/if}
 
-    <!-- Input -->
     <div class="flex gap-2.5 px-3 py-3">
         <div class="shrink-0 w-7 h-7 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white shadow-sm flex items-center justify-center text-black/60 text-xs font-semibold">
             U
@@ -85,7 +92,6 @@
         ></textarea>
     </div>
 
-    <!-- Actions -->
     <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-black/10 pt-2">
         <button
             onclick={cancelComment}

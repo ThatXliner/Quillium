@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { EditorView } from "@codemirror/view";
     import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import {
         applySuggestion,
@@ -6,16 +7,17 @@
         type Thread as ThreadType,
     } from ".";
     import Thread from "./Thread.svelte";
-    import { editorView } from "$lib/stores";
 
     const {
         suggestion,
         isActive,
+        view,
         remove,
         updateThread,
     }: {
         suggestion: Annotation<"suggestion">;
         isActive: boolean;
+        view: EditorView;
         remove: () => void;
         updateThread: (thread: ThreadType) => void;
     } = $props();
@@ -45,9 +47,9 @@
                 <button
                     class="w-full text-left px-3 py-2 rounded-lg bg-white/40 inset-shadow-sm inset-shadow-white border border-white/30 hover:bg-white/60 transition-colors text-xs text-black/80"
                     onclick={() => {
-                        $editorView.dispatch(
+                        view.dispatch(
                             applySuggestion(
-                                $editorView.state,
+                                view.state,
                                 suggestion.id,
                                 index,
                             ),

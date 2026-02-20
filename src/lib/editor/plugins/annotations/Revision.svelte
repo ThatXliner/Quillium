@@ -1,88 +1,408 @@
 <script lang="ts">
-    import { PlusIcon, SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+    import { EditorState } from "@codemirror/state";
+    import { EditorView, type ViewUpdate } from "@codemirror/view";
+    import { ChevronDown, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
+    import { onDestroy, tick } from "svelte";
+    import { slide } from "svelte/transition";
+    import { getExtensions, savedFields } from "$lib/editor/extensions";
     import {
-        type Thread as ThreadType,
-        type Annotation,
+        addAnnotation,
+        annotationField,
         createNewRevision,
+        deleteRevisionVersion,
         setActiveRevisionVersion,
+        updateRevisionVersionState,
+        type Annotation,
+        type Annotations as AnnotationsMap,
+        type GenericAnnotation,
+        type Thread as ThreadType,
     } from ".";
+    import { canCreateNewComment } from "./utils";
+    import { createNewAnnotation, versionText, type AnnotationType, type VersionState } from "./models";
+    import { EditorSelection, Transaction } from "@codemirror/state";
+    import { getActiveAnnotation } from "./utils";
+    import { revisionBoundaryNudge, revisionOpenNestedEditor, type NestedEditorCommand } from "$lib/stores";
     import Thread from "./Thread.svelte";
-    import { editorView } from "$lib/stores";
+    import Annotations from "./Annotations.svelte";
 
     const {
         revision,
         isActive,
+        view,
         remove,
         updateThread,
     }: {
         revision: Annotation<"revision">;
         isActive: boolean;
+        view: EditorView;
         remove: () => void;
         updateThread: (thread: ThreadType) => void;
     } = $props();
+
     const thread = $derived(revision.thread);
+    const activeVersion = $derived(revision.versions[revision.currentlySelected]);
+    const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
+    const VERSION_PREVIEW_MAX = 34;
+
+    let isEditorOpen = $state(false);
+    let userClosedEditor = false; // plain var — not reactive, just a gate
+
+    $effect(() => {
+        if (isActive) {
+            if (!userClosedEditor) isEditorOpen = true;
+        } else {
+            isEditorOpen = false;
+            userClosedEditor = false;
+        }
+    });
+
+    function openEditor() {
+        userClosedEditor = false;
+        isEditorOpen = true;
+    }
+    let recursiveEditorHost = $state<HTMLDivElement>();
+    let recursiveEditor = $state<EditorView | undefined>(undefined);
+    let recursiveAnnotations = $state<AnnotationsMap | undefined>(undefined);
+    let recursiveActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+    let isSyncingFromAnnotation = false;
+    let previousVersionId = revision.currentlySelected;
+
+    // Boundary nudge: show a hint when the user presses delete at the edge
+    // of this revision's content in the main document.
+    let showBoundaryHint = $state(false);
+    let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    $effect(() => {
+        if ($revisionBoundaryNudge === revision.id) {
+            showBoundaryHint = true;
+            clearTimeout(boundaryHintTimeout);
+            boundaryHintTimeout = setTimeout(() => {
+                showBoundaryHint = false;
+                revisionBoundaryNudge.set(null);
+            }, 4000);
+        }
+    });
+
+    // Open nested editor, set selection, and run the annotation command
+    // when triggered from the main document while cursor was inside this revision.
+    $effect(() => {
+        const cmd = $revisionOpenNestedEditor;
+        if (!cmd || cmd.revisionId !== revision.id) return;
+        revisionOpenNestedEditor.set(null);
+        isEditorOpen = true;
+        tick().then(() => {
+            if (!recursiveEditor) return;
+            const state = recursiveEditor.state;
+            const docLen = state.doc.length;
+            const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
+            const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
+            // Set the selection in the nested editor to the mapped range
+            recursiveEditor.dispatch({
+                selection: EditorSelection.range(from, to),
+            });
+            recursiveEditor.focus();
+            // Now run the appropriate command against the nested editor
+            if (cmd.type === "comment") {
+                const s = recursiveEditor.state;
+                if (s.selection.main.empty) return;
+                if (!canCreateNewComment(s.field(annotationField))) return;
+                recursiveEditor.dispatch(
+                    s.update({
+                        effects: [
+                            addAnnotation.of(
+                                createNewAnnotation(
+                                    s.field(annotationField),
+                                    s.selection,
+                                    "comment",
+                                ),
+                            ),
+                        ],
+                        annotations: Transaction.addToHistory.of(true),
+                    }),
+                );
+            } else if (cmd.type === "revision") {
+                const s = recursiveEditor.state;
+                const selectedText = s.sliceDoc(s.selection.main.from, s.selection.main.to);
+                recursiveEditor.dispatch(
+                    s.update({
+                        effects: [
+                            addAnnotation.of({
+                                ...createNewAnnotation(
+                                    s.field(annotationField),
+                                    s.selection,
+                                    "revision",
+                                ),
+                                currentlySelected: 0,
+                                versions: [{ doc: selectedText } as VersionState],
+                            }),
+                        ],
+                        annotations: Transaction.addToHistory.of(true),
+                    }),
+                );
+            }
+        });
+    });
+
+    onDestroy(() => {
+        clearTimeout(boundaryHintTimeout);
+    });
+
+    function updateRecursiveMeta(currentView: EditorView) {
+        recursiveAnnotations = currentView.state.field(annotationField);
+        recursiveActiveAnnotation = getActiveAnnotation(currentView.state);
+    }
+
+    function upsertVersionState(currentEditor: EditorView, versionId = revision.currentlySelected) {
+        const blob = currentEditor.state.toJSON(savedFields) as VersionState;
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                revision.id,
+                versionId,
+                blob,
+            ),
+        );
+    }
+
+    function previewVersionText(version: VersionState) {
+        const flattened = versionText(version).replace(/\s+/g, " ").trim();
+        if (!flattened) return "(empty)";
+        return flattened.length > VERSION_PREVIEW_MAX
+            ? `${flattened.slice(0, VERSION_PREVIEW_MAX)}…`
+            : flattened;
+    }
+
+    function createRecursiveEditor(version: VersionState) {
+        if (!recursiveEditorHost || recursiveEditor) return;
+        const extensions = getExtensions({
+            persist: false,
+            updateListener(update: ViewUpdate) {
+                if (!recursiveEditor || isSyncingFromAnnotation) return;
+                updateRecursiveMeta(recursiveEditor);
+                upsertVersionState(recursiveEditor);
+            },
+        });
+        // Restore full state (doc + annotations + history) if available,
+        // otherwise create a fresh editor with just the text.
+        const state = "annotationField" in version
+            ? EditorState.fromJSON(version, { extensions }, savedFields)
+            : EditorState.create({ doc: versionText(version), extensions });
+        recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
+        updateRecursiveMeta(recursiveEditor);
+    }
+
+    function destroyRecursiveEditor() {
+        recursiveEditor?.destroy();
+        recursiveEditor = undefined;
+        recursiveAnnotations = undefined;
+        recursiveActiveAnnotation = undefined;
+    }
+
+    function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
+        if (!recursiveEditor || !activeVersion) return;
+        const currentText = recursiveEditor.state.doc.toString();
+        const targetText = activeText;
+        if (currentText === targetText) return;
+        // Save the current editor state back to whichever version we're leaving
+        if (previousVersionId !== undefined) {
+            upsertVersionState(recursiveEditor, previousVersionId);
+        }
+        isSyncingFromAnnotation = true;
+        const extensions = getExtensions({
+            persist: false,
+            updateListener(update: ViewUpdate) {
+                if (!recursiveEditor || isSyncingFromAnnotation) return;
+                updateRecursiveMeta(recursiveEditor);
+                upsertVersionState(recursiveEditor);
+            },
+        });
+        const nextState = "annotationField" in activeVersion
+            ? EditorState.fromJSON(activeVersion, { extensions }, savedFields)
+            : EditorState.create({ doc: targetText, extensions });
+        recursiveEditor.setState(nextState);
+        isSyncingFromAnnotation = false;
+        updateRecursiveMeta(recursiveEditor);
+    }
+
+    $effect(() => {
+        if (!isEditorOpen) {
+            destroyRecursiveEditor();
+            return;
+        }
+        tick().then(() => {
+            if (!isEditorOpen || !activeVersion) return;
+            createRecursiveEditor(activeVersion);
+            syncRecursiveEditorToActiveVersion();
+        });
+    });
+
+    $effect(() => {
+        if (!recursiveEditor || !isEditorOpen) return;
+        const prev = previousVersionId;
+        previousVersionId = revision.currentlySelected;
+        syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined);
+    });
+
+    onDestroy(() => {
+        destroyRecursiveEditor();
+    });
 </script>
 
 <div
-    class="backdrop-blur-md border overflow-hidden transition-all duration-200
+    class="backdrop-blur-md border rounded-[14px] transition-all duration-200
         {isActive
-            ? 'bg-gray-200/80 border-white/50 shadow-xl rounded-[14px]'
-            : 'bg-gray-300/70 border-white/30 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
+            ? 'bg-gray-200/80 border-white/50 shadow-xl'
+            : 'bg-gray-300/70 border-white/30 shadow-lg opacity-90 hover:opacity-100'}"
+    style="clip-path: inset(0 round 14px);"
 >
-    <div class="p-3 space-y-3">
-        <h3 class="text-xs font-semibold text-black/60 uppercase tracking-wider">Revisions</h3>
+    <!-- Header -->
+    <div class="flex items-center justify-between px-3 pt-3 pb-2">
+        <h3 class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">Revision</h3>
+        <button
+            class="p-1 rounded-md text-black/25 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+            onclick={() => remove()}
+            title="Delete entire revision"
+        >
+            <Trash2 size={12} />
+        </button>
+    </div>
 
-        <div class="flex flex-wrap gap-1.5">
-            {#each revision.versions as version, i}
-                {@const versionActive = i == revision.currentlySelected}
+    <!-- Version pills -->
+    <div class="px-3 pb-2 flex flex-wrap gap-1">
+        {#each revision.versions as version, i}
+            {@const versionActive = i === revision.currentlySelected}
+            <div class="inline-flex items-center rounded-md overflow-hidden
+                {versionActive
+                    ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
+                    : 'bg-white/40 ring-1 ring-white/30'}">
                 <button
-                    class="px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all
-                        {versionActive
-                            ? 'bg-purple-500/80 text-white border-purple-400/50 shadow-sm'
-                            : 'bg-white/40 inset-shadow-sm inset-shadow-white text-black/70 border-white/30 hover:bg-white/60'}"
+                    class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
+                        {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
                     disabled={versionActive}
+                    title={versionText(version) || "(empty)"}
                     onclick={() => {
-                        $editorView.dispatch(
-                            setActiveRevisionVersion(
-                                $editorView.state,
-                                revision.id,
-                                i,
-                            ),
+                        view.dispatch(
+                            setActiveRevisionVersion(view.state, revision.id, i),
                         );
                     }}
                 >
-                    {version}
+                    {previewVersionText(version)}
                 </button>
-            {/each}
-        </div>
+                <button
+                    class="pr-1.5 pl-0.5 py-1 transition-colors
+                        {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
+                    onclick={() => {
+                        view.dispatch(
+                            deleteRevisionVersion(view.state, revision.id, i),
+                        );
+                    }}
+                    title={`Delete version ${i + 1}`}
+                >
+                    <X size={9} />
+                </button>
+            </div>
+        {/each}
+    </div>
 
+    <!-- Actions row -->
+    <div class="px-3 pb-3 flex gap-1.5">
         <button
-            class="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-purple-700/70 bg-white/30 hover:bg-white/50 rounded-lg border border-white/30 transition-colors"
+            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/80
+                bg-white/30 hover:bg-white/50 rounded-md ring-1 ring-white/30 transition-colors"
             onclick={() => {
-                $editorView.dispatch(
-                    createNewRevision($editorView.state, revision.id),
-                );
+                view.dispatch(createNewRevision(view.state, revision.id));
+                view.focus();
             }}
-            title="Generate new revision"
+            title="Create a new version"
         >
-            <PlusIcon size={11} />
-            <span>New Revision</span>
+            <PlusIcon size={10} />
+            <span>New version</span>
         </button>
-    </div>
-
-    <div class="w-full h-px bg-black/10"></div>
-
-    <div class="p-3">
-        <Thread {thread} {updateThread} />
-    </div>
-
-    <div class="flex justify-end px-2 pb-2">
         <button
-            class="p-1.5 rounded-lg text-black/30 hover:text-red-500/70 hover:bg-white/40 transition-colors"
-            onclick={() => remove()}
-            title="Delete revision"
+            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
+                {isEditorOpen
+                    ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
+                    : 'text-black/40 bg-white/30 ring-white/30 hover:bg-white/50'}"
+            onclick={() => {
+                userClosedEditor = isEditorOpen; // closing = true, opening = false
+                isEditorOpen = !isEditorOpen;
+            }}
+            title={isEditorOpen ? "Hide nested editor" : "Open nested editor"}
         >
-            <Trash2 size={13} />
+            {#if isEditorOpen}
+                <ChevronUp size={10} />
+            {:else}
+                <ChevronDown size={10} />
+            {/if}
+            <span>Nested editor</span>
         </button>
     </div>
+
+    <!-- Boundary hint -->
+    {#if showBoundaryHint}
+        <div class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md
+            bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug">
+            <span class="shrink-0 mt-px">↓</span>
+            <span>Use the nested editor to edit at revision boundaries.</span>
+        </div>
+    {/if}
+
+    <!-- Nested editor (collapsible) -->
+    {#if isEditorOpen}
+        <div transition:slide={{ duration: 200 }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+            <div
+                bind:this={recursiveEditorHost}
+                class="revision-recursive-editor h-[220px] overflow-hidden"
+            ></div>
+            {#if recursiveEditor && recursiveAnnotations}
+                {@const annotationCount = Object.keys(recursiveAnnotations).length}
+                {#if annotationCount > 0}
+                    <div class="border-t border-black/[0.06] px-2 pt-1.5 pb-2">
+                        <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-1.5">
+                            Annotations
+                        </div>
+                        <div class="max-h-48 overflow-y-auto overscroll-contain">
+                            <Annotations
+                                view={recursiveEditor}
+                                annotationsData={recursiveAnnotations}
+                                activeAnnotationData={recursiveActiveAnnotation}
+                                layout="inline"
+                            />
+                        </div>
+                    </div>
+                {/if}
+            {/if}
+        </div>
+    {/if}
+
+    <!-- Thread -->
+    {#if thread.length > 0 || isActive}
+        <div class="border-t border-black/[0.07] px-3 py-2.5">
+            <Thread {thread} {updateThread} />
+        </div>
+    {/if}
 </div>
+
+<style>
+    .revision-recursive-editor :global(.cm-editor) {
+        height: 220px;
+        width: 100%;
+        background: transparent;
+    }
+
+    .revision-recursive-editor :global(.cm-scroller) {
+        overflow: auto;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .revision-recursive-editor :global(.cm-content) {
+        text-indent: 0;
+        min-height: 100%;
+        padding: 8px 10px 12px 10px;
+    }
+
+    .revision-recursive-editor :global(.cm-focused) {
+        outline: none;
+    }
+</style>
