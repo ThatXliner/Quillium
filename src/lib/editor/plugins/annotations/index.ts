@@ -19,7 +19,7 @@ import {
 import {
   Decoration,
   type DecorationSet,
-  type EditorView,
+  EditorView,
   type KeyBinding,
   ViewPlugin,
   type ViewUpdate,
@@ -35,6 +35,7 @@ import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import {
   annotationField,
   addAnnotation,
+  allowRevisionDocEdit,
   removeAnnotation,
   setActiveRevisionVersion,
   invertedAnnotationFieldEffects,
@@ -50,6 +51,72 @@ export const annotationsChanged = (update: ViewUpdate) =>
     tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
   );
 
+function hasRevisionIntersection(
+  from: number,
+  to: number,
+  revisions: readonly SelectionRange[],
+) {
+  return revisions.some(
+    ({ from: revisionFrom, to: revisionTo }) =>
+      from < revisionTo && to > revisionFrom,
+  );
+}
+
+const blockDirectRevisionEdits = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged) return tr;
+  if (tr.annotation(allowRevisionDocEdit)) return tr;
+
+  const revisionRanges = Object.values(tr.startState.field(annotationField))
+    .filter((annotation) => isAnnotationOfType(annotation, "revision"))
+    .map((annotation) => annotation.selection.main)
+    .filter(({ from, to }) => from !== to);
+  if (revisionRanges.length === 0) return tr;
+
+  let blocked = false;
+  tr.changes.iterChangedRanges((fromA, toA) => {
+    if (blocked) return;
+    if (hasRevisionIntersection(fromA, toA, revisionRanges)) {
+      blocked = true;
+    }
+  });
+  return blocked ? [] : tr;
+});
+
+const revisionAtomicRanges = ViewPlugin.fromClass(
+  class {
+    ranges: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.ranges = this.buildRanges(view.state);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || annotationsChanged(update)) {
+        this.ranges = this.buildRanges(update.state);
+      }
+    }
+
+    buildRanges(state: EditorState): DecorationSet {
+      const builder = new RangeSetBuilder<Decoration>();
+      const revisions = Object.values(state.field(annotationField)).filter(
+        (annotation) => isAnnotationOfType(annotation, "revision"),
+      );
+      for (const revision of revisions) {
+        const { from, to } = revision.selection.main;
+        if (from === to) continue;
+        builder.add(from, to, Decoration.mark({}));
+      }
+      return builder.finish();
+    }
+  },
+  {
+    provide: (plugin) =>
+      EditorView.atomicRanges.of(
+        (view) => view.plugin(plugin)?.ranges ?? Decoration.none,
+      ),
+  },
+);
+
 // When a revision's text is fully deleted (range collapses to from===to),
 // auto-switch to the next available version. If only one version exists,
 // remove the revision entirely.
@@ -57,6 +124,12 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
     class {
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
+            if (
+                update.transactions.some((tr) =>
+                    tr.annotation(allowRevisionDocEdit),
+                )
+            )
+                return;
             const annotations = update.state.field(annotationField);
             for (const annotation of Object.values(annotations)) {
                 if (!isAnnotationOfType(annotation, "revision")) continue;
@@ -352,8 +425,10 @@ export const annotationKeymap: KeyBinding[] = [
 
 // Extension
 export const annotations = () => [
+  blockDirectRevisionEdits,
   annotationField,
   annotationDecorations,
+  revisionAtomicRanges,
   collapsedRevisionResolver,
   invertedAnnotationFieldEffects,
 ];

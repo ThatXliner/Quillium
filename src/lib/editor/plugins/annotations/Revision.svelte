@@ -1,10 +1,11 @@
 <script lang="ts">
-    import { PlusIcon, SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+    import { PlusIcon, Trash2 } from "lucide-svelte";
     import {
         type Thread as ThreadType,
         type Annotation,
         createNewRevision,
         setActiveRevisionVersion,
+        updateRevisionVersionText,
     } from ".";
     import Thread from "./Thread.svelte";
     import { editorView } from "$lib/stores";
@@ -21,6 +22,27 @@
         updateThread: (thread: ThreadType) => void;
     } = $props();
     const thread = $derived(revision.thread);
+    let draft = $state("");
+    const activeText = $derived.by(
+        () => revision.versions[revision.currentlySelected] ?? "",
+    );
+    const hasUnsavedChanges = $derived(draft !== activeText);
+
+    $effect(() => {
+        draft = activeText;
+    });
+
+    function saveCurrentVersion() {
+        if (!$editorView || !hasUnsavedChanges) return;
+        $editorView.dispatch(
+            updateRevisionVersionText(
+                $editorView.state,
+                revision.id,
+                revision.currentlySelected,
+                draft,
+            ),
+        );
+    }
 </script>
 
 <div
@@ -33,7 +55,7 @@
         <h3 class="text-xs font-semibold text-black/60 uppercase tracking-wider">Revisions</h3>
 
         <div class="flex flex-wrap gap-1.5">
-            {#each revision.versions as version, i}
+            {#each revision.versions as _, i}
                 {@const versionActive = i == revision.currentlySelected}
                 <button
                     class="px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all
@@ -51,10 +73,35 @@
                         );
                     }}
                 >
-                    {version}
+                    V{i + 1}
                 </button>
             {/each}
         </div>
+
+        <p class="text-[11px] text-black/50 leading-relaxed">
+            Revision text is edited here. Inline document editing inside revision ranges is locked.
+        </p>
+
+        <textarea
+            class="w-full min-h-28 rounded-lg border border-white/30 bg-white/45 px-2.5 py-2 text-xs text-black/80 resize-y focus:outline-none focus:ring-1 focus:ring-purple-400/60"
+            bind:value={draft}
+            onkeydown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    saveCurrentVersion();
+                }
+            }}
+        ></textarea>
+
+        <button
+            class="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                {hasUnsavedChanges
+                    ? 'text-purple-700/90 bg-white/45 hover:bg-white/60 border-white/35'
+                    : 'text-black/35 bg-white/25 border-white/25'}"
+            disabled={!hasUnsavedChanges}
+            onclick={saveCurrentVersion}
+        >
+            <span>Save Version</span>
+        </button>
 
         <button
             class="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-purple-700/70 bg-white/30 hover:bg-white/50 rounded-lg border border-white/30 transition-colors"

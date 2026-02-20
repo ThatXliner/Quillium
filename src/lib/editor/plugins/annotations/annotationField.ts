@@ -46,6 +46,7 @@ export const updateThread = StateEffect.define<{
   annotationId: number;
   newThread: Thread;
 }>();
+export const allowRevisionDocEdit = Annotation.define<boolean>();
 // export const addThreadToAnnotation = StateEffect.define<{
 // 	annotationId: number;
 // 	threadMessage: ThreadMessage;
@@ -74,6 +75,11 @@ const _updateActiveRevisionVersion = StateEffect.define<{
   annotationId: number;
   to: number;
 }>();
+const _updateRevisionVersionText = StateEffect.define<{
+  annotationId: number;
+  versionId: number;
+  text: string;
+}>();
 export function setActiveRevisionVersion(
   state: EditorState,
   annotationId: number,
@@ -90,6 +96,10 @@ export function setActiveRevisionVersion(
         to,
       }),
     ],
+    annotations: [
+      allowRevisionDocEdit.of(true),
+      Transaction.addToHistory.of(true),
+    ],
     changes: state.changes({
       from: original.selection.main.from,
       to: original.selection.main.to,
@@ -102,17 +112,55 @@ export function createNewRevision(state: EditorState, annotationId: number) {
   if (!isAnnotationOfType(original, "revision")) {
     throw new Error("Annotation is not a revision");
   }
+  const copiedVersion =
+    original.versions[original.currentlySelected] ??
+    state
+      .sliceDoc(original.selection.main.from, original.selection.main.to)
+      .toString();
   return state.update({
     effects: [
       _addVersionToRevision.of({
         annotationId,
-        newVersion: "Lorem Ipsum",
+        newVersion: copiedVersion,
       }),
     ],
+    annotations: Transaction.addToHistory.of(true),
+  });
+}
+export function updateRevisionVersionText(
+  state: EditorState,
+  annotationId: number,
+  versionId: number,
+  text: string,
+) {
+  const original = state.field(annotationField)[annotationId];
+  if (!isAnnotationOfType(original, "revision")) {
+    throw new Error("Annotation is not a revision");
+  }
+  const effects = [
+    _updateRevisionVersionText.of({
+      annotationId,
+      versionId,
+      text,
+    }),
+  ];
+  const annotations = [
+    allowRevisionDocEdit.of(true),
+    Transaction.addToHistory.of(true),
+  ];
+  if (original.currentlySelected !== versionId) {
+    return state.update({
+      effects,
+      annotations,
+    });
+  }
+  return state.update({
+    effects,
+    annotations,
     changes: state.changes({
       from: original.selection.main.from,
       to: original.selection.main.to,
-      insert: "Lorem Ipsum",
+      insert: text,
     }),
   });
 }
@@ -255,6 +303,26 @@ export const annotationField = StateField.define<Annotations>({
         // JavaScript would give annotation a reference to the annotation object
         // but just in case, you know.
         annotations[e.value.annotationId] = annotation;
+      } else if (e.is(_updateRevisionVersionText)) {
+        let annotation = annotations[e.value.annotationId];
+        if (!isAnnotationOfType(annotation, "revision")) continue;
+        doUpdateRevision = false;
+        annotation.versions[e.value.versionId] = e.value.text;
+        if (
+          annotation.currentlySelected === e.value.versionId &&
+          tr.docChanged
+        ) {
+          const oldAnnotation = oldAnnotations[e.value.annotationId];
+          if (oldAnnotation) {
+            const from = tr.changes.mapPos(
+              oldAnnotation.selection.main.from,
+              -1,
+            );
+            const to = from + e.value.text.length;
+            annotation.selection = EditorSelection.single(from, to);
+          }
+        }
+        annotations[e.value.annotationId] = annotation;
       } else if (e.is(addSuggestion)) {
         const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
         for (const { from, to } of cursor) {
@@ -357,6 +425,16 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             }),
           );
         }
+      } else if (effect.is(_updateRevisionVersionText)) {
+        let oldAnnotation = oldAnnotations[effect.value.annotationId];
+        if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
+        effects.push(
+          _updateRevisionVersionText.of({
+            annotationId: oldAnnotation.id,
+            versionId: effect.value.versionId,
+            text: oldAnnotation.versions[effect.value.versionId],
+          }),
+        );
       } else if (effect.is(addSuggestion)) {
         const annotations = transaction.startState.field(annotationField);
         effects.push(removeAnnotation.of(annotations[getLastId(annotations)]));
