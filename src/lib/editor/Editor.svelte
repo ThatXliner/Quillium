@@ -23,9 +23,13 @@
     let stats = $state<{
         words: number;
         chars: number;
+        selWords: number;
+        selChars: number;
     }>({
         words: 0,
         chars: 0,
+        selWords: 0,
+        selChars: 0,
     });
 
     function getWordCount(doc: string): number {
@@ -37,19 +41,23 @@
             const doc = update.state.doc.toString();
             const newWords = getWordCount(doc);
 
+            const selection = update.state.selection.main;
+            const selText = selection.empty
+                ? ""
+                : update.state.sliceDoc(selection.from, selection.to);
+
             stats = {
                 words: newWords,
                 chars: doc.length,
+                selWords: selText ? getWordCount(selText) : 0,
+                selChars: selText.length,
             };
             $annotations = Object.values(update.state.field(annotationField));
             $activeAnnotation = getActiveAnnotation($editorView.state);
 
             // Sync document content and selection for AI chat
             $documentContent = doc;
-            const selection = update.state.selection.main;
-            $selectedText = selection.empty
-                ? ""
-                : update.state.sliceDoc(selection.from, selection.to);
+            $selectedText = selText;
         },
     };
 
@@ -72,6 +80,8 @@
         stats = {
             words: getWordCount(doc),
             chars: doc.length,
+            selWords: 0,
+            selChars: 0,
         };
         return state;
     });

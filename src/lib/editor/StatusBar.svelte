@@ -1,7 +1,7 @@
 <script lang="ts">
 import Save from "$lib/save/Save.svelte";
 import { listen } from "@tauri-apps/api/event";
-const { words, chars } = $props();
+const { words, chars, selWords, selChars } = $props();
 let fileSaved = $state<boolean>(true);
 listen("saved", () => {
 	fileSaved = true;
@@ -23,8 +23,18 @@ listen("saving", () => {
         >
     </div>
     <div class="w-px h-8 bg-black/20"></div>
-    <span class="text-sm text-black/90">Words: {words}</span>
+    <div class="flex flex-col items-center leading-tight">
+        <span class="text-sm text-black/90">Words: {selWords > 0 ? selWords : words}</span>
+        {#if selWords > 0}
+            <span class="text-[10px] text-black/50">{words} total</span>
+        {/if}
+    </div>
     <div class="w-px h-8 bg-black/20"></div>
-    <span class="text-sm text-black/90">Characters: {chars}</span>
+    <div class="flex flex-col items-center leading-tight">
+        <span class="text-sm text-black/90">Characters: {selChars > 0 ? selChars : chars}</span>
+        {#if selChars > 0}
+            <span class="text-[10px] text-black/50">{chars} total</span>
+        {/if}
+    </div>
     <Save />
 </div>
