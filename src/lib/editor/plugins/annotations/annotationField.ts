@@ -17,7 +17,7 @@ import {
   type RawAnnotations,
   type Thread,
 } from "./models";
-import { cleanRangesOf, mapRange } from "./utils";
+import { cleanRangesOf, mapRange, mapRevisionSelection } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import { filter, mapValues } from "lodash-es";
@@ -91,8 +91,8 @@ export function setActiveRevisionVersion(
       }),
     ],
     changes: state.changes({
-      from: original.selection.main.from,
-      to: original.selection.main.to,
+      from: original.selection.main.from + 1, // after left delimiter
+      to: original.selection.main.to - 1, // before right delimiter
       insert: original.versions[to],
     }),
   });
@@ -110,8 +110,8 @@ export function createNewRevision(state: EditorState, annotationId: number) {
       }),
     ],
     changes: state.changes({
-      from: original.selection.main.from,
-      to: original.selection.main.to,
+      from: original.selection.main.from + 1, // after left delimiter
+      to: original.selection.main.to - 1, // before right delimiter
       insert: "Lorem Ipsum",
     }),
   });
@@ -162,8 +162,11 @@ export const annotationField = StateField.define<Annotations>({
           mapValues(annotations, (x) => {
             // Run it through deletions
             const isRevision = isAnnotationOfType(x, "revision");
+            const mapped = isRevision
+              ? mapRevisionSelection(x.selection, tr.changes)
+              : x.selection.map(tr.changes);
             const newSelection = cleanRangesOf(
-              x.selection.map(tr.changes, isRevision ? 1 : 0),
+              mapped,
               isRevision, // keep revision alive even when empty
             );
 
@@ -243,7 +246,7 @@ export const annotationField = StateField.define<Annotations>({
               );
               const versionText =
                   annotation.versions[e.value.to];
-              const to = from + versionText.length;
+              const to = from + versionText.length + 2; // +2 for delimiters
               annotation.selection = EditorSelection.single(
                   from,
                   to,
@@ -277,11 +280,16 @@ export const annotationField = StateField.define<Annotations>({
       // TODO: run on every character update?
       annotations = mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision")) {
-          // the revision version's associated internal text needs to be updated
-          x.versions[x.currentlySelected] = tr.state.doc
-            .slice(x.selection.main.from, x.selection.main.to)
-            // TODO: maybe even include comments!??
-            .toString();
+          const { from, to } = x.selection.main;
+          // Strip delimiters: only store the content between them
+          if (to - from > 2) {
+            x.versions[x.currentlySelected] = tr.state.doc
+              .slice(from + 1, to - 1)
+              .toString();
+          } else {
+            // Only delimiters remain (or range is empty)
+            x.versions[x.currentlySelected] = "";
+          }
         }
         return x;
       });

@@ -24,9 +24,20 @@
 
     function remove(index: number) {
         if (!$annotations) return;
+        const annotation = $annotations[index];
+        const isRevision = isAnnotationOfType(annotation, "revision");
+        const { from, to } = annotation.selection.main;
         $editorView.dispatch(
             $editorView.state.update({
-                effects: [removeAnnotation.of($annotations[index])],
+                effects: [removeAnnotation.of(annotation)],
+                ...(isRevision && to - from >= 2
+                    ? {
+                          changes: [
+                              { from, to: from + 1 },
+                              { from: to - 1, to },
+                          ],
+                      }
+                    : {}),
             }),
         );
     }

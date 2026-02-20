@@ -3,14 +3,15 @@
 
 import { SearchCursor } from "@codemirror/search";
 import {
+  type ChangeSpec,
   EditorSelection,
+  EditorState,
   RangeSet,
   RangeSetBuilder,
   type SelectionRange,
   type StateCommand,
   Transaction,
   Text,
-  EditorState,
 } from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
@@ -39,6 +40,10 @@ import {
   setActiveRevisionVersion,
   invertedAnnotationFieldEffects,
 } from "./annotationField";
+import {
+    revisionBoundaryDecorations,
+    REVISION_DELIMITER,
+} from "./revisionBoundary";
 
 export * from "./annotationField";
 export const annotationsChanged = (update: ViewUpdate) =>
@@ -61,12 +66,19 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
             for (const annotation of Object.values(annotations)) {
                 if (!isAnnotationOfType(annotation, "revision")) continue;
                 const { from, to } = annotation.selection.main;
-                if (from !== to) continue;
-                // Revision range collapsed — all text was deleted
+                if (to - from > 2) continue; // still has content between delimiters
+                // Revision collapsed — all text between delimiters was deleted
                 if (annotation.versions.length <= 1) {
-                    // Only one version, nothing to fall back to — remove it
+                    // Only one version, nothing to fall back to — remove it + clean up delimiters
                     update.view.dispatch({
                         effects: [removeAnnotation.of(annotation)],
+                        changes:
+                            to - from === 2
+                                ? [
+                                      { from, to: from + 1 },
+                                      { from: to - 1, to },
+                                  ]
+                                : [],
                     });
                 } else {
                     // Switch to the next available version
@@ -304,8 +316,16 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 };
 // QUESTION: Should we have some sort of global annotation mutex
 const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+  const from = state.selection.main.from;
+  const to = state.selection.main.to;
+  const originalText = state.sliceDoc(from, to);
+
   dispatch(
     state.update({
+      changes: [
+        { from, insert: REVISION_DELIMITER },
+        { from: to, insert: REVISION_DELIMITER },
+      ],
       effects: [
         addAnnotation.of({
           ...createNewAnnotation(
@@ -314,9 +334,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
             "revision",
           ),
           currentlySelected: 0,
-          versions: [
-            state.sliceDoc(state.selection.main.from, state.selection.main.to),
-          ],
+          versions: [originalText], // NO delimiters in stored version
         }),
       ],
     }),
@@ -350,11 +368,112 @@ export const annotationKeymap: KeyBinding[] = [
   },
 ];
 
+// Prevent user edits from destroying revision delimiter characters.
+// When a deletion/replacement overlaps a delimiter, shrink the range
+// so the delimiter stays intact.
+const revisionDelimiterGuard = EditorState.transactionFilter.of((tr) => {
+    if (!tr.docChanged) return tr;
+
+    // Skip internal dispatches (version switches, revision creation/
+    // removal, etc.) — those intentionally modify delimiter regions.
+    // User typing never carries effects, so this is a safe heuristic.
+    if (tr.effects.length > 0) return tr;
+
+    // Collect delimiter positions from revisions
+    const delimiterPositions = new Set<number>();
+    const revisions = tr.startState.field(annotationField);
+    for (const annotation of Object.values(revisions)) {
+        if (!isAnnotationOfType(annotation, "revision")) continue;
+        const { from, to } = annotation.selection.main;
+        if (to - from < 2) continue;
+        delimiterPositions.add(from); // left delimiter
+        delimiterPositions.add(to - 1); // right delimiter
+    }
+
+    if (delimiterPositions.size === 0) return tr;
+
+    // Check if any changed range touches a delimiter
+    let touchesDelimiter = false;
+    tr.changes.iterChangedRanges((fromA, toA) => {
+        if (touchesDelimiter) return;
+        for (let pos = fromA; pos < toA; pos++) {
+            if (delimiterPositions.has(pos)) {
+                touchesDelimiter = true;
+                return;
+            }
+        }
+    });
+
+    if (!touchesDelimiter) return tr;
+
+    // Rebuild changes, splitting each range into segments that
+    // skip over delimiter positions.
+    const newChanges: ChangeSpec[] = [];
+    tr.changes.iterChanges(
+        (fromA: number, toA: number, _fromB: number, _toB: number, inserted: Text) => {
+            // Collect delimiter positions within this range, sorted
+            const delimsInRange: number[] = [];
+            for (let pos = fromA; pos < toA; pos++) {
+                if (delimiterPositions.has(pos)) {
+                    delimsInRange.push(pos);
+                }
+            }
+
+            if (delimsInRange.length === 0) {
+                // No delimiters in this range — pass through unchanged
+                newChanges.push({ from: fromA, to: toA, insert: inserted });
+                return;
+            }
+
+            // Split around delimiters: delete the non-delimiter segments,
+            // attach inserted text to the first segment only.
+            let segStart = fromA;
+            let first = true;
+            for (const dp of delimsInRange) {
+                if (segStart < dp) {
+                    newChanges.push({
+                        from: segStart,
+                        to: dp,
+                        insert: first ? inserted : "",
+                    });
+                    first = false;
+                }
+                segStart = dp + 1; // skip the delimiter
+            }
+            // Remaining segment after the last delimiter
+            if (segStart < toA) {
+                newChanges.push({
+                    from: segStart,
+                    to: toA,
+                    insert: first ? inserted : "",
+                });
+                first = false;
+            }
+            // If all segments were delimiters, still insert the text
+            if (first && inserted.length > 0) {
+                newChanges.push({
+                    from: fromA,
+                    to: fromA,
+                    insert: inserted,
+                });
+            }
+        },
+    );
+
+    return {
+        changes: newChanges,
+        effects: tr.effects,
+        selection: tr.selection,
+    };
+});
+
 // Extension
 export const annotations = () => [
   annotationField,
   annotationDecorations,
+  revisionBoundaryDecorations,
   collapsedRevisionResolver,
+  revisionDelimiterGuard,
   invertedAnnotationFieldEffects,
 ];
 export * from "./models";

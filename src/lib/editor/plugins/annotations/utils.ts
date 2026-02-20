@@ -149,12 +149,38 @@ export function canCreateNewComment(annotations: Annotations) {
     )
   );
 }
+export function mapRevisionSelection(
+    selection: EditorSelection,
+    change: ChangeDesc,
+): EditorSelection {
+    const ranges = selection.ranges.map((r) => {
+        if (r.empty) {
+            // Collapsed range — map with default assoc
+            const pos = change.mapPos(r.from);
+            return EditorSelection.range(pos, pos);
+        }
+        const from = change.mapPos(r.from, -1);
+        const to = change.mapPos(r.to, 1);
+        return EditorSelection.range(from, to);
+    });
+    return EditorSelection.create(ranges, selection.mainIndex);
+}
+
 export function mapRange(range: GenericAnnotation, change: ChangeDesc) {
-    const allowEmpty = isAnnotationOfType(range, "revision");
-    let newRanges = cleanRangesOf(
-        range.selection.map(change),
-        allowEmpty,
-    );
+    const isRevision = isAnnotationOfType(range, "revision");
+    const allowEmpty = isRevision;
+    let newRanges: EditorSelection | null;
+    if (isRevision) {
+        newRanges = cleanRangesOf(
+            mapRevisionSelection(range.selection, change),
+            allowEmpty,
+        );
+    } else {
+        newRanges = cleanRangesOf(
+            range.selection.map(change),
+            allowEmpty,
+        );
+    }
     if (newRanges) {
         range.selection = newRanges;
         return range;
