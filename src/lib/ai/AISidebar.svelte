@@ -50,7 +50,13 @@
     let container: HTMLDivElement;
 
     function handleClickOutside(e: MouseEvent) {
-        if (expanded && container && !container.contains(e.target as Node)) {
+        const target = e.target as Node;
+        if (
+            expanded &&
+            container &&
+            !container.contains(target) &&
+            !(target as Element).closest?.(".cm-editor")
+        ) {
             action = null;
         }
     }
