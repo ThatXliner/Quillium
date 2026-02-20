@@ -46,11 +46,8 @@
     let recursiveActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
     let isSyncingFromAnnotation = false;
 
-    $effect(() => {
-        if (isActive) {
-            isEditorOpen = true;
-        }
-    });
+    // Do not auto-open the recursive editor when the revision becomes active —
+    // the user can now edit the active version directly in the main document.
 
     function updateRecursiveMeta(currentView: EditorView) {
         recursiveAnnotations = currentView.state.field(annotationField);
@@ -212,7 +209,11 @@
         </div>
 
         <p class="text-[11px] text-black/55 leading-relaxed">
-            Revisions are atomic in the parent document. This nested editor is fully featured and live-synced.
+            {#if isActive}
+                Click into the highlighted text to edit this version directly. Use the nested editor below for rich editing with annotations.
+            {:else}
+                Click a version to swap it into the document. The active version can be edited in-place.
+            {/if}
         </p>
 
         <div class="flex gap-2">
