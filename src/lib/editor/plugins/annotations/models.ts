@@ -28,10 +28,14 @@ type BaseAnnotation = {
 };
 
 export function getNewId(annotations: Annotations) {
-  return Object.keys(annotations).length;
+  const keys = Object.keys(annotations);
+  if (keys.length === 0) return 0;
+  return Math.max(...keys.map(Number)) + 1;
 }
 export function getLastId(annotations: Annotations) {
-  return Object.keys(annotations).length - 1;
+  const keys = Object.keys(annotations);
+  if (keys.length === 0) return -1;
+  return Math.max(...keys.map(Number));
 }
 
 export function createNewAnnotation<T extends AnnotationType>(

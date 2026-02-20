@@ -263,7 +263,7 @@
             onclick={() => remove()}
             title="Delete entire revision"
         >
-            <Trash2 size={12} />
+            <Trash2 size={16} />
         </button>
     </div>
 

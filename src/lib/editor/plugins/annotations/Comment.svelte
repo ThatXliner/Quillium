@@ -140,6 +140,18 @@
             ? 'bg-gray-200/80 border-white/50 shadow-xl rounded-[14px]'
             : 'bg-gray-300/70 border-white/30 rounded-[12px] opacity-90 hover:opacity-100 hover:bg-gray-200/75'}"
 >
+    <!-- Header -->
+    <div class="flex items-center justify-between px-3 pt-3 pb-0">
+        <h3 class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">Comment</h3>
+        <button
+            class="p-1 rounded-md text-black/25 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+            onclick={() => removeComment()}
+            title="Delete comment"
+        >
+            <Trash2 size={16} />
+        </button>
+    </div>
+
     <!-- Quoted text chip -->
     {#if selectedText}
         <div class="px-3 pt-3 pb-0">
@@ -202,7 +214,7 @@
                     </button>
                 {/if}
             </div>
-            <div class="flex items-center justify-between px-2 pb-1.5">
+            <div class="flex items-center px-2 pb-1.5">
                 <button
                     aria-label="Get AI suggestion"
                     title="Get AI suggestion"
@@ -211,14 +223,6 @@
                 >
                     <SparklesIcon size={11} />
                     <span>Suggest</span>
-                </button>
-                <button
-                    aria-label="Delete comment"
-                    title="Delete comment"
-                    class="p-1 rounded-md text-black/25 hover:text-red-500/70 hover:bg-white/50 transition-colors"
-                    onclick={() => removeComment()}
-                >
-                    <Trash2 size={11} />
                 </button>
             </div>
         </div>
