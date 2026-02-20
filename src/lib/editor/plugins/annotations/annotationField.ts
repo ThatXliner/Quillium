@@ -248,6 +248,44 @@ export function updateRevisionVersionState(
     }),
   });
 }
+export function branchSuggestion(state: EditorState, annotationId: number) {
+    const annotation = state.field(annotationField)[annotationId];
+    if (!isAnnotationOfType(annotation, "suggestion")) {
+        throw new Error("Annotation is not a suggestion");
+    }
+    const { from, to } = annotation.selection.main;
+    const originalText = state.doc.sliceString(from, to);
+
+    const versions: VersionState[] = [
+        { doc: originalText },
+        ...annotation.replacements.map((r) => ({ doc: r } as VersionState)),
+    ];
+
+    const firstReplacement = annotation.replacements[0] ?? originalText;
+
+    const newRevision = {
+        ...createNewAnnotation(
+            state.field(annotationField),
+            EditorSelection.single(from, from + firstReplacement.length),
+            "revision",
+        ),
+        currentlySelected: 1,
+        versions,
+        thread: annotation.thread,
+    };
+
+    return state.update({
+        effects: [
+            removeAnnotation.of(annotation),
+            addAnnotation.of(newRevision),
+        ],
+        changes: state.changes({ from, to, insert: firstReplacement }),
+        annotations: [
+            allowRevisionDocEdit.of(true),
+            Transaction.addToHistory.of(true),
+        ],
+    });
+}
 // === For suggestions ===
 export const addSuggestion = StateEffect.define<{
   targetText: string;

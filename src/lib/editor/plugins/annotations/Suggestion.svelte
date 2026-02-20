@@ -1,8 +1,9 @@
 <script lang="ts">
     import type { EditorView } from "@codemirror/view";
-    import { SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+    import { GitBranchIcon, SendHorizonalIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import {
         applySuggestion,
+        branchSuggestion,
         type Annotation,
         type Thread as ThreadType,
     } from ".";
@@ -68,7 +69,19 @@
         <Thread {thread} {updateThread} />
     </div>
 
-    <div class="flex justify-end px-2 pb-2">
+    <div class="flex items-center justify-between px-2 pb-2">
+        <button
+            aria-label="Branch instead"
+            title="Convert to revision with original and suggestion as versions"
+            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/70
+                bg-white/30 hover:bg-white/50 rounded-md ring-1 ring-white/30 transition-colors"
+            onclick={() => {
+                view.dispatch(branchSuggestion(view.state, suggestion.id));
+            }}
+        >
+            <GitBranchIcon size={11} />
+            <span>Branch instead</span>
+        </button>
         <button
             aria-label="Delete suggestion"
             class="p-1.5 rounded-lg text-black/30 hover:text-red-500/70 hover:bg-white/40 transition-colors"
