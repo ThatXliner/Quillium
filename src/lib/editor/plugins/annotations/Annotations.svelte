@@ -97,12 +97,28 @@
     });
 
     let annotationElements: { [id: number]: HTMLDivElement } = {};
+    let resizeObserver: ResizeObserver | undefined;
 
     $effect(() => {
         if (!isFloating) return;
         if (resolvedActiveAnnotation !== undefined || sortedAnnotations.length) {
             tick().then(updateAnnotationPositions);
         }
+    });
+
+    // Re-run positioning whenever any card changes height (e.g. nested editor toggle).
+    // Re-observes whenever the annotation list changes.
+    $effect(() => {
+        if (!isFloating) return;
+        void sortedAnnotations; // track additions/removals
+        resizeObserver?.disconnect();
+        resizeObserver = new ResizeObserver(() => debouncedUpdatePositions());
+        tick().then(() => {
+            for (const el of Object.values(annotationElements)) {
+                if (el) resizeObserver!.observe(el);
+            }
+        });
+        return () => resizeObserver?.disconnect();
     });
 
     let updateTimeout: number;
