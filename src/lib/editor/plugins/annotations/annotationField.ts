@@ -66,6 +66,7 @@ export const allowRevisionDocEdit = Annotation.define<boolean>();
 const _addVersionToRevision = StateEffect.define<{
   annotationId: number;
   newVersion: string;
+  at?: number;
 }>();
 const _deleteVersionFromRevision = StateEffect.define<{
   annotationId: number;
@@ -125,6 +126,78 @@ export function createNewRevision(state: EditorState, annotationId: number) {
       }),
     ],
     annotations: Transaction.addToHistory.of(true),
+  });
+}
+export function deleteRevisionVersion(
+  state: EditorState,
+  annotationId: number,
+  versionId: number,
+) {
+  const original = state.field(annotationField)[annotationId];
+  if (!isAnnotationOfType(original, "revision")) {
+    throw new Error("Annotation is not a revision");
+  }
+  if (versionId < 0 || versionId >= original.versions.length) {
+    return state.update({});
+  }
+
+  // Deleting the last remaining version deletes the whole revision atom.
+  if (original.versions.length === 1) {
+    return state.update({
+      effects: [removeAnnotation.of(original)],
+      annotations: [
+        allowRevisionDocEdit.of(true),
+        Transaction.addToHistory.of(true),
+      ],
+      changes: state.changes({
+        from: original.selection.main.from,
+        to: original.selection.main.to,
+        insert: "",
+      }),
+    });
+  }
+
+  const nextVersions = original.versions.filter((_, i) => i !== versionId);
+  let nextSelected = original.currentlySelected;
+  if (versionId < original.currentlySelected) {
+    nextSelected = original.currentlySelected - 1;
+  } else if (versionId === original.currentlySelected) {
+    nextSelected = Math.min(versionId, nextVersions.length - 1);
+  }
+
+  const effects: StateEffect<unknown>[] = [
+    _deleteVersionFromRevision.of({
+      annotationId,
+      versionId,
+    }),
+  ];
+  if (nextSelected !== original.currentlySelected) {
+    effects.push(
+      _updateActiveRevisionVersion.of({
+        annotationId,
+        to: nextSelected,
+      }),
+    );
+  }
+
+  const annotations = [
+    allowRevisionDocEdit.of(true),
+    Transaction.addToHistory.of(true),
+  ];
+  if (versionId === original.currentlySelected) {
+    return state.update({
+      effects,
+      annotations,
+      changes: state.changes({
+        from: original.selection.main.from,
+        to: original.selection.main.to,
+        insert: nextVersions[nextSelected] ?? "",
+      }),
+    });
+  }
+  return state.update({
+    effects,
+    annotations,
   });
 }
 export function updateRevisionVersionText(
@@ -268,12 +341,23 @@ export const annotationField = StateField.define<Annotations>({
         if (!isAnnotationOfType(annotation, "revision")) continue;
         doUpdateRevision = false;
         if (e.is(_addVersionToRevision)) {
-          annotation.versions.push(e.value.newVersion);
-          annotation.currentlySelected = annotation.versions.length - 1;
+          const insertionIndex = Math.max(
+            0,
+            Math.min(e.value.at ?? annotation.versions.length, annotation.versions.length),
+          );
+          annotation.versions.splice(insertionIndex, 0, e.value.newVersion);
+          annotation.currentlySelected = insertionIndex;
         } else if (e.is(_deleteVersionFromRevision)) {
           annotation.versions.splice(e.value.versionId, 1);
-          if (annotation.currentlySelected === e.value.versionId) {
-            annotation.currentlySelected = Math.max(0, e.value.versionId - 1);
+          if (e.value.versionId < annotation.currentlySelected) {
+            annotation.currentlySelected -= 1;
+          } else if (
+            annotation.currentlySelected >= annotation.versions.length
+          ) {
+            annotation.currentlySelected = Math.max(
+              0,
+              annotation.versions.length - 1,
+            );
           }
         } else if (e.is(_updateActiveRevisionVersion)) {
           annotation.currentlySelected = e.value.to;
@@ -407,7 +491,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
           effects.push(
             _deleteVersionFromRevision.of({
               annotationId: oldAnnotation.id,
-              versionId: oldAnnotation.versions.length - 1,
+              versionId: effect.value.at ?? oldAnnotation.versions.length,
             }),
           );
         } else if (effect.is(_deleteVersionFromRevision)) {
@@ -415,6 +499,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             _addVersionToRevision.of({
               annotationId: oldAnnotation.id,
               newVersion: oldAnnotation.versions[effect.value.versionId],
+              at: effect.value.versionId,
             }),
           );
         } else if (effect.is(_updateActiveRevisionVersion)) {

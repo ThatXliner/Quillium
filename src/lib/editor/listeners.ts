@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { annotationsChanged } from "./plugins/annotations";
 export interface ListenerOptions {
   updateListener?: (update: ViewUpdate) => void;
+  persist?: boolean;
   // onCommentChanged?: (comments: Comment[]) => void;
 }
 
@@ -46,7 +47,7 @@ const save =
     }
   });
 export const listeners = (options?: ListenerOptions) => [
-  save,
+  ...(options?.persist === false ? [] : [save]),
   // ...(options?.onCommentChanged
   // 	? [onCommentChanged(options.onCommentChanged)]
   // 	: []),

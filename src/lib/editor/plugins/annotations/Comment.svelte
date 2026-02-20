@@ -1,16 +1,18 @@
 <script lang="ts">
     import { SparklesIcon, Trash2 } from "lucide-svelte";
+    import type { EditorView } from "@codemirror/view";
     import type { Annotation, Thread as ThreadType } from ".";
-    import { editorView } from "$lib/stores";
 
     const {
         comment,
         isActive,
+        view,
         removeComment,
         updateThread,
     }: {
         comment: Annotation<"comment">;
         isActive: boolean;
+        view: EditorView;
         removeComment: () => void;
         updateThread: (thread: ThreadType) => void;
     } = $props();
@@ -18,12 +20,7 @@
     const thread = $derived(comment.thread);
 
     const selectedText = $derived(
-        $editorView
-            ? $editorView.state.sliceDoc(
-                  comment.selection.main.from,
-                  comment.selection.main.to,
-              )
-            : "",
+        view.state.sliceDoc(comment.selection.main.from, comment.selection.main.to),
     );
 
     let newMessage = $state("");

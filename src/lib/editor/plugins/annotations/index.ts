@@ -4,6 +4,7 @@
 import { SearchCursor } from "@codemirror/search";
 import {
   EditorSelection,
+  Prec,
   RangeSet,
   RangeSetBuilder,
   type SelectionRange,
@@ -20,6 +21,7 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   type KeyBinding,
   ViewPlugin,
   type ViewUpdate,
@@ -60,6 +62,47 @@ function hasRevisionIntersection(
     ({ from: revisionFrom, to: revisionTo }) =>
       from < revisionTo && to > revisionFrom,
   );
+}
+
+function findRevisionAtBoundary(
+  state: EditorState,
+  position: number,
+  direction: "backward" | "forward",
+) {
+  const annotations = Object.values(state.field(annotationField));
+  return annotations.find((annotation) => {
+    if (!isAnnotationOfType(annotation, "revision")) return false;
+    const { from, to } = annotation.selection.main;
+    if (from === to) return false;
+    return direction === "backward" ? to === position : from === position;
+  });
+}
+
+function deleteAdjacentRevision(
+  direction: "backward" | "forward",
+): StateCommand {
+  return ({ state, dispatch }) => {
+    const cursor = state.selection.main;
+    if (!cursor.empty) return false;
+    const target = findRevisionAtBoundary(state, cursor.from, direction);
+    if (!target) return false;
+
+    dispatch(
+      state.update({
+        changes: state.changes({
+          from: target.selection.main.from,
+          to: target.selection.main.to,
+          insert: "",
+        }),
+        effects: [removeAnnotation.of(target)],
+        annotations: [
+          allowRevisionDocEdit.of(true),
+          Transaction.addToHistory.of(true),
+        ],
+      }),
+    );
+    return true;
+  };
 }
 
 const blockDirectRevisionEdits = EditorState.transactionFilter.of((tr) => {
@@ -410,6 +453,14 @@ const dev_dontuseinprod_createSuggestion: StateCommand = ({
 };
 export const annotationKeymap: KeyBinding[] = [
   {
+    key: "Backspace",
+    run: deleteAdjacentRevision("backward"),
+  },
+  {
+    key: "Delete",
+    run: deleteAdjacentRevision("forward"),
+  },
+  {
     key: "Mod-Alt-m",
     run: createCommentCommand,
   },
@@ -425,6 +476,7 @@ export const annotationKeymap: KeyBinding[] = [
 
 // Extension
 export const annotations = () => [
+  Prec.high(keymap.of(annotationKeymap)),
   blockDirectRevisionEdits,
   annotationField,
   annotationDecorations,

@@ -1,48 +1,139 @@
 <script lang="ts">
-    import { PlusIcon, Trash2 } from "lucide-svelte";
+    import { EditorState } from "@codemirror/state";
+    import { EditorView, type ViewUpdate } from "@codemirror/view";
+    import { ChevronDown, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
+    import { onDestroy, tick } from "svelte";
+    import { getExtensions } from "$lib/editor/extensions";
     import {
-        type Thread as ThreadType,
-        type Annotation,
+        annotationField,
         createNewRevision,
+        deleteRevisionVersion,
         setActiveRevisionVersion,
+        type Annotation,
+        type Annotations as AnnotationsMap,
+        type GenericAnnotation,
+        type Thread as ThreadType,
         updateRevisionVersionText,
     } from ".";
+    import { getActiveAnnotation } from "./utils";
     import Thread from "./Thread.svelte";
-    import { editorView } from "$lib/stores";
+    import Annotations from "./Annotations.svelte";
 
     const {
         revision,
         isActive,
+        view,
         remove,
         updateThread,
     }: {
         revision: Annotation<"revision">;
         isActive: boolean;
+        view: EditorView;
         remove: () => void;
         updateThread: (thread: ThreadType) => void;
     } = $props();
+
     const thread = $derived(revision.thread);
-    let draft = $state("");
-    const activeText = $derived.by(
-        () => revision.versions[revision.currentlySelected] ?? "",
+    const activeText = $derived(
+        revision.versions[revision.currentlySelected] ?? "",
     );
-    const hasUnsavedChanges = $derived(draft !== activeText);
+
+    let isEditorOpen = $state(false);
+    let recursiveEditorHost = $state<HTMLDivElement>();
+    let recursiveEditor = $state<EditorView | undefined>(undefined);
+    let recursiveAnnotations = $state<AnnotationsMap | undefined>(undefined);
+    let recursiveActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+    let isSyncingFromAnnotation = false;
 
     $effect(() => {
-        draft = activeText;
+        if (isActive) {
+            isEditorOpen = true;
+        }
     });
 
-    function saveCurrentVersion() {
-        if (!$editorView || !hasUnsavedChanges) return;
-        $editorView.dispatch(
+    function updateRecursiveMeta(currentView: EditorView) {
+        recursiveAnnotations = currentView.state.field(annotationField);
+        recursiveActiveAnnotation = getActiveAnnotation(currentView.state);
+    }
+
+    function upsertVersionText(text: string) {
+        if (text === activeText) return;
+        view.dispatch(
             updateRevisionVersionText(
-                $editorView.state,
+                view.state,
                 revision.id,
                 revision.currentlySelected,
-                draft,
+                text,
             ),
         );
     }
+
+    function createRecursiveEditor(initialText: string) {
+        if (!recursiveEditorHost || recursiveEditor) return;
+        recursiveEditor = new EditorView({
+            state: EditorState.create({
+                doc: initialText,
+                extensions: getExtensions({
+                    persist: false,
+                    updateListener(update: ViewUpdate) {
+                        if (!recursiveEditor) return;
+                        updateRecursiveMeta(recursiveEditor);
+                        if (!update.docChanged || isSyncingFromAnnotation) {
+                            return;
+                        }
+                        upsertVersionText(update.state.doc.toString());
+                    },
+                }),
+            }),
+            parent: recursiveEditorHost,
+        });
+        updateRecursiveMeta(recursiveEditor);
+    }
+
+    function destroyRecursiveEditor() {
+        recursiveEditor?.destroy();
+        recursiveEditor = undefined;
+        recursiveAnnotations = undefined;
+        recursiveActiveAnnotation = undefined;
+    }
+
+    function syncRecursiveEditorToActiveVersion() {
+        if (!recursiveEditor) return;
+        const next = activeText;
+        const current = recursiveEditor.state.doc.toString();
+        if (current === next) return;
+        isSyncingFromAnnotation = true;
+        recursiveEditor.dispatch({
+            changes: {
+                from: 0,
+                to: recursiveEditor.state.doc.length,
+                insert: next,
+            },
+        });
+        isSyncingFromAnnotation = false;
+        updateRecursiveMeta(recursiveEditor);
+    }
+
+    $effect(() => {
+        if (!isEditorOpen) {
+            destroyRecursiveEditor();
+            return;
+        }
+        tick().then(() => {
+            if (!isEditorOpen) return;
+            createRecursiveEditor(activeText);
+            syncRecursiveEditorToActiveVersion();
+        });
+    });
+
+    $effect(() => {
+        if (!recursiveEditor || !isEditorOpen) return;
+        syncRecursiveEditorToActiveVersion();
+    });
+
+    onDestroy(() => {
+        destroyRecursiveEditor();
+    });
 </script>
 
 <div
@@ -52,69 +143,109 @@
             : 'bg-gray-300/70 border-white/30 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
 >
     <div class="p-3 space-y-3">
-        <h3 class="text-xs font-semibold text-black/60 uppercase tracking-wider">Revisions</h3>
+        <div class="flex items-center justify-between gap-2">
+            <h3 class="text-xs font-semibold text-black/60 uppercase tracking-wider">Revisions</h3>
+            <button
+                class="p-1.5 rounded-lg border border-white/30 bg-white/35 hover:bg-white/55 transition-colors text-black/60"
+                onclick={() => {
+                    isEditorOpen = !isEditorOpen;
+                }}
+                title={isEditorOpen ? "Collapse recursive editor" : "Expand recursive editor"}
+            >
+                {#if isEditorOpen}
+                    <ChevronUp size={13} />
+                {:else}
+                    <ChevronDown size={13} />
+                {/if}
+            </button>
+        </div>
 
         <div class="flex flex-wrap gap-1.5">
             {#each revision.versions as _, i}
-                {@const versionActive = i == revision.currentlySelected}
-                <button
-                    class="px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all
-                        {versionActive
-                            ? 'bg-purple-500/80 text-white border-purple-400/50 shadow-sm'
-                            : 'bg-white/40 inset-shadow-sm inset-shadow-white text-black/70 border-white/30 hover:bg-white/60'}"
-                    disabled={versionActive}
-                    onclick={() => {
-                        $editorView.dispatch(
-                            setActiveRevisionVersion(
-                                $editorView.state,
-                                revision.id,
-                                i,
-                            ),
-                        );
-                    }}
-                >
-                    V{i + 1}
-                </button>
+                {@const versionActive = i === revision.currentlySelected}
+                <div class="inline-flex items-center rounded-lg border border-white/30 bg-white/40 overflow-hidden">
+                    <button
+                        class="px-2 py-1.5 text-xs font-medium transition-colors
+                            {versionActive
+                                ? 'bg-purple-500/80 text-white'
+                                : 'text-black/70 hover:bg-white/70'}"
+                        disabled={versionActive}
+                        onclick={() => {
+                            view.dispatch(
+                                setActiveRevisionVersion(
+                                    view.state,
+                                    revision.id,
+                                    i,
+                                ),
+                            );
+                        }}
+                    >
+                        V{i + 1}
+                    </button>
+                    <button
+                        class="px-1.5 py-1.5 text-black/40 hover:text-red-500/80 hover:bg-white/70 transition-colors"
+                        onclick={() => {
+                            view.dispatch(
+                                deleteRevisionVersion(
+                                    view.state,
+                                    revision.id,
+                                    i,
+                                ),
+                            );
+                        }}
+                        title={`Delete version ${i + 1}`}
+                    >
+                        <X size={10} />
+                    </button>
+                </div>
             {/each}
         </div>
 
-        <p class="text-[11px] text-black/50 leading-relaxed">
-            Revision text is edited here. Inline document editing inside revision ranges is locked.
+        <p class="text-[11px] text-black/55 leading-relaxed">
+            Revisions are atomic in the parent document. This nested editor is fully featured and live-synced.
         </p>
 
-        <textarea
-            class="w-full min-h-28 rounded-lg border border-white/30 bg-white/45 px-2.5 py-2 text-xs text-black/80 resize-y focus:outline-none focus:ring-1 focus:ring-purple-400/60"
-            bind:value={draft}
-            onkeydown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                    saveCurrentVersion();
-                }
-            }}
-        ></textarea>
+        <div class="flex gap-2">
+            <button
+                class="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-purple-700/80 bg-white/35 hover:bg-white/55 rounded-lg border border-white/30 transition-colors"
+                onclick={() => {
+                    view.dispatch(
+                        createNewRevision(view.state, revision.id),
+                    );
+                }}
+                title="Create a new version"
+            >
+                <PlusIcon size={11} />
+                <span>New Version</span>
+            </button>
+            <button
+                class="px-2.5 py-1.5 rounded-lg text-black/35 hover:text-red-500/70 hover:bg-white/40 border border-white/25 transition-colors"
+                onclick={() => remove()}
+                title="Delete entire revision"
+            >
+                <Trash2 size={13} />
+            </button>
+        </div>
 
-        <button
-            class="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg border transition-colors
-                {hasUnsavedChanges
-                    ? 'text-purple-700/90 bg-white/45 hover:bg-white/60 border-white/35'
-                    : 'text-black/35 bg-white/25 border-white/25'}"
-            disabled={!hasUnsavedChanges}
-            onclick={saveCurrentVersion}
-        >
-            <span>Save Version</span>
-        </button>
-
-        <button
-            class="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-purple-700/70 bg-white/30 hover:bg-white/50 rounded-lg border border-white/30 transition-colors"
-            onclick={() => {
-                $editorView.dispatch(
-                    createNewRevision($editorView.state, revision.id),
-                );
-            }}
-            title="Generate new revision"
-        >
-            <PlusIcon size={11} />
-            <span>New Revision</span>
-        </button>
+        {#if isEditorOpen}
+            <div class="rounded-xl border border-white/35 bg-white/55 p-2 space-y-2">
+                <div
+                    bind:this={recursiveEditorHost}
+                    class="revision-recursive-editor min-h-[200px] max-h-[380px] rounded-lg border border-white/45 bg-white/85 shadow-inner overflow-hidden"
+                ></div>
+                <div class="text-[10px] text-black/45 px-1">
+                    Nested annotations for this revision buffer:
+                </div>
+                {#if recursiveEditor && recursiveAnnotations}
+                    <Annotations
+                        view={recursiveEditor}
+                        annotationsData={recursiveAnnotations}
+                        activeAnnotationData={recursiveActiveAnnotation}
+                        layout="inline"
+                    />
+                {/if}
+            </div>
+        {/if}
     </div>
 
     <div class="w-full h-px bg-black/10"></div>
@@ -122,14 +253,29 @@
     <div class="p-3">
         <Thread {thread} {updateThread} />
     </div>
-
-    <div class="flex justify-end px-2 pb-2">
-        <button
-            class="p-1.5 rounded-lg text-black/30 hover:text-red-500/70 hover:bg-white/40 transition-colors"
-            onclick={() => remove()}
-            title="Delete revision"
-        >
-            <Trash2 size={13} />
-        </button>
-    </div>
 </div>
+
+<style>
+    .revision-recursive-editor :global(.cm-editor) {
+        position: relative !important;
+        height: 100%;
+        width: 100%;
+        background: transparent;
+    }
+
+    .revision-recursive-editor :global(.cm-scroller) {
+        overflow: auto;
+        font-size: 15px;
+        line-height: 1.55;
+    }
+
+    .revision-recursive-editor :global(.cm-content) {
+        text-indent: 0;
+        min-height: 100%;
+        padding: 10px 12px 16px 12px;
+    }
+
+    .revision-recursive-editor :global(.cm-focused) {
+        outline: none;
+    }
+</style>
