@@ -4,6 +4,7 @@
     import { DefaultChatTransport } from "ai";
     import { Chat } from "@ai-sdk/svelte";
     import { aiSettings } from "$lib/ai/settings.svelte";
+    import SavedPrompts from "./SavedPrompts.svelte";
 
     let input = $state("");
     let chat = new Chat({
@@ -90,6 +91,17 @@
                 Start a conversation about your document
             </div>
         {/if}
+    </div>
+
+    <!-- Saved prompts -->
+    <div class="border-t border-black/10 px-3 py-2 bg-white/20">
+        <SavedPrompts
+            mode="chat"
+            onuse={(text) => {
+                if (chat.status !== "ready") return;
+                chat.sendMessage({ text });
+            }}
+        />
     </div>
 
     <!-- Input form -->

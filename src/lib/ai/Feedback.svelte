@@ -8,6 +8,7 @@
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
     import { aiSettings } from "$lib/ai/settings.svelte";
+    import SavedPrompts from "./SavedPrompts.svelte";
 
     let input = $state("");
 
@@ -81,6 +82,19 @@
                     : "Add content to get feedback"}
             </div>
         </button>
+
+        <!-- Saved prompts -->
+        <div class="mt-2">
+            <SavedPrompts
+                mode="feedback"
+                onuse={(text) => {
+                    if (chat.status !== "ready" || !$documentContent) return;
+                    input = text;
+                    chat.sendMessage({ text });
+                    input = "";
+                }}
+            />
+        </div>
     </div>
 
     <!-- Chat messages -->

@@ -8,6 +8,7 @@
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
     import { aiSettings } from "$lib/ai/settings.svelte";
+    import SavedPrompts from "./SavedPrompts.svelte";
 
     let input = $state("");
 
@@ -107,6 +108,17 @@
                     {prompt}
                 </button>
             {/each}
+        </div>
+
+        <!-- Saved prompts -->
+        <div class="mt-2">
+            <SavedPrompts
+                mode="revise"
+                onuse={(text) => {
+                    if (chat.status !== "ready" || !$documentContent) return;
+                    useQuickPrompt(text);
+                }}
+            />
         </div>
     </div>
 
