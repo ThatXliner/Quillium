@@ -22,33 +22,23 @@
     let element = $state<HTMLDivElement>();
     let stats = $state<{
         words: number;
-        wpm: number;
         chars: number;
     }>({
         words: 0,
-        wpm: 0,
         chars: 0,
     });
-    // I don't think these need to be annotated with $state
-    // because they're not being used in the UI
-    const firstRenderTime = Date.now();
-    let firstRenderWords = 0;
-    function getWPM(newWords: number) {
-        return (
-            (newWords - firstRenderWords) /
-            ((Date.now() - firstRenderTime) / 1000 / 60)
-        );
+
+    function getWordCount(doc: string): number {
+        return doc.trim().split(/\s+/).filter(Boolean).length;
     }
-    function getWordCount(doc: string) {
-        return doc.split(" ").filter((x) => x).length;
-    }
+
     const getExtensionOptions: ListenerOptions = {
         updateListener(update: ViewUpdate) {
             const doc = update.state.doc.toString();
             const newWords = getWordCount(doc);
+
             stats = {
                 words: newWords,
-                wpm: getWPM(newWords),
                 chars: doc.length,
             };
             $annotations = Object.values(update.state.field(annotationField));
@@ -62,12 +52,6 @@
                 : update.state.sliceDoc(selection.from, selection.to);
         },
     };
-
-    const loop = () => {
-        stats.wpm = getWPM(stats.words);
-        requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
 
     const fromSave = invoke("load").then((d: unknown) => {
         const data = d as string | null;
@@ -87,10 +71,8 @@
         const doc = state.doc.toString();
         stats = {
             words: getWordCount(doc),
-            wpm: 0,
             chars: doc.length,
         };
-        firstRenderWords = stats.words;
         return state;
     });
 
