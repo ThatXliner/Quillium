@@ -164,7 +164,7 @@ export const annotationField = StateField.define<Annotations>({
             const isRevision = isAnnotationOfType(x, "revision");
             const newSelection = cleanRangesOf(
               x.selection.map(tr.changes, isRevision ? 1 : 0),
-              isRevision,
+              isRevision, // keep revision alive even when empty
             );
 
             // Idk how adding to the end of a revision version should work
@@ -229,6 +229,26 @@ export const annotationField = StateField.define<Annotations>({
           }
         } else if (e.is(_updateActiveRevisionVersion)) {
           annotation.currentlySelected = e.value.to;
+          // When switching versions, reconstruct the selection to
+          // cover the inserted text. This is critical for collapsed
+          // ranges (all text was deleted) where selection.map()
+          // keeps the range collapsed instead of expanding around
+          // the newly inserted version text.
+          const oldAnnotation =
+              oldAnnotations[e.value.annotationId];
+          if (oldAnnotation) {
+              const from = tr.changes.mapPos(
+                  oldAnnotation.selection.main.from,
+                  -1,
+              );
+              const versionText =
+                  annotation.versions[e.value.to];
+              const to = from + versionText.length;
+              annotation.selection = EditorSelection.single(
+                  from,
+                  to,
+              );
+          }
         }
 
         // well uh i think this is unnecessary since

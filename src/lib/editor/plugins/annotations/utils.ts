@@ -13,11 +13,17 @@ import {
 } from "./models";
 import { annotationField } from "./annotationField";
 
-export function cleanRangesOf(selection: EditorSelection) {
-  const newRanges = selection.ranges.filter((range) => range.from !== range.to);
-  return newRanges.length > 0
-    ? EditorSelection.create(newRanges, selection.mainIndex)
-    : null;
+export function cleanRangesOf(
+    selection: EditorSelection,
+    allowEmpty: boolean = false,
+) {
+    if (allowEmpty) return selection;
+    const newRanges = selection.ranges.filter(
+        (range) => range.from !== range.to,
+    );
+    return newRanges.length > 0
+        ? EditorSelection.create(newRanges, selection.mainIndex)
+        : null;
 }
 
 // Equal type and selection
@@ -144,11 +150,15 @@ export function canCreateNewComment(annotations: Annotations) {
   );
 }
 export function mapRange(range: GenericAnnotation, change: ChangeDesc) {
-  let newRanges = cleanRangesOf(range.selection.map(change));
-  if (newRanges) {
-    range.selection = newRanges;
-    return range;
-  } else {
-    return undefined;
-  }
+    const allowEmpty = isAnnotationOfType(range, "revision");
+    let newRanges = cleanRangesOf(
+        range.selection.map(change),
+        allowEmpty,
+    );
+    if (newRanges) {
+        range.selection = newRanges;
+        return range;
+    } else {
+        return undefined;
+    }
 }

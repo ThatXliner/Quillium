@@ -36,6 +36,7 @@ import {
   annotationField,
   addAnnotation,
   removeAnnotation,
+  setActiveRevisionVersion,
   invertedAnnotationFieldEffects,
 } from "./annotationField";
 
@@ -48,6 +49,44 @@ export const annotationsChanged = (update: ViewUpdate) =>
   update.transactions.some((tr) =>
     tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
   );
+
+// When a revision's text is fully deleted (range collapses to from===to),
+// auto-switch to the next available version. If only one version exists,
+// remove the revision entirely.
+const collapsedRevisionResolver = ViewPlugin.fromClass(
+    class {
+        update(update: ViewUpdate) {
+            if (!update.docChanged) return;
+            const annotations = update.state.field(annotationField);
+            for (const annotation of Object.values(annotations)) {
+                if (!isAnnotationOfType(annotation, "revision")) continue;
+                const { from, to } = annotation.selection.main;
+                if (from !== to) continue;
+                // Revision range collapsed — all text was deleted
+                if (annotation.versions.length <= 1) {
+                    // Only one version, nothing to fall back to — remove it
+                    update.view.dispatch({
+                        effects: [removeAnnotation.of(annotation)],
+                    });
+                } else {
+                    // Switch to the next available version
+                    const nextVersion =
+                        annotation.currentlySelected > 0
+                            ? annotation.currentlySelected - 1
+                            : 1;
+                    update.view.dispatch(
+                        setActiveRevisionVersion(
+                            update.state,
+                            annotation.id,
+                            nextVersion,
+                        ),
+                    );
+                }
+                return; // handle one at a time to avoid stale state
+            }
+        }
+    },
+);
 
 const annotationDecorations = ViewPlugin.fromClass(
   class {
@@ -315,6 +354,7 @@ export const annotationKeymap: KeyBinding[] = [
 export const annotations = () => [
   annotationField,
   annotationDecorations,
+  collapsedRevisionResolver,
   invertedAnnotationFieldEffects,
 ];
 export * from "./models";
