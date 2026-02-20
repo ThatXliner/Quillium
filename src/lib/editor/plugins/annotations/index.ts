@@ -587,7 +587,6 @@ export const annotations = () => [
   blockDirectRevisionEdits,
   annotationField,
   annotationDecorations,
-  revisionAtomicRanges,
   collapsedRevisionResolver,
   invertedAnnotationFieldEffects,
 ];
