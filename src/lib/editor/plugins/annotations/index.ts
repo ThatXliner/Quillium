@@ -54,16 +54,6 @@ export const annotationsChanged = (update: ViewUpdate) =>
     tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
   );
 
-function hasRevisionIntersection(
-  from: number,
-  to: number,
-  revisions: readonly SelectionRange[],
-) {
-  return revisions.some(
-    ({ from: revisionFrom, to: revisionTo }) =>
-      from < revisionTo && to > revisionFrom,
-  );
-}
 
 function findRevisionAtBoundary(
   state: EditorState,
@@ -181,36 +171,6 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand
   };
 }
 
-const blockDirectRevisionEdits = EditorState.transactionFilter.of((tr) => {
-  if (!tr.docChanged) return tr;
-  if (tr.annotation(allowRevisionDocEdit)) return tr;
-
-  const annotations = Object.values(tr.startState.field(annotationField));
-  const revisions = annotations.filter((a) => isAnnotationOfType(a, "revision"));
-  if (revisions.length === 0) return tr;
-
-  // The revision the cursor is currently inside — edits there are allowed.
-  const activeRange = getActiveRevisionRange(tr.startState);
-
-  const inactiveRanges = revisions
-    .map((a) => a.selection.main)
-    .filter(({ from, to }) => {
-      if (from === to) return false;
-      if (activeRange && from === activeRange.from && to === activeRange.to) return false;
-      return true;
-    });
-
-  if (inactiveRanges.length === 0) return tr;
-
-  let blocked = false;
-  tr.changes.iterChangedRanges((fromA, toA) => {
-    if (blocked) return;
-    if (hasRevisionIntersection(fromA, toA, inactiveRanges)) {
-      blocked = true;
-    }
-  });
-  return blocked ? [] : tr;
-});
 
 const revisionAtomicRanges = ViewPlugin.fromClass(
   class {
@@ -221,23 +181,19 @@ const revisionAtomicRanges = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.selectionSet || annotationsChanged(update)) {
+      if (update.docChanged || annotationsChanged(update)) {
         this.ranges = this.buildRanges(update.state);
       }
     }
 
     buildRanges(state: EditorState): DecorationSet {
       const builder = new RangeSetBuilder<Decoration>();
-      // The active revision (cursor inside it) is not atomic — the user can
-      // move the cursor and edit freely within it.
-      const activeRange = getActiveRevisionRange(state);
       const revisions = Object.values(state.field(annotationField)).filter(
         (annotation) => isAnnotationOfType(annotation, "revision"),
       );
       for (const revision of revisions) {
         const { from, to } = revision.selection.main;
         if (from === to) continue;
-        if (activeRange && from === activeRange.from && to === activeRange.to) continue;
         builder.add(from, to, Decoration.mark({}));
       }
       return builder.finish();
@@ -584,7 +540,6 @@ export const annotationKeymap: KeyBinding[] = [
 // Extension
 export const annotations = () => [
   Prec.high(keymap.of(annotationKeymap)),
-  blockDirectRevisionEdits,
   annotationField,
   annotationDecorations,
   collapsedRevisionResolver,
