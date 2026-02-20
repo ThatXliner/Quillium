@@ -3,6 +3,7 @@
     import { EditorView, type ViewUpdate } from "@codemirror/view";
     import { ChevronDown, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
     import { onDestroy, tick } from "svelte";
+    import { slide } from "svelte/transition";
     import { getExtensions } from "$lib/editor/extensions";
     import {
         addAnnotation,
@@ -45,6 +46,21 @@
     const VERSION_PREVIEW_MAX = 34;
 
     let isEditorOpen = $state(false);
+    let userClosedEditor = false; // plain var — not reactive, just a gate
+
+    $effect(() => {
+        if (isActive) {
+            if (!userClosedEditor) isEditorOpen = true;
+        } else {
+            isEditorOpen = false;
+            userClosedEditor = false;
+        }
+    });
+
+    function openEditor() {
+        userClosedEditor = false;
+        isEditorOpen = true;
+    }
     let recursiveEditorHost = $state<HTMLDivElement>();
     let recursiveEditor = $state<EditorView | undefined>(undefined);
     let recursiveAnnotations = $state<AnnotationsMap | undefined>(undefined);
@@ -288,6 +304,7 @@
                 bg-white/30 hover:bg-white/50 rounded-md ring-1 ring-white/30 transition-colors"
             onclick={() => {
                 view.dispatch(createNewRevision(view.state, revision.id));
+                view.focus();
             }}
             title="Create a new version"
         >
@@ -299,7 +316,10 @@
                 {isEditorOpen
                     ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
                     : 'text-black/40 bg-white/30 ring-white/30 hover:bg-white/50'}"
-            onclick={() => { isEditorOpen = !isEditorOpen; }}
+            onclick={() => {
+                userClosedEditor = isEditorOpen; // closing = true, opening = false
+                isEditorOpen = !isEditorOpen;
+            }}
             title={isEditorOpen ? "Hide nested editor" : "Open nested editor"}
         >
             {#if isEditorOpen}
@@ -322,7 +342,7 @@
 
     <!-- Nested editor (collapsible) -->
     {#if isEditorOpen}
-        <div class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+        <div transition:slide={{ duration: 200 }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
             <div
                 bind:this={recursiveEditorHost}
                 class="revision-recursive-editor h-[220px] overflow-hidden"

@@ -113,19 +113,26 @@ export function createNewRevision(state: EditorState, annotationId: number) {
   if (!isAnnotationOfType(original, "revision")) {
     throw new Error("Annotation is not a revision");
   }
-  const copiedVersion =
-    original.versions[original.currentlySelected] ??
-    state
-      .sliceDoc(original.selection.main.from, original.selection.main.to)
-      .toString();
+  const placeholder = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
+  const from = original.selection.main.from;
   return state.update({
     effects: [
       _addVersionToRevision.of({
         annotationId,
-        newVersion: copiedVersion,
+        newVersion: placeholder,
       }),
     ],
-    annotations: Transaction.addToHistory.of(true),
+    changes: state.changes({
+      from,
+      to: original.selection.main.to,
+      insert: placeholder,
+    }),
+    // Place cursor at start of the new version so isActive becomes true.
+    selection: EditorSelection.cursor(from),
+    annotations: [
+      allowRevisionDocEdit.of(true),
+      Transaction.addToHistory.of(true),
+    ],
   });
 }
 export function deleteRevisionVersion(

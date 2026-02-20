@@ -2,6 +2,7 @@
     import type { EditorView } from "@codemirror/view";
     import Comment from "./Comment.svelte";
     import {
+        annotationField,
         isAnnotationOfType,
         removeAnnotation,
         updateThread,
@@ -34,10 +35,12 @@
     const isFloating = $derived(layout === "floating");
 
     function remove(index: number) {
-        if (!resolvedAnnotations || !resolvedView) return;
+        if (!resolvedView) return;
+        const annotation = resolvedView.state.field(annotationField)[index];
+        if (!annotation) return;
         resolvedView.dispatch(
             resolvedView.state.update({
-                effects: [removeAnnotation.of(resolvedAnnotations[index])],
+                effects: [removeAnnotation.of(annotation)],
             }),
         );
     }
@@ -96,7 +99,7 @@
         }));
     });
 
-    let annotationElements: { [id: number]: HTMLDivElement } = {};
+    let annotationElements: { [id: number]: HTMLDivElement } = $state({});
     let resizeObserver: ResizeObserver | undefined;
 
     $effect(() => {
