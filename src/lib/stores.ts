@@ -31,6 +31,28 @@ export const revisionBoundaryNudge = writable<number | null>(null);
 // Controls tutorial visibility
 export const tutorialActive = writable(false);
 
+export type TutorialModalGuide = {
+    visible: boolean;
+    title: string;
+    body: string;
+    hint: string | null;
+    nextDisabled: boolean;
+    isLast: boolean;
+    canBack: boolean;
+};
+
+export const tutorialModalGuide = writable<TutorialModalGuide>({
+    visible: false,
+    title: "",
+    body: "",
+    hint: null,
+    nextDisabled: false,
+    isLast: false,
+    canBack: false,
+});
+
+export const tutorialNavCommand = writable<"next" | "back" | "skip" | null>(null);
+
 // Fired when the user triggers an annotation command (comment/revision)
 // while the cursor is inside an active revision in the main document.
 // Carries the revision ID, which command to run, and the selection

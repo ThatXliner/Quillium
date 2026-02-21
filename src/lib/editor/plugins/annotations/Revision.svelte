@@ -196,6 +196,8 @@
 </script>
 
 <div
+    data-tutorial-role="revision-card"
+    data-revision-id={revision.id}
     class="border rounded-[14px] transition-all duration-200
         {isActive
             ? 'bg-purple-50/90 border-purple-200/60 shadow-xl'
@@ -266,6 +268,8 @@
             <span>New version</span>
         </button>
         <button
+            data-tutorial-action="toggle-nested-editor"
+            data-revision-id={revision.id}
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
                 {isEditorOpen
                     ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
@@ -284,6 +288,8 @@
             <span>Nested editor</span>
         </button>
         <button
+            data-tutorial-action="expand-revision-modal"
+            data-revision-id={revision.id}
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/60
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors ml-auto"
             onclick={() => { modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" }); }}
