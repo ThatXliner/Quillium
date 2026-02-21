@@ -392,7 +392,6 @@
 
     .revision-recursive-editor :global(.cm-scroller) {
         overflow: auto;
-        font-size: 14px;
         line-height: 1.6;
     }
 
@@ -400,6 +399,7 @@
         text-indent: 0;
         min-height: 100%;
         padding: 8px 10px 12px 10px;
+        font-size: 13px;
     }
 
     .revision-recursive-editor :global(.cm-focused) {
