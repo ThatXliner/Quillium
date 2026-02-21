@@ -47,23 +47,22 @@
     let selectedProvider = $state<Provider>(loadProvider());
     let selectedModel = $state(loadModel());
     let apiKey = $state(aiSettings.apiKey);
+    let keyLoading = $state(!aiSettings.apiKey);
     let showKey = $state(false);
     let saveStatus = $state<"idle" | "saved" | "error">("idle");
     let saveTimer: ReturnType<typeof setTimeout>;
 
     $effect(() => {
         const provider = selectedProvider;
-        // If the store already has a key for this provider, use it immediately
-        if (aiSettings.apiKey) {
-            apiKey = aiSettings.apiKey;
-        }
-        // Always sync from keychain to catch changes made outside this session
+        keyLoading = true;
         invoke<string | null>("get_api_key", { provider })
             .then((key) => {
+                console.log("get_api_key", provider, "->", key);
                 apiKey = key ?? "";
                 aiSettings.apiKey = apiKey;
             })
-            .catch(() => {});
+            .catch((e) => { console.error("get_api_key error:", e); apiKey = ""; })
+            .finally(() => { keyLoading = false; });
     });
 
     function selectProvider(id: Provider) {
@@ -85,8 +84,11 @@
         aiSettings.model = id;
     }
 
+    let saveError = $state("");
+
     async function saveApiKey() {
         clearTimeout(saveTimer);
+        saveError = "";
         try {
             if (apiKey.trim()) {
                 await invoke("set_api_key", { provider: selectedProvider, key: apiKey.trim() });
@@ -96,10 +98,12 @@
                 aiSettings.apiKey = "";
             }
             saveStatus = "saved";
-        } catch {
+        } catch (e) {
             saveStatus = "error";
+            saveError = String(e);
+            console.error("saveApiKey failed:", e);
         }
-        saveTimer = setTimeout(() => { saveStatus = "idle"; }, 2000);
+        saveTimer = setTimeout(() => { saveStatus = "idle"; }, 3000);
     }
 </script>
 
@@ -186,23 +190,27 @@
         </p>
         <div class="flex flex-col gap-1.5">
             <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
-                <input
-                    type={showKey ? "text" : "password"}
-                    bind:value={apiKey}
-                    placeholder="sk-..."
-                    class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
-                />
-                <button
-                    onclick={() => (showKey = !showKey)}
-                    class="text-black/30 hover:text-black/60 transition-colors shrink-0"
-                    aria-label={showKey ? "Hide key" : "Show key"}
-                >
-                    {#if showKey}
-                        <EyeOffIcon size={13} />
-                    {:else}
-                        <EyeIcon size={13} />
-                    {/if}
-                </button>
+                {#if keyLoading}
+                    <span class="flex-1 text-xs text-black/30 font-mono animate-pulse">Loading…</span>
+                {:else}
+                    <input
+                        type={showKey ? "text" : "password"}
+                        bind:value={apiKey}
+                        placeholder="sk-..."
+                        class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                    />
+                    <button
+                        onclick={() => (showKey = !showKey)}
+                        class="text-black/30 hover:text-black/60 transition-colors shrink-0"
+                        aria-label={showKey ? "Hide key" : "Show key"}
+                    >
+                        {#if showKey}
+                            <EyeOffIcon size={13} />
+                        {:else}
+                            <EyeIcon size={13} />
+                        {/if}
+                    </button>
+                {/if}
             </div>
             <button
                 onclick={saveApiKey}
@@ -223,8 +231,12 @@
                 {/if}
             </button>
         </div>
-        <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
-            Stored securely in your system keychain.
-        </p>
+        {#if saveError}
+            <p class="text-[10px] text-red-600/80 mt-1.5 leading-relaxed break-all">{saveError}</p>
+        {:else}
+            <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                Stored securely in your system keychain.
+            </p>
+        {/if}
     </div>
 </div>
