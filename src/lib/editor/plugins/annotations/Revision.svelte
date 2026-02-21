@@ -329,7 +329,12 @@
     <!-- Thread -->
     {#if thread.length > 0 || isActive}
         <div class="border-t border-black/[0.07] px-3 py-2.5">
-            <Thread {thread} {updateThread} />
+            <Thread
+                {thread}
+                {updateThread}
+                previewOnly={!isActive}
+                accentClass="text-purple-600/80 hover:text-purple-700"
+            />
         </div>
     {/if}
 </div>
