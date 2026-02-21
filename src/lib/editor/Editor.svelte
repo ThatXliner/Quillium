@@ -104,7 +104,7 @@
     {#await fromSave then}
         <div
             id="editor-document"
-            class="mx-auto w-[816px] h-fit mt-12 bg-white rounded-lg shadow-xl py-3 px-1"
+            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-12 mb-12 bg-white rounded-lg shadow-xl py-3 px-1"
             bind:this={element}
         ></div>
     {/await}
@@ -136,7 +136,9 @@
     }
     :global(.cm-editor) {
         z-index: 0 !important;
-        position: absolute;
+    }
+    :global(.cm-scroller) {
+        overflow: visible !important;
     }
     :global(.cm-content) {
         text-indent: 2em;
