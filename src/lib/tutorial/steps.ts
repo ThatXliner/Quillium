@@ -45,7 +45,7 @@ export const steps: Step[] = [
     {
         selector: "#editor-document",
         title: "Your Writing Space",
-        body: "Revisions are infinitely nestable: create a revision, open its nested editor, and create another revision inside it as deep as you need.",
+        body: "Try the annotation commands: Cmd/Ctrl+Alt+M creates a comment, and Cmd/Ctrl+Alt+K creates a revision. Revisions are infinitely nestable, so you can open a revision and create another inside it as deep as you need.",
         position: "left",
     },
     {
