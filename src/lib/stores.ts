@@ -57,6 +57,15 @@ export const modalStack = {
     push: (entry: ModalEntry) => _modalStack.update((s) => [...s, entry]),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
     popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),
+    // Pop to index and stamp a rebuild token on the target entry so the modal
+    // at that level knows to destroy/recreate its editor for the new version.
+    popToAndRebuild: (index: number) => _modalStack.update((s) => {
+        const trimmed = s.slice(0, index + 1);
+        const target = trimmed[index];
+        if (!target) return trimmed;
+        trimmed[index] = { ...target, rebuildToken: Date.now() } as ModalEntry & { rebuildToken: number };
+        return trimmed;
+    }),
     clear: () => _modalStack.set([]),
 };
 

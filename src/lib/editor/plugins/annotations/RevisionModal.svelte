@@ -47,9 +47,26 @@
                 if (v) createEditor(v.versions[v.currentlySelected]);
             });
         } else {
-            modalStack.popTo(ci);
+            // Pop back to that level and signal it to rebuild its editor
+            modalStack.popToAndRebuild(ci);
         }
     }
+
+    // Rebuild editor when our own stack entry gets a fresh rebuildToken
+    // (set by popToAndRebuild when a child level switches our version)
+    let lastRebuildToken = 0;
+    $effect(() => {
+        const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
+        const token = entry?.rebuildToken ?? 0;
+        if (token && token !== lastRebuildToken) {
+            lastRebuildToken = token;
+            destroyEditor();
+            tick().then(() => {
+                const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+                if (v) createEditor(v.versions[v.currentlySelected]);
+            });
+        }
+    });
 
     const revision = $derived(
         view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
