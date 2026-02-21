@@ -38,6 +38,7 @@
 
     const getExtensionOptions: ListenerOptions = {
         updateListener(update: ViewUpdate) {
+
             const doc = update.state.doc.toString();
             const newWords = getWordCount(doc);
 

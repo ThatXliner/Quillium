@@ -48,6 +48,7 @@ import {
 import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
+	modalStack,
 	type NestedEditorCommand,
 } from "$lib/stores";
 
@@ -601,31 +602,36 @@ export function createRevision({
 		doc: originalText,
 		label: "Original",
 	} as VersionState;
+	const newRevision = {
+		...createNewAnnotation(
+			state.field(annotationField),
+			selection,
+			"revision",
+		),
+		currentlySelected: 0,
+		versions: [
+			originalVersion,
+			...versions.map(
+				({ label, text }) =>
+					({ doc: text, label }) as VersionState,
+			),
+		],
+		thread: [
+			{ message: threadMessage, author, time: Date.now() },
+		],
+	};
 	view.dispatch(
 		state.update({
-			effects: [
-				addAnnotation.of({
-					...createNewAnnotation(
-						state.field(annotationField),
-						selection,
-						"revision",
-					),
-					currentlySelected: 0,
-					versions: [
-						originalVersion,
-						...versions.map(
-							({ label, text }) =>
-								({ doc: text, label }) as VersionState,
-						),
-					],
-					thread: [
-						{ message: threadMessage, author, time: Date.now() },
-					],
-				}),
-			],
+			effects: [addAnnotation.of(newRevision)],
 			annotations: Transaction.addToHistory.of(true),
 		}),
 	);
+	modalStack.push({
+		type: "revision",
+		revisionId: newRevision.id,
+		parentView: view,
+		label: newRevision.versions[0].doc.slice(0, 34) || "Revision",
+	});
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
@@ -653,29 +659,37 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 	return true;
 };
 // QUESTION: Should we have some sort of global annotation mutex
-const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
-	dispatch(
+const createRevisionCommand = (view: EditorView): boolean => {
+	console.log("createRevisionCommand fired, selection empty:", view.state.selection.main.empty);
+	const { state } = view;
+	const newRevision = {
+		...createNewAnnotation(
+			state.field(annotationField),
+			state.selection,
+			"revision",
+		),
+		currentlySelected: 0,
+		versions: [
+			{
+				doc: state.sliceDoc(
+					state.selection.main.from,
+					state.selection.main.to,
+				),
+			} as VersionState,
+		],
+	};
+	view.dispatch(
 		state.update({
-			effects: [
-				addAnnotation.of({
-					...createNewAnnotation(
-						state.field(annotationField),
-						state.selection,
-						"revision",
-					),
-					currentlySelected: 0,
-					versions: [
-						{
-							doc: state.sliceDoc(
-								state.selection.main.from,
-								state.selection.main.to,
-							),
-						} as VersionState,
-					],
-				}),
-			],
+			effects: [addAnnotation.of(newRevision)],
 		}),
 	);
+	console.log("pushing modal for revision", newRevision.id);
+	modalStack.push({
+		type: "revision",
+		revisionId: newRevision.id,
+		parentView: view,
+		label: newRevision.versions[0].doc.slice(0, 34) || "Revision",
+	});
 	return true;
 };
 const dev_dontuseinprod_createSuggestion: StateCommand = ({
