@@ -10,15 +10,18 @@
         annotationField,
         setActiveRevisionVersion,
         updateRevisionVersionState,
+        updateThread,
         type Annotation,
         type Annotations as AnnotationsMap,
         type GenericAnnotation,
+        type Thread as ThreadType,
     } from ".";
     import { canCreateNewComment, getActiveAnnotation } from "./utils";
     import { createNewAnnotation, versionText, type VersionState } from "./models";
     import { EditorSelection, Transaction } from "@codemirror/state";
     import { modalStack, type ModalEntry } from "$lib/stores";
     import Annotations from "./Annotations.svelte";
+    import Thread from "./Thread.svelte";
 
     const { revisionId, view, stackIndex }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
@@ -190,6 +193,44 @@
     onDestroy(() => {
         destroyEditor();
     });
+
+    // Thread for the revision in the modal
+    const revisionThread = $derived(
+        (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [],
+    );
+
+    let newMessage = $state("");
+
+    function saveThreadMessage() {
+        if (!newMessage.trim()) return;
+        view.dispatch(
+            view.state.update({
+                effects: [
+                    updateThread.of({
+                        annotationId: revisionId,
+                        newThread: [
+                            ...revisionThread,
+                            { message: newMessage.trim(), author: "User", time: Date.now() },
+                        ],
+                    }),
+                ],
+            }),
+        );
+        newMessage = "";
+    }
+
+    function dispatchUpdateThread(newThreadValue: ThreadType) {
+        view.dispatch(
+            view.state.update({
+                effects: [
+                    updateThread.of({
+                        annotationId: revisionId,
+                        newThread: newThreadValue,
+                    }),
+                ],
+            }),
+        );
+    }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -286,8 +327,48 @@
             </button>
         </div>
 
-        <!-- Body: editor + annotations panel -->
+        <!-- Body: thread + editor + annotations panel -->
         <div class="flex flex-1 overflow-hidden">
+            <!-- Thread sidebar (left) -->
+            <div class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col bg-purple-50/20">
+                <div class="px-4 py-3 border-b border-purple-100/50">
+                    <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Thread</span>
+                </div>
+                <div class="flex-1 overflow-y-auto px-4 py-3">
+                    {#if revisionThread.length > 0}
+                        <Thread thread={revisionThread} updateThread={dispatchUpdateThread} />
+                    {:else}
+                        <p class="text-[11px] text-black/30 leading-relaxed">No messages yet. Start a discussion about this revision below.</p>
+                    {/if}
+                </div>
+                <!-- Reply input -->
+                <div class="px-4 py-3 border-t border-purple-100/50">
+                    <div class="rounded-[10px] bg-white/60 ring-1 ring-purple-200/40 overflow-hidden">
+                        <textarea
+                            bind:value={newMessage}
+                            placeholder="Add a note…"
+                            rows="2"
+                            class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none text-black/70 placeholder:text-black/30"
+                            onkeydown={(e) => {
+                                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && newMessage.trim()) {
+                                    e.preventDefault();
+                                    saveThreadMessage();
+                                }
+                            }}
+                        ></textarea>
+                        <div class="flex items-center justify-between px-2 pb-2">
+                            <span class="text-[10px] text-black/25">⌘↵ to send</span>
+                            {#if newMessage.trim()}
+                                <button
+                                    onclick={saveThreadMessage}
+                                    class="text-[11px] font-medium text-purple-600/80 hover:text-purple-700 transition-colors"
+                                >Send</button>
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Editor -->
             <div bind:this={editorHost} class="revision-modal-editor flex-1 overflow-hidden"></div>
 
@@ -331,12 +412,16 @@
     .revision-modal-inner {
         display: flex;
         flex-direction: column;
-        width: 900px;
+        width: 1060px;
         height: 72vh;
         background: white;
         border-radius: 1rem;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
         overflow: hidden;
+    }
+
+    .revision-modal-thread {
+        width: 220px;
     }
 
     .revision-modal-editor :global(.cm-editor) {
