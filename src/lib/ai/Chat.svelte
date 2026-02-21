@@ -83,7 +83,17 @@
             </div>
         {/if}
 
-        {#if chat.messages.length === 0}
+        {#if chat.error}
+            <div class="flex justify-start">
+                <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
+                    <div class="bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm border border-red-200">
+                        {chat.error.message ?? "An error occurred. Please try again."}
+                    </div>
+                </div>
+            </div>
+        {/if}
+
+        {#if chat.messages.length === 0 && !chat.error}
             <div
                 class="flex-1 flex items-center justify-center text-gray-400 text-sm"
             >
