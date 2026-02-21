@@ -50,6 +50,88 @@
         });
         view.focus();
     }
+
+    // --- Inline diff logic ---
+    type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
+
+    // Tokenize into words + whitespace chunks for word-level diff
+    function tokenize(text: string): string[] {
+        return text.match(/\S+|\s+/g) ?? [];
+    }
+
+    // Myers / LCS diff on token arrays
+    function diffTokens(aTokens: string[], bTokens: string[]): DiffOp[] {
+        const m = aTokens.length;
+        const n = bTokens.length;
+
+        // Build LCS table
+        const dp: number[][] = Array.from({ length: m + 1 }, () =>
+            new Array(n + 1).fill(0),
+        );
+        for (let i = m - 1; i >= 0; i--) {
+            for (let j = n - 1; j >= 0; j--) {
+                if (aTokens[i] === bTokens[j]) {
+                    dp[i][j] = dp[i + 1][j + 1] + 1;
+                } else {
+                    dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+                }
+            }
+        }
+
+        // Trace back
+        const ops: DiffOp[] = [];
+        let i = 0;
+        let j = 0;
+        while (i < m || j < n) {
+            if (i < m && j < n && aTokens[i] === bTokens[j]) {
+                ops.push({ type: "equal", text: aTokens[i] });
+                i++;
+                j++;
+            } else if (j < n && (i >= m || dp[i][j + 1] >= dp[i + 1][j])) {
+                ops.push({ type: "insert", text: bTokens[j] });
+                j++;
+            } else {
+                ops.push({ type: "delete", text: aTokens[i] });
+                i++;
+            }
+        }
+        return ops;
+    }
+
+    // Merge adjacent same-type ops for cleaner rendering
+    function mergeOps(ops: DiffOp[]): DiffOp[] {
+        const merged: DiffOp[] = [];
+        for (const op of ops) {
+            const last = merged[merged.length - 1];
+            if (last && last.type === op.type) {
+                last.text += op.text;
+            } else {
+                merged.push({ ...op });
+            }
+        }
+        return merged;
+    }
+
+    // If diff produces too many alternating segments relative to total tokens,
+    // it'll look noisy — fall back to side-by-side display in that case.
+    const NOISE_THRESHOLD = 0.6; // > 60% of ops are changes = too noisy
+
+    function computeDiff(
+        original: string,
+        replacement: string,
+    ): { ops: DiffOp[]; isFallback: boolean } {
+        const aTokens = tokenize(original);
+        const bTokens = tokenize(replacement);
+        const rawOps = diffTokens(aTokens, bTokens);
+        const ops = mergeOps(rawOps);
+
+        const changeCount = rawOps.filter((o) => o.type !== "equal").length;
+        const totalCount = rawOps.length;
+        const isFallback =
+            totalCount > 0 && changeCount / totalCount > NOISE_THRESHOLD;
+
+        return { ops, isFallback };
+    }
 </script>
 
 <div
@@ -74,15 +156,6 @@
         </button>
     </div>
 
-    <!-- Original text chip -->
-    {#if originalText}
-        <div class="px-3 pt-2 pb-0">
-            <div class="text-xs text-black/45 border-l-2 border-green-300/70 pl-2 truncate line-through decoration-green-400/50">
-                {originalText.slice(0, 80)}{originalText.length > 80 ? "…" : ""}
-            </div>
-        </div>
-    {/if}
-
     <!-- Overall comment (thread[0] from AI) -->
     {#if thread.length > 0 && thread[0].author === "AI"}
         <div class="px-3 pt-2 pb-0">
@@ -94,6 +167,7 @@
     <div class="p-3 space-y-2">
         {#each suggestion.replacements as replacement, index}
             {@const isSelected = selectedIndex === index}
+            {@const diff = computeDiff(originalText, replacement.text)}
             <button
                 class="w-full text-left rounded-lg border transition-colors overflow-hidden
                     {isSelected
@@ -101,8 +175,25 @@
                         : 'bg-white/50 border-green-100/60 hover:bg-white/70 hover:border-green-200/60'}"
                 onclick={() => selectReplacement(index)}
             >
-                <div class="px-3 py-2 text-xs text-black/80 leading-relaxed">
-                    {replacement.text}
+                <div class="px-3 py-2 text-xs leading-relaxed">
+                    {#if diff.isFallback}
+                        <!-- Side-by-side fallback for noisy diffs -->
+                        {#if originalText}
+                            <span class="line-through text-red-500/70 mr-1">{originalText.slice(0, 80)}{originalText.length > 80 ? "…" : ""}</span>
+                        {/if}
+                        <span class="text-black/80">{replacement.text}</span>
+                    {:else}
+                        <!-- Inline diff -->
+                        {#each diff.ops as op}
+                            {#if op.type === "equal"}
+                                <span class="text-black/70">{op.text}</span>
+                            {:else if op.type === "delete"}
+                                <del class="text-red-500/80 bg-red-50/60 no-underline line-through decoration-red-400/60 rounded-[2px] px-[1px]">{op.text}</del>
+                            {:else}
+                                <ins class="text-green-700/90 bg-green-100/70 no-underline rounded-[2px] px-[1px]">{op.text}</ins>
+                            {/if}
+                        {/each}
+                    {/if}
                 </div>
                 {#if replacement.rationale}
                     <div class="px-3 pb-2 text-[10px] text-green-700/60 leading-snug border-t border-green-100/50 pt-1.5">
