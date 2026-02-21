@@ -123,7 +123,7 @@ function getDiffOps(replacementIndex: number) {
         {#if diffExpanded}
           <button
             class="flex items-center gap-1 text-[10px] text-green-700/40 hover:text-green-700/70 transition-colors"
-            onclick={() => { if (selectedIndex !== null) activeModal.set({ type: "diff", ops: getDiffOps(selectedIndex) }); }}
+            onclick={() => { if (selectedIndex !== null) activeModal.set({ type: "diff", ops: getDiffOps(selectedIndex), suggestionId: suggestion.id }); }}
             title="Expand to full view"
           >
             <Maximize2 size={10} />

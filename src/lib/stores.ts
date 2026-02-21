@@ -48,7 +48,7 @@ export const revisionOpenNestedEditor = writable<NestedEditorCommand | null>(nul
 // rendered at the page root (escaping any stacking context / clip-path).
 export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
 export type ModalState =
-    | { type: "diff"; ops: DiffOp[] }
+    | { type: "diff"; ops: DiffOp[]; suggestionId: number }
     | { type: "revision"; revisionId: number }
     | null;
 export const activeModal = writable<ModalState>(null);

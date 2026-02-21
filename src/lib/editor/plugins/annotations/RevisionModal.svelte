@@ -9,14 +9,19 @@
         setActiveRevisionVersion,
         updateRevisionVersionState,
         type Annotation,
+        type Annotations as AnnotationsMap,
+        type GenericAnnotation,
     } from ".";
     import { versionText, type VersionState } from "./models";
+    import { getActiveAnnotation } from "./utils";
     import { activeModal } from "$lib/stores";
+    import Annotations from "./Annotations.svelte";
 
     const { revisionId, view }: { revisionId: number; view: EditorView } = $props();
 
-    const revision = $derived(view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined);
-    const activeVersion = $derived(revision?.versions[revision.currentlySelected]);
+    const revision = $derived(
+        view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
+    );
     const VERSION_PREVIEW_MAX = 34;
 
     function previewVersionText(version: VersionState) {
@@ -31,6 +36,9 @@
     let editor = $state<EditorView | undefined>(undefined);
     let dialogEl = $state<HTMLDialogElement>();
 
+    let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
+    let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+
     function createEditor(version: VersionState) {
         if (!editorHost || editor) return;
         const extensions = getExtensions({
@@ -41,24 +49,25 @@
                 const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
                 if (!rev) return;
                 view.dispatch(
-                    updateRevisionVersionState(
-                        view.state,
-                        revisionId,
-                        rev.currentlySelected,
-                        blob,
-                    ),
+                    updateRevisionVersionState(view.state, revisionId, rev.currentlySelected, blob),
                 );
+                modalAnnotations = editor.state.field(annotationField);
+                modalActiveAnnotation = getActiveAnnotation(editor.state);
             },
         });
         const state = "annotationField" in version
             ? EditorState.fromJSON(version, { extensions }, savedFields)
             : EditorState.create({ doc: versionText(version), extensions });
         editor = new EditorView({ state, parent: editorHost });
+        modalAnnotations = editor.state.field(annotationField);
+        modalActiveAnnotation = getActiveAnnotation(editor.state);
     }
 
     function destroyEditor() {
         editor?.destroy();
         editor = undefined;
+        modalAnnotations = undefined;
+        modalActiveAnnotation = undefined;
     }
 
     function close() {
@@ -69,7 +78,8 @@
         tick().then(() => {
             if (!dialogEl) return;
             if (!dialogEl.open) dialogEl.showModal();
-            if (activeVersion && !editor) createEditor(activeVersion);
+            const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+            if (rev && !editor) createEditor(rev.versions[rev.currentlySelected]);
         });
     });
 
@@ -121,8 +131,27 @@
                 <X size={16} />
             </button>
         </div>
-        <!-- Editor -->
-        <div bind:this={editorHost} class="revision-modal-editor flex-1 overflow-hidden"></div>
+
+        <!-- Body: editor + annotations panel -->
+        <div class="flex flex-1 overflow-hidden">
+            <!-- Editor -->
+            <div bind:this={editorHost} class="revision-modal-editor flex-1 overflow-hidden"></div>
+
+            <!-- Annotations sidebar -->
+            {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
+                <div class="w-64 shrink-0 border-l border-purple-100/60 overflow-y-auto bg-purple-50/20 px-2 py-3">
+                    <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
+                        Annotations
+                    </div>
+                    <Annotations
+                        view={editor}
+                        annotationsData={modalAnnotations}
+                        activeAnnotationData={modalActiveAnnotation}
+                        layout="inline"
+                    />
+                </div>
+            {/if}
+        </div>
     </div>
 </dialog>
 
@@ -148,7 +177,7 @@
     .revision-modal-inner {
         display: flex;
         flex-direction: column;
-        width: 760px;
+        width: 900px;
         height: 72vh;
         background: white;
         border-radius: 1rem;

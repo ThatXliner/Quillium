@@ -25,7 +25,7 @@
 {/if}
 
 {#if $activeModal?.type === "diff"}
-    <DiffModal ops={$activeModal.ops} />
+    <DiffModal ops={$activeModal.ops} suggestionId={$activeModal.suggestionId} />
 {/if}
 
 {#if $activeModal?.type === "revision" && $editorView}
