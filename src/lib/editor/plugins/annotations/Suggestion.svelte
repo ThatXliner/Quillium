@@ -1,246 +1,152 @@
 <script lang="ts">
-    import type { EditorView } from "@codemirror/view";
-    import { GitBranchIcon, SparklesIcon, Trash2 } from "lucide-svelte";
-    import {
-        applySuggestion,
-        branchSuggestion,
-        previewSuggestion,
-        type Annotation,
-        type Thread as ThreadType,
-    } from ".";
-    import { EditorSelection } from "@codemirror/state";
-    import Thread from "./Thread.svelte";
+import type { EditorView } from "@codemirror/view";
+import { GitBranchIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+import {
+	applySuggestion,
+	branchSuggestion,
+	previewSuggestion,
+	type Annotation,
+	type Thread as ThreadType,
+} from ".";
+import { EditorSelection } from "@codemirror/state";
+import Thread from "./Thread.svelte";
 
-    const {
-        suggestion,
-        isActive,
-        view,
-        remove,
-        updateThread,
-    }: {
-        suggestion: Annotation<"suggestion">;
-        isActive: boolean;
-        view: EditorView;
-        remove: () => void;
-        updateThread: (thread: ThreadType) => void;
-    } = $props();
+const {
+	suggestion,
+	isActive,
+	view,
+	remove,
+	updateThread,
+}: {
+	suggestion: Annotation<"suggestion">;
+	isActive: boolean;
+	view: EditorView;
+	remove: () => void;
+	updateThread: (thread: ThreadType) => void;
+} = $props();
 
-    const thread = $derived(suggestion.thread);
+const thread = $derived(suggestion.thread);
 
-    const originalText = $derived(
-        view.state.sliceDoc(
-            suggestion.selection.main.from,
-            suggestion.selection.main.to,
-        ),
-    );
+let selectedIndex = $state<number | null>(null);
 
-    let selectedIndex = $state<number | null>(null);
-
-    function selectReplacement(index: number) {
-        const next = selectedIndex === index ? null : index;
-        selectedIndex = next;
-        view.dispatch({
-            effects: [previewSuggestion.of(
-                next === null
-                    ? null
-                    : { annotationId: suggestion.id, replacementIndex: next },
-            )],
-            selection: EditorSelection.single(suggestion.selection.main.from),
-            scrollIntoView: true,
-        });
-        view.focus();
-    }
-
-    // --- Inline diff logic ---
-    type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
-
-    // Tokenize into words + whitespace chunks for word-level diff
-    function tokenize(text: string): string[] {
-        return text.match(/\S+|\s+/g) ?? [];
-    }
-
-    // Myers / LCS diff on token arrays
-    function diffTokens(aTokens: string[], bTokens: string[]): DiffOp[] {
-        const m = aTokens.length;
-        const n = bTokens.length;
-
-        // Build LCS table
-        const dp: number[][] = Array.from({ length: m + 1 }, () =>
-            new Array(n + 1).fill(0),
-        );
-        for (let i = m - 1; i >= 0; i--) {
-            for (let j = n - 1; j >= 0; j--) {
-                if (aTokens[i] === bTokens[j]) {
-                    dp[i][j] = dp[i + 1][j + 1] + 1;
-                } else {
-                    dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-                }
-            }
-        }
-
-        // Trace back
-        const ops: DiffOp[] = [];
-        let i = 0;
-        let j = 0;
-        while (i < m || j < n) {
-            if (i < m && j < n && aTokens[i] === bTokens[j]) {
-                ops.push({ type: "equal", text: aTokens[i] });
-                i++;
-                j++;
-            } else if (j < n && (i >= m || dp[i][j + 1] >= dp[i + 1][j])) {
-                ops.push({ type: "insert", text: bTokens[j] });
-                j++;
-            } else {
-                ops.push({ type: "delete", text: aTokens[i] });
-                i++;
-            }
-        }
-        return ops;
-    }
-
-    // Merge adjacent same-type ops for cleaner rendering
-    function mergeOps(ops: DiffOp[]): DiffOp[] {
-        const merged: DiffOp[] = [];
-        for (const op of ops) {
-            const last = merged[merged.length - 1];
-            if (last && last.type === op.type) {
-                last.text += op.text;
-            } else {
-                merged.push({ ...op });
-            }
-        }
-        return merged;
-    }
-
-    // If diff produces too many alternating segments relative to total tokens,
-    // it'll look noisy — fall back to side-by-side display in that case.
-    const NOISE_THRESHOLD = 0.6; // > 60% of ops are changes = too noisy
-
-    function computeDiff(
-        original: string,
-        replacement: string,
-    ): { ops: DiffOp[]; isFallback: boolean } {
-        const aTokens = tokenize(original);
-        const bTokens = tokenize(replacement);
-        const rawOps = diffTokens(aTokens, bTokens);
-        const ops = mergeOps(rawOps);
-
-        const changeCount = rawOps.filter((o) => o.type !== "equal").length;
-        const totalCount = rawOps.length;
-        const isFallback =
-            totalCount > 0 && changeCount / totalCount > NOISE_THRESHOLD;
-
-        return { ops, isFallback };
-    }
+function selectReplacement(index: number) {
+	const next = selectedIndex === index ? null : index;
+	selectedIndex = next;
+	view.dispatch({
+		effects: [
+			previewSuggestion.of(
+				next === null
+					? null
+					: { annotationId: suggestion.id, replacementIndex: next },
+			),
+		],
+		selection: EditorSelection.single(suggestion.selection.main.from),
+		scrollIntoView: true,
+	});
+	view.focus();
+}
 </script>
 
 <div
-    class="border overflow-hidden transition-all duration-200
+  class="border overflow-hidden transition-all duration-200
         {isActive
-            ? 'bg-green-50/90 border-green-200/60 shadow-xl rounded-[14px]'
-            : 'bg-green-50/60 border-green-200/40 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
-    style="backdrop-filter: blur(12px);"
+    ? 'bg-green-50/90 border-green-200/60 shadow-xl rounded-[14px]'
+    : 'bg-green-50/60 border-green-200/40 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
+  style="backdrop-filter: blur(12px);"
 >
-    <!-- Header -->
-    <div class="flex items-center justify-between px-3 pt-2.5 pb-0">
-        <div class="flex items-center gap-1.5">
-            <SparklesIcon size={11} class="text-green-500/70" />
-            <h3 class="text-[10px] font-semibold text-green-600/70 uppercase tracking-wider">AI Suggestion</h3>
-        </div>
-        <button
-            class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-            onclick={() => remove()}
-            title="Delete suggestion"
-        >
-            <Trash2 size={16} />
-        </button>
+  <!-- Header -->
+  <div class="flex items-center justify-between px-3 pt-2.5 pb-0">
+    <div class="flex items-center gap-1.5">
+      <SparklesIcon size={11} class="text-green-500/70" />
+      <h3
+        class="text-[10px] font-semibold text-green-600/70 uppercase tracking-wider"
+      >
+        AI Suggestion
+      </h3>
     </div>
+    <button
+      class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+      onclick={() => remove()}
+      title="Delete suggestion"
+    >
+      <Trash2 size={16} />
+    </button>
+  </div>
 
-    <!-- Overall comment (thread[0] from AI) -->
-    {#if thread.length > 0 && thread[0].author === "AI"}
-        <div class="px-3 pt-2 pb-0">
-            <p class="text-[11px] text-black/55 leading-relaxed">{thread[0].message}</p>
-        </div>
-    {/if}
+  <!-- Overall comment (thread[0] from AI) -->
+  {#if thread.length > 0 && thread[0].author === "AI"}
+    <div class="px-3 pt-2 pb-0">
+      <p class="text-[11px] text-black/55 leading-relaxed">
+        {thread[0].message}
+      </p>
+    </div>
+  {/if}
 
-    <!-- Replacements -->
-    <div class="p-3 space-y-2">
-        {#each suggestion.replacements as replacement, index}
-            {@const isSelected = selectedIndex === index}
-            {@const diff = computeDiff(originalText, replacement.text)}
-            <button
-                class="w-full text-left rounded-lg border transition-colors overflow-hidden
+  <!-- Replacements -->
+  <div class="p-3 space-y-2">
+    {#each suggestion.replacements as replacement, index}
+      {@const isSelected = selectedIndex === index}
+      <button
+        class="w-full text-left rounded-lg border transition-colors overflow-hidden
                     {isSelected
-                        ? 'bg-green-100/80 border-green-400/50 ring-1 ring-green-400/40'
-                        : 'bg-white/50 border-green-100/60 hover:bg-white/70 hover:border-green-200/60'}"
-                onclick={() => selectReplacement(index)}
-            >
-                <div class="px-3 py-2 text-xs leading-relaxed">
-                    {#if diff.isFallback}
-                        <!-- Side-by-side fallback for noisy diffs -->
-                        {#if originalText}
-                            <span class="line-through text-red-500/70 mr-1">{originalText.slice(0, 80)}{originalText.length > 80 ? "…" : ""}</span>
-                        {/if}
-                        <span class="text-black/80">{replacement.text}</span>
-                    {:else}
-                        <!-- Inline diff -->
-                        {#each diff.ops as op}
-                            {#if op.type === "equal"}
-                                <span class="text-black/70">{op.text}</span>
-                            {:else if op.type === "delete"}
-                                <del class="text-red-500/80 bg-red-50/60 no-underline line-through decoration-red-400/60 rounded-[2px] px-[1px]">{op.text}</del>
-                            {:else}
-                                <ins class="text-green-700/90 bg-green-100/70 no-underline rounded-[2px] px-[1px]">{op.text}</ins>
-                            {/if}
-                        {/each}
-                    {/if}
-                </div>
-                {#if replacement.rationale}
-                    <div class="px-3 pb-2 text-[10px] text-green-700/60 leading-snug border-t border-green-100/50 pt-1.5">
-                        {replacement.rationale}
-                    </div>
-                {/if}
-            </button>
-        {/each}
-    </div>
+          ? 'bg-green-100/80 border-green-400/50 ring-1 ring-green-400/40'
+          : 'bg-white/50 border-green-100/60 hover:bg-white/70 hover:border-green-200/60'}"
+        onclick={() => selectReplacement(index)}
+      >
+        <div class="px-3 py-2 text-xs text-black/80 leading-relaxed">
+          {replacement.text}
+        </div>
+        {#if replacement.rationale}
+          <div
+            class="px-3 pb-2 text-[10px] text-green-700/60 leading-snug border-t border-green-100/50 pt-1.5"
+          >
+            {replacement.rationale}
+          </div>
+        {/if}
+      </button>
+    {/each}
+  </div>
 
-    <!-- Apply / Branch row — only when active -->
-    {#if isActive}
-        <div class="flex items-center gap-1.5 px-3 pb-3">
-            <button
-                aria-label="Branch instead"
-                title="Convert to revision with original and suggestion as versions"
-                class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/70
+  <!-- Apply / Branch row — only when active -->
+  {#if isActive}
+    <div class="flex items-center gap-1.5 px-3 pb-3">
+      <button
+        aria-label="Branch instead"
+        title="Convert to revision with original and suggestion as versions"
+        class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/70
                     bg-white/40 hover:bg-white/60 rounded-md ring-1 ring-green-200/50 transition-colors"
-                onclick={() => {
-                    view.dispatch(branchSuggestion(view.state, suggestion.id));
-                }}
-            >
-                <GitBranchIcon size={11} />
-                <span>Branch</span>
-            </button>
-            <button
-                disabled={selectedIndex === null}
-                class="flex-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
+        onclick={() => {
+          view.dispatch(branchSuggestion(view.state, suggestion.id));
+        }}
+      >
+        <GitBranchIcon size={11} />
+        <span>Branch</span>
+      </button>
+      <button
+        disabled={selectedIndex === null}
+        class="flex-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
                     {selectedIndex !== null
-                        ? 'bg-green-500/80 text-white ring-green-400/40 hover:bg-green-600/80'
-                        : 'bg-white/30 text-black/25 ring-green-100/30 cursor-not-allowed'}"
-                onclick={() => {
-                    if (selectedIndex === null) return;
-                    view.dispatch(
-                        applySuggestion(view.state, suggestion.id, selectedIndex),
-                    );
-                }}
-            >
-                Apply
-            </button>
-        </div>
-    {/if}
+          ? 'bg-green-500/80 text-white ring-green-400/40 hover:bg-green-600/80'
+          : 'bg-white/30 text-black/25 ring-green-100/30 cursor-not-allowed'}"
+        onclick={() => {
+          if (selectedIndex === null) return;
+          view.dispatch(
+            applySuggestion(view.state, suggestion.id, selectedIndex)
+          );
+        }}
+      >
+        Apply
+      </button>
+    </div>
+  {/if}
 
-    <!-- User thread replies (skip first message if it's the AI's overall comment) -->
-    {#if (thread[0]?.author === "AI" ? thread.slice(1) : thread).length > 0}
-        <div class="border-t border-green-100/60 px-3 py-2.5">
-            <Thread thread={thread[0]?.author === "AI" ? thread.slice(1) : thread} {updateThread} />
-        </div>
-    {/if}
+  <!-- User thread replies (skip first message if it's the AI's overall comment) -->
+  {#if (thread[0]?.author === "AI" ? thread.slice(1) : thread).length > 0}
+    <div class="border-t border-green-100/60 px-3 py-2.5">
+      <Thread
+        thread={thread[0]?.author === "AI" ? thread.slice(1) : thread}
+        {updateThread}
+      />
+    </div>
+  {/if}
 </div>
