@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { EditorView } from "@codemirror/view";
-import { ChevronDownIcon, GitBranchIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+import { ChevronDownIcon, GitBranchIcon, Maximize2, SparklesIcon, Trash2 } from "lucide-svelte";
 import {
     applySuggestion,
     branchSuggestion,
@@ -10,6 +10,7 @@ import {
     type Thread as ThreadType,
 } from ".";
 import Thread from "./Thread.svelte";
+import { activeModal } from "$lib/stores";
 
 const {
     suggestion,
@@ -108,32 +109,36 @@ function getDiffOps(replacementIndex: number) {
   <!-- View changes toggle -->
   {#if selectedIndex !== null}
     <div class="px-3 pb-2">
-      <button
-        class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
-        onclick={() => { diffExpanded = !diffExpanded; }}
-      >
-        <ChevronDownIcon
-          size={12}
-          class="transition-transform duration-200 {diffExpanded ? 'rotate-180' : ''}"
-        />
-        <span>View changes</span>
-      </button>
-      {#if diffExpanded}
-        <div
-          class="mt-1.5 px-2.5 py-2 rounded-lg bg-white/60 border border-green-100/60 text-xs leading-relaxed font-mono"
+      <div class="flex items-center justify-between">
+        <button
+          class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
+          onclick={() => { diffExpanded = !diffExpanded; }}
         >
+          <ChevronDownIcon
+            size={12}
+            class="transition-transform duration-200 {diffExpanded ? 'rotate-180' : ''}"
+          />
+          <span>View changes</span>
+        </button>
+        {#if diffExpanded}
+          <button
+            class="flex items-center gap-1 text-[10px] text-green-700/40 hover:text-green-700/70 transition-colors"
+            onclick={() => { if (selectedIndex !== null) activeModal.set({ type: "diff", ops: getDiffOps(selectedIndex) }); }}
+            title="Expand to full view"
+          >
+            <Maximize2 size={10} />
+          </button>
+        {/if}
+      </div>
+      {#if diffExpanded}
+        <div class="mt-1.5 max-h-28 overflow-y-auto rounded-lg bg-white/60 border border-green-100/60 px-2.5 py-2 text-xs leading-relaxed font-mono">
           {#each getDiffOps(selectedIndex) as op}
             {#if op.type === "equal"}
               <span>{op.text}</span>
             {:else if op.type === "delete"}
-              <span
-                class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5"
-                >{op.text}</span
-              >
+              <span class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5">{op.text}</span>
             {:else}
-              <span class="bg-green-100/80 text-green-700 rounded-sm px-0.5"
-                >{op.text}</span
-              >
+              <span class="bg-green-100/80 text-green-700 rounded-sm px-0.5">{op.text}</span>
             {/if}
           {/each}
         </div>
@@ -184,3 +189,4 @@ function getDiffOps(replacementIndex: number) {
     </div>
   {/if}
 </div>
+

@@ -44,6 +44,15 @@ export type NestedEditorCommand = {
 };
 export const revisionOpenNestedEditor = writable<NestedEditorCommand | null>(null);
 
+// Modal portal store — components set this to open a full-screen modal
+// rendered at the page root (escaping any stacking context / clip-path).
+export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
+export type ModalState =
+    | { type: "diff"; ops: DiffOp[] }
+    | { type: "revision"; revisionId: number }
+    | null;
+export const activeModal = writable<ModalState>(null);
+
 // In case we decide to bite the dust with updating editorView every time,
 // here is some code to do that:
 // export const activeComment = derived(editorView, ($editorView) => {
