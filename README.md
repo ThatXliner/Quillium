@@ -93,14 +93,15 @@ bun run check:watch     # Watch mode
 
 - ✅ Core editor with CodeMirror 6 integration
 - ✅ Basic annotation system (comments and revisions)
-- ✅ AI integration framework
+- ✅ Infinitely nestable revision system
+- ✅ AI integration framework with multiple providers
 - ✅ Cross-platform desktop app via Tauri
 
 ### Near-term
 
 - **Robust data persistence**: Never lose work, even during crashes
 - **Enhanced revision system**: True non-linear editing with branching histories
-- **Improved AI integration**: Multiple providers with configurable behavior
+- **Improved AI integration**: Configurable prompts
 <!--- **Offline-first architecture**: Work without internet connectivity-->
 
 ### Long-term
