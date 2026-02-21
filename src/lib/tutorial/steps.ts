@@ -15,31 +15,37 @@ export const steps: Step[] = [
     {
         selector: "#ai-sidebar",
         title: "Your AI Writing Companion",
-        body: "This panel gives you access to AI tools — chat, feedback, and revision — without breaking your flow.",
+        body: "Each button has a job: Chat for thinking, Feedback for critique, Revise for rewrites, and Context for steering all AI responses.",
         position: "right",
     },
     {
         selector: "#ai-tab-chat",
         title: "Chat with AI",
-        body: "Ask questions about your writing, brainstorm ideas, or have a conversation about your work.",
+        body: "Use Chat for open-ended work: brainstorming, outlining, asking questions, or exploring options before you commit to edits.",
         position: "right",
     },
     {
         selector: "#ai-tab-feedback",
         title: "Get Instant Feedback",
-        body: "Share your prose and get thoughtful feedback on clarity, tone, pacing, and more.",
+        body: "Use Feedback for editorial diagnosis: what is working, what is weak, and why. It gives direction without rewriting your draft.",
         position: "right",
     },
     {
         selector: "#ai-tab-revise",
         title: "AI-Powered Revision",
-        body: "Select a passage and ask AI to rewrite it — sharper, gentler, or in a different voice.",
+        body: "Use Revise when you want replacement text. Select a passage and generate concrete rewrite options you can directly compare.",
+        position: "right",
+    },
+    {
+        selector: "#ai-tab-context",
+        title: "Set Document Context",
+        body: "Define goal, tone, audience, and constraints here. Chat, Feedback, and Revise use this context to stay aligned with your intent.",
         position: "right",
     },
     {
         selector: "#editor-document",
         title: "Your Writing Space",
-        body: "The editor is the center of everything. Distraction-free by design, with rich annotation support.",
+        body: "Revisions are infinitely nestable: create a revision, open its nested editor, and create another revision inside it as deep as you need.",
         position: "left",
     },
     {
