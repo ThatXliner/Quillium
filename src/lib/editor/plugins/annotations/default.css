@@ -8,28 +8,33 @@
 	background-color: #fcbc05;
 }
 .cm-revision {
-	background-color: #f3e8ff;
+	text-decoration: underline;
+	text-decoration-color: #a855f7;
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
 }
 .cm-revision-active .cm-revision,
 .cm-revision-active {
 	background-color: #d8b4fe;
+	text-decoration: none;
 }
 .cm-suggestion {
-	background-color: #f0fdf4;
-	text-decoration: line-through;
-	text-decoration-color: #6ee7b7;
+	text-decoration: underline;
+	text-decoration-color: #22c55e;
 	text-decoration-thickness: 2px;
-	color: #166534;
-	border-radius: 3px;
+	text-underline-offset: 3px;
 }
 .cm-suggestion-active .cm-suggestion,
 .cm-suggestion-active {
 	background-color: #dcfce7;
-	text-decoration-thickness: 2px;
-	border-radius: 4px;
+	text-decoration: none;
 }
 .cm-suggestion-diff {
 	font-style: normal;
+	text-decoration: underline;
+	text-decoration-color: #22c55e;
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
 }
 .cm-suggestion-diff-del {
 	color: #dc2626;

@@ -5,6 +5,7 @@ import {
 	applySuggestion,
 	branchSuggestion,
 	previewSuggestion,
+	suggestionPreviewField,
 	type Annotation,
 	type Thread as ThreadType,
 } from ".";
@@ -27,24 +28,28 @@ const {
 
 const thread = $derived(suggestion.thread);
 
-let selectedIndex = $state<number | null>(null);
+let selectedIndex = $state<number | null>(
+	suggestion.replacements.length === 1 ? 0 : null,
+);
 
-function selectReplacement(index: number) {
-	const next = selectedIndex === index ? null : index;
-	selectedIndex = next;
+$effect(() => {
+	const wantIndex = isActive && selectedIndex !== null ? selectedIndex : null;
+	const current = view.state.field(suggestionPreviewField);
+	const currentIndex =
+		current?.annotationId === suggestion.id
+			? current.replacementIndex
+			: null;
+	if (wantIndex === currentIndex) return;
 	view.dispatch({
 		effects: [
 			previewSuggestion.of(
-				next === null
+				wantIndex === null
 					? null
-					: { annotationId: suggestion.id, replacementIndex: next },
+					: { annotationId: suggestion.id, replacementIndex: wantIndex },
 			),
 		],
-		selection: EditorSelection.single(suggestion.selection.main.from),
-		scrollIntoView: true,
 	});
-	view.focus();
-}
+});
 </script>
 
 <div
