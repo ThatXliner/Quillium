@@ -30,6 +30,18 @@ export function saveDocumentContext() {
 
 export const documentContext = $state<DocumentContext>(loadDocumentContext());
 
+// ---------------------------------------------------------------------------
+// AI processing indicator — purely for UI feedback (e.g. sidebar glow).
+// All AI chat components should call setAiProcessing(true/false) when their
+// request starts/ends. To remove the glow effect, just stop reading this
+// state in the UI — no need to touch individual components.
+// ---------------------------------------------------------------------------
+export const aiProcessing = $state({ active: false });
+
+export function setAiProcessing(value: boolean) {
+    aiProcessing.active = value;
+}
+
 function loadProvider(): Provider {
     if (typeof localStorage === "undefined") return "openai";
     return (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";

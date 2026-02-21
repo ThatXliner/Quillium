@@ -7,7 +7,7 @@
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
-    import { aiSettings, documentContext } from "$lib/ai/settings.svelte";
+    import { aiSettings, documentContext, setAiProcessing } from "$lib/ai/settings.svelte";
 
     let input = $state("");
 
@@ -45,6 +45,8 @@
         }),
         onToolCall: handleToolCall,
     });
+
+    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
 
     function handleSubmit(event: SubmitEvent) {
         event.preventDefault();
@@ -141,7 +143,7 @@
             {/each}
         {/each}
 
-        {#if chat.status === "streaming"}
+        {#if chat.status === "streaming" || chat.status === "submitted"}
             <div class="flex justify-start">
                 <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
                     <div class="bg-gray-100 text-gray-800 px-3 py-2 rounded-lg">

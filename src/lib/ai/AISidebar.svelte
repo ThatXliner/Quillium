@@ -6,6 +6,7 @@
     import AISettings from "./AISettings.svelte";
     import DocumentContext from "./DocumentContext.svelte";
     import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon, CompassIcon } from "lucide-svelte";
+    import { aiProcessing } from "$lib/ai/settings.svelte";
 
     type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
     let action = $state<Action>(null);
@@ -112,6 +113,7 @@
         backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
         overflow-hidden transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
         {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[240px] rounded-[100px]'}
+        {aiProcessing.active ? 'ai-processing' : ''}
     "
 >
     <!-- Collapsed pill icons -->
@@ -220,7 +222,23 @@
         display: none;
     }
 
+    /* AI processing glow — reads aiProcessing.active from settings.svelte.ts.
+       To remove this effect, delete this block and the {aiProcessing.active ? 'ai-processing' : ''}
+       class binding on the container div. No other files need changing. */
+    @keyframes rainbow-glow {
+        0%   { box-shadow: 0 0 0 2px rgba(99,102,241,0.5),  0 0 16px 4px rgba(99,102,241,0.25); }
+        25%  { box-shadow: 0 0 0 2px rgba(168,85,247,0.5),  0 0 16px 4px rgba(168,85,247,0.25); }
+        50%  { box-shadow: 0 0 0 2px rgba(236,72,153,0.5),  0 0 16px 4px rgba(236,72,153,0.25); }
+        75%  { box-shadow: 0 0 0 2px rgba(251,146,60,0.5),  0 0 16px 4px rgba(251,146,60,0.25); }
+        100% { box-shadow: 0 0 0 2px rgba(99,102,241,0.5),  0 0 16px 4px rgba(99,102,241,0.25); }
+    }
+
+    .ai-processing {
+        animation: rainbow-glow 2s linear infinite;
+    }
+
     @media (prefers-reduced-motion: reduce) {
         * { transition-duration: 0.01ms !important; }
+        .ai-processing { animation: none; }
     }
 </style>

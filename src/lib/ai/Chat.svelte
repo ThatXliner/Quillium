@@ -3,7 +3,7 @@
     import { renderMarkdown } from "$lib/ai/utils";
     import { DefaultChatTransport } from "ai";
     import { Chat } from "@ai-sdk/svelte";
-    import { aiSettings, documentContext } from "$lib/ai/settings.svelte";
+    import { aiSettings, documentContext, setAiProcessing } from "$lib/ai/settings.svelte";
 
     let input = $state("");
     let chat = new Chat({
@@ -19,6 +19,8 @@
             }),
         }),
     });
+
+    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
 
     async function handleSubmit(event: Event) {
         event.preventDefault();

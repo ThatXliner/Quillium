@@ -506,6 +506,8 @@ export function createRevision({
         targetText,
         document: state.doc,
     });
+    const originalText = state.sliceDoc(selection.main.from, selection.main.to);
+    const originalVersion = { doc: originalText, label: "Original" } as VersionState;
     view.dispatch(
         state.update({
             effects: [
@@ -516,7 +518,7 @@ export function createRevision({
                         "revision",
                     ),
                     currentlySelected: 0,
-                    versions: versions.map(({ label, text }) => ({ doc: text, label }) as VersionState),
+                    versions: [originalVersion, ...versions.map(({ label, text }) => ({ doc: text, label }) as VersionState)],
                     thread: [{ message: threadMessage, author, time: Date.now() }],
                 }),
             ],
