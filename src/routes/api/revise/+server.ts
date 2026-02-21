@@ -1,5 +1,4 @@
 import { convertToModelMessages, streamText, tool, type UIMessage } from "ai";
-import { OPENAI_API_KEY } from "$env/static/private";
 import { z } from "zod";
 import { injectDocumentContext, buildDocumentContextPrompt } from "$lib/ai/utils";
 import { createModel, type Provider } from "$lib/ai/provider";
@@ -25,7 +24,7 @@ export async function POST({ request }) {
 
     const resolvedProvider: Provider = provider ?? "openai";
     const resolvedModel = model ?? "gpt-4o";
-    const resolvedKey = apiKey || OPENAI_API_KEY;
+    const resolvedKey = apiKey ?? "";
 
     const result = streamText({
         model: createModel(resolvedProvider, resolvedKey, resolvedModel),
