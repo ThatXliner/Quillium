@@ -102,7 +102,9 @@ export function streamFeedback(opts: FeedbackStreamOpts): ReadableStream<UIMessa
 When providing feedback:
 - Discuss overall document issues conversationally — structure, argument, pacing, tone, scope
 - Use createComment to flag specific passages that illustrate a broader issue (e.g. a paragraph that buries the lede, a section that feels off-tone)
-- Use createRevision when a passage could benefit from a meaningfully different approach — provide 2-3 labeled versions showing distinct stylistic or structural alternatives, with a thread message explaining the tradeoff between them
+- Include concrete alternatives more often: in most feedback responses, give at least one short "try this" rewrite example for a weak passage
+- Use createRevision whenever an issue would be clearer with side-by-side options — provide 2-3 labeled versions showing distinct stylistic or structural alternatives, with a thread message explaining the tradeoff between them
+- Keep rewrite examples scoped and illustrative (usually 1-2 key passages) so feedback remains diagnosis-first, not full rewrite mode
 - Avoid nitpicking grammar or minor wording — that's for the revision tool. Focus on things that affect the reader's experience of the whole piece
 - Be specific but editorial: reference the actual text and explain why something works or doesn't
 - If text is selected, treat it as the focus but consider how it fits the larger document
