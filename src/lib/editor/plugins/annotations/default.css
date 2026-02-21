@@ -15,17 +15,24 @@
     background-color: #d8b4fe;
 }
 .cm-suggestion {
-    background-color: #f0fdf4;
-    text-decoration-color: #5a9d70;
+    background-color: #fff1f2;
     text-decoration: line-through;
+    text-decoration-color: #f87171;
     text-decoration-thickness: 2px;
+    color: #b91c1c;
+    border-radius: 3px;
 }
 .cm-suggestion-active .cm-suggestion,
-.cm-suggestion .cm-suggestion-active {
-    background-color: #dbf9e2;
-    padding-top: 2px;
-    text-decoration-thickness: 4px;
-    padding-bottom: 2px;
-    border-radius: 6px;
+.cm-suggestion-active {
+    background-color: #ffe4e6;
+    text-decoration-thickness: 2px;
+    border-radius: 4px;
+}
+.cm-suggestion-preview {
+    color: #15803d;
+    background-color: #f0fdf4;
+    border-radius: 3px;
+    padding: 0 2px;
+    font-style: normal;
 }
 /*TODO: merged/mixed annotatins??*/

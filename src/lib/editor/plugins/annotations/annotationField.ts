@@ -291,6 +291,25 @@ export const addSuggestion = StateEffect.define<{
   targetText: string;
   replacements: string[];
 }>();
+// Preview: { annotationId, replacementIndex } while hovering/selecting, null to clear
+export const previewSuggestion = StateEffect.define<{
+  annotationId: number;
+  replacementIndex: number;
+} | null>();
+export const suggestionPreviewField = StateField.define<{
+  annotationId: number;
+  replacementIndex: number;
+} | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) {
+      if (e.is(previewSuggestion)) return e.value;
+    }
+    // Clear preview when doc changes (suggestion was applied or removed)
+    if (tr.docChanged) return null;
+    return value;
+  },
+});
 const _applySuggestion = StateEffect.define<{
   annotationId: number;
   replacementIndex: number;
