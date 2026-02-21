@@ -1,8 +1,9 @@
 <script lang="ts">
     import { EditorState } from "@codemirror/state";
     import { EditorView, type ViewUpdate } from "@codemirror/view";
-    import { ChevronRight, X } from "lucide-svelte";
+    import { ChevronRight, ChevronDown, Check, X } from "lucide-svelte";
     import { onDestroy, tick } from "svelte";
+    import { scale } from "svelte/transition";
     import { getExtensions, savedFields } from "$lib/editor/extensions";
     import {
         annotationField,
@@ -20,6 +21,35 @@
     const { revisionId, view, stackIndex }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
     const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
+
+    // Track selected version index per crumb level reactively
+    let crumbSelectedVersions = $state<number[]>([]);
+    // Which crumb dropdown is open (-1 = none)
+    let openDropdown = $state(-1);
+
+    $effect(() => {
+        crumbSelectedVersions = crumbs.map((crumb) => {
+            if (crumb.type !== "revision") return 0;
+            const rev = crumb.parentView.state.field(annotationField)[crumb.revisionId] as Annotation<"revision"> | undefined;
+            return rev?.currentlySelected ?? 0;
+        });
+    });
+
+    function selectVersion(ci: number, vi: number, crumb: typeof crumbs[number], isCurrent: boolean) {
+        if (crumb.type !== "revision") return;
+        crumbSelectedVersions[ci] = vi;
+        openDropdown = -1;
+        crumb.parentView.dispatch(setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi));
+        if (isCurrent) {
+            destroyEditor();
+            tick().then(() => {
+                const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+                if (v) createEditor(v.versions[v.currentlySelected]);
+            });
+        } else {
+            modalStack.popTo(ci);
+        }
+    }
 
     const revision = $derived(
         view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
@@ -77,6 +107,17 @@
     }
 
     $effect(() => {
+        if (openDropdown === -1) return;
+        const handler = (e: MouseEvent) => {
+            if (!(e.target as HTMLElement).closest(".version-trigger, .version-popover")) {
+                openDropdown = -1;
+            }
+        };
+        document.addEventListener("click", handler);
+        return () => document.removeEventListener("click", handler);
+    });
+
+    $effect(() => {
         if (!dialogEl) return;
         if (!dialogEl.open) dialogEl.showModal();
         tick().then(() => {
@@ -98,49 +139,86 @@
 >
     <div class="revision-modal-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0">
-            <div class="flex items-center gap-2 min-w-0">
-                <!-- Breadcrumbs -->
-                <nav class="flex items-center gap-1 min-w-0">
-                    {#each crumbs as crumb, ci}
-                        {#if ci < crumbs.length - 1}
-                            <button
-                                class="text-[10px] text-purple-400/70 hover:text-purple-600/80 transition-colors truncate max-w-[120px] shrink-0"
-                                onclick={() => modalStack.popTo(ci)}
-                            >{crumb.label}</button>
-                            <ChevronRight size={10} class="text-purple-300/60 shrink-0" />
-                        {:else}
-                            <span class="text-[10px] font-semibold text-purple-600/80 uppercase tracking-wider truncate">{crumb.label}</span>
-                        {/if}
-                    {/each}
-                </nav>
-                <div class="flex flex-wrap gap-1 ml-2">
-                    {#if revision}
-                        {#each revision.versions as version, i}
-                            {@const versionActive = i === revision.currentlySelected}
-                            <button
-                                class="px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors
-                                    {versionActive
-                                        ? 'bg-purple-500/80 text-white ring-1 ring-purple-400/40'
-                                        : 'bg-black/5 text-black/55 ring-1 ring-purple-200/30 hover:text-black/80'}"
-                                disabled={versionActive}
-                                onclick={() => {
-                                    view.dispatch(setActiveRevisionVersion(view.state, revisionId, i));
-                                    destroyEditor();
-                                    tick().then(() => {
-                                        const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-                                        if (v) createEditor(v.versions[v.currentlySelected]);
-                                    });
-                                }}
-                            >
-                                {version.label ?? previewVersionText(version)}
-                            </button>
-                        {/each}
+        <div class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0">
+            <!-- Breadcrumb trail -->
+            <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
+                {#each crumbs as crumb, ci}
+                    {@const isCurrent = ci === crumbs.length - 1}
+                    {@const crumbRevision = crumb.type === "revision"
+                        ? (crumb.parentView.state.field(annotationField)[crumb.revisionId] as Annotation<"revision"> | undefined)
+                        : undefined}
+                    {@const selectedVi = crumbSelectedVersions[ci] ?? 0}
+
+                    {#if ci > 0}
+                        <ChevronRight size={10} class="text-purple-300/60 shrink-0" />
                     {/if}
-                </div>
-            </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <!-- "Revision" label — clickable back if not current -->
+                        {#if isCurrent}
+                            <span class="text-[10px] font-semibold text-purple-700/70 uppercase tracking-wider shrink-0">Revision</span>
+                        {:else}
+                            <button
+                                class="text-[10px] text-purple-400/60 hover:text-purple-600/80 transition-colors uppercase tracking-wider shrink-0"
+                                onclick={() => modalStack.popTo(ci)}
+                            >Revision</button>
+                        {/if}
+
+                        <!-- Version dropdown -->
+                        {#if crumbRevision && crumbRevision.versions.length > 0}
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <div
+                                class="relative"
+                                onkeydown={(e) => { if (e.key === "Escape") openDropdown = -1; }}
+                            >
+                                <!-- Trigger -->
+                                <button
+                                    class="version-trigger flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium
+                                        transition-all duration-150
+                                        {isCurrent
+                                            ? 'bg-purple-100/70 text-purple-700/80 hover:bg-purple-100 ring-1 ring-purple-200/60'
+                                            : 'bg-black/5 text-black/45 hover:bg-black/8 ring-1 ring-black/10'}
+                                        {openDropdown === ci ? 'ring-2 ' + (isCurrent ? 'ring-purple-300/60' : 'ring-black/20') : ''}"
+                                    onclick={(e) => { e.stopPropagation(); openDropdown = openDropdown === ci ? -1 : ci; }}
+                                >
+                                    <span>{crumbRevision.versions[selectedVi]?.label ?? previewVersionText(crumbRevision.versions[selectedVi])}</span>
+                                    <ChevronDown
+                                        size={9}
+                                        class="transition-transform duration-200 {openDropdown === ci ? 'rotate-180' : ''}
+                                            {isCurrent ? 'text-purple-400/70' : 'text-black/30'}"
+                                    />
+                                </button>
+
+                                <!-- Popover -->
+                                {#if openDropdown === ci}
+                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                    <div
+                                        class="version-popover"
+                                        transition:scale={{ start: 0.92, duration: 150, opacity: 0 }}
+                                        style="transform-origin: top left;"
+                                    >
+                                        {#each crumbRevision.versions as version, vi}
+                                            {@const isSelected = vi === selectedVi}
+                                            <button
+                                                class="version-option {isSelected ? 'version-option-active' : ''}"
+                                                onclick={() => selectVersion(ci, vi, crumb, isCurrent)}
+                                            >
+                                                <span class="flex-1 text-left truncate">{version.label ?? previewVersionText(version)}</span>
+                                                {#if isSelected}
+                                                    <Check size={10} class="text-purple-500/70 shrink-0" />
+                                                {/if}
+                                            </button>
+                                        {/each}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
+                {/each}
+            </nav>
+
             <button
-                class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors shrink-0"
                 onclick={close}
             >
                 <X size={16} />
@@ -221,5 +299,44 @@
 
     .revision-modal-editor :global(.cm-focused) {
         outline: none;
+    }
+
+    .version-popover {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        min-width: 160px;
+        max-width: 240px;
+        background: white;
+        border: 1px solid rgba(147, 112, 219, 0.15);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px -4px rgba(0,0,0,0.12), 0 2px 8px -2px rgba(0,0,0,0.08);
+        padding: 4px;
+        z-index: 10;
+        overflow: hidden;
+    }
+
+    .version-option {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 5px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        color: rgba(0,0,0,0.6);
+        transition: background 0.1s, color 0.1s;
+        cursor: pointer;
+    }
+
+    .version-option:hover {
+        background: rgba(147, 112, 219, 0.08);
+        color: rgba(109, 40, 217, 0.85);
+    }
+
+    .version-option-active {
+        background: rgba(147, 112, 219, 0.1);
+        color: rgba(109, 40, 217, 0.9);
+        font-weight: 500;
     }
 </style>
