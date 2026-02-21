@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { tick } from "svelte";
     import Chat from "./Chat.svelte";
     import Feedback from "./Feedback.svelte";
     import Revise from "./Revise.svelte";
@@ -57,6 +58,8 @@
     const expanded = $derived(action !== null);
 
     let container: HTMLDivElement;
+    let iconStrip = $state<HTMLDivElement>();
+    let iconEls = $state<HTMLButtonElement[]>([]);
 
     function handleClickOutside(e: MouseEvent) {
         const target = e.target as Node;
@@ -69,6 +72,31 @@
             action = null;
         }
     }
+
+    function selectAction(id: NonNullable<Action>) {
+        action = id;
+        scrollActiveIntoCenter(id);
+    }
+
+    function scrollActiveIntoCenter(id: NonNullable<Action>) {
+        tick().then(() => {
+            if (!iconStrip) return;
+            const idx = actions.findIndex((a) => a.id === id);
+            const el = iconEls[idx];
+            if (!el) return;
+            const stripRect = iconStrip.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            const offset = elRect.left - stripRect.left + elRect.width / 2 - stripRect.width / 2;
+            iconStrip.scrollBy({ left: offset, behavior: "smooth" });
+        });
+    }
+
+    // Center the active icon whenever the panel opens
+    $effect(() => {
+        if (expanded && action && action !== "settings") {
+            scrollActiveIntoCenter(action);
+        }
+    });
 </script>
 
 <svelte:window onclick={handleClickOutside} />
@@ -119,23 +147,42 @@
             {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}"
     >
         <!-- Header -->
-        <div class="flex items-center gap-1 px-3 pt-3 pb-2 shrink-0">
-            {#each actions as a}
-                <button
-                    onclick={() => (action = a.id)}
-                    aria-label={a.label}
-                    title={a.label}
-                    class="p-2 rounded-full transition-colors
-                        {action === a.id
-                            ? a.activeClass
-                            : 'text-black/40 hover:text-black/70 hover:bg-white/30'}"
+        <div class="flex items-center pt-2.5 pb-2 shrink-0 gap-1 pr-2">
+            <!-- Scrollable icon carousel with wheel effect -->
+            <div class="relative flex-1 min-w-0">
+                <div
+                    bind:this={iconStrip}
+                    class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
+                    style="scrollbar-width: none; -ms-overflow-style: none; mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%); -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);"
                 >
-                    <a.icon size={16} />
-                </button>
-            {/each}
-            <span class="flex-1 text-xs font-semibold text-black/60 pl-1 truncate">
-                {action ? panelTitles[action] : ""}
+                    {#each actions as a, i}
+                        {@const activeIdx = actions.findIndex(x => x.id === action)}
+                        {@const dist = Math.abs(i - activeIdx)}
+                        {@const scale = activeIdx < 0 ? 1 : dist === 0 ? 1 : dist === 1 ? 0.88 : 0.76}
+                        {@const opacity = activeIdx < 0 ? 0.5 : dist === 0 ? 1 : dist === 1 ? 0.45 : 0.25}
+                        <button
+                            bind:this={iconEls[i]}
+                            onclick={() => selectAction(a.id)}
+                            aria-label={a.label}
+                            title={a.label}
+                            style="transform: scale({scale}); opacity: {opacity};"
+                            class="p-2 rounded-full shrink-0 transition-all duration-200
+                                {action === a.id
+                                    ? a.activeClass
+                                    : 'text-black/70 hover:bg-white/30'}"
+                        >
+                            <a.icon size={16} />
+                        </button>
+                    {/each}
+                </div>
+            </div>
+
+            <!-- Title -->
+            <span class="text-xs font-semibold text-black/60 shrink-0 whitespace-nowrap">
+                {action && action !== "settings" ? panelTitles[action] : ""}
             </span>
+
+            <!-- Settings + close -->
             <button
                 onclick={() => (action = action === "settings" ? null : "settings")}
                 aria-label="AI Settings"
@@ -170,6 +217,10 @@
 </div>
 
 <style>
+    div[style*="scrollbar-width"]::-webkit-scrollbar {
+        display: none;
+    }
+
     @media (prefers-reduced-motion: reduce) {
         * { transition-duration: 0.01ms !important; }
     }
