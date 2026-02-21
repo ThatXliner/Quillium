@@ -23,7 +23,7 @@
         } else if (toolCall.toolName === "createSuggestion") {
             createSuggestion({
                 targetText: toolCall.input.targetText,
-                replacements: toolCall.input.replacements,
+                replacements: toolCall.input.replacements as Array<{ text: string; rationale?: string }>,
                 comment: toolCall.input.comment,
                 state: $editorView.state,
                 dispatch: $editorView.dispatch,

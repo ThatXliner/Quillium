@@ -363,7 +363,7 @@ const annotationDecorations = ViewPlugin.fromClass(
       const { to } = annotation.selection.main;
       const builder = new RangeSetBuilder<Decoration>();
       builder.add(to, to, Decoration.widget({
-        widget: new SuggestionPreviewWidget(replacement),
+        widget: new SuggestionPreviewWidget(replacement.text),
         side: 1,
       }));
       return builder.finish();
@@ -450,12 +450,16 @@ export function createSuggestion({
 }: {
   state: EditorState;
   dispatch: (transaction: Transaction) => void;
-  replacements: string[];
+  replacements: Array<{ text: string; rationale?: string } | string>;
   targetText?: string;
   editorSelection?: EditorSelection;
   author?: string;
   comment?: string;
 }) {
+  // Normalize string shorthand to full shape
+  const normalizedReplacements = replacements.map((r) =>
+    typeof r === "string" ? { text: r } : r,
+  );
   let selection = getSelection({
     editorSelection,
     targetText,
@@ -470,7 +474,7 @@ export function createSuggestion({
             selection,
             "suggestion",
           ),
-          replacements,
+          replacements: normalizedReplacements,
           thread: comment
             ? [{ message: comment, author, time: Date.now() }]
             : [],

@@ -135,16 +135,17 @@
 </script>
 
 <div
-    class="backdrop-blur-md border shadow-lg overflow-hidden transition-all duration-200
+    class="border shadow-lg overflow-hidden transition-all duration-200
         {isActive
-            ? 'bg-gray-200/80 border-white/50 shadow-xl rounded-[14px]'
-            : 'bg-gray-300/70 border-white/30 rounded-[12px] opacity-90 hover:opacity-100 hover:bg-gray-200/75'}"
+            ? 'bg-blue-50/90 border-blue-200/60 shadow-xl rounded-[14px]'
+            : 'bg-blue-50/60 border-blue-200/40 rounded-[12px] opacity-90 hover:opacity-100'}"
+    style="backdrop-filter: blur(12px);"
 >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-0">
-        <h3 class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">Comment</h3>
+        <h3 class="text-[10px] font-semibold text-blue-600/70 uppercase tracking-wider">Comment</h3>
         <button
-            class="p-1 rounded-md text-black/25 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+            class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
             onclick={() => removeComment()}
             title="Delete comment"
         >

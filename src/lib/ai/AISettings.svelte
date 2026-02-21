@@ -46,16 +46,24 @@
 
     let selectedProvider = $state<Provider>(loadProvider());
     let selectedModel = $state(loadModel());
-    let apiKey = $state("");
+    let apiKey = $state(aiSettings.apiKey);
     let showKey = $state(false);
     let saveStatus = $state<"idle" | "saved" | "error">("idle");
     let saveTimer: ReturnType<typeof setTimeout>;
 
     $effect(() => {
         const provider = selectedProvider;
+        // If the store already has a key for this provider, use it immediately
+        if (aiSettings.apiKey) {
+            apiKey = aiSettings.apiKey;
+        }
+        // Always sync from keychain to catch changes made outside this session
         invoke<string | null>("get_api_key", { provider })
-            .then((key) => { apiKey = key ?? ""; })
-            .catch(() => { apiKey = ""; });
+            .then((key) => {
+                apiKey = key ?? "";
+                aiSettings.apiKey = apiKey;
+            })
+            .catch(() => {});
     });
 
     function selectProvider(id: Provider) {

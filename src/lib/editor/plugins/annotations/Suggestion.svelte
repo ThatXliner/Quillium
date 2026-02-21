@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { EditorView } from "@codemirror/view";
-    import { GitBranchIcon, Trash2 } from "lucide-svelte";
+    import { GitBranchIcon, SparklesIcon, Trash2 } from "lucide-svelte";
     import {
         applySuggestion,
         branchSuggestion,
@@ -39,7 +39,6 @@
     function selectReplacement(index: number) {
         const next = selectedIndex === index ? null : index;
         selectedIndex = next;
-        // Move cursor to the suggestion range and preview the replacement
         view.dispatch({
             effects: [previewSuggestion.of(
                 next === null
@@ -54,56 +53,74 @@
 </script>
 
 <div
-    class="backdrop-blur-md border overflow-hidden transition-all duration-200
+    class="border overflow-hidden transition-all duration-200
         {isActive
-            ? 'bg-gray-200/80 border-white/50 shadow-xl rounded-[14px]'
-            : 'bg-gray-300/70 border-white/30 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
+            ? 'bg-green-50/90 border-green-200/60 shadow-xl rounded-[14px]'
+            : 'bg-green-50/60 border-green-200/40 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
+    style="backdrop-filter: blur(12px);"
 >
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 pt-3 pb-0">
-        <h3 class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">Suggestion</h3>
+    <div class="flex items-center justify-between px-3 pt-2.5 pb-0">
+        <div class="flex items-center gap-1.5">
+            <SparklesIcon size={11} class="text-green-500/70" />
+            <h3 class="text-[10px] font-semibold text-green-600/70 uppercase tracking-wider">AI Suggestion</h3>
+        </div>
         <button
-            class="p-1 rounded-md text-black/25 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+            class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
             onclick={() => remove()}
             title="Delete suggestion"
         >
-            <Trash2 size={14} />
+            <Trash2 size={13} />
         </button>
     </div>
 
     <!-- Original text chip -->
     {#if originalText}
         <div class="px-3 pt-2 pb-0">
-            <div class="text-xs text-black/50 border-l-2 border-green-400/80 pl-2 truncate line-through decoration-green-600/60">
+            <div class="text-xs text-black/45 border-l-2 border-green-300/70 pl-2 truncate line-through decoration-green-400/50">
                 {originalText.slice(0, 80)}{originalText.length > 80 ? "…" : ""}
             </div>
         </div>
     {/if}
 
+    <!-- Overall comment (thread[0] from AI) -->
+    {#if thread.length > 0 && thread[0].author === "AI"}
+        <div class="px-3 pt-2 pb-0">
+            <p class="text-[11px] text-black/55 leading-relaxed">{thread[0].message}</p>
+        </div>
+    {/if}
+
     <!-- Replacements -->
-    <div class="p-3 space-y-1.5">
+    <div class="p-3 space-y-2">
         {#each suggestion.replacements as replacement, index}
             {@const isSelected = selectedIndex === index}
             <button
-                class="w-full text-left px-3 py-2 rounded-lg border text-xs transition-colors
+                class="w-full text-left rounded-lg border transition-colors overflow-hidden
                     {isSelected
-                        ? 'bg-green-100/70 border-green-400/50 text-green-900 ring-1 ring-green-400/40'
-                        : 'bg-white/40 border-white/30 text-black/80 hover:bg-white/60'}"
+                        ? 'bg-green-100/80 border-green-400/50 ring-1 ring-green-400/40'
+                        : 'bg-white/50 border-green-100/60 hover:bg-white/70 hover:border-green-200/60'}"
                 onclick={() => selectReplacement(index)}
             >
-                {replacement}
+                <div class="px-3 py-2 text-xs text-black/80 leading-relaxed">
+                    {replacement.text}
+                </div>
+                {#if replacement.rationale}
+                    <div class="px-3 pb-2 text-[10px] text-green-700/60 leading-snug border-t border-green-100/50 pt-1.5">
+                        {replacement.rationale}
+                    </div>
+                {/if}
             </button>
         {/each}
     </div>
 
-    <!-- Apply / Branch row -->
+    <!-- Apply / Branch row — only when active -->
     {#if isActive}
-        <div class="flex items-center justify-between px-2 pb-3 gap-1.5">
+        <div class="flex items-center gap-1.5 px-3 pb-3">
             <button
                 aria-label="Branch instead"
                 title="Convert to revision with original and suggestion as versions"
                 class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/70
-                    bg-white/30 hover:bg-white/50 rounded-md ring-1 ring-white/30 transition-colors"
+                    bg-white/40 hover:bg-white/60 rounded-md ring-1 ring-green-200/50 transition-colors"
                 onclick={() => {
                     view.dispatch(branchSuggestion(view.state, suggestion.id));
                 }}
@@ -116,10 +133,9 @@
                 class="flex-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
                     {selectedIndex !== null
                         ? 'bg-green-500/80 text-white ring-green-400/40 hover:bg-green-600/80'
-                        : 'bg-white/30 text-black/30 ring-white/20 cursor-not-allowed'}"
+                        : 'bg-white/30 text-black/25 ring-green-100/30 cursor-not-allowed'}"
                 onclick={() => {
                     if (selectedIndex === null) return;
-                    // Clear preview before applying (doc change clears it too, but be explicit)
                     view.dispatch(
                         applySuggestion(view.state, suggestion.id, selectedIndex),
                     );
@@ -130,10 +146,10 @@
         </div>
     {/if}
 
-    <!-- Thread -->
-    {#if thread.length > 0}
-        <div class="border-t border-black/[0.07] px-3 py-2.5">
-            <Thread {thread} {updateThread} />
+    <!-- User thread replies (skip first message if it's the AI's overall comment) -->
+    {#if (thread[0]?.author === "AI" ? thread.slice(1) : thread).length > 0}
+        <div class="border-t border-green-100/60 px-3 py-2.5">
+            <Thread thread={thread[0]?.author === "AI" ? thread.slice(1) : thread} {updateThread} />
         </div>
     {/if}
 </div>

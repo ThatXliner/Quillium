@@ -47,21 +47,18 @@ When revising text:
                 inputSchema: z.object({
                     targetText: z.string().describe("The exact text to revise"),
                     replacements: z
-                        .array(z.string())
-                        .describe("One or more revised versions of the text"),
+                        .array(z.object({
+                            text: z.string().describe("The revised text"),
+                            rationale: z.string().optional().describe("Brief explanation of what this version changes and why"),
+                        }))
+                        .describe("One or more revised versions of the text, each with an optional rationale"),
                     comment: z
                         .string()
                         .optional()
-                        .describe("Optional explanation of the revision"),
+                        .describe("Optional overall explanation of the revision"),
                 }),
                 execute: async ({ targetText, replacements, comment }) => {
-                    return {
-                        type: "suggestion",
-                        targetText,
-                        replacements,
-                        comment,
-                        timestamp: Date.now(),
-                    };
+                    return { type: "suggestion", targetText, replacements, comment, timestamp: Date.now() };
                 },
             }),
             createComment: tool({

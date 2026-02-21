@@ -16,6 +16,7 @@ import {
   type Annotations,
   type GenericAnnotation,
   type RawAnnotations,
+  type SuggestionReplacement,
   type Thread,
   type VersionState,
 } from "./models";
@@ -258,10 +259,10 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
 
     const versions: VersionState[] = [
         { doc: originalText },
-        ...annotation.replacements.map((r) => ({ doc: r } as VersionState)),
+        ...annotation.replacements.map((r) => ({ doc: r.text } as VersionState)),
     ];
 
-    const firstReplacement = annotation.replacements[0] ?? originalText;
+    const firstReplacement = annotation.replacements[0]?.text ?? originalText;
 
     const newRevision = {
         ...createNewAnnotation(
@@ -289,7 +290,7 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
 // === For suggestions ===
 export const addSuggestion = StateEffect.define<{
   targetText: string;
-  replacements: string[];
+  replacements: SuggestionReplacement[];
 }>();
 // Preview: { annotationId, replacementIndex } while hovering/selecting, null to clear
 export const previewSuggestion = StateEffect.define<{
@@ -328,7 +329,7 @@ export function applySuggestion(
     changes: state.changes({
       from: annotation.selection.main.from,
       to: annotation.selection.main.to,
-      insert: annotation.replacements[replacementIndex],
+      insert: annotation.replacements[replacementIndex].text,
     }),
   });
 }

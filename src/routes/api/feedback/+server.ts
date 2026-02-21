@@ -66,21 +66,18 @@ ${selectedText ? `Selected text: "${selectedText}"` : "No text selected"}`,
                 inputSchema: z.object({
                     targetText: z.string().describe("The exact text to replace"),
                     replacements: z
-                        .array(z.string())
-                        .describe("One or more replacement options for the selected text"),
+                        .array(z.object({
+                            text: z.string().describe("The replacement text"),
+                            rationale: z.string().optional().describe("Brief explanation of what this option changes and why"),
+                        }))
+                        .describe("One or more replacement options, each with an optional rationale"),
                     comment: z
                         .string()
                         .optional()
-                        .describe("Optional explanation for the suggestion"),
+                        .describe("Optional overall explanation for the suggestion"),
                 }),
                 execute: async ({ targetText, replacements, comment }) => {
-                    return {
-                        type: "suggestion",
-                        targetText,
-                        replacements,
-                        comment,
-                        timestamp: Date.now(),
-                    };
+                    return { type: "suggestion", targetText, replacements, comment, timestamp: Date.now() };
                 },
             }),
         },
