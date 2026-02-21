@@ -5,7 +5,7 @@
     import Revise from "./Revise.svelte";
     import AISettings from "./AISettings.svelte";
     import DocumentContext from "./DocumentContext.svelte";
-    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon, CompassIcon } from "lucide-svelte";
+    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon, CompassIcon, Minimize2Icon } from "lucide-svelte";
     import { aiProcessing } from "$lib/ai/settings.svelte";
 
     type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
@@ -58,11 +58,52 @@
 
     const expanded = $derived(action !== null);
 
+    const DEFAULT_WIDTH = 320;
+    const DEFAULT_HEIGHT = 520;
+    const MIN_WIDTH = 240;
+    const MAX_WIDTH = 600;
+    const MIN_HEIGHT = 400;
+    const MAX_HEIGHT = 800;
+
+    let customWidth = $state<number | null>(null);
+    let customHeight = $state<number | null>(null);
+    let isResizing = $state(false);
+
+    // Plain vars — not reactive, only used inside handlers
+    let resizeStartX = 0;
+    let resizeStartY = 0;
+    let resizeStartWidth = 0;
+    let resizeStartHeight = 0;
+    let activeHandle: "right" | "bottom" | "corner" | null = null;
+    let justResized = false;
+
+    const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
+    const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
+    const isCustomSize = $derived(customWidth !== null || customHeight !== null);
+
+    // Inline style only when expanded AND user has resized (overrides Tailwind)
+    const containerSizeStyle = $derived(
+        expanded && (customWidth !== null || customHeight !== null)
+            ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
+            : ""
+    );
+
+    // Disable transition during active drag; keep it for expand/collapse
+    const transitionClass = $derived(
+        isResizing
+            ? ""
+            : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]"
+    );
+
     let container: HTMLDivElement;
     let iconStrip = $state<HTMLDivElement>();
     let iconEls = $state<HTMLButtonElement[]>([]);
 
     function handleClickOutside(e: MouseEvent) {
+        if (justResized) {
+            justResized = false;
+            return;
+        }
         const target = e.target as Node;
         if (
             expanded &&
@@ -92,11 +133,66 @@
         });
     }
 
+    function resetSize() {
+        customWidth = null;
+        customHeight = null;
+    }
+
+    function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
+        e.preventDefault();
+        e.stopPropagation();
+        activeHandle = handle;
+        resizeStartX = e.clientX;
+        resizeStartY = e.clientY;
+        resizeStartWidth = effectiveWidth;
+        resizeStartHeight = effectiveHeight;
+        isResizing = true;
+        window.addEventListener("mousemove", onResizeMove);
+        window.addEventListener("mouseup", onResizeEnd);
+        document.body.style.userSelect = "none";
+        document.body.style.cursor =
+            handle === "right" ? "ew-resize"
+            : handle === "bottom" ? "ns-resize"
+            : "nwse-resize";
+    }
+
+    function onResizeMove(e: MouseEvent) {
+        if (!activeHandle) return;
+        const dx = e.clientX - resizeStartX;
+        const dy = e.clientY - resizeStartY;
+        if (activeHandle === "right" || activeHandle === "corner") {
+            customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
+        }
+        if (activeHandle === "bottom" || activeHandle === "corner") {
+            customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
+        }
+    }
+
+    function onResizeEnd() {
+        isResizing = false;
+        activeHandle = null;
+        justResized = true;
+        window.removeEventListener("mousemove", onResizeMove);
+        window.removeEventListener("mouseup", onResizeEnd);
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+    }
+
     // Center the active icon whenever the panel opens
     $effect(() => {
         if (expanded && action && action !== "settings") {
             scrollActiveIntoCenter(action);
         }
+    });
+
+    // Cleanup resize listeners on unmount
+    $effect(() => {
+        return () => {
+            window.removeEventListener("mousemove", onResizeMove);
+            window.removeEventListener("mouseup", onResizeEnd);
+            document.body.style.userSelect = "";
+            document.body.style.cursor = "";
+        };
     });
 </script>
 
@@ -108,10 +204,11 @@
     id="ai-sidebar"
     bind:this={container}
     onclick={(e) => e.stopPropagation()}
+    style={containerSizeStyle}
     class="
         fixed left-4 top-1/2 -translate-y-1/2 z-50
         backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
-        overflow-hidden transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
+        overflow-hidden {transitionClass}
         {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[240px] rounded-[100px]'}
         {aiProcessing.active ? 'ai-processing' : ''}
     "
@@ -147,7 +244,7 @@
 
     <!-- Expanded panel -->
     <div
-        class="w-[320px] h-[520px] flex flex-col transition-opacity duration-150
+        class="w-full h-full flex flex-col transition-opacity duration-150
             {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}"
     >
         <!-- Row 1: icon wheel -->
@@ -179,11 +276,21 @@
             </div>
         </div>
 
-        <!-- Row 2: title + settings + close -->
+        <!-- Row 2: title + reset + settings + close -->
         <div class="flex items-center px-3 pb-2 shrink-0">
             <span class="flex-1 text-xs font-semibold text-black/50 truncate">
                 {action ? panelTitles[action] : ""}
             </span>
+            {#if isCustomSize}
+                <button
+                    onclick={resetSize}
+                    aria-label="Reset to default size"
+                    title="Reset size"
+                    class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
+                >
+                    <Minimize2Icon size={14} />
+                </button>
+            {/if}
             <button
                 onclick={() => (action = action === "settings" ? null : "settings")}
                 aria-label="AI Settings"
@@ -215,11 +322,113 @@
             <div class="absolute inset-0 flex flex-col {action === 'settings' ? '' : 'hidden'}"><AISettings /></div>
         </div>
     </div>
+
+    {#if expanded}
+        <div
+            role="separator"
+            aria-label="Resize width"
+            aria-orientation="vertical"
+            class="resize-handle resize-handle-right"
+            onmousedown={(e) => startResize(e, "right")}
+        ></div>
+        <div
+            role="separator"
+            aria-label="Resize height"
+            aria-orientation="horizontal"
+            class="resize-handle resize-handle-bottom"
+            onmousedown={(e) => startResize(e, "bottom")}
+        ></div>
+        <div
+            role="separator"
+            aria-label="Resize panel"
+            class="resize-handle resize-handle-corner"
+            onmousedown={(e) => startResize(e, "corner")}
+        ></div>
+    {/if}
 </div>
 
 <style>
     div[style*="scrollbar-width"]::-webkit-scrollbar {
         display: none;
+    }
+
+    .resize-handle {
+        position: absolute;
+        z-index: 10;
+    }
+
+    .resize-handle-right {
+        top: 14px;
+        bottom: 14px;
+        right: 0;
+        width: 6px;
+        cursor: ew-resize;
+    }
+
+    .resize-handle-bottom {
+        left: 14px;
+        right: 14px;
+        bottom: 0;
+        height: 6px;
+        cursor: ns-resize;
+    }
+
+    .resize-handle-corner {
+        right: 0;
+        bottom: 0;
+        width: 14px;
+        height: 14px;
+        cursor: nwse-resize;
+    }
+
+    .resize-handle-right::after {
+        content: "";
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        right: 2px;
+        width: 2px;
+        border-radius: 9999px;
+        background-color: transparent;
+        transition: background-color 200ms ease;
+    }
+
+    .resize-handle-right:hover::after {
+        background-color: rgba(0, 0, 0, 0.18);
+    }
+
+    .resize-handle-bottom::after {
+        content: "";
+        position: absolute;
+        left: 25%;
+        right: 25%;
+        bottom: 2px;
+        height: 2px;
+        border-radius: 9999px;
+        background-color: transparent;
+        transition: background-color 200ms ease;
+    }
+
+    .resize-handle-bottom:hover::after {
+        background-color: rgba(0, 0, 0, 0.18);
+    }
+
+    .resize-handle-corner::after {
+        content: "";
+        position: absolute;
+        right: 3px;
+        bottom: 3px;
+        width: 5px;
+        height: 5px;
+        border-right: 2px solid rgba(0, 0, 0, 0.2);
+        border-bottom: 2px solid rgba(0, 0, 0, 0.2);
+        border-radius: 1px;
+        opacity: 0;
+        transition: opacity 200ms ease;
+    }
+
+    .resize-handle-corner:hover::after {
+        opacity: 1;
     }
 
     /* AI processing glow — reads aiProcessing.active from settings.svelte.ts.
