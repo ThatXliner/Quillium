@@ -1,55 +1,45 @@
 <script lang="ts">
 import type { EditorView } from "@codemirror/view";
-import { GitBranchIcon, SparklesIcon, Trash2 } from "lucide-svelte";
+import { ChevronDownIcon, GitBranchIcon, SparklesIcon, Trash2 } from "lucide-svelte";
 import {
-	applySuggestion,
-	branchSuggestion,
-	previewSuggestion,
-	suggestionPreviewField,
-	type Annotation,
-	type Thread as ThreadType,
+    applySuggestion,
+    branchSuggestion,
+    diffTokens,
+    tokenize,
+    type Annotation,
+    type Thread as ThreadType,
 } from ".";
-import { EditorSelection } from "@codemirror/state";
 import Thread from "./Thread.svelte";
 
 const {
-	suggestion,
-	isActive,
-	view,
-	remove,
-	updateThread,
+    suggestion,
+    isActive,
+    view,
+    remove,
+    updateThread,
 }: {
-	suggestion: Annotation<"suggestion">;
-	isActive: boolean;
-	view: EditorView;
-	remove: () => void;
-	updateThread: (thread: ThreadType) => void;
+    suggestion: Annotation<"suggestion">;
+    isActive: boolean;
+    view: EditorView;
+    remove: () => void;
+    updateThread: (thread: ThreadType) => void;
 } = $props();
 
 const thread = $derived(suggestion.thread);
 
 let selectedIndex = $state<number | null>(
-	suggestion.replacements.length === 1 ? 0 : null,
+    suggestion.replacements.length === 1 ? 0 : null,
 );
 
-$effect(() => {
-	const wantIndex = isActive && selectedIndex !== null ? selectedIndex : null;
-	const current = view.state.field(suggestionPreviewField);
-	const currentIndex =
-		current?.annotationId === suggestion.id
-			? current.replacementIndex
-			: null;
-	if (wantIndex === currentIndex) return;
-	view.dispatch({
-		effects: [
-			previewSuggestion.of(
-				wantIndex === null
-					? null
-					: { annotationId: suggestion.id, replacementIndex: wantIndex },
-			),
-		],
-	});
-});
+let diffExpanded = $state(false);
+
+function getDiffOps(replacementIndex: number) {
+    const { from, to } = suggestion.selection.main;
+    const original = view.state.sliceDoc(from, to);
+    const replacement = suggestion.replacements[replacementIndex];
+    if (!replacement) return [];
+    return diffTokens(tokenize(original), tokenize(replacement.text));
+}
 </script>
 
 <div
@@ -96,7 +86,10 @@ $effect(() => {
                     {isSelected
           ? 'bg-green-100/80 border-green-400/50 ring-1 ring-green-400/40'
           : 'bg-white/50 border-green-100/60 hover:bg-white/70 hover:border-green-200/60'}"
-        onclick={() => selectReplacement(index)}
+        onclick={() => {
+          selectedIndex = selectedIndex === index ? null : index;
+          diffExpanded = false;
+        }}
       >
         <div class="px-3 py-2 text-xs text-black/80 leading-relaxed">
           {replacement.text}
@@ -111,6 +104,42 @@ $effect(() => {
       </button>
     {/each}
   </div>
+
+  <!-- View changes toggle -->
+  {#if selectedIndex !== null}
+    <div class="px-3 pb-2">
+      <button
+        class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
+        onclick={() => { diffExpanded = !diffExpanded; }}
+      >
+        <ChevronDownIcon
+          size={12}
+          class="transition-transform duration-200 {diffExpanded ? 'rotate-180' : ''}"
+        />
+        <span>View changes</span>
+      </button>
+      {#if diffExpanded}
+        <div
+          class="mt-1.5 px-2.5 py-2 rounded-lg bg-white/60 border border-green-100/60 text-xs leading-relaxed font-mono"
+        >
+          {#each getDiffOps(selectedIndex) as op}
+            {#if op.type === "equal"}
+              <span>{op.text}</span>
+            {:else if op.type === "delete"}
+              <span
+                class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5"
+                >{op.text}</span
+              >
+            {:else}
+              <span class="bg-green-100/80 text-green-700 rounded-sm px-0.5"
+                >{op.text}</span
+              >
+            {/if}
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <!-- Apply / Branch row — only when active -->
   {#if isActive}

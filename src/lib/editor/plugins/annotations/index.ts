@@ -260,13 +260,13 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
 );
 
 // --- Inline diff helpers ---
-function tokenize(text: string): string[] {
+export function tokenize(text: string): string[] {
 	return text.match(/\S+|\s+/g) ?? [];
 }
 
-type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
+export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
 
-function diffTokens(aTokens: string[], bTokens: string[]): DiffOp[] {
+export function diffTokens(aTokens: string[], bTokens: string[]): DiffOp[] {
 	const m = aTokens.length;
 	const n = bTokens.length;
 	const dp: number[][] = Array.from({ length: m + 1 }, () =>
@@ -358,7 +358,6 @@ const annotationDecorations = ViewPlugin.fromClass(
 				this.getDecorations(view, "comment", "cm-comment"),
 				this.getDecorations(view, "revision", "cm-revision"),
 				this.getDecorations(view, "suggestion", "cm-suggestion"),
-				this.getPreviewDecoration(view),
 			]);
 		}
 
@@ -367,9 +366,7 @@ const annotationDecorations = ViewPlugin.fromClass(
 			if (
 				update.selectionSet ||
 				update.docChanged ||
-				annotationsChanged(update) ||
-				update.startState.field(suggestionPreviewField) !==
-					update.state.field(suggestionPreviewField)
+				annotationsChanged(update)
 			) {
 				this.decorations = RangeSet.join([
 					this.getDecorations(update.view, "comment", "cm-comment"),
@@ -379,7 +376,6 @@ const annotationDecorations = ViewPlugin.fromClass(
 						"suggestion",
 						"cm-suggestion",
 					),
-					this.getPreviewDecoration(update.view),
 				]);
 			}
 		}
