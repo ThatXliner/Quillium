@@ -1,7 +1,7 @@
 <script lang="ts">
     import { EditorState } from "@codemirror/state";
     import { EditorView, type ViewUpdate } from "@codemirror/view";
-    import { X } from "lucide-svelte";
+    import { ChevronRight, X } from "lucide-svelte";
     import { onDestroy, tick } from "svelte";
     import { getExtensions, savedFields } from "$lib/editor/extensions";
     import {
@@ -14,10 +14,12 @@
     } from ".";
     import { versionText, type VersionState } from "./models";
     import { getActiveAnnotation } from "./utils";
-    import { modalStack } from "$lib/stores";
+    import { modalStack, type ModalEntry } from "$lib/stores";
     import Annotations from "./Annotations.svelte";
 
-    const { revisionId, view }: { revisionId: number; view: EditorView } = $props();
+    const { revisionId, view, stackIndex }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
+
+    const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
     const revision = $derived(
         view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
@@ -97,9 +99,22 @@
     <div class="revision-modal-inner">
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0">
-            <div class="flex items-center gap-3">
-                <span class="text-[10px] font-semibold text-purple-600/70 uppercase tracking-wider">Revision</span>
-                <div class="flex flex-wrap gap-1">
+            <div class="flex items-center gap-2 min-w-0">
+                <!-- Breadcrumbs -->
+                <nav class="flex items-center gap-1 min-w-0">
+                    {#each crumbs as crumb, ci}
+                        {#if ci < crumbs.length - 1}
+                            <button
+                                class="text-[10px] text-purple-400/70 hover:text-purple-600/80 transition-colors truncate max-w-[120px] shrink-0"
+                                onclick={() => modalStack.popTo(ci)}
+                            >{crumb.label}</button>
+                            <ChevronRight size={10} class="text-purple-300/60 shrink-0" />
+                        {:else}
+                            <span class="text-[10px] font-semibold text-purple-600/80 uppercase tracking-wider truncate">{crumb.label}</span>
+                        {/if}
+                    {/each}
+                </nav>
+                <div class="flex flex-wrap gap-1 ml-2">
                     {#if revision}
                         {#each revision.versions as version, i}
                             {@const versionActive = i === revision.currentlySelected}

@@ -340,7 +340,7 @@
         <button
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/60
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors ml-auto"
-            onclick={() => { modalStack.push({ type: "revision", revisionId: revision.id, parentView: view }); }}
+            onclick={() => { modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" }); }}
             title="Expand editor"
         >
             <Maximize2 size={10} />

@@ -1,11 +1,13 @@
 <script lang="ts">
-    import { SparklesIcon, X } from "lucide-svelte";
+    import { ChevronRight, SparklesIcon, X } from "lucide-svelte";
     import { tick } from "svelte";
     import type { EditorView } from "@codemirror/view";
     import { modalStack, type DiffOp } from "$lib/stores";
     import { annotationField, type Annotation } from ".";
 
-    const { ops, suggestionId, parentView }: { ops: DiffOp[]; suggestionId: number; parentView: EditorView } = $props();
+    const { ops, suggestionId, parentView, stackIndex }: { ops: DiffOp[]; suggestionId: number; parentView: EditorView; stackIndex: number } = $props();
+
+    const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
     let dialogEl = $state<HTMLDialogElement>();
 
@@ -33,9 +35,21 @@
     <div class="diff-modal-inner">
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-green-100/80 shrink-0">
-            <div class="flex items-center gap-2">
-                <SparklesIcon size={13} class="text-green-500/70" />
-                <span class="text-xs font-semibold text-green-700/70 uppercase tracking-wider">AI Suggestion</span>
+            <div class="flex items-center gap-2 min-w-0">
+                <SparklesIcon size={13} class="text-green-500/70 shrink-0" />
+                <nav class="flex items-center gap-1 min-w-0">
+                    {#each crumbs as crumb, ci}
+                        {#if ci < crumbs.length - 1}
+                            <button
+                                class="text-[10px] text-green-500/60 hover:text-green-700/80 transition-colors truncate max-w-[120px] shrink-0"
+                                onclick={() => modalStack.popTo(ci)}
+                            >{crumb.label}</button>
+                            <ChevronRight size={10} class="text-green-300/60 shrink-0" />
+                        {:else}
+                            <span class="text-[10px] font-semibold text-green-700/70 uppercase tracking-wider truncate">{crumb.label}</span>
+                        {/if}
+                    {/each}
+                </nav>
             </div>
             <button
                 class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"

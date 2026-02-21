@@ -47,8 +47,8 @@ export const revisionOpenNestedEditor = writable<NestedEditorCommand | null>(nul
 // Modal portal store — a stack so nested revisions can push/pop modals.
 export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
 export type ModalEntry =
-    | { type: "diff"; ops: DiffOp[]; suggestionId: number; parentView: EditorView }
-    | { type: "revision"; revisionId: number; parentView: EditorView };
+    | { type: "diff"; ops: DiffOp[]; suggestionId: number; parentView: EditorView; label: string }
+    | { type: "revision"; revisionId: number; parentView: EditorView; label: string };
 
 const _modalStack = writable<ModalEntry[]>([]);
 
@@ -56,6 +56,7 @@ export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) => _modalStack.update((s) => [...s, entry]),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
+    popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),
     clear: () => _modalStack.set([]),
 };
 
