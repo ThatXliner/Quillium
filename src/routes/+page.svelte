@@ -3,7 +3,9 @@
     import Editor from "$lib/editor/Editor.svelte";
     import AiSidebar from "$lib/ai/AISidebar.svelte";
     import Tutorial from "$lib/tutorial/Tutorial.svelte";
-    import { tutorialActive } from "$lib/stores";
+    import { tutorialActive, activeModal, editorView } from "$lib/stores";
+    import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
+    import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 
     onMount(() => {
         if (!localStorage.getItem("quillium_tutorial_seen")) {
@@ -20,6 +22,14 @@
 
 {#if $tutorialActive}
     <Tutorial onComplete={() => {}} />
+{/if}
+
+{#if $activeModal?.type === "diff"}
+    <DiffModal ops={$activeModal.ops} />
+{/if}
+
+{#if $activeModal?.type === "revision" && $editorView}
+    <RevisionModal revisionId={$activeModal.revisionId} view={$editorView} />
 {/if}
 
 <style>

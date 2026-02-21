@@ -3,633 +3,739 @@
 
 import { SearchCursor } from "@codemirror/search";
 import {
-  EditorSelection,
-  Prec,
-  RangeSet,
-  RangeSetBuilder,
-  type SelectionRange,
-  type StateCommand,
-  Transaction,
-  Text,
-  EditorState,
+	EditorSelection,
+	Prec,
+	RangeSet,
+	RangeSetBuilder,
+	type SelectionRange,
+	type StateCommand,
+	Transaction,
+	Text,
+	EditorState,
 } from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
 // were highlighted. Users of this plugin can provide
 // update handlers via Facets.
 import {
-  Decoration,
-  type DecorationSet,
-  EditorView,
-  keymap,
-  type KeyBinding,
-  ViewPlugin,
-  type ViewUpdate,
-  WidgetType,
+	Decoration,
+	type DecorationSet,
+	EditorView,
+	keymap,
+	type KeyBinding,
+	ViewPlugin,
+	type ViewUpdate,
+	WidgetType,
 } from "@codemirror/view";
 
 import { filter, flatMap, isEqual } from "lodash-es";
 import {
-  type AnnotationType,
-  type VersionState,
-  createNewAnnotation,
-  isAnnotationOfType,
+	type AnnotationType,
+	type VersionState,
+	createNewAnnotation,
+	isAnnotationOfType,
 } from "./models";
 import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import {
-  annotationField,
-  addAnnotation,
-  allowRevisionDocEdit,
-  removeAnnotation,
-  setActiveRevisionVersion,
-  invertedAnnotationFieldEffects,
-  suggestionPreviewField,
+	annotationField,
+	addAnnotation,
+	allowRevisionDocEdit,
+	removeAnnotation,
+	setActiveRevisionVersion,
+	invertedAnnotationFieldEffects,
+	suggestionPreviewField,
 } from "./annotationField";
-import { revisionBoundaryNudge, revisionOpenNestedEditor, type NestedEditorCommand } from "$lib/stores";
+import {
+	revisionBoundaryNudge,
+	revisionOpenNestedEditor,
+	type NestedEditorCommand,
+} from "$lib/stores";
 
 export * from "./annotationField";
 export const annotationsChanged = (update: ViewUpdate) =>
-  !isEqual(
-    update.startState.field(annotationField),
-    update.state.field(annotationField),
-  ) ||
-  update.transactions.some((tr) =>
-    tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
-  );
-
+	!isEqual(
+		update.startState.field(annotationField),
+		update.state.field(annotationField),
+	) ||
+	update.transactions.some((tr) =>
+		tr.effects.some((e) => e.is(addAnnotation) || e.is(removeAnnotation)),
+	);
 
 function findRevisionAtBoundary(
-  state: EditorState,
-  position: number,
-  direction: "backward" | "forward",
+	state: EditorState,
+	position: number,
+	direction: "backward" | "forward",
 ) {
-  const annotations = Object.values(state.field(annotationField));
-  return annotations.find((annotation) => {
-    if (!isAnnotationOfType(annotation, "revision")) return false;
-    const { from, to } = annotation.selection.main;
-    if (from === to) return false;
-    return direction === "backward" ? to === position : from === position;
-  });
+	const annotations = Object.values(state.field(annotationField));
+	return annotations.find((annotation) => {
+		if (!isAnnotationOfType(annotation, "revision")) return false;
+		const { from, to } = annotation.selection.main;
+		if (from === to) return false;
+		return direction === "backward" ? to === position : from === position;
+	});
 }
 
 function deleteAdjacentRevision(
-  direction: "backward" | "forward",
+	direction: "backward" | "forward",
 ): StateCommand {
-  return ({ state, dispatch }) => {
-    const cursor = state.selection.main;
-    if (!cursor.empty) return false;
-    const target = findRevisionAtBoundary(state, cursor.from, direction);
-    if (!target) return false;
+	return ({ state, dispatch }) => {
+		const cursor = state.selection.main;
+		if (!cursor.empty) return false;
+		const target = findRevisionAtBoundary(state, cursor.from, direction);
+		if (!target) return false;
 
-    dispatch(
-      state.update({
-        changes: state.changes({
-          from: target.selection.main.from,
-          to: target.selection.main.to,
-          insert: "",
-        }),
-        effects: [removeAnnotation.of(target)],
-        annotations: [
-          allowRevisionDocEdit.of(true),
-          Transaction.addToHistory.of(true),
-        ],
-      }),
-    );
-    return true;
-  };
+		dispatch(
+			state.update({
+				changes: state.changes({
+					from: target.selection.main.from,
+					to: target.selection.main.to,
+					insert: "",
+				}),
+				effects: [removeAnnotation.of(target)],
+				annotations: [
+					allowRevisionDocEdit.of(true),
+					Transaction.addToHistory.of(true),
+				],
+			}),
+		);
+		return true;
+	};
 }
 
 // Returns the active revision annotation if the cursor is at one of its
 // content boundaries (first or last character position), null otherwise.
 function getRevisionAtContentBoundary(
-  state: EditorState,
-  direction: "backward" | "forward",
+	state: EditorState,
+	direction: "backward" | "forward",
 ) {
-  const cursor = state.selection.main;
-  if (!cursor.empty) return null;
-  for (const annotation of Object.values(state.field(annotationField))) {
-    if (!isAnnotationOfType(annotation, "revision")) continue;
-    const { from, to } = annotation.selection.main;
-    if (from === to) continue;
-    // Cursor is inside this revision range
-    if (cursor.from < from || cursor.from > to) continue;
-    if (direction === "backward" && cursor.from === from) return annotation;
-    if (direction === "forward" && cursor.from === to) return annotation;
-  }
-  return null;
+	const cursor = state.selection.main;
+	if (!cursor.empty) return null;
+	for (const annotation of Object.values(state.field(annotationField))) {
+		if (!isAnnotationOfType(annotation, "revision")) continue;
+		const { from, to } = annotation.selection.main;
+		if (from === to) continue;
+		// Cursor is inside this revision range
+		if (cursor.from < from || cursor.from > to) continue;
+		if (direction === "backward" && cursor.from === from) return annotation;
+		if (direction === "forward" && cursor.from === to) return annotation;
+	}
+	return null;
 }
 
 function nudgeBoundary(direction: "backward" | "forward"): StateCommand {
-  return ({ state }) => {
-    const target = getRevisionAtContentBoundary(state, direction);
-    if (!target) return false;
-    // Fire the nudge — the Revision card will show the hint.
-    revisionBoundaryNudge.set(target.id);
-    return false; // don't consume — let normal backspace/delete run
-  };
+	return ({ state }) => {
+		const target = getRevisionAtContentBoundary(state, direction);
+		if (!target) return false;
+		// Fire the nudge — the Revision card will show the hint.
+		revisionBoundaryNudge.set(target.id);
+		return false; // don't consume — let normal backspace/delete run
+	};
 }
 
 // Returns the revision whose range contains the cursor, if any.
-function getActiveRevisionRange(
-  state: EditorState,
-): SelectionRange | null {
-  const cursor = state.selection.main;
-  for (const annotation of Object.values(state.field(annotationField))) {
-    if (!isAnnotationOfType(annotation, "revision")) continue;
-    const { from, to } = annotation.selection.main;
-    if (from === to) continue;
-    if (cursor.from >= from && cursor.to <= to) return annotation.selection.main;
-  }
-  return null;
+function getActiveRevisionRange(state: EditorState): SelectionRange | null {
+	const cursor = state.selection.main;
+	for (const annotation of Object.values(state.field(annotationField))) {
+		if (!isAnnotationOfType(annotation, "revision")) continue;
+		const { from, to } = annotation.selection.main;
+		if (from === to) continue;
+		if (cursor.from >= from && cursor.to <= to)
+			return annotation.selection.main;
+	}
+	return null;
 }
 
 // Returns the revision annotation whose range contains the cursor, if any.
 function getActiveRevisionAnnotation(state: EditorState) {
-  const cursor = state.selection.main;
-  for (const annotation of Object.values(state.field(annotationField))) {
-    if (!isAnnotationOfType(annotation, "revision")) continue;
-    const { from, to } = annotation.selection.main;
-    if (from === to) continue;
-    if (cursor.from >= from && cursor.to <= to) return annotation;
-  }
-  return null;
+	const cursor = state.selection.main;
+	for (const annotation of Object.values(state.field(annotationField))) {
+		if (!isAnnotationOfType(annotation, "revision")) continue;
+		const { from, to } = annotation.selection.main;
+		if (from === to) continue;
+		if (cursor.from >= from && cursor.to <= to) return annotation;
+	}
+	return null;
 }
 
 // Intercepts comment/revision creation commands when the cursor is inside
 // an active revision — maps the selection to revision-relative offsets and
 // signals the nested editor to open and run the equivalent command there.
-function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand {
-  return (view) => {
-    const activeRevision = getActiveRevisionAnnotation(view.state);
-    if (!activeRevision) return false; // fall through to original keymap
-    const revFrom = activeRevision.selection.main.from;
-    const sel = view.state.selection.main;
-    revisionOpenNestedEditor.set({
-      revisionId: activeRevision.id,
-      type,
-      selectionFrom: sel.from - revFrom,
-      selectionTo: sel.to - revFrom,
-    });
-    return true;
-  };
+function redirectToNestedEditor(
+	type: NestedEditorCommand["type"],
+): StateCommand {
+	return (view) => {
+		const activeRevision = getActiveRevisionAnnotation(view.state);
+		if (!activeRevision) return false; // fall through to original keymap
+		const revFrom = activeRevision.selection.main.from;
+		const sel = view.state.selection.main;
+		revisionOpenNestedEditor.set({
+			revisionId: activeRevision.id,
+			type,
+			selectionFrom: sel.from - revFrom,
+			selectionTo: sel.to - revFrom,
+		});
+		return true;
+	};
 }
 
-
 const revisionAtomicRanges = ViewPlugin.fromClass(
-  class {
-    ranges: DecorationSet;
+	class {
+		ranges: DecorationSet;
 
-    constructor(view: EditorView) {
-      this.ranges = this.buildRanges(view.state);
-    }
+		constructor(view: EditorView) {
+			this.ranges = this.buildRanges(view.state);
+		}
 
-    update(update: ViewUpdate) {
-      if (update.docChanged || annotationsChanged(update)) {
-        this.ranges = this.buildRanges(update.state);
-      }
-    }
+		update(update: ViewUpdate) {
+			if (update.docChanged || annotationsChanged(update)) {
+				this.ranges = this.buildRanges(update.state);
+			}
+		}
 
-    buildRanges(state: EditorState): DecorationSet {
-      const builder = new RangeSetBuilder<Decoration>();
-      const revisions = Object.values(state.field(annotationField)).filter(
-        (annotation) => isAnnotationOfType(annotation, "revision"),
-      );
-      for (const revision of revisions) {
-        const { from, to } = revision.selection.main;
-        if (from === to) continue;
-        builder.add(from, to, Decoration.mark({}));
-      }
-      return builder.finish();
-    }
-  },
-  {
-    provide: (plugin) =>
-      EditorView.atomicRanges.of(
-        (view) => view.plugin(plugin)?.ranges ?? Decoration.none,
-      ),
-  },
+		buildRanges(state: EditorState): DecorationSet {
+			const builder = new RangeSetBuilder<Decoration>();
+			const revisions = Object.values(
+				state.field(annotationField),
+			).filter((annotation) =>
+				isAnnotationOfType(annotation, "revision"),
+			);
+			for (const revision of revisions) {
+				const { from, to } = revision.selection.main;
+				if (from === to) continue;
+				builder.add(from, to, Decoration.mark({}));
+			}
+			return builder.finish();
+		}
+	},
+	{
+		provide: (plugin) =>
+			EditorView.atomicRanges.of(
+				(view) => view.plugin(plugin)?.ranges ?? Decoration.none,
+			),
+	},
 );
 
 // When a revision's text is fully deleted (range collapses to from===to),
 // auto-switch to the next available version. If only one version exists,
 // remove the revision entirely.
 const collapsedRevisionResolver = ViewPlugin.fromClass(
-    class {
-        update(update: ViewUpdate) {
-            if (!update.docChanged) return;
-            if (
-                update.transactions.some((tr) =>
-                    tr.annotation(allowRevisionDocEdit),
-                )
-            )
-                return;
-            const annotations = update.state.field(annotationField);
-            for (const annotation of Object.values(annotations)) {
-                if (!isAnnotationOfType(annotation, "revision")) continue;
-                const { from, to } = annotation.selection.main;
-                if (from !== to) continue;
-                // Revision range collapsed — all text was deleted
-                if (annotation.versions.length <= 1) {
-                    // Only one version, nothing to fall back to — remove it
-                    update.view.dispatch({
-                        effects: [removeAnnotation.of(annotation)],
-                    });
-                } else {
-                    // Switch to the next available version
-                    const nextVersion =
-                        annotation.currentlySelected > 0
-                            ? annotation.currentlySelected - 1
-                            : 1;
-                    update.view.dispatch(
-                        setActiveRevisionVersion(
-                            update.state,
-                            annotation.id,
-                            nextVersion,
-                        ),
-                    );
-                }
-                return; // handle one at a time to avoid stale state
-            }
-        }
-    },
+	class {
+		update(update: ViewUpdate) {
+			if (!update.docChanged) return;
+			if (
+				update.transactions.some((tr) =>
+					tr.annotation(allowRevisionDocEdit),
+				)
+			)
+				return;
+			const annotations = update.state.field(annotationField);
+			for (const annotation of Object.values(annotations)) {
+				if (!isAnnotationOfType(annotation, "revision")) continue;
+				const { from, to } = annotation.selection.main;
+				if (from !== to) continue;
+				// Revision range collapsed — all text was deleted
+				if (annotation.versions.length <= 1) {
+					// Only one version, nothing to fall back to — remove it
+					update.view.dispatch({
+						effects: [removeAnnotation.of(annotation)],
+					});
+				} else {
+					// Switch to the next available version
+					const nextVersion =
+						annotation.currentlySelected > 0
+							? annotation.currentlySelected - 1
+							: 1;
+					update.view.dispatch(
+						setActiveRevisionVersion(
+							update.state,
+							annotation.id,
+							nextVersion,
+						),
+					);
+				}
+				return; // handle one at a time to avoid stale state
+			}
+		}
+	},
 );
 
-class SuggestionPreviewWidget extends WidgetType {
-  constructor(readonly text: string) {
-    super();
-  }
-  eq(other: SuggestionPreviewWidget) {
-    return this.text === other.text;
-  }
-  toDOM() {
-    const span = document.createElement("span");
-    span.className = "cm-suggestion-preview";
-    span.textContent = this.text;
-    return span;
-  }
-  ignoreEvent() {
-    return true;
-  }
+// --- Inline diff helpers ---
+export function tokenize(text: string): string[] {
+	return text.match(/\S+|\s+/g) ?? [];
+}
+
+export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
+
+export function diffTokens(aTokens: string[], bTokens: string[]): DiffOp[] {
+	const m = aTokens.length;
+	const n = bTokens.length;
+	const dp: number[][] = Array.from({ length: m + 1 }, () =>
+		new Array(n + 1).fill(0),
+	);
+	for (let i = m - 1; i >= 0; i--) {
+		for (let j = n - 1; j >= 0; j--) {
+			if (aTokens[i] === bTokens[j]) {
+				dp[i][j] = dp[i + 1][j + 1] + 1;
+			} else {
+				dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+			}
+		}
+	}
+	const ops: DiffOp[] = [];
+	let i = 0;
+	let j = 0;
+	while (i < m || j < n) {
+		if (i < m && j < n && aTokens[i] === bTokens[j]) {
+			ops.push({ type: "equal", text: aTokens[i] });
+			i++;
+			j++;
+		} else if (j < n && (i >= m || dp[i][j + 1] >= dp[i + 1][j])) {
+			ops.push({ type: "insert", text: bTokens[j] });
+			j++;
+		} else {
+			ops.push({ type: "delete", text: aTokens[i] });
+			i++;
+		}
+	}
+	// Merge adjacent same-type ops
+	const merged: DiffOp[] = [];
+	for (const op of ops) {
+		const last = merged[merged.length - 1];
+		if (last && last.type === op.type) last.text += op.text;
+		else merged.push({ ...op });
+	}
+	return merged;
+}
+
+class SuggestionDiffWidget extends WidgetType {
+	constructor(
+		readonly original: string,
+		readonly replacement: string,
+	) {
+		super();
+	}
+	eq(other: SuggestionDiffWidget) {
+		return (
+			this.original === other.original &&
+			this.replacement === other.replacement
+		);
+	}
+	toDOM() {
+		const ops = diffTokens(
+			tokenize(this.original),
+			tokenize(this.replacement),
+		);
+		const span = document.createElement("span");
+		span.className = "cm-suggestion-diff";
+		for (const op of ops) {
+			if (op.type === "equal") {
+				span.appendChild(document.createTextNode(op.text));
+			} else if (op.type === "delete") {
+				const del = document.createElement("span");
+				del.className = "cm-suggestion-diff-del";
+				del.textContent = op.text;
+				span.appendChild(del);
+			} else {
+				const ins = document.createElement("span");
+				ins.className = "cm-suggestion-diff-ins";
+				ins.textContent = op.text;
+				span.appendChild(ins);
+			}
+		}
+		return span;
+	}
+	ignoreEvent() {
+		return true;
+	}
 }
 
 const annotationDecorations = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
+	class {
+		decorations: DecorationSet;
 
-    constructor(view: EditorView) {
-      this.decorations = RangeSet.join([
-        this.getDecorations(view, "comment", "cm-comment"),
-        this.getDecorations(view, "revision", "cm-revision"),
-        this.getDecorations(view, "suggestion", "cm-suggestion"),
-        this.getPreviewDecoration(view),
-      ]);
-    }
+		constructor(view: EditorView) {
+			this.decorations = RangeSet.join([
+				this.getDecorations(view, "comment", "cm-comment"),
+				this.getDecorations(view, "revision", "cm-revision"),
+				this.getDecorations(view, "suggestion", "cm-suggestion"),
+			]);
+		}
 
-    update(update: ViewUpdate) {
-      // update.selectionSet also means "if cursor changed"
-      if (
-        update.selectionSet ||
-        update.docChanged ||
-        annotationsChanged(update) ||
-        update.startState.field(suggestionPreviewField) !== update.state.field(suggestionPreviewField)
-      ) {
-        this.decorations = RangeSet.join([
-          this.getDecorations(update.view, "comment", "cm-comment"),
-          this.getDecorations(update.view, "revision", "cm-revision"),
-          this.getDecorations(update.view, "suggestion", "cm-suggestion"),
-          this.getPreviewDecoration(update.view),
-        ]);
-      }
-    }
+		update(update: ViewUpdate) {
+			// update.selectionSet also means "if cursor changed"
+			if (
+				update.selectionSet ||
+				update.docChanged ||
+				annotationsChanged(update)
+			) {
+				this.decorations = RangeSet.join([
+					this.getDecorations(update.view, "comment", "cm-comment"),
+					this.getDecorations(update.view, "revision", "cm-revision"),
+					this.getDecorations(
+						update.view,
+						"suggestion",
+						"cm-suggestion",
+					),
+				]);
+			}
+		}
 
-    getDecorations(
-      view: EditorView,
-      type: AnnotationType,
-      classPrefix: string,
-    ): DecorationSet {
-      // TODO: optimize algorithm to be linear time complexity
-      // using some sort of greedy algorithm
-      const builder = new RangeSetBuilder<Decoration>();
-      const annotationRanges = flatMap(
-        filter(Object.values(view.state.field(annotationField)), (annotation) =>
-          isAnnotationOfType(annotation, type),
-        ),
-        // We can assume a single selection
-        // because we are not implementing multi-selection support
-        // for now
-        (annotation) => annotation.selection.main,
-      );
-      // TODO: use multiple
-      const activeRanges: readonly SelectionRange[] =
-        getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
-      // If you don't add annotations in order, the plugin will crash
-      annotationRanges.sort((a, b) => a.from - b.from);
+		getDecorations(
+			view: EditorView,
+			type: AnnotationType,
+			classPrefix: string,
+		): DecorationSet {
+			// TODO: optimize algorithm to be linear time complexity
+			// using some sort of greedy algorithm
+			const builder = new RangeSetBuilder<Decoration>();
+			const annotationRanges = flatMap(
+				filter(
+					Object.values(view.state.field(annotationField)),
+					(annotation) => isAnnotationOfType(annotation, type),
+				),
+				// We can assume a single selection
+				// because we are not implementing multi-selection support
+				// for now
+				(annotation) => annotation.selection.main,
+			);
+			// TODO: use multiple
+			const activeRanges: readonly SelectionRange[] =
+				getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
+			// If you don't add annotations in order, the plugin will crash
+			annotationRanges.sort((a, b) => a.from - b.from);
 
-      // TODO: care about multiple selections
-      const toHighlight = [
-        ...annotationRanges.map((x) => ({
-          active: false,
-          x,
-        })),
-        ...activeRanges.map((x) => ({
-          active: true,
-          x,
-        })),
-      ].sort((a, b) => a.x.from - b.x.from);
-      for (const {
-        x: { from, to },
-        active,
-      } of toHighlight) {
-        builder.add(
-          from,
-          to,
-          Decoration.mark({
-            class: active ? `${classPrefix}-active` : classPrefix,
-            inclusive: true,
-            // inclusive: type === "revision",
-          }),
-        );
-      }
-      return builder.finish();
-    }
+			// TODO: care about multiple selections
+			const toHighlight = [
+				...annotationRanges.map((x) => ({
+					active: false,
+					x,
+				})),
+				...activeRanges.map((x) => ({
+					active: true,
+					x,
+				})),
+			].sort((a, b) => a.x.from - b.x.from);
+			for (const {
+				x: { from, to },
+				active,
+			} of toHighlight) {
+				builder.add(
+					from,
+					to,
+					Decoration.mark({
+						class: active ? `${classPrefix}-active` : classPrefix,
+						inclusive: true,
+						// inclusive: type === "revision",
+					}),
+				);
+			}
+			return builder.finish();
+		}
 
-    getPreviewDecoration(view: EditorView): DecorationSet {
-      const preview = view.state.field(suggestionPreviewField);
-      if (!preview) return Decoration.none;
-      const annotation = view.state.field(annotationField)[preview.annotationId];
-      if (!annotation || !isAnnotationOfType(annotation, "suggestion")) return Decoration.none;
-      const replacement = annotation.replacements[preview.replacementIndex];
-      if (replacement === undefined) return Decoration.none;
-      const { to } = annotation.selection.main;
-      const builder = new RangeSetBuilder<Decoration>();
-      builder.add(to, to, Decoration.widget({
-        widget: new SuggestionPreviewWidget(replacement.text),
-        side: 1,
-      }));
-      return builder.finish();
-    }
-  },
-  {
-    decorations: (v) => v.decorations,
-  },
+		getPreviewDecoration(view: EditorView): DecorationSet {
+			const preview = view.state.field(suggestionPreviewField);
+			if (!preview) return Decoration.none;
+			const annotation =
+				view.state.field(annotationField)[preview.annotationId];
+			if (!annotation || !isAnnotationOfType(annotation, "suggestion"))
+				return Decoration.none;
+			const replacement =
+				annotation.replacements[preview.replacementIndex];
+			if (replacement === undefined) return Decoration.none;
+			const { from, to } = annotation.selection.main;
+			const original = view.state.sliceDoc(from, to);
+			const builder = new RangeSetBuilder<Decoration>();
+			builder.add(
+				from,
+				to,
+				Decoration.replace({
+					widget: new SuggestionDiffWidget(
+						original,
+						replacement.text,
+					),
+					inclusive: true,
+				}),
+			);
+			return builder.finish();
+		}
+	},
+	{
+		decorations: (v) => v.decorations,
+	},
 );
 function getSelection({
-  editorSelection,
-  targetText,
-  document,
+	editorSelection,
+	targetText,
+	document,
 }: {
-  editorSelection?: EditorSelection;
-  targetText?: string;
-  document: Text;
+	editorSelection?: EditorSelection;
+	targetText?: string;
+	document: Text;
 }) {
-  let selection = editorSelection;
-  if (editorSelection && targetText) {
-    throw new Error("Cannot specify both targetText and editorSelection");
-  }
-  if (!selection) {
-    if (!targetText) {
-      throw new Error(
-        "Must specify at least either targetText or editorSelection",
-      );
-    }
-    const query = new SearchCursor(document, targetText);
-    const selections = [...query].map(({ from: anchor, to: head }) =>
-      EditorSelection.range(anchor, head),
-    );
-    selection = EditorSelection.create(selections);
-  }
-  return selection;
+	let selection = editorSelection;
+	if (editorSelection && targetText) {
+		throw new Error("Cannot specify both targetText and editorSelection");
+	}
+	if (!selection) {
+		if (!targetText) {
+			throw new Error(
+				"Must specify at least either targetText or editorSelection",
+			);
+		}
+		const query = new SearchCursor(document, targetText);
+		const selections = [...query].map(({ from: anchor, to: head }) =>
+			EditorSelection.range(anchor, head),
+		);
+		selection = EditorSelection.create(selections);
+	}
+	return selection;
 }
 export function createComment({
-  targetText,
-  editorSelection,
-  comment,
-  author = "AI",
-  view,
+	targetText,
+	editorSelection,
+	comment,
+	author = "AI",
+	view,
 }: {
-  targetText?: string;
-  editorSelection?: EditorSelection;
-  comment: string;
-  author?: string;
-  view: EditorView;
+	targetText?: string;
+	editorSelection?: EditorSelection;
+	comment: string;
+	author?: string;
+	view: EditorView;
 }) {
-  const state = view.state;
+	const state = view.state;
 
-  let selection = getSelection({
-    editorSelection,
-    targetText,
-    document: state.doc,
-  });
-  view.dispatch(
-    state.update({
-      effects: [
-        addAnnotation.of({
-          ...createNewAnnotation(
-            state.field(annotationField),
-            selection,
-            "comment",
-          ),
-          thread: [{ message: comment, author, time: Date.now() }],
-        }),
-      ],
-      annotations: Transaction.addToHistory.of(true),
-    }),
-  );
+	let selection = getSelection({
+		editorSelection,
+		targetText,
+		document: state.doc,
+	});
+	view.dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of({
+					...createNewAnnotation(
+						state.field(annotationField),
+						selection,
+						"comment",
+					),
+					thread: [{ message: comment, author, time: Date.now() }],
+				}),
+			],
+			annotations: Transaction.addToHistory.of(true),
+		}),
+	);
 }
 export function createSuggestion({
-  targetText,
-  editorSelection,
-  replacements,
-  comment,
-  author = "AI",
-  // TODO: replace this with the simpler
-  // view because this was originally being
-  // mocked as a command
-  dispatch,
-  state,
+	targetText,
+	editorSelection,
+	replacements,
+	comment,
+	author = "AI",
+	// TODO: replace this with the simpler
+	// view because this was originally being
+	// mocked as a command
+	dispatch,
+	state,
 }: {
-  state: EditorState;
-  dispatch: (transaction: Transaction) => void;
-  replacements: Array<{ text: string; rationale?: string } | string>;
-  targetText?: string;
-  editorSelection?: EditorSelection;
-  author?: string;
-  comment?: string;
+	state: EditorState;
+	dispatch: (transaction: Transaction) => void;
+	replacements: Array<{ text: string; rationale?: string } | string>;
+	targetText?: string;
+	editorSelection?: EditorSelection;
+	author?: string;
+	comment?: string;
 }) {
-  // Normalize string shorthand to full shape
-  const normalizedReplacements = replacements.map((r) =>
-    typeof r === "string" ? { text: r } : r,
-  );
-  let selection = getSelection({
-    editorSelection,
-    targetText,
-    document: state.doc,
-  });
-  dispatch(
-    state.update({
-      effects: [
-        addAnnotation.of({
-          ...createNewAnnotation(
-            state.field(annotationField),
-            selection,
-            "suggestion",
-          ),
-          replacements: normalizedReplacements,
-          thread: comment
-            ? [{ message: comment, author, time: Date.now() }]
-            : [],
-        }),
-      ],
-      annotations: Transaction.addToHistory.of(true),
-    }),
-  );
+	// Normalize string shorthand to full shape
+	const normalizedReplacements = replacements.map((r) =>
+		typeof r === "string" ? { text: r } : r,
+	);
+	let selection = getSelection({
+		editorSelection,
+		targetText,
+		document: state.doc,
+	});
+	dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of({
+					...createNewAnnotation(
+						state.field(annotationField),
+						selection,
+						"suggestion",
+					),
+					replacements: normalizedReplacements,
+					thread: comment
+						? [{ message: comment, author, time: Date.now() }]
+						: [],
+				}),
+			],
+			annotations: Transaction.addToHistory.of(true),
+		}),
+	);
 }
 
 export function createRevision({
-    targetText,
-    editorSelection,
-    versions,
-    threadMessage,
-    author = "AI",
-    view,
+	targetText,
+	editorSelection,
+	versions,
+	threadMessage,
+	author = "AI",
+	view,
 }: {
-    targetText?: string;
-    editorSelection?: EditorSelection;
-    versions: Array<{ label: string; text: string }>;
-    threadMessage: string;
-    author?: string;
-    view: EditorView;
+	targetText?: string;
+	editorSelection?: EditorSelection;
+	versions: Array<{ label: string; text: string }>;
+	threadMessage: string;
+	author?: string;
+	view: EditorView;
 }) {
-    const state = view.state;
-    const selection = getSelection({
-        editorSelection,
-        targetText,
-        document: state.doc,
-    });
-    const originalText = state.sliceDoc(selection.main.from, selection.main.to);
-    const originalVersion = { doc: originalText, label: "Original" } as VersionState;
-    view.dispatch(
-        state.update({
-            effects: [
-                addAnnotation.of({
-                    ...createNewAnnotation(
-                        state.field(annotationField),
-                        selection,
-                        "revision",
-                    ),
-                    currentlySelected: 0,
-                    versions: [originalVersion, ...versions.map(({ label, text }) => ({ doc: text, label }) as VersionState)],
-                    thread: [{ message: threadMessage, author, time: Date.now() }],
-                }),
-            ],
-            annotations: Transaction.addToHistory.of(true),
-        }),
-    );
+	const state = view.state;
+	const selection = getSelection({
+		editorSelection,
+		targetText,
+		document: state.doc,
+	});
+	const originalText = state.sliceDoc(selection.main.from, selection.main.to);
+	const originalVersion = {
+		doc: originalText,
+		label: "Original",
+	} as VersionState;
+	view.dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of({
+					...createNewAnnotation(
+						state.field(annotationField),
+						selection,
+						"revision",
+					),
+					currentlySelected: 0,
+					versions: [
+						originalVersion,
+						...versions.map(
+							({ label, text }) =>
+								({ doc: text, label }) as VersionState,
+						),
+					],
+					thread: [
+						{ message: threadMessage, author, time: Date.now() },
+					],
+				}),
+			],
+			annotations: Transaction.addToHistory.of(true),
+		}),
+	);
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
-  console.log("what");
-  // locks it so that we can't have multiple pending states
-  if (!canCreateNewComment(state.field(annotationField))) {
-    return false;
-  }
-  // TODO: multi selection support
-  if (state.selection.main.empty) return false;
+	console.log("what");
+	// locks it so that we can't have multiple pending states
+	if (!canCreateNewComment(state.field(annotationField))) {
+		return false;
+	}
+	// TODO: multi selection support
+	if (state.selection.main.empty) return false;
 
-  dispatch(
-    state.update({
-      effects: [
-        addAnnotation.of(
-          createNewAnnotation(
-            state.field(annotationField),
-            state.selection,
-            "comment",
-          ),
-        ),
-      ],
-    }),
-  );
-  return true;
+	dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of(
+					createNewAnnotation(
+						state.field(annotationField),
+						state.selection,
+						"comment",
+					),
+				),
+			],
+		}),
+	);
+	return true;
 };
 // QUESTION: Should we have some sort of global annotation mutex
 const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
-  dispatch(
-    state.update({
-      effects: [
-        addAnnotation.of({
-          ...createNewAnnotation(
-            state.field(annotationField),
-            state.selection,
-            "revision",
-          ),
-          currentlySelected: 0,
-          versions: [
-            { doc: state.sliceDoc(state.selection.main.from, state.selection.main.to) } as VersionState,
-          ],
-        }),
-      ],
-    }),
-  );
-  return true;
+	dispatch(
+		state.update({
+			effects: [
+				addAnnotation.of({
+					...createNewAnnotation(
+						state.field(annotationField),
+						state.selection,
+						"revision",
+					),
+					currentlySelected: 0,
+					versions: [
+						{
+							doc: state.sliceDoc(
+								state.selection.main.from,
+								state.selection.main.to,
+							),
+						} as VersionState,
+					],
+				}),
+			],
+		}),
+	);
+	return true;
 };
 const dev_dontuseinprod_createSuggestion: StateCommand = ({
-  state,
-  dispatch,
+	state,
+	dispatch,
 }) => {
-  createSuggestion({
-    editorSelection: state.selection,
-    state,
-    dispatch,
-    replacements: ["ur mother"],
-  });
-  return true;
+	createSuggestion({
+		editorSelection: state.selection,
+		state,
+		dispatch,
+		replacements: ["ur mother"],
+	});
+	return true;
 };
 export const annotationKeymap: KeyBinding[] = [
-  {
-    key: "Backspace",
-    run: nudgeBoundary("backward"),
-  },
-  {
-    key: "Delete",
-    run: nudgeBoundary("forward"),
-  },
-  {
-    key: "Backspace",
-    run: deleteAdjacentRevision("backward"),
-  },
-  {
-    key: "Delete",
-    run: deleteAdjacentRevision("forward"),
-  },
-  {
-    key: "Mod-Alt-m",
-    run: redirectToNestedEditor("comment"),
-  },
-  {
-    key: "Mod-Alt-m",
-    run: createCommentCommand,
-  },
-  {
-    key: "Mod-Alt-k",
-    run: redirectToNestedEditor("revision"),
-  },
-  {
-    key: "Mod-Alt-k",
-    run: createRevisionCommand,
-  },
-  {
-    key: "Mod-b",
-    run: dev_dontuseinprod_createSuggestion,
-  },
+	{
+		key: "Backspace",
+		run: nudgeBoundary("backward"),
+	},
+	{
+		key: "Delete",
+		run: nudgeBoundary("forward"),
+	},
+	{
+		key: "Backspace",
+		run: deleteAdjacentRevision("backward"),
+	},
+	{
+		key: "Delete",
+		run: deleteAdjacentRevision("forward"),
+	},
+	{
+		key: "Mod-Alt-m",
+		run: redirectToNestedEditor("comment"),
+	},
+	{
+		key: "Mod-Alt-m",
+		run: createCommentCommand,
+	},
+	{
+		key: "Mod-Alt-k",
+		run: redirectToNestedEditor("revision"),
+	},
+	{
+		key: "Mod-Alt-k",
+		run: createRevisionCommand,
+	},
+	{
+		key: "Mod-b",
+		run: dev_dontuseinprod_createSuggestion,
+	},
 ];
 
 // Extension
 export const annotations = () => [
-  Prec.high(keymap.of(annotationKeymap)),
-  annotationField,
-  suggestionPreviewField,
-  annotationDecorations,
-  collapsedRevisionResolver,
-  invertedAnnotationFieldEffects,
+	Prec.high(keymap.of(annotationKeymap)),
+	annotationField,
+	suggestionPreviewField,
+	annotationDecorations,
+	collapsedRevisionResolver,
+	invertedAnnotationFieldEffects,
 ];
 export * from "./models";

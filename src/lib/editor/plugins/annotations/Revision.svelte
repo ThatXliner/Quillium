@@ -1,7 +1,7 @@
 <script lang="ts">
     import { EditorState } from "@codemirror/state";
     import { EditorView, type ViewUpdate } from "@codemirror/view";
-    import { ChevronDown, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
+    import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
     import { onDestroy, tick } from "svelte";
     import { slide } from "svelte/transition";
     import { getExtensions, savedFields } from "$lib/editor/extensions";
@@ -21,7 +21,7 @@
     import { createNewAnnotation, versionText, type AnnotationType, type VersionState } from "./models";
     import { EditorSelection, Transaction } from "@codemirror/state";
     import { getActiveAnnotation } from "./utils";
-    import { revisionBoundaryNudge, revisionOpenNestedEditor, type NestedEditorCommand } from "$lib/stores";
+    import { revisionBoundaryNudge, revisionOpenNestedEditor, activeModal, type NestedEditorCommand } from "$lib/stores";
     import Thread from "./Thread.svelte";
     import Annotations from "./Annotations.svelte";
 
@@ -66,6 +66,7 @@
     let recursiveActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
     let isSyncingFromAnnotation = false;
     let previousVersionId = revision.currentlySelected;
+
 
     // Boundary nudge: show a hint when the user presses delete at the edge
     // of this revision's content in the main document.
@@ -324,7 +325,7 @@
                     ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
                     : 'text-purple-600/60 bg-white/50 ring-purple-200/40 hover:bg-white/70'}"
             onclick={() => {
-                userClosedEditor = isEditorOpen; // closing = true, opening = false
+                userClosedEditor = isEditorOpen;
                 isEditorOpen = !isEditorOpen;
             }}
             title={isEditorOpen ? "Hide nested editor" : "Open nested editor"}
@@ -335,6 +336,14 @@
                 <ChevronDown size={10} />
             {/if}
             <span>Nested editor</span>
+        </button>
+        <button
+            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/60
+                bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors ml-auto"
+            onclick={() => { activeModal.set({ type: "revision", revisionId: revision.id }); }}
+            title="Expand editor"
+        >
+            <Maximize2 size={10} />
         </button>
     </div>
 
@@ -383,6 +392,7 @@
     {/if}
 </div>
 
+
 <style>
     .revision-recursive-editor :global(.cm-editor) {
         height: 220px;
@@ -405,4 +415,5 @@
     .revision-recursive-editor :global(.cm-focused) {
         outline: none;
     }
+
 </style>
