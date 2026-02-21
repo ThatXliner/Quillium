@@ -3,7 +3,7 @@
     import Editor from "$lib/editor/Editor.svelte";
     import AiSidebar from "$lib/ai/AISidebar.svelte";
     import Tutorial from "$lib/tutorial/Tutorial.svelte";
-    import { tutorialActive, activeModal, editorView } from "$lib/stores";
+    import { tutorialActive, modalStack, editorView } from "$lib/stores";
     import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
     import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 
@@ -24,13 +24,13 @@
     <Tutorial onComplete={() => {}} />
 {/if}
 
-{#if $activeModal?.type === "diff"}
-    <DiffModal ops={$activeModal.ops} suggestionId={$activeModal.suggestionId} />
-{/if}
-
-{#if $activeModal?.type === "revision" && $editorView}
-    <RevisionModal revisionId={$activeModal.revisionId} view={$editorView} />
-{/if}
+{#each $modalStack as entry (entry)}
+    {#if entry.type === "diff"}
+        <DiffModal ops={entry.ops} suggestionId={entry.suggestionId} parentView={entry.parentView} />
+    {:else if entry.type === "revision"}
+        <RevisionModal revisionId={entry.revisionId} view={entry.parentView} />
+    {/if}
+{/each}
 
 <style>
     :global(html) {

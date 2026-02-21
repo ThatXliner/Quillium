@@ -21,7 +21,7 @@
     import { createNewAnnotation, versionText, type AnnotationType, type VersionState } from "./models";
     import { EditorSelection, Transaction } from "@codemirror/state";
     import { getActiveAnnotation } from "./utils";
-    import { revisionBoundaryNudge, revisionOpenNestedEditor, activeModal, type NestedEditorCommand } from "$lib/stores";
+    import { revisionBoundaryNudge, revisionOpenNestedEditor, modalStack, type NestedEditorCommand } from "$lib/stores";
     import Thread from "./Thread.svelte";
     import Annotations from "./Annotations.svelte";
 
@@ -340,7 +340,7 @@
         <button
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/60
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors ml-auto"
-            onclick={() => { activeModal.set({ type: "revision", revisionId: revision.id }); }}
+            onclick={() => { modalStack.push({ type: "revision", revisionId: revision.id, parentView: view }); }}
             title="Expand editor"
         >
             <Maximize2 size={10} />

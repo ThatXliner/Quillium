@@ -10,7 +10,7 @@ import {
     type Thread as ThreadType,
 } from ".";
 import Thread from "./Thread.svelte";
-import { activeModal } from "$lib/stores";
+import { modalStack } from "$lib/stores";
 
 const {
     suggestion,
@@ -123,7 +123,7 @@ function getDiffOps(replacementIndex: number) {
         {#if diffExpanded}
           <button
             class="flex items-center gap-1 text-[10px] text-green-700/40 hover:text-green-700/70 transition-colors"
-            onclick={() => { if (selectedIndex !== null) activeModal.set({ type: "diff", ops: getDiffOps(selectedIndex), suggestionId: suggestion.id }); }}
+            onclick={() => { if (selectedIndex !== null) modalStack.push({ type: "diff", ops: getDiffOps(selectedIndex), suggestionId: suggestion.id, parentView: view }); }}
             title="Expand to full view"
           >
             <Maximize2 size={10} />

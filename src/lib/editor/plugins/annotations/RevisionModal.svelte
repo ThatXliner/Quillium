@@ -14,7 +14,7 @@
     } from ".";
     import { versionText, type VersionState } from "./models";
     import { getActiveAnnotation } from "./utils";
-    import { activeModal } from "$lib/stores";
+    import { modalStack } from "$lib/stores";
     import Annotations from "./Annotations.svelte";
 
     const { revisionId, view }: { revisionId: number; view: EditorView } = $props();
@@ -71,13 +71,13 @@
     }
 
     function close() {
-        activeModal.set(null);
+        modalStack.pop();
     }
 
     $effect(() => {
+        if (!dialogEl) return;
+        if (!dialogEl.open) dialogEl.showModal();
         tick().then(() => {
-            if (!dialogEl) return;
-            if (!dialogEl.open) dialogEl.showModal();
             const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
             if (rev && !editor) createEditor(rev.versions[rev.currentlySelected]);
         });

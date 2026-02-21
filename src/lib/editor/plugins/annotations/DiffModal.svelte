@@ -1,21 +1,20 @@
 <script lang="ts">
     import { SparklesIcon, X } from "lucide-svelte";
     import { tick } from "svelte";
-    import { activeModal, editorView, type DiffOp } from "$lib/stores";
+    import type { EditorView } from "@codemirror/view";
+    import { modalStack, type DiffOp } from "$lib/stores";
     import { annotationField, type Annotation } from ".";
 
-    const { ops, suggestionId }: { ops: DiffOp[]; suggestionId: number } = $props();
+    const { ops, suggestionId, parentView }: { ops: DiffOp[]; suggestionId: number; parentView: EditorView } = $props();
 
     let dialogEl = $state<HTMLDialogElement>();
 
     const suggestion = $derived(
-        $editorView
-            ? ($editorView.state.field(annotationField)[suggestionId] as Annotation<"suggestion"> | undefined)
-            : undefined,
+        parentView.state.field(annotationField)[suggestionId] as Annotation<"suggestion"> | undefined,
     );
 
     function close() {
-        activeModal.set(null);
+        modalStack.pop();
     }
 
     $effect(() => {

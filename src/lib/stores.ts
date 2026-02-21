@@ -44,14 +44,20 @@ export type NestedEditorCommand = {
 };
 export const revisionOpenNestedEditor = writable<NestedEditorCommand | null>(null);
 
-// Modal portal store — components set this to open a full-screen modal
-// rendered at the page root (escaping any stacking context / clip-path).
+// Modal portal store — a stack so nested revisions can push/pop modals.
 export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
-export type ModalState =
-    | { type: "diff"; ops: DiffOp[]; suggestionId: number }
-    | { type: "revision"; revisionId: number }
-    | null;
-export const activeModal = writable<ModalState>(null);
+export type ModalEntry =
+    | { type: "diff"; ops: DiffOp[]; suggestionId: number; parentView: EditorView }
+    | { type: "revision"; revisionId: number; parentView: EditorView };
+
+const _modalStack = writable<ModalEntry[]>([]);
+
+export const modalStack = {
+    subscribe: _modalStack.subscribe,
+    push: (entry: ModalEntry) => _modalStack.update((s) => [...s, entry]),
+    pop: () => _modalStack.update((s) => s.slice(0, -1)),
+    clear: () => _modalStack.set([]),
+};
 
 // In case we decide to bite the dust with updating editorView every time,
 // here is some code to do that:
