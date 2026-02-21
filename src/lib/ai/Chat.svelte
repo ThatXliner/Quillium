@@ -1,24 +1,9 @@
 <script lang="ts">
-    import { documentContent, selectedText } from "$lib/stores";
     import { renderMarkdown } from "$lib/ai/utils";
-    import { DefaultChatTransport } from "ai";
-    import { aiSettings, documentContext } from "$lib/ai/settings.svelte";
     import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
 
     let input = $state("");
-    const { chat, clearChat } = createAiChat({
-        transport: new DefaultChatTransport({
-            api: "/api/chat",
-            body: () => ({
-                documentContent: $documentContent,
-                selectedText: $selectedText,
-                provider: aiSettings.provider,
-                model: aiSettings.model,
-                apiKey: aiSettings.apiKey,
-                documentContext: { ...documentContext },
-            }),
-        }),
-    });
+    const { chat, clearChat } = createAiChat({ api: "/api/chat" });
 
     $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
 

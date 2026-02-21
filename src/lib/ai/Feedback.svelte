@@ -1,48 +1,10 @@
 <script lang="ts">
-    import { selectedText, documentContent, editorView } from "$lib/stores";
-    import {
-        createComment,
-        createRevision,
-    } from "$lib/editor/plugins/annotations";
-    import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
-    import { aiSettings, documentContext } from "$lib/ai/settings.svelte";
     import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
 
     let input = $state("");
 
-    function handleToolCall({ toolCall }: any) {
-        if (!$editorView) return;
-        if (toolCall.toolName === "createComment") {
-            createComment({
-                targetText: toolCall.input.targetText,
-                comment: toolCall.input.comment,
-                view: $editorView,
-            });
-        } else if (toolCall.toolName === "createRevision") {
-            createRevision({
-                targetText: toolCall.input.targetText,
-                versions: toolCall.input.versions as Array<{ label: string; text: string }>,
-                threadMessage: toolCall.input.threadMessage,
-                view: $editorView,
-            });
-        }
-    }
-
-    const { chat, clearChat } = createAiChat({
-        transport: new DefaultChatTransport({
-            api: "/api/feedback",
-            body: () => ({
-                documentContent: $documentContent,
-                selectedText: $selectedText,
-                provider: aiSettings.provider,
-                model: aiSettings.model,
-                apiKey: aiSettings.apiKey,
-                documentContext: { ...documentContext },
-            }),
-        }),
-        onToolCall: handleToolCall,
-    });
+    const { chat, clearChat } = createAiChat({ api: "/api/feedback" });
 
     $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
 
