@@ -146,43 +146,40 @@
         class="w-[320px] h-[520px] flex flex-col transition-opacity duration-150
             {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}"
     >
-        <!-- Header -->
-        <div class="flex items-center pt-2.5 pb-2 shrink-0 gap-1 pr-2">
-            <!-- Scrollable icon carousel with wheel effect -->
-            <div class="relative flex-1 min-w-0">
-                <div
-                    bind:this={iconStrip}
-                    class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
-                    style="scrollbar-width: none; -ms-overflow-style: none; mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%); -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);"
-                >
-                    {#each actions as a, i}
-                        {@const activeIdx = actions.findIndex(x => x.id === action)}
-                        {@const dist = Math.abs(i - activeIdx)}
-                        {@const scale = activeIdx < 0 ? 1 : dist === 0 ? 1 : dist === 1 ? 0.88 : 0.76}
-                        {@const opacity = activeIdx < 0 ? 0.5 : dist === 0 ? 1 : dist === 1 ? 0.45 : 0.25}
-                        <button
-                            bind:this={iconEls[i]}
-                            onclick={() => selectAction(a.id)}
-                            aria-label={a.label}
-                            title={a.label}
-                            style="transform: scale({scale}); opacity: {opacity};"
-                            class="p-2 rounded-full shrink-0 transition-all duration-200
-                                {action === a.id
-                                    ? a.activeClass
-                                    : 'text-black/70 hover:bg-white/30'}"
-                        >
-                            <a.icon size={16} />
-                        </button>
-                    {/each}
-                </div>
+        <!-- Row 1: icon wheel -->
+        <div class="shrink-0 pt-2.5 pb-1">
+            <div
+                bind:this={iconStrip}
+                class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
+                style="scrollbar-width: none; -ms-overflow-style: none; mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%); -webkit-mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);"
+            >
+                {#each actions as a, i}
+                    {@const activeIdx = actions.findIndex(x => x.id === action)}
+                    {@const dist = Math.abs(i - activeIdx)}
+                    {@const scale = activeIdx < 0 ? 1 : dist === 0 ? 1 : dist === 1 ? 0.88 : 0.76}
+                    {@const opacity = activeIdx < 0 ? 0.5 : dist === 0 ? 1 : dist === 1 ? 0.45 : 0.25}
+                    <button
+                        bind:this={iconEls[i]}
+                        onclick={() => selectAction(a.id)}
+                        aria-label={a.label}
+                        title={a.label}
+                        style="transform: scale({scale}); opacity: {opacity};"
+                        class="p-2 rounded-full shrink-0 transition-all duration-200
+                            {action === a.id
+                                ? a.activeClass
+                                : 'text-black/70 hover:bg-white/30'}"
+                    >
+                        <a.icon size={16} />
+                    </button>
+                {/each}
             </div>
+        </div>
 
-            <!-- Title -->
-            <span class="text-xs font-semibold text-black/60 shrink-0 whitespace-nowrap">
-                {action && action !== "settings" ? panelTitles[action] : ""}
+        <!-- Row 2: title + settings + close -->
+        <div class="flex items-center px-3 pb-2 shrink-0">
+            <span class="flex-1 text-xs font-semibold text-black/50 truncate">
+                {action ? panelTitles[action] : ""}
             </span>
-
-            <!-- Settings + close -->
             <button
                 onclick={() => (action = action === "settings" ? null : "settings")}
                 aria-label="AI Settings"
