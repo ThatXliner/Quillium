@@ -5,7 +5,7 @@
 
     let input = $state("");
 
-    const { chat, clearChat } = createAiChat({ api: "/api/revise" });
+    const { chat, clearChat } = createAiChat({ mode: "revise" });
 
     $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
 

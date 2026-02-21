@@ -1,6 +1,7 @@
 <script lang="ts">
     import { SparklesIcon } from "lucide-svelte";
     import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
+    import { generateContext } from "$lib/ai/clientStreams";
 
     const FIELDS: { key: keyof typeof documentContext; label: string; placeholder: string }[] = [
         { key: "goal", label: "Goal", placeholder: "What should this piece accomplish?" },
@@ -24,18 +25,12 @@
         generating = true;
         generateError = "";
         try {
-            const res = await fetch("/api/context", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    prompt: promptInput,
-                    provider: aiSettings.provider,
-                    model: aiSettings.model,
-                    apiKey: aiSettings.apiKey,
-                }),
+            const data = await generateContext({
+                prompt: promptInput,
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                apiKey: aiSettings.apiKey,
             });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
             for (const f of FIELDS) {
                 if (data[f.key]) documentContext[f.key] = data[f.key];
             }
