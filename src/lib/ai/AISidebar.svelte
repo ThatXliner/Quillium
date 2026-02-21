@@ -3,9 +3,10 @@
     import Feedback from "./Feedback.svelte";
     import Revise from "./Revise.svelte";
     import AISettings from "./AISettings.svelte";
-    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon } from "lucide-svelte";
+    import DocumentContext from "./DocumentContext.svelte";
+    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon, CompassIcon } from "lucide-svelte";
 
-    type Action = null | "chat" | "feedback" | "revise" | "settings";
+    type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
     let action = $state<Action>(null);
 
     const actions: {
@@ -36,12 +37,20 @@
             activeClass: "text-purple-600 bg-white/60",
             hoverClass: "hover:text-purple-600",
         },
+        {
+            id: "context",
+            icon: CompassIcon,
+            label: "Document Context",
+            activeClass: "text-amber-600 bg-white/60",
+            hoverClass: "hover:text-amber-600",
+        },
     ];
 
     const panelTitles: Record<NonNullable<Action>, string> = {
         chat: "Chat with AI",
         feedback: "Get Feedback",
         revise: "Revise & Rewrite",
+        context: "Document Context",
         settings: "AI Settings",
     };
 
@@ -73,7 +82,7 @@
         fixed left-4 top-1/2 -translate-y-1/2 z-50
         backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
         overflow-hidden transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
-        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[200px] rounded-[100px]'}
+        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[240px] rounded-[100px]'}
     "
 >
     <!-- Collapsed pill icons -->
@@ -149,11 +158,12 @@
 
         <div class="w-full h-px bg-black/10 shrink-0"></div>
 
-        <!-- Content — all four mounted upfront to avoid mount-time jank -->
+        <!-- Content — all panels mounted upfront to avoid mount-time jank -->
         <div class="flex-1 flex flex-col min-h-0 relative">
             <div class="absolute inset-0 flex flex-col {action === 'chat' ? '' : 'hidden'}"><Chat /></div>
             <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
             <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
+            <div class="absolute inset-0 overflow-y-auto {action === 'context' ? '' : 'hidden'}"><DocumentContext /></div>
             <div class="absolute inset-0 flex flex-col {action === 'settings' ? '' : 'hidden'}"><AISettings /></div>
         </div>
     </div>

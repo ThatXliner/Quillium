@@ -1,7 +1,7 @@
 import { convertToModelMessages, streamText, tool, type UIMessage } from "ai";
 import { OPENAI_API_KEY } from "$env/static/private";
 import { z } from "zod";
-import { injectDocumentContext } from "$lib/ai/utils";
+import { injectDocumentContext, buildDocumentContextPrompt } from "$lib/ai/utils";
 import { createModel, type Provider } from "$lib/ai/provider";
 
 export async function POST({ request }) {
@@ -12,6 +12,7 @@ export async function POST({ request }) {
         provider,
         model,
         apiKey,
+        documentContext,
     }: {
         messages: UIMessage[];
         documentContent: string;
@@ -19,6 +20,7 @@ export async function POST({ request }) {
         provider?: Provider;
         model?: string;
         apiKey?: string;
+        documentContext?: Record<string, string>;
     } = await request.json();
 
     const resolvedProvider: Provider = provider ?? "openai";
@@ -31,7 +33,7 @@ export async function POST({ request }) {
             ...convertToModelMessages(messages),
             injectDocumentContext({ documentContent, selectedText }),
         ],
-        system: `You are an editorial writing assistant providing high-level feedback on documents. Your job is to help writers think about the big picture: structure, voice, argument, scope, pacing, and style.
+        system: `You are an editorial writing assistant providing high-level feedback on documents. Your job is to help writers think about the big picture: structure, voice, argument, scope, pacing, and style.${buildDocumentContextPrompt(documentContext)}
 
 When providing feedback:
 - Discuss overall document issues conversationally — structure, argument, pacing, tone, scope

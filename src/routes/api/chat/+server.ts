@@ -1,6 +1,6 @@
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { OPENAI_API_KEY } from "$env/static/private";
-import { injectDocumentContext } from "$lib/ai/utils";
+import { injectDocumentContext, buildDocumentContextPrompt } from "$lib/ai/utils";
 import { createModel, type Provider } from "$lib/ai/provider";
 
 export async function POST({ request }) {
@@ -11,6 +11,7 @@ export async function POST({ request }) {
         provider,
         model,
         apiKey,
+        documentContext,
     }: {
         messages: UIMessage[];
         documentContent: string;
@@ -18,6 +19,7 @@ export async function POST({ request }) {
         provider?: Provider;
         model?: string;
         apiKey?: string;
+        documentContext?: Record<string, string>;
     } = await request.json();
 
     const resolvedProvider: Provider = provider ?? "openai";
@@ -32,14 +34,14 @@ export async function POST({ request }) {
         ],
         system: `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
 
-        When providing feedback:
-        - Be specific and actionable
-        - Reference the actual content when relevant
-        - Suggest concrete improvements
-        - Help with clarity, flow, grammar, and style
-        - If text is selected, focus primarily on that selection unless asked otherwise
+When providing feedback:
+- Be specific and actionable
+- Reference the actual content when relevant
+- Suggest concrete improvements
+- Help with clarity, flow, grammar, and style
+- If text is selected, focus primarily on that selection unless asked otherwise
 
-        Keep responses concise but thorough.`,
+Keep responses concise but thorough.${buildDocumentContextPrompt(documentContext)}`,
     });
 
     return result.toUIMessageStreamResponse();

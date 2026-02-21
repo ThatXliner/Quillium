@@ -7,7 +7,7 @@
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
-    import { aiSettings } from "$lib/ai/settings.svelte";
+    import { aiSettings, documentContext } from "$lib/ai/settings.svelte";
 
     let input = $state("");
 
@@ -38,6 +38,7 @@
                 provider: aiSettings.provider,
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
+                documentContext: { ...documentContext },
             }),
         }),
         onToolCall: handleToolCall,

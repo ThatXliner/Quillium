@@ -1,7 +1,7 @@
 import { convertToModelMessages, streamText, tool, type UIMessage } from "ai";
 import { OPENAI_API_KEY } from "$env/static/private";
 import { z } from "zod";
-import { injectDocumentContext } from "$lib/ai/utils";
+import { injectDocumentContext, buildDocumentContextPrompt } from "$lib/ai/utils";
 import { createModel, type Provider } from "$lib/ai/provider";
 
 export async function POST({ request }) {
@@ -12,6 +12,7 @@ export async function POST({ request }) {
         provider,
         model,
         apiKey,
+        documentContext,
     }: {
         messages: UIMessage[];
         documentContent: string;
@@ -19,6 +20,7 @@ export async function POST({ request }) {
         provider?: Provider;
         model?: string;
         apiKey?: string;
+        documentContext?: Record<string, string>;
     } = await request.json();
 
     const resolvedProvider: Provider = provider ?? "openai";
@@ -31,7 +33,7 @@ export async function POST({ request }) {
             ...convertToModelMessages(messages),
             injectDocumentContext({ documentContent, selectedText }),
         ],
-        system: `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.
+        system: `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.${buildDocumentContextPrompt(documentContext)}
 
 When revising text:
 - Use createSuggestion to propose specific rewrites and improvements

@@ -1,0 +1,130 @@
+<script lang="ts">
+    import { SparklesIcon } from "lucide-svelte";
+    import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
+
+    const FIELDS: { key: keyof typeof documentContext; label: string; placeholder: string }[] = [
+        { key: "goal", label: "Goal", placeholder: "What should this piece accomplish?" },
+        { key: "tone", label: "Tone", placeholder: "e.g. reflective and personal, formal, darkly comic" },
+        { key: "audience", label: "Audience", placeholder: "Who's reading this and what are they looking for?" },
+        { key: "emphasize", label: "Emphasize", placeholder: "Themes, qualities, or details to foreground" },
+        { key: "avoid", label: "Avoid", placeholder: "Pitfalls or moves that would hurt this piece" },
+        { key: "notes", label: "Notes", placeholder: "Any other context, constraints, or strategy" },
+    ];
+
+    let promptInput = $state("");
+    let generating = $state(false);
+    let generateError = $state("");
+
+    function hasContext() {
+        return FIELDS.some((f) => documentContext[f.key].trim() !== "");
+    }
+
+    async function generate() {
+        if (!promptInput.trim() || generating) return;
+        generating = true;
+        generateError = "";
+        try {
+            const res = await fetch("/api/context", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: promptInput,
+                    provider: aiSettings.provider,
+                    model: aiSettings.model,
+                    apiKey: aiSettings.apiKey,
+                }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            for (const f of FIELDS) {
+                if (data[f.key]) documentContext[f.key] = data[f.key];
+            }
+            saveDocumentContext();
+        } catch (e) {
+            generateError = String(e);
+        } finally {
+            generating = false;
+        }
+    }
+
+    function clearAll() {
+        for (const f of FIELDS) documentContext[f.key] = "";
+        promptInput = "";
+        saveDocumentContext();
+    }
+</script>
+
+<div class="flex flex-col h-full overflow-y-auto">
+    <!-- Prompt input section -->
+    <div class="p-3 border-b border-black/10 flex flex-col gap-2">
+        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+            Writing Prompt or Brief
+        </p>
+        <textarea
+            bind:value={promptInput}
+            placeholder="Paste your essay prompt, assignment, or brief here and the AI will configure the context fields below…"
+            rows={4}
+            class="w-full resize-none rounded-lg bg-white/50 border border-black/10 px-2.5 py-2
+                text-xs text-black/70 placeholder:text-black/25 outline-none leading-relaxed
+                focus:border-blue-400 transition-colors"
+        ></textarea>
+        <button
+            onclick={generate}
+            disabled={!promptInput.trim() || generating || !aiSettings.apiKey}
+            class="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-colors
+                {generating
+                    ? 'bg-blue-500/10 text-blue-600/60 cursor-wait'
+                    : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25 disabled:opacity-40 disabled:cursor-not-allowed'}"
+        >
+            {#if generating}
+                <span class="inline-block animate-pulse">●</span>
+                Analyzing…
+            {:else}
+                <SparklesIcon size={12} />
+                Generate context
+            {/if}
+        </button>
+        {#if generateError}
+            <p class="text-[10px] text-red-600/80 leading-relaxed">{generateError}</p>
+        {/if}
+        {#if !aiSettings.apiKey}
+            <p class="text-[10px] text-black/35 leading-relaxed">Set an API key in settings to generate context automatically.</p>
+        {/if}
+    </div>
+
+    <!-- Editable fields -->
+    <div class="flex flex-col gap-0 p-3 pb-4">
+        <div class="flex items-center justify-between mb-2.5">
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+                Document Context
+            </p>
+            {#if hasContext()}
+                <button
+                    onclick={clearAll}
+                    class="text-[10px] text-black/30 hover:text-red-500/70 transition-colors"
+                >
+                    Clear all
+                </button>
+            {/if}
+        </div>
+
+        <div class="flex flex-col gap-3">
+            {#each FIELDS as field}
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-medium text-black/50">
+                        {field.label}
+                    </label>
+                    <textarea
+                        bind:value={documentContext[field.key]}
+                        onblur={saveDocumentContext}
+                        placeholder={field.placeholder}
+                        rows={2}
+                        class="w-full resize-none rounded-lg bg-white/50 border border-black/10 px-2.5 py-2
+                            text-xs text-black/70 placeholder:text-black/20 outline-none leading-relaxed
+                            focus:border-blue-400/60 transition-colors"
+                    ></textarea>
+                </div>
+            {/each}
+        </div>
+    </div>
+</div>
