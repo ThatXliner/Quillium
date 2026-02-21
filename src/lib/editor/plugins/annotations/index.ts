@@ -485,6 +485,46 @@ export function createSuggestion({
   );
 }
 
+export function createRevision({
+    targetText,
+    editorSelection,
+    versions,
+    threadMessage,
+    author = "AI",
+    view,
+}: {
+    targetText?: string;
+    editorSelection?: EditorSelection;
+    versions: Array<{ label: string; text: string }>;
+    threadMessage: string;
+    author?: string;
+    view: EditorView;
+}) {
+    const state = view.state;
+    const selection = getSelection({
+        editorSelection,
+        targetText,
+        document: state.doc,
+    });
+    view.dispatch(
+        state.update({
+            effects: [
+                addAnnotation.of({
+                    ...createNewAnnotation(
+                        state.field(annotationField),
+                        selection,
+                        "revision",
+                    ),
+                    currentlySelected: 0,
+                    versions: versions.map(({ label, text }) => ({ doc: text, label }) as VersionState),
+                    thread: [{ message: threadMessage, author, time: Date.now() }],
+                }),
+            ],
+            annotations: Transaction.addToHistory.of(true),
+        }),
+    );
+}
+
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
   console.log("what");
   // locks it so that we can't have multiple pending states

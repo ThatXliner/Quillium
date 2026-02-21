@@ -286,7 +286,7 @@
                         );
                     }}
                 >
-                    {previewVersionText(version)}
+                    {version.label ?? previewVersionText(version)}
                 </button>
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors

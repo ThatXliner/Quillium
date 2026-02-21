@@ -70,7 +70,7 @@
             onclick={() => remove()}
             title="Delete suggestion"
         >
-            <Trash2 size={13} />
+            <Trash2 size={16} />
         </button>
     </div>
 

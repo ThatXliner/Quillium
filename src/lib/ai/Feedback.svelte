@@ -2,7 +2,7 @@
     import { selectedText, documentContent, editorView } from "$lib/stores";
     import {
         createComment,
-        createSuggestion,
+        createRevision,
     } from "$lib/editor/plugins/annotations";
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
@@ -19,13 +19,12 @@
                 comment: toolCall.input.comment,
                 view: $editorView,
             });
-        } else if (toolCall.toolName === "createSuggestion") {
-            createSuggestion({
+        } else if (toolCall.toolName === "createRevision") {
+            createRevision({
                 targetText: toolCall.input.targetText,
-                replacements: toolCall.input.replacements as Array<{ text: string; rationale?: string }>,
-                comment: toolCall.input.comment,
-                state: $editorView.state,
-                dispatch: $editorView.dispatch,
+                versions: toolCall.input.versions as Array<{ label: string; text: string }>,
+                threadMessage: toolCall.input.threadMessage,
+                view: $editorView,
             });
         }
     }
