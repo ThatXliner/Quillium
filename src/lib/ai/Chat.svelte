@@ -4,7 +4,7 @@
     import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
 
     let input = $state("");
-    const { chat, clearChat } = createAiChat({ api: "/api/chat" });
+    const { chat, clearChat } = createAiChat({ mode: "chat" });
 
     $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
 

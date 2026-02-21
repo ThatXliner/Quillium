@@ -1,5 +1,7 @@
 <script lang="ts">
     import { SparklesIcon, Trash2 } from "lucide-svelte";
+    import { streamChat } from "$lib/ai/clientStreams";
+    import { aiSettings } from "$lib/ai/settings.svelte";
     import type { EditorView } from "@codemirror/view";
     import type { Annotation, Thread as ThreadType } from ".";
 
@@ -59,37 +61,23 @@
         prompt += "Be concise.";
 
         try {
-            const response = await fetch("/api/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    messages: [{ role: "user", content: prompt }],
-                }),
+            const stream = streamChat({
+                messages: [{ id: "1", role: "user", parts: [{ type: "text", text: prompt }] }],
+                documentContent: "",
+                selectedText,
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                apiKey: aiSettings.apiKey,
             });
 
-            if (!response.ok) throw new Error("Failed to get AI response");
-
-            const reader = response.body?.getReader();
-            if (!reader) throw new Error("No response body");
-
-            const decoder = new TextDecoder();
-            let done = false;
+            const reader = stream.getReader();
             let aiResponse = "";
 
-            while (!done) {
-                const { value, done: streamDone } = await reader.read();
-                done = streamDone;
-                if (value) {
-                    const chunk = decoder.decode(value);
-                    for (const line of chunk.split("\n").filter((l) => l.trim())) {
-                        if (line.startsWith("0:")) {
-                            try {
-                                aiResponse += JSON.parse(line.slice(2));
-                            } catch {
-                                // skip
-                            }
-                        }
-                    }
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value?.type === "text-delta") {
+                    aiResponse += value.delta;
                 }
             }
 
