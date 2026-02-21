@@ -83,6 +83,8 @@
         return rect.left + rect.width / 2 + 408 + 16;
     }
 
+    let scrollContainer = $state<HTMLDivElement | undefined>();
+
     const sortedAnnotations = $derived(
         resolvedAnnotations
             ? Object.values(resolvedAnnotations).sort(
@@ -153,13 +155,38 @@
             lastBottom = y + height + MIN_SPACING;
         });
 
+        // Update inner container height so it's tall enough to contain all cards
+        if (scrollContainer) {
+            const inner = scrollContainer.firstElementChild as HTMLElement | null;
+            if (inner) inner.style.height = `${lastBottom + 24}px`;
+            // Position the scroll container at the right x coordinate
+            scrollContainer.style.left = `${leftPx}px`;
+        }
+
         positions.forEach(({ annotation }) => {
             const el = annotationElements[annotation.id];
             if (el) {
                 el.style.top = `${adjustedY[annotation.id] ?? TOP_CLAMP}px`;
-                el.style.left = `${leftPx}px`;
+                el.style.left = "0px";
             }
         });
+
+        // Scroll the container so the active card is visible
+        if (scrollContainer && resolvedActiveAnnotation) {
+            const activeEl = annotationElements[resolvedActiveAnnotation.id];
+            const activeTop = adjustedY[resolvedActiveAnnotation.id];
+            if (activeEl && activeTop !== undefined) {
+                const cardHeight = activeEl.offsetHeight;
+                const containerHeight = scrollContainer.clientHeight;
+                const currentScroll = scrollContainer.scrollTop;
+                const cardBottom = activeTop + cardHeight;
+                if (activeTop < currentScroll) {
+                    scrollContainer.scrollTo({ top: activeTop - 16, behavior: "smooth" });
+                } else if (cardBottom > currentScroll + containerHeight) {
+                    scrollContainer.scrollTo({ top: cardBottom - containerHeight + 16, behavior: "smooth" });
+                }
+            }
+        }
     }
 
     $effect(() => {
@@ -176,108 +203,205 @@
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
-    <div class:annotation-inline-list={!isFloating}>
-        {#each sortedAnnotations as c}
-            {@const i = c.id}
-            {@const isActive = resolvedActiveAnnotation?.id === c.id}
-            {@const isPendingComment =
-                !canCreateNewComment(resolvedAnnotations) &&
-                i === Math.max(...sortedAnnotations.map((x) => x.id))}
-            <div
-                bind:this={annotationElements[i]}
-                class="annotation-card"
-                class:annotation-card-inline={!isFloating}
-                class:is-active={isActive}
-                style={isFloating ? `z-index: ${isActive ? 100 : 50};` : ""}
-                onclick={(e) => {
-                    if (isInteractiveTarget(e.target)) return;
-                    if (!isActive && resolvedView) {
-                        resolvedView.dispatch({
-                            selection: { anchor: c.selection.main.from },
-                            scrollIntoView: true,
-                        });
-                        resolvedView.focus();
-                    }
-                }}
-                role="button"
-                tabindex="0"
-                onkeydown={(e) => {
-                    if (isInteractiveTarget(e.target)) return;
-                    if ((e.key === "Enter" || e.key === " ") && resolvedView) {
-                        resolvedView.dispatch({
-                            selection: { anchor: c.selection.main.from },
-                            scrollIntoView: true,
-                        });
-                        resolvedView.focus();
-                    }
-                }}
-            >
-                {#if isAnnotationOfType(c, "comment") && !isPendingComment}
-                    <Comment
-                        comment={c}
-                        view={resolvedView}
-                        {isActive}
-                        removeComment={remove.bind(null, i)}
-                        updateThread={dispatchUpdateThread.bind(null, i)}
-                    />
-                {/if}
-                {#if isAnnotationOfType(c, "revision")}
-                    <Revision
-                        revision={c}
-                        view={resolvedView}
-                        {isActive}
-                        remove={remove.bind(null, i)}
-                        updateThread={dispatchUpdateThread.bind(null, i)}
-                    />
-                {/if}
-                {#if isAnnotationOfType(c, "suggestion")}
-                    <Suggestion
-                        suggestion={c}
-                        view={resolvedView}
-                        {isActive}
-                        remove={remove.bind(null, i)}
-                        updateThread={dispatchUpdateThread.bind(null, i)}
-                    />
-                {/if}
-            </div>
-        {/each}
+    {#if isFloating}
+        <div class="annotation-scroll-container" bind:this={scrollContainer}>
+            <div class="annotation-scroll-inner">
+                {#each sortedAnnotations as c}
+                    {@const i = c.id}
+                    {@const isActive = resolvedActiveAnnotation?.id === c.id}
+                    {@const isPendingComment =
+                        !canCreateNewComment(resolvedAnnotations) &&
+                        i === Math.max(...sortedAnnotations.map((x) => x.id))}
+                    <div
+                        bind:this={annotationElements[i]}
+                        class="annotation-card"
+                        class:is-active={isActive}
+                        style="z-index: {isActive ? 100 : 50};"
+                        onclick={(e) => {
+                            if (isInteractiveTarget(e.target)) return;
+                            if (!isActive && resolvedView) {
+                                resolvedView.dispatch({
+                                    selection: { anchor: c.selection.main.from },
+                                    scrollIntoView: true,
+                                });
+                                resolvedView.focus();
+                            }
+                        }}
+                        role="button"
+                        tabindex="0"
+                        onkeydown={(e) => {
+                            if (isInteractiveTarget(e.target)) return;
+                            if ((e.key === "Enter" || e.key === " ") && resolvedView) {
+                                resolvedView.dispatch({
+                                    selection: { anchor: c.selection.main.from },
+                                    scrollIntoView: true,
+                                });
+                                resolvedView.focus();
+                            }
+                        }}
+                    >
+                        {#if isAnnotationOfType(c, "comment") && !isPendingComment}
+                            <Comment
+                                comment={c}
+                                view={resolvedView}
+                                {isActive}
+                                removeComment={remove.bind(null, i)}
+                                updateThread={dispatchUpdateThread.bind(null, i)}
+                            />
+                        {/if}
+                        {#if isAnnotationOfType(c, "revision")}
+                            <Revision
+                                revision={c}
+                                view={resolvedView}
+                                {isActive}
+                                remove={remove.bind(null, i)}
+                                updateThread={dispatchUpdateThread.bind(null, i)}
+                            />
+                        {/if}
+                        {#if isAnnotationOfType(c, "suggestion")}
+                            <Suggestion
+                                suggestion={c}
+                                view={resolvedView}
+                                {isActive}
+                                remove={remove.bind(null, i)}
+                                updateThread={dispatchUpdateThread.bind(null, i)}
+                            />
+                        {/if}
+                    </div>
+                {/each}
 
-        {#if !canCreateNewComment(resolvedAnnotations)}
-            <div class="annotation-card" class:annotation-card-inline={!isFloating}>
-                <PreComment
-                    view={resolvedView}
-                    annotationsData={resolvedAnnotations}
-                    activeAnnotationData={resolvedActiveAnnotation}
-                />
+                {#if !canCreateNewComment(resolvedAnnotations)}
+                    <div class="annotation-card">
+                        <PreComment
+                            view={resolvedView}
+                            annotationsData={resolvedAnnotations}
+                            activeAnnotationData={resolvedActiveAnnotation}
+                        />
+                    </div>
+                {/if}
             </div>
-        {/if}
-    </div>
+        </div>
+    {:else}
+        <div class="annotation-inline-list">
+            {#each sortedAnnotations as c}
+                {@const i = c.id}
+                {@const isActive = resolvedActiveAnnotation?.id === c.id}
+                {@const isPendingComment =
+                    !canCreateNewComment(resolvedAnnotations) &&
+                    i === Math.max(...sortedAnnotations.map((x) => x.id))}
+                <div
+                    bind:this={annotationElements[i]}
+                    class="annotation-card-inline"
+                    class:is-active={isActive}
+                    onclick={(e) => {
+                        if (isInteractiveTarget(e.target)) return;
+                        if (!isActive && resolvedView) {
+                            resolvedView.dispatch({
+                                selection: { anchor: c.selection.main.from },
+                                scrollIntoView: true,
+                            });
+                            resolvedView.focus();
+                        }
+                    }}
+                    role="button"
+                    tabindex="0"
+                    onkeydown={(e) => {
+                        if (isInteractiveTarget(e.target)) return;
+                        if ((e.key === "Enter" || e.key === " ") && resolvedView) {
+                            resolvedView.dispatch({
+                                selection: { anchor: c.selection.main.from },
+                                scrollIntoView: true,
+                            });
+                            resolvedView.focus();
+                        }
+                    }}
+                >
+                    {#if isAnnotationOfType(c, "comment") && !isPendingComment}
+                        <Comment
+                            comment={c}
+                            view={resolvedView}
+                            {isActive}
+                            removeComment={remove.bind(null, i)}
+                            updateThread={dispatchUpdateThread.bind(null, i)}
+                        />
+                    {/if}
+                    {#if isAnnotationOfType(c, "revision")}
+                        <Revision
+                            revision={c}
+                            view={resolvedView}
+                            {isActive}
+                            remove={remove.bind(null, i)}
+                            updateThread={dispatchUpdateThread.bind(null, i)}
+                        />
+                    {/if}
+                    {#if isAnnotationOfType(c, "suggestion")}
+                        <Suggestion
+                            suggestion={c}
+                            view={resolvedView}
+                            {isActive}
+                            remove={remove.bind(null, i)}
+                            updateThread={dispatchUpdateThread.bind(null, i)}
+                        />
+                    {/if}
+                </div>
+            {/each}
+
+            {#if !canCreateNewComment(resolvedAnnotations)}
+                <div class="annotation-card-inline">
+                    <PreComment
+                        view={resolvedView}
+                        annotationsData={resolvedAnnotations}
+                        activeAnnotationData={resolvedActiveAnnotation}
+                    />
+                </div>
+            {/if}
+        </div>
+    {/if}
 {/if}
 
 <style>
+    .annotation-scroll-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 256px;
+        height: 100vh;
+        overflow-y: auto;
+        overflow-x: visible;
+        overscroll-behavior: contain;
+        pointer-events: none;
+        z-index: 50;
+        /* hide scrollbar visually but keep it functional */
+        scrollbar-width: none;
+    }
+
+    .annotation-scroll-container::-webkit-scrollbar {
+        display: none;
+    }
+
+    .annotation-scroll-inner {
+        position: relative;
+        width: 240px;
+        pointer-events: none;
+    }
+
+    .annotation-card {
+        position: absolute;
+        top: 64px;
+        left: 0;
+        width: 240px;
+        pointer-events: auto;
+        transition: top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
     .annotation-inline-list {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
     }
 
-    .annotation-card {
-        position: fixed;
-        top: 64px;
-        left: 0;
-        width: 240px;
-        max-height: calc(100vh - 88px);
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        transition: top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-        pointer-events: auto;
-    }
-
     .annotation-card-inline {
         position: relative;
-        top: auto;
-        left: auto;
         width: 100%;
-        transition: none;
     }
 </style>

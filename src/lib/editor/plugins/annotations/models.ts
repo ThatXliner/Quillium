@@ -58,13 +58,17 @@ type CommentAnnotation = BaseAnnotation & {
   _type: "comment";
 };
 // TODO: statuses for Revision and comment (might make it a FSM)
+export type SuggestionReplacement = {
+  text: string;
+  rationale?: string;
+};
 type SuggestionAnnotation = BaseAnnotation & {
   _type: "suggestion";
-  replacements: string[];
+  replacements: SuggestionReplacement[];
 };
 // Serialized EditorState blob produced by EditorState.toJSON(savedFields).
 // Stored as an opaque object — use versionText() to extract the doc string.
-export type VersionState = object & { doc: string };
+export type VersionState = object & { doc: string; label?: string };
 
 export function versionText(version: VersionState): string {
   return version.doc;

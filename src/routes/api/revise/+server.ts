@@ -1,7 +1,7 @@
 import { convertToModelMessages, streamText, tool, type UIMessage } from "ai";
 import { OPENAI_API_KEY } from "$env/static/private";
 import { z } from "zod";
-import { injectDocumentContext } from "$lib/ai/utils";
+import { injectDocumentContext, buildDocumentContextPrompt } from "$lib/ai/utils";
 import { createModel, type Provider } from "$lib/ai/provider";
 
 export async function POST({ request }) {
@@ -12,6 +12,7 @@ export async function POST({ request }) {
         provider,
         model,
         apiKey,
+        documentContext,
     }: {
         messages: UIMessage[];
         documentContent: string;
@@ -19,6 +20,7 @@ export async function POST({ request }) {
         provider?: Provider;
         model?: string;
         apiKey?: string;
+        documentContext?: Record<string, string>;
     } = await request.json();
 
     const resolvedProvider: Provider = provider ?? "openai";
@@ -31,7 +33,7 @@ export async function POST({ request }) {
             ...convertToModelMessages(messages),
             injectDocumentContext({ documentContent, selectedText }),
         ],
-        system: `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.
+        system: `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.${buildDocumentContextPrompt(documentContext)}
 
 When revising text:
 - Use createSuggestion to propose specific rewrites and improvements
@@ -47,21 +49,18 @@ When revising text:
                 inputSchema: z.object({
                     targetText: z.string().describe("The exact text to revise"),
                     replacements: z
-                        .array(z.string())
-                        .describe("One or more revised versions of the text"),
+                        .array(z.object({
+                            text: z.string().describe("The revised text"),
+                            rationale: z.string().optional().describe("Brief explanation of what this version changes and why"),
+                        }))
+                        .describe("One or more revised versions of the text, each with an optional rationale"),
                     comment: z
                         .string()
                         .optional()
-                        .describe("Optional explanation of the revision"),
+                        .describe("Optional overall explanation of the revision"),
                 }),
                 execute: async ({ targetText, replacements, comment }) => {
-                    return {
-                        type: "suggestion",
-                        targetText,
-                        replacements,
-                        comment,
-                        timestamp: Date.now(),
-                    };
+                    return { type: "suggestion", targetText, replacements, comment, timestamp: Date.now() };
                 },
             }),
             createComment: tool({

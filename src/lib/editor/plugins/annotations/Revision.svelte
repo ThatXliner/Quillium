@@ -249,17 +249,17 @@
 </script>
 
 <div
-    class="backdrop-blur-md border rounded-[14px] transition-all duration-200
+    class="border rounded-[14px] transition-all duration-200
         {isActive
-            ? 'bg-gray-200/80 border-white/50 shadow-xl'
-            : 'bg-gray-300/70 border-white/30 shadow-lg opacity-90 hover:opacity-100'}"
-    style="clip-path: inset(0 round 14px);"
+            ? 'bg-purple-50/90 border-purple-200/60 shadow-xl'
+            : 'bg-purple-50/60 border-purple-200/40 shadow-lg opacity-90 hover:opacity-100'}"
+    style="backdrop-filter: blur(12px); clip-path: inset(0 round 14px);"
 >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-2">
-        <h3 class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">Revision</h3>
+        <h3 class="text-[10px] font-semibold text-purple-600/70 uppercase tracking-wider">Revision</h3>
         <button
-            class="p-1 rounded-md text-black/25 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+            class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
             onclick={() => remove()}
             title="Delete entire revision"
         >
@@ -274,7 +274,7 @@
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
-                    : 'bg-white/40 ring-1 ring-white/30'}">
+                    : 'bg-white/60 ring-1 ring-purple-200/40'}">
                 <button
                     class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
                         {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
@@ -286,7 +286,7 @@
                         );
                     }}
                 >
-                    {previewVersionText(version)}
+                    {version.label ?? previewVersionText(version)}
                 </button>
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
@@ -308,7 +308,7 @@
     <div class="px-3 pb-3 flex gap-1.5">
         <button
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/80
-                bg-white/30 hover:bg-white/50 rounded-md ring-1 ring-white/30 transition-colors"
+                bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
             onclick={() => {
                 view.dispatch(createNewRevision(view.state, revision.id));
                 view.focus();
@@ -322,7 +322,7 @@
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
                 {isEditorOpen
                     ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
-                    : 'text-black/40 bg-white/30 ring-white/30 hover:bg-white/50'}"
+                    : 'text-purple-600/60 bg-white/50 ring-purple-200/40 hover:bg-white/70'}"
             onclick={() => {
                 userClosedEditor = isEditorOpen; // closing = true, opening = false
                 isEditorOpen = !isEditorOpen;

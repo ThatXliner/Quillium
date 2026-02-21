@@ -16,6 +16,7 @@ import {
   type Annotations,
   type GenericAnnotation,
   type RawAnnotations,
+  type SuggestionReplacement,
   type Thread,
   type VersionState,
 } from "./models";
@@ -248,11 +249,68 @@ export function updateRevisionVersionState(
     }),
   });
 }
+export function branchSuggestion(state: EditorState, annotationId: number) {
+    const annotation = state.field(annotationField)[annotationId];
+    if (!isAnnotationOfType(annotation, "suggestion")) {
+        throw new Error("Annotation is not a suggestion");
+    }
+    const { from, to } = annotation.selection.main;
+    const originalText = state.doc.sliceString(from, to);
+
+    const versions: VersionState[] = [
+        { doc: originalText },
+        ...annotation.replacements.map((r) => ({ doc: r.text } as VersionState)),
+    ];
+
+    const firstReplacement = annotation.replacements[0]?.text ?? originalText;
+
+    const newRevision = {
+        ...createNewAnnotation(
+            state.field(annotationField),
+            EditorSelection.single(from, from + firstReplacement.length),
+            "revision",
+        ),
+        currentlySelected: 1,
+        versions,
+        thread: annotation.thread,
+    };
+
+    return state.update({
+        effects: [
+            removeAnnotation.of(annotation),
+            addAnnotation.of(newRevision),
+        ],
+        changes: state.changes({ from, to, insert: firstReplacement }),
+        annotations: [
+            allowRevisionDocEdit.of(true),
+            Transaction.addToHistory.of(true),
+        ],
+    });
+}
 // === For suggestions ===
 export const addSuggestion = StateEffect.define<{
   targetText: string;
-  replacements: string[];
+  replacements: SuggestionReplacement[];
 }>();
+// Preview: { annotationId, replacementIndex } while hovering/selecting, null to clear
+export const previewSuggestion = StateEffect.define<{
+  annotationId: number;
+  replacementIndex: number;
+} | null>();
+export const suggestionPreviewField = StateField.define<{
+  annotationId: number;
+  replacementIndex: number;
+} | null>({
+  create: () => null,
+  update(value, tr) {
+    for (const e of tr.effects) {
+      if (e.is(previewSuggestion)) return e.value;
+    }
+    // Clear preview when doc changes (suggestion was applied or removed)
+    if (tr.docChanged) return null;
+    return value;
+  },
+});
 const _applySuggestion = StateEffect.define<{
   annotationId: number;
   replacementIndex: number;
@@ -271,7 +329,7 @@ export function applySuggestion(
     changes: state.changes({
       from: annotation.selection.main.from,
       to: annotation.selection.main.to,
-      insert: annotation.replacements[replacementIndex],
+      insert: annotation.replacements[replacementIndex].text,
     }),
   });
 }

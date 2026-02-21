@@ -2,12 +2,12 @@
     import { selectedText, documentContent, editorView } from "$lib/stores";
     import {
         createComment,
-        createSuggestion,
+        createRevision,
     } from "$lib/editor/plugins/annotations";
     import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
-    import { aiSettings } from "$lib/ai/settings.svelte";
+    import { aiSettings, documentContext } from "$lib/ai/settings.svelte";
 
     let input = $state("");
 
@@ -19,13 +19,12 @@
                 comment: toolCall.input.comment,
                 view: $editorView,
             });
-        } else if (toolCall.toolName === "createSuggestion") {
-            createSuggestion({
+        } else if (toolCall.toolName === "createRevision") {
+            createRevision({
                 targetText: toolCall.input.targetText,
-                replacements: toolCall.input.replacements,
-                comment: toolCall.input.comment,
-                state: $editorView.state,
-                dispatch: $editorView.dispatch,
+                versions: toolCall.input.versions as Array<{ label: string; text: string }>,
+                threadMessage: toolCall.input.threadMessage,
+                view: $editorView,
             });
         }
     }
@@ -39,6 +38,7 @@
                 provider: aiSettings.provider,
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
+                documentContext: { ...documentContext },
             }),
         }),
         onToolCall: handleToolCall,

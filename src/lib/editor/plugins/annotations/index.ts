@@ -25,6 +25,7 @@ import {
   type KeyBinding,
   ViewPlugin,
   type ViewUpdate,
+  WidgetType,
 } from "@codemirror/view";
 
 import { filter, flatMap, isEqual } from "lodash-es";
@@ -42,6 +43,7 @@ import {
   removeAnnotation,
   setActiveRevisionVersion,
   invertedAnnotationFieldEffects,
+  suggestionPreviewField,
 } from "./annotationField";
 import { revisionBoundaryNudge, revisionOpenNestedEditor, type NestedEditorCommand } from "$lib/stores";
 
@@ -252,6 +254,24 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
     },
 );
 
+class SuggestionPreviewWidget extends WidgetType {
+  constructor(readonly text: string) {
+    super();
+  }
+  eq(other: SuggestionPreviewWidget) {
+    return this.text === other.text;
+  }
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-suggestion-preview";
+    span.textContent = this.text;
+    return span;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
 const annotationDecorations = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -261,6 +281,7 @@ const annotationDecorations = ViewPlugin.fromClass(
         this.getDecorations(view, "comment", "cm-comment"),
         this.getDecorations(view, "revision", "cm-revision"),
         this.getDecorations(view, "suggestion", "cm-suggestion"),
+        this.getPreviewDecoration(view),
       ]);
     }
 
@@ -269,12 +290,14 @@ const annotationDecorations = ViewPlugin.fromClass(
       if (
         update.selectionSet ||
         update.docChanged ||
-        annotationsChanged(update)
+        annotationsChanged(update) ||
+        update.startState.field(suggestionPreviewField) !== update.state.field(suggestionPreviewField)
       ) {
         this.decorations = RangeSet.join([
           this.getDecorations(update.view, "comment", "cm-comment"),
           this.getDecorations(update.view, "revision", "cm-revision"),
           this.getDecorations(update.view, "suggestion", "cm-suggestion"),
+          this.getPreviewDecoration(update.view),
         ]);
       }
     }
@@ -327,6 +350,22 @@ const annotationDecorations = ViewPlugin.fromClass(
           }),
         );
       }
+      return builder.finish();
+    }
+
+    getPreviewDecoration(view: EditorView): DecorationSet {
+      const preview = view.state.field(suggestionPreviewField);
+      if (!preview) return Decoration.none;
+      const annotation = view.state.field(annotationField)[preview.annotationId];
+      if (!annotation || !isAnnotationOfType(annotation, "suggestion")) return Decoration.none;
+      const replacement = annotation.replacements[preview.replacementIndex];
+      if (replacement === undefined) return Decoration.none;
+      const { to } = annotation.selection.main;
+      const builder = new RangeSetBuilder<Decoration>();
+      builder.add(to, to, Decoration.widget({
+        widget: new SuggestionPreviewWidget(replacement.text),
+        side: 1,
+      }));
       return builder.finish();
     }
   },
@@ -411,12 +450,16 @@ export function createSuggestion({
 }: {
   state: EditorState;
   dispatch: (transaction: Transaction) => void;
-  replacements: string[];
+  replacements: Array<{ text: string; rationale?: string } | string>;
   targetText?: string;
   editorSelection?: EditorSelection;
   author?: string;
   comment?: string;
 }) {
+  // Normalize string shorthand to full shape
+  const normalizedReplacements = replacements.map((r) =>
+    typeof r === "string" ? { text: r } : r,
+  );
   let selection = getSelection({
     editorSelection,
     targetText,
@@ -431,7 +474,7 @@ export function createSuggestion({
             selection,
             "suggestion",
           ),
-          replacements,
+          replacements: normalizedReplacements,
           thread: comment
             ? [{ message: comment, author, time: Date.now() }]
             : [],
@@ -440,6 +483,46 @@ export function createSuggestion({
       annotations: Transaction.addToHistory.of(true),
     }),
   );
+}
+
+export function createRevision({
+    targetText,
+    editorSelection,
+    versions,
+    threadMessage,
+    author = "AI",
+    view,
+}: {
+    targetText?: string;
+    editorSelection?: EditorSelection;
+    versions: Array<{ label: string; text: string }>;
+    threadMessage: string;
+    author?: string;
+    view: EditorView;
+}) {
+    const state = view.state;
+    const selection = getSelection({
+        editorSelection,
+        targetText,
+        document: state.doc,
+    });
+    view.dispatch(
+        state.update({
+            effects: [
+                addAnnotation.of({
+                    ...createNewAnnotation(
+                        state.field(annotationField),
+                        selection,
+                        "revision",
+                    ),
+                    currentlySelected: 0,
+                    versions: versions.map(({ label, text }) => ({ doc: text, label }) as VersionState),
+                    thread: [{ message: threadMessage, author, time: Date.now() }],
+                }),
+            ],
+            annotations: Transaction.addToHistory.of(true),
+        }),
+    );
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
@@ -542,6 +625,7 @@ export const annotationKeymap: KeyBinding[] = [
 export const annotations = () => [
   Prec.high(keymap.of(annotationKeymap)),
   annotationField,
+  suggestionPreviewField,
   annotationDecorations,
   collapsedRevisionResolver,
   invertedAnnotationFieldEffects,
