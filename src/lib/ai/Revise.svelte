@@ -4,10 +4,10 @@
         createComment,
         createSuggestion,
     } from "$lib/editor/plugins/annotations";
-    import { Chat } from "@ai-sdk/svelte";
     import { DefaultChatTransport } from "ai";
     import { renderMarkdown } from "$lib/ai/utils";
-    import { aiSettings, documentContext, setAiProcessing } from "$lib/ai/settings.svelte";
+    import { aiSettings, documentContext } from "$lib/ai/settings.svelte";
+    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
 
     let input = $state("");
 
@@ -31,7 +31,7 @@
         }
     }
 
-    const chat = new Chat({
+    const { chat, clearChat } = createAiChat({
         transport: new DefaultChatTransport({
             api: "/api/revise",
             body: () => ({
@@ -114,7 +114,14 @@
     </div>
 
     <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 relative">
+        {#if chat.messages.length > 0}
+            <button
+                onclick={clearChat}
+                title="Clear chat"
+                class="absolute top-2 right-2 text-[10px] text-black/25 hover:text-black/50 transition-colors"
+            >Clear</button>
+        {/if}
         {#each chat.messages as message, messageIndex (messageIndex)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
