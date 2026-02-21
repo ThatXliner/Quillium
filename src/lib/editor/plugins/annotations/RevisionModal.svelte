@@ -6,6 +6,7 @@
     import { scale } from "svelte/transition";
     import { getExtensions, savedFields } from "$lib/editor/extensions";
     import {
+        addAnnotation,
         annotationField,
         setActiveRevisionVersion,
         updateRevisionVersionState,
@@ -13,8 +14,9 @@
         type Annotations as AnnotationsMap,
         type GenericAnnotation,
     } from ".";
-    import { versionText, type VersionState } from "./models";
-    import { getActiveAnnotation } from "./utils";
+    import { canCreateNewComment, getActiveAnnotation } from "./utils";
+    import { createNewAnnotation, versionText, type VersionState } from "./models";
+    import { EditorSelection, Transaction } from "@codemirror/state";
     import { modalStack, type ModalEntry } from "$lib/stores";
     import Annotations from "./Annotations.svelte";
 
@@ -139,7 +141,49 @@
         if (!dialogEl.open) dialogEl.showModal();
         tick().then(() => {
             const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-            if (rev && !editor) createEditor(rev.versions[rev.currentlySelected]);
+            if (rev && !editor) {
+                createEditor(rev.versions[rev.currentlySelected]);
+            }
+            // Run any pending nested annotation command passed when opening the modal
+            const activeEditor = editor;
+            const entry = $modalStack[stackIndex];
+            if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
+                const cmd = entry.pendingNestedCommand;
+                const s = activeEditor.state;
+                const docLen = s.doc.length;
+                const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
+                const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
+                activeEditor.dispatch({ selection: EditorSelection.range(from, to) });
+                activeEditor.focus();
+                if (cmd.type === "comment") {
+                    const s2 = activeEditor.state;
+                    if (!s2.selection.main.empty && canCreateNewComment(s2.field(annotationField))) {
+                        activeEditor.dispatch(
+                            s2.update({
+                                effects: [addAnnotation.of(createNewAnnotation(s2.field(annotationField), s2.selection, "comment"))],
+                                annotations: Transaction.addToHistory.of(true),
+                            }),
+                        );
+                    }
+                } else if (cmd.type === "revision") {
+                    const s2 = activeEditor.state;
+                    if (!s2.selection.main.empty) {
+                        const selectedText = s2.sliceDoc(s2.selection.main.from, s2.selection.main.to);
+                        activeEditor.dispatch(
+                            s2.update({
+                                effects: [
+                                    addAnnotation.of({
+                                        ...createNewAnnotation(s2.field(annotationField), s2.selection, "revision"),
+                                        currentlySelected: 0,
+                                        versions: [{ doc: selectedText }],
+                                    }),
+                                ],
+                                annotations: Transaction.addToHistory.of(true),
+                            }),
+                        );
+                    }
+                }
+            }
         });
     });
 

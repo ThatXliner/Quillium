@@ -6,24 +6,18 @@
     import { slide } from "svelte/transition";
     import { getExtensions, savedFields } from "$lib/editor/extensions";
     import {
-        addAnnotation,
         annotationField,
         createNewRevision,
         deleteRevisionVersion,
         setActiveRevisionVersion,
         updateRevisionVersionState,
         type Annotation,
-        type Annotations as AnnotationsMap,
-        type GenericAnnotation,
         type Thread as ThreadType,
     } from ".";
-    import { canCreateNewComment } from "./utils";
-    import { createNewAnnotation, versionText, type AnnotationType, type VersionState } from "./models";
-    import { EditorSelection, Transaction } from "@codemirror/state";
+    import { versionText, type VersionState } from "./models";
     import { getActiveAnnotation } from "./utils";
-    import { revisionBoundaryNudge, revisionOpenNestedEditor, modalStack, type NestedEditorCommand } from "$lib/stores";
+    import { revisionBoundaryNudge, revisionOpenNestedEditor, modalStack } from "$lib/stores";
     import Thread from "./Thread.svelte";
-    import Annotations from "./Annotations.svelte";
 
     const {
         revision,
@@ -62,8 +56,7 @@
     }
     let recursiveEditorHost = $state<HTMLDivElement>();
     let recursiveEditor = $state<EditorView | undefined>(undefined);
-    let recursiveAnnotations = $state<AnnotationsMap | undefined>(undefined);
-    let recursiveActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+    let nestedEditorHasActiveAnnotation = $state(false);
     let isSyncingFromAnnotation = false;
     let previousVersionId = revision.currentlySelected;
 
@@ -84,74 +77,29 @@
         }
     });
 
-    // Open nested editor, set selection, and run the annotation command
-    // when triggered from the main document while cursor was inside this revision.
+    // When the user triggers a nested annotation command from inside this revision
+    // in the main document, open the modal (instead of the inline editor) and
+    // pass the command along so the modal runs it once the editor is ready.
     $effect(() => {
         const cmd = $revisionOpenNestedEditor;
         if (!cmd || cmd.revisionId !== revision.id) return;
         revisionOpenNestedEditor.set(null);
-        isEditorOpen = true;
-        tick().then(() => {
-            if (!recursiveEditor) return;
-            const state = recursiveEditor.state;
-            const docLen = state.doc.length;
-            const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
-            const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
-            // Set the selection in the nested editor to the mapped range
-            recursiveEditor.dispatch({
-                selection: EditorSelection.range(from, to),
-            });
-            recursiveEditor.focus();
-            // Now run the appropriate command against the nested editor
-            if (cmd.type === "comment") {
-                const s = recursiveEditor.state;
-                if (s.selection.main.empty) return;
-                if (!canCreateNewComment(s.field(annotationField))) return;
-                recursiveEditor.dispatch(
-                    s.update({
-                        effects: [
-                            addAnnotation.of(
-                                createNewAnnotation(
-                                    s.field(annotationField),
-                                    s.selection,
-                                    "comment",
-                                ),
-                            ),
-                        ],
-                        annotations: Transaction.addToHistory.of(true),
-                    }),
-                );
-            } else if (cmd.type === "revision") {
-                const s = recursiveEditor.state;
-                const selectedText = s.sliceDoc(s.selection.main.from, s.selection.main.to);
-                recursiveEditor.dispatch(
-                    s.update({
-                        effects: [
-                            addAnnotation.of({
-                                ...createNewAnnotation(
-                                    s.field(annotationField),
-                                    s.selection,
-                                    "revision",
-                                ),
-                                currentlySelected: 0,
-                                versions: [{ doc: selectedText } as VersionState],
-                            }),
-                        ],
-                        annotations: Transaction.addToHistory.of(true),
-                    }),
-                );
-            }
+        modalStack.push({
+            type: "revision",
+            revisionId: revision.id,
+            parentView: view,
+            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            pendingNestedCommand: {
+                type: cmd.type,
+                selectionFrom: cmd.selectionFrom,
+                selectionTo: cmd.selectionTo,
+            },
         });
     });
 
     onDestroy(() => {
         clearTimeout(boundaryHintTimeout);
     });
-
-    function updateRecursiveMeta(currentView: EditorView) {
-        recursiveAnnotations = currentView.state.field(annotationField);
-        recursiveActiveAnnotation = getActiveAnnotation(currentView.state);
-    }
 
     function upsertVersionState(currentEditor: EditorView, versionId = revision.currentlySelected) {
         const blob = currentEditor.state.toJSON(savedFields) as VersionState;
@@ -179,7 +127,7 @@
             persist: false,
             updateListener(update: ViewUpdate) {
                 if (!recursiveEditor || isSyncingFromAnnotation) return;
-                updateRecursiveMeta(recursiveEditor);
+                nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
                 upsertVersionState(recursiveEditor);
             },
         });
@@ -189,14 +137,13 @@
             ? EditorState.fromJSON(version, { extensions }, savedFields)
             : EditorState.create({ doc: versionText(version), extensions });
         recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
-        updateRecursiveMeta(recursiveEditor);
+        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
     }
 
     function destroyRecursiveEditor() {
         recursiveEditor?.destroy();
         recursiveEditor = undefined;
-        recursiveAnnotations = undefined;
-        recursiveActiveAnnotation = undefined;
+        nestedEditorHasActiveAnnotation = false;
     }
 
     function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
@@ -213,7 +160,6 @@
             persist: false,
             updateListener(update: ViewUpdate) {
                 if (!recursiveEditor || isSyncingFromAnnotation) return;
-                updateRecursiveMeta(recursiveEditor);
                 upsertVersionState(recursiveEditor);
             },
         });
@@ -222,7 +168,7 @@
             : EditorState.create({ doc: targetText, extensions });
         recursiveEditor.setState(nextState);
         isSyncingFromAnnotation = false;
-        updateRecursiveMeta(recursiveEditor);
+        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
     }
 
     $effect(() => {
@@ -363,23 +309,19 @@
                 bind:this={recursiveEditorHost}
                 class="revision-recursive-editor h-[220px] overflow-hidden"
             ></div>
-            {#if recursiveEditor && recursiveAnnotations}
-                {@const annotationCount = Object.keys(recursiveAnnotations).length}
-                {#if annotationCount > 0}
-                    <div class="border-t border-black/[0.06] px-2 pt-1.5 pb-2">
-                        <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-1.5">
-                            Annotations
-                        </div>
-                        <div class="max-h-48 overflow-y-auto overscroll-contain">
-                            <Annotations
-                                view={recursiveEditor}
-                                annotationsData={recursiveAnnotations}
-                                activeAnnotationData={recursiveActiveAnnotation}
-                                layout="inline"
-                            />
-                        </div>
-                    </div>
-                {/if}
+            {#if nestedEditorHasActiveAnnotation}
+                <div transition:slide={{ duration: 150 }}
+                    class="border-t border-purple-100/60 px-3 py-2 flex items-center justify-between gap-2">
+                    <span class="text-[10px] text-purple-500/70">Annotation selected</span>
+                    <button
+                        class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-purple-600/80
+                            bg-purple-50 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
+                        onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
+                    >
+                        <Maximize2 size={9} />
+                        <span>View in modal</span>
+                    </button>
+                </div>
             {/if}
         </div>
     {/if}

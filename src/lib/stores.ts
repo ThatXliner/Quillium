@@ -46,9 +46,15 @@ export const revisionOpenNestedEditor = writable<NestedEditorCommand | null>(nul
 
 // Modal portal store — a stack so nested revisions can push/pop modals.
 export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
+export type PendingNestedCommand = {
+    type: "comment" | "revision";
+    selectionFrom: number;
+    selectionTo: number;
+};
+
 export type ModalEntry =
     | { type: "diff"; ops: DiffOp[]; suggestionId: number; parentView: EditorView; label: string }
-    | { type: "revision"; revisionId: number; parentView: EditorView; label: string };
+    | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
 
 const _modalStack = writable<ModalEntry[]>([]);
 
