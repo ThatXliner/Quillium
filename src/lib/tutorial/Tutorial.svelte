@@ -7,8 +7,7 @@
 
     let stepIndex = $state(0);
     let spotlightRect = $state<DOMRect | null>(null);
-    let tooltipEl = $state<HTMLDivElement | null>(null);
-    let tooltipPos = $state({ top: 0, left: 0 });
+    let tooltipStyle = $state("top: 50%; left: 50%; transform: translate(-50%, -50%);");
     let visible = $state(false);
 
     const step = $derived(steps[stepIndex]);
@@ -21,77 +20,51 @@
         return el ? el.getBoundingClientRect() : null;
     }
 
-    function computeTooltipPos(
-        rect: DOMRect | null,
-        position: string,
-        tipW: number,
-        tipH: number,
-    ): { top: number; left: number } {
-        const pad = 16;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        if (!rect || position === "center") {
-            return {
-                top: vh / 2 - tipH / 2,
-                left: vw / 2 - tipW / 2,
-            };
-        }
-
-        switch (position) {
-            case "right":
-                return {
-                    top: Math.min(
-                        Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
-                        vh - tipH - pad,
-                    ),
-                    left: Math.min(rect.right + pad, vw - tipW - pad),
-                };
-            case "left":
-                return {
-                    top: Math.min(
-                        Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
-                        vh - tipH - pad,
-                    ),
-                    left: Math.max(rect.left - tipW - pad, pad),
-                };
-            case "bottom":
-                return {
-                    top: Math.min(rect.bottom + pad, vh - tipH - pad),
-                    left: Math.min(
-                        Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
-                        vw - tipW - pad,
-                    ),
-                };
-            case "top":
-                return {
-                    top: Math.max(rect.top - tipH - pad, pad),
-                    left: Math.min(
-                        Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
-                        vw - tipW - pad,
-                    ),
-                };
-            default:
-                return { top: vh / 2 - tipH / 2, left: vw / 2 - tipW / 2 };
-        }
-    }
-
     function positionTooltip() {
         const rect = getTargetRect(step.selector);
         spotlightRect = rect;
 
-        if (!tooltipEl) return;
-        const tipW = tooltipEl.offsetWidth || 280;
-        const tipH = tooltipEl.offsetHeight || 180;
-        tooltipPos = computeTooltipPos(rect, step.position, tipW, tipH);
+        if (!rect || step.position === "center") {
+            tooltipStyle = "top: 50%; left: 50%; transform: translate(-50%, -50%);";
+            return;
+        }
+
+        const pad = 16;
+        const tipW = 280;
+        const tipH = 180;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let top: number;
+        let left: number;
+
+        switch (step.position) {
+            case "right":
+                top = Math.min(Math.max(rect.top + rect.height / 2 - tipH / 2, pad), vh - tipH - pad);
+                left = Math.min(rect.right + pad, vw - tipW - pad);
+                break;
+            case "left":
+                top = Math.min(Math.max(rect.top + rect.height / 2 - tipH / 2, pad), vh - tipH - pad);
+                left = Math.max(rect.left - tipW - pad, pad);
+                break;
+            case "bottom":
+                top = Math.min(rect.bottom + pad, vh - tipH - pad);
+                left = Math.min(Math.max(rect.left + rect.width / 2 - tipW / 2, pad), vw - tipW - pad);
+                break;
+            case "top":
+                top = Math.max(rect.top - tipH - pad, pad);
+                left = Math.min(Math.max(rect.left + rect.width / 2 - tipW / 2, pad), vw - tipW - pad);
+                break;
+            default:
+                tooltipStyle = "top: 50%; left: 50%; transform: translate(-50%, -50%);";
+                return;
+        }
+
+        tooltipStyle = `top: ${top}px; left: ${left}px; transition: top 220ms ease, left 220ms ease;`;
     }
 
     function advance() {
-        if (isLast) {
-            complete();
-        } else {
-            stepIndex++;
-        }
+        if (isLast) complete();
+        else stepIndex++;
     }
 
     function back() {
@@ -105,25 +78,18 @@
         onComplete();
     }
 
-    function skip() {
-        complete();
-    }
-
-    // Reposition whenever step changes
     $effect(() => {
-        void step; // track reactive dep
-        // Wait a tick for DOM to settle
-        setTimeout(positionTooltip, 60);
+        void step;
+        positionTooltip();
     });
 
     onMount(() => {
         visible = true;
-        setTimeout(positionTooltip, 80);
+        positionTooltip();
     });
 </script>
 
 {#if visible}
-    <!-- Overlay -->
     <div
         class="fixed inset-0 z-[9998]"
         style="pointer-events: all;"
@@ -178,14 +144,8 @@
 
         <!-- Tooltip card -->
         <div
-            bind:this={tooltipEl}
-            class="absolute w-[280px] backdrop-blur-md bg-gray-300/80 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3"
-            style="
-                top: {tooltipPos.top}px;
-                left: {tooltipPos.left}px;
-                transition: top 220ms ease, left 220ms ease;
-                pointer-events: all;
-            "
+            class="fixed w-[280px] backdrop-blur-md bg-gray-300/80 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3"
+            style="{tooltipStyle} pointer-events: all;"
             role="document"
         >
             <!-- Step counter -->
@@ -215,7 +175,7 @@
             <!-- Actions -->
             <div class="flex items-center justify-between">
                 <button
-                    onclick={skip}
+                    onclick={complete}
                     class="text-[11px] text-black/35 hover:text-black/55 transition-colors"
                 >
                     Skip tour
