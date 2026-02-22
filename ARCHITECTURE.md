@@ -384,6 +384,36 @@ When the user presses Backspace or Delete at the boundary of an active revision,
 
 This is intentionally non-blocking: the user can still delete the character before/after the revision boundary. The nudge is informational, not a guard.
 
+The nudge currently only fires on `Backspace`/`Delete`. It should also fire when the user inserts a character immediately after the revision boundary (cursor at `to`). The right hook is a `ViewPlugin.update` that checks, after each insertion transaction, whether `startState.selection.main.from` was at the `to` of a revision range.
+
+#### Why `atomicRanges` causes a one-edit cursor jump
+
+`EditorView.atomicRanges` governs cursor *placement*, not edit *permission*. When the user types inside a revision range, the character lands in the document, but CodeMirror then snaps the resulting cursor to `from` (the atomic range boundary). This produces the confusing "one edit then jump" behavior: the character is inserted, but the cursor teleports to the start of the revision.
+
+CodeMirror does not provide a built-in mechanism to block edits inside atomic ranges — that requires a separate `EditorState.transactionFilter`. `blockDirectRevisionEdits` is that filter for inactive revisions. There is no equivalent for the active revision.
+
+#### Direct editing of the active revision from the parent document
+
+The current model routes all revision edits through the nested editor. The question of whether to allow editing the active revision directly from the parent document has been considered and documented here.
+
+**What it would require:**
+
+1. Relax `blockDirectRevisionEdits` for the active revision (or remove it entirely for the active case).
+2. In `annotationField.ts`, the version text sync already exists: point 3 of the `update()` method automatically writes `versions[currentlySelected]` when the main doc changes inside an active revision range. The mechanism is already there.
+3. Undo/redo: because the doc change and the version text update happen in the same transaction (the doc change triggers a sync in the same `annotationField.update()` pass), they'd be part of the same history entry and undo correctly together.
+
+**Why it's not implemented yet:**
+
+- **Semantic ambiguity.** A revision annotates a span with *alternatives*. If the active version is freely editable, the "Original" label in the card becomes misleading — you've modified what the revision is comparing against. The system doesn't currently have a concept of "draft version being refined" vs. "fixed reference point."
+- **The nested editor exists for a reason.** The nested editor is a contained workspace: you see only that version's text, you can annotate within it, and your edits are scoped. Collapsing "writing in the document" and "editing a version slot" into one gesture removes that distinction.
+- **The active revision's edit surface.** The current model treats highlighted spans as decisions-pending. Making them freely editable blurs the line between "I'm writing" and "I'm deliberating." Writers may find it disorienting.
+
+**The strongest case for it:**
+
+Flow. If the cursor is inside a revision and the writer wants to type, an invisible wall breaks their rhythm. The cursor-jump behavior already causes friction. A reasonable middle ground: allow edits to the *currently active* revision from the parent doc (relax the block for `currentlySelected` only), while still blocking edits to inactive revisions. This preserves the "pending decision" semantic for revisions not currently engaged with.
+
+**Verdict:** Medium complexity to implement correctly (the sync mechanism already exists; the main work is the transaction filter and deciding what "Original" means after an in-place edit). Requires a clear product decision on the version labeling semantics before implementing.
+
 #### Version switching reconstructs the selection
 
 When switching to a different version, the selection must be manually rebuilt to span the newly inserted text. Simply mapping the old selection would leave it collapsed if the old version's text had been fully deleted. `annotationField.ts` handles this by computing `from + newVersionText.length` after the change is applied.
