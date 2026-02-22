@@ -26,7 +26,7 @@
 
 {#each $modalStack as entry, i (entry)}
     {#if entry.type === "diff"}
-        <DiffModal ops={entry.ops} suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />
+        <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />
     {:else if entry.type === "revision"}
         <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
     {/if}

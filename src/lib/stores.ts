@@ -53,7 +53,7 @@ export type PendingNestedCommand = {
 };
 
 export type ModalEntry =
-    | { type: "diff"; ops: DiffOp[]; suggestionId: number; parentView: EditorView; label: string }
+    | { type: "diff"; suggestionId: number; parentView: EditorView; label: string }
     | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
 
 const _modalStack = writable<ModalEntry[]>([]);

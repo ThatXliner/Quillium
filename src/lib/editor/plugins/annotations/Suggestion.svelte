@@ -120,15 +120,13 @@ function getDiffOps(replacementIndex: number) {
           />
           <span>View changes</span>
         </button>
-        {#if diffExpanded}
-          <button
-            class="flex items-center gap-1 text-[10px] text-green-700/40 hover:text-green-700/70 transition-colors"
-            onclick={() => { if (selectedIndex !== null) modalStack.push({ type: "diff", ops: getDiffOps(selectedIndex), suggestionId: suggestion.id, parentView: view, label: "AI Suggestion" }); }}
-            title="Expand to full view"
-          >
-            <Maximize2 size={10} />
-          </button>
-        {/if}
+        <button
+          class="flex items-center gap-1 text-[10px] text-green-700/40 hover:text-green-700/70 transition-colors"
+          onclick={() => { modalStack.push({ type: "diff", suggestionId: suggestion.id, parentView: view, label: "AI Suggestion" }); }}
+          title="Expand to full view"
+        >
+          <Maximize2 size={10} />
+        </button>
       </div>
       {#if diffExpanded}
         <div class="mt-1.5 max-h-28 overflow-y-auto rounded-lg bg-white/60 border border-green-100/60 px-2.5 py-2 text-xs leading-relaxed font-mono">

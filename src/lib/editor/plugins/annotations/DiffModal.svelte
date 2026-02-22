@@ -2,10 +2,10 @@
     import { ChevronRight, SparklesIcon, X } from "lucide-svelte";
     import { tick } from "svelte";
     import type { EditorView } from "@codemirror/view";
-    import { modalStack, type DiffOp } from "$lib/stores";
-    import { annotationField, type Annotation } from ".";
+    import { modalStack } from "$lib/stores";
+    import { annotationField, diffTokens, tokenize, type Annotation } from ".";
 
-    const { ops, suggestionId, parentView, stackIndex }: { ops: DiffOp[]; suggestionId: number; parentView: EditorView; stackIndex: number } = $props();
+    const { suggestionId, parentView, stackIndex }: { suggestionId: number; parentView: EditorView; stackIndex: number } = $props();
 
     const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
@@ -14,6 +14,17 @@
     const suggestion = $derived(
         parentView.state.field(annotationField)[suggestionId] as Annotation<"suggestion"> | undefined,
     );
+
+    let selectedIndex = $state(0);
+
+    const ops = $derived.by(() => {
+        if (!suggestion) return [];
+        const replacement = suggestion.replacements[selectedIndex];
+        if (!replacement) return [];
+        const { from, to } = suggestion.selection.main;
+        const original = parentView.state.sliceDoc(from, to);
+        return diffTokens(tokenize(original), tokenize(replacement.text));
+    });
 
     function close() {
         modalStack.pop();
@@ -87,14 +98,20 @@
                     <!-- Replacements -->
                     <div class="flex-1 overflow-y-auto px-3 py-3 space-y-2">
                         {#each suggestion.replacements as replacement, i}
-                            <div class="rounded-lg border bg-white/60 border-green-100/60 overflow-hidden">
+                            <button
+                                class="w-full text-left rounded-lg border overflow-hidden transition-colors
+                                    {i === selectedIndex
+                                        ? 'bg-green-100/80 border-green-400/50 ring-1 ring-green-400/40'
+                                        : 'bg-white/60 border-green-100/60 hover:bg-white/80 hover:border-green-200/60'}"
+                                onclick={() => { selectedIndex = i; }}
+                            >
                                 <div class="px-3 py-2 text-xs text-black/80 leading-relaxed">{replacement.text}</div>
                                 {#if replacement.rationale}
                                     <div class="px-3 pb-2 text-[10px] text-green-700/60 leading-snug border-t border-green-100/50 pt-1.5">
                                         {replacement.rationale}
                                     </div>
                                 {/if}
-                            </div>
+                            </button>
                         {/each}
                     </div>
                 </div>
