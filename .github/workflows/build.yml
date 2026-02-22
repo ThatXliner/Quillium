@@ -15,12 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest"
+          - platform: "macos-latest" # for Arm based macs (M1 and above).
             args: "--target aarch64-apple-darwin"
-            arch: "silicon"
-          - platform: "macos-15-intel"
+          - platform: "macos-latest" # for Intel based macs.
             args: "--target x86_64-apple-darwin"
-            arch: "intel"
           - platform: "ubuntu-latest"
             args: ""
           - platform: "windows-latest"
@@ -44,6 +42,7 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -52,7 +51,7 @@ jobs:
         run: bun ci
 
       - name: Import Apple Developer Certificate
-        if: ${{ matrix.platform == 'macos-15-intel' || matrix.platform == 'macos-latest' }}
+        if: ${{ matrix.platform == 'macos-latest' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -67,7 +66,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security find-identity -v -p codesigning build.keychain
       - name: Verify Certificate
-        if: ${{ matrix.platform == 'macos-15-intel' || matrix.platform == 'macos-latest' }}
+        if: ${{ matrix.platform == 'macos-latest' }}
         run: |
           CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
@@ -81,6 +80,7 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Quillium v__VERSION__"
