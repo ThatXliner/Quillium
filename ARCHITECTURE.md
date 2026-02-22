@@ -376,7 +376,7 @@ Each nested editor is a complete CodeMirror instance with all extensions: annota
 
 Inactive revision ranges are atomic (`revisionAtomicRanges` plugin) and protected by a transaction filter (`blockDirectRevisionEdits`). Any transaction touching an inactive revision range is silently dropped unless it carries `allowRevisionDocEdit.of(true)`. All programmatic version mutations (switching, syncing) set this annotation.
 
-The goal is to prevent accidental partial edits to revision text. The user is guided to the nested editor instead, via the boundary nudge hint (see below).
+The goal is to prevent accidental partial edits to revision text or frustration regarding why the user seems to be unable to append to the revision. The user is guided to the nested editor instead, via the boundary nudge hint (see below).
 
 #### Boundary nudge, not hard block
 
