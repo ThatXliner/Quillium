@@ -18,7 +18,7 @@ jobs:
           - platform: "macos-latest"
             args: "--target aarch64-apple-darwin"
             arch: "silicon"
-          - platform: "macos-latest"
+          - platform: "macos-15-intel"
             args: "--target x86_64-apple-darwin"
             arch: "intel"
           - platform: "ubuntu-latest"
@@ -52,6 +52,7 @@ jobs:
         run: bun ci
 
       - name: Import Apple Developer Certificate
+        if: ${{ matrix.platform == 'macos-15-intel' || matrix.platform == 'macos-latest' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -66,6 +67,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security find-identity -v -p codesigning build.keychain
       - name: Verify Certificate
+        if: ${{ matrix.platform == 'macos-15-intel' || matrix.platform == 'macos-latest' }}
         run: |
           CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
