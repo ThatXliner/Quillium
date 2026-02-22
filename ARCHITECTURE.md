@@ -253,6 +253,72 @@ User opens nested editor (Ctrl+Alt+K inside revision):
   → Text changes sync back via _updateRevisionVersionText
 ```
 
+#### Nested Editors
+
+Revisions support a full nested editing environment — a complete `EditorView` instance (with its own annotations, history, and keybindings) embedded inside a revision card or modal. There are two surfaces:
+
+**Inline editor** (`Revision.svelte`): A 220px `EditorView` mounted inside the revision card. Created by `createRecursiveEditor()` with all extensions. `syncRecursiveEditorToActiveVersion()` loads the correct version content (including full serialized `VersionState` if present). Text changes sync back to the parent via `_updateRevisionVersionText`.
+
+**Modal editor** (`RevisionModal.svelte`): A full-screen modal editor. Supports arbitrary nesting depth via a breadcrumb stack (`modalStack` in `stores.ts`). Each stack entry is:
+
+```typescript
+type ModalEntry = {
+    type: "revision" | "diff";
+    revisionId: number;
+    pendingNestedCommand?: PendingNestedCommand;
+};
+```
+
+`popToAndRebuild()` signals a parent level to recreate its editor when a child switches versions. A `rebuildToken` (timestamp) drives this recreation.
+
+#### Pending Command System
+
+When the user triggers `Ctrl+Alt+M` or `Ctrl+Alt+K` while the cursor is **inside an active revision** in the main document, the command cannot execute there — it needs to target the nested editor instead. This is handled by a two-step redirect:
+
+**Step 1 — Intercept in main editor** (`index.ts`: `redirectToNestedEditor`):
+
+```
+Ctrl+Alt+K pressed
+  → redirectToNestedEditor() fires first (high priority)
+  → getActiveAnnotation() finds a revision under cursor
+  → selection mapped to revision-relative offsets
+  → revisionOpenNestedEditor store set with NestedEditorCommand
+  → returns true (swallows keypress)
+```
+
+**Step 2 — Execute in nested editor** (`Revision.svelte` / `RevisionModal.svelte`):
+
+```
+revisionOpenNestedEditor store changes
+  → Revision.svelte reacts (if revisionId matches)
+  → If inline editor already open: dispatch command immediately
+  → If modal needed: push entry onto modalStack with pendingNestedCommand
+  → Modal opens, editor mounts, then executes pending command
+```
+
+The types involved (`stores.ts`):
+
+```typescript
+// Set on the store when main editor intercepts the command
+type NestedEditorCommand = {
+    revisionId: number;
+    type: "comment" | "revision";
+    selectionFrom: number; // doc-relative
+    selectionTo: number;
+};
+
+// Carried on the modal stack entry, coordinates are revision-relative
+type PendingNestedCommand = {
+    type: "comment" | "revision";
+    selectionFrom: number;
+    selectionTo: number;
+};
+```
+
+The coordinate mapping (`RevisionModal.svelte`) converts the pending command's revision-relative offsets to absolute document positions before dispatching into the nested editor.
+
+**Pending comment state** is a separate concept: a comment exists in a pending/draft state when `thread.length === 0`. `canCreateNewComment()` (`utils.ts`) enforces that only one draft comment exists at a time (acts as a mutex). On undo of an empty-thread comment, `annotationField.ts` deletes it entirely rather than leaving a threadless annotation.
+
 #### Persistence
 
 The annotation field participates in full state serialization alongside the history field:
