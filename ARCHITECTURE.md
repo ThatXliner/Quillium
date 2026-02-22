@@ -362,7 +362,7 @@ This section documents the key design choices and constraints that define how th
 
 When annotated text is fully deleted, comments and suggestions are removed. Revisions are not — they survive even when their range collapses to empty (`from === to`). This is intentional: a revision is a structural **slot** in the document, a branching point that should be preserved even with no content. The `allowEmpty` flag in `mapRange()` (`utils.ts`) implements this exception.
 
-When a revision's range does collapse, `collapsedRevisionResolver` automatically switches to the next available version. If only one version remained, the annotation is removed entirely — there's nothing left to compare against.
+When a revision's range does collapse, `collapsedRevisionResolver` automatically switches to the next available version. If only one version remained, only then the annotation is removed entirely — there's nothing left to compare against.
 
 #### Nested editors are full `EditorView` instances, not simplified views
 
