@@ -57,7 +57,7 @@
     };
 
     const expanded = $derived(action !== null);
-
+    // Remember to also update the CSS style on line 212
     const DEFAULT_WIDTH = 320;
     const DEFAULT_HEIGHT = 520;
     const MIN_WIDTH = 240;

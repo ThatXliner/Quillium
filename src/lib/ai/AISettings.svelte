@@ -151,7 +151,6 @@
         </div>
     </div>
 
-    <div class="w-full h-px bg-black/8"></div>
 
     <!-- Model -->
     <div>
