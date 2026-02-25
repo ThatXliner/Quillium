@@ -33,6 +33,17 @@
     ],
     "macOS": {
       "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA1ODY4QUYzMEU2QzI3MTMKUldRVEoyd084NHFHQlZQSlJiYlpwb2NhdkJBR0Vtcjd0ejA4OElqSEhRQ1hzSk5DT3B1MllhckoK",
+      "endpoints": [
+        "https://releases.myapp.com/{{target}}/{{arch}}/{{current_version}}",
+        // or a static github json file
+        "https://github.com/user/repo/releases/latest/download/latest.json"
+      ]
     }
   }
 }

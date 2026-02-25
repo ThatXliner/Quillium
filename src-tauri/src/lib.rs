@@ -7,15 +7,13 @@ const KEYCHAIN_SERVICE: &str = "com.bryanhu.quillium";
 
 #[tauri::command]
 fn set_api_key(provider: String, key: String) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
-        .map_err(|e| e.to_string())?;
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider).map_err(|e| e.to_string())?;
     entry.set_password(&key).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn get_api_key(provider: String) -> Result<Option<String>, String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
-        .map_err(|e| e.to_string())?;
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider).map_err(|e| e.to_string())?;
     match entry.get_password() {
         Ok(key) => Ok(Some(key)),
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -25,8 +23,7 @@ fn get_api_key(provider: String) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn delete_api_key(provider: String) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
-        .map_err(|e| e.to_string())?;
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider).map_err(|e| e.to_string())?;
     match entry.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
@@ -101,8 +98,16 @@ fn load(app_handle: tauri::AppHandle) -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![save, load, scrap, set_api_key, get_api_key, delete_api_key])
+        .invoke_handler(tauri::generate_handler![
+            save,
+            load,
+            scrap,
+            set_api_key,
+            get_api_key,
+            delete_api_key
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
