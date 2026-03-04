@@ -194,6 +194,89 @@ docs(contributing): update development setup instructions
 - **Responsiveness**: Test across different screen sizes
 - **Performance**: Consider impact on editor performance
 
+## Analytics (PostHog)
+
+Quillium uses [PostHog](https://posthog.com) for product analytics. Events are captured with `posthog.capture()` directly in components — no wrapper or store abstraction is used.
+
+### Adding a New Event
+
+1. **Import PostHog** at the top of the component (if not already imported):
+   ```typescript
+   import posthog from "posthog-js";
+   ```
+
+2. **Call `posthog.capture()`** at the point of the user action:
+   ```typescript
+   posthog.capture("event_name", {
+       property_one: value,
+       property_two: value,
+   });
+   ```
+
+### Event Naming Convention
+
+Use `snake_case` with the pattern `noun_verb` or `noun_verb_qualifier`:
+
+| Pattern | Example |
+|---------|---------|
+| `noun_verb` | `comment_created`, `draft_scrapped` |
+| `noun_verb_qualifier` | `ai_feedback_requested`, `revision_version_created` |
+| `noun_noun_verb` | `comment_ai_suggestion_requested` |
+
+Group related events under the same noun prefix (e.g., `ai_*`, `comment_*`, `revision_*`, `suggestion_*`).
+
+### Property Conventions
+
+Include contextual properties that make events useful for analysis:
+
+- **`type`** — discriminate among annotation types: `"comment"`, `"revision"`, `"suggestion"`
+- **`has_selection`** — boolean, whether text was selected at the time of the action
+- **`trigger`** — how the action was initiated: `"manual"` or `"quick_action"`
+- **Word/length counts** — `word_count`, `message_length`, `comment_length`, `reply_length`
+- **Counts** — `thread_length`, `version_count`, `replacement_count`
+
+### Current Event Inventory
+
+| Event | Properties | Location |
+|-------|-----------|----------|
+| `app_session_started` | `word_count` | `Editor.svelte` |
+| `ai_sidebar_opened` | `mode` | `AISidebar.svelte` |
+| `ai_chat_message_sent` | `has_selection`, `message_length` | `Chat.svelte` |
+| `ai_feedback_requested` | `has_selection`, `trigger` | `Feedback.svelte` |
+| `ai_revise_requested` | `has_selection`, `trigger` | `Revise.svelte` |
+| `ai_revise_quick_prompt_used` | `prompt`, `has_selection` | `Revise.svelte` |
+| `ai_settings_provider_changed` | `provider` | `AISettings.svelte` |
+| `ai_settings_model_changed` | `provider`, `model` | `AISettings.svelte` |
+| `annotation_deleted` | `type`, `thread_length`/`version_count`/`replacement_count` | `Comment/Revision/Suggestion.svelte` |
+| `comment_created` | `has_selection`, `comment_length` | `PreComment.svelte` |
+| `comment_reply_sent` | `thread_length`, `reply_length` | `Comment.svelte` |
+| `comment_ai_suggestion_requested` | `thread_length`, `has_selection` | `Comment.svelte` |
+| `revision_version_created` | `version_count` | `Revision.svelte` |
+| `revision_nested_editor_toggled` | `opened`, `version_count` | `Revision.svelte` |
+| `revision_modal_opened` | `version_count` | `Revision.svelte` |
+| `suggestion_diff_viewed` | `replacement_index`, `replacement_count` | `Suggestion.svelte` |
+| `suggestion_diff_modal_opened` | `replacement_count` | `Suggestion.svelte` |
+| `suggestion_branched` | `replacement_count` | `Suggestion.svelte` |
+| `suggestion_applied` | `replacement_index`, `replacement_count` | `Suggestion.svelte` |
+| `tutorial_skipped` | `step_reached`, `total_steps` | `Tutorial.svelte` |
+| `tutorial_completed` | `total_steps` | `Tutorial.svelte` |
+| `draft_scrapped` | — | `Save.svelte` |
+
+### Error Tracking
+
+Unhandled errors are automatically captured via `posthog.captureException()` in `src/hooks.client.ts`. No manual instrumentation is needed for error tracking.
+
+### Environment Variables
+
+```bash
+PUBLIC_POSTHOG_KEY=your_project_api_key
+PUBLIC_POSTHOG_HOST=https://us.i.posthog.com  # or your self-hosted URL
+```
+
+These must be prefixed with `PUBLIC_` to be exposed to the client by SvelteKit.
+
+---
+
 ## Testing
 
 ### Manual Testing

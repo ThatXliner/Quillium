@@ -3,6 +3,7 @@
     import { EditorView } from "@codemirror/view";
     import { invoke } from "@tauri-apps/api/core";
     import { onMount } from "svelte";
+    import posthog from "posthog-js";
     import { getExtensions, savedFields } from "./extensions";
     import {
         editorView,
@@ -93,6 +94,9 @@
             $editorView = new EditorView({
                 state,
                 parent: element,
+            });
+            posthog.capture("app_session_started", {
+                word_count: getWordCount(state.doc.toString()),
             });
         });
     });

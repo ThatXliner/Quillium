@@ -69,7 +69,13 @@ function getDiffOps(replacementIndex: number) {
     </div>
     <button
       class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-      onclick={() => remove()}
+      onclick={() => {
+        posthog.capture("annotation_deleted", {
+          type: "suggestion",
+          replacement_count: suggestion.replacements.length,
+        });
+        remove();
+      }}
       title="Delete suggestion"
     >
       <Trash2 size={16} />
@@ -119,7 +125,14 @@ function getDiffOps(replacementIndex: number) {
       <div class="flex items-center justify-between">
         <button
           class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
-          onclick={() => { diffExpanded = !diffExpanded; }}
+          onclick={() => {
+          diffExpanded = !diffExpanded;
+          if (!diffExpanded) return;
+          posthog.capture("suggestion_diff_viewed", {
+            replacement_index: selectedIndex,
+            replacement_count: suggestion.replacements.length,
+          });
+        }}
         >
           <ChevronDownIcon
             size={12}
@@ -129,7 +142,12 @@ function getDiffOps(replacementIndex: number) {
         </button>
         <button
           class="flex items-center gap-1 text-[10px] text-green-700/40 hover:text-green-700/70 transition-colors"
-          onclick={() => { modalStack.push({ type: "diff", suggestionId: suggestion.id, parentView: view, label: "AI Suggestion" }); }}
+          onclick={() => {
+            posthog.capture("suggestion_diff_modal_opened", {
+              replacement_count: suggestion.replacements.length,
+            });
+            modalStack.push({ type: "diff", suggestionId: suggestion.id, parentView: view, label: "AI Suggestion" });
+          }}
           title="Expand to full view"
         >
           <Maximize2 size={10} />

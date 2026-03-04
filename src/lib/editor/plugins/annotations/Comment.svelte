@@ -31,6 +31,10 @@ let inputEl: HTMLInputElement;
 
 function save() {
 	if (!newMessage.trim()) return;
+	posthog.capture("comment_reply_sent", {
+		thread_length: thread.length,
+		reply_length: newMessage.trim().length,
+	});
 	updateThread([
 		...thread,
 		{ message: newMessage, author: "User", time: Date.now() },
@@ -146,7 +150,13 @@ function formatTime(ts: number) {
         <h3 class="text-[10px] font-semibold text-blue-600/70 uppercase tracking-wider">Comment</h3>
         <button
             class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-            onclick={() => removeComment()}
+            onclick={() => {
+                posthog.capture("annotation_deleted", {
+                    type: "comment",
+                    thread_length: thread.length,
+                });
+                removeComment();
+            }}
             title="Delete comment"
         >
             <Trash2 size={16} />

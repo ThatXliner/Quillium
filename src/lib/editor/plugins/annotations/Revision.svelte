@@ -226,7 +226,13 @@ onDestroy(() => {
         <h3 class="text-[10px] font-semibold text-purple-600/70 uppercase tracking-wider">Revision</h3>
         <button
             class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-            onclick={() => remove()}
+            onclick={() => {
+                posthog.capture("annotation_deleted", {
+                    type: "revision",
+                    version_count: revision.versions.length,
+                });
+                remove();
+            }}
             title="Delete entire revision"
         >
             <Trash2 size={16} />
