@@ -9,6 +9,7 @@ import {
 	SaveIcon,
 	FlameIcon,
 } from "lucide-svelte";
+import posthog from "posthog-js";
 const options = [
 	// {
 	// 	name: "Clear history",
@@ -24,6 +25,7 @@ const options = [
 		icon: Trash2,
 		props: {
 			onclick: () => {
+				posthog.capture("draft_scrapped");
 				invoke("scrap").then(() => {
 					// TODO: a popup when loaded
 					window.location.reload();

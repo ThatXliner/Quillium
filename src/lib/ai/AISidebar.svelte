@@ -1,199 +1,221 @@
 <script lang="ts">
-    import { tick } from "svelte";
-    import Chat from "./Chat.svelte";
-    import Feedback from "./Feedback.svelte";
-    import Revise from "./Revise.svelte";
-    import AISettings from "./AISettings.svelte";
-    import DocumentContext from "./DocumentContext.svelte";
-    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon, CompassIcon, Minimize2Icon } from "lucide-svelte";
-    import { aiProcessing } from "$lib/ai/settings.svelte";
+import { tick } from "svelte";
+import Chat from "./Chat.svelte";
+import Feedback from "./Feedback.svelte";
+import Revise from "./Revise.svelte";
+import AISettings from "./AISettings.svelte";
+import DocumentContext from "./DocumentContext.svelte";
+import {
+	MessageCircleIcon,
+	ZapIcon,
+	PenLineIcon,
+	XIcon,
+	Settings2Icon,
+	CompassIcon,
+	Minimize2Icon,
+} from "lucide-svelte";
+import { aiProcessing } from "$lib/ai/settings.svelte";
+import posthog from "posthog-js";
 
-    type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
-    let action = $state<Action>(null);
+type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
+let action = $state<Action>(null);
 
-    const actions: {
-        id: NonNullable<Action>;
-        icon: any;
-        label: string;
-        activeClass: string;
-        hoverClass: string;
-    }[] = [
-        {
-            id: "chat",
-            icon: MessageCircleIcon,
-            label: "Chat",
-            activeClass: "text-blue-600 bg-white/60",
-            hoverClass: "hover:text-blue-600",
-        },
-        {
-            id: "feedback",
-            icon: ZapIcon,
-            label: "Feedback",
-            activeClass: "text-green-600 bg-white/60",
-            hoverClass: "hover:text-green-600",
-        },
-        {
-            id: "revise",
-            icon: PenLineIcon,
-            label: "Revise",
-            activeClass: "text-purple-600 bg-white/60",
-            hoverClass: "hover:text-purple-600",
-        },
-        {
-            id: "context",
-            icon: CompassIcon,
-            label: "Document Context",
-            activeClass: "text-amber-600 bg-white/60",
-            hoverClass: "hover:text-amber-600",
-        },
-    ];
+const actions: {
+	id: NonNullable<Action>;
+	icon: any;
+	label: string;
+	activeClass: string;
+	hoverClass: string;
+}[] = [
+	{
+		id: "chat",
+		icon: MessageCircleIcon,
+		label: "Chat",
+		activeClass: "text-blue-600 bg-white/60",
+		hoverClass: "hover:text-blue-600",
+	},
+	{
+		id: "feedback",
+		icon: ZapIcon,
+		label: "Feedback",
+		activeClass: "text-green-600 bg-white/60",
+		hoverClass: "hover:text-green-600",
+	},
+	{
+		id: "revise",
+		icon: PenLineIcon,
+		label: "Revise",
+		activeClass: "text-purple-600 bg-white/60",
+		hoverClass: "hover:text-purple-600",
+	},
+	{
+		id: "context",
+		icon: CompassIcon,
+		label: "Document Context",
+		activeClass: "text-amber-600 bg-white/60",
+		hoverClass: "hover:text-amber-600",
+	},
+];
 
-    const panelTitles: Record<NonNullable<Action>, string> = {
-        chat: "Chat with AI",
-        feedback: "Get Feedback",
-        revise: "Revise & Rewrite",
-        context: "Document Context",
-        settings: "AI Settings",
-    };
+const panelTitles: Record<NonNullable<Action>, string> = {
+	chat: "Chat with AI",
+	feedback: "Get Feedback",
+	revise: "Revise & Rewrite",
+	context: "Document Context",
+	settings: "AI Settings",
+};
 
-    const expanded = $derived(action !== null);
-    // Remember to also update the CSS style on line 212
-    const DEFAULT_WIDTH = 320;
-    const DEFAULT_HEIGHT = 520;
-    const MIN_WIDTH = 240;
-    const MAX_WIDTH = 600;
-    const MIN_HEIGHT = 400;
-    const MAX_HEIGHT = 800;
+const expanded = $derived(action !== null);
+// Remember to also update the CSS style on line 212
+const DEFAULT_WIDTH = 320;
+const DEFAULT_HEIGHT = 520;
+const MIN_WIDTH = 240;
+const MAX_WIDTH = 600;
+const MIN_HEIGHT = 400;
+const MAX_HEIGHT = 800;
 
-    let customWidth = $state<number | null>(null);
-    let customHeight = $state<number | null>(null);
-    let isResizing = $state(false);
+let customWidth = $state<number | null>(null);
+let customHeight = $state<number | null>(null);
+let isResizing = $state(false);
 
-    // Plain vars — not reactive, only used inside handlers
-    let resizeStartX = 0;
-    let resizeStartY = 0;
-    let resizeStartWidth = 0;
-    let resizeStartHeight = 0;
-    let activeHandle: "right" | "bottom" | "corner" | null = null;
-    let justResized = false;
+// Plain vars — not reactive, only used inside handlers
+let resizeStartX = 0;
+let resizeStartY = 0;
+let resizeStartWidth = 0;
+let resizeStartHeight = 0;
+let activeHandle: "right" | "bottom" | "corner" | null = null;
+let justResized = false;
 
-    const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
-    const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
-    const isCustomSize = $derived(customWidth !== null || customHeight !== null);
+const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
+const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
+const isCustomSize = $derived(customWidth !== null || customHeight !== null);
 
-    // Inline style only when expanded AND user has resized (overrides Tailwind)
-    const containerSizeStyle = $derived(
-        expanded && (customWidth !== null || customHeight !== null)
-            ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
-            : ""
-    );
+// Inline style only when expanded AND user has resized (overrides Tailwind)
+const containerSizeStyle = $derived(
+	expanded && (customWidth !== null || customHeight !== null)
+		? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
+		: "",
+);
 
-    // Disable transition during active drag; keep it for expand/collapse
-    const transitionClass = $derived(
-        isResizing
-            ? ""
-            : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]"
-    );
+// Disable transition during active drag; keep it for expand/collapse
+const transitionClass = $derived(
+	isResizing
+		? ""
+		: "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
+);
 
-    let container: HTMLDivElement;
-    let iconStrip = $state<HTMLDivElement>();
-    let iconEls = $state<HTMLButtonElement[]>([]);
+let container: HTMLDivElement;
+let iconStrip = $state<HTMLDivElement>();
+let iconEls = $state<HTMLButtonElement[]>([]);
 
-    function handleClickOutside(e: MouseEvent) {
-        if (justResized) {
-            justResized = false;
-            return;
-        }
-        const target = e.target as Node;
-        if (
-            expanded &&
-            container &&
-            !container.contains(target) &&
-            !(target as Element).closest?.(".cm-editor")
-        ) {
-            action = null;
-        }
-    }
+function handleClickOutside(e: MouseEvent) {
+	if (justResized) {
+		justResized = false;
+		return;
+	}
+	const target = e.target as Node;
+	if (
+		expanded &&
+		container &&
+		!container.contains(target) &&
+		!(target as Element).closest?.(".cm-editor")
+	) {
+		action = null;
+	}
+}
 
-    function selectAction(id: NonNullable<Action>) {
-        action = id;
-        scrollActiveIntoCenter(id);
-    }
+function selectAction(id: NonNullable<Action>) {
+	action = id;
+	posthog.capture("ai_sidebar_opened", { mode: id });
+	scrollActiveIntoCenter(id);
+}
 
-    function scrollActiveIntoCenter(id: NonNullable<Action>) {
-        tick().then(() => {
-            if (!iconStrip) return;
-            const idx = actions.findIndex((a) => a.id === id);
-            const el = iconEls[idx];
-            if (!el) return;
-            const stripRect = iconStrip.getBoundingClientRect();
-            const elRect = el.getBoundingClientRect();
-            const offset = elRect.left - stripRect.left + elRect.width / 2 - stripRect.width / 2;
-            iconStrip.scrollBy({ left: offset, behavior: "smooth" });
-        });
-    }
+function scrollActiveIntoCenter(id: NonNullable<Action>) {
+	tick().then(() => {
+		if (!iconStrip) return;
+		const idx = actions.findIndex((a) => a.id === id);
+		const el = iconEls[idx];
+		if (!el) return;
+		const stripRect = iconStrip.getBoundingClientRect();
+		const elRect = el.getBoundingClientRect();
+		const offset =
+			elRect.left -
+			stripRect.left +
+			elRect.width / 2 -
+			stripRect.width / 2;
+		iconStrip.scrollBy({ left: offset, behavior: "smooth" });
+	});
+}
 
-    function resetSize() {
-        customWidth = null;
-        customHeight = null;
-    }
+function resetSize() {
+	customWidth = null;
+	customHeight = null;
+}
 
-    function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
-        e.preventDefault();
-        e.stopPropagation();
-        activeHandle = handle;
-        resizeStartX = e.clientX;
-        resizeStartY = e.clientY;
-        resizeStartWidth = effectiveWidth;
-        resizeStartHeight = effectiveHeight;
-        isResizing = true;
-        window.addEventListener("mousemove", onResizeMove);
-        window.addEventListener("mouseup", onResizeEnd);
-        document.body.style.userSelect = "none";
-        document.body.style.cursor =
-            handle === "right" ? "ew-resize"
-            : handle === "bottom" ? "ns-resize"
-            : "nwse-resize";
-    }
+function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
+	e.preventDefault();
+	e.stopPropagation();
+	activeHandle = handle;
+	resizeStartX = e.clientX;
+	resizeStartY = e.clientY;
+	resizeStartWidth = effectiveWidth;
+	resizeStartHeight = effectiveHeight;
+	isResizing = true;
+	window.addEventListener("mousemove", onResizeMove);
+	window.addEventListener("mouseup", onResizeEnd);
+	document.body.style.userSelect = "none";
+	document.body.style.cursor =
+		handle === "right"
+			? "ew-resize"
+			: handle === "bottom"
+				? "ns-resize"
+				: "nwse-resize";
+}
 
-    function onResizeMove(e: MouseEvent) {
-        if (!activeHandle) return;
-        const dx = e.clientX - resizeStartX;
-        const dy = e.clientY - resizeStartY;
-        if (activeHandle === "right" || activeHandle === "corner") {
-            customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
-        }
-        if (activeHandle === "bottom" || activeHandle === "corner") {
-            customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
-        }
-    }
+function onResizeMove(e: MouseEvent) {
+	if (!activeHandle) return;
+	const dx = e.clientX - resizeStartX;
+	const dy = e.clientY - resizeStartY;
+	if (activeHandle === "right" || activeHandle === "corner") {
+		customWidth = Math.min(
+			MAX_WIDTH,
+			Math.max(MIN_WIDTH, resizeStartWidth + dx),
+		);
+	}
+	if (activeHandle === "bottom" || activeHandle === "corner") {
+		customHeight = Math.min(
+			MAX_HEIGHT,
+			Math.max(MIN_HEIGHT, resizeStartHeight + dy),
+		);
+	}
+}
 
-    function onResizeEnd() {
-        isResizing = false;
-        activeHandle = null;
-        justResized = true;
-        window.removeEventListener("mousemove", onResizeMove);
-        window.removeEventListener("mouseup", onResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-    }
+function onResizeEnd() {
+	isResizing = false;
+	activeHandle = null;
+	justResized = true;
+	window.removeEventListener("mousemove", onResizeMove);
+	window.removeEventListener("mouseup", onResizeEnd);
+	document.body.style.userSelect = "";
+	document.body.style.cursor = "";
+}
 
-    // Center the active icon whenever the panel opens
-    $effect(() => {
-        if (expanded && action && action !== "settings") {
-            scrollActiveIntoCenter(action);
-        }
-    });
+// Center the active icon whenever the panel opens
+$effect(() => {
+	if (expanded && action && action !== "settings") {
+		scrollActiveIntoCenter(action);
+	}
+});
 
-    // Cleanup resize listeners on unmount
-    $effect(() => {
-        return () => {
-            window.removeEventListener("mousemove", onResizeMove);
-            window.removeEventListener("mouseup", onResizeEnd);
-            document.body.style.userSelect = "";
-            document.body.style.cursor = "";
-        };
-    });
+// Cleanup resize listeners on unmount
+$effect(() => {
+	return () => {
+		window.removeEventListener("mousemove", onResizeMove);
+		window.removeEventListener("mouseup", onResizeEnd);
+		document.body.style.userSelect = "";
+		document.body.style.cursor = "";
+	};
+});
 </script>
 
 <svelte:window onclick={handleClickOutside} />
@@ -222,7 +244,7 @@
             {#each actions as a}
                 <button
                     id="ai-tab-{a.id}"
-                    onclick={() => (action = a.id)}
+                    onclick={() => { action = a.id; posthog.capture("ai_sidebar_opened", { mode: a.id }); }}
                     aria-label={a.label}
                     title={a.label}
                     class="p-2 rounded-full text-black/50 transition-colors {a.hoverClass}"

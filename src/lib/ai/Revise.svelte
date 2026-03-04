@@ -1,45 +1,60 @@
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import posthog from "posthog-js";
 
-    let input = $state("");
+let input = $state("");
 
-    const { chat, clearChat } = createAiChat({ mode: "revise" });
+const { chat, clearChat } = createAiChat({ mode: "revise" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+$effect(() => {
+	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
 
-    function handleSubmit(event: SubmitEvent) {
-        event.preventDefault();
-        if (!input.trim() || chat.status !== "ready") return;
+function handleSubmit(event: SubmitEvent) {
+	event.preventDefault();
+	if (!input.trim() || chat.status !== "ready") return;
 
-        chat.sendMessage({ text: input });
-        input = "";
-    }
+	posthog.capture("ai_revise_requested", {
+		has_selection: !!$selectedText,
+		trigger: "manual",
+	});
+	chat.sendMessage({ text: input });
+	input = "";
+}
 
-    function reviseText() {
-        const context = $selectedText
-            ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
-            : "Please revise my document to improve flow and conciseness.";
+function reviseText() {
+	const context = $selectedText
+		? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
+		: "Please revise my document to improve flow and conciseness.";
 
-        input = context;
-        chat.sendMessage({ text: context });
-    }
+	posthog.capture("ai_revise_requested", {
+		has_selection: !!$selectedText,
+		trigger: "quick_action",
+	});
+	input = context;
+	chat.sendMessage({ text: context });
+}
 
-    const quickPrompts = [
-        "Make this more concise",
-        "Improve the flow and transitions",
-        "Make this more engaging",
-        "Fix grammar and style issues",
-        "Simplify complex sentences",
-    ];
+const quickPrompts = [
+	"Make this more concise",
+	"Improve the flow and transitions",
+	"Make this more engaging",
+	"Fix grammar and style issues",
+	"Simplify complex sentences",
+];
 
-    function useQuickPrompt(prompt: string) {
-        const target = $selectedText ? "this selected text" : "my document";
-        const message = `${prompt} in ${target}`;
-        input = message;
-        chat.sendMessage({ text: message });
-    }
+function useQuickPrompt(prompt: string) {
+	const target = $selectedText ? "this selected text" : "my document";
+	const message = `${prompt} in ${target}`;
+	posthog.capture("ai_revise_quick_prompt_used", {
+		prompt,
+		has_selection: !!$selectedText,
+	});
+	input = message;
+	chat.sendMessage({ text: message });
+}
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">

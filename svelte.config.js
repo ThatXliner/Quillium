@@ -9,6 +9,10 @@ const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		adapter: adapter(),
+		// Required for PostHog session replay to work correctly
+		paths: {
+			relative: false,
+		},
 	},
 };
 

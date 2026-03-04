@@ -34,6 +34,7 @@
     "lodash-es": "^4.17.23",
     "lucide-svelte": "^0.475.0",
     "paneforge": "^1.0.2",
+    "posthog-js": "^1.358.1",
     "rehype-remark": "^10.0.1",
     "rehype-stringify": "^10.0.1",
     "remark-gfm": "^4.0.1",

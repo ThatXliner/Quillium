@@ -1,21 +1,28 @@
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import posthog from "posthog-js";
 
-    let input = $state("");
-    const { chat, clearChat } = createAiChat({ mode: "chat" });
+let input = $state("");
+const { chat, clearChat } = createAiChat({ mode: "chat" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+$effect(() => {
+	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
 
-    async function handleSubmit(event: Event) {
-        event.preventDefault();
-        const formData = new FormData(event.target as HTMLFormElement);
-        const userMessage = formData.get("message") as string;
-        if (!userMessage.trim() || chat.status !== "ready") return;
-        await chat.sendMessage({ text: userMessage });
-        input = "";
-    }
+async function handleSubmit(event: Event) {
+	event.preventDefault();
+	const formData = new FormData(event.target as HTMLFormElement);
+	const userMessage = formData.get("message") as string;
+	if (!userMessage.trim() || chat.status !== "ready") return;
+	posthog.capture("ai_chat_message_sent", {
+		has_selection: !!$selectedText,
+		message_length: userMessage.length,
+	});
+	await chat.sendMessage({ text: userMessage });
+	input = "";
+}
 </script>
 
 <div class="flex flex-col h-full">

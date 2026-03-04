@@ -1,30 +1,41 @@
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import posthog from "posthog-js";
 
-    let input = $state("");
+let input = $state("");
 
-    const { chat, clearChat } = createAiChat({ mode: "feedback" });
+const { chat, clearChat } = createAiChat({ mode: "feedback" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+$effect(() => {
+	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
 
-    function handleSubmit(event: SubmitEvent) {
-        event.preventDefault();
-        if (!input.trim() || chat.status !== "ready") return;
+function handleSubmit(event: SubmitEvent) {
+	event.preventDefault();
+	if (!input.trim() || chat.status !== "ready") return;
 
-        chat.sendMessage({ text: input });
-        input = "";
-    }
+	posthog.capture("ai_feedback_requested", {
+		has_selection: !!$selectedText,
+		trigger: "manual",
+	});
+	chat.sendMessage({ text: input });
+	input = "";
+}
 
-    function askForFeedback() {
-        const context = $selectedText
-            ? `Please provide feedback on this selected text: "${$selectedText}"`
-            : "Please provide feedback on my document.";
+function askForFeedback() {
+	const context = $selectedText
+		? `Please provide feedback on this selected text: "${$selectedText}"`
+		: "Please provide feedback on my document.";
 
-        input = context;
-        chat.sendMessage({ text: context });
-    }
+	posthog.capture("ai_feedback_requested", {
+		has_selection: !!$selectedText,
+		trigger: "quick_action",
+	});
+	input = context;
+	chat.sendMessage({ text: context });
+}
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">

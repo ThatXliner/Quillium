@@ -1,45 +1,52 @@
 <script lang="ts">
 import type { EditorView } from "@codemirror/view";
-import { ChevronDownIcon, GitBranchIcon, Maximize2, SparklesIcon, Trash2 } from "lucide-svelte";
 import {
-    applySuggestion,
-    branchSuggestion,
-    diffTokens,
-    tokenize,
-    type Annotation,
-    type Thread as ThreadType,
+	ChevronDownIcon,
+	GitBranchIcon,
+	Maximize2,
+	SparklesIcon,
+	Trash2,
+} from "lucide-svelte";
+import {
+	applySuggestion,
+	branchSuggestion,
+	diffTokens,
+	tokenize,
+	type Annotation,
+	type Thread as ThreadType,
 } from ".";
 import Thread from "./Thread.svelte";
 import { modalStack } from "$lib/stores";
+import posthog from "posthog-js";
 
 const {
-    suggestion,
-    isActive,
-    view,
-    remove,
-    updateThread,
+	suggestion,
+	isActive,
+	view,
+	remove,
+	updateThread,
 }: {
-    suggestion: Annotation<"suggestion">;
-    isActive: boolean;
-    view: EditorView;
-    remove: () => void;
-    updateThread: (thread: ThreadType) => void;
+	suggestion: Annotation<"suggestion">;
+	isActive: boolean;
+	view: EditorView;
+	remove: () => void;
+	updateThread: (thread: ThreadType) => void;
 } = $props();
 
 const thread = $derived(suggestion.thread);
 
 let selectedIndex = $state<number | null>(
-    suggestion.replacements.length === 1 ? 0 : null,
+	suggestion.replacements.length === 1 ? 0 : null,
 );
 
 let diffExpanded = $state(false);
 
 function getDiffOps(replacementIndex: number) {
-    const { from, to } = suggestion.selection.main;
-    const original = view.state.sliceDoc(from, to);
-    const replacement = suggestion.replacements[replacementIndex];
-    if (!replacement) return [];
-    return diffTokens(tokenize(original), tokenize(replacement.text));
+	const { from, to } = suggestion.selection.main;
+	const original = view.state.sliceDoc(from, to);
+	const replacement = suggestion.replacements[replacementIndex];
+	if (!replacement) return [];
+	return diffTokens(tokenize(original), tokenize(replacement.text));
 }
 </script>
 
@@ -153,6 +160,9 @@ function getDiffOps(replacementIndex: number) {
         class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/70
                     bg-white/40 hover:bg-white/60 rounded-md ring-1 ring-green-200/50 transition-colors"
         onclick={() => {
+          posthog.capture("suggestion_branched", {
+            replacement_count: suggestion.replacements.length,
+          });
           view.dispatch(branchSuggestion(view.state, suggestion.id));
         }}
       >
@@ -167,6 +177,10 @@ function getDiffOps(replacementIndex: number) {
           : 'bg-white/30 text-black/25 ring-green-100/30 cursor-not-allowed'}"
         onclick={() => {
           if (selectedIndex === null) return;
+          posthog.capture("suggestion_applied", {
+            replacement_index: selectedIndex,
+            replacement_count: suggestion.replacements.length,
+          });
           view.dispatch(
             applySuggestion(view.state, suggestion.id, selectedIndex)
           );

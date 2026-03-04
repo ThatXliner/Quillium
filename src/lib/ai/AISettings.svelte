@@ -1,110 +1,154 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/core";
-    import { EyeIcon, EyeOffIcon, CheckIcon } from "lucide-svelte";
-    import { aiSettings, loadApiKeyForProvider } from "$lib/ai/settings.svelte";
-    import type { Provider } from "$lib/ai/provider";
+import { invoke } from "@tauri-apps/api/core";
+import { EyeIcon, EyeOffIcon, CheckIcon } from "lucide-svelte";
+import { aiSettings, loadApiKeyForProvider } from "$lib/ai/settings.svelte";
+import type { Provider } from "$lib/ai/provider";
+import posthog from "posthog-js";
 
-    const PROVIDERS: { id: Provider; label: string; color: string }[] = [
-        { id: "openai", label: "OpenAI", color: "#10a37f" },
-        { id: "anthropic", label: "Anthropic", color: "#d97706" },
-        { id: "google", label: "Google", color: "#4285f4" },
-    ];
+const PROVIDERS: { id: Provider; label: string; color: string }[] = [
+	{ id: "openai", label: "OpenAI", color: "#10a37f" },
+	{ id: "anthropic", label: "Anthropic", color: "#d97706" },
+	{ id: "google", label: "Google", color: "#4285f4" },
+];
 
-    const MODEL_OPTIONS: Record<
-        Provider,
-        { id: string; label: string; description: string }[]
-    > = {
-        openai: [
-            { id: "gpt-4o", label: "GPT-4o", description: "Most capable" },
-            { id: "gpt-4o-mini", label: "GPT-4o Mini", description: "Fast and efficient" },
-            { id: "o3-mini", label: "o3 Mini", description: "Advanced reasoning" },
-        ],
-        anthropic: [
-            { id: "claude-opus-4-6", label: "Claude Opus 4.6", description: "Most capable" },
-            { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", description: "Fast and capable" },
-            { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", description: "Fastest, most compact" },
-        ],
-        google: [
-            { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", description: "Fast multimodal" },
-            { id: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite", description: "Most efficient" },
-            { id: "gemini-2.5-pro-preview-03-25", label: "Gemini 2.5 Pro", description: "Most capable" },
-        ],
-    };
+const MODEL_OPTIONS: Record<
+	Provider,
+	{ id: string; label: string; description: string }[]
+> = {
+	openai: [
+		{ id: "gpt-4o", label: "GPT-4o", description: "Most capable" },
+		{
+			id: "gpt-4o-mini",
+			label: "GPT-4o Mini",
+			description: "Fast and efficient",
+		},
+		{ id: "o3-mini", label: "o3 Mini", description: "Advanced reasoning" },
+	],
+	anthropic: [
+		{
+			id: "claude-opus-4-6",
+			label: "Claude Opus 4.6",
+			description: "Most capable",
+		},
+		{
+			id: "claude-sonnet-4-6",
+			label: "Claude Sonnet 4.6",
+			description: "Fast and capable",
+		},
+		{
+			id: "claude-haiku-4-5-20251001",
+			label: "Claude Haiku 4.5",
+			description: "Fastest, most compact",
+		},
+	],
+	google: [
+		{
+			id: "gemini-2.0-flash",
+			label: "Gemini 2.0 Flash",
+			description: "Fast multimodal",
+		},
+		{
+			id: "gemini-2.0-flash-lite",
+			label: "Gemini 2.0 Flash Lite",
+			description: "Most efficient",
+		},
+		{
+			id: "gemini-2.5-pro-preview-03-25",
+			label: "Gemini 2.5 Pro",
+			description: "Most capable",
+		},
+	],
+};
 
-    const PROVIDER_KEY = "quillium-ai-provider";
-    const MODEL_KEY = "quillium-ai-model";
+const PROVIDER_KEY = "quillium-ai-provider";
+const MODEL_KEY = "quillium-ai-model";
 
-    function loadProvider(): Provider {
-        if (typeof localStorage === "undefined") return "openai";
-        return (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";
-    }
+function loadProvider(): Provider {
+	if (typeof localStorage === "undefined") return "openai";
+	return (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";
+}
 
-    function loadModel(): string {
-        if (typeof localStorage === "undefined") return "gpt-4o-mini";
-        return localStorage.getItem(MODEL_KEY) ?? "gpt-4o-mini";
-    }
+function loadModel(): string {
+	if (typeof localStorage === "undefined") return "gpt-4o-mini";
+	return localStorage.getItem(MODEL_KEY) ?? "gpt-4o-mini";
+}
 
-    let selectedProvider = $state<Provider>(loadProvider());
-    let selectedModel = $state(loadModel());
-    let apiKey = $state(aiSettings.apiKey);
-    let keyLoading = $state(!aiSettings.apiKey);
-    let showKey = $state(false);
-    let saveStatus = $state<"idle" | "saved" | "error">("idle");
-    let saveTimer: ReturnType<typeof setTimeout>;
+let selectedProvider = $state<Provider>(loadProvider());
+let selectedModel = $state(loadModel());
+let apiKey = $state(aiSettings.apiKey);
+let keyLoading = $state(!aiSettings.apiKey);
+let showKey = $state(false);
+let saveStatus = $state<"idle" | "saved" | "error">("idle");
+let saveTimer: ReturnType<typeof setTimeout>;
 
-    $effect(() => {
-        const provider = selectedProvider;
-        keyLoading = true;
-        invoke<string | null>("get_api_key", { provider })
-            .then((key) => {
-                console.log("get_api_key", provider, "->", key);
-                apiKey = key ?? "";
-                aiSettings.apiKey = apiKey;
-            })
-            .catch((e) => { console.error("get_api_key error:", e); apiKey = ""; })
-            .finally(() => { keyLoading = false; });
-    });
+$effect(() => {
+	const provider = selectedProvider;
+	keyLoading = true;
+	invoke<string | null>("get_api_key", { provider })
+		.then((key) => {
+			console.log("get_api_key", provider, "->", key);
+			apiKey = key ?? "";
+			aiSettings.apiKey = apiKey;
+		})
+		.catch((e) => {
+			console.error("get_api_key error:", e);
+			apiKey = "";
+		})
+		.finally(() => {
+			keyLoading = false;
+		});
+});
 
-    function selectProvider(id: Provider) {
-        selectedProvider = id;
-        localStorage.setItem(PROVIDER_KEY, id);
-        const first = MODEL_OPTIONS[id][0];
-        selectedModel = first.id;
-        localStorage.setItem(MODEL_KEY, first.id);
-        aiSettings.provider = id;
-        aiSettings.model = first.id;
-        loadApiKeyForProvider(id).then(() => {
-            apiKey = aiSettings.apiKey;
-        });
-    }
+function selectProvider(id: Provider) {
+	selectedProvider = id;
+	localStorage.setItem(PROVIDER_KEY, id);
+	const first = MODEL_OPTIONS[id][0];
+	selectedModel = first.id;
+	localStorage.setItem(MODEL_KEY, first.id);
+	aiSettings.provider = id;
+	aiSettings.model = first.id;
+	posthog.capture("ai_settings_provider_changed", { provider: id });
+	loadApiKeyForProvider(id).then(() => {
+		apiKey = aiSettings.apiKey;
+	});
+}
 
-    function selectModel(id: string) {
-        selectedModel = id;
-        localStorage.setItem(MODEL_KEY, id);
-        aiSettings.model = id;
-    }
+function selectModel(id: string) {
+	selectedModel = id;
+	localStorage.setItem(MODEL_KEY, id);
+	aiSettings.model = id;
+	posthog.capture("ai_settings_model_changed", {
+		provider: selectedProvider,
+		model: id,
+	});
+}
 
-    let saveError = $state("");
+let saveError = $state("");
 
-    async function saveApiKey() {
-        clearTimeout(saveTimer);
-        saveError = "";
-        try {
-            if (apiKey.trim()) {
-                await invoke("set_api_key", { provider: selectedProvider, key: apiKey.trim() });
-                aiSettings.apiKey = apiKey.trim();
-            } else {
-                await invoke("delete_api_key", { provider: selectedProvider });
-                aiSettings.apiKey = "";
-            }
-            saveStatus = "saved";
-        } catch (e) {
-            saveStatus = "error";
-            saveError = String(e);
-            console.error("saveApiKey failed:", e);
-        }
-        saveTimer = setTimeout(() => { saveStatus = "idle"; }, 3000);
-    }
+async function saveApiKey() {
+	clearTimeout(saveTimer);
+	saveError = "";
+	try {
+		if (apiKey.trim()) {
+			await invoke("set_api_key", {
+				provider: selectedProvider,
+				key: apiKey.trim(),
+			});
+			aiSettings.apiKey = apiKey.trim();
+		} else {
+			await invoke("delete_api_key", { provider: selectedProvider });
+			aiSettings.apiKey = "";
+		}
+		saveStatus = "saved";
+	} catch (e) {
+		saveStatus = "error";
+		saveError = String(e);
+		console.error("saveApiKey failed:", e);
+	}
+	saveTimer = setTimeout(() => {
+		saveStatus = "idle";
+	}, 3000);
+}
 </script>
 
 <div class="flex flex-col gap-4 p-3 overflow-y-auto h-full">

@@ -1,92 +1,116 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import { tutorialActive } from "$lib/stores";
-    import { steps } from "./steps";
+import { onMount } from "svelte";
+import { tutorialActive } from "$lib/stores";
+import { steps } from "./steps";
+import posthog from "posthog-js";
 
-    const { onComplete }: { onComplete: () => void } = $props();
+const { onComplete }: { onComplete: () => void } = $props();
 
-    let stepIndex = $state(0);
-    let spotlightRect = $state<DOMRect | null>(null);
-    let tooltipStyle = $state("top: 50%; left: 50%; transform: translate(-50%, -50%);");
-    let visible = $state(false);
+let stepIndex = $state(0);
+let spotlightRect = $state<DOMRect | null>(null);
+let tooltipStyle = $state(
+	"top: 50%; left: 50%; transform: translate(-50%, -50%);",
+);
+let visible = $state(false);
 
-    const step = $derived(steps[stepIndex]);
-    const isFirst = $derived(stepIndex === 0);
-    const isLast = $derived(stepIndex === steps.length - 1);
+const step = $derived(steps[stepIndex]);
+const isFirst = $derived(stepIndex === 0);
+const isLast = $derived(stepIndex === steps.length - 1);
 
-    function getTargetRect(selector: string | null): DOMRect | null {
-        if (!selector) return null;
-        const el = document.querySelector(selector);
-        return el ? el.getBoundingClientRect() : null;
-    }
+function getTargetRect(selector: string | null): DOMRect | null {
+	if (!selector) return null;
+	const el = document.querySelector(selector);
+	return el ? el.getBoundingClientRect() : null;
+}
 
-    function positionTooltip() {
-        const rect = getTargetRect(step.selector);
-        spotlightRect = rect;
+function positionTooltip() {
+	const rect = getTargetRect(step.selector);
+	spotlightRect = rect;
 
-        if (!rect || step.position === "center") {
-            tooltipStyle = "top: 50%; left: 50%; transform: translate(-50%, -50%);";
-            return;
-        }
+	if (!rect || step.position === "center") {
+		tooltipStyle = "top: 50%; left: 50%; transform: translate(-50%, -50%);";
+		return;
+	}
 
-        const pad = 16;
-        const tipW = 280;
-        const tipH = 180;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        let top: number;
-        let left: number;
+	const pad = 16;
+	const tipW = 280;
+	const tipH = 180;
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+	let top: number;
+	let left: number;
 
-        switch (step.position) {
-            case "right":
-                top = Math.min(Math.max(rect.top + rect.height / 2 - tipH / 2, pad), vh - tipH - pad);
-                left = Math.min(rect.right + pad, vw - tipW - pad);
-                break;
-            case "left":
-                top = Math.min(Math.max(rect.top + rect.height / 2 - tipH / 2, pad), vh - tipH - pad);
-                left = Math.max(rect.left - tipW - pad, pad);
-                break;
-            case "bottom":
-                top = Math.min(rect.bottom + pad, vh - tipH - pad);
-                left = Math.min(Math.max(rect.left + rect.width / 2 - tipW / 2, pad), vw - tipW - pad);
-                break;
-            case "top":
-                top = Math.max(rect.top - tipH - pad, pad);
-                left = Math.min(Math.max(rect.left + rect.width / 2 - tipW / 2, pad), vw - tipW - pad);
-                break;
-            default:
-                tooltipStyle = "top: 50%; left: 50%; transform: translate(-50%, -50%);";
-                return;
-        }
+	switch (step.position) {
+		case "right":
+			top = Math.min(
+				Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
+				vh - tipH - pad,
+			);
+			left = Math.min(rect.right + pad, vw - tipW - pad);
+			break;
+		case "left":
+			top = Math.min(
+				Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
+				vh - tipH - pad,
+			);
+			left = Math.max(rect.left - tipW - pad, pad);
+			break;
+		case "bottom":
+			top = Math.min(rect.bottom + pad, vh - tipH - pad);
+			left = Math.min(
+				Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
+				vw - tipW - pad,
+			);
+			break;
+		case "top":
+			top = Math.max(rect.top - tipH - pad, pad);
+			left = Math.min(
+				Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
+				vw - tipW - pad,
+			);
+			break;
+		default:
+			tooltipStyle =
+				"top: 50%; left: 50%; transform: translate(-50%, -50%);";
+			return;
+	}
 
-        tooltipStyle = `top: ${top}px; left: ${left}px; transition: top 220ms ease, left 220ms ease;`;
-    }
+	tooltipStyle = `top: ${top}px; left: ${left}px; transition: top 220ms ease, left 220ms ease;`;
+}
 
-    function advance() {
-        if (isLast) complete();
-        else stepIndex++;
-    }
+function advance() {
+	if (isLast) complete();
+	else stepIndex++;
+}
 
-    function back() {
-        if (!isFirst) stepIndex--;
-    }
+function back() {
+	if (!isFirst) stepIndex--;
+}
 
-    function complete() {
-        visible = false;
-        localStorage.setItem("quillium_tutorial_seen", "true");
-        $tutorialActive = false;
-        onComplete();
-    }
+function complete(skipped = false) {
+	visible = false;
+	localStorage.setItem("quillium_tutorial_seen", "true");
+	if (skipped) {
+		posthog.capture("tutorial_skipped", {
+			step_reached: stepIndex + 1,
+			total_steps: steps.length,
+		});
+	} else {
+		posthog.capture("tutorial_completed", { total_steps: steps.length });
+	}
+	$tutorialActive = false;
+	onComplete();
+}
 
-    $effect(() => {
-        void step;
-        positionTooltip();
-    });
+$effect(() => {
+	void step;
+	positionTooltip();
+});
 
-    onMount(() => {
-        visible = true;
-        positionTooltip();
-    });
+onMount(() => {
+	visible = true;
+	positionTooltip();
+});
 </script>
 
 {#if visible}
@@ -175,7 +199,7 @@
             <!-- Actions -->
             <div class="flex items-center justify-between">
                 <button
-                    onclick={complete}
+                    onclick={() => complete(true)}
                     class="text-[11px] text-black/35 hover:text-black/55 transition-colors"
                 >
                     Skip tour

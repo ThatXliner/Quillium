@@ -1,198 +1,217 @@
 <script lang="ts">
-    import { EditorState } from "@codemirror/state";
-    import { EditorView, type ViewUpdate } from "@codemirror/view";
-    import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
-    import { onDestroy, tick } from "svelte";
-    import { slide } from "svelte/transition";
-    import { getExtensions, savedFields } from "$lib/editor/extensions";
-    import {
-        annotationField,
-        createNewRevision,
-        deleteRevisionVersion,
-        setActiveRevisionVersion,
-        updateRevisionVersionState,
-        type Annotation,
-        type Thread as ThreadType,
-    } from ".";
-    import { versionText, type VersionState } from "./models";
-    import { getActiveAnnotation } from "./utils";
-    import { revisionBoundaryNudge, revisionOpenNestedEditor, modalStack } from "$lib/stores";
-    import Thread from "./Thread.svelte";
+import { EditorState } from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import {
+	ChevronDown,
+	ChevronUp,
+	Maximize2,
+	PlusIcon,
+	Trash2,
+	X,
+} from "lucide-svelte";
+import { onDestroy, tick } from "svelte";
+import { slide } from "svelte/transition";
+import { getExtensions, savedFields } from "$lib/editor/extensions";
+import {
+	annotationField,
+	createNewRevision,
+	deleteRevisionVersion,
+	setActiveRevisionVersion,
+	updateRevisionVersionState,
+	type Annotation,
+	type Thread as ThreadType,
+} from ".";
+import { versionText, type VersionState } from "./models";
+import { getActiveAnnotation } from "./utils";
+import {
+	revisionBoundaryNudge,
+	revisionOpenNestedEditor,
+	modalStack,
+} from "$lib/stores";
+import Thread from "./Thread.svelte";
+import posthog from "posthog-js";
 
-    const {
-        revision,
-        isActive,
-        view,
-        remove,
-        updateThread,
-    }: {
-        revision: Annotation<"revision">;
-        isActive: boolean;
-        view: EditorView;
-        remove: () => void;
-        updateThread: (thread: ThreadType) => void;
-    } = $props();
+const {
+	revision,
+	isActive,
+	view,
+	remove,
+	updateThread,
+}: {
+	revision: Annotation<"revision">;
+	isActive: boolean;
+	view: EditorView;
+	remove: () => void;
+	updateThread: (thread: ThreadType) => void;
+} = $props();
 
-    const thread = $derived(revision.thread);
-    const activeVersion = $derived(revision.versions[revision.currentlySelected]);
-    const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
-    const VERSION_PREVIEW_MAX = 34;
+const thread = $derived(revision.thread);
+const activeVersion = $derived(revision.versions[revision.currentlySelected]);
+const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
+const VERSION_PREVIEW_MAX = 34;
 
-    let isEditorOpen = $state(false);
-    let userClosedEditor = false; // plain var — not reactive, just a gate
+let isEditorOpen = $state(false);
+let userClosedEditor = false; // plain var — not reactive, just a gate
 
-    $effect(() => {
-        if (isActive) {
-            if (!userClosedEditor) isEditorOpen = true;
-        } else {
-            isEditorOpen = false;
-            userClosedEditor = false;
-        }
-    });
+$effect(() => {
+	if (isActive) {
+		if (!userClosedEditor) isEditorOpen = true;
+	} else {
+		isEditorOpen = false;
+		userClosedEditor = false;
+	}
+});
 
-    function openEditor() {
-        userClosedEditor = false;
-        isEditorOpen = true;
-    }
-    let recursiveEditorHost = $state<HTMLDivElement>();
-    let recursiveEditor = $state<EditorView | undefined>(undefined);
-    let nestedEditorHasActiveAnnotation = $state(false);
-    let isSyncingFromAnnotation = false;
-    let previousVersionId = revision.currentlySelected;
+function openEditor() {
+	userClosedEditor = false;
+	isEditorOpen = true;
+}
+let recursiveEditorHost = $state<HTMLDivElement>();
+let recursiveEditor = $state<EditorView | undefined>(undefined);
+let nestedEditorHasActiveAnnotation = $state(false);
+let isSyncingFromAnnotation = false;
+let previousVersionId = revision.currentlySelected;
 
+// Boundary nudge: show a hint when the user presses delete at the edge
+// of this revision's content in the main document.
+let showBoundaryHint = $state(false);
+let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    // Boundary nudge: show a hint when the user presses delete at the edge
-    // of this revision's content in the main document.
-    let showBoundaryHint = $state(false);
-    let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
+$effect(() => {
+	if ($revisionBoundaryNudge === revision.id) {
+		showBoundaryHint = true;
+		clearTimeout(boundaryHintTimeout);
+		boundaryHintTimeout = setTimeout(() => {
+			showBoundaryHint = false;
+			revisionBoundaryNudge.set(null);
+		}, 4000);
+	}
+});
 
-    $effect(() => {
-        if ($revisionBoundaryNudge === revision.id) {
-            showBoundaryHint = true;
-            clearTimeout(boundaryHintTimeout);
-            boundaryHintTimeout = setTimeout(() => {
-                showBoundaryHint = false;
-                revisionBoundaryNudge.set(null);
-            }, 4000);
-        }
-    });
+// When the user triggers a nested annotation command from inside this revision
+// in the main document, open the modal (instead of the inline editor) and
+// pass the command along so the modal runs it once the editor is ready.
+$effect(() => {
+	const cmd = $revisionOpenNestedEditor;
+	if (!cmd || cmd.revisionId !== revision.id) return;
+	revisionOpenNestedEditor.set(null);
+	modalStack.push({
+		type: "revision",
+		revisionId: revision.id,
+		parentView: view,
+		label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+		pendingNestedCommand: {
+			type: cmd.type,
+			selectionFrom: cmd.selectionFrom,
+			selectionTo: cmd.selectionTo,
+		},
+	});
+});
 
-    // When the user triggers a nested annotation command from inside this revision
-    // in the main document, open the modal (instead of the inline editor) and
-    // pass the command along so the modal runs it once the editor is ready.
-    $effect(() => {
-        const cmd = $revisionOpenNestedEditor;
-        if (!cmd || cmd.revisionId !== revision.id) return;
-        revisionOpenNestedEditor.set(null);
-        modalStack.push({
-            type: "revision",
-            revisionId: revision.id,
-            parentView: view,
-            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-            pendingNestedCommand: {
-                type: cmd.type,
-                selectionFrom: cmd.selectionFrom,
-                selectionTo: cmd.selectionTo,
-            },
-        });
-    });
+onDestroy(() => {
+	clearTimeout(boundaryHintTimeout);
+});
 
-    onDestroy(() => {
-        clearTimeout(boundaryHintTimeout);
-    });
+function upsertVersionState(
+	currentEditor: EditorView,
+	versionId = revision.currentlySelected,
+) {
+	const blob = currentEditor.state.toJSON(savedFields) as VersionState;
+	view.dispatch(
+		updateRevisionVersionState(view.state, revision.id, versionId, blob),
+	);
+}
 
-    function upsertVersionState(currentEditor: EditorView, versionId = revision.currentlySelected) {
-        const blob = currentEditor.state.toJSON(savedFields) as VersionState;
-        view.dispatch(
-            updateRevisionVersionState(
-                view.state,
-                revision.id,
-                versionId,
-                blob,
-            ),
-        );
-    }
+function previewVersionText(version: VersionState) {
+	const flattened = versionText(version).replace(/\s+/g, " ").trim();
+	if (!flattened) return "(empty)";
+	return flattened.length > VERSION_PREVIEW_MAX
+		? `${flattened.slice(0, VERSION_PREVIEW_MAX)}…`
+		: flattened;
+}
 
-    function previewVersionText(version: VersionState) {
-        const flattened = versionText(version).replace(/\s+/g, " ").trim();
-        if (!flattened) return "(empty)";
-        return flattened.length > VERSION_PREVIEW_MAX
-            ? `${flattened.slice(0, VERSION_PREVIEW_MAX)}…`
-            : flattened;
-    }
+function createRecursiveEditor(version: VersionState) {
+	if (!recursiveEditorHost || recursiveEditor) return;
+	const extensions = getExtensions({
+		persist: false,
+		updateListener(update: ViewUpdate) {
+			if (!recursiveEditor || isSyncingFromAnnotation) return;
+			nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
+				recursiveEditor.state,
+			);
+			upsertVersionState(recursiveEditor);
+		},
+	});
+	// Restore full state (doc + annotations + history) if available,
+	// otherwise create a fresh editor with just the text.
+	const state =
+		"annotationField" in version
+			? EditorState.fromJSON(version, { extensions }, savedFields)
+			: EditorState.create({ doc: versionText(version), extensions });
+	recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
+	nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
+		recursiveEditor.state,
+	);
+}
 
-    function createRecursiveEditor(version: VersionState) {
-        if (!recursiveEditorHost || recursiveEditor) return;
-        const extensions = getExtensions({
-            persist: false,
-            updateListener(update: ViewUpdate) {
-                if (!recursiveEditor || isSyncingFromAnnotation) return;
-                nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
-                upsertVersionState(recursiveEditor);
-            },
-        });
-        // Restore full state (doc + annotations + history) if available,
-        // otherwise create a fresh editor with just the text.
-        const state = "annotationField" in version
-            ? EditorState.fromJSON(version, { extensions }, savedFields)
-            : EditorState.create({ doc: versionText(version), extensions });
-        recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
-        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
-    }
+function destroyRecursiveEditor() {
+	recursiveEditor?.destroy();
+	recursiveEditor = undefined;
+	nestedEditorHasActiveAnnotation = false;
+}
 
-    function destroyRecursiveEditor() {
-        recursiveEditor?.destroy();
-        recursiveEditor = undefined;
-        nestedEditorHasActiveAnnotation = false;
-    }
+function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
+	if (!recursiveEditor || !activeVersion) return;
+	const currentText = recursiveEditor.state.doc.toString();
+	const targetText = activeText;
+	if (currentText === targetText) return;
+	// Save the current editor state back to whichever version we're leaving
+	if (previousVersionId !== undefined) {
+		upsertVersionState(recursiveEditor, previousVersionId);
+	}
+	isSyncingFromAnnotation = true;
+	const extensions = getExtensions({
+		persist: false,
+		updateListener(update: ViewUpdate) {
+			if (!recursiveEditor || isSyncingFromAnnotation) return;
+			upsertVersionState(recursiveEditor);
+		},
+	});
+	const nextState =
+		"annotationField" in activeVersion
+			? EditorState.fromJSON(activeVersion, { extensions }, savedFields)
+			: EditorState.create({ doc: targetText, extensions });
+	recursiveEditor.setState(nextState);
+	isSyncingFromAnnotation = false;
+	nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
+		recursiveEditor.state,
+	);
+}
 
-    function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
-        if (!recursiveEditor || !activeVersion) return;
-        const currentText = recursiveEditor.state.doc.toString();
-        const targetText = activeText;
-        if (currentText === targetText) return;
-        // Save the current editor state back to whichever version we're leaving
-        if (previousVersionId !== undefined) {
-            upsertVersionState(recursiveEditor, previousVersionId);
-        }
-        isSyncingFromAnnotation = true;
-        const extensions = getExtensions({
-            persist: false,
-            updateListener(update: ViewUpdate) {
-                if (!recursiveEditor || isSyncingFromAnnotation) return;
-                upsertVersionState(recursiveEditor);
-            },
-        });
-        const nextState = "annotationField" in activeVersion
-            ? EditorState.fromJSON(activeVersion, { extensions }, savedFields)
-            : EditorState.create({ doc: targetText, extensions });
-        recursiveEditor.setState(nextState);
-        isSyncingFromAnnotation = false;
-        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
-    }
+$effect(() => {
+	if (!isEditorOpen) {
+		destroyRecursiveEditor();
+		return;
+	}
+	tick().then(() => {
+		if (!isEditorOpen || !activeVersion) return;
+		createRecursiveEditor(activeVersion);
+		syncRecursiveEditorToActiveVersion();
+	});
+});
 
-    $effect(() => {
-        if (!isEditorOpen) {
-            destroyRecursiveEditor();
-            return;
-        }
-        tick().then(() => {
-            if (!isEditorOpen || !activeVersion) return;
-            createRecursiveEditor(activeVersion);
-            syncRecursiveEditorToActiveVersion();
-        });
-    });
+$effect(() => {
+	if (!recursiveEditor || !isEditorOpen) return;
+	const prev = previousVersionId;
+	previousVersionId = revision.currentlySelected;
+	syncRecursiveEditorToActiveVersion(
+		prev !== revision.currentlySelected ? prev : undefined,
+	);
+});
 
-    $effect(() => {
-        if (!recursiveEditor || !isEditorOpen) return;
-        const prev = previousVersionId;
-        previousVersionId = revision.currentlySelected;
-        syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined);
-    });
-
-    onDestroy(() => {
-        destroyRecursiveEditor();
-    });
+onDestroy(() => {
+	destroyRecursiveEditor();
+});
 </script>
 
 <div
@@ -257,6 +276,9 @@
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
             onclick={() => {
+                posthog.capture("revision_version_created", {
+                    version_count: revision.versions.length,
+                });
                 view.dispatch(createNewRevision(view.state, revision.id));
                 view.focus();
             }}
