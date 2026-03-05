@@ -22,6 +22,40 @@
     Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
 -->
 <script lang="ts">
+/*
+ * Feedback.svelte
+ *
+ * Editorial feedback AI panel (green theme).
+ *
+ * Renders:
+ *   A "Get feedback" quick-action button, scrollable message list
+ *   with user/assistant bubbles, streaming indicator, and a bottom
+ *   input form with selection-context chip.
+ *
+ * Props: none.
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - $selectedText — toggles quick-action label between
+ *     "Get feedback on selection" / "Get general feedback"; shown
+ *     as a context chip above the input.
+ *   - $documentContent — gates the quick-action button (disabled
+ *     when empty) and displayed as character count.
+ *
+ * Stores written:
+ *   - aiProcessing.active (via setAiProcessing) — true while
+ *     streaming so the sidebar glow activates.
+ *
+ * AI streaming layer:
+ *   Uses createAiChat({ mode: "feedback" }) which provides two
+ *   tool definitions: createComment and createRevision. Tool calls
+ *   are routed through chatFactory.handleToolCall to the annotation
+ *   system, attaching comments/revisions to the CodeMirror editor.
+ *
+ * State machine (chat.status):
+ *   ready -> submitted -> streaming -> ready
+ *                                   \-> error (chat.error set)
+ */
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
@@ -49,6 +83,11 @@ function handleSubmit(event: SubmitEvent) {
 	input = "";
 }
 
+/**
+ * Build a selection-aware feedback prompt and send it as a chat
+ * message. If text is selected, asks for feedback on the selection;
+ * otherwise requests general document feedback.
+ */
 function askForFeedback() {
 	const context = $selectedText
 		? `Please provide feedback on this selected text: "${$selectedText}"`

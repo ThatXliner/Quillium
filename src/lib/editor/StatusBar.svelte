@@ -1,15 +1,42 @@
+<!--
+    StatusBar.svelte — Glassmorphic status strip at the bottom of the editor.
+
+    Displays real-time writing statistics (word count, character count),
+    the current save state, the Save dropdown menu, and a tutorial
+    re-launch button. Floats as a pill-shaped bar with backdrop-blur
+    matching the neumorphic design language.
+
+    Props (from Editor.svelte):
+      - words / chars: total document counts
+      - selWords / selChars: selection-only counts (0 when nothing selected)
+
+    State interactions:
+      - Listens to Tauri "saved" / "saving" events to toggle the
+        save-status indicator between green (saved) and yellow (saving).
+      - Writes `tutorialActive` store when the "?" button is clicked.
+-->
 <script lang="ts">
-import Save from "$lib/save/Save.svelte";
-import { listen } from "@tauri-apps/api/event";
-import { tutorialActive } from "$lib/stores";
-const { words, chars, selWords, selChars } = $props();
-let fileSaved = $state<boolean>(true);
-listen("saved", () => {
-	fileSaved = true;
-});
-listen("saving", () => {
-	fileSaved = false;
-});
+    import Save from "$lib/save/Save.svelte";
+    import { listen } from "@tauri-apps/api/event";
+    import { tutorialActive } from "$lib/stores";
+
+    const { words, chars, selWords, selChars } = $props();
+
+    /**
+     * Tracks whether the current document is persisted to disk.
+     * Toggled by Tauri backend events emitted during the auto-save
+     * cycle: "saving" (write started) and "saved" (write completed).
+     */
+    let fileSaved = $state<boolean>(true);
+
+    // Tauri event listeners — fire whenever the Rust backend starts
+    // or finishes writing the document file.
+    listen("saved", () => {
+        fileSaved = true;
+    });
+    listen("saving", () => {
+        fileSaved = false;
+    });
 </script>
 
 <div

@@ -1,4 +1,39 @@
 <script lang="ts">
+/**
+ * Revision.svelte — Displays a single revision annotation card
+ * with multiple named versions, a nested CodeMirror editor for
+ * editing version content, and actions to create/delete versions
+ * or expand into a full-screen modal.
+ *
+ * Props:
+ *   - revision: Annotation<"revision"> — the annotation data
+ *   - isActive: boolean — whether this card is currently selected
+ *   - view: EditorView — the parent CodeMirror editor
+ *   - remove: () => void — callback to delete this annotation
+ *   - updateThread: (thread: ThreadType) => void — callback to
+ *     replace the thread array
+ *
+ * Events emitted: none (delegates via callbacks and CodeMirror
+ *   dispatch for version state updates)
+ * Stores:
+ *   - revisionBoundaryNudge (read): triggers a hint when the
+ *     user presses delete at the edge of the revision's range
+ *   - revisionOpenNestedEditor (read): triggers opening the modal
+ *     when a nested annotation command fires from inside this
+ *     revision in the main document
+ *   - modalStack (write): pushes a revision modal entry
+ *
+ * Parent: Annotations.svelte
+ * Children: Thread.svelte (for user replies below the revision)
+ *
+ * Local state:
+ *   - isEditorOpen: whether the inline nested editor is visible
+ *   - recursiveEditor: a secondary CodeMirror instance editing
+ *     the active version's content; syncs back to the annotation
+ *     state on every keystroke via upsertVersionState()
+ *   - showBoundaryHint: transient hint shown when the user tries
+ *     to delete at the revision boundary in the main editor
+ */
 import { EditorState } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
@@ -45,6 +80,7 @@ const {
 	updateThread: (thread: ThreadType) => void;
 } = $props();
 
+// Derive thread, active version object, and its text content
 const thread = $derived(revision.thread);
 const activeVersion = $derived(revision.versions[revision.currentlySelected]);
 const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
@@ -53,6 +89,9 @@ const VERSION_PREVIEW_MAX = 34;
 let isEditorOpen = $state(false);
 let userClosedEditor = false; // plain var — not reactive, just a gate
 
+// Auto-open the nested editor when this revision becomes active,
+// unless the user explicitly closed it. Reset the gate when the
+// card loses focus.
 $effect(() => {
 	if (isActive) {
 		if (!userClosedEditor) isEditorOpen = true;
@@ -77,6 +116,8 @@ let previousVersionId = revision.currentlySelected;
 let showBoundaryHint = $state(false);
 let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
 
+// Show a temporary hint when the boundary-nudge store fires
+// for this revision (user pressed delete at the edge).
 $effect(() => {
 	if ($revisionBoundaryNudge === revision.id) {
 		showBoundaryHint = true;
@@ -88,9 +129,10 @@ $effect(() => {
 	}
 });
 
-// When the user triggers a nested annotation command from inside this revision
-// in the main document, open the modal (instead of the inline editor) and
-// pass the command along so the modal runs it once the editor is ready.
+// When the user triggers a nested annotation command from inside
+// this revision in the main document, open the modal (instead of
+// the inline editor) and pass the command along so the modal
+// runs it once the editor is ready.
 $effect(() => {
 	const cmd = $revisionOpenNestedEditor;
 	if (!cmd || cmd.revisionId !== revision.id) return;
@@ -112,6 +154,11 @@ onDestroy(() => {
 	clearTimeout(boundaryHintTimeout);
 });
 
+/**
+ * Serialize the current nested editor state and write it back
+ * to the revision's version slot in the CodeMirror annotation
+ * field, keeping the annotation and editor in sync.
+ */
 function upsertVersionState(
 	currentEditor: EditorView,
 	versionId = revision.currentlySelected,
@@ -122,6 +169,7 @@ function upsertVersionState(
 	);
 }
 
+/** Flatten version text into a short preview string for pills. */
 function previewVersionText(version: VersionState) {
 	const flattened = versionText(version).replace(/\s+/g, " ").trim();
 	if (!flattened) return "(empty)";
@@ -130,6 +178,12 @@ function previewVersionText(version: VersionState) {
 		: flattened;
 }
 
+/**
+ * Mount a new nested CodeMirror editor inside this card,
+ * restoring full state (doc + annotations + history) from the
+ * version blob when available, or creating a fresh editor with
+ * just the text content.
+ */
 function createRecursiveEditor(version: VersionState) {
 	if (!recursiveEditorHost || recursiveEditor) return;
 	const extensions = getExtensions({
@@ -154,12 +208,18 @@ function createRecursiveEditor(version: VersionState) {
 	);
 }
 
+/** Tear down the nested CodeMirror editor and reset state. */
 function destroyRecursiveEditor() {
 	recursiveEditor?.destroy();
 	recursiveEditor = undefined;
 	nestedEditorHasActiveAnnotation = false;
 }
 
+/**
+ * Swap the nested editor's content to match the currently
+ * selected version. Saves the outgoing version's state first
+ * if switching between versions.
+ */
 function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 	if (!recursiveEditor || !activeVersion) return;
 	const currentText = recursiveEditor.state.doc.toString();
@@ -188,6 +248,7 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 	);
 }
 
+// Create or destroy the nested editor when the toggle changes.
 $effect(() => {
 	if (!isEditorOpen) {
 		destroyRecursiveEditor();
@@ -200,6 +261,8 @@ $effect(() => {
 	});
 });
 
+// When the selected version changes while the editor is open,
+// swap the nested editor's content to the new version.
 $effect(() => {
 	if (!recursiveEditor || !isEditorOpen) return;
 	const prev = previousVersionId;

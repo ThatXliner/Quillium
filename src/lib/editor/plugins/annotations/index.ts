@@ -1,3 +1,53 @@
+/**
+ * index.ts — Annotation plugin entry point, commands, and
+ * decorations
+ *
+ * This file wires together the annotation subsystem into a
+ * single CodeMirror extension bundle. It is the public API
+ * surface for the annotation system.
+ *
+ * Role in the annotation subsystem:
+ *   - Re-exports everything from annotationField.ts and
+ *     models.ts so consumers only need to import from here.
+ *   - Defines the keymap (annotationKeymap) for creating
+ *     comments, revisions, and suggestions via keyboard
+ *     shortcuts.
+ *   - Implements ViewPlugins for:
+ *       * annotationDecorations — renders highlight marks
+ *         for comments, revisions, and suggestions (active
+ *         vs inactive styling).
+ *       * revisionAtomicRanges — makes revision ranges
+ *         behave as atomic units for cursor movement.
+ *       * collapsedRevisionResolver — auto-switches or
+ *         removes revisions whose text is fully deleted.
+ *   - Provides public factory functions (createComment,
+ *     createSuggestion, createRevision) used by the AI
+ *     sidebar to programmatically add annotations.
+ *   - Contains inline diff utilities (tokenize, diffTokens)
+ *     and the SuggestionDiffWidget for rendering suggestion
+ *     previews.
+ *
+ * Key dependencies:
+ *   - @codemirror/state for StateCommand, Transaction,
+ *     EditorSelection, RangeSetBuilder, etc.
+ *   - @codemirror/view for Decoration, ViewPlugin,
+ *     WidgetType, keymap.
+ *   - @codemirror/search for SearchCursor (text-based
+ *     annotation targeting).
+ *   - ./annotationField for the StateField and effects.
+ *   - ./models for type definitions and factory helpers.
+ *   - ./utils for cursor query helpers.
+ *   - $lib/stores for nested-editor communication stores.
+ *
+ * Interactions:
+ *   - Editor.svelte imports annotations() to install the
+ *     full extension bundle.
+ *   - AISidebar.svelte calls createComment/createSuggestion/
+ *     createRevision to add AI-generated annotations.
+ *   - Svelte annotation components read annotationField
+ *     (via stores) to render the annotation panel.
+ */
+
 // TODO: since we've refactored, now we can hone in on the issues
 // but first let's make it based on the id
 
@@ -52,6 +102,12 @@ import {
 } from "$lib/stores";
 
 export * from "./annotationField";
+// Detects whether the annotation map changed between the
+// previous and current editor state. Used by ViewPlugins to
+// decide whether to rebuild decorations. Checks both deep
+// equality of the annotation map and the presence of
+// add/remove effects (which may not yet be reflected in the
+// field value during the same update cycle).
 export const annotationsChanged = (update: ViewUpdate) =>
 	!isEqual(
 		update.startState.field(annotationField),
@@ -178,6 +234,17 @@ function redirectToNestedEditor(
 	};
 }
 
+// -------------------------------------------------------
+// revisionAtomicRanges ViewPlugin
+//
+// Makes each revision's text range behave as a single
+// atomic unit for cursor navigation. The cursor jumps over
+// the entire revision range rather than stepping through
+// individual characters. Ranges are rebuilt whenever the
+// document or annotations change.
+//
+// Provides: EditorView.atomicRanges
+// -------------------------------------------------------
 const revisionAtomicRanges = ViewPlugin.fromClass(
 	class {
 		ranges: DecorationSet;
@@ -215,9 +282,23 @@ const revisionAtomicRanges = ViewPlugin.fromClass(
 	},
 );
 
-// When a revision's text is fully deleted (range collapses to from===to),
-// auto-switch to the next available version. If only one version exists,
-// remove the revision entirely.
+// -------------------------------------------------------
+// collapsedRevisionResolver ViewPlugin
+//
+// State monitored: annotationField revisions where
+//   selection.main.from === selection.main.to (collapsed).
+// Trigger: any doc-changing transaction NOT annotated with
+//   allowRevisionDocEdit (which marks intentional version
+//   switches).
+// Downstream effects:
+//   - If the revision has >1 version: dispatches
+//     setActiveRevisionVersion to switch to an adjacent
+//     version, restoring the revision's text.
+//   - If only 1 version: dispatches removeAnnotation to
+//     clean up the empty revision.
+//   - Handles one collapsed revision per update cycle to
+//     avoid stale-state issues from cascading dispatches.
+// -------------------------------------------------------
 const collapsedRevisionResolver = ViewPlugin.fromClass(
 	class {
 		update(update: ViewUpdate) {
@@ -259,7 +340,15 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
 	},
 );
 
-// --- Inline diff helpers ---
+// -------------------------------------------------------
+// Inline diff helpers
+//
+// Used by SuggestionDiffWidget to render a word-level
+// inline diff between the original text and a suggested
+// replacement. tokenize() splits text into word/whitespace
+// tokens, and diffTokens() computes an LCS-based diff
+// producing equal/delete/insert operations.
+// -------------------------------------------------------
 export function tokenize(text: string): string[] {
 	return text.match(/\S+|\s+/g) ?? [];
 }
@@ -349,6 +438,23 @@ class SuggestionDiffWidget extends WidgetType {
 	}
 }
 
+// -------------------------------------------------------
+// annotationDecorations ViewPlugin
+//
+// Builds DecorationSets for all three annotation types
+// (comment, revision, suggestion) and joins them into a
+// single decoration layer. Each annotation's range gets a
+// CSS class mark (e.g. cm-comment, cm-revision), and the
+// "active" annotation (the one under the cursor) gets an
+// additional -active variant class for highlighted styling.
+//
+// Rebuilt on: cursor movement (selectionSet), doc changes,
+// or annotation map changes.
+//
+// Also contains getPreviewDecoration() for rendering
+// inline suggestion diffs via SuggestionDiffWidget, though
+// this is not currently wired into the decoration provider.
+// -------------------------------------------------------
 const annotationDecorations = ViewPlugin.fromClass(
 	class {
 		decorations: DecorationSet;
@@ -463,6 +569,12 @@ const annotationDecorations = ViewPlugin.fromClass(
 		decorations: (v) => v.decorations,
 	},
 );
+// Resolves an annotation target to an EditorSelection.
+// Accepts either an explicit EditorSelection or a targetText
+// string (searched via SearchCursor). Exactly one must be
+// provided. Used by createComment, createSuggestion, and
+// createRevision to support both cursor-based and text-based
+// annotation creation (e.g. from AI suggestions).
 function getSelection({
 	editorSelection,
 	targetText,
@@ -690,6 +802,16 @@ const dev_dontuseinprod_createSuggestion: StateCommand = ({
 	});
 	return true;
 };
+// -------------------------------------------------------
+// Annotation keymap
+//
+// Keybindings are ordered so that higher-priority handlers
+// run first. For example, nudgeBoundary runs before
+// deleteAdjacentRevision on Backspace/Delete, and
+// redirectToNestedEditor runs before the create commands
+// on Mod-Alt-m/k. If the first handler returns false, the
+// next binding for the same key is tried.
+// -------------------------------------------------------
 export const annotationKeymap: KeyBinding[] = [
 	{
 		key: "Backspace",
@@ -729,7 +851,18 @@ export const annotationKeymap: KeyBinding[] = [
 	},
 ];
 
-// Extension
+// -------------------------------------------------------
+// Extension bundle
+//
+// Assembles all annotation-related extensions into a
+// single array for Editor.svelte to install. Order matters:
+//   1. Keymap at high precedence (overrides default keys).
+//   2. annotationField StateField (core state).
+//   3. suggestionPreviewField StateField (preview state).
+//   4. annotationDecorations ViewPlugin (rendering).
+//   5. collapsedRevisionResolver ViewPlugin (auto-cleanup).
+//   6. invertedAnnotationFieldEffects (undo/redo support).
+// -------------------------------------------------------
 export const annotations = () => [
 	Prec.high(keymap.of(annotationKeymap)),
 	annotationField,

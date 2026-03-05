@@ -24,6 +24,40 @@
     aiSettings), clientStreams.ts (generateContext).
 -->
 <script lang="ts">
+    /*
+     * DocumentContext.svelte
+     *
+     * Writer's document-context metadata editor panel (amber theme).
+     *
+     * Renders:
+     *   A prompt textarea for AI-powered context generation, a
+     *   "Generate context" button, and a grid of manually editable
+     *   metadata fields (goal, tone, audience, emphasize, avoid,
+     *   notes).
+     *
+     * Props: none.
+     * Events: none dispatched.
+     *
+     * Stores read:
+     *   - aiSettings (settings.svelte.ts) — provider, model, and
+     *     apiKey used for the generateContext API call. apiKey also
+     *     gates the generate button (disabled when empty).
+     *
+     * Stores written:
+     *   - documentContext (settings.svelte.ts) — each field is
+     *     bound to a textarea. Persisted to localStorage via
+     *     saveDocumentContext on blur and after AI generation.
+     *
+     * AI interaction:
+     *   Uses generateContext (clientStreams.ts) — a non-streaming
+     *   API call that returns structured field values. This is NOT
+     *   the streaming chat layer; it's a one-shot request.
+     *
+     * Async state (generate function):
+     *   idle -> generating (API in flight) -> idle
+     *   On success: fields written via applyGeneratedContext.
+     *   On failure: generateError set for display.
+     */
     import { SparklesIcon } from "lucide-svelte";
     import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
     import { generateContext } from "$lib/ai/clientStreams";

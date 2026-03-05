@@ -127,6 +127,11 @@ $effect(() => {
 		});
 });
 
+/**
+ * Switch LLM provider: update local + global state, persist to
+ * localStorage, reset model to the provider's first option, and
+ * re-fetch the API key from the system keychain.
+ */
 function selectProvider(id: Provider) {
 	selectedProvider = id;
 	localStorage.setItem(PROVIDER_KEY, id);
@@ -153,6 +158,11 @@ function selectModel(id: string) {
 
 let saveError = $state("");
 
+/**
+ * Persist the API key to the system keychain (or delete it if
+ * cleared). Updates saveStatus for the button label animation:
+ * idle -> saved|error -> idle (after 3s timeout).
+ */
 async function saveApiKey() {
 	clearTimeout(saveTimer);
 	saveError = "";

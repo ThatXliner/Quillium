@@ -1,29 +1,62 @@
+<!--
+    Tutorial.svelte — Full-screen guided tour overlay.
+
+    Renders a semi-transparent backdrop with an SVG spotlight mask
+    that highlights one UI element at a time, alongside a floating
+    tooltip card with step content and navigation controls.
+
+    Lifecycle:
+      1. On mount, the overlay fades in and the first step's target
+         element is spotlighted.
+      2. The user navigates forward/back through the step list defined
+         in ./steps.ts. Each step change triggers repositioning of the
+         spotlight and tooltip via the `$effect` on `step`.
+      3. On completion (or skip), the component persists a
+         "quillium_tutorial_seen" flag to localStorage, fires a PostHog
+         analytics event, sets `tutorialActive = false`, and calls the
+         parent's `onComplete` callback.
+
+    State interactions:
+      - Writes `tutorialActive` (store) to false on complete/skip.
+      - Reads `steps` from ./steps.ts for step content and selectors.
+      - Fires PostHog events: "tutorial_completed" / "tutorial_skipped".
+-->
 <script lang="ts">
-import { onMount } from "svelte";
-import { tutorialActive } from "$lib/stores";
-import { steps } from "./steps";
-import posthog from "posthog-js";
+    import { onMount } from "svelte";
+    import { tutorialActive } from "$lib/stores";
+    import { steps } from "./steps";
+    import posthog from "posthog-js";
 
-const { onComplete }: { onComplete: () => void } = $props();
+    const { onComplete }: { onComplete: () => void } = $props();
 
-let stepIndex = $state(0);
-let spotlightRect = $state<DOMRect | null>(null);
-let tooltipStyle = $state(
-	"top: 50%; left: 50%; transform: translate(-50%, -50%);",
-);
-let visible = $state(false);
+    // ── Local UI state ───────────────────────────────────────────
+    let stepIndex = $state(0);
+    let spotlightRect = $state<DOMRect | null>(null);
+    let tooltipStyle = $state(
+        "top: 50%; left: 50%; transform: translate(-50%, -50%);",
+    );
+    let visible = $state(false);
 
-const step = $derived(steps[stepIndex]);
-const isFirst = $derived(stepIndex === 0);
-const isLast = $derived(stepIndex === steps.length - 1);
+    // ── Derived values from step index ───────────────────────────
+    const step = $derived(steps[stepIndex]);
+    const isFirst = $derived(stepIndex === 0);
+    const isLast = $derived(stepIndex === steps.length - 1);
 
-function getTargetRect(selector: string | null): DOMRect | null {
-	if (!selector) return null;
-	const el = document.querySelector(selector);
-	return el ? el.getBoundingClientRect() : null;
-}
+    /** Resolve a CSS selector to a bounding rect, or null if
+     *  no selector is given or the element isn't in the DOM. */
+    function getTargetRect(
+        selector: string | null,
+    ): DOMRect | null {
+        if (!selector) return null;
+        const el = document.querySelector(selector);
+        return el ? el.getBoundingClientRect() : null;
+    }
 
-function positionTooltip() {
+    /**
+     * Recompute spotlight rect and tooltip position for the
+     * current step. Called on every step change and on mount.
+     */
+    function positionTooltip() {
 	const rect = getTargetRect(step.selector);
 	spotlightRect = rect;
 
@@ -78,16 +111,22 @@ function positionTooltip() {
 	tooltipStyle = `top: ${top}px; left: ${left}px; transition: top 220ms ease, left 220ms ease;`;
 }
 
-function advance() {
-	if (isLast) complete();
-	else stepIndex++;
-}
+    /** Move to the next step, or finish the tour on the last step. */
+    function advance() {
+        if (isLast) complete();
+        else stepIndex++;
+    }
 
-function back() {
-	if (!isFirst) stepIndex--;
-}
+    /** Move to the previous step (no-op on the first step). */
+    function back() {
+        if (!isFirst) stepIndex--;
+    }
 
-function complete(skipped = false) {
+    /**
+     * End the tutorial — persist the "seen" flag, fire analytics,
+     * hide the overlay, and notify the parent via onComplete.
+     */
+    function complete(skipped = false) {
 	visible = false;
 	localStorage.setItem("quillium_tutorial_seen", "true");
 	if (skipped) {
@@ -102,15 +141,17 @@ function complete(skipped = false) {
 	onComplete();
 }
 
-$effect(() => {
-	void step;
-	positionTooltip();
-});
+    // Reposition spotlight + tooltip whenever the active step changes.
+    $effect(() => {
+        void step;
+        positionTooltip();
+    });
 
-onMount(() => {
-	visible = true;
-	positionTooltip();
-});
+    // On mount, reveal the overlay and position the first step.
+    onMount(() => {
+        visible = true;
+        positionTooltip();
+    });
 </script>
 
 {#if visible}

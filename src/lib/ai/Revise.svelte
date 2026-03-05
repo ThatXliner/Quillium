@@ -25,6 +25,41 @@
     Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
 -->
 <script lang="ts">
+/*
+ * Revise.svelte
+ *
+ * Text revision AI panel (purple theme).
+ *
+ * Renders:
+ *   A "Revise" quick-action button, a grid of quick-prompt chips
+ *   for common revision tasks, scrollable message list with
+ *   user/assistant bubbles, streaming indicator, and a bottom
+ *   input form with selection-context chip.
+ *
+ * Props: none.
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - $selectedText — toggles quick-action label and scopes
+ *     quick prompts to "this selected text" vs "my document".
+ *   - $documentContent — gates action buttons (disabled when empty)
+ *     and displayed as character count.
+ *
+ * Stores written:
+ *   - aiProcessing.active (via setAiProcessing) — true while
+ *     streaming so the sidebar glow activates.
+ *
+ * AI streaming layer:
+ *   Uses createAiChat({ mode: "revise" }) which provides two
+ *   tool definitions: createSuggestion (proposes rewritten
+ *   versions with optional rationale) and createComment (adds
+ *   explanatory notes). Tool calls are routed through
+ *   chatFactory.handleToolCall to the annotation system.
+ *
+ * State machine (chat.status):
+ *   ready -> submitted -> streaming -> ready
+ *                                   \-> error (chat.error set)
+ */
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
@@ -52,6 +87,11 @@ function handleSubmit(event: SubmitEvent) {
 	input = "";
 }
 
+/**
+ * Build a selection-aware revision prompt and send it as a chat
+ * message. If text is selected, targets the selection; otherwise
+ * targets the whole document.
+ */
 function reviseText() {
 	const context = $selectedText
 		? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
@@ -73,6 +113,10 @@ const quickPrompts = [
 	"Simplify complex sentences",
 ];
 
+/**
+ * Compose a revision message from a quick-prompt chip, scoped to
+ * the current selection or the full document, then send it.
+ */
 function useQuickPrompt(prompt: string) {
 	const target = $selectedText ? "this selected text" : "my document";
 	const message = `${prompt} in ${target}`;

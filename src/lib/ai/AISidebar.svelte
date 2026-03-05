@@ -26,6 +26,36 @@
     components; aiProcessing from settings.svelte.ts; posthog analytics.
 -->
 <script lang="ts">
+/*
+ * AISidebar.svelte
+ *
+ * Top-level container and tab router for all AI feature panels.
+ *
+ * Renders:
+ *   A fixed, resizable sidebar anchored to the left viewport edge.
+ *   Two visual states: collapsed pill (icon buttons) and expanded
+ *   panel (icon tabs + active sub-panel).
+ *
+ * Props: none (standalone root component).
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - aiProcessing.active (settings.svelte.ts) — drives the rainbow
+ *     glow animation while any AI request is in flight.
+ *
+ * Stores written: none.
+ *
+ * Children: Chat, Feedback, Revise, DocumentContext, AISettings.
+ *   All five sub-panels are mounted eagerly and toggled via CSS
+ *   visibility to avoid re-mount jank on tab switches.
+ *
+ * Resize system:
+ *   - `startResize` attaches window-level mousemove/mouseup listeners.
+ *   - `onResizeMove` clamps deltas to [MIN, MAX] width/height.
+ *   - `onResizeEnd` cleans up listeners and resets cursor overrides.
+ *   - `isResizing` disables CSS transitions so the panel tracks the
+ *     cursor without animation lag.
+ */
 import { tick } from "svelte";
 import Chat from "./Chat.svelte";
 import Feedback from "./Feedback.svelte";
