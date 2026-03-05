@@ -1,7 +1,7 @@
 <script lang="ts">
 /**
  * Comment.svelte — Displays a single comment annotation card with
- * its message thread, reply input, and AI suggestion action.
+ * its message thread and AI suggestion action.
  *
  * Props:
  *   - comment: Annotation<"comment"> — the annotation data
@@ -15,11 +15,11 @@
  * Stores: none (reads aiSettings for AI provider config)
  *
  * Parent: Annotations.svelte
- * Children: none (renders thread messages inline)
+ * Children: Thread.svelte (handles message list, reply input, AI suggest)
  *
- * Behaviour: when collapsed (!isActive), only the first message
- * is shown with a reply count. When active, the full thread plus
- * a reply input and "Suggest" button are visible.
+ * Behaviour: when collapsed (!isActive), Thread renders only the first
+ * message. When active, the full thread, reply input, and "Suggest"
+ * button are visible.
  */
     import { Trash2 } from "lucide-svelte";
     import { streamChat } from "$lib/ai/clientStreams";
@@ -49,23 +49,6 @@ const thread = $derived(comment.thread);
 const selectedText = $derived(
 	view.state.sliceDoc(comment.selection.main.from, comment.selection.main.to),
 );
-
-let newMessage = $state("");
-let inputEl: HTMLInputElement;
-
-/** Append the user's reply to the thread and clear the input. */
-function save() {
-	if (!newMessage.trim()) return;
-	posthog.capture("comment_reply_sent", {
-		thread_length: thread.length,
-		reply_length: newMessage.trim().length,
-	});
-	updateThread([
-		...thread,
-		{ message: newMessage, author: "User", time: Date.now() },
-	]);
-	newMessage = "";
-}
 
 /**
  * Build an AI prompt from the thread + selected text, stream
@@ -160,31 +143,6 @@ async function streamAiResponse(prompt: string): Promise<string> {
 	return aiResponse;
 }
 
-/** Extract up to 2-character initials from an author name. */
-function initials(author: string) {
-	return author
-		.split(" ")
-		.map((w) => w[0])
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
-}
-
-/** Format a timestamp into a relative or short absolute string. */
-function formatTime(ts: number) {
-	const d = new Date(ts);
-	const now = new Date();
-	const diffMs = now.getTime() - d.getTime();
-	const diffMins = Math.floor(diffMs / 60000);
-	if (diffMins < 1) return "just now";
-	if (diffMins < 60) return `${diffMins}m ago`;
-	const diffHours = Math.floor(diffMins / 60);
-	if (diffHours < 24) return `${diffHours}h ago`;
-	return new Intl.DateTimeFormat("default", {
-		month: "short",
-		day: "numeric",
-	}).format(d);
-}
 </script>
 
 <div

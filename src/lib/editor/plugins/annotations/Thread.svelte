@@ -1,11 +1,17 @@
 <script lang="ts">
     /**
-     * Thread.svelte — Renders a vertical list of ThreadMessage cards.
+     * Thread.svelte — Renders a message list, reply textarea, and optional
+     * AI suggest button for a comment/revision/suggestion thread.
      *
      * Props:
-     *   - thread: Thread — array of ThreadMessage objects to display
+     *   - thread: Thread — array of messages to display
      *   - updateThread: (thread: Thread) => void — callback to replace
-     *     the entire thread array (used by child ThreadMessage on edit)
+     *     the entire thread array (used on reply send or AI response)
+     *   - previewOnly?: boolean — when true, shows only the first message
+     *     and hides the reply input (collapsed card state)
+     *   - onAiSuggest?: () => void — when provided, renders the AI
+     *     suggest button in the reply footer
+     *   - accentClass?: string — Tailwind classes for the Send button color
      *
      * Events emitted: none (delegates mutation via updateThread callback)
      * Stores: none
