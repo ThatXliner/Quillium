@@ -30,14 +30,17 @@
         previewOnly = false,
         // When provided, renders the AI suggest button in the reply footer
         onAiSuggest = undefined,
-        // Accent colour class for the Send button and focus ring; defaults to blue
+        // Accent colour class for the Send button; defaults to blue
         accentClass = "text-blue-600/80 hover:text-blue-700",
+        // Focus ring colour class applied to the reply box wrapper
+        focusRingClass = "focus-within:ring-blue-300/50",
     }: {
         thread: ThreadType;
         updateThread: (thread: ThreadType) => void;
         previewOnly?: boolean;
         onAiSuggest?: (() => void) | undefined;
         accentClass?: string;
+        focusRingClass?: string;
     } = $props();
 
     let newMessage = $state("");
@@ -77,7 +80,8 @@
 
 <!-- Reply input — hidden in previewOnly mode -->
 {#if !previewOnly}
-    <div class="mt-3 rounded-[10px] bg-white/40 inset-shadow-sm inset-shadow-white overflow-hidden">
+    <div class="mt-3 rounded-[10px] bg-white/40 inset-shadow-sm inset-shadow-white overflow-hidden
+        ring-1 ring-transparent focus-within:ring-2 {focusRingClass} transition-shadow">
         <textarea
             bind:value={newMessage}
             placeholder="Reply…"

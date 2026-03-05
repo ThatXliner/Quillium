@@ -449,6 +449,7 @@
             thread={revisionThread}
             updateThread={dispatchUpdateThread}
             accentClass="text-purple-600/80 hover:text-purple-700"
+            focusRingClass="focus-within:ring-purple-300/50"
           />
         </div>
       </div>
