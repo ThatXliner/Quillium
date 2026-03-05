@@ -1,3 +1,22 @@
+<!--
+    Chat.svelte — Free-form conversational AI panel (blue theme).
+
+    Provides a simple chat interface where the writer can ask questions
+    about their document. Uses the "chat" mode stream which has no tool
+    definitions — the LLM responds with plain text only.
+
+    State machine (driven by `chat.status` from @ai-sdk/svelte Chat):
+      ready     — user can type and submit.
+      submitted — message sent, waiting for first token.
+      streaming — tokens arriving, "Thinking..." indicator shown.
+      error     — request failed, error message displayed.
+
+    The `$effect` block syncs `chat.status` to `aiProcessing.active`
+    so the sidebar glow activates during requests.
+
+    Dependencies: chatFactory (createAiChat), utils (renderMarkdown),
+    stores (selectedText, documentContent), posthog.
+-->
 <script lang="ts">
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
@@ -7,6 +26,9 @@ import posthog from "posthog-js";
 let input = $state("");
 const { chat, clearChat } = createAiChat({ mode: "chat" });
 
+// Sync streaming state to the global AI processing indicator
+// so the sidebar glow activates during chat requests.
+// States: ready -> submitted -> streaming -> ready (or error).
 $effect(() => {
 	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });

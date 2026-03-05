@@ -1,4 +1,25 @@
 <script lang="ts">
+/**
+ * PreComment.svelte — Inline "new comment" composer shown when
+ * the user has created a comment annotation but hasn't typed a
+ * message yet (thread is empty).
+ *
+ * Props:
+ *   - view: EditorView — the CodeMirror editor instance
+ *   - annotationsData: Annotations — current annotation map
+ *   - activeAnnotationData?: GenericAnnotation — the annotation
+ *     that is currently selected (should be the pending comment)
+ *
+ * Events emitted: none (dispatches CodeMirror effects directly)
+ * Stores: none (receives data via props from Annotations.svelte)
+ *
+ * Parent: Annotations.svelte
+ * Children: none
+ *
+ * Behaviour: auto-focuses the textarea when a pending comment
+ * exists, and dispatches updateThread or removeAnnotation effects
+ * on submit / cancel.
+ */
 import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
 import { updateThread, removeAnnotation } from "./annotationField";
@@ -23,12 +44,14 @@ const {
 let commentText = $state("");
 let textarea = $state<HTMLTextAreaElement | undefined>();
 
+// Auto-focus the textarea when a pending (unsaved) comment exists
 $effect(() => {
 	if (!canCreateNewComment(annotationsData)) {
 		tick().then(() => textarea?.focus());
 	}
 });
 
+// Derive the highlighted text range the pending comment refers to
 const selectedText = $derived(
 	activeAnnotationData
 		? view.state.sliceDoc(
@@ -38,6 +61,10 @@ const selectedText = $derived(
 		: "",
 );
 
+/**
+ * Commit the new comment: append the user's message to the
+ * annotation's thread via a CodeMirror updateThread effect.
+ */
 function addComment() {
 	if (
 		!activeAnnotationData ||
@@ -68,6 +95,10 @@ function addComment() {
 	commentText = "";
 }
 
+/**
+ * Discard the pending comment by removing its annotation from
+ * the CodeMirror state entirely.
+ */
 function cancelComment() {
 	if (
 		!activeAnnotationData ||

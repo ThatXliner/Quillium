@@ -1,3 +1,23 @@
+<!--
+    +page.svelte — Three-panel layout orchestrator and overlay host.
+
+    This is the sole route in the SvelteKit app (static SPA for Tauri).
+    It assembles the three main panels:
+      1. <AiSidebar />    — left panel (AI writing assistant)
+      2. <Editor />        — center panel (CodeMirror document)
+      3. Annotations panel — rendered inside Editor.svelte
+
+    It also hosts two overlay layers:
+      - The tutorial overlay (shown on first visit or via "?" button)
+      - The modal stack (nested revision/diff modals, rendered from
+        the global `modalStack` store)
+
+    State interactions:
+      - Reads `tutorialActive` to conditionally show <Tutorial>.
+      - Reads `modalStack` to render the stack of revision/diff modals.
+      - Writes `tutorialActive = true` on mount if the user hasn't
+        completed the tutorial (checked via localStorage).
+-->
 <script lang="ts">
     import { onMount } from "svelte";
     import Editor from "$lib/editor/Editor.svelte";
@@ -7,11 +27,14 @@
     import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
     import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 
-    onMount(() => {
+    /** Show the tutorial on first visit if the user hasn't seen it. */
+    function showTutorialOnFirstVisit() {
         if (!localStorage.getItem("quillium_tutorial_seen")) {
             $tutorialActive = true;
         }
-    });
+    }
+
+    onMount(showTutorialOnFirstVisit);
 </script>
 
 <AiSidebar />
@@ -20,10 +43,17 @@
     <Editor />
 </div>
 
+<!-- Tutorial overlay — rendered when tutorialActive store is true -->
 {#if $tutorialActive}
     <Tutorial onComplete={() => {}} />
 {/if}
 
+<!--
+    Modal stack — renders nested revision/diff overlays.
+    Each entry in the modalStack store becomes a DiffModal or
+    RevisionModal. The stack supports arbitrary nesting depth
+    (revisions inside revisions).
+-->
 {#each $modalStack as entry, i (entry)}
     {#if entry.type === "diff"}
         <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />

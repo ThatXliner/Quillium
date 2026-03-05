@@ -1,4 +1,26 @@
 <script lang="ts">
+/**
+ * Comment.svelte — Displays a single comment annotation card with
+ * its message thread, reply input, and AI suggestion action.
+ *
+ * Props:
+ *   - comment: Annotation<"comment"> — the annotation data
+ *   - isActive: boolean — whether this comment is currently selected
+ *   - view: EditorView — the parent CodeMirror editor
+ *   - removeComment: () => void — callback to delete this annotation
+ *   - updateThread: (thread: ThreadType) => void — callback to
+ *     replace the thread array (appends reply or AI response)
+ *
+ * Events emitted: none (delegates via callbacks)
+ * Stores: none (reads aiSettings for AI provider config)
+ *
+ * Parent: Annotations.svelte
+ * Children: none (renders thread messages inline)
+ *
+ * Behaviour: when collapsed (!isActive), only the first message
+ * is shown with a reply count. When active, the full thread plus
+ * a reply input and "Suggest" button are visible.
+ */
 import { SparklesIcon, Trash2 } from "lucide-svelte";
 import { streamChat } from "$lib/ai/clientStreams";
 import { aiSettings } from "$lib/ai/settings.svelte";
@@ -20,6 +42,7 @@ const {
 	updateThread: (thread: ThreadType) => void;
 } = $props();
 
+// Derive thread and selected text from the annotation data
 const thread = $derived(comment.thread);
 
 const selectedText = $derived(
@@ -29,6 +52,7 @@ const selectedText = $derived(
 let newMessage = $state("");
 let inputEl: HTMLInputElement;
 
+/** Append the user's reply to the thread and clear the input. */
 function save() {
 	if (!newMessage.trim()) return;
 	posthog.capture("comment_reply_sent", {
@@ -42,11 +66,41 @@ function save() {
 	newMessage = "";
 }
 
+/**
+ * Build an AI prompt from the thread + selected text, stream
+ * the response, and append it as an "AI" message in the thread.
+ */
 async function aiSuggestion() {
 	posthog.capture("comment_ai_suggestion_requested", {
 		thread_length: thread.length,
 		has_selection: !!selectedText,
 	});
+	const prompt = buildAiPrompt();
+
+	try {
+		const aiResponse = await streamAiResponse(prompt);
+		updateThread([
+			...thread,
+			{ message: aiResponse, author: "AI", time: Date.now() },
+		]);
+	} catch {
+		updateThread([
+			...thread,
+			{
+				message:
+					"Sorry, I encountered an error generating a suggestion.",
+				author: "AI",
+				time: Date.now(),
+			},
+		]);
+	}
+}
+
+/**
+ * Construct the prompt string sent to the AI, including the
+ * thread messages and the document text the comment refers to.
+ */
+function buildAiPrompt(): string {
 	let prompt = "Provide suggestions based on the following";
 	if (thread.length === 1) {
 		prompt += " comment:\n";
@@ -68,51 +122,44 @@ async function aiSuggestion() {
 	prompt += selectedText;
 	prompt += "```\n";
 	prompt += "Be concise.";
-
-	try {
-		const stream = streamChat({
-			messages: [
-				{
-					id: "1",
-					role: "user",
-					parts: [{ type: "text", text: prompt }],
-				},
-			],
-			documentContent: "",
-			selectedText,
-			provider: aiSettings.provider,
-			model: aiSettings.model,
-			apiKey: aiSettings.apiKey,
-		});
-
-		const reader = stream.getReader();
-		let aiResponse = "";
-
-		while (true) {
-			const { value, done } = await reader.read();
-			if (done) break;
-			if (value?.type === "text-delta") {
-				aiResponse += value.delta;
-			}
-		}
-
-		updateThread([
-			...thread,
-			{ message: aiResponse, author: "AI", time: Date.now() },
-		]);
-	} catch {
-		updateThread([
-			...thread,
-			{
-				message:
-					"Sorry, I encountered an error generating a suggestion.",
-				author: "AI",
-				time: Date.now(),
-			},
-		]);
-	}
+	return prompt;
 }
 
+/**
+ * Open a streaming chat connection and collect the full AI
+ * text-delta response into a single string.
+ */
+async function streamAiResponse(prompt: string): Promise<string> {
+	const stream = streamChat({
+		messages: [
+			{
+				id: "1",
+				role: "user",
+				parts: [{ type: "text", text: prompt }],
+			},
+		],
+		documentContent: "",
+		selectedText,
+		provider: aiSettings.provider,
+		model: aiSettings.model,
+		apiKey: aiSettings.apiKey,
+	});
+
+	const reader = stream.getReader();
+	let aiResponse = "";
+
+	while (true) {
+		const { value, done } = await reader.read();
+		if (done) break;
+		if (value?.type === "text-delta") {
+			aiResponse += value.delta;
+		}
+	}
+
+	return aiResponse;
+}
+
+/** Extract up to 2-character initials from an author name. */
 function initials(author: string) {
 	return author
 		.split(" ")
@@ -122,6 +169,7 @@ function initials(author: string) {
 		.slice(0, 2);
 }
 
+/** Format a timestamp into a relative or short absolute string. */
 function formatTime(ts: number) {
 	const d = new Date(ts);
 	const now = new Date();

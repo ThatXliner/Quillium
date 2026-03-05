@@ -1,3 +1,26 @@
+<!--
+    Feedback.svelte — Editorial feedback AI panel (green theme).
+
+    Provides high-level editorial feedback on the writer's document.
+    Uses the "feedback" mode stream which includes two tools:
+      - createComment: flags a specific passage with editorial notes.
+      - createRevision: proposes 2-3 alternative versions of a passage.
+
+    These tool calls are routed through chatFactory.handleToolCall to
+    the annotation system, which attaches comments/revisions directly
+    to the CodeMirror editor.
+
+    Features a "Get feedback" quick-action button that auto-generates
+    a prompt based on whether text is selected or not.
+
+    State machine (driven by `chat.status`):
+      ready     — user can submit or click quick action.
+      submitted — waiting for first token.
+      streaming — tokens arriving, "Analyzing..." indicator shown.
+      error     — implicit (chat.error set).
+
+    Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
+-->
 <script lang="ts">
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
@@ -8,6 +31,8 @@ let input = $state("");
 
 const { chat, clearChat } = createAiChat({ mode: "feedback" });
 
+// Sync streaming state to the global AI processing indicator.
+// States: ready -> submitted -> streaming -> ready (or error).
 $effect(() => {
 	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });

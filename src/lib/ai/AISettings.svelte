@@ -1,3 +1,31 @@
+<!--
+    AISettings.svelte — Provider, model, and API key configuration panel.
+
+    This component lets the writer choose their LLM provider (OpenAI,
+    Anthropic, Google), select a model, and manage their API key. It
+    writes directly to the global `aiSettings` reactive object in
+    settings.svelte.ts, which is read by chatFactory.ts at send-time.
+
+    API key lifecycle:
+      - On mount / provider switch: loaded from the system keychain via
+        Tauri's `get_api_key` command (the `$effect` block).
+      - On save: stored to the keychain via `set_api_key`, or deleted
+        via `delete_api_key` if the field is cleared.
+
+    State variables:
+      `selectedProvider` — current provider, synced to localStorage.
+      `selectedModel`    — current model ID, synced to localStorage.
+      `apiKey`           — local copy of the key (reactive input bind).
+      `keyLoading`       — true while fetching the key from keychain.
+      `showKey`          — toggle password/text visibility.
+      `saveStatus`       — idle | saved | error (controls button label).
+
+    The `$effect` block watches `selectedProvider` and re-fetches the
+    API key from the keychain whenever the provider changes.
+
+    Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
+    provider.ts (Provider type), Tauri invoke API, posthog.
+-->
 <script lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { EyeIcon, EyeOffIcon, CheckIcon } from "lucide-svelte";

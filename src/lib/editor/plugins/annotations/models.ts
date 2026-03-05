@@ -1,3 +1,30 @@
+/**
+ * models.ts — Annotation data model definitions
+ *
+ * This file defines the core data types for the annotation
+ * subsystem: comments, suggestions, and revisions. All types
+ * are plain objects (not classes) to remain JSON-serializable
+ * for CodeMirror StateField persistence.
+ *
+ * Role in the annotation subsystem:
+ *   - Provides the canonical type definitions consumed by
+ *     annotationField.ts (state), utils.ts (queries), and
+ *     index.ts (commands/decorations).
+ *   - Exports factory helpers (createNewAnnotation, clone)
+ *     and type guards (isAnnotationOfType) used across the
+ *     subsystem.
+ *
+ * Key dependencies:
+ *   - @codemirror/state (EditorSelection) for range data.
+ *
+ * Interactions:
+ *   - annotationField.ts stores Annotations (a map of these
+ *     types) inside a CodeMirror StateField.
+ *   - utils.ts queries annotations by cursor position.
+ *   - index.ts dispatches effects that create/mutate these
+ *     types.
+ */
+
 // Ok so I know this looks like I'm really trying to not use classes
 // but the reason why we're using this is because it needs to be JSON serializable
 // If we can use classes but also JSON serializable, we should do that instead

@@ -1,3 +1,29 @@
+<!--
+    Revise.svelte — Text revision AI panel (purple theme).
+
+    Provides targeted rewriting and revision suggestions. Uses the
+    "revise" mode stream which includes two tools:
+      - createSuggestion: proposes one or more rewritten versions of a
+        passage, each with an optional rationale.
+      - createComment: adds an explanatory note about the revision.
+
+    These tool calls are routed through chatFactory.handleToolCall to
+    the annotation system, which attaches inline suggestions/comments
+    to the CodeMirror editor.
+
+    Features:
+      - "Revise" quick-action button (selection-aware).
+      - Quick-prompt grid for common revision tasks (conciseness, flow,
+        grammar, etc.).
+
+    State machine (driven by `chat.status`):
+      ready     — user can submit or click a quick action.
+      submitted — waiting for first token.
+      streaming — tokens arriving, "Revising..." indicator shown.
+      error     — implicit (chat.error set).
+
+    Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
+-->
 <script lang="ts">
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
@@ -8,6 +34,8 @@ let input = $state("");
 
 const { chat, clearChat } = createAiChat({ mode: "revise" });
 
+// Sync streaming state to the global AI processing indicator.
+// States: ready -> submitted -> streaming -> ready (or error).
 $effect(() => {
 	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });

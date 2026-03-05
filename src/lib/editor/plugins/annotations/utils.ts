@@ -1,3 +1,35 @@
+/**
+ * utils.ts — Annotation query and range-mapping utilities
+ *
+ * This file provides pure helper functions for querying and
+ * transforming annotation data. It contains no state
+ * definitions or side effects.
+ *
+ * Role in the annotation subsystem:
+ *   - Supplies range-mapping logic (mapRange, cleanRangesOf)
+ *     used by annotationField.ts to keep annotation positions
+ *     in sync as the document changes.
+ *   - Provides cursor-based queries (getActiveAnnotation,
+ *     positionIntersects) used by index.ts to determine which
+ *     annotation the user is interacting with.
+ *   - Guards annotation creation (canCreateNewComment) to
+ *     enforce single-pending-comment constraints.
+ *
+ * Key dependencies:
+ *   - @codemirror/state for EditorSelection, SelectionRange,
+ *     ChangeDesc, EditorState.
+ *   - ./models for type definitions and type guards.
+ *   - ./annotationField for reading the annotation StateField.
+ *
+ * Interactions:
+ *   - annotationField.ts calls mapRange and cleanRangesOf
+ *     inside the StateField reducer to remap annotation
+ *     selections on every transaction.
+ *   - index.ts calls getActiveAnnotation to resolve the
+ *     annotation under the cursor for decoration and command
+ *     logic.
+ */
+
 import {
   ChangeDesc,
   EditorSelection,
@@ -13,6 +45,11 @@ import {
 } from "./models";
 import { annotationField } from "./annotationField";
 
+// Filters out collapsed (zero-width) ranges from a selection.
+// Returns null if no non-empty ranges remain, which signals
+// to the caller that the annotation should be removed.
+// Revisions set allowEmpty=true so they survive even when
+// their text is fully deleted (they can switch versions).
 export function cleanRangesOf(
     selection: EditorSelection,
     allowEmpty: boolean = false,
@@ -40,6 +77,13 @@ export function positionIntersects(
 ) {
   return selection.from <= position && position <= selection.to;
 }
+// Resolves the "active" annotation — the one the cursor is
+// currently inside. When multiple annotations overlap, the
+// narrowest range wins (sorted by ascending span width).
+// Pending annotations (empty thread for comments, empty
+// versions for revisions) are returned immediately since they
+// need user attention regardless of cursor position.
+// Optionally filters by annotation type.
 export function getActiveAnnotation<T extends AnnotationType>(
   state: EditorState,
   type: T,
@@ -139,6 +183,9 @@ export function getActiveAnnotation<T extends AnnotationType>(
 //     ?.map((x) => x.associatedAnnotation);
 // }
 
+// Returns true if a new comment can be created. Enforces
+// that at most one "pending" comment (thread.length === 0)
+// exists at a time, preventing orphaned comment highlights.
 export function canCreateNewComment(annotations: Annotations) {
   return (
     Object.values(annotations).length === 0 ||
@@ -149,6 +196,11 @@ export function canCreateNewComment(annotations: Annotations) {
     )
   );
 }
+// Maps an annotation's selection through a document change.
+// Used as the `map` callback for StateEffect.define so that
+// effects in the undo history stay positionally accurate.
+// Returns undefined if the annotation's range was fully
+// consumed by the change (which removes it from state).
 export function mapRange(range: GenericAnnotation, change: ChangeDesc) {
     const allowEmpty = isAnnotationOfType(range, "revision");
     let newRanges = cleanRangesOf(

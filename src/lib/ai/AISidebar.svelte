@@ -1,3 +1,30 @@
+<!--
+    AISidebar.svelte — Top-level container for all AI features.
+
+    This component renders a floating, resizable sidebar anchored to the
+    left edge of the viewport. It acts as a shell/router for the five AI
+    panels: Chat, Feedback, Revise, DocumentContext, and AISettings.
+
+    UI states:
+      - Collapsed (pill): a narrow vertical strip of icon buttons.
+      - Expanded: a resizable panel showing the active sub-panel with a
+        header row of icon tabs, title bar, and close/settings controls.
+
+    State variables:
+      `action`         — which panel is active (null = collapsed).
+      `customWidth/Height` — user-resized dimensions (null = defaults).
+      `isResizing`     — true during a drag-resize (disables CSS
+                         transitions so the panel tracks the cursor).
+
+    The sidebar reads `aiProcessing.active` from settings.svelte.ts to
+    show a rainbow glow animation while any AI request is in flight.
+
+    All five sub-panels are mounted eagerly (visibility toggled via CSS)
+    to avoid re-mount jank when switching tabs.
+
+    Dependencies: Chat, Feedback, Revise, DocumentContext, AISettings
+    components; aiProcessing from settings.svelte.ts; posthog analytics.
+-->
 <script lang="ts">
 import { tick } from "svelte";
 import Chat from "./Chat.svelte";

@@ -1,3 +1,23 @@
+/**
+ * extensions.ts — Assembles the full CodeMirror 6 extension stack.
+ *
+ * Role: Single source of truth for every CodeMirror extension used
+ * by the editor. Called once at startup (from Editor.svelte) to
+ * produce the extension array passed to EditorState.create() or
+ * EditorState.fromJSON().
+ *
+ * Key dependencies:
+ *   - @codemirror/* packages — core editing capabilities
+ *   - ./plugins/annotations — annotation StateField + decorations
+ *   - ./listeners — persistence & change-reaction listeners
+ *
+ * Interactions:
+ *   - Editor.svelte calls `getExtensions(options)` and feeds the
+ *     result into an EditorState.
+ *   - `savedFields` is used by both serialisation (save) and
+ *     deserialisation (load) to persist history and annotations
+ *     across sessions.
+ */
 import {
   autocompletion,
   closeBrackets,
@@ -23,6 +43,9 @@ import {
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
 import { type ListenerOptions, listeners } from "./listeners";
+
+// Fields that are serialised to JSON on save and restored on load.
+// Adding a field here means it survives across application restarts.
 export const savedFields = { historyField, annotationField };
 
 export const getExtensions = (options?: ListenerOptions) => [
@@ -58,6 +81,8 @@ export const getExtensions = (options?: ListenerOptions) => [
   }),
   listeners(options),
   annotations(),
+  // Attach the caller-provided update listener (used by Editor.svelte
+  // to sync CodeMirror state into Svelte stores on every transaction).
   ...(options?.updateListener
     ? [EditorView.updateListener.of(options.updateListener)]
     : []),

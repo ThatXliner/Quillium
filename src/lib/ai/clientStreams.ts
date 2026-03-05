@@ -1,9 +1,29 @@
 /**
- * Client-side AI stream helpers.
+ * Client-side AI streaming orchestration.
  *
- * Replaces the former /api/chat, /api/feedback, /api/revise, /api/context
- * server routes. All inference runs directly in the browser using the user's
- * own API key (BYOK). No server-side relay is needed.
+ * This file contains the core streaming functions that power each AI
+ * mode (Chat, Feedback, Revise) plus a non-streaming context generator.
+ * All inference runs directly in the browser using the writer's own API
+ * key (BYOK) — no server routes are involved.
+ *
+ * Role in the AI subsystem:
+ *   chatFactory.ts creates a `ChatTransport` that delegates to one of
+ *   the stream functions here. Each function:
+ *     1. Instantiates a `LanguageModel` via `provider.ts`.
+ *     2. Builds a system prompt with optional document-context fields.
+ *     3. Injects the current editor content / selection as a user msg.
+ *     4. Calls `streamText` (or `generateObject` for context) from the
+ *        ai SDK.
+ *     5. Returns a `ReadableStream<UIMessageChunk>` consumed by the
+ *        @ai-sdk/svelte `Chat` class.
+ *
+ * Tool definitions (Feedback: createComment, createRevision; Revise:
+ * createSuggestion, createComment) are declared inline. Tool calls are
+ * executed by the ai SDK, and the results are forwarded to
+ * `chatFactory.handleToolCall` which applies them to the CodeMirror
+ * editor via the annotation system.
+ *
+ * Dependencies: ai SDK, zod (tool schemas), provider.ts, utils.ts.
  */
 import {
     convertToModelMessages,

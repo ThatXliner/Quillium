@@ -1,4 +1,29 @@
 <script lang="ts">
+/**
+ * Suggestion.svelte — Displays an AI-generated suggestion card
+ * with one or more replacement options, inline diff preview,
+ * and actions to apply or branch into a revision.
+ *
+ * Props:
+ *   - suggestion: Annotation<"suggestion"> — the annotation data
+ *   - isActive: boolean — whether this card is currently selected
+ *   - view: EditorView — the parent CodeMirror editor
+ *   - remove: () => void — callback to delete this annotation
+ *   - updateThread: (thread: ThreadType) => void — callback to
+ *     replace the thread array
+ *
+ * Events emitted: none (delegates via callbacks and CodeMirror
+ *   dispatch for applySuggestion / branchSuggestion effects)
+ * Stores:
+ *   - modalStack (write): pushes a DiffModal entry for full-view
+ *
+ * Parent: Annotations.svelte
+ * Children: Thread.svelte (for user replies below the suggestion)
+ *
+ * Local state:
+ *   - selectedIndex: which replacement option is highlighted
+ *   - diffExpanded: whether the inline diff panel is visible
+ */
 import type { EditorView } from "@codemirror/view";
 import {
 	ChevronDownIcon,
@@ -35,12 +60,17 @@ const {
 
 const thread = $derived(suggestion.thread);
 
+// Auto-select the only replacement when there is exactly one
 let selectedIndex = $state<number | null>(
 	suggestion.replacements.length === 1 ? 0 : null,
 );
 
 let diffExpanded = $state(false);
 
+/**
+ * Compute token-level diff operations between the original
+ * document text and the chosen replacement text.
+ */
 function getDiffOps(replacementIndex: number) {
 	const { from, to } = suggestion.selection.main;
 	const original = view.state.sliceDoc(from, to);

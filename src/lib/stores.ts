@@ -1,3 +1,23 @@
+/**
+ * stores.ts — Global reactive state hub for Quillium.
+ *
+ * Because CodeMirror manages its own state internally and the
+ * Svelte store for `editorView` is only set once (it holds a
+ * mutable reference that never triggers reactive updates), we
+ * maintain *manually-synced* mirror stores for editor-derived
+ * values that Svelte components need to react to (annotations,
+ * active annotation, document content, selected text). The
+ * synchronization happens in Editor.svelte's `updateListener`.
+ *
+ * Stores defined here are consumed across all three panels of
+ * the application layout:
+ *   - Left panel  (AI sidebar)  reads documentContent, selectedText
+ *   - Center panel (editor)     writes most stores via updateListener
+ *   - Right panel  (annotations) reads annotations, activeAnnotation
+ *
+ * The modal stack manages nested revision/diff overlays that can
+ * be arbitrarily deep (revisions inside revisions).
+ */
 import type { EditorView } from "@codemirror/view";
 import { writable, derived } from "svelte/store";
 
@@ -8,63 +28,145 @@ import type {
   GenericAnnotation,
 } from "./editor/plugins/annotations";
 
+/**
+ * The main CodeMirror EditorView instance. Set once when
+ * Editor.svelte mounts. Read by any component that needs direct
+ * imperative access to the editor (e.g., AI sidebar for applying
+ * revisions, annotations panel for scrolling to a range).
+ *
+ * Note: this store is *not* updated on every editor transaction —
+ * it holds a stable reference. For reactive data derived from the
+ * editor, use the manually-synced stores below.
+ */
 export const editorView = writable<EditorView>();
-// We need to manually hook into when the annotations change
-// (editorView never gets updated... maybe I could do that? Would
-// that be premature optimization or just passing in a reference?)
-// So we manually manage and sync our own version of annotations
-// as opposed to derived from editorView
-export const annotations = writable<Annotations | undefined>();
-// For similar reasons (getActiveAnnotation relies on editor.state, which relies on editorView)
-// we have to manually manage and sync our own version of activeAnnotation
-export const activeAnnotation = writable<GenericAnnotation | undefined>();
 
-// Manually synced document content and selection for AI chat context
-// (similar to how we manually sync annotations)
+/**
+ * Mirror of the CodeMirror annotationField state.
+ * Written by: Editor.svelte updateListener on every transaction.
+ * Read by: Annotations.svelte (right panel) to render the list.
+ *
+ * We cannot derive this from `editorView` because that store
+ * never re-fires; instead we manually push new values whenever
+ * the annotation state field changes.
+ */
+export const annotations = writable<Annotations | undefined>();
+
+/**
+ * The currently focused annotation (comment or revision), if any.
+ * Written by: Editor.svelte updateListener when selection changes.
+ * Read by: Annotations.svelte to highlight the active annotation,
+ *          Comment.svelte / Revision.svelte for active styling.
+ *
+ * Manually synced for the same reason as `annotations` above.
+ */
+export const activeAnnotation = writable<
+    GenericAnnotation | undefined
+>();
+
+/**
+ * Full document text, synced on every editor transaction.
+ * Written by: Editor.svelte updateListener.
+ * Read by: AI sidebar (Chat.svelte, Feedback.svelte, Revise.svelte)
+ *          to include document context in AI prompts.
+ */
 export const documentContent = writable<string>("");
+
+/**
+ * Currently selected text in the editor.
+ * Written by: Editor.svelte updateListener on selection change.
+ * Read by: AI sidebar to scope AI operations to the selection.
+ */
 export const selectedText = writable<string>("");
 
-// Fired when the user presses a delete key at the boundary of an active
-// revision — signals that the recursive editor is available for boundary edits.
+/**
+ * Boundary-nudge signal for nested revision editors.
+ * Fired when the user presses a delete key at the boundary of an
+ * active revision — signals that the recursive editor is available
+ * for boundary edits. Value is a timestamp token; null means idle.
+ */
 export const revisionBoundaryNudge = writable<number | null>(null);
 
-// Controls tutorial visibility
+/**
+ * Controls tutorial overlay visibility.
+ * Written by: +page.svelte (on first visit), StatusBar.svelte
+ *             (the "?" button), Tutorial.svelte (on complete).
+ * Read by: +page.svelte to conditionally render <Tutorial>.
+ */
 export const tutorialActive = writable(false);
 
-// Fired when the user triggers an annotation command (comment/revision)
-// while the cursor is inside an active revision in the main document.
-// Carries the revision ID, which command to run, and the selection
-// mapped to offsets within the revision text so the nested editor
-// can set its selection and run the command immediately.
+/**
+ * Command payload dispatched when the user triggers an annotation
+ * command (comment/revision) while the cursor is inside an active
+ * revision in the main document. Carries the revision ID, command
+ * type, and the selection mapped to offsets within the revision
+ * text so the nested editor can set its selection and run the
+ * command immediately.
+ */
 export type NestedEditorCommand = {
     revisionId: number;
     type: "comment" | "revision";
     selectionFrom: number;
     selectionTo: number;
 };
-export const revisionOpenNestedEditor = writable<NestedEditorCommand | null>(null);
+export const revisionOpenNestedEditor = writable<
+    NestedEditorCommand | null
+>(null);
 
-// Modal portal store — a stack so nested revisions can push/pop modals.
-export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
+// ── Modal stack types ────────────────────────────────────────
+
+/** A single diff operation used in diff display. */
+export type DiffOp = {
+    type: "equal" | "delete" | "insert";
+    text: string;
+};
+
+/** A command queued for execution inside a nested revision editor. */
 export type PendingNestedCommand = {
     type: "comment" | "revision";
     selectionFrom: number;
     selectionTo: number;
 };
 
+/**
+ * Discriminated union for items in the modal stack.
+ * - "diff": a side-by-side diff overlay for a suggestion
+ * - "revision": a nested revision editor overlay
+ */
 export type ModalEntry =
     | { type: "diff"; suggestionId: number; parentView: EditorView; label: string }
     | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
 
+// ── Modal stack store ────────────────────────────────────────
+
+/**
+ * Internal writable backing the modal stack. Not exported directly;
+ * consumers interact through the `modalStack` API below.
+ */
 const _modalStack = writable<ModalEntry[]>([]);
 
+/**
+ * Modal portal store — a stack so nested revisions can push/pop
+ * modals to arbitrary depth.
+ *
+ * Written by: RevisionModal.svelte, DiffModal.svelte, annotation
+ *             commands that open overlays.
+ * Read by: +page.svelte to render the stack of modal overlays.
+ *
+ * Methods:
+ *   push(entry)         — open a new modal on top
+ *   pop()               — close the topmost modal
+ *   popTo(index)        — close all modals above `index`
+ *   popToAndRebuild(i)  — popTo + stamp a rebuild token so the
+ *                          target modal recreates its editor
+ *   clear()             — close all modals
+ */
 export const modalStack = {
     subscribe: _modalStack.subscribe,
-    push: (entry: ModalEntry) => _modalStack.update((s) => [...s, entry]),
+    push: (entry: ModalEntry) =>
+        _modalStack.update((s) => [...s, entry]),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
-    popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),
-    // Pop to index and stamp a rebuild token on the target entry so the modal
-    // at that level knows to destroy/recreate its editor for the new version.
+    popTo: (index: number) =>
+        _modalStack.update((s) => s.slice(0, index + 1)),
     popToAndRebuild: (index: number) => _modalStack.update((s) => {
         const trimmed = s.slice(0, index + 1);
         const target = trimmed[index];
@@ -74,14 +176,3 @@ export const modalStack = {
     }),
     clear: () => _modalStack.set([]),
 };
-
-// In case we decide to bite the dust with updating editorView every time,
-// here is some code to do that:
-// export const activeComment = derived(editorView, ($editorView) => {
-//   if (!$editorView) return undefined;
-//   return getActiveAnnotation($editorView.state, "comment");
-// });
-// export const annotations = derived(editorView, ($editorView) => {
-// 	if (!$editorView) return undefined;
-// 	return $editorView.state.field(annotationField);
-// });
