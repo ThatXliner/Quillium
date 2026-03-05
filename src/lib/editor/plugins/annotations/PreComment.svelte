@@ -1,65 +1,117 @@
 <script lang="ts">
-    import type { EditorView } from "@codemirror/view";
-    import { tick } from "svelte";
-    import { updateThread, removeAnnotation } from "./annotationField";
-    import { canCreateNewComment } from "./utils";
-    import { isAnnotationOfType, type Annotations, type GenericAnnotation } from "./models";
+/**
+ * PreComment.svelte — Inline "new comment" composer shown when
+ * the user has created a comment annotation but hasn't typed a
+ * message yet (thread is empty).
+ *
+ * Props:
+ *   - view: EditorView — the CodeMirror editor instance
+ *   - annotationsData: Annotations — current annotation map
+ *   - activeAnnotationData?: GenericAnnotation — the annotation
+ *     that is currently selected (should be the pending comment)
+ *
+ * Events emitted: none (dispatches CodeMirror effects directly)
+ * Stores: none (receives data via props from Annotations.svelte)
+ *
+ * Parent: Annotations.svelte
+ * Children: none
+ *
+ * Behaviour: auto-focuses the textarea when a pending comment
+ * exists, and dispatches updateThread or removeAnnotation effects
+ * on submit / cancel.
+ */
+import type { EditorView } from "@codemirror/view";
+import { tick } from "svelte";
+import { updateThread, removeAnnotation } from "./annotationField";
+import { canCreateNewComment } from "./utils";
+import {
+	isAnnotationOfType,
+	type Annotations,
+	type GenericAnnotation,
+} from "./models";
+import posthog from "posthog-js";
 
-    const {
-        view,
-        annotationsData,
-        activeAnnotationData,
-    }: {
-        view: EditorView;
-        annotationsData: Annotations;
-        activeAnnotationData?: GenericAnnotation;
-    } = $props();
+const {
+	view,
+	annotationsData,
+	activeAnnotationData,
+}: {
+	view: EditorView;
+	annotationsData: Annotations;
+	activeAnnotationData?: GenericAnnotation;
+} = $props();
 
-    let commentText = $state("");
-    let textarea = $state<HTMLTextAreaElement | undefined>();
+let commentText = $state("");
+let textarea = $state<HTMLTextAreaElement | undefined>();
 
-    $effect(() => {
-        if (!canCreateNewComment(annotationsData)) {
-            tick().then(() => textarea?.focus());
-        }
-    });
+// Auto-focus the textarea when a pending (unsaved) comment exists
+$effect(() => {
+	if (!canCreateNewComment(annotationsData)) {
+		tick().then(() => textarea?.focus());
+	}
+});
 
-    const selectedText = $derived(
-        activeAnnotationData
-            ? view.state.sliceDoc(
-                  activeAnnotationData.selection.main.from,
-                  activeAnnotationData.selection.main.to,
-              )
-            : "",
-    );
+// Derive the highlighted text range the pending comment refers to
+const selectedText = $derived(
+	activeAnnotationData
+		? view.state.sliceDoc(
+				activeAnnotationData.selection.main.from,
+				activeAnnotationData.selection.main.to,
+			)
+		: "",
+);
 
-    function addComment() {
-        if (!activeAnnotationData || !isAnnotationOfType(activeAnnotationData, "comment")) return;
-        view.dispatch(
-            view.state.update({
-                effects: [
-                    updateThread.of({
-                        annotationId: activeAnnotationData.id,
-                        newThread: [
-                            ...activeAnnotationData.thread,
-                            { message: commentText, author: "User", time: Date.now() },
-                        ],
-                    }),
-                ],
-            }),
-        );
-        commentText = "";
-    }
+/**
+ * Commit the new comment: append the user's message to the
+ * annotation's thread via a CodeMirror updateThread effect.
+ */
+function addComment() {
+	if (
+		!activeAnnotationData ||
+		!isAnnotationOfType(activeAnnotationData, "comment")
+	)
+		return;
+	posthog.capture("comment_created", {
+		has_selection: !!selectedText,
+		comment_length: commentText.length,
+	});
+	view.dispatch(
+		view.state.update({
+			effects: [
+				updateThread.of({
+					annotationId: activeAnnotationData.id,
+					newThread: [
+						...activeAnnotationData.thread,
+						{
+							message: commentText,
+							author: "User",
+							time: Date.now(),
+						},
+					],
+				}),
+			],
+		}),
+	);
+	commentText = "";
+}
 
-    function cancelComment() {
-        if (!activeAnnotationData || !isAnnotationOfType(activeAnnotationData, "comment")) return;
-        view.dispatch(
-            view.state.update({
-                effects: [removeAnnotation.of(activeAnnotationData)],
-            }),
-        );
-        commentText = "";
-    }
+/**
+ * Discard the pending comment by removing its annotation from
+ * the CodeMirror state entirely.
+ */
+function cancelComment() {
+	if (
+		!activeAnnotationData ||
+		!isAnnotationOfType(activeAnnotationData, "comment")
+	)
+		return;
+	view.dispatch(
+		view.state.update({
+			effects: [removeAnnotation.of(activeAnnotationData)],
+		}),
+	);
+	commentText = "";
+}
 </script>
 
 <div class="backdrop-blur-md bg-gray-200/80 border border-white/50 shadow-xl rounded-[14px] overflow-hidden">

@@ -1,3 +1,28 @@
+/**
+ * Reactive AI settings store (Svelte 5 runes).
+ *
+ * This file is the single source of truth for all user-configurable AI
+ * state. It owns three reactive objects:
+ *
+ * - `aiSettings` — provider, model ID, and API key (key loaded from
+ *   the system keychain via Tauri at startup).
+ * - `documentContext` — structured writing-context fields (goal, tone,
+ *   audience, etc.) persisted to localStorage.
+ * - `aiProcessing` — boolean flag consumed by the sidebar glow
+ *   animation; toggled by each chat component via `setAiProcessing`.
+ *
+ * Persistence strategy:
+ *   provider/model  -> localStorage
+ *   API key         -> system keychain (via Tauri `get_api_key` /
+ *                      `set_api_key` commands)
+ *   documentContext -> localStorage
+ *
+ * Data flow:
+ *   AISettings.svelte  -->  aiSettings / documentContext (writes)
+ *   chatFactory.ts     <--  aiSettings (reads provider/model/key)
+ *   clientStreams.ts    <--  documentContext (reads context fields)
+ *   AISidebar.svelte    <--  aiProcessing (reads glow flag)
+ */
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider } from "./provider";
 

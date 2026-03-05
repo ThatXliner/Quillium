@@ -1,129 +1,160 @@
+<!--
+    Tutorial.svelte — Full-screen guided tour overlay.
+
+    Renders a semi-transparent backdrop with an SVG spotlight mask
+    that highlights one UI element at a time, alongside a floating
+    tooltip card with step content and navigation controls.
+
+    Lifecycle:
+      1. On mount, the overlay fades in and the first step's target
+         element is spotlighted.
+      2. The user navigates forward/back through the step list defined
+         in ./steps.ts. Each step change triggers repositioning of the
+         spotlight and tooltip via the `$effect` on `step`.
+      3. On completion (or skip), the component persists a
+         "quillium_tutorial_seen" flag to localStorage, fires a PostHog
+         analytics event, sets `tutorialActive = false`, and calls the
+         parent's `onComplete` callback.
+
+    State interactions:
+      - Writes `tutorialActive` (store) to false on complete/skip.
+      - Reads `steps` from ./steps.ts for step content and selectors.
+      - Fires PostHog events: "tutorial_completed" / "tutorial_skipped".
+-->
 <script lang="ts">
     import { onMount } from "svelte";
     import { tutorialActive } from "$lib/stores";
     import { steps } from "./steps";
+    import posthog from "posthog-js";
 
     const { onComplete }: { onComplete: () => void } = $props();
 
+    // ── Local UI state ───────────────────────────────────────────
     let stepIndex = $state(0);
     let spotlightRect = $state<DOMRect | null>(null);
-    let tooltipEl = $state<HTMLDivElement | null>(null);
-    let tooltipPos = $state({ top: 0, left: 0 });
+    let tooltipStyle = $state(
+        "top: 50%; left: 50%; transform: translate(-50%, -50%);",
+    );
     let visible = $state(false);
 
+    // ── Derived values from step index ───────────────────────────
     const step = $derived(steps[stepIndex]);
     const isFirst = $derived(stepIndex === 0);
     const isLast = $derived(stepIndex === steps.length - 1);
 
-    function getTargetRect(selector: string | null): DOMRect | null {
+    /** Resolve a CSS selector to a bounding rect, or null if
+     *  no selector is given or the element isn't in the DOM. */
+    function getTargetRect(
+        selector: string | null,
+    ): DOMRect | null {
         if (!selector) return null;
         const el = document.querySelector(selector);
         return el ? el.getBoundingClientRect() : null;
     }
 
-    function computeTooltipPos(
-        rect: DOMRect | null,
-        position: string,
-        tipW: number,
-        tipH: number,
-    ): { top: number; left: number } {
-        const pad = 16;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        if (!rect || position === "center") {
-            return {
-                top: vh / 2 - tipH / 2,
-                left: vw / 2 - tipW / 2,
-            };
-        }
-
-        switch (position) {
-            case "right":
-                return {
-                    top: Math.min(
-                        Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
-                        vh - tipH - pad,
-                    ),
-                    left: Math.min(rect.right + pad, vw - tipW - pad),
-                };
-            case "left":
-                return {
-                    top: Math.min(
-                        Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
-                        vh - tipH - pad,
-                    ),
-                    left: Math.max(rect.left - tipW - pad, pad),
-                };
-            case "bottom":
-                return {
-                    top: Math.min(rect.bottom + pad, vh - tipH - pad),
-                    left: Math.min(
-                        Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
-                        vw - tipW - pad,
-                    ),
-                };
-            case "top":
-                return {
-                    top: Math.max(rect.top - tipH - pad, pad),
-                    left: Math.min(
-                        Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
-                        vw - tipW - pad,
-                    ),
-                };
-            default:
-                return { top: vh / 2 - tipH / 2, left: vw / 2 - tipW / 2 };
-        }
-    }
-
+    /**
+     * Recompute spotlight rect and tooltip position for the
+     * current step. Called on every step change and on mount.
+     */
     function positionTooltip() {
-        const rect = getTargetRect(step.selector);
-        spotlightRect = rect;
+	const rect = getTargetRect(step.selector);
+	spotlightRect = rect;
 
-        if (!tooltipEl) return;
-        const tipW = tooltipEl.offsetWidth || 280;
-        const tipH = tooltipEl.offsetHeight || 180;
-        tooltipPos = computeTooltipPos(rect, step.position, tipW, tipH);
-    }
+	if (!rect || step.position === "center") {
+		tooltipStyle = "top: 50%; left: 50%; transform: translate(-50%, -50%);";
+		return;
+	}
 
+	const pad = 16;
+	const tipW = 280;
+	const tipH = 180;
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+	let top: number;
+	let left: number;
+
+	switch (step.position) {
+		case "right":
+			top = Math.min(
+				Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
+				vh - tipH - pad,
+			);
+			left = Math.min(rect.right + pad, vw - tipW - pad);
+			break;
+		case "left":
+			top = Math.min(
+				Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
+				vh - tipH - pad,
+			);
+			left = Math.max(rect.left - tipW - pad, pad);
+			break;
+		case "bottom":
+			top = Math.min(rect.bottom + pad, vh - tipH - pad);
+			left = Math.min(
+				Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
+				vw - tipW - pad,
+			);
+			break;
+		case "top":
+			top = Math.max(rect.top - tipH - pad, pad);
+			left = Math.min(
+				Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
+				vw - tipW - pad,
+			);
+			break;
+		default:
+			tooltipStyle =
+				"top: 50%; left: 50%; transform: translate(-50%, -50%);";
+			return;
+	}
+
+	tooltipStyle = `top: ${top}px; left: ${left}px; transition: top 220ms ease, left 220ms ease;`;
+}
+
+    /** Move to the next step, or finish the tour on the last step. */
     function advance() {
-        if (isLast) {
-            complete();
-        } else {
-            stepIndex++;
-        }
+        if (isLast) complete();
+        else stepIndex++;
     }
 
+    /** Move to the previous step (no-op on the first step). */
     function back() {
         if (!isFirst) stepIndex--;
     }
 
-    function complete() {
-        visible = false;
-        localStorage.setItem("quillium_tutorial_seen", "true");
-        $tutorialActive = false;
-        onComplete();
-    }
+    /**
+     * End the tutorial — persist the "seen" flag, fire analytics,
+     * hide the overlay, and notify the parent via onComplete.
+     */
+    function complete(skipped = false) {
+	visible = false;
+	localStorage.setItem("quillium_tutorial_seen", "true");
+	if (skipped) {
+		posthog.capture("tutorial_skipped", {
+			step_reached: stepIndex + 1,
+			total_steps: steps.length,
+		});
+	} else {
+		posthog.capture("tutorial_completed", { total_steps: steps.length });
+	}
+	$tutorialActive = false;
+	onComplete();
+}
 
-    function skip() {
-        complete();
-    }
-
-    // Reposition whenever step changes
+    // Reposition spotlight + tooltip whenever the active step changes.
     $effect(() => {
-        void step; // track reactive dep
-        // Wait a tick for DOM to settle
-        setTimeout(positionTooltip, 60);
+        void step;
+        positionTooltip();
     });
 
+    // On mount, reveal the overlay and position the first step.
     onMount(() => {
         visible = true;
-        setTimeout(positionTooltip, 80);
+        positionTooltip();
     });
 </script>
 
 {#if visible}
-    <!-- Overlay -->
     <div
         class="fixed inset-0 z-[9998]"
         style="pointer-events: all;"
@@ -178,14 +209,8 @@
 
         <!-- Tooltip card -->
         <div
-            bind:this={tooltipEl}
-            class="absolute w-[280px] backdrop-blur-md bg-gray-300/80 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3"
-            style="
-                top: {tooltipPos.top}px;
-                left: {tooltipPos.left}px;
-                transition: top 220ms ease, left 220ms ease;
-                pointer-events: all;
-            "
+            class="fixed w-[280px] backdrop-blur-md bg-gray-300/80 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3"
+            style="{tooltipStyle} pointer-events: all;"
             role="document"
         >
             <!-- Step counter -->
@@ -215,7 +240,7 @@
             <!-- Actions -->
             <div class="flex items-center justify-between">
                 <button
-                    onclick={skip}
+                    onclick={() => complete(true)}
                     class="text-[11px] text-black/35 hover:text-black/55 transition-colors"
                 >
                     Skip tour

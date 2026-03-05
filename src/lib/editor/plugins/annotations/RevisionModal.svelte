@@ -1,4 +1,34 @@
 <script lang="ts">
+    /**
+     * RevisionModal.svelte — Full-screen modal that hosts a nested
+     * CodeMirror editor for a single revision version.
+     *
+     * Props:
+     *   - revisionId: number — ID of the revision annotation in the
+     *     parent editor's annotationField
+     *   - view: EditorView — the parent CodeMirror editor that owns
+     *     the revision (used to read/write annotation state)
+     *   - stackIndex: number — this modal's position in the global
+     *     modalStack (used for breadcrumb rendering and navigation)
+     *
+     * Events emitted: none
+     * Stores:
+     *   - modalStack (read/write): breadcrumb trail, pop on close,
+     *     popTo for breadcrumb nav, popToAndRebuild for cross-level
+     *     version switching
+     *
+     * Parent: rendered by the modal layer in +page.svelte
+     * Children: Annotations.svelte (sidebar for nested annotations)
+     *
+     * Key behaviour:
+     *   - Creates a nested CodeMirror editor whose content is
+     *     persisted back to the parent revision's version state on
+     *     every keystroke via updateRevisionVersionState.
+     *   - Supports multi-level nesting: revisions inside revisions,
+     *     with breadcrumb version dropdowns at each level.
+     *   - Handles a pendingNestedCommand from the modal stack entry
+     *     to auto-create a comment or sub-revision on open.
+     */
     import { EditorState } from "@codemirror/state";
     import { EditorView, type ViewUpdate } from "@codemirror/view";
     import { ChevronRight, ChevronDown, Check, X } from "lucide-svelte";
@@ -33,6 +63,8 @@
     // Which crumb dropdown is open (-1 = none)
     let openDropdown = $state(-1);
 
+    // Sync the version-dropdown selections for each breadcrumb
+    // whenever the crumbs array or underlying revision state changes.
     $effect(() => {
         crumbSelectedVersions = crumbs.map((crumb) => {
             if (crumb.type !== "revision") return 0;
@@ -41,6 +73,12 @@
         });
     });
 
+    /**
+     * Handle selecting a version from a breadcrumb dropdown.
+     * If the version belongs to the current (deepest) modal,
+     * rebuild the editor in-place. Otherwise pop the stack back
+     * to the target level and signal it to rebuild.
+     */
     function selectVersion(ci: number, vi: number, crumb: typeof crumbs[number], isCurrent: boolean) {
         if (crumb.type !== "revision") return;
         crumbSelectedVersions[ci] = vi;
@@ -94,6 +132,13 @@
     let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
     let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
+    /**
+     * Bootstrap a nested CodeMirror editor from a VersionState.
+     * Restores from JSON if the version already contains serialised
+     * editor state, otherwise creates a fresh state from the doc
+     * text. Attaches an updateListener that persists every change
+     * back into the parent revision via updateRevisionVersionState.
+     */
     function createEditor(version: VersionState) {
         if (!editorHost || editor) return;
         const extensions = getExtensions({
@@ -129,6 +174,7 @@
         modalStack.pop();
     }
 
+    // Close the version dropdown when clicking outside of it.
     $effect(() => {
         if (openDropdown === -1) return;
         const handler = (e: MouseEvent) => {
@@ -140,6 +186,74 @@
         return () => document.removeEventListener("click", handler);
     });
 
+    /**
+     * Execute a pending nested annotation command (comment or
+     * sub-revision) that was queued in the modal stack entry
+     * when this modal was opened. Sets the selection in the
+     * nested editor and dispatches the appropriate annotation.
+     */
+    function executePendingNestedCommand(
+        activeEditor: EditorView,
+        cmd: { type: string; selectionFrom: number; selectionTo: number },
+    ) {
+        const s = activeEditor.state;
+        const docLen = s.doc.length;
+        const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
+        const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
+        activeEditor.dispatch({
+            selection: EditorSelection.range(from, to),
+        });
+        activeEditor.focus();
+        if (cmd.type === "comment") {
+            const s2 = activeEditor.state;
+            if (
+                !s2.selection.main.empty
+                && canCreateNewComment(s2.field(annotationField))
+            ) {
+                activeEditor.dispatch(
+                    s2.update({
+                        effects: [
+                            addAnnotation.of(
+                                createNewAnnotation(
+                                    s2.field(annotationField),
+                                    s2.selection,
+                                    "comment",
+                                ),
+                            ),
+                        ],
+                        annotations: Transaction.addToHistory.of(true),
+                    }),
+                );
+            }
+        } else if (cmd.type === "revision") {
+            const s2 = activeEditor.state;
+            if (!s2.selection.main.empty) {
+                const selectedText = s2.sliceDoc(
+                    s2.selection.main.from,
+                    s2.selection.main.to,
+                );
+                activeEditor.dispatch(
+                    s2.update({
+                        effects: [
+                            addAnnotation.of({
+                                ...createNewAnnotation(
+                                    s2.field(annotationField),
+                                    s2.selection,
+                                    "revision",
+                                ),
+                                currentlySelected: 0,
+                                versions: [{ doc: selectedText }],
+                            }),
+                        ],
+                        annotations: Transaction.addToHistory.of(true),
+                    }),
+                );
+            }
+        }
+    }
+
+    // Open the <dialog> as a modal, bootstrap the nested editor,
+    // and run any pending nested annotation command.
     $effect(() => {
         if (!dialogEl) return;
         if (!dialogEl.open) dialogEl.showModal();
@@ -148,45 +262,10 @@
             if (rev && !editor) {
                 createEditor(rev.versions[rev.currentlySelected]);
             }
-            // Run any pending nested annotation command passed when opening the modal
             const activeEditor = editor;
             const entry = $modalStack[stackIndex];
             if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
-                const cmd = entry.pendingNestedCommand;
-                const s = activeEditor.state;
-                const docLen = s.doc.length;
-                const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
-                const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
-                activeEditor.dispatch({ selection: EditorSelection.range(from, to) });
-                activeEditor.focus();
-                if (cmd.type === "comment") {
-                    const s2 = activeEditor.state;
-                    if (!s2.selection.main.empty && canCreateNewComment(s2.field(annotationField))) {
-                        activeEditor.dispatch(
-                            s2.update({
-                                effects: [addAnnotation.of(createNewAnnotation(s2.field(annotationField), s2.selection, "comment"))],
-                                annotations: Transaction.addToHistory.of(true),
-                            }),
-                        );
-                    }
-                } else if (cmd.type === "revision") {
-                    const s2 = activeEditor.state;
-                    if (!s2.selection.main.empty) {
-                        const selectedText = s2.sliceDoc(s2.selection.main.from, s2.selection.main.to);
-                        activeEditor.dispatch(
-                            s2.update({
-                                effects: [
-                                    addAnnotation.of({
-                                        ...createNewAnnotation(s2.field(annotationField), s2.selection, "revision"),
-                                        currentlySelected: 0,
-                                        versions: [{ doc: selectedText }],
-                                    }),
-                                ],
-                                annotations: Transaction.addToHistory.of(true),
-                            }),
-                        );
-                    }
-                }
+                executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
             }
         });
     });

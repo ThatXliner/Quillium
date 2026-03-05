@@ -1,4 +1,63 @@
+<!--
+    DocumentContext.svelte — Writer's document-context editor panel.
+
+    Allows the writer to define structured metadata about their document
+    (goal, tone, audience, emphasize, avoid, notes). These fields are
+    injected into every AI system prompt via `buildDocumentContextPrompt`
+    in utils.ts, letting the LLM tailor its responses.
+
+    Features two input modes:
+      1. Manual editing — directly fill in each field's textarea.
+      2. AI generation — paste a writing prompt/brief and click
+         "Generate context" to have the LLM auto-populate all fields
+         via the `generateContext` non-streaming call in clientStreams.ts.
+
+    State variables:
+      `promptInput`    — text area for the AI generation prompt.
+      `generating`     — true while the generateContext call is in flight.
+      `generateError`  — error message from a failed generation attempt.
+
+    All fields are persisted to localStorage via `saveDocumentContext`
+    (called on textarea blur and after AI generation).
+
+    Dependencies: settings.svelte.ts (documentContext, saveDocumentContext,
+    aiSettings), clientStreams.ts (generateContext).
+-->
 <script lang="ts">
+    /*
+     * DocumentContext.svelte
+     *
+     * Writer's document-context metadata editor panel (amber theme).
+     *
+     * Renders:
+     *   A prompt textarea for AI-powered context generation, a
+     *   "Generate context" button, and a grid of manually editable
+     *   metadata fields (goal, tone, audience, emphasize, avoid,
+     *   notes).
+     *
+     * Props: none.
+     * Events: none dispatched.
+     *
+     * Stores read:
+     *   - aiSettings (settings.svelte.ts) — provider, model, and
+     *     apiKey used for the generateContext API call. apiKey also
+     *     gates the generate button (disabled when empty).
+     *
+     * Stores written:
+     *   - documentContext (settings.svelte.ts) — each field is
+     *     bound to a textarea. Persisted to localStorage via
+     *     saveDocumentContext on blur and after AI generation.
+     *
+     * AI interaction:
+     *   Uses generateContext (clientStreams.ts) — a non-streaming
+     *   API call that returns structured field values. This is NOT
+     *   the streaming chat layer; it's a one-shot request.
+     *
+     * Async state (generate function):
+     *   idle -> generating (API in flight) -> idle
+     *   On success: fields written via applyGeneratedContext.
+     *   On failure: generateError set for display.
+     */
     import { SparklesIcon } from "lucide-svelte";
     import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
     import { generateContext } from "$lib/ai/clientStreams";
@@ -20,6 +79,10 @@
         return FIELDS.some((f) => documentContext[f.key].trim() !== "");
     }
 
+    // AI-powered context generation.
+    // State: idle -> generating (API call in flight) -> idle.
+    // On success, each returned field is written into documentContext
+    // and persisted to localStorage. On failure, generateError is set.
     async function generate() {
         if (!promptInput.trim() || generating) return;
         generating = true;
@@ -31,15 +94,22 @@
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
             });
-            for (const f of FIELDS) {
-                if (data[f.key]) documentContext[f.key] = data[f.key];
-            }
-            saveDocumentContext();
+            applyGeneratedContext(data);
         } catch (e) {
             generateError = String(e);
         } finally {
             generating = false;
         }
+    }
+
+    /** Write AI-generated fields into reactive state and persist. */
+    function applyGeneratedContext(
+        data: Record<string, string>,
+    ) {
+        for (const f of FIELDS) {
+            if (data[f.key]) documentContext[f.key] = data[f.key];
+        }
+        saveDocumentContext();
     }
 
     function clearAll() {

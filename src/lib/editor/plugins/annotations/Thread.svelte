@@ -1,4 +1,18 @@
 <script lang="ts">
+    /**
+     * Thread.svelte — Renders a vertical list of ThreadMessage cards.
+     *
+     * Props:
+     *   - thread: Thread — array of ThreadMessage objects to display
+     *   - updateThread: (thread: Thread) => void — callback to replace
+     *     the entire thread array (used by child ThreadMessage on edit)
+     *
+     * Events emitted: none (delegates mutation via updateThread callback)
+     * Stores: none
+     *
+     * Parent: Comment.svelte, Revision.svelte, Suggestion.svelte
+     * Children: ThreadMessage.svelte (one per message)
+     */
     import { SparklesIcon } from "lucide-svelte";
     import ThreadMessage from "./ThreadMessage.svelte";
     import type { Thread as ThreadType } from ".";

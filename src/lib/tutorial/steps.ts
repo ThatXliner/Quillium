@@ -1,3 +1,16 @@
+/**
+ * steps.ts — Tutorial step definitions for the guided tour overlay.
+ *
+ * Each step targets a DOM element via CSS selector and provides
+ * content (title + body) and a preferred tooltip position relative
+ * to the highlighted element. Tutorial.svelte iterates through
+ * these steps in order, spotlighting each selector in turn.
+ *
+ * To add a new step, append an entry to the `steps` array with
+ * a CSS selector matching an element that has an `id` attribute
+ * in the rendered page.
+ */
+
 export type Step = {
     selector: string | null;
     title: string;

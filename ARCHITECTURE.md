@@ -446,6 +446,27 @@ A `VersionState` is either `{ doc: string }` (text-only) or a full `EditorState.
 
 TODO. This may be subject to change and is currently under ongoing development.
 
+## PostHog
+
+| Event | Description | File |
+|---|---|---|
+| `ai_sidebar_opened` | User opens the AI sidebar to a specific mode | `src/lib/ai/AISidebar.svelte` |
+| `ai_chat_message_sent` | User sends a message in the AI chat panel | `src/lib/ai/Chat.svelte` |
+| `ai_feedback_requested` | User requests AI feedback on document or selection | `src/lib/ai/Feedback.svelte` |
+| `ai_revise_requested` | User triggers AI revision via the Revise button | `src/lib/ai/Revise.svelte` |
+| `ai_revise_quick_prompt_used` | User uses a quick prompt shortcut in the Revise panel | `src/lib/ai/Revise.svelte` |
+| `comment_created` | User submits a new comment annotation | `src/lib/editor/plugins/annotations/PreComment.svelte` |
+| `comment_ai_suggestion_requested` | User requests an AI suggestion within a comment thread | `src/lib/editor/plugins/annotations/Comment.svelte` |
+| `suggestion_applied` | User applies an AI suggestion to the document | `src/lib/editor/plugins/annotations/Suggestion.svelte` |
+| `suggestion_branched` | User converts an AI suggestion into a revision branch | `src/lib/editor/plugins/annotations/Suggestion.svelte` |
+| `revision_version_created` | User creates a new version within a revision annotation | `src/lib/editor/plugins/annotations/Revision.svelte` |
+| `tutorial_completed` | User completes the onboarding tutorial | `src/lib/tutorial/Tutorial.svelte` |
+| `tutorial_skipped` | User skips the onboarding tutorial | `src/lib/tutorial/Tutorial.svelte` |
+| `ai_settings_provider_changed` | User changes the AI provider in settings | `src/lib/ai/AISettings.svelte` |
+| `ai_settings_model_changed` | User changes the AI model in settings | `src/lib/ai/AISettings.svelte` |
+| `draft_scrapped` | User scraps their current draft | `src/lib/save/Save.svelte` |
+
+
 <!--
 AI integration follows a provider-agnostic approach using the Universal AI SDK:
 

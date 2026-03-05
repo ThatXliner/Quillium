@@ -1,30 +1,105 @@
+<!--
+    Feedback.svelte — Editorial feedback AI panel (green theme).
+
+    Provides high-level editorial feedback on the writer's document.
+    Uses the "feedback" mode stream which includes two tools:
+      - createComment: flags a specific passage with editorial notes.
+      - createRevision: proposes 2-3 alternative versions of a passage.
+
+    These tool calls are routed through chatFactory.handleToolCall to
+    the annotation system, which attaches comments/revisions directly
+    to the CodeMirror editor.
+
+    Features a "Get feedback" quick-action button that auto-generates
+    a prompt based on whether text is selected or not.
+
+    State machine (driven by `chat.status`):
+      ready     — user can submit or click quick action.
+      submitted — waiting for first token.
+      streaming — tokens arriving, "Analyzing..." indicator shown.
+      error     — implicit (chat.error set).
+
+    Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
+-->
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+/*
+ * Feedback.svelte
+ *
+ * Editorial feedback AI panel (green theme).
+ *
+ * Renders:
+ *   A "Get feedback" quick-action button, scrollable message list
+ *   with user/assistant bubbles, streaming indicator, and a bottom
+ *   input form with selection-context chip.
+ *
+ * Props: none.
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - $selectedText — toggles quick-action label between
+ *     "Get feedback on selection" / "Get general feedback"; shown
+ *     as a context chip above the input.
+ *   - $documentContent — gates the quick-action button (disabled
+ *     when empty) and displayed as character count.
+ *
+ * Stores written:
+ *   - aiProcessing.active (via setAiProcessing) — true while
+ *     streaming so the sidebar glow activates.
+ *
+ * AI streaming layer:
+ *   Uses createAiChat({ mode: "feedback" }) which provides two
+ *   tool definitions: createComment and createRevision. Tool calls
+ *   are routed through chatFactory.handleToolCall to the annotation
+ *   system, attaching comments/revisions to the CodeMirror editor.
+ *
+ * State machine (chat.status):
+ *   ready -> submitted -> streaming -> ready
+ *                                   \-> error (chat.error set)
+ */
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import posthog from "posthog-js";
 
-    let input = $state("");
+let input = $state("");
 
-    const { chat, clearChat } = createAiChat({ mode: "feedback" });
+const { chat, clearChat } = createAiChat({ mode: "feedback" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+// Sync streaming state to the global AI processing indicator.
+// States: ready -> submitted -> streaming -> ready (or error).
+$effect(() => {
+	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
 
-    function handleSubmit(event: SubmitEvent) {
-        event.preventDefault();
-        if (!input.trim() || chat.status !== "ready") return;
+function handleSubmit(event: SubmitEvent) {
+	event.preventDefault();
+	if (!input.trim() || chat.status !== "ready") return;
 
-        chat.sendMessage({ text: input });
-        input = "";
-    }
+	posthog.capture("ai_feedback_requested", {
+		has_selection: !!$selectedText,
+		trigger: "manual",
+	});
+	chat.sendMessage({ text: input });
+	input = "";
+}
 
-    function askForFeedback() {
-        const context = $selectedText
-            ? `Please provide feedback on this selected text: "${$selectedText}"`
-            : "Please provide feedback on my document.";
+/**
+ * Build a selection-aware feedback prompt and send it as a chat
+ * message. If text is selected, asks for feedback on the selection;
+ * otherwise requests general document feedback.
+ */
+function askForFeedback() {
+	const context = $selectedText
+		? `Please provide feedback on this selected text: "${$selectedText}"`
+		: "Please provide feedback on my document.";
 
-        input = context;
-        chat.sendMessage({ text: context });
-    }
+	posthog.capture("ai_feedback_requested", {
+		has_selection: !!$selectedText,
+		trigger: "quick_action",
+	});
+	input = context;
+	chat.sendMessage({ text: context });
+}
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
