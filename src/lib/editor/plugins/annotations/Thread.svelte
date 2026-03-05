@@ -41,7 +41,6 @@
     } = $props();
 
     let newMessage = $state("");
-    let textareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
 
     function send() {
         if (!newMessage.trim()) return;
@@ -80,7 +79,6 @@
 {#if !previewOnly}
     <div class="mt-3 rounded-[10px] bg-white/40 inset-shadow-sm inset-shadow-white overflow-hidden">
         <textarea
-            bind:this={textareaEl}
             bind:value={newMessage}
             placeholder="Reply…"
             rows="2"
