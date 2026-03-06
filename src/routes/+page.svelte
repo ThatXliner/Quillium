@@ -26,6 +26,8 @@
     import { tutorialActive, modalStack, editorView } from "$lib/stores";
     import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
     import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
+    import { debugPanelActive } from "$lib/debug/store.svelte";
+    import DebugPanel from "$lib/debug/DebugPanel.svelte";
 
     /** Show the tutorial on first visit if the user hasn't seen it. */
     function showTutorialOnFirstVisit() {
@@ -46,6 +48,11 @@
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
 {#if $tutorialActive}
     <Tutorial onComplete={() => {}} />
+{/if}
+
+<!-- Debug panel — DEV only, never rendered in production builds -->
+{#if import.meta.env.DEV && $debugPanelActive}
+    <DebugPanel />
 {/if}
 
 <!--

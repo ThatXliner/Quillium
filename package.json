@@ -10,6 +10,9 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "format": "biome format --write",
     "lint": "biome lint --write",
     "biome": "bun run format && bun run lint"
@@ -51,10 +54,13 @@
     "@tailwindcss/vite": "^4.2.0",
     "@tauri-apps/cli": "^2.10.0",
     "@types/lodash-es": "^4.17.12",
+    "@vitest/coverage-v8": "^4.0.18",
+    "jsdom": "^28.1.0",
     "svelte": "^5.53.0",
     "svelte-check": "^4.4.1",
     "tailwindcss": "^4.2.0",
     "typescript": "~5.6.3",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^4.0.18"
   }
 }

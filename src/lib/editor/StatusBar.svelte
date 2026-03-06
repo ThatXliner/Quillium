@@ -19,6 +19,7 @@
     import Save from "$lib/save/Save.svelte";
     import { listen } from "@tauri-apps/api/event";
     import { tutorialActive } from "$lib/stores";
+    import { debugPanelActive } from "$lib/debug/store.svelte";
 
     const { words, chars, selWords, selChars } = $props();
 
@@ -73,4 +74,13 @@
         title="Take tour"
         class="w-5 h-5 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-[11px] font-semibold leading-none flex items-center justify-center"
     >?</button>
+    {#if import.meta.env.DEV}
+        <div class="w-px h-8 bg-black/20"></div>
+        <button
+            onclick={() => ($debugPanelActive = true)}
+            aria-label="Open debug panel"
+            title="Debug scenarios"
+            class="w-5 h-5 rounded-full bg-amber-200/60 hover:bg-amber-300/80 text-amber-700 hover:text-amber-900 transition-colors text-[11px] leading-none flex items-center justify-center"
+        >🐛</button>
+    {/if}
 </div>
