@@ -88,7 +88,10 @@
             destroyEditor();
             tick().then(() => {
                 const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-                if (v) createEditor(v.versions[v.currentlySelected]);
+                if (v) {
+                    createEditor(v.versions[v.currentlySelected]);
+                    if (editor) moveCursorToEnd(editor);
+                }
             });
         } else {
             // Pop back to that level and signal it to rebuild its editor
@@ -107,7 +110,10 @@
             destroyEditor();
             tick().then(() => {
                 const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-                if (v) createEditor(v.versions[v.currentlySelected]);
+                if (v) {
+                    createEditor(v.versions[v.currentlySelected]);
+                    if (editor) moveCursorToEnd(editor);
+                }
             });
         }
     });
@@ -161,6 +167,15 @@
         editor = new EditorView({ state, parent: editorHost });
         modalAnnotations = editor.state.field(annotationField);
         modalActiveAnnotation = getActiveAnnotation(editor.state);
+    }
+
+    function moveCursorToEnd(activeEditor: EditorView) {
+        const end = activeEditor.state.doc.length;
+        activeEditor.dispatch({
+            selection: { anchor: end },
+            scrollIntoView: true,
+        });
+        activeEditor.focus();
     }
 
     function destroyEditor() {

@@ -222,14 +222,36 @@ function destroyRecursiveEditor() {
  */
 function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 	if (!recursiveEditor || !activeVersion) return;
+	const versionChanged =
+		previousVersionId !== undefined &&
+		previousVersionId !== revision.currentlySelected;
 	const currentText = recursiveEditor.state.doc.toString();
 	const targetText = activeText;
-	if (currentText === targetText) return;
+	// Always reload state when switching versions, even if doc text matches,
+	// so cursor/selection/annotation state does not leak across versions.
+	if (!versionChanged && currentText === targetText) return;
 	// Save the current editor state back to whichever version we're leaving
-	if (previousVersionId !== undefined) {
+	if (versionChanged) {
 		upsertVersionState(recursiveEditor, previousVersionId);
 	}
 	isSyncingFromAnnotation = true;
+	if (versionChanged && recursiveEditorHost) {
+		destroyRecursiveEditor();
+		createRecursiveEditor(activeVersion);
+		if (recursiveEditor) {
+			const end = recursiveEditor.state.doc.length;
+			recursiveEditor.dispatch({
+				selection: { anchor: end },
+				scrollIntoView: true,
+			});
+			recursiveEditor.focus();
+		}
+		isSyncingFromAnnotation = false;
+		nestedEditorHasActiveAnnotation = !!(
+			recursiveEditor && getActiveAnnotation(recursiveEditor.state)
+		);
+		return;
+	}
 	const extensions = getExtensions({
 		persist: false,
 		updateListener(update: ViewUpdate) {
