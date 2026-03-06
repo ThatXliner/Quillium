@@ -140,6 +140,11 @@ const _updateRevisionVersionState = StateEffect.define<{
   versionId: number;
   versionState: VersionState;
 }>();
+const _updateRevisionVersionLabel = StateEffect.define<{
+  annotationId: number;
+  versionId: number;
+  label: string | undefined;
+}>();
 export function setActiveRevisionVersion(
   state: EditorState,
   annotationId: number,
@@ -303,6 +308,23 @@ export function updateRevisionVersionState(
       to: original.selection.main.to,
       insert: text,
     }),
+  });
+}
+export function updateRevisionVersionLabel(
+  state: EditorState,
+  annotationId: number,
+  versionId: number,
+  label: string | undefined,
+) {
+  const original = state.field(annotationField)[annotationId];
+  if (!isAnnotationOfType(original, "revision")) {
+    throw new Error("Annotation is not a revision");
+  }
+  return state.update({
+    effects: [
+      _updateRevisionVersionLabel.of({ annotationId, versionId, label }),
+    ],
+    annotations: [Transaction.addToHistory.of(true)],
   });
 }
 export function branchSuggestion(state: EditorState, annotationId: number) {
@@ -618,6 +640,14 @@ export const annotationField = StateField.define<Annotations>({
           }
         }
         annotations[e.value.annotationId] = annotation;
+      } else if (e.is(_updateRevisionVersionLabel)) {
+        let annotation = annotations[e.value.annotationId];
+        if (!isAnnotationOfType(annotation, "revision")) continue;
+        annotation.versions[e.value.versionId] = {
+          ...annotation.versions[e.value.versionId],
+          label: e.value.label,
+        };
+        annotations[e.value.annotationId] = annotation;
       } else if (e.is(addSuggestion)) {
         const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
         for (const { from, to } of cursor) {
@@ -723,6 +753,16 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
             annotationId: oldAnnotation.id,
             versionId: effect.value.versionId,
             versionState: oldAnnotation.versions[effect.value.versionId],
+          }),
+        );
+      } else if (effect.is(_updateRevisionVersionLabel)) {
+        let oldAnnotation = oldAnnotations[effect.value.annotationId];
+        if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
+        effects.push(
+          _updateRevisionVersionLabel.of({
+            annotationId: oldAnnotation.id,
+            versionId: effect.value.versionId,
+            label: oldAnnotation.versions[effect.value.versionId]?.label,
           }),
         );
       } else if (effect.is(addSuggestion)) {

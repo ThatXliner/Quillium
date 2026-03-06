@@ -52,6 +52,7 @@ import {
 	createNewRevision,
 	deleteRevisionVersion,
 	setActiveRevisionVersion,
+	updateRevisionVersionLabel,
 	updateRevisionVersionState,
 	type Annotation,
 	type Thread as ThreadType,
@@ -88,6 +89,69 @@ const VERSION_PREVIEW_MAX = 34;
 
 let isEditorOpen = $state(false);
 let userClosedEditor = false; // plain var — not reactive, just a gate
+
+// Inline label editing — contenteditable approach (Arc/iTerm2-style)
+// editingVersionIndex tracks which pill is in edit mode.
+// We operate directly on the DOM element to avoid Svelte clobbering
+// in-progress typed text during reactive re-renders.
+let editingVersionIndex = $state<number | null>(null);
+let preLabelEditValue = "";
+
+function startEditingLabel(el: HTMLElement, i: number) {
+	editingVersionIndex = i;
+	const version = revision.versions[i];
+	preLabelEditValue = version.label ?? previewVersionText(version);
+	el.textContent = preLabelEditValue;
+	el.contentEditable = "true";
+	el.focus();
+	const range = document.createRange();
+	range.selectNodeContents(el);
+	const sel = window.getSelection();
+	sel?.removeAllRanges();
+	sel?.addRange(range);
+}
+
+function commitLabelEdit(el: HTMLElement, i: number) {
+	if (editingVersionIndex !== i) return;
+	el.contentEditable = "false";
+	editingVersionIndex = null;
+	const trimmed = (el.textContent ?? "").trim();
+	// Restore display label immediately so Svelte's next render is consistent
+	el.textContent = trimmed || previewVersionText(revision.versions[i]);
+	view.dispatch(
+		updateRevisionVersionLabel(
+			view.state,
+			revision.id,
+			i,
+			trimmed || undefined,
+		),
+	);
+}
+
+function cancelLabelEdit(el: HTMLElement, i: number) {
+	if (editingVersionIndex !== i) return;
+	el.contentEditable = "false";
+	el.textContent = preLabelEditValue;
+	editingVersionIndex = null;
+}
+
+/**
+ * Svelte action that manages a pill span's textContent imperatively,
+ * keeping it in sync with the label when not editing. This prevents
+ * Svelte's reactive DOM updates from clobbering text the user is
+ * actively typing in contenteditable mode.
+ */
+function labelSpan(el: HTMLElement, params: { index: number; label: string }) {
+	el.textContent = params.label;
+	return {
+		update(p: { index: number; label: string }) {
+			// Only overwrite if this span is not currently being edited
+			if (editingVersionIndex !== p.index) {
+				el.textContent = p.label;
+			}
+		},
+	};
+}
 
 // Auto-open the nested editor when this revision becomes active,
 // unless the user explicitly closed it. Reset the gate when the
@@ -306,27 +370,59 @@ onDestroy(() => {
     <div class="px-3 pb-2 flex flex-wrap gap-1">
         {#each revision.versions as version, i}
             {@const versionActive = i === revision.currentlySelected}
-            <div class="inline-flex items-center rounded-md overflow-hidden
+            {@const isEditingThis = editingVersionIndex === i}
+            <div class="inline-flex items-center rounded-md
+                {isEditingThis ? '' : 'overflow-hidden'}
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
-                    : 'bg-white/60 ring-1 ring-purple-200/40'}">
-                <button
-                    class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
-                        {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
-                    disabled={versionActive}
-                    title={versionText(version) || "(empty)"}
-                    onclick={() => {
-                        view.dispatch(
-                            setActiveRevisionVersion(view.state, revision.id, i),
-                        );
+                    : 'bg-white/60 ring-1 ring-purple-200/40'}
+                {isEditingThis ? 'ring-2 ring-purple-300/70' : ''}">
+                <!-- svelte-ignore a11y_interactive_supports_focus -->
+                <span
+                    role="button"
+                    class="max-w-[120px] px-2 py-1 text-[11px] font-medium transition-colors select-none
+                        {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}
+                        {isEditingThis
+                            ? 'outline-none min-w-[60px] max-w-[180px] whitespace-nowrap overflow-visible cursor-text truncate-none'
+                            : 'truncate cursor-pointer'}"
+                    title={isEditingThis ? '' : (versionActive ? 'Click to rename' : 'Click to switch · click again to rename')}
+                    use:labelSpan={{ index: i, label: version.label ?? previewVersionText(version) }}
+                    onclick={(e) => {
+                        if (editingVersionIndex !== null) return;
+                        const el = e.currentTarget as HTMLElement;
+                        if (!versionActive) {
+                            view.dispatch(
+                                setActiveRevisionVersion(view.state, revision.id, i),
+                            );
+                        } else {
+                            startEditingLabel(el, i);
+                        }
                     }}
-                >
-                    {version.label ?? previewVersionText(version)}
-                </button>
+                    onkeydown={(e) => {
+                        const el = e.currentTarget as HTMLElement;
+                        if (isEditingThis) {
+                            if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(el, i); }
+                            else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(el, i); }
+                        } else if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            if (versionActive) startEditingLabel(el, i);
+                        }
+                    }}
+                    onblur={(e) => {
+                        if (isEditingThis) commitLabelEdit(e.currentTarget as HTMLElement, i);
+                    }}
+                    onpaste={(e) => {
+                        if (!isEditingThis) return;
+                        e.preventDefault();
+                        const text = e.clipboardData?.getData("text/plain") ?? "";
+                        document.execCommand("insertText", false, text.replace(/\n/g, " "));
+                    }}
+                ></span>
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
                         {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
                     onclick={() => {
+                        if (editingVersionIndex !== null) return;
                         view.dispatch(
                             deleteRevisionVersion(view.state, revision.id, i),
                         );
