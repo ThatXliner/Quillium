@@ -80,8 +80,8 @@
 
 <!-- Reply input — hidden in previewOnly mode -->
 {#if !previewOnly}
-    <div class="mt-3 rounded-[10px] bg-white/40 inset-shadow-sm inset-shadow-white overflow-hidden
-        ring-1 ring-transparent focus-within:ring-2 {focusRingClass} transition-shadow">
+    <div class="mt-3 rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
+        ring-1 ring-black/5 focus-within:ring-2 {focusRingClass} transition-shadow">
         <textarea
             bind:value={newMessage}
             placeholder="Reply…"

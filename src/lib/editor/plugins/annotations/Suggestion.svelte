@@ -1,83 +1,83 @@
 <script lang="ts">
-/**
- * Suggestion.svelte — Displays an AI-generated suggestion card
- * with one or more replacement options, inline diff preview,
- * and actions to apply or branch into a revision.
- *
- * Props:
- *   - suggestion: Annotation<"suggestion"> — the annotation data
- *   - isActive: boolean — whether this card is currently selected
- *   - view: EditorView — the parent CodeMirror editor
- *   - remove: () => void — callback to delete this annotation
- *   - updateThread: (thread: ThreadType) => void — callback to
- *     replace the thread array
- *
- * Events emitted: none (delegates via callbacks and CodeMirror
- *   dispatch for applySuggestion / branchSuggestion effects)
- * Stores:
- *   - modalStack (write): pushes a DiffModal entry for full-view
- *
- * Parent: Annotations.svelte
- * Children: Thread.svelte (for user replies below the suggestion)
- *
- * Local state:
- *   - selectedIndex: which replacement option is highlighted
- *   - diffExpanded: whether the inline diff panel is visible
- */
-import type { EditorView } from "@codemirror/view";
-import {
-	ChevronDownIcon,
-	GitBranchIcon,
-	Maximize2,
-	SparklesIcon,
-	Trash2,
-} from "lucide-svelte";
-import {
-	applySuggestion,
-	branchSuggestion,
-	diffTokens,
-	tokenize,
-	type Annotation,
-	type Thread as ThreadType,
-} from ".";
-import Thread from "./Thread.svelte";
-import { modalStack } from "$lib/stores";
-import posthog from "posthog-js";
+  /**
+   * Suggestion.svelte — Displays an AI-generated suggestion card
+   * with one or more replacement options, inline diff preview,
+   * and actions to apply or branch into a revision.
+   *
+   * Props:
+   *   - suggestion: Annotation<"suggestion"> — the annotation data
+   *   - isActive: boolean — whether this card is currently selected
+   *   - view: EditorView — the parent CodeMirror editor
+   *   - remove: () => void — callback to delete this annotation
+   *   - updateThread: (thread: ThreadType) => void — callback to
+   *     replace the thread array
+   *
+   * Events emitted: none (delegates via callbacks and CodeMirror
+   *   dispatch for applySuggestion / branchSuggestion effects)
+   * Stores:
+   *   - modalStack (write): pushes a DiffModal entry for full-view
+   *
+   * Parent: Annotations.svelte
+   * Children: Thread.svelte (for user replies below the suggestion)
+   *
+   * Local state:
+   *   - selectedIndex: which replacement option is highlighted
+   *   - diffExpanded: whether the inline diff panel is visible
+   */
+  import type { EditorView } from "@codemirror/view";
+  import {
+    ChevronDownIcon,
+    GitBranchIcon,
+    Maximize2,
+    SparklesIcon,
+    Trash2,
+  } from "lucide-svelte";
+  import {
+    applySuggestion,
+    branchSuggestion,
+    diffTokens,
+    tokenize,
+    type Annotation,
+    type Thread as ThreadType,
+  } from ".";
+  import Thread from "./Thread.svelte";
+  import { modalStack } from "$lib/stores";
+  import posthog from "posthog-js";
 
-const {
-	suggestion,
-	isActive,
-	view,
-	remove,
-	updateThread,
-}: {
-	suggestion: Annotation<"suggestion">;
-	isActive: boolean;
-	view: EditorView;
-	remove: () => void;
-	updateThread: (thread: ThreadType) => void;
-} = $props();
+  const {
+    suggestion,
+    isActive,
+    view,
+    remove,
+    updateThread,
+  }: {
+    suggestion: Annotation<"suggestion">;
+    isActive: boolean;
+    view: EditorView;
+    remove: () => void;
+    updateThread: (thread: ThreadType) => void;
+  } = $props();
 
-const thread = $derived(suggestion.thread);
+  const thread = $derived(suggestion.thread);
 
-// Auto-select the only replacement when there is exactly one
-let selectedIndex = $state<number | null>(
-	suggestion.replacements.length === 1 ? 0 : null,
-);
+  // Auto-select the only replacement when there is exactly one
+  let selectedIndex = $state<number | null>(
+    suggestion.replacements.length === 1 ? 0 : null,
+  );
 
-let diffExpanded = $state(false);
+  let diffExpanded = $state(false);
 
-/**
- * Compute token-level diff operations between the original
- * document text and the chosen replacement text.
- */
-function getDiffOps(replacementIndex: number) {
-	const { from, to } = suggestion.selection.main;
-	const original = view.state.sliceDoc(from, to);
-	const replacement = suggestion.replacements[replacementIndex];
-	if (!replacement) return [];
-	return diffTokens(tokenize(original), tokenize(replacement.text));
-}
+  /**
+   * Compute token-level diff operations between the original
+   * document text and the chosen replacement text.
+   */
+  function getDiffOps(replacementIndex: number) {
+    const { from, to } = suggestion.selection.main;
+    const original = view.state.sliceDoc(from, to);
+    const replacement = suggestion.replacements[replacementIndex];
+    if (!replacement) return [];
+    return diffTokens(tokenize(original), tokenize(replacement.text));
+  }
 </script>
 
 <div
@@ -156,17 +156,19 @@ function getDiffOps(replacementIndex: number) {
         <button
           class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
           onclick={() => {
-          diffExpanded = !diffExpanded;
-          if (!diffExpanded) return;
-          posthog.capture("suggestion_diff_viewed", {
-            replacement_index: selectedIndex,
-            replacement_count: suggestion.replacements.length,
-          });
-        }}
+            diffExpanded = !diffExpanded;
+            if (!diffExpanded) return;
+            posthog.capture("suggestion_diff_viewed", {
+              replacement_index: selectedIndex,
+              replacement_count: suggestion.replacements.length,
+            });
+          }}
         >
           <ChevronDownIcon
             size={12}
-            class="transition-transform duration-200 {diffExpanded ? 'rotate-180' : ''}"
+            class="transition-transform duration-200 {diffExpanded
+              ? 'rotate-180'
+              : ''}"
           />
           <span>View changes</span>
         </button>
@@ -176,7 +178,12 @@ function getDiffOps(replacementIndex: number) {
             posthog.capture("suggestion_diff_modal_opened", {
               replacement_count: suggestion.replacements.length,
             });
-            modalStack.push({ type: "diff", suggestionId: suggestion.id, parentView: view, label: "AI Suggestion" });
+            modalStack.push({
+              type: "diff",
+              suggestionId: suggestion.id,
+              parentView: view,
+              label: "AI Suggestion",
+            });
           }}
           title="Expand to full view"
         >
@@ -184,14 +191,21 @@ function getDiffOps(replacementIndex: number) {
         </button>
       </div>
       {#if diffExpanded}
-        <div class="mt-1.5 max-h-28 overflow-y-auto rounded-lg bg-white/60 border border-green-100/60 px-2.5 py-2 text-xs leading-relaxed font-mono">
+        <div
+          class="mt-1.5 max-h-28 overflow-y-auto rounded-lg bg-white/60 border border-green-100/60 px-2.5 py-2 text-xs leading-relaxed font-mono"
+        >
           {#each getDiffOps(selectedIndex) as op}
             {#if op.type === "equal"}
               <span>{op.text}</span>
             {:else if op.type === "delete"}
-              <span class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5">{op.text}</span>
+              <span
+                class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5"
+                >{op.text}</span
+              >
             {:else}
-              <span class="bg-green-100/80 text-green-700 rounded-sm px-0.5">{op.text}</span>
+              <span class="bg-green-100/80 text-green-700 rounded-sm px-0.5"
+                >{op.text}</span
+              >
             {/if}
           {/each}
         </div>
@@ -230,7 +244,7 @@ function getDiffOps(replacementIndex: number) {
             replacement_count: suggestion.replacements.length,
           });
           view.dispatch(
-            applySuggestion(view.state, suggestion.id, selectedIndex)
+            applySuggestion(view.state, suggestion.id, selectedIndex),
           );
         }}
       >
@@ -242,11 +256,11 @@ function getDiffOps(replacementIndex: number) {
   <!-- User thread replies (skip first message if it's the AI's overall comment) -->
   {#if (thread[0]?.author === "AI" ? thread.slice(1) : thread).length > 0}
     <div class="border-t border-green-100/60 px-3 py-2.5">
-      <Thread
+      <Thread {thread} {updateThread} />
+      <!-- <Thread
         thread={thread[0]?.author === "AI" ? thread.slice(1) : thread}
         {updateThread}
-      />
+      /> -->
     </div>
   {/if}
 </div>
-

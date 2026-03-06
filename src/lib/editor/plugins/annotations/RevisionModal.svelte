@@ -431,7 +431,7 @@
     <div class="flex flex-1 overflow-hidden">
       <!-- Thread sidebar (left) -->
       <div
-        class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col bg-purple-50/20"
+        class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col bg-purple-50/90"
       >
         <div class="px-4 py-3 border-b border-purple-100/50">
           <span
