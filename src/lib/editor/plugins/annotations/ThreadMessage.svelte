@@ -28,11 +28,13 @@
         thread,
         index,
         updateThread,
+        truncate = false,
     }: {
         message: ThreadMessage;
         updateThread: (thread: Thread) => void;
         thread: Thread;
         index: number;
+        truncate?: boolean;
     } = $props();
 
     let editing = $state(false);
@@ -100,11 +102,13 @@
                 >Cancel</button>
             </div>
         {:else}
-            <p class="text-xs text-black/70 mt-0.5 leading-relaxed whitespace-pre-wrap">{message.message}</p>
-            <button
-                onclick={() => (editing = true)}
-                class="text-[10px] text-black/30 hover:text-black/50 mt-0.5"
-            >Edit</button>
+            <p class="text-xs text-black/70 mt-0.5 leading-relaxed {truncate ? 'truncate' : 'whitespace-pre-wrap'}">{message.message}</p>
+            {#if !truncate}
+                <button
+                    onclick={() => (editing = true)}
+                    class="text-[10px] text-black/30 hover:text-black/50 mt-0.5"
+                >Edit</button>
+            {/if}
         {/if}
     </div>
 </div>
