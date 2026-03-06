@@ -34,29 +34,57 @@ import posthog from "posthog-js";
 const {
 	view,
 	annotationsData,
+	pendingAnnotation,
 	activeAnnotationData,
 }: {
 	view: EditorView;
 	annotationsData: Annotations;
+	pendingAnnotation?: GenericAnnotation;
 	activeAnnotationData?: GenericAnnotation;
 } = $props();
 
 let commentText = $state("");
 let textarea = $state<HTMLTextAreaElement | undefined>();
+let focusedPendingId = $state<number | undefined>(undefined);
+
+function resolvePendingComment() {
+	if (
+		pendingAnnotation &&
+		isAnnotationOfType(pendingAnnotation, "comment") &&
+		pendingAnnotation.thread.length === 0
+	) {
+		return pendingAnnotation;
+	}
+	if (
+		activeAnnotationData &&
+		isAnnotationOfType(activeAnnotationData, "comment") &&
+		activeAnnotationData.thread.length === 0
+	) {
+		return activeAnnotationData;
+	}
+	return undefined;
+}
+
+const pendingComment = $derived(resolvePendingComment());
 
 // Auto-focus the textarea when a pending (unsaved) comment exists
 $effect(() => {
-	if (!canCreateNewComment(annotationsData)) {
+	if (
+		!canCreateNewComment(annotationsData) &&
+		pendingComment &&
+		pendingComment.id !== focusedPendingId
+	) {
+		focusedPendingId = pendingComment.id;
 		tick().then(() => textarea?.focus());
 	}
 });
 
 // Derive the highlighted text range the pending comment refers to
 const selectedText = $derived(
-	activeAnnotationData
+	pendingComment
 		? view.state.sliceDoc(
-				activeAnnotationData.selection.main.from,
-				activeAnnotationData.selection.main.to,
+				pendingComment.selection.main.from,
+				pendingComment.selection.main.to,
 			)
 		: "",
 );
@@ -67,8 +95,8 @@ const selectedText = $derived(
  */
 function addComment() {
 	if (
-		!activeAnnotationData ||
-		!isAnnotationOfType(activeAnnotationData, "comment")
+		!pendingComment ||
+		!isAnnotationOfType(pendingComment, "comment")
 	)
 		return;
 	posthog.capture("comment_created", {
@@ -79,9 +107,9 @@ function addComment() {
 		view.state.update({
 			effects: [
 				updateThread.of({
-					annotationId: activeAnnotationData.id,
+					annotationId: pendingComment.id,
 					newThread: [
-						...activeAnnotationData.thread,
+						...pendingComment.thread,
 						{
 							message: commentText,
 							author: "User",
@@ -101,13 +129,13 @@ function addComment() {
  */
 function cancelComment() {
 	if (
-		!activeAnnotationData ||
-		!isAnnotationOfType(activeAnnotationData, "comment")
+		!pendingComment ||
+		!isAnnotationOfType(pendingComment, "comment")
 	)
 		return;
 	view.dispatch(
 		view.state.update({
-			effects: [removeAnnotation.of(activeAnnotationData)],
+			effects: [removeAnnotation.of(pendingComment)],
 		}),
 	);
 	commentText = "";

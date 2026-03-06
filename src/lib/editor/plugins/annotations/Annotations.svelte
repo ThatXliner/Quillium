@@ -40,7 +40,6 @@
     } from "$lib/editor/plugins/annotations";
     import { activeAnnotation, annotations, editorView } from "$lib/stores";
     import Revision from "./Revision.svelte";
-    import { canCreateNewComment } from "./utils";
     import PreComment from "./PreComment.svelte";
     import Suggestion from "./Suggestion.svelte";
     import { tick } from "svelte";
@@ -143,6 +142,13 @@
               )
             : [],
     );
+    const pendingComment = $derived(
+        sortedAnnotations.find(
+            (annotation) =>
+                isAnnotationOfType(annotation, "comment") &&
+                annotation.thread.length === 0,
+        ),
+    );
 
     // Pair each annotation with its viewport Y position
     const positionedAnnotations = $derived(() => {
@@ -180,7 +186,7 @@
         return () => resizeObserver?.disconnect();
     });
 
-    let updateTimeout: number;
+    let updateTimeout: ReturnType<typeof setTimeout>;
     function debouncedUpdatePositions() {
         clearTimeout(updateTimeout);
         updateTimeout = setTimeout(updateAnnotationPositions, 16);
@@ -296,14 +302,12 @@
                 {#each sortedAnnotations as c}
                     {@const i = c.id}
                     {@const isActive = resolvedActiveAnnotation?.id === c.id}
-                    {@const isPendingComment =
-                        !canCreateNewComment(resolvedAnnotations) &&
-                        i === Math.max(...sortedAnnotations.map((x) => x.id))}
+                    {@const isPendingComment = pendingComment?.id === c.id}
                     <div
                         bind:this={annotationElements[i]}
                         class="annotation-card"
                         class:is-active={isActive}
-                        style="z-index: {isActive ? 100 : 50};"
+                        style="z-index: {isActive ? 120 : isPendingComment ? 110 : 50};"
                         onclick={(e) => {
                             if (isInteractiveTarget(e.target)) return;
                             if (!isActive && resolvedView) {
@@ -336,6 +340,14 @@
                                 updateThread={dispatchUpdateThread.bind(null, i)}
                             />
                         {/if}
+                        {#if isAnnotationOfType(c, "comment") && isPendingComment}
+                            <PreComment
+                                view={resolvedView}
+                                annotationsData={resolvedAnnotations}
+                                pendingAnnotation={c}
+                                activeAnnotationData={resolvedActiveAnnotation}
+                            />
+                        {/if}
                         {#if isAnnotationOfType(c, "revision")}
                             <Revision
                                 revision={c}
@@ -356,16 +368,6 @@
                         {/if}
                     </div>
                 {/each}
-
-                {#if !canCreateNewComment(resolvedAnnotations)}
-                    <div class="annotation-card">
-                        <PreComment
-                            view={resolvedView}
-                            annotationsData={resolvedAnnotations}
-                            activeAnnotationData={resolvedActiveAnnotation}
-                        />
-                    </div>
-                {/if}
             </div>
         </div>
     {:else}
@@ -373,9 +375,7 @@
             {#each sortedAnnotations as c}
                 {@const i = c.id}
                 {@const isActive = resolvedActiveAnnotation?.id === c.id}
-                {@const isPendingComment =
-                    !canCreateNewComment(resolvedAnnotations) &&
-                    i === Math.max(...sortedAnnotations.map((x) => x.id))}
+                {@const isPendingComment = pendingComment?.id === c.id}
                 <div
                     bind:this={annotationElements[i]}
                     class="annotation-card-inline"
@@ -412,6 +412,14 @@
                             updateThread={dispatchUpdateThread.bind(null, i)}
                         />
                     {/if}
+                    {#if isAnnotationOfType(c, "comment") && isPendingComment}
+                        <PreComment
+                            view={resolvedView}
+                            annotationsData={resolvedAnnotations}
+                            pendingAnnotation={c}
+                            activeAnnotationData={resolvedActiveAnnotation}
+                        />
+                    {/if}
                     {#if isAnnotationOfType(c, "revision")}
                         <Revision
                             revision={c}
@@ -432,16 +440,6 @@
                     {/if}
                 </div>
             {/each}
-
-            {#if !canCreateNewComment(resolvedAnnotations)}
-                <div class="annotation-card-inline">
-                    <PreComment
-                        view={resolvedView}
-                        annotationsData={resolvedAnnotations}
-                        activeAnnotationData={resolvedActiveAnnotation}
-                    />
-                </div>
-            {/if}
         </div>
     {/if}
 {/if}
