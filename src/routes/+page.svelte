@@ -29,6 +29,8 @@
     import { debugPanelActive } from "$lib/debug/store.svelte";
     import DebugPanel from "$lib/debug/DebugPanel.svelte";
 
+    let editorComponent = $state<{ reload: () => Promise<void> }>();
+
     /** Show the tutorial on first visit if the user hasn't seen it. */
     function showTutorialOnFirstVisit() {
         if (!localStorage.getItem("quillium_tutorial_seen")) {
@@ -42,7 +44,7 @@
 <AiSidebar />
 
 <div class="h-screen w-full">
-    <Editor />
+    <Editor bind:this={editorComponent} />
 </div>
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
@@ -52,7 +54,7 @@
 
 <!-- Debug panel — DEV only, never rendered in production builds -->
 {#if import.meta.env.DEV && $debugPanelActive}
-    <DebugPanel />
+    <DebugPanel reloadEditor={() => editorComponent?.reload()} />
 {/if}
 
 <!--

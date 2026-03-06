@@ -1,26 +1,30 @@
 <!--
     DebugPanel.svelte — Developer overlay for loading editor scenarios.
 
-    Renders as a floating panel (same z-layer as Tutorial) that lets
-    developers instantly set the editor to a named state (single comment,
-    nested revision, dense annotations, etc.) without making AI API calls.
+    How it works:
+      1. Creates a temporary EditorState with full extensions (including
+         annotationField and annotation decorations).
+      2. Runs scenario.setup() to dispatch annotations onto that state.
+      3. Serializes the resulting state via toJSON(savedFields) and writes
+         it to disk via invoke("save") — the same path as normal auto-save.
+      4. Calls reloadEditor() (exported from Editor.svelte) which re-runs
+         invoke("load") → EditorState.fromJSON → view.setState, so the
+         live view gets the complete extension stack including its update
+         listener and annotation decoration plugins.
 
     Activation: click the 🐛 button in the StatusBar, or press Escape to close.
-
-    Each scenario:
-      1. Replaces the editor document with the scenario's sample text.
-      2. Clears all existing annotations (via EditorState.create).
-      3. Runs the scenario's setup() function to dispatch annotations.
-
-    Only rendered when the `debugPanelActive` store is true.
-    Only available when import.meta.env.DEV is true (hidden in production builds).
+    Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
     import { editorView } from "$lib/stores";
     import { debugPanelActive } from "$lib/debug/store.svelte";
     import { scenarios, type Scenario } from "$lib/debug/scenarios";
     import { EditorState } from "@codemirror/state";
-    import { getExtensions } from "$lib/editor/extensions";
+    import { EditorView } from "@codemirror/view";
+    import { getExtensions, savedFields } from "$lib/editor/extensions";
+    import { invoke } from "@tauri-apps/api/core";
+
+    const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
 
     let loading = $state<string | null>(null);
     let lastLoaded = $state<string | null>(null);
@@ -31,8 +35,7 @@
     }
 
     async function runScenario(scenario: Scenario) {
-        const view = $editorView;
-        if (!view) {
+        if (!$editorView) {
             error = "Editor not ready — wait for the editor to initialise.";
             return;
         }
@@ -41,21 +44,42 @@
         error = null;
 
         try {
-            // Replace the editor state entirely: new doc, no annotations, no history.
-            // persist: false prevents the debug state from being written to disk.
-            const freshState = EditorState.create({
+            // 1. Build a temporary EditorState with the full extension stack
+            //    (annotationField included) but no persist listener, so our
+            //    intermediate dispatches don't trigger spurious auto-saves.
+            const tempState = EditorState.create({
                 doc: scenario.doc,
                 extensions: getExtensions({ persist: false }),
             });
-            view.setState(freshState);
 
-            // Give the state one tick to settle before dispatching annotations.
-            await new Promise((r) => requestAnimationFrame(r));
+            // 2. Mount a headless EditorView so we can dispatch transactions
+            //    through the full extension pipeline (annotation decorations,
+            //    StateField reducer, etc.).
+            const tempParent = document.createElement("div");
+            const tempView = new EditorView({ state: tempState, parent: tempParent });
 
-            scenario.setup(view);
+            // 3. Run the scenario setup — dispatches addAnnotation effects.
+            scenario.setup(tempView);
+
+            // 4. Serialize the resulting state (doc + annotationField) to JSON.
+            //    We use mapValues to convert EditorSelection objects to their
+            //    JSON form, matching what annotationField.toJSON does internally.
+            const json = tempView.state.toJSON(savedFields);
+
+            tempView.destroy();
+
+            // 5. Write to disk via the same Tauri "save" command the auto-save
+            //    listener uses, so the next load sees the scenario state.
+            await invoke("save", { state: JSON.stringify(json) });
+
+            // 6. Reload the live editor from disk — re-runs the full
+            //    EditorState.fromJSON path with all extensions wired up.
+            await reloadEditor();
+
             lastLoaded = scenario.id;
         } catch (e) {
             error = e instanceof Error ? e.message : String(e);
+            console.error("[DebugPanel] scenario load failed:", e);
         } finally {
             loading = null;
         }
@@ -99,8 +123,7 @@
 
         <!-- Info bar -->
         <div class="px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
-            Loading a scenario <strong>replaces the editor document</strong> and clears all annotations.
-            Changes are not saved to disk.
+            Saves the scenario to disk and reloads the editor. <strong>Overwrites your current draft.</strong>
         </div>
 
         <!-- Error -->
@@ -140,7 +163,7 @@
                                 : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
                         }`}
                     >
-                        {isLoading ? "Loading…" : "Load"}
+                        {isLoading ? "Saving…" : "Load"}
                     </button>
                 </div>
             {/each}
@@ -149,7 +172,7 @@
         <!-- Footer -->
         <div class="px-5 py-3 border-t border-black/10 text-[10px] text-black/35 flex items-center justify-between">
             <span>Press <kbd class="font-mono bg-black/10 px-1 rounded">Esc</kbd> to close</span>
-            <span>Not visible in production builds</span>
+            <span>DEV only — stripped from production builds</span>
         </div>
     </div>
 </div>

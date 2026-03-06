@@ -162,6 +162,31 @@
         return state;
     });
 
+    /**
+     * Reloads the editor from the Tauri backend's saved state.
+     * Used by the debug panel after writing a scenario to disk —
+     * ensures the live EditorView gets the full extension stack
+     * (including annotation decorations and the update listener)
+     * rather than a bare setState() call.
+     */
+    export async function reload() {
+        const data = await invoke("load") as string | null;
+        if (!data || !$editorView) return;
+        const state = EditorState.fromJSON(
+            JSON.parse(data),
+            { extensions: getExtensions(getExtensionOptions) },
+            savedFields,
+        );
+        $editorView.setState(state);
+        const doc = state.doc.toString();
+        stats = {
+            words: getWordCount(doc),
+            chars: doc.length,
+            selWords: 0,
+            selChars: 0,
+        };
+    }
+
     onMount(() => {
         // Must be inside onMount since element may not be defined yet
         fromSave.then((state) => {
