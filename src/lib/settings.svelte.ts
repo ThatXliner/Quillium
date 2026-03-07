@@ -9,6 +9,7 @@ const STORAGE_KEY = "quillium-app-settings";
 
 type AppSettings = {
     selectTextInNestedEditor: boolean;
+    showNestedEditor: boolean;
     docFontFamily: string;
     docFontSize: number;
     uiFontFamily: string;
@@ -16,6 +17,7 @@ type AppSettings = {
 
 const DEFAULTS: AppSettings = {
     selectTextInNestedEditor: true,
+    showNestedEditor: true,
     docFontFamily: '"SF Pro Text", system-ui, sans-serif',
     docFontSize: 18,
     uiFontFamily: "system-ui, -apple-system, sans-serif",

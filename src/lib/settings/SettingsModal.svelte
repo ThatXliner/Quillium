@@ -48,26 +48,13 @@ const UI_FONTS: FontOption[] = [
 ];
 
 // Local draft — a shallow copy of persisted settings
-let draft = $state({
-    selectTextInNestedEditor: appSettings.selectTextInNestedEditor,
-    docFontFamily: appSettings.docFontFamily,
-    docFontSize: appSettings.docFontSize,
-    uiFontFamily: appSettings.uiFontFamily,
-});
+let draft = $state({ ...appSettings });
 
 // Snapshot of what was persisted when the modal opened (for discard)
-const savedSnapshot = {
-    selectTextInNestedEditor: appSettings.selectTextInNestedEditor,
-    docFontFamily: appSettings.docFontFamily,
-    docFontSize: appSettings.docFontSize,
-    uiFontFamily: appSettings.uiFontFamily,
-};
+const savedSnapshot = { ...appSettings };
 
 let isDirty = $derived(
-    draft.selectTextInNestedEditor !== savedSnapshot.selectTextInNestedEditor ||
-    draft.docFontFamily !== savedSnapshot.docFontFamily ||
-    draft.docFontSize !== savedSnapshot.docFontSize ||
-    draft.uiFontFamily !== savedSnapshot.uiFontFamily,
+    JSON.stringify(draft) !== JSON.stringify(savedSnapshot),
 );
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
@@ -103,16 +90,13 @@ function handleChange() {
 }
 
 function save() {
-    appSettings.selectTextInNestedEditor = draft.selectTextInNestedEditor;
-    appSettings.docFontFamily = draft.docFontFamily;
-    appSettings.docFontSize = draft.docFontSize;
-    appSettings.uiFontFamily = draft.uiFontFamily;
+    Object.assign(appSettings, draft);
     persistSettings();
     onclose();
 }
 
 function discard() {
-    applySettings(savedSnapshot as typeof draft);
+    applySettings(savedSnapshot);
     onclose();
 }
 
@@ -290,8 +274,33 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- EDITOR section -->
             <div class="section-label">Editor</div>
 
-            <!-- Select text toggle -->
+            <!-- Show nested editor toggle -->
             <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Show nested editor in revision card</div>
+                    <div class="setting-desc">Display the inline editor inside each revision — disable to use only the full modal</div>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={draft.showNestedEditor}
+                    aria-label="Toggle nested editor in revision card"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showNestedEditor ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showNestedEditor = !draft.showNestedEditor;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+
+            <!-- Select text toggle -->
+            <div class="setting-row {!draft.showNestedEditor ? 'opacity-40 pointer-events-none' : ''}">
                 <div class="setting-meta">
                     <div class="setting-title">Select text in nested editor</div>
                     <div class="setting-desc">Auto-select the same text when a revision opens</div>
