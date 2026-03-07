@@ -182,9 +182,17 @@ export function canCreateNewComment(annotations: Annotations) {
 // consumed by the change (which removes it from state).
 export function mapRange(range: GenericAnnotation, change: ChangeDesc) {
     const allowEmpty = isAnnotationOfType(range, "revision");
-    const newRanges = cleanRangesOf(range.selection.map(change), allowEmpty);
-    if (newRanges) {
-        range.selection = newRanges;
+    try {
+        const newRanges = cleanRangesOf(range.selection.map(change), allowEmpty);
+        if (newRanges) {
+            range.selection = newRanges;
+            return range;
+        }
+    } catch {
+        // Position out of range for this changeset (e.g. a resolver dispatch
+        // on an empty doc while the effect carries pre-deletion positions).
+        // Preserve the effect with its original positions so it survives to
+        // the undo replay rather than being permanently dropped.
         return range;
     }
     return undefined;

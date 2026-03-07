@@ -282,6 +282,8 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
                 if (annotation.versions.length <= 1) {
                     // Only one version, nothing to fall back to — remove it
                     queueMicrotask(() => {
+                        // Guard: if state has advanced (e.g. undo), skip.
+                        if (update.view.state !== update.state) return;
                         update.view.dispatch({
                             effects: [removeAnnotation.of(annotation)],
                         });
@@ -291,6 +293,8 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
                     const nextVersion =
                         annotation.currentlySelected > 0 ? annotation.currentlySelected - 1 : 1;
                     queueMicrotask(() => {
+                        // Guard: if state has advanced (e.g. undo), skip.
+                        if (update.view.state !== update.state) return;
                         update.view.dispatch(
                             setActiveRevisionVersion(update.state, annotation.id, nextVersion),
                         );

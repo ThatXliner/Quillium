@@ -86,6 +86,32 @@ import { filter, mapValues } from "lodash-es";
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
     map: mapRange,
 });
+// Used exclusively by the undo system when restoring an annotation that was
+// implicitly dropped or collapsed by a text deletion. Carries the original
+// annotation with its pre-deletion selection. The map function remaps
+// positions through intervening transactions without filtering collapsed
+// ranges (unlike mapRange), so the annotation survives further edits
+// before undo is applied.
+const _restoreAnnotation = StateEffect.define<GenericAnnotation>({
+    map(annotation, change) {
+        // Remap each range's from and to independently without filtering
+        // collapsed ranges (unlike mapRange). If any position is out of range
+        // for this change (e.g. an addToHistory:false resolver dispatch on an
+        // empty doc), drop the effect so it doesn't cause a RangeError.
+        try {
+            const newRanges = annotation.selection.ranges.map((r) =>
+                EditorSelection.range(change.mapPos(r.from, -1), change.mapPos(r.to, 1)),
+            );
+            return {
+                ...annotation,
+                selection: EditorSelection.create(newRanges, annotation.selection.mainIndex),
+            };
+        } catch {
+            // Position out of range — preserve with original positions.
+            return annotation;
+        }
+    },
+});
 // The reason why we store the whole annotation here instead
 // of just the ID? I haven't tested getting the previous
 // state ala .startState yet...
@@ -477,6 +503,10 @@ function syncRevisionDocsWithDocument(
 ): Annotations {
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
+            // Skip syncing when the revision's range is collapsed — the text was
+            // fully deleted. We keep the stored version doc intact so that undo
+            // can restore both the text and the version content correctly.
+            if (x.selection.main.empty) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
             x.versions[x.currentlySelected] = {
                 ...x.versions[x.currentlySelected],
@@ -503,6 +533,9 @@ export const annotationField = StateField.define<Annotations>({
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
                 console.log("Adding annotation!", e.value);
+                annotations[e.value.id] = e.value;
+            } else if (e.is(_restoreAnnotation)) {
+                console.log("Restoring annotation!", e.value);
                 annotations[e.value.id] = e.value;
             } else if (e.is(removeAnnotation)) {
                 console.log("Removing annotation internally");
@@ -603,8 +636,50 @@ export const annotationField = StateField.define<Annotations>({
 export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) => {
     const effects = [];
     const oldAnnotations = transaction.startState.field(annotationField);
+
+    // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
+    // when text they were anchored to was deleted. These have no explicit effect,
+    // so invertedEffects would never see them.
+    //
+    // Effects stored by invertedEffects carry post-transaction positions —
+    // CodeMirror remaps them through the undo's inverse change on replay.
+    // We use _restoreAnnotation (which does not filter collapsed ranges) so
+    // the collapsed post-deletion point gets mapped back to the full span
+    // by the undo re-insertion, regardless of what other text was deleted
+    // around the annotation.
+    // Only generate implicit restore effects for plain user text edits.
+    // Skip undo/redo replays (they already carry stored effects) and
+    // revision-internal edits (allowRevisionDocEdit), which handle their
+    // own annotation state via explicit effects.
+    const isUndoRedo =
+        transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
+    const isRevisionEdit = transaction.annotation(allowRevisionDocEdit);
+    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit) {
+        for (const annotation of Object.values(oldAnnotations)) {
+            const isRevision = isAnnotationOfType(annotation, "revision");
+            const remapped = cleanRangesOf(
+                annotation.selection.map(transaction.changes, isRevision ? 1 : 0),
+                isRevision,
+            );
+            if (!isRevision && remapped === null) {
+                // Annotation was silently dropped. Store it with its original
+                // pre-deletion selection so undo re-adds it at the right position.
+                effects.push(_restoreAnnotation.of(annotation));
+            } else if (isRevision && remapped !== null && remapped.main.empty) {
+                // Revision survived with a collapsed selection. On undo the doc
+                // is restored, so remove the collapsed state and re-add the
+                // original annotation with the correct pre-deletion span.
+                effects.push(removeAnnotation.of({ ...annotation, selection: remapped }));
+                effects.push(_restoreAnnotation.of(annotation));
+            }
+        }
+    }
+
     for (const effect of transaction.effects) {
         if (effect.is(addAnnotation)) {
+            effects.push(removeAnnotation.of(effect.value));
+        } else if (effect.is(_restoreAnnotation)) {
+            // Redo: drop the restored annotation again.
             effects.push(removeAnnotation.of(effect.value));
         } else if (effect.is(removeAnnotation)) {
             effects.push(addAnnotation.of(effect.value));
