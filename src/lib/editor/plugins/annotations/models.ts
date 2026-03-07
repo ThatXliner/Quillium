@@ -125,10 +125,12 @@ export const ThreadMessageSchema = z.object({
     author: z.string(),
     time: z.number(),
 });
-const EditorSelectionSchema = z.object({
-    ranges: z.array(z.object({ anchor: z.number(), head: z.number() })).min(1),
-    mainIndex: z.number().optional(),
-});
+const EditorSelectionSchema = z
+    .object({
+        ranges: z.array(z.object({ anchor: z.number(), head: z.number() })).min(1),
+        main: z.number().optional(),
+    })
+    .passthrough();
 export const SuggestionReplacementSchema = z.object({
     text: z.string(),
     rationale: z.string().optional(),
