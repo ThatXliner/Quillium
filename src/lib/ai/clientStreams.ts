@@ -62,13 +62,57 @@ export type GeneratedContext = string;
 // ---------------------------------------------------------------------------
 // Shared tools
 // ---------------------------------------------------------------------------
+
+// Exported so chatFactory can use z.infer on these for typed tool dispatch
+export const commentInputSchema = z.object({
+    targetText: z.string().describe("The exact text to comment on"),
+    comment: z.string().describe("The editorial feedback or observation"),
+});
+
+export const revisionInputSchema = z.object({
+    targetText: z.string().describe("The exact text to revise"),
+    versions: z
+        .array(
+            z.object({
+                label: z
+                    .string()
+                    .describe("Short name for this version, e.g. 'Concise', 'Formal', 'Original'"),
+                text: z.string().describe("The full revised text for this version"),
+            }),
+        )
+        .min(2)
+        .describe("2-3 distinct alternative versions of the passage"),
+    threadMessage: z
+        .string()
+        .describe(
+            "Explanation of the differences between versions and when each might suit the writer's goals",
+        ),
+});
+
+export const suggestionInputSchema = z.object({
+    targetText: z.string().describe("The exact text to revise"),
+    replacements: z
+        .array(
+            z.object({
+                text: z.string().describe("The revised text"),
+                rationale: z
+                    .string()
+                    .optional()
+                    .describe("Brief explanation of what this version changes and why"),
+            }),
+        )
+        .describe("One or more revised versions of the text, each with an optional rationale"),
+    comment: z.string().optional().describe("Optional overall explanation of the revision"),
+});
+
+export type CommentInput = z.infer<typeof commentInputSchema>;
+export type RevisionInput = z.infer<typeof revisionInputSchema>;
+export type SuggestionInput = z.infer<typeof suggestionInputSchema>;
+
 const createCommentTool = (description: string) =>
     tool({
         description,
-        inputSchema: z.object({
-            targetText: z.string().describe("The exact text to comment on"),
-            comment: z.string().describe("The editorial feedback or observation"),
-        }),
+        inputSchema: commentInputSchema,
         execute: async ({ targetText, comment }) => ({
             type: "comment",
             targetText,
@@ -145,27 +189,7 @@ Current document length: ${opts.documentContent?.length || 0} characters`,
             createRevision: tool({
                 description:
                     "REQUIRED when a passage could work meaningfully differently. Call this instead of writing rewrite examples in your message. Provide 2-3 labeled versions with a threadMessage explaining the tradeoffs.",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The exact text to revise"),
-                    versions: z
-                        .array(
-                            z.object({
-                                label: z
-                                    .string()
-                                    .describe(
-                                        "Short name for this version, e.g. 'Concise', 'Formal', 'Original'",
-                                    ),
-                                text: z.string().describe("The full revised text for this version"),
-                            }),
-                        )
-                        .min(2)
-                        .describe("2-3 distinct alternative versions of the passage"),
-                    threadMessage: z
-                        .string()
-                        .describe(
-                            "Explanation of the differences between versions and when each might suit the writer's goals",
-                        ),
-                }),
+                inputSchema: revisionInputSchema,
                 execute: async ({ targetText, versions, threadMessage }) => ({
                     type: "revision",
                     targetText,
@@ -200,28 +224,7 @@ After all tool calls, write 2-3 sentences summarizing the patterns you found. No
             createSuggestion: tool({
                 description:
                     "REQUIRED for every revision. Call this for each sentence or phrase you want to improve — never describe rewrites in prose. Must include 2+ alternatives.",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The exact text to revise"),
-                    replacements: z
-                        .array(
-                            z.object({
-                                text: z.string().describe("The revised text"),
-                                rationale: z
-                                    .string()
-                                    .optional()
-                                    .describe(
-                                        "Brief explanation of what this version changes and why",
-                                    ),
-                            }),
-                        )
-                        .describe(
-                            "One or more revised versions of the text, each with an optional rationale",
-                        ),
-                    comment: z
-                        .string()
-                        .optional()
-                        .describe("Optional overall explanation of the revision"),
-                }),
+                inputSchema: suggestionInputSchema,
                 execute: async ({ targetText, replacements, comment }) => ({
                     type: "suggestion",
                     targetText,

@@ -31,36 +31,24 @@
  */
 import { get } from "svelte/store";
 import { Chat } from "@ai-sdk/svelte";
-import type { UIMessage, UIMessageChunk, ChatTransport, ToolCallPart } from "ai";
+import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
 import posthog from "posthog-js";
 import { documentContent, selectedText, editorView } from "$lib/stores";
 import { aiSettings, documentContext, setAiProcessing } from "./settings.svelte";
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
-import { streamChat, streamFeedback, streamRevise } from "./clientStreams";
+import {
+    streamChat,
+    streamFeedback,
+    streamRevise,
+    type CommentInput,
+    type RevisionInput,
+    type SuggestionInput,
+} from "./clientStreams";
 
-type ToolInput = Record<string, unknown>;
-
-function asRecord(value: unknown): ToolInput | null {
-    return typeof value === "object" && value !== null ? (value as ToolInput) : null;
-}
-
-function asString(value: unknown): string | undefined {
-    return typeof value === "string" ? value : undefined;
-}
-
-function asStringRecordArray(value: unknown): { text: string; rationale?: string }[] | undefined {
-    if (!Array.isArray(value)) return undefined;
-    return value
-        .map((item) => {
-            const record = asRecord(item);
-            if (!record) return null;
-            const text = asString(record.text);
-            if (!text) return null;
-            const rationale = asString(record.rationale);
-            return rationale ? { text, rationale } : { text };
-        })
-        .filter((item): item is { text: string; rationale?: string } => item !== null);
-}
+type ToolCall =
+    | { toolName: "createComment"; input: CommentInput }
+    | { toolName: "createSuggestion"; input: SuggestionInput }
+    | { toolName: "createRevision"; input: RevisionInput };
 
 /**
  * Route LLM tool calls to the CodeMirror annotation system.
@@ -69,48 +57,41 @@ function asStringRecordArray(value: unknown): { text: string; rationale?: string
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall({ toolCall }: { toolCall: ToolCallPart }) {
+function handleToolCall({ toolCall }: { toolCall: ToolCall }) {
     const view = get(editorView);
     if (!view) return;
-    const input = asRecord(toolCall.input);
-    if (!input) return;
 
     switch (toolCall.toolName) {
-        case "createComment":
-            createComment({
-                targetText: asString(input.targetText),
-                comment: asString(input.comment),
-                view,
-            });
+        case "createComment": {
+            const { targetText, comment } = toolCall.input;
+            createComment({ targetText, comment, view });
             posthog.capture("annotation_created", { type: "comment" });
             break;
-        case "createSuggestion":
+        }
+        case "createSuggestion": {
+            const { targetText, replacements, comment } = toolCall.input;
             createSuggestion({
-                targetText: asString(input.targetText),
-                replacements: asStringRecordArray(input.replacements),
-                comment: asString(input.comment),
+                targetText,
+                replacements,
+                comment,
                 state: view.state,
                 dispatch: view.dispatch,
             });
             posthog.capture("annotation_created", {
                 type: "suggestion",
-                replacement_count: Array.isArray(input.replacements)
-                    ? input.replacements.length
-                    : 1,
+                replacement_count: replacements.length,
             });
             break;
-        case "createRevision":
-            createRevision({
-                targetText: asString(input.targetText),
-                versions: asStringRecordArray(input.versions),
-                threadMessage: asString(input.threadMessage),
-                view,
-            });
+        }
+        case "createRevision": {
+            const { targetText, versions, threadMessage } = toolCall.input;
+            createRevision({ targetText, versions, threadMessage, view });
             posthog.capture("annotation_created", {
                 type: "revision",
-                version_count: Array.isArray(input.versions) ? input.versions.length : 2,
+                version_count: versions.length,
             });
             break;
+        }
     }
 }
 
@@ -180,7 +161,10 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" })
 
     const chat = new Chat({
         transport: makeTransport(transportWithTracking),
-        onToolCall: handleToolCall,
+        // Cast needed: SDK types toolCall.input as `unknown`; our discriminated
+        // union provides proper narrowing inside handleToolCall.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onToolCall: handleToolCall as any,
     });
 
     function clearChat() {
