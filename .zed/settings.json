@@ -1,4 +1,12 @@
 {
+  "lsp": {
+    "biome": {
+      "binary": {
+        "path": "./node_modules/.bin/biome",
+        "arguments": ["lsp-proxy"]
+      }
+    }
+  },
   "languages": {
     "JavaScript": {
       "format_on_save": "on",
@@ -7,9 +15,6 @@
           "language_server": {
             "name": "biome"
           }
-        },
-        {
-          "code_action": "source.organizeImports.biome"
         }
       ]
     },
@@ -20,9 +25,6 @@
           "language_server": {
             "name": "biome"
           }
-        },
-        {
-          "code_action": "source.organizeImports.biome"
         }
       ]
     },
@@ -33,9 +35,6 @@
           "language_server": {
             "name": "biome"
           }
-        },
-        {
-          "code_action": "source.organizeImports.biome"
         }
       ]
     },
@@ -46,9 +45,6 @@
           "language_server": {
             "name": "biome"
           }
-        },
-        {
-          "code_action": "source.organizeImports.biome"
         }
       ]
     }
