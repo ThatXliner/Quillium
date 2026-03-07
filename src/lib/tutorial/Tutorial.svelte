@@ -504,6 +504,14 @@
                 ></div>
             {/each}
         {:else}
+            <!--
+                Backdrop dismiss is intentionally only available on the
+                section-picker (this initial modal), not during the guided
+                tour. Once the tour is running the overlay locks the user in
+                so they can't accidentally exit mid-flow by clicking outside.
+                The only way to exit the tour is via the explicit "End tour"
+                / "Skip" button inside the tooltip card.
+            -->
             <button
                 type="button"
                 class="absolute inset-0 bg-black/55 border-0 p-0"
