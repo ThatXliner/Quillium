@@ -13,6 +13,7 @@
 -->
 <script lang="ts">
     import { SparklesIcon } from "lucide-svelte";
+    import posthog from "posthog-js";
     import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
     import { generateContext } from "$lib/ai/clientStreams";
 
@@ -40,6 +41,7 @@
     }
 
     function clearAll() {
+        posthog.capture("context_cleared");
         documentContext.freeform = "";
         promptInput = "";
         saveDocumentContext();

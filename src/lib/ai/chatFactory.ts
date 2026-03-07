@@ -32,6 +32,7 @@
 import { get } from "svelte/store";
 import { Chat } from "@ai-sdk/svelte";
 import { type UIMessage, type UIMessageChunk, type ChatTransport } from "ai";
+import posthog from "posthog-js";
 import { documentContent, selectedText, editorView } from "$lib/stores";
 import {
     aiSettings,
@@ -63,6 +64,7 @@ function handleToolCall({ toolCall }: { toolCall: any }) {
                 comment: toolCall.input.comment,
                 view,
             });
+            posthog.capture("annotation_created", { type: "comment" });
             break;
         case "createSuggestion":
             createSuggestion({
@@ -72,6 +74,10 @@ function handleToolCall({ toolCall }: { toolCall: any }) {
                 state: view.state,
                 dispatch: view.dispatch,
             });
+            posthog.capture("annotation_created", {
+                type: "suggestion",
+                replacement_count: toolCall.input.replacements?.length ?? 1,
+            });
             break;
         case "createRevision":
             createRevision({
@@ -79,6 +85,10 @@ function handleToolCall({ toolCall }: { toolCall: any }) {
                 versions: toolCall.input.versions,
                 threadMessage: toolCall.input.threadMessage,
                 view,
+            });
+            posthog.capture("annotation_created", {
+                type: "revision",
+                version_count: toolCall.input.versions?.length ?? 2,
             });
             break;
     }
@@ -138,8 +148,18 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" })
         revise: streamRevise,
     } as const;
 
+    const transportWithTracking: StreamFn = (opts) => {
+        posthog.capture("ai_message_sent", {
+            mode,
+            has_document_context: !!opts.documentContext?.freeform?.trim(),
+            has_selected_text: !!opts.selectedText,
+            document_length: opts.documentContent?.length ?? 0,
+        });
+        return streamFns[mode](opts);
+    };
+
     const chat = new Chat({
-        transport: makeTransport(streamFns[mode]),
+        transport: makeTransport(transportWithTracking),
         onToolCall: handleToolCall,
     });
 
