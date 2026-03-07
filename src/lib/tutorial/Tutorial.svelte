@@ -504,7 +504,12 @@
                 ></div>
             {/each}
         {:else}
-            <div class="absolute inset-0 bg-black/55"></div>
+            <button
+                type="button"
+                class="absolute inset-0 bg-black/55 border-0 p-0"
+                aria-label="Dismiss tutorial"
+                onclick={skip}
+            ></button>
         {/if}
 
         {#if sectionPickerOpen}
