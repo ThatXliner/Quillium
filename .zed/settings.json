@@ -1,0 +1,56 @@
+{
+  "languages": {
+    "JavaScript": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        },
+        {
+          "code_action": "source.organizeImports.biome"
+        }
+      ]
+    },
+    "TypeScript": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        },
+        {
+          "code_action": "source.organizeImports.biome"
+        }
+      ]
+    },
+    "TSX": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        },
+        {
+          "code_action": "source.organizeImports.biome"
+        }
+      ]
+    },
+    "Svelte": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        },
+        {
+          "code_action": "source.organizeImports.biome"
+        }
+      ]
+    }
+  }
+}
