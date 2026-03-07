@@ -545,7 +545,7 @@ function syncRevisionDocsWithDocument(
 
 export const annotationField = StateField.define<Annotations>({
   create(): Annotations {
-    return [];
+    return {};
   },
   update(oldAnnotations: Annotations, tr: Transaction): Annotations {
     // Phase 1: remap annotation ranges through doc changes

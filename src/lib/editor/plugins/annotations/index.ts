@@ -306,8 +306,10 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
 				// Revision range collapsed — all text was deleted
 				if (annotation.versions.length <= 1) {
 					// Only one version, nothing to fall back to — remove it
-					update.view.dispatch({
-						effects: [removeAnnotation.of(annotation)],
+					queueMicrotask(() => {
+						update.view.dispatch({
+							effects: [removeAnnotation.of(annotation)],
+						});
 					});
 				} else {
 					// Switch to the next available version
@@ -315,13 +317,15 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
 						annotation.currentlySelected > 0
 							? annotation.currentlySelected - 1
 							: 1;
-					update.view.dispatch(
-						setActiveRevisionVersion(
-							update.state,
-							annotation.id,
-							nextVersion,
-						),
-					);
+					queueMicrotask(() => {
+						update.view.dispatch(
+							setActiveRevisionVersion(
+								update.state,
+								annotation.id,
+								nextVersion,
+							),
+						);
+					});
 				}
 				return; // handle one at a time to avoid stale state
 			}

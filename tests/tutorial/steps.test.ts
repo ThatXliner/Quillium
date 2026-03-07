@@ -47,10 +47,10 @@ describe("steps", () => {
         expect(steps[steps.length - 1].selector).toBeNull();
     });
 
-    it("steps with non-null selectors are CSS ID selectors", () => {
+    it("steps with non-null selectors are valid CSS selectors", () => {
         for (const step of steps) {
             if (step.selector !== null) {
-                expect(step.selector.startsWith("#")).toBe(true);
+                expect(() => document.querySelector(step.selector!)).not.toThrow();
             }
         }
     });

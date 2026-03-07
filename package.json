@@ -12,6 +12,8 @@
     "tauri": "tauri",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
     "test:coverage": "vitest run --coverage",
     "format": "biome format --write",
     "lint": "biome lint --write",
@@ -48,6 +50,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@playwright/test": "^1.58.2",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.52.2",
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
