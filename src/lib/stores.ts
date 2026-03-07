@@ -132,29 +132,7 @@ export type AnnotationUiEvent =
           to: number;
       };
 
-export type AnnotationUiEventInput =
-    | {
-          type: "revision-boundary-nudge";
-          revisionId: number;
-      }
-    | {
-          type: "revision-open-nested-editor";
-          command: NestedEditorCommand;
-      }
-    | {
-          type: "revision-focus-request";
-          revisionId: number;
-          relativePos: number;
-      }
-    | {
-          type: "pending-comment-alert";
-      }
-    | {
-          type: "pending-nested-editor-selection";
-          annotationId: number;
-          from: number;
-          to: number;
-      };
+export type AnnotationUiEventInput = Omit<AnnotationUiEvent, "token">;
 
 export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
 
