@@ -45,26 +45,16 @@ interface BaseOpts {
     apiKey: string;
 }
 
-interface ChatStreamOpts extends BaseOpts {
+interface StreamOpts extends BaseOpts {
     messages: UIMessage[];
     documentContent: string;
     selectedText: string;
     documentContext?: DocumentContext;
 }
 
-interface FeedbackStreamOpts extends BaseOpts {
-    messages: UIMessage[];
-    documentContent: string;
-    selectedText: string;
-    documentContext?: DocumentContext;
-}
-
-interface ReviseStreamOpts extends BaseOpts {
-    messages: UIMessage[];
-    documentContent: string;
-    selectedText: string;
-    documentContext?: DocumentContext;
-}
+export type ChatStreamOpts = StreamOpts;
+export type FeedbackStreamOpts = StreamOpts;
+export type ReviseStreamOpts = StreamOpts;
 
 export interface GeneratedContext {
     goal: string;
@@ -76,9 +66,31 @@ export interface GeneratedContext {
 }
 
 // ---------------------------------------------------------------------------
-// Chat
+// Shared tools
 // ---------------------------------------------------------------------------
-export function streamChat(opts: ChatStreamOpts): ReadableStream<UIMessageChunk> {
+const createCommentTool = (description: string) =>
+    tool({
+        description,
+        inputSchema: z.object({
+            targetText: z.string().describe("The exact text to comment on"),
+            comment: z.string().describe("The editorial feedback or observation"),
+        }),
+        execute: async ({ targetText, comment }) => ({
+            type: "comment",
+            targetText,
+            comment,
+            timestamp: Date.now(),
+        }),
+    });
+
+// ---------------------------------------------------------------------------
+// Shared stream builder
+// ---------------------------------------------------------------------------
+function buildStream(
+    opts: StreamOpts,
+    system: string,
+    tools?: Parameters<typeof streamText>[0]["tools"],
+): ReadableStream<UIMessageChunk> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model);
     const result = streamText({
         model: llm,
@@ -89,7 +101,19 @@ export function streamChat(opts: ChatStreamOpts): ReadableStream<UIMessageChunk>
                 selectedText: opts.selectedText,
             }),
         ],
-        system: `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
+        system,
+        tools,
+    });
+    return result.toUIMessageStream();
+}
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+export function streamChat(opts: ChatStreamOpts): ReadableStream<UIMessageChunk> {
+    return buildStream(
+        opts,
+        `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
 
 When providing feedback:
 - Be specific and actionable
@@ -99,25 +123,16 @@ When providing feedback:
 - If text is selected, focus primarily on that selection unless asked otherwise
 
 Keep responses concise but thorough.${buildDocumentContextPrompt(opts.documentContext)}`,
-    });
-    return result.toUIMessageStream();
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Feedback
 // ---------------------------------------------------------------------------
 export function streamFeedback(opts: FeedbackStreamOpts): ReadableStream<UIMessageChunk> {
-    const llm = createModel(opts.provider, opts.apiKey, opts.model);
-    const result = streamText({
-        model: llm,
-        messages: [
-            ...convertToModelMessages(opts.messages),
-            injectDocumentContext({
-                documentContent: opts.documentContent,
-                selectedText: opts.selectedText,
-            }),
-        ],
-        system: `You are an editorial writing assistant providing high-level feedback on documents. Your job is to help writers think about the big picture: structure, voice, argument, scope, pacing, and style.${buildDocumentContextPrompt(opts.documentContext)}
+    return buildStream(
+        opts,
+        `You are an editorial writing assistant providing high-level feedback on documents. Your job is to help writers think about the big picture: structure, voice, argument, scope, pacing, and style.${buildDocumentContextPrompt(opts.documentContext)}
 
 When providing feedback:
 - Discuss overall document issues conversationally — structure, argument, pacing, tone, scope
@@ -131,21 +146,10 @@ When providing feedback:
 
 Current document length: ${opts.documentContent?.length || 0} characters
 ${opts.selectedText ? `Selected text: "${opts.selectedText}"` : "No text selected"}`,
-        tools: {
-            createComment: tool({
-                description:
-                    "Flag a specific passage with editorial feedback — use for observations about how a section affects the overall piece",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The exact text to comment on"),
-                    comment: z.string().describe("The editorial feedback or observation"),
-                }),
-                execute: async ({ targetText, comment }) => ({
-                    type: "comment",
-                    targetText,
-                    comment,
-                    timestamp: Date.now(),
-                }),
-            }),
+        {
+            createComment: createCommentTool(
+                "Flag a specific passage with editorial feedback — use for observations about how a section affects the overall piece",
+            ),
             createRevision: tool({
                 description:
                     "Propose meaningful alternative approaches to a passage — use when a section could work very differently depending on the writer's intent. Provide 2-3 labeled versions with a message explaining the tradeoffs.",
@@ -171,25 +175,16 @@ ${opts.selectedText ? `Selected text: "${opts.selectedText}"` : "No text selecte
                 }),
             }),
         },
-    });
-    return result.toUIMessageStream();
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Revise
 // ---------------------------------------------------------------------------
 export function streamRevise(opts: ReviseStreamOpts): ReadableStream<UIMessageChunk> {
-    const llm = createModel(opts.provider, opts.apiKey, opts.model);
-    const result = streamText({
-        model: llm,
-        messages: [
-            ...convertToModelMessages(opts.messages),
-            injectDocumentContext({
-                documentContent: opts.documentContent,
-                selectedText: opts.selectedText,
-            }),
-        ],
-        system: `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.${buildDocumentContextPrompt(opts.documentContext)}
+    return buildStream(
+        opts,
+        `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.${buildDocumentContextPrompt(opts.documentContext)}
 
 When revising text:
 - Use createSuggestion to propose specific rewrites and improvements
@@ -199,7 +194,7 @@ When revising text:
 - Maintain the original meaning and tone unless specifically asked to change it
 - Provide multiple alternatives when possible
 - If text is selected, focus on revising that selection`,
-        tools: {
+        {
             createSuggestion: tool({
                 description: "Create a suggestion with revised/rewritten text",
                 inputSchema: z.object({
@@ -223,23 +218,11 @@ When revising text:
                     timestamp: Date.now(),
                 }),
             }),
-            createComment: tool({
-                description:
-                    "Create a comment to explain revision reasoning or ask clarifying questions",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The text to comment on"),
-                    comment: z.string().describe("The comment or question"),
-                }),
-                execute: async ({ targetText, comment }) => ({
-                    type: "comment",
-                    targetText,
-                    comment,
-                    timestamp: Date.now(),
-                }),
-            }),
+            createComment: createCommentTool(
+                "Create a comment to explain revision reasoning or ask clarifying questions",
+            ),
         },
-    });
-    return result.toUIMessageStream();
+    );
 }
 
 // ---------------------------------------------------------------------------
