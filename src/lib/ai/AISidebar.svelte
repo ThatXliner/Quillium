@@ -410,6 +410,7 @@ $effect(() => {
     </div>
 
     {#if expanded}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize width"
@@ -417,6 +418,7 @@ $effect(() => {
             class="resize-handle resize-handle-right"
             onmousedown={(e) => startResize(e, "right")}
         ></div>
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize height"
@@ -424,6 +426,7 @@ $effect(() => {
             class="resize-handle resize-handle-bottom"
             onmousedown={(e) => startResize(e, "bottom")}
         ></div>
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize panel"
@@ -441,6 +444,9 @@ $effect(() => {
     .resize-handle {
         position: absolute;
         z-index: 10;
+        /*background: transparent;
+        border: 0;
+        padding: 0;*/
     }
 
     .resize-handle-right {
