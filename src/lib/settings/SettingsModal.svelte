@@ -299,6 +299,31 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </button>
             </div>
 
+            <!-- Atomic revisions toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Atomic revisions</div>
+                    <div class="setting-desc">Lock revision text in the document — edits must go through the editor. Disable to edit revision content freely in place.</div>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={draft.atomicRevisions}
+                    aria-label="Toggle atomic revisions"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.atomicRevisions ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.atomicRevisions = !draft.atomicRevisions;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.atomicRevisions ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+
             <!-- Select text toggle -->
             <div class="setting-row {!draft.showNestedEditor ? 'opacity-40 pointer-events-none' : ''}">
                 <div class="setting-meta">

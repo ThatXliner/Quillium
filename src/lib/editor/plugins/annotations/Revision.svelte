@@ -96,7 +96,7 @@ let userClosedEditor = false; // plain var — not reactive, just a gate
 // Reset the gate when the card loses focus.
 $effect(() => {
 	if (isActive) {
-		if (!userClosedEditor && appSettings.showNestedEditor) isEditorOpen = true;
+		if (!userClosedEditor && appSettings.showNestedEditor && appSettings.atomicRevisions) isEditorOpen = true;
 	} else {
 		isEditorOpen = false;
 		userClosedEditor = false;
@@ -195,7 +195,9 @@ function createRecursiveEditor(version: VersionState) {
 			nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
 				recursiveEditor.state,
 			);
-			upsertVersionState(recursiveEditor);
+			if (appSettings.atomicRevisions) {
+				upsertVersionState(recursiveEditor);
+			}
 		},
 	});
 	// Restore full state (doc + annotations + history) if available,
@@ -400,7 +402,7 @@ onDestroy(() => {
             <PlusIcon size={10} />
             <span>New version</span>
         </button>
-        {#if appSettings.showNestedEditor}
+        {#if appSettings.showNestedEditor && appSettings.atomicRevisions}
         <button
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
                 {isEditorOpen
@@ -440,7 +442,7 @@ onDestroy(() => {
     {/if}
 
     <!-- Nested editor (collapsible) -->
-    {#if isEditorOpen && appSettings.showNestedEditor}
+    {#if isEditorOpen && appSettings.showNestedEditor && appSettings.atomicRevisions}
         <div transition:slide={{ duration: 200 }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
             <div
                 bind:this={recursiveEditorHost}
