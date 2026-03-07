@@ -35,7 +35,7 @@ export const steps: Step[] = [
         section: "ai",
         selector: "#ai-sidebar",
         title: "Your AI Writing Companion",
-        body: "Each button has a job: Chat for thinking, Feedback for critique, Revise for rewrites, and Context for steering all AI responses.",
+        body: "Each button has a job: Chat for thinking, Feedback for evaluating content and structure, Revise for sentence-level craft, and Context for telling the AI what you're trying to accomplish.",
         position: "right",
     },
     {
@@ -51,15 +51,15 @@ export const steps: Step[] = [
         section: "ai",
         selector: "#ai-tab-feedback",
         title: "Get Instant Feedback",
-        body: "Use Feedback for editorial diagnosis: what is working, what is weak, and why. It gives direction without rewriting your draft.",
+        body: "Use Feedback to evaluate whether your content and structure are working — is the argument landing, is the pacing right, does this piece achieve its goal? Set Document Context first so the AI knows what you're trying to accomplish.",
         position: "right",
     },
     {
         id: "ai-revise",
         section: "ai",
         selector: "#ai-tab-revise",
-        title: "AI-Powered Revision",
-        body: "Use Revise when you want replacement text. Select a passage and generate concrete rewrite options you can directly compare.",
+        title: "Revise & Edit",
+        body: "Use Revise for sentence-level craft: tightening prose, improving word choice, fixing rhythm and clarity. The content is assumed to be right — this is about how it's written.",
         position: "right",
     },
     {
@@ -67,7 +67,7 @@ export const steps: Step[] = [
         section: "ai",
         selector: "#ai-tab-context",
         title: "Set Document Context",
-        body: "Define goal, tone, audience, and constraints here. Chat, Feedback, and Revise use this context to stay aligned with your intent.",
+        body: "Describe your goal, audience, tone, and what the piece needs to accomplish. Feedback uses this to evaluate whether your writing is actually working — not just whether it reads well in isolation.",
         position: "right",
     },
     {
