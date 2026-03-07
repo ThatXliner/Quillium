@@ -9,7 +9,7 @@
  */
 
 import { EditorState } from "@codemirror/state";
-import { EditorView, type ViewUpdate } from "@codemirror/view";
+import type { EditorView, ViewUpdate } from "@codemirror/view";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
 import { updateRevisionVersionState } from "./annotationField";
 import { versionText, type VersionState } from "./models";

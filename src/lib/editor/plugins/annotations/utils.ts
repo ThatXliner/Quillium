@@ -31,10 +31,10 @@
  */
 
 import {
-  ChangeDesc,
+  type ChangeDesc,
   EditorSelection,
-  EditorState,
-  SelectionRange,
+  type EditorState,
+  type SelectionRange,
 } from "@codemirror/state";
 import {
   isAnnotationOfType,
@@ -52,7 +52,7 @@ import { annotationField } from "./annotationField";
 // their text is fully deleted (they can switch versions).
 export function cleanRangesOf(
     selection: EditorSelection,
-    allowEmpty: boolean = false,
+    allowEmpty = false,
 ) {
     if (allowEmpty) return selection;
     const newRanges = selection.ranges.filter(
@@ -203,7 +203,7 @@ export function canCreateNewComment(annotations: Annotations) {
 // consumed by the change (which removes it from state).
 export function mapRange(range: GenericAnnotation, change: ChangeDesc) {
     const allowEmpty = isAnnotationOfType(range, "revision");
-    let newRanges = cleanRangesOf(
+    const newRanges = cleanRangesOf(
         range.selection.map(change),
         allowEmpty,
     );

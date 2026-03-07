@@ -60,8 +60,8 @@ import {
 	type SelectionRange,
 	type StateCommand,
 	Transaction,
-	Text,
-	EditorState,
+	type Text,
+	type EditorState,
 } from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
@@ -551,7 +551,7 @@ export function createComment({
 }) {
 	const state = view.state;
 
-	let selection = getSelection({
+	const selection = getSelection({
 		editorSelection,
 		targetText,
 		document: state.doc,
@@ -596,7 +596,7 @@ export function createSuggestion({
 	const normalizedReplacements = replacements.map((r) =>
 		typeof r === "string" ? { text: r } : r,
 	);
-	let selection = getSelection({
+	const selection = getSelection({
 		editorSelection,
 		targetText,
 		document: state.doc,

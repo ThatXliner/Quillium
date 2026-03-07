@@ -31,7 +31,7 @@
  */
 import { get } from "svelte/store";
 import { Chat } from "@ai-sdk/svelte";
-import { type UIMessage, type UIMessageChunk, type ChatTransport } from "ai";
+import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
 import posthog from "posthog-js";
 import { documentContent, selectedText, editorView } from "$lib/stores";
 import {

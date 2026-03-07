@@ -44,7 +44,7 @@
 import {
   Annotation,
   EditorSelection,
-  EditorState,
+  type EditorState,
   SelectionRange,
   StateEffect,
   StateField,
@@ -589,7 +589,7 @@ export const annotationField = StateField.define<Annotations>({
         e.is(_deleteVersionFromRevision) ||
         e.is(_updateActiveRevisionVersion)
       ) {
-        let annotation = annotations[e.value.annotationId];
+        const annotation = annotations[e.value.annotationId];
         if (!isAnnotationOfType(annotation, "revision")) continue;
         revisionsWithExplicitEffect.add(e.value.annotationId);
         applyRevisionVersionEffect(
@@ -604,7 +604,7 @@ export const annotationField = StateField.define<Annotations>({
         // but just in case, you know.
         annotations[e.value.annotationId] = annotation;
       } else if (e.is(_updateRevisionVersionState)) {
-        let annotation = annotations[e.value.annotationId];
+        const annotation = annotations[e.value.annotationId];
         if (!isAnnotationOfType(annotation, "revision")) continue;
         revisionsWithExplicitEffect.add(e.value.annotationId);
         annotation.versions[e.value.versionId] = e.value.versionState;
@@ -669,7 +669,7 @@ export const annotationField = StateField.define<Annotations>({
 });
 export const invertedAnnotationFieldEffects = invertedEffects.of(
   (transaction: Transaction) => {
-    let effects = [];
+    const effects = [];
     const oldAnnotations = transaction.startState.field(annotationField);
     for (const effect of transaction.effects) {
       if (effect.is(addAnnotation)) {
@@ -677,7 +677,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
       } else if (effect.is(removeAnnotation)) {
         effects.push(addAnnotation.of(effect.value));
       } else if (effect.is(updateThread)) {
-        let oldAnnotation = oldAnnotations[effect.value.annotationId];
+        const oldAnnotation = oldAnnotations[effect.value.annotationId];
         // Was a comment in the "pending" state
         if (oldAnnotation.thread.length == 0) {
           effects.push(removeAnnotation.of(oldAnnotation));
@@ -690,7 +690,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
           );
         }
       } else if (effect.is(addSuggestion)) {
-        let oldAnnotation =
+        const oldAnnotation =
           oldAnnotations[Math.max(...Object.keys(oldAnnotations).map(Number))];
         effects.push(removeAnnotation.of(oldAnnotation));
       } else if (
@@ -698,7 +698,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
         effect.is(_deleteVersionFromRevision) ||
         effect.is(_updateActiveRevisionVersion)
       ) {
-        let oldAnnotation = oldAnnotations[effect.value.annotationId];
+        const oldAnnotation = oldAnnotations[effect.value.annotationId];
         if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
         if (effect.is(_addVersionToRevision)) {
           effects.push(
@@ -724,7 +724,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of(
           );
         }
       } else if (effect.is(_updateRevisionVersionState)) {
-        let oldAnnotation = oldAnnotations[effect.value.annotationId];
+        const oldAnnotation = oldAnnotations[effect.value.annotationId];
         if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
         effects.push(
           _updateRevisionVersionState.of({
