@@ -71,7 +71,7 @@ import {
 	CompassIcon,
 	Minimize2Icon,
 } from "lucide-svelte";
-import { aiProcessing } from "$lib/ai/settings.svelte";
+import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
 import posthog from "posthog-js";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
@@ -83,6 +83,7 @@ const actions: {
 	label: string;
 	activeClass: string;
 	hoverClass: string;
+	requiresApiKey: boolean;
 }[] = [
 	{
 		id: "chat",
@@ -90,6 +91,7 @@ const actions: {
 		label: "Chat",
 		activeClass: "text-blue-600 bg-white/60",
 		hoverClass: "hover:text-blue-600",
+		requiresApiKey: true,
 	},
 	{
 		id: "feedback",
@@ -97,6 +99,7 @@ const actions: {
 		label: "Feedback",
 		activeClass: "text-green-600 bg-white/60",
 		hoverClass: "hover:text-green-600",
+		requiresApiKey: true,
 	},
 	{
 		id: "revise",
@@ -104,6 +107,7 @@ const actions: {
 		label: "Revise",
 		activeClass: "text-purple-600 bg-white/60",
 		hoverClass: "hover:text-purple-600",
+		requiresApiKey: true,
 	},
 	{
 		id: "context",
@@ -111,6 +115,7 @@ const actions: {
 		label: "Document Context",
 		activeClass: "text-amber-600 bg-white/60",
 		hoverClass: "hover:text-amber-600",
+		requiresApiKey: true,
 	},
 ];
 
@@ -182,6 +187,11 @@ function handleClickOutside(e: MouseEvent) {
 }
 
 function selectAction(id: NonNullable<Action>) {
+	const def = actions.find((a) => a.id === id);
+	if (def?.requiresApiKey && !hasApiKey()) {
+		action = "settings";
+		return;
+	}
 	action = id;
 	posthog.capture("ai_sidebar_opened", { mode: id });
 	scrollActiveIntoCenter(id);
@@ -299,12 +309,16 @@ $effect(() => {
     >
         <div class="flex flex-col gap-1">
             {#each actions as a}
+                {@const disabled = a.requiresApiKey && !hasApiKey()}
                 <button
                     id="ai-tab-{a.id}"
-                    onclick={() => { action = a.id; posthog.capture("ai_sidebar_opened", { mode: a.id }); }}
-                    aria-label={a.label}
-                    title={a.label}
-                    class="p-2 rounded-full text-black/50 transition-colors {a.hoverClass}"
+                    onclick={() => selectAction(a.id)}
+                    aria-label={disabled ? `${a.label} (add API key in settings)` : a.label}
+                    title={disabled ? `${a.label} — add an API key in settings` : a.label}
+                    class="p-2 rounded-full transition-colors
+                        {disabled
+                            ? 'text-black/20 cursor-pointer'
+                            : 'text-black/50 ' + a.hoverClass}"
                 >
                     <a.icon size={18} />
                 </button>
@@ -313,11 +327,15 @@ $effect(() => {
         <div class="flex-1"></div>
         <button
             onclick={() => (action = "settings")}
-            aria-label="AI Settings"
-            title="AI Settings"
-            class="p-2 rounded-full text-black/30 hover:text-black/60 transition-colors"
+            aria-label={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
+            title={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
+            class="relative p-2 rounded-full transition-colors
+                {hasApiKey() ? 'text-black/30 hover:text-black/60' : 'text-amber-600/80 hover:text-amber-700'}"
         >
             <Settings2Icon size={15} />
+            {#if !hasApiKey()}
+                <span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            {/if}
         </button>
     </div>
 
@@ -338,16 +356,19 @@ $effect(() => {
                     {@const dist = Math.abs(i - activeIdx)}
                     {@const scale = activeIdx < 0 ? 1 : dist === 0 ? 1 : dist === 1 ? 0.88 : 0.76}
                     {@const opacity = activeIdx < 0 ? 0.5 : dist === 0 ? 1 : dist === 1 ? 0.45 : 0.25}
+                    {@const disabled = a.requiresApiKey && !hasApiKey()}
                     <button
                         bind:this={iconEls[i]}
                         onclick={() => selectAction(a.id)}
-                        aria-label={a.label}
-                        title={a.label}
-                        style="transform: scale({scale}); opacity: {opacity};"
+                        aria-label={disabled ? `${a.label} (add API key in settings)` : a.label}
+                        title={disabled ? `${a.label} — add an API key in settings` : a.label}
+                        style="transform: scale({scale}); opacity: {disabled ? opacity * 0.4 : opacity};"
                         class="p-2 rounded-full shrink-0 transition-all duration-200
                             {action === a.id
                                 ? a.activeClass
-                                : 'text-black/70 hover:bg-white/30'}"
+                                : disabled
+                                    ? 'text-black/30'
+                                    : 'text-black/70 hover:bg-white/30'}"
                     >
                         <a.icon size={16} />
                     </button>

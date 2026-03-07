@@ -83,6 +83,10 @@ export const aiSettings = $state({
     apiKey: "",
 });
 
+export function hasApiKey(): boolean {
+    return aiSettings.apiKey.trim().length > 0;
+}
+
 export async function loadApiKeyForProvider(provider: Provider) {
     try {
         const key = await invoke<string | null>("get_api_key", { provider });

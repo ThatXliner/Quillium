@@ -28,8 +28,8 @@
 -->
 <script lang="ts">
 import { invoke } from "@tauri-apps/api/core";
-import { EyeIcon, EyeOffIcon, CheckIcon } from "lucide-svelte";
-import { aiSettings, loadApiKeyForProvider } from "$lib/ai/settings.svelte";
+import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon } from "lucide-svelte";
+import { aiSettings, hasApiKey, loadApiKeyForProvider } from "$lib/ai/settings.svelte";
 import type { Provider } from "$lib/ai/provider";
 import posthog from "posthog-js";
 
@@ -190,6 +190,16 @@ async function saveApiKey() {
 </script>
 
 <div class="flex flex-col gap-4 p-3 overflow-y-auto h-full">
+    <!-- No API key banner -->
+    {#if !hasApiKey() && !keyLoading}
+        <div class="flex items-start gap-2 rounded-lg bg-amber-50/80 border border-amber-200/60 px-3 py-2.5">
+            <KeyRoundIcon size={13} class="text-amber-500 shrink-0 mt-0.5" />
+            <p class="text-[11px] text-amber-700/90 leading-snug">
+                Add an API key below to enable Chat, Feedback, and Revise.
+            </p>
+        </div>
+    {/if}
+
     <!-- Provider -->
     <div>
         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
