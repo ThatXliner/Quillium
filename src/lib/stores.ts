@@ -168,6 +168,19 @@ const _modalStack = writable<ModalEntry[]>([]);
  */
 export const pendingCommentAlert = writable<number | null>(null);
 
+/**
+ * When the user creates a revision (or comment) annotation from a
+ * text selection, and the "select text in nested editor" setting is
+ * enabled, this store carries the selection range (relative to the
+ * revision's start) that the nested editor should apply after mount.
+ * Reset to null once consumed by Revision.svelte.
+ */
+export const pendingNestedEditorSelection = writable<{
+    annotationId: number;
+    from: number;
+    to: number;
+} | null>(null);
+
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>

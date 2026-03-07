@@ -99,8 +99,10 @@ import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
 	pendingCommentAlert,
+	pendingNestedEditorSelection,
 	type NestedEditorCommand,
 } from "$lib/stores";
+import { appSettings } from "$lib/settings.svelte";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -767,28 +769,36 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 };
 // QUESTION: Should we have some sort of global annotation mutex
 const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+	const sel = state.selection.main;
+	const newAnnotation = createNewAnnotation(
+		state.field(annotationField),
+		state.selection,
+		"revision",
+	);
 	dispatch(
 		state.update({
 			effects: [
 				addAnnotation.of({
-					...createNewAnnotation(
-						state.field(annotationField),
-						state.selection,
-						"revision",
-					),
+					...newAnnotation,
 					currentlySelected: 0,
 					versions: [
 						{
-							doc: state.sliceDoc(
-								state.selection.main.from,
-								state.selection.main.to,
-							),
+							doc: state.sliceDoc(sel.from, sel.to),
 						} as VersionState,
 					],
 				}),
 			],
 		}),
 	);
+	// When the setting is on and there is an actual selection, signal
+	// the nested editor to select all text on mount.
+	if (appSettings.selectTextInNestedEditor && !sel.empty) {
+		pendingNestedEditorSelection.set({
+			annotationId: newAnnotation.id,
+			from: 0,
+			to: sel.to - sel.from,
+		});
+	}
 	return true;
 };
 const dev_dontuseinprod_createSuggestion: StateCommand = ({

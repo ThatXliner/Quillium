@@ -220,22 +220,8 @@
         outline: none;
     }
     :global(.cm-content) {
-        font-family:
-            "SF Pro Text",
-            Arial,
-            Helvetica,
-            system-ui,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            Roboto,
-            Oxygen,
-            Ubuntu,
-            Cantarell,
-            "Open Sans",
-            "Helvetica Neue",
-            sans-serif;
-        font-size: 18px;
+        font-family: var(--doc-font-family);
+        font-size: var(--doc-font-size);
     }
     :global(.cm-editor) {
         z-index: 0 !important;

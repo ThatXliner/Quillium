@@ -17,9 +17,11 @@
 -->
 <script lang="ts">
     import Save from "$lib/save/Save.svelte";
+    import SettingsModal from "$lib/settings/SettingsModal.svelte";
     import { listen } from "@tauri-apps/api/event";
     import { tutorialActive } from "$lib/stores";
     import { debugPanelActive } from "$lib/debug/store.svelte";
+    import { Settings2 } from "lucide-svelte";
 
     const { words, chars, selWords, selChars } = $props();
 
@@ -29,6 +31,7 @@
      * cycle: "saving" (write started) and "saved" (write completed).
      */
     let fileSaved = $state<boolean>(true);
+    let settingsOpen = $state(false);
 
     // Tauri event listeners — fire whenever the Rust backend starts
     // or finishes writing the document file.
@@ -42,8 +45,11 @@
 
 <div
     id="status-bar"
-    class="w-fit mx-auto py-4 px-8 backdrop-blur-md rounded-full bg-gray-300/70 border border-white/30 shadow-lg flex gap-4 items-center justify-center"
+    class="relative w-fit mx-auto py-4 px-8 backdrop-blur-md rounded-full bg-gray-300/70 border border-white/30 shadow-lg flex gap-4 items-center justify-center"
 >
+    {#if settingsOpen}
+        <SettingsModal onclose={() => (settingsOpen = false)} />
+    {/if}
     <div class="flex items-center gap-2">
         <div
             class={`w-2 h-2 rounded-full ${fileSaved ? "bg-green-400" : "bg-yellow-400"}`}
@@ -68,6 +74,15 @@
     </div>
     <Save />
     <div class="w-px h-8 bg-black/20"></div>
+    <button
+        onclick={() => (settingsOpen = !settingsOpen)}
+        aria-label="Open settings"
+        title="Settings"
+        class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
+            {settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+    >
+        <Settings2 size={20} />
+    </button>
     <button
         onclick={() => ($tutorialActive = true)}
         aria-label="Take tour"

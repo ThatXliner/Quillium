@@ -62,6 +62,7 @@ import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
 	modalStack,
+	pendingNestedEditorSelection,
 } from "$lib/stores";
 import Thread from "./Thread.svelte";
 import posthog from "posthog-js";
@@ -206,6 +207,20 @@ function createRecursiveEditor(version: VersionState) {
 	nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
 		recursiveEditor.state,
 	);
+
+	// Apply pending selection if this annotation just created one.
+	const pending = $pendingNestedEditorSelection;
+	if (pending && pending.annotationId === revision.id) {
+		pendingNestedEditorSelection.set(null);
+		const docLen = recursiveEditor.state.doc.length;
+		const from = Math.min(pending.from, docLen);
+		const to = Math.min(pending.to, docLen);
+		recursiveEditor.dispatch({
+			selection: { anchor: from, head: to },
+			scrollIntoView: true,
+		});
+		recursiveEditor.focus();
+	}
 }
 
 /** Tear down the nested CodeMirror editor and reset state. */
