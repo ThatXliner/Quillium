@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -24,10 +24,16 @@ async function flushMicrotasks() {
 }
 
 let view: EditorView | undefined;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+});
 
 afterEach(() => {
     view?.destroy();
     view = undefined;
+    consoleErrorSpy.mockRestore();
 });
 
 describe("listeners integration", () => {
@@ -146,5 +152,23 @@ describe("listeners integration", () => {
 
         expect(onUpdate).toHaveBeenCalledTimes(1);
         expect(onUpdate.mock.calls[0]?.[0].docChanged).toBe(true);
+    });
+
+    it("logs save errors and does not throw when persistence fails", async () => {
+        mockIPC((cmd) => {
+            if (cmd === "save") {
+                return Promise.reject(new Error("disk full"));
+            }
+            return null;
+        });
+
+        view = makeView();
+        expect(() => {
+            view?.dispatch({ changes: { from: 0, insert: "Hi " } });
+        }).not.toThrow();
+        await flushMicrotasks();
+
+        expect(consoleErrorSpy).toHaveBeenCalled();
+        expect(consoleErrorSpy.mock.calls[0]?.[0]).toBe("save failed");
     });
 });

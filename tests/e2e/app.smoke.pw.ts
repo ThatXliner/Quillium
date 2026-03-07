@@ -96,6 +96,21 @@ test("typing updates stats and triggers mocked save", async ({ page }) => {
     }).toBeGreaterThan(0);
 });
 
+test("selection updates status bar to show selected counts", async ({ page }) => {
+    await installTauriMock(page, { loadResponse: null });
+    await page.goto("/");
+
+    const editor = page.locator("#editor-document .cm-content");
+    const status = page.locator("#status-bar");
+    await editor.click();
+    await page.keyboard.press("ControlOrMeta+a");
+
+    await expect(status).toContainText("Words: 2");
+    await expect(status).toContainText("2 total");
+    await expect(status).toContainText("Characters: 11");
+    await expect(status).toContainText("11 total");
+});
+
 test("tutorial opens from status bar", async ({ page }) => {
     await installTauriMock(page, { loadResponse: null });
     await page.goto("/");
@@ -116,4 +131,15 @@ test("AI sidebar can open chat and feedback panels", async ({ page }) => {
         .click({ force: true });
 
     await expect(page.locator("#ai-sidebar")).toContainText("Get Feedback");
+});
+
+test("settings modal opens from status bar", async ({ page }) => {
+    await installTauriMock(page, { loadResponse: null });
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Open settings" }).click();
+    const modal = page.locator(".settings-modal-inner");
+    await expect(modal.getByText("Settings")).toBeVisible();
+    await expect(modal.getByText("Document", { exact: true })).toBeVisible();
+    await expect(modal.getByText("Interface", { exact: true })).toBeVisible();
 });

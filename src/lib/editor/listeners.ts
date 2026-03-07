@@ -37,9 +37,13 @@ export interface ListenerOptions {
  */
 function persistStateToDisk(update: ViewUpdate) {
   const state = JSON.stringify(update.state.toJSON(savedFields));
-  invoke("save", { state }).then((success) => {
-    console.log("saved", success);
-  });
+  invoke("save", { state })
+    .then((success) => {
+      console.log("saved", success);
+    })
+    .catch((error) => {
+      console.error("save failed", error);
+    });
 }
 
 // ── Auto-save listener ────────────────────────────────────────────
