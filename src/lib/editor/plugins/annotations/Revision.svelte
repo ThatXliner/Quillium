@@ -16,11 +16,9 @@
  * Events emitted: none (delegates via callbacks and CodeMirror
  *   dispatch for version state updates)
  * Stores:
- *   - revisionBoundaryNudge (read): triggers a hint when the
- *     user presses delete at the edge of the revision's range
- *   - revisionOpenNestedEditor (read): triggers opening the modal
- *     when a nested annotation command fires from inside this
- *     revision in the main document
+ *   - annotationUiEvent (read): receives one-shot events
+ *     (boundary nudge, nested-open command, focus request,
+ *     pending selection) emitted by annotation commands/plugins
  *   - modalStack (write): pushes a revision modal entry
  *
  * Parent: Annotations.svelte
@@ -59,11 +57,8 @@ import {
 import { versionText, type VersionState } from "./models";
 import { getActiveAnnotation } from "./utils";
 import {
-	revisionBoundaryNudge,
-	revisionOpenNestedEditor,
-	revisionFocusRequest,
+	annotationUiEvent,
 	modalStack,
-	pendingNestedEditorSelection,
 } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
@@ -113,6 +108,10 @@ let recursiveEditor = $state<EditorView | undefined>(undefined);
 let nestedEditorHasActiveAnnotation = $state(false);
 let isSyncingFromAnnotation = false;
 let previousVersionId = revision.currentlySelected;
+let lastBoundaryNudgeToken = 0;
+let lastOpenNestedEditorToken = 0;
+let lastFocusRequestToken = 0;
+let lastNestedSelectionToken = 0;
 
 // Boundary nudge: show a hint when the user presses delete at the edge
 // of this revision's content in the main document.
@@ -122,14 +121,20 @@ let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
 // Show a temporary hint when the boundary-nudge store fires
 // for this revision (user pressed delete at the edge).
 $effect(() => {
-	if ($revisionBoundaryNudge === revision.id) {
-		showBoundaryHint = true;
-		clearTimeout(boundaryHintTimeout);
-		boundaryHintTimeout = setTimeout(() => {
-			showBoundaryHint = false;
-			revisionBoundaryNudge.set(null);
-		}, 4000);
-	}
+	const event = $annotationUiEvent;
+	if (
+		!event ||
+		event.token === lastBoundaryNudgeToken ||
+		event.type !== "revision-boundary-nudge" ||
+		event.revisionId !== revision.id
+	)
+		return;
+	lastBoundaryNudgeToken = event.token;
+	showBoundaryHint = true;
+	clearTimeout(boundaryHintTimeout);
+	boundaryHintTimeout = setTimeout(() => {
+		showBoundaryHint = false;
+	}, 4000);
 });
 
 // When the user triggers a nested annotation command from inside
@@ -137,9 +142,16 @@ $effect(() => {
 // the inline editor) and pass the command along so the modal
 // runs it once the editor is ready.
 $effect(() => {
-	const cmd = $revisionOpenNestedEditor;
-	if (!cmd || cmd.revisionId !== revision.id) return;
-	revisionOpenNestedEditor.set(null);
+	const event = $annotationUiEvent;
+	if (
+		!event ||
+		event.token === lastOpenNestedEditorToken ||
+		event.type !== "revision-open-nested-editor" ||
+		event.command.revisionId !== revision.id
+	)
+		return;
+	lastOpenNestedEditorToken = event.token;
+	const cmd = event.command;
 	modalStack.push({
 		type: "revision",
 		revisionId: revision.id,
@@ -158,9 +170,16 @@ $effect(() => {
 // at the relative position within the version text.
 // Falls back to opening the modal if the nested editor is disabled.
 $effect(() => {
-	const req = $revisionFocusRequest;
-	if (!req || req.id !== revision.id) return;
-	revisionFocusRequest.set(null);
+	const event = $annotationUiEvent;
+	if (
+		!event ||
+		event.token === lastFocusRequestToken ||
+		event.type !== "revision-focus-request" ||
+		event.revisionId !== revision.id
+	)
+		return;
+	lastFocusRequestToken = event.token;
+	const req = event;
 	const relPos = Math.min(req.relativePos, activeText.length);
 	if (appSettings.showNestedEditor) {
 		const placeCursor = (editor: EditorView) => {
@@ -246,12 +265,17 @@ function createRecursiveEditor(version: VersionState) {
 	);
 
 	// Apply pending selection if this annotation just created one.
-	const pending = $pendingNestedEditorSelection;
-	if (pending && pending.annotationId === revision.id) {
-		pendingNestedEditorSelection.set(null);
+	const event = $annotationUiEvent;
+	if (
+		event &&
+		event.token !== lastNestedSelectionToken &&
+		event.type === "pending-nested-editor-selection" &&
+		event.annotationId === revision.id
+	) {
+		lastNestedSelectionToken = event.token;
 		const docLen = recursiveEditor.state.doc.length;
-		const from = Math.min(pending.from, docLen);
-		const to = Math.min(pending.to, docLen);
+		const from = Math.min(event.from, docLen);
+		const to = Math.min(event.to, docLen);
 		recursiveEditor.dispatch({
 			selection: { anchor: from, head: to },
 			scrollIntoView: true,

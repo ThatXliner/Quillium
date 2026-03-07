@@ -96,11 +96,7 @@ import {
 	suggestionPreviewField,
 } from "./annotationField";
 import {
-	revisionBoundaryNudge,
-	revisionOpenNestedEditor,
-	revisionFocusRequest,
-	pendingCommentAlert,
-	pendingNestedEditorSelection,
+	publishAnnotationUiEvent,
 	type NestedEditorCommand,
 } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -187,7 +183,10 @@ function nudgeBoundary(direction: "backward" | "forward"): StateCommand {
 		const target = getRevisionAtContentBoundary(state, direction);
 		if (!target) return false;
 		// Fire the nudge — the Revision card will show the hint.
-		revisionBoundaryNudge.set(target.id);
+		publishAnnotationUiEvent({
+			type: "revision-boundary-nudge",
+			revisionId: target.id,
+		});
 		return false; // don't consume — let normal backspace/delete run
 	};
 }
@@ -229,11 +228,14 @@ function redirectToNestedEditor(
 		if (!activeRevision) return false; // fall through to original keymap
 		const revFrom = activeRevision.selection.main.from;
 		const sel = view.state.selection.main;
-		revisionOpenNestedEditor.set({
-			revisionId: activeRevision.id,
-			type,
-			selectionFrom: sel.from - revFrom,
-			selectionTo: sel.to - revFrom,
+		publishAnnotationUiEvent({
+			type: "revision-open-nested-editor",
+			command: {
+				revisionId: activeRevision.id,
+				type,
+				selectionFrom: sel.from - revFrom,
+				selectionTo: sel.to - revFrom,
+			},
 		});
 		return true;
 	};
@@ -330,7 +332,7 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
 // -------------------------------------------------------
 // boundaryInsertNudge ViewPlugin
 //
-// Fires revisionBoundaryNudge when the user inserts text
+// Emits a boundary-nudge UI event when the user inserts text
 // immediately adjacent to a revision boundary from outside:
 //   - inserting at position === revision.from (would push into the start)
 //   - inserting at position === revision.to   (appends just after the end)
@@ -351,7 +353,10 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
 						const { from, to } = annotation.selection.main;
 						if (from === to) continue;
 						if (fromA === from || fromA === to) {
-							revisionBoundaryNudge.set(annotation.id);
+							publishAnnotationUiEvent({
+								type: "revision-boundary-nudge",
+								revisionId: annotation.id,
+							});
 							return;
 						}
 					}
@@ -764,7 +769,9 @@ export function createRevision({
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 	// locks it so that we can't have multiple pending states
 	if (!canCreateNewComment(state.field(annotationField))) {
-		pendingCommentAlert.set(Date.now());
+		publishAnnotationUiEvent({
+			type: "pending-comment-alert",
+		});
 		return true;
 	}
 	// TODO: multi selection support
@@ -811,7 +818,8 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
 	// When the setting is on and there is an actual selection, signal
 	// the nested editor to select all text on mount.
 	if (appSettings.selectTextInNestedEditor && !sel.empty) {
-		pendingNestedEditorSelection.set({
+		publishAnnotationUiEvent({
+			type: "pending-nested-editor-selection",
 			annotationId: newAnnotation.id,
 			from: 0,
 			to: sel.to - sel.from,
@@ -904,7 +912,11 @@ const revisionClickHandler = EditorView.domEventHandlers({
 			if (pos >= from && pos <= to) {
 				// Move cursor to clicked position so the annotation becomes active
 				view.dispatch({ selection: { anchor: pos }, scrollIntoView: false });
-				revisionFocusRequest.set({ id: annotation.id, relativePos: pos - from });
+				publishAnnotationUiEvent({
+					type: "revision-focus-request",
+					revisionId: annotation.id,
+					relativePos: pos - from,
+				});
 				return false;
 			}
 		}
