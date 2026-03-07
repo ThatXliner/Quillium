@@ -98,6 +98,7 @@ import {
 import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
+	pendingCommentAlert,
 	type NestedEditorCommand,
 } from "$lib/stores";
 
@@ -741,10 +742,10 @@ export function createRevision({
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
-	console.log("what");
 	// locks it so that we can't have multiple pending states
 	if (!canCreateNewComment(state.field(annotationField))) {
-		return false;
+		pendingCommentAlert.set(Date.now());
+		return true;
 	}
 	// TODO: multi selection support
 	if (state.selection.main.empty) return false;

@@ -38,7 +38,7 @@
         type GenericAnnotation,
         type Thread,
     } from "$lib/editor/plugins/annotations";
-    import { activeAnnotation, annotations, editorView } from "$lib/stores";
+    import { activeAnnotation, annotations, editorView, pendingCommentAlert } from "$lib/stores";
     import Revision from "./Revision.svelte";
     import PreComment from "./PreComment.svelte";
     import Suggestion from "./Suggestion.svelte";
@@ -281,6 +281,44 @@
         }
     }
 
+    // Track which pending card is currently showing the alert animation
+    let alertingPendingId = $state<number | undefined>(undefined);
+
+    // React to pendingCommentAlert signals: scroll the pending card
+    // into view, then play a shake + red-outline-fade animation on it.
+    $effect(() => {
+        if (!isFloating) return;
+        const token = $pendingCommentAlert;
+        if (!token || !pendingComment) return;
+
+        // Reset so the same token can re-trigger if needed
+        pendingCommentAlert.set(null);
+
+        const el = annotationElements[pendingComment.id];
+        if (!el) return;
+
+        // Scroll the editor to show the pending comment's highlighted text
+        if (resolvedView) {
+            resolvedView.dispatch({
+                selection: { anchor: pendingComment.selection.main.from },
+                scrollIntoView: true,
+            });
+        }
+
+        // Scroll the pending card into view
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+        // Trigger CSS animation by toggling the class.
+        // Use setTimeout matching the longest animation duration (1s)
+        // rather than animationend, since two animations run in parallel.
+        alertingPendingId = pendingComment.id;
+        el.classList.add("pending-alert");
+        setTimeout(() => {
+            el.classList.remove("pending-alert");
+            alertingPendingId = undefined;
+        }, 1000);
+    });
+
     // Listen for editor scroll and window resize to reposition cards
     $effect(() => {
         if (!isFloating || !resolvedView) return;
@@ -488,5 +526,34 @@
     .annotation-card-inline {
         position: relative;
         width: 100%;
+    }
+
+    @keyframes pending-shake {
+        0%   { transform: translateX(0); }
+        10%  { transform: translateX(-6px); }
+        20%  { transform: translateX(6px); }
+        30%  { transform: translateX(-5px); }
+        40%  { transform: translateX(5px); }
+        50%  { transform: translateX(-3px); }
+        60%  { transform: translateX(3px); }
+        70%  { transform: translateX(-1px); }
+        80%  { transform: translateX(1px); }
+        100% { transform: translateX(0); }
+    }
+
+    /* ring-rose-400/80 → #fb7185 at 80% opacity, fading out over 1s.
+       Uses outline so overflow-hidden on the inner card can't clip it. */
+    @keyframes pending-ring-fade {
+        0%   { outline-color: rgba(251, 113, 133, 0.8); }
+        55%  { outline-color: rgba(251, 113, 133, 0.8); }
+        100% { outline-color: rgba(251, 113, 133, 0); }
+    }
+
+    :global(.annotation-card.pending-alert) {
+        animation:
+            pending-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both,
+            pending-ring-fade 1s ease-out both;
+        outline: 2px solid rgba(251, 113, 133, 0.8);
+        border-radius: 14px;
     }
 </style>

@@ -160,6 +160,14 @@ const _modalStack = writable<ModalEntry[]>([]);
  *                          target modal recreates its editor
  *   clear()             — close all modals
  */
+/**
+ * Fired when the user attempts to create a new comment while one
+ * is already pending. Triggers a shake + red-outline animation on
+ * the pending comment card to draw attention to it.
+ * Value is a timestamp used as a signal token (null = idle).
+ */
+export const pendingCommentAlert = writable<number | null>(null);
+
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>
