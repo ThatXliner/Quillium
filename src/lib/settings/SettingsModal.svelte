@@ -278,7 +278,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Nested editor in revisions</div>
-                    <div class="setting-desc">Show inline editor in revision cards</div>
+                    <div class="setting-desc">Inline editor inside revision cards</div>
                 </div>
                 <button
                     role="switch"
@@ -303,7 +303,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Atomic revisions</div>
-                    <div class="setting-desc">Lock revision text; edit in the revision editor only</div>
+                    <div class="setting-desc">Edit revision text only in the revision editor</div>
                 </div>
                 <button
                     role="switch"
@@ -328,7 +328,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row {!draft.showNestedEditor ? 'opacity-40 pointer-events-none' : ''}">
                 <div class="setting-meta">
                     <div class="setting-title">Select text in nested editor</div>
-                    <div class="setting-desc">Match selection when a revision opens</div>
+                    <div class="setting-desc">Highlight selected text when a revision opens</div>
                 </div>
                 <button
                     role="switch"
