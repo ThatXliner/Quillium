@@ -112,6 +112,8 @@ let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
 let lastFocusRequestToken = 0;
 let lastNestedSelectionToken = 0;
+let cursorArriving = $state(false);
+let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 
 // Boundary nudge: show a hint when the user presses delete at the edge
 // of this revision's content in the main document.
@@ -185,6 +187,13 @@ $effect(() => {
 		const placeCursor = (editor: EditorView) => {
 			editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
 			editor.focus();
+			clearTimeout(cursorArrivingTimeout);
+			cursorArriving = false;
+			// Force reflow so removing the class takes effect before re-adding it,
+			// ensuring the animation retriggers on every click.
+			void recursiveEditorHost?.offsetWidth;
+			cursorArriving = true;
+			cursorArrivingTimeout = setTimeout(() => { cursorArriving = false; }, 650);
 		};
 		if (isEditorOpen && recursiveEditor) {
 			placeCursor(recursiveEditor);
@@ -207,6 +216,7 @@ $effect(() => {
 
 onDestroy(() => {
 	clearTimeout(boundaryHintTimeout);
+	clearTimeout(cursorArrivingTimeout);
 });
 
 /**
@@ -534,6 +544,7 @@ onDestroy(() => {
             <div
                 bind:this={recursiveEditorHost}
                 class="revision-recursive-editor h-[220px] overflow-hidden"
+                class:cursor-arriving={cursorArriving}
             ></div>
             {#if nestedEditorHasActiveAnnotation}
                 <div transition:slide={{ duration: 150 }}
@@ -587,6 +598,16 @@ onDestroy(() => {
 
     .revision-recursive-editor :global(.cm-focused) {
         outline: none;
+    }
+
+    @keyframes focus-flash {
+        0%   { background-color: rgba(254, 242, 205, 0.9); }
+        70%  { background-color: rgba(254, 242, 205, 0.9); }
+        100% { background-color: rgba(254, 242, 205, 0); }
+    }
+
+    .revision-recursive-editor.cursor-arriving {
+        animation: focus-flash 0.6s ease-out both;
     }
 
 </style>
