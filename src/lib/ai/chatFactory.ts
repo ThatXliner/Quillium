@@ -31,20 +31,36 @@
  */
 import { get } from "svelte/store";
 import { Chat } from "@ai-sdk/svelte";
-import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
+import type { UIMessage, UIMessageChunk, ChatTransport, ToolCallPart } from "ai";
 import posthog from "posthog-js";
 import { documentContent, selectedText, editorView } from "$lib/stores";
-import {
-    aiSettings,
-    documentContext,
-    setAiProcessing,
-} from "./settings.svelte";
-import {
-    createComment,
-    createRevision,
-    createSuggestion,
-} from "$lib/editor/plugins/annotations";
+import { aiSettings, documentContext, setAiProcessing } from "./settings.svelte";
+import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
 import { streamChat, streamFeedback, streamRevise } from "./clientStreams";
+
+type ToolInput = Record<string, unknown>;
+
+function asRecord(value: unknown): ToolInput | null {
+    return typeof value === "object" && value !== null ? (value as ToolInput) : null;
+}
+
+function asString(value: unknown): string | undefined {
+    return typeof value === "string" ? value : undefined;
+}
+
+function asStringRecordArray(value: unknown): { text: string; rationale?: string }[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    return value
+        .map((item) => {
+            const record = asRecord(item);
+            if (!record) return null;
+            const text = asString(record.text);
+            if (!text) return null;
+            const rationale = asString(record.rationale);
+            return rationale ? { text, rationale } : { text };
+        })
+        .filter((item): item is { text: string; rationale?: string } => item !== null);
+}
 
 /**
  * Route LLM tool calls to the CodeMirror annotation system.
@@ -53,42 +69,46 @@ import { streamChat, streamFeedback, streamRevise } from "./clientStreams";
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall({ toolCall }: { toolCall: any }) {
+function handleToolCall({ toolCall }: { toolCall: ToolCallPart }) {
     const view = get(editorView);
     if (!view) return;
+    const input = asRecord(toolCall.input);
+    if (!input) return;
 
     switch (toolCall.toolName) {
         case "createComment":
             createComment({
-                targetText: toolCall.input.targetText,
-                comment: toolCall.input.comment,
+                targetText: asString(input.targetText),
+                comment: asString(input.comment),
                 view,
             });
             posthog.capture("annotation_created", { type: "comment" });
             break;
         case "createSuggestion":
             createSuggestion({
-                targetText: toolCall.input.targetText,
-                replacements: toolCall.input.replacements,
-                comment: toolCall.input.comment,
+                targetText: asString(input.targetText),
+                replacements: asStringRecordArray(input.replacements),
+                comment: asString(input.comment),
                 state: view.state,
                 dispatch: view.dispatch,
             });
             posthog.capture("annotation_created", {
                 type: "suggestion",
-                replacement_count: toolCall.input.replacements?.length ?? 1,
+                replacement_count: Array.isArray(input.replacements)
+                    ? input.replacements.length
+                    : 1,
             });
             break;
         case "createRevision":
             createRevision({
-                targetText: toolCall.input.targetText,
-                versions: toolCall.input.versions,
-                threadMessage: toolCall.input.threadMessage,
+                targetText: asString(input.targetText),
+                versions: asStringRecordArray(input.versions),
+                threadMessage: asString(input.threadMessage),
                 view,
             });
             posthog.capture("annotation_created", {
                 type: "revision",
-                version_count: toolCall.input.versions?.length ?? 2,
+                version_count: Array.isArray(input.versions) ? input.versions.length : 2,
             });
             break;
     }

@@ -1,58 +1,55 @@
 <script lang="ts">
-    /**
-     * Thread.svelte — Renders a message list, reply textarea, and optional
-     * AI suggest button for a comment/revision/suggestion thread.
-     *
-     * Props:
-     *   - thread: Thread — array of messages to display
-     *   - updateThread: (thread: Thread) => void — callback to replace
-     *     the entire thread array (used on reply send or AI response)
-     *   - previewOnly?: boolean — when true, shows only the first message
-     *     and hides the reply input (collapsed card state)
-     *   - onAiSuggest?: () => void — when provided, renders the AI
-     *     suggest button in the reply footer
-     *   - accentClass?: string — Tailwind classes for the Send button color
-     *
-     * Events emitted: none (delegates mutation via updateThread callback)
-     * Stores: none
-     *
-     * Parent: Comment.svelte, Revision.svelte, Suggestion.svelte
-     * Children: ThreadMessage.svelte (one per message)
-     */
-    import { SparklesIcon } from "lucide-svelte";
-    import ThreadMessage from "./ThreadMessage.svelte";
-    import type { Thread as ThreadType } from ".";
+/**
+ * Thread.svelte — Renders a message list, reply textarea, and optional
+ * AI suggest button for a comment/revision/suggestion thread.
+ *
+ * Props:
+ *   - thread: Thread — array of messages to display
+ *   - updateThread: (thread: Thread) => void — callback to replace
+ *     the entire thread array (used on reply send or AI response)
+ *   - previewOnly?: boolean — when true, shows only the first message
+ *     and hides the reply input (collapsed card state)
+ *   - onAiSuggest?: () => void — when provided, renders the AI
+ *     suggest button in the reply footer
+ *   - accentClass?: string — Tailwind classes for the Send button color
+ *
+ * Events emitted: none (delegates mutation via updateThread callback)
+ * Stores: none
+ *
+ * Parent: Comment.svelte, Revision.svelte, Suggestion.svelte
+ * Children: ThreadMessage.svelte (one per message)
+ */
+import { SparklesIcon } from "lucide-svelte";
+import ThreadMessage from "./ThreadMessage.svelte";
+import type { Thread as ThreadType } from ".";
 
-    let {
-        thread,
-        updateThread,
-        // When true shows only the first message (collapsed comment card preview)
-        previewOnly = false,
-        // When provided, renders the AI suggest button in the reply footer
-        onAiSuggest = undefined,
-        // Accent colour class for the Send button; defaults to blue
-        accentClass = "text-blue-600/80 hover:text-blue-700",
-        // Focus ring colour class applied to the reply box wrapper
-        focusRingClass = "focus-within:ring-blue-300/50",
-    }: {
-        thread: ThreadType;
-        updateThread: (thread: ThreadType) => void;
-        previewOnly?: boolean;
-        onAiSuggest?: (() => void) | undefined;
-        accentClass?: string;
-        focusRingClass?: string;
-    } = $props();
+let {
+    thread,
+    updateThread,
+    // When true shows only the first message (collapsed comment card preview)
+    previewOnly = false,
+    // When provided, renders the AI suggest button in the reply footer
+    onAiSuggest = undefined,
+    // Accent colour class for the Send button; defaults to blue
+    accentClass = "text-blue-600/80 hover:text-blue-700",
+    // Focus ring colour class applied to the reply box wrapper
+    focusRingClass = "focus-within:ring-blue-300/50",
+}: {
+    thread: ThreadType;
+    updateThread: (thread: ThreadType) => void;
+    previewOnly?: boolean;
+    onAiSuggest?: (() => void) | undefined;
+    accentClass?: string;
+    focusRingClass?: string;
+} = $props();
 
-    let newMessage = $state("");
+let newMessage = $state("");
 
-    function send() {
-        if (!newMessage.trim()) return;
-        updateThread([
-            ...thread,
-            { message: newMessage.trim(), author: "User", time: Date.now() },
-        ]);
-        newMessage = "";
-    }
+function send() {
+    if (!newMessage.trim()) return;
+    updateThread([...thread, { message: newMessage.trim(), author: "User", time: Date.now() }]);
+    newMessage = "";
+}
 </script>
 
 <!-- Messages -->

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tutorialModalGuide, tutorialNavCommand } from "$lib/stores";
+import { tutorialModalGuide, tutorialNavCommand } from "$lib/stores";
 </script>
 
 {#if $tutorialModalGuide.visible}

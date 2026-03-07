@@ -23,9 +23,7 @@ export type DiffOp = { type: "equal" | "delete" | "insert"; text: string };
 export function diffTokens(aTokens: string[], bTokens: string[]): DiffOp[] {
     const m = aTokens.length;
     const n = bTokens.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, () =>
-        new Array(n + 1).fill(0),
-    );
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
     for (let i = m - 1; i >= 0; i--) {
         for (let j = n - 1; j >= 0; j--) {
             if (aTokens[i] === bTokens[j]) {
@@ -69,16 +67,10 @@ export class SuggestionDiffWidget extends WidgetType {
         super();
     }
     eq(other: SuggestionDiffWidget) {
-        return (
-            this.original === other.original &&
-            this.replacement === other.replacement
-        );
+        return this.original === other.original && this.replacement === other.replacement;
     }
     toDOM() {
-        const ops = diffTokens(
-            tokenize(this.original),
-            tokenize(this.replacement),
-        );
+        const ops = diffTokens(tokenize(this.original), tokenize(this.replacement));
         const span = document.createElement("span");
         span.className = "cm-suggestion-diff";
         for (const op of ops) {

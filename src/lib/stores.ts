@@ -20,10 +20,7 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { writable } from "svelte/store";
-import type {
-  Annotations,
-  GenericAnnotation,
-} from "./editor/plugins/annotations";
+import type { Annotations, GenericAnnotation } from "./editor/plugins/annotations";
 
 /**
  * The main CodeMirror EditorView instance. Set once when
@@ -56,9 +53,7 @@ export const annotations = writable<Annotations | undefined>();
  *
  * Manually synced for the same reason as `annotations` above.
  */
-export const activeAnnotation = writable<
-    GenericAnnotation | undefined
->();
+export const activeAnnotation = writable<GenericAnnotation | undefined>();
 
 /**
  * Full document text, synced on every editor transaction.
@@ -161,9 +156,7 @@ export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
 
 let nextAnnotationUiEventToken = 1;
 
-export function publishAnnotationUiEvent(
-    event: AnnotationUiEventInput,
-) {
+export function publishAnnotationUiEvent(event: AnnotationUiEventInput) {
     annotationUiEvent.set({
         ...event,
         token: nextAnnotationUiEventToken++,
@@ -192,7 +185,13 @@ export type PendingNestedCommand = {
  */
 export type ModalEntry =
     | { type: "diff"; suggestionId: number; parentView: EditorView; label: string }
-    | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
+    | {
+          type: "revision";
+          revisionId: number;
+          parentView: EditorView;
+          label: string;
+          pendingNestedCommand?: PendingNestedCommand;
+      };
 
 // ── Modal stack store ────────────────────────────────────────
 
@@ -220,17 +219,18 @@ const _modalStack = writable<ModalEntry[]>([]);
  */
 export const modalStack = {
     subscribe: _modalStack.subscribe,
-    push: (entry: ModalEntry) =>
-        _modalStack.update((s) => [...s, entry]),
+    push: (entry: ModalEntry) => _modalStack.update((s) => [...s, entry]),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
-    popTo: (index: number) =>
-        _modalStack.update((s) => s.slice(0, index + 1)),
-    popToAndRebuild: (index: number) => _modalStack.update((s) => {
-        const trimmed = s.slice(0, index + 1);
-        const target = trimmed[index];
-        if (!target) return trimmed;
-        trimmed[index] = { ...target, rebuildToken: Date.now() } as ModalEntry & { rebuildToken: number };
-        return trimmed;
-    }),
+    popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),
+    popToAndRebuild: (index: number) =>
+        _modalStack.update((s) => {
+            const trimmed = s.slice(0, index + 1);
+            const target = trimmed[index];
+            if (!target) return trimmed;
+            trimmed[index] = { ...target, rebuildToken: Date.now() } as ModalEntry & {
+                rebuildToken: number;
+            };
+            return trimmed;
+        }),
     clear: () => _modalStack.set([]),
 };

@@ -11,15 +11,8 @@
 
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
-import {
-    createComment,
-    createSuggestion,
-    createRevision,
-} from "$lib/editor/plugins/annotations";
-import {
-    addAnnotation,
-    annotationField,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { createComment, createSuggestion, createRevision } from "$lib/editor/plugins/annotations";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
 
 export type Scenario = {
@@ -50,7 +43,8 @@ export const scenarios: Scenario[] = [
         setup(view) {
             createComment({
                 targetText: "the way a pianist touches keys before a concert",
-                comment: "Beautiful simile — consider whether it fits the character's background. Does the keeper have a musical history?",
+                comment:
+                    "Beautiful simile — consider whether it fits the character's background. Does the keeper have a musical history?",
                 author: "Editor",
                 view,
             });
@@ -91,7 +85,8 @@ export const scenarios: Scenario[] = [
             createSuggestion({
                 state: view.state,
                 dispatch: (tr) => view.dispatch(tr),
-                targetText: "The old lighthouse keeper had watched storms roll in from the sea for forty years.",
+                targetText:
+                    "The old lighthouse keeper had watched storms roll in from the sea for forty years.",
                 replacements: [
                     {
                         text: "For forty years, the lighthouse keeper had watched storms roll in from the sea.",
@@ -128,8 +123,14 @@ export const scenarios: Scenario[] = [
                 dispatch: (tr) => view.dispatch(tr),
                 targetText: "the sky turning green and angry",
                 replacements: [
-                    { text: "the sky bruising to a sickly green", rationale: "More visual, avoids anthropomorphism" },
-                    { text: "the horizon going the colour of old copper", rationale: "Unique colour reference" },
+                    {
+                        text: "the sky bruising to a sickly green",
+                        rationale: "More visual, avoids anthropomorphism",
+                    },
+                    {
+                        text: "the horizon going the colour of old copper",
+                        rationale: "Unique colour reference",
+                    },
                 ],
                 author: "Editor",
             });
@@ -142,7 +143,8 @@ export const scenarios: Scenario[] = [
         doc: SAMPLE_DOC,
         setup(view) {
             createRevision({
-                targetText: "running his fingers along the brass gears the way a pianist touches keys before a concert",
+                targetText:
+                    "running his fingers along the brass gears the way a pianist touches keys before a concert",
                 versions: [
                     {
                         label: "Mechanical",
@@ -153,7 +155,8 @@ export const scenarios: Scenario[] = [
                         text: "checking each part by feel alone, as he had done a thousand times before",
                     },
                 ],
-                threadMessage: "The simile is evocative but may feel out of register for this character. Options: lean into the mechanical precision, or strip back to something starker.",
+                threadMessage:
+                    "The simile is evocative but may feel out of register for this character. Options: lean into the mechanical precision, or strip back to something starker.",
                 author: "Editor",
                 view,
             });
@@ -175,9 +178,7 @@ export const scenarios: Scenario[] = [
                 state: view.state,
                 dispatch: (tr) => view.dispatch(tr),
                 targetText: "Each one was different",
-                replacements: [
-                    { text: "No two were alike", rationale: "More concise" },
-                ],
+                replacements: [{ text: "No two were alike", rationale: "More concise" }],
                 author: "Editor",
             });
             createRevision({
@@ -192,7 +193,8 @@ export const scenarios: Scenario[] = [
                         text: "the sky changing colour hours before the wind shifted",
                     },
                 ],
-                threadMessage: "Two directions: more meteorologically specific, or pared back to let the keeper's knowledge imply the detail.",
+                threadMessage:
+                    "Two directions: more meteorologically specific, or pared back to let the keeper's knowledge imply the detail.",
                 author: "Editor",
                 view,
             });
@@ -201,18 +203,21 @@ export const scenarios: Scenario[] = [
     {
         id: "nested-revision",
         label: "Nested revision setup",
-        description: "A revision whose text itself contains an annotation — open the revision then use Cmd+Alt+K inside it to nest",
+        description:
+            "A revision whose text itself contains an annotation — open the revision then use Cmd+Alt+K inside it to nest",
         doc: SAMPLE_DOC,
         setup(view) {
             createRevision({
-                targetText: "running his fingers along the brass gears the way a pianist touches keys before a concert",
+                targetText:
+                    "running his fingers along the brass gears the way a pianist touches keys before a concert",
                 versions: [
                     {
                         label: "Extended",
                         text: "running his fingers along the brass gears, feeling each tooth engage with the precision of something built to outlast its maker — the way a pianist runs scales before the hall fills",
                     },
                 ],
-                threadMessage: "Extended version with more detail. Open this revision and use Cmd+Alt+K to create a nested revision inside it.",
+                threadMessage:
+                    "Extended version with more detail. Open this revision and use Cmd+Alt+K to create a nested revision inside it.",
                 author: "Editor",
                 view,
             });
@@ -221,7 +226,8 @@ export const scenarios: Scenario[] = [
     {
         id: "pending-comment",
         label: "Pending comment",
-        description: "An empty comment annotation waiting for user input (select text and trigger Cmd+Alt+M manually, or this creates one at a fixed position)",
+        description:
+            "An empty comment annotation waiting for user input (select text and trigger Cmd+Alt+M manually, or this creates one at a fixed position)",
         doc: SAMPLE_DOC,
         setup(view) {
             // Create a comment with an empty thread — this is the "pending" state
@@ -253,12 +259,30 @@ export const scenarios: Scenario[] = [
         doc: SAMPLE_DOC,
         setup(view) {
             const passages = [
-                { text: "forty years", comment: "Establishes experience without backstory — good economy." },
-                { text: "some crept in slowly", comment: "Nice contrast with the fast arrivals. Could expand this." },
-                { text: "giving him hours to prepare", comment: "What does preparation look like? Worth a detail." },
-                { text: "the sky turning green", comment: "Meteorologically accurate — nice specificity." },
-                { text: "angry before the wind even picked up", comment: "Sequence is correct: colour change precedes wind shift." },
-                { text: "checked the lamp mechanism", comment: "Action shows routine without stating it explicitly." },
+                {
+                    text: "forty years",
+                    comment: "Establishes experience without backstory — good economy.",
+                },
+                {
+                    text: "some crept in slowly",
+                    comment: "Nice contrast with the fast arrivals. Could expand this.",
+                },
+                {
+                    text: "giving him hours to prepare",
+                    comment: "What does preparation look like? Worth a detail.",
+                },
+                {
+                    text: "the sky turning green",
+                    comment: "Meteorologically accurate — nice specificity.",
+                },
+                {
+                    text: "angry before the wind even picked up",
+                    comment: "Sequence is correct: colour change precedes wind shift.",
+                },
+                {
+                    text: "checked the lamp mechanism",
+                    comment: "Action shows routine without stating it explicitly.",
+                },
             ];
             for (const { text, comment } of passages) {
                 try {

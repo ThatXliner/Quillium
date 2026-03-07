@@ -15,9 +15,7 @@ function makeComment(from: number, to: number): GenericAnnotation {
     return {
         id: 0,
         _type: "comment",
-        selection: EditorSelection.create([
-            EditorSelection.range(from, to),
-        ]),
+        selection: EditorSelection.create([EditorSelection.range(from, to)]),
         thread: [],
     };
 }
@@ -26,9 +24,7 @@ function makeRevision(from: number, to: number): GenericAnnotation {
     return {
         id: 0,
         _type: "revision",
-        selection: EditorSelection.create([
-            EditorSelection.range(from, to),
-        ]),
+        selection: EditorSelection.create([EditorSelection.range(from, to)]),
         thread: [],
         currentlySelected: 0,
         versions: [{ doc: "text" }],
@@ -82,9 +78,7 @@ describe("mapRange", () => {
         const changes = makeChanges("Hello world", 6, 11, "");
         const result = mapRange(revision, changes);
         expect(result).toBeDefined();
-        expect(result!.selection.main.from).toBe(
-            result!.selection.main.to,
-        );
+        expect(result!.selection.main.from).toBe(result!.selection.main.to);
     });
 
     it("expands annotation range when text is inserted within it", () => {

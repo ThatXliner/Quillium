@@ -5,50 +5,50 @@ type TauriMockOptions = {
     apiKey: string | null;
 };
 
-async function installTauriMock(
-    page: Page,
-    options: Partial<TauriMockOptions> = {},
-) {
+async function installTauriMock(page: Page, options: Partial<TauriMockOptions> = {}) {
     const loadResponse = options.loadResponse ?? null;
     const apiKey = options.apiKey ?? null;
 
-    await page.addInitScript((payload: { loadResponse: string | null; apiKey: string | null }) => {
-        localStorage.setItem("quillium_tutorial_seen", "1");
+    await page.addInitScript(
+        (payload: { loadResponse: string | null; apiKey: string | null }) => {
+            localStorage.setItem("quillium_tutorial_seen", "1");
 
-        let nextCallbackId = 1;
-        const callbacks = new Map<number, (...args: unknown[]) => unknown>();
-        const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
+            let nextCallbackId = 1;
+            const callbacks = new Map<number, (...args: unknown[]) => unknown>();
+            const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
 
-        (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
-            invokeCalls,
-        };
+            (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
+                invokeCalls,
+            };
 
-        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
-            invoke: async (cmd: string, args: unknown) => {
-                invokeCalls.push({ cmd, args });
-                if (cmd === "load") return payload.loadResponse;
-                if (cmd === "save") return true;
-                if (cmd === "get_api_key") return payload.apiKey;
-                if (cmd === "plugin:event|listen") return 1;
-                if (cmd === "plugin:event|unlisten") return null;
-                return null;
-            },
-            transformCallback: (callback: (...args: unknown[]) => unknown) => {
-                const id = nextCallbackId;
-                nextCallbackId += 1;
-                callbacks.set(id, callback);
-                return id;
-            },
-            unregisterCallback: (id: number) => {
-                callbacks.delete(id);
-            },
-            convertFileSrc: (filePath: string) => filePath,
-        };
+            (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+                invoke: async (cmd: string, args: unknown) => {
+                    invokeCalls.push({ cmd, args });
+                    if (cmd === "load") return payload.loadResponse;
+                    if (cmd === "save") return true;
+                    if (cmd === "get_api_key") return payload.apiKey;
+                    if (cmd === "plugin:event|listen") return 1;
+                    if (cmd === "plugin:event|unlisten") return null;
+                    return null;
+                },
+                transformCallback: (callback: (...args: unknown[]) => unknown) => {
+                    const id = nextCallbackId;
+                    nextCallbackId += 1;
+                    callbacks.set(id, callback);
+                    return id;
+                },
+                unregisterCallback: (id: number) => {
+                    callbacks.delete(id);
+                },
+                convertFileSrc: (filePath: string) => filePath,
+            };
 
-        (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-            unregisterListener: () => {},
-        };
-    }, { loadResponse, apiKey });
+            (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+                unregisterListener: () => {},
+            };
+        },
+        { loadResponse, apiKey },
+    );
 }
 
 test("uses default document when mocked load returns null", async ({ page }) => {
@@ -57,10 +57,11 @@ test("uses default document when mocked load returns null", async ({ page }) => 
 
     await expect(page.locator("#editor-document .cm-content")).toContainText("Hello World");
 
-    const commands = await page.evaluate(() => (
-        (window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }).__TAURI_MOCK__.invokeCalls
-            .map((x) => x.cmd)
-    ));
+    const commands = await page.evaluate(() =>
+        (
+            window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
+        ).__TAURI_MOCK__.invokeCalls.map((x) => x.cmd),
+    );
     expect(commands).toContain("load");
 });
 
@@ -69,10 +70,12 @@ test("calls mocked load exactly once during startup", async ({ page }) => {
     await page.goto("/");
 
     await expect(page.locator("#editor-document .cm-content")).toBeVisible();
-    const loadCalls = await page.evaluate(() => (
-        (window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }).__TAURI_MOCK__.invokeCalls
-            .filter((x) => x.cmd === "load").length
-    ));
+    const loadCalls = await page.evaluate(
+        () =>
+            (
+                window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
+            ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "load").length,
+    );
     expect(loadCalls).toBe(1);
 });
 
@@ -91,12 +94,18 @@ test("typing updates stats and triggers mocked save", async ({ page }) => {
     await expect(status).toContainText("Words: 4");
     await expect(status).toContainText("Characters: 18");
 
-    await expect.poll(async () => {
-        return page.evaluate(() => (
-            (window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }).__TAURI_MOCK__.invokeCalls
-                .filter((x) => x.cmd === "save").length
-        ));
-    }).toBeGreaterThan(0);
+    await expect
+        .poll(async () => {
+            return page.evaluate(
+                () =>
+                    (
+                        window as unknown as {
+                            __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> };
+                        }
+                    ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "save").length,
+            );
+        })
+        .toBeGreaterThan(0);
 });
 
 test("selection updates status bar to show selected counts", async ({ page }) => {

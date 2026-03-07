@@ -29,7 +29,14 @@ function firstInstalled(...names: string[]): { label: string; cssName: string } 
     return { label: last, cssName: `"${last}"` };
 }
 
-const mono = firstInstalled("SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", "Menlo");
+const mono = firstInstalled(
+    "SF Mono",
+    "JetBrains Mono",
+    "Cascadia Code",
+    "Fira Code",
+    "Consolas",
+    "Menlo",
+);
 const sans = firstInstalled("SF Pro Text", "Inter", "Segoe UI", "Helvetica Neue");
 
 const monoStack = `${mono.cssName}, ui-monospace, monospace`;
@@ -53,9 +60,7 @@ let draft = $state({ ...appSettings });
 // Snapshot of what was persisted when the modal opened (for discard)
 const savedSnapshot = { ...appSettings };
 
-let isDirty = $derived(
-    JSON.stringify(draft) !== JSON.stringify(savedSnapshot),
-);
+let isDirty = $derived(JSON.stringify(draft) !== JSON.stringify(savedSnapshot));
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let innerEl = $state<HTMLDivElement | undefined>(undefined);
@@ -111,7 +116,9 @@ function tryClose() {
 function triggerAlert() {
     alertKey += 1;
     alerting = true;
-    setTimeout(() => { alerting = false; }, 1400);
+    setTimeout(() => {
+        alerting = false;
+    }, 1400);
 }
 
 function handleBackdropClick(e: MouseEvent) {
@@ -126,7 +133,7 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 function fontLabel(fonts: FontOption[], value: string) {
-    return fonts.find(f => f.value === value)?.label ?? fonts[0].label;
+    return fonts.find((f) => f.value === value)?.label ?? fonts[0].label;
 }
 </script>
 

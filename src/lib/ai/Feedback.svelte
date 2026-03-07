@@ -68,19 +68,19 @@ const { chat, clearChat } = createAiChat({ mode: "feedback" });
 // Sync streaming state to the global AI processing indicator.
 // States: ready -> submitted -> streaming -> ready (or error).
 $effect(() => {
-	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
 function handleSubmit(event: SubmitEvent) {
-	event.preventDefault();
-	if (!input.trim() || chat.status !== "ready") return;
+    event.preventDefault();
+    if (!input.trim() || chat.status !== "ready") return;
 
-	posthog.capture("ai_feedback_requested", {
-		has_selection: !!$selectedText,
-		trigger: "manual",
-	});
-	chat.sendMessage({ text: input });
-	input = "";
+    posthog.capture("ai_feedback_requested", {
+        has_selection: !!$selectedText,
+        trigger: "manual",
+    });
+    chat.sendMessage({ text: input });
+    input = "";
 }
 
 /**
@@ -89,16 +89,16 @@ function handleSubmit(event: SubmitEvent) {
  * otherwise requests general document feedback.
  */
 function askForFeedback() {
-	const context = $selectedText
-		? `Please provide feedback on this selected text: "${$selectedText}"`
-		: "Please provide feedback on my document.";
+    const context = $selectedText
+        ? `Please provide feedback on this selected text: "${$selectedText}"`
+        : "Please provide feedback on my document.";
 
-	posthog.capture("ai_feedback_requested", {
-		has_selection: !!$selectedText,
-		trigger: "quick_action",
-	});
-	input = context;
-	chat.sendMessage({ text: context });
+    posthog.capture("ai_feedback_requested", {
+        has_selection: !!$selectedText,
+        trigger: "quick_action",
+    });
+    input = context;
+    chat.sendMessage({ text: context });
 }
 </script>
 

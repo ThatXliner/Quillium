@@ -62,7 +62,7 @@ const { chat, clearChat } = createAiChat({ mode: "chat" });
 // so the sidebar glow activates during chat requests.
 // States: ready -> submitted -> streaming -> ready (or error).
 $effect(() => {
-	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
 /**
@@ -71,16 +71,16 @@ $effect(() => {
  * with selection context and message length.
  */
 async function handleSubmit(event: Event) {
-	event.preventDefault();
-	const formData = new FormData(event.target as HTMLFormElement);
-	const userMessage = formData.get("message") as string;
-	if (!userMessage.trim() || chat.status !== "ready") return;
-	posthog.capture("ai_chat_message_sent", {
-		has_selection: !!$selectedText,
-		message_length: userMessage.length,
-	});
-	await chat.sendMessage({ text: userMessage });
-	input = "";
+    event.preventDefault();
+    const formData = new FormData(event.target as HTMLFormElement);
+    const userMessage = formData.get("message") as string;
+    if (!userMessage.trim() || chat.status !== "ready") return;
+    posthog.capture("ai_chat_message_sent", {
+        has_selection: !!$selectedText,
+        message_length: userMessage.length,
+    });
+    await chat.sendMessage({ text: userMessage });
+    input = "";
 }
 </script>
 

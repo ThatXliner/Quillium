@@ -18,7 +18,11 @@ export type Step = {
     title: string;
     body: string;
     position: "right" | "left" | "top" | "bottom" | "center";
-    requirement?: "createRevision" | "openRevisionModal" | "createNestedRevision" | "openNestedRevisionModal";
+    requirement?:
+        | "createRevision"
+        | "openRevisionModal"
+        | "createNestedRevision"
+        | "openNestedRevisionModal";
 };
 
 export const steps: Step[] = [

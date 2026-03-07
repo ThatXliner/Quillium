@@ -1,408 +1,419 @@
 <script lang="ts">
-    /**
-     * RevisionModal.svelte — Full-screen modal that hosts a nested
-     * CodeMirror editor for a single revision version.
-     *
-     * Props:
-     *   - revisionId: number — ID of the revision annotation in the
-     *     parent editor's annotationField
-     *   - view: EditorView — the parent CodeMirror editor that owns
-     *     the revision (used to read/write annotation state)
-     *   - stackIndex: number — this modal's position in the global
-     *     modalStack (used for breadcrumb rendering and navigation)
-     *
-     * Events emitted: none
-     * Stores:
-     *   - modalStack (read/write): breadcrumb trail, pop on close,
-     *     popTo for breadcrumb nav, popToAndRebuild for cross-level
-     *     version switching
-     *
-     * Parent: rendered by the modal layer in +page.svelte
-     * Children: Annotations.svelte (sidebar for nested annotations)
-     *
-     * Key behaviour:
-     *   - Creates a nested CodeMirror editor whose content is
-     *     persisted back to the parent revision's version state on
-     *     every keystroke via updateRevisionVersionState.
-     *   - Supports multi-level nesting: revisions inside revisions,
-     *     with breadcrumb version dropdowns at each level.
-     *   - Handles a pendingNestedCommand from the modal stack entry
-     *     to auto-create a comment or sub-revision on open.
-     */
-    import { EditorView, type ViewUpdate } from "@codemirror/view";
-    import { ChevronRight, ChevronDown, ChevronUp, Check, X } from "lucide-svelte";
-    import { onDestroy, tick } from "svelte";
-    import { scale, slide } from "svelte/transition";
-    import {
-        addAnnotation,
-        annotationField,
-        setActiveRevisionVersion,
-        updateThread,
-        type Annotation,
-        type Annotations as AnnotationsMap,
-        type GenericAnnotation,
-        type Thread as ThreadType,
-    } from ".";
+/**
+ * RevisionModal.svelte — Full-screen modal that hosts a nested
+ * CodeMirror editor for a single revision version.
+ *
+ * Props:
+ *   - revisionId: number — ID of the revision annotation in the
+ *     parent editor's annotationField
+ *   - view: EditorView — the parent CodeMirror editor that owns
+ *     the revision (used to read/write annotation state)
+ *   - stackIndex: number — this modal's position in the global
+ *     modalStack (used for breadcrumb rendering and navigation)
+ *
+ * Events emitted: none
+ * Stores:
+ *   - modalStack (read/write): breadcrumb trail, pop on close,
+ *     popTo for breadcrumb nav, popToAndRebuild for cross-level
+ *     version switching
+ *
+ * Parent: rendered by the modal layer in +page.svelte
+ * Children: Annotations.svelte (sidebar for nested annotations)
+ *
+ * Key behaviour:
+ *   - Creates a nested CodeMirror editor whose content is
+ *     persisted back to the parent revision's version state on
+ *     every keystroke via updateRevisionVersionState.
+ *   - Supports multi-level nesting: revisions inside revisions,
+ *     with breadcrumb version dropdowns at each level.
+ *   - Handles a pendingNestedCommand from the modal stack entry
+ *     to auto-create a comment or sub-revision on open.
+ */
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { ChevronRight, ChevronDown, ChevronUp, Check, X } from "lucide-svelte";
+import { onDestroy, tick } from "svelte";
+import { scale, slide } from "svelte/transition";
+import {
+    addAnnotation,
+    annotationField,
+    setActiveRevisionVersion,
+    updateThread,
+    type Annotation,
+    type Annotations as AnnotationsMap,
+    type GenericAnnotation,
+    type Thread as ThreadType,
+} from ".";
 
-    import { canCreateNewComment, getActiveAnnotation } from "./utils";
-    import { createNewAnnotation, versionText, type VersionState } from "./models";
-    import { EditorSelection, Transaction } from "@codemirror/state";
-    import { modalStack, type ModalEntry } from "$lib/stores";
-    import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
-    import Annotations from "./Annotations.svelte";
-    import Thread from "./Thread.svelte";
-    import TutorialGuide from "./TutorialGuide.svelte";
+import { canCreateNewComment, getActiveAnnotation } from "./utils";
+import { createNewAnnotation, versionText, type VersionState } from "./models";
+import { EditorSelection, Transaction } from "@codemirror/state";
+import { modalStack, type ModalEntry } from "$lib/stores";
+import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import Annotations from "./Annotations.svelte";
+import Thread from "./Thread.svelte";
+import TutorialGuide from "./TutorialGuide.svelte";
 
-    const { revisionId, view, stackIndex }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
+const {
+    revisionId,
+    view,
+    stackIndex,
+}: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
-    const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
+const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
-    // Context snippet: lazy-loaded chunks around the revision range
-    const CHUNK = 300; // chars per load step
-    let contextBefore = $state(CHUNK); // how many chars before to show
-    let contextAfter = $state(CHUNK);  // how many chars after to show
+// Context snippet: lazy-loaded chunks around the revision range
+const CHUNK = 300; // chars per load step
+let contextBefore = $state(CHUNK); // how many chars before to show
+let contextAfter = $state(CHUNK); // how many chars after to show
 
-    const docContext = $derived.by(() => {
-        // Reading modalAnnotations here makes this derived re-run whenever
-        // the nested editor writes a change back to the parent view.
-        void modalAnnotations;
-        const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-        if (!rev) return null;
-        const doc = view.state.doc;
-        const from = rev.selection.main.from;
-        const to = rev.selection.main.to;
-        const beforeStart = Math.max(0, from - contextBefore);
-        const afterEnd = Math.min(doc.length, to + contextAfter);
-        return {
-            before: doc.sliceString(beforeStart, from),
-            revision: doc.sliceString(from, to),
-            after: doc.sliceString(to, afterEnd),
-            hasMoreBefore: beforeStart > 0,
-            hasMoreAfter: afterEnd < doc.length,
-        };
-    });
+const docContext = $derived.by(() => {
+    // Reading modalAnnotations here makes this derived re-run whenever
+    // the nested editor writes a change back to the parent view.
+    void modalAnnotations;
+    const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+    if (!rev) return null;
+    const doc = view.state.doc;
+    const from = rev.selection.main.from;
+    const to = rev.selection.main.to;
+    const beforeStart = Math.max(0, from - contextBefore);
+    const afterEnd = Math.min(doc.length, to + contextAfter);
+    return {
+        before: doc.sliceString(beforeStart, from),
+        revision: doc.sliceString(from, to),
+        after: doc.sliceString(to, afterEnd),
+        hasMoreBefore: beforeStart > 0,
+        hasMoreAfter: afterEnd < doc.length,
+    };
+});
 
-    let contextCollapsed = $state(false);
-    let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
-    let contextRevisionEl = $state<HTMLSpanElement | undefined>(undefined);
+let contextCollapsed = $state(false);
+let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
+let contextRevisionEl = $state<HTMLSpanElement | undefined>(undefined);
 
-    // "above" | "below" | null — whether revision highlight is out of view
-    let revisionDirection = $state<"above" | "below" | null>(null);
+// "above" | "below" | null — whether revision highlight is out of view
+let revisionDirection = $state<"above" | "below" | null>(null);
 
-    // Scroll edge state for dynamic mask
-    let contextAtTop = $state(true);
-    let contextAtBottom = $state(false);
+// Scroll edge state for dynamic mask
+let contextAtTop = $state(true);
+let contextAtBottom = $state(false);
 
-    function scrollRevisionIntoCenter(behavior: ScrollBehavior = "smooth") {
-        if (!contextScrollEl || !contextRevisionEl) return;
-        const container = contextScrollEl;
-        const containerRect = container.getBoundingClientRect();
-        const revisionRect = contextRevisionEl.getBoundingClientRect();
-        const currentTop = container.scrollTop;
-        const targetTop =
-            currentTop
-            + (revisionRect.top - containerRect.top)
-            - (container.clientHeight / 2 - revisionRect.height / 2);
-        container.scrollTo({ top: targetTop, behavior });
-    }
+function scrollRevisionIntoCenter(behavior: ScrollBehavior = "smooth") {
+    if (!contextScrollEl || !contextRevisionEl) return;
+    const container = contextScrollEl;
+    const containerRect = container.getBoundingClientRect();
+    const revisionRect = contextRevisionEl.getBoundingClientRect();
+    const currentTop = container.scrollTop;
+    const targetTop =
+        currentTop +
+        (revisionRect.top - containerRect.top) -
+        (container.clientHeight / 2 - revisionRect.height / 2);
+    container.scrollTo({ top: targetTop, behavior });
+}
 
-    // Keep the revision centered whenever context is shown/updated.
-    $effect(() => {
-        if (contextCollapsed || !contextRevisionEl || !contextScrollEl) return;
-        requestAnimationFrame(() => scrollRevisionIntoCenter("auto"));
-        const timeoutId = window.setTimeout(() => {
-            scrollRevisionIntoCenter("auto");
-        }, 220);
-        return () => window.clearTimeout(timeoutId);
-    });
+// Keep the revision centered whenever context is shown/updated.
+$effect(() => {
+    if (contextCollapsed || !contextRevisionEl || !contextScrollEl) return;
+    requestAnimationFrame(() => scrollRevisionIntoCenter("auto"));
+    const timeoutId = window.setTimeout(() => {
+        scrollRevisionIntoCenter("auto");
+    }, 220);
+    return () => window.clearTimeout(timeoutId);
+});
 
-    // IntersectionObserver: track whether revision span is visible in scroll container
-    $effect(() => {
-        if (!contextRevisionEl || !contextScrollEl) return;
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (entry.isIntersecting) {
-                    revisionDirection = null;
-                } else {
-                    const rect = entry.boundingClientRect;
-                    const rootRect = entry.rootBounds;
-                    if (rootRect) {
-                        revisionDirection = rect.top < rootRect.top ? "above" : "below";
-                    }
+// IntersectionObserver: track whether revision span is visible in scroll container
+$effect(() => {
+    if (!contextRevisionEl || !contextScrollEl) return;
+    const observer = new IntersectionObserver(
+        ([entry]) => {
+            if (entry.isIntersecting) {
+                revisionDirection = null;
+            } else {
+                const rect = entry.boundingClientRect;
+                const rootRect = entry.rootBounds;
+                if (rootRect) {
+                    revisionDirection = rect.top < rootRect.top ? "above" : "below";
                 }
-            },
-            { root: contextScrollEl, threshold: 0.1 },
-        );
-        observer.observe(contextRevisionEl);
-        return () => observer.disconnect();
-    });
-
-    // Auto-load more when scrolling near the top or bottom edge;
-    // also track edge state for mask
-    $effect(() => {
-        const el = contextScrollEl;
-        if (!el) return;
-        function updateEdges() {
-            if (!el) return;
-            contextAtTop = el.scrollTop <= 0;
-            contextAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 0;
-        }
-        // Set initial state
-        updateEdges();
-        function handleScroll() {
-            if (!el) return;
-            updateEdges();
-            const THRESHOLD = 40;
-            if (el.scrollTop < THRESHOLD && docContext?.hasMoreBefore) {
-                const prevHeight = el.scrollHeight;
-                contextBefore += CHUNK;
-                // Preserve scroll position after content is prepended
-                requestAnimationFrame(() => {
-                    el.scrollTop += el.scrollHeight - prevHeight;
-                });
             }
-            if (el.scrollHeight - el.scrollTop - el.clientHeight < THRESHOLD && docContext?.hasMoreAfter) {
-                contextAfter += CHUNK;
-            }
-        }
-        el.addEventListener("scroll", handleScroll, { passive: true });
-        return () => el.removeEventListener("scroll", handleScroll);
-    });
-
-    // Track selected version index per crumb level reactively
-    let crumbSelectedVersions = $state<number[]>([]);
-    // Which crumb dropdown is open (-1 = none)
-    let openDropdown = $state(-1);
-
-    // Sync the version-dropdown selections for each breadcrumb
-    // whenever the crumbs array or underlying revision state changes.
-    $effect(() => {
-        crumbSelectedVersions = crumbs.map((crumb) => {
-            if (crumb.type !== "revision") return 0;
-            const rev = crumb.parentView.state.field(annotationField)[crumb.revisionId] as Annotation<"revision"> | undefined;
-            return rev?.currentlySelected ?? 0;
-        });
-    });
-
-    /**
-     * Handle selecting a version from a breadcrumb dropdown.
-     * If the version belongs to the current (deepest) modal,
-     * rebuild the editor in-place. Otherwise pop the stack back
-     * to the target level and signal it to rebuild.
-     */
-    function selectVersion(ci: number, vi: number, crumb: typeof crumbs[number], isCurrent: boolean) {
-        if (crumb.type !== "revision") return;
-        crumbSelectedVersions[ci] = vi;
-        openDropdown = -1;
-        crumb.parentView.dispatch(setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi));
-        if (isCurrent) {
-            destroyEditor();
-            tick().then(() => {
-                const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-                if (v) {
-                    createEditor(v.versions[v.currentlySelected]);
-                    if (editor) moveCursorToEnd(editor);
-                }
-            });
-        } else {
-            // Pop back to that level and signal it to rebuild its editor
-            modalStack.popToAndRebuild(ci);
-        }
-    }
-
-    // Rebuild editor when our own stack entry gets a fresh rebuildToken
-    // (set by popToAndRebuild when a child level switches our version)
-    let lastRebuildToken = 0;
-    $effect(() => {
-        const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
-        const token = entry?.rebuildToken ?? 0;
-        if (token && token !== lastRebuildToken) {
-            lastRebuildToken = token;
-            destroyEditor();
-            tick().then(() => {
-                const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-                if (v) {
-                    createEditor(v.versions[v.currentlySelected]);
-                    if (editor) moveCursorToEnd(editor);
-                }
-            });
-        }
-    });
-
-    const revision = $derived(
-        view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
+        },
+        { root: contextScrollEl, threshold: 0.1 },
     );
+    observer.observe(contextRevisionEl);
+    return () => observer.disconnect();
+});
 
-    let editorHost = $state<HTMLDivElement>();
-    let editor = $state<EditorView | undefined>(undefined);
-    let dialogEl = $state<HTMLDialogElement>();
+// Auto-load more when scrolling near the top or bottom edge;
+// also track edge state for mask
+$effect(() => {
+    const el = contextScrollEl;
+    if (!el) return;
+    function updateEdges() {
+        if (!el) return;
+        contextAtTop = el.scrollTop <= 0;
+        contextAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 0;
+    }
+    // Set initial state
+    updateEdges();
+    function handleScroll() {
+        if (!el) return;
+        updateEdges();
+        const THRESHOLD = 40;
+        if (el.scrollTop < THRESHOLD && docContext?.hasMoreBefore) {
+            const prevHeight = el.scrollHeight;
+            contextBefore += CHUNK;
+            // Preserve scroll position after content is prepended
+            requestAnimationFrame(() => {
+                el.scrollTop += el.scrollHeight - prevHeight;
+            });
+        }
+        if (
+            el.scrollHeight - el.scrollTop - el.clientHeight < THRESHOLD &&
+            docContext?.hasMoreAfter
+        ) {
+            contextAfter += CHUNK;
+        }
+    }
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+});
 
-    let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
-    let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+// Track selected version index per crumb level reactively
+let crumbSelectedVersions = $state<number[]>([]);
+// Which crumb dropdown is open (-1 = none)
+let openDropdown = $state(-1);
 
-    /**
-     * Bootstrap a nested CodeMirror editor from a VersionState.
-     * Restores from JSON if the version already contains serialised
-     * editor state, otherwise creates a fresh state from the doc
-     * text. Attaches an updateListener that persists every change
-     * back into the parent revision via updateRevisionVersionState.
-     */
-    function createEditor(version: VersionState) {
-        if (!editorHost || editor) return;
-        const state = createVersionState(version, (_update: ViewUpdate) => {
-            if (!editor) return;
-            const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-            if (!rev) return;
-            syncVersionToParent(editor, view, revisionId, rev.currentlySelected);
-            modalAnnotations = editor.state.field(annotationField);
-            modalActiveAnnotation = getActiveAnnotation(editor.state);
+// Sync the version-dropdown selections for each breadcrumb
+// whenever the crumbs array or underlying revision state changes.
+$effect(() => {
+    crumbSelectedVersions = crumbs.map((crumb) => {
+        if (crumb.type !== "revision") return 0;
+        const rev = crumb.parentView.state.field(annotationField)[crumb.revisionId] as
+            | Annotation<"revision">
+            | undefined;
+        return rev?.currentlySelected ?? 0;
+    });
+});
+
+/**
+ * Handle selecting a version from a breadcrumb dropdown.
+ * If the version belongs to the current (deepest) modal,
+ * rebuild the editor in-place. Otherwise pop the stack back
+ * to the target level and signal it to rebuild.
+ */
+function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], isCurrent: boolean) {
+    if (crumb.type !== "revision") return;
+    crumbSelectedVersions[ci] = vi;
+    openDropdown = -1;
+    crumb.parentView.dispatch(
+        setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi),
+    );
+    if (isCurrent) {
+        destroyEditor();
+        tick().then(() => {
+            const v = view.state.field(annotationField)[revisionId] as
+                | Annotation<"revision">
+                | undefined;
+            if (v) {
+                createEditor(v.versions[v.currentlySelected]);
+                if (editor) moveCursorToEnd(editor);
+            }
         });
-        editor = new EditorView({ state, parent: editorHost });
+    } else {
+        // Pop back to that level and signal it to rebuild its editor
+        modalStack.popToAndRebuild(ci);
+    }
+}
+
+// Rebuild editor when our own stack entry gets a fresh rebuildToken
+// (set by popToAndRebuild when a child level switches our version)
+let lastRebuildToken = 0;
+$effect(() => {
+    const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
+    const token = entry?.rebuildToken ?? 0;
+    if (token && token !== lastRebuildToken) {
+        lastRebuildToken = token;
+        destroyEditor();
+        tick().then(() => {
+            const v = view.state.field(annotationField)[revisionId] as
+                | Annotation<"revision">
+                | undefined;
+            if (v) {
+                createEditor(v.versions[v.currentlySelected]);
+                if (editor) moveCursorToEnd(editor);
+            }
+        });
+    }
+});
+
+const revision = $derived(
+    view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
+);
+
+let editorHost = $state<HTMLDivElement>();
+let editor = $state<EditorView | undefined>(undefined);
+let dialogEl = $state<HTMLDialogElement>();
+
+let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
+let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+
+/**
+ * Bootstrap a nested CodeMirror editor from a VersionState.
+ * Restores from JSON if the version already contains serialised
+ * editor state, otherwise creates a fresh state from the doc
+ * text. Attaches an updateListener that persists every change
+ * back into the parent revision via updateRevisionVersionState.
+ */
+function createEditor(version: VersionState) {
+    if (!editorHost || editor) return;
+    const state = createVersionState(version, (_update: ViewUpdate) => {
+        if (!editor) return;
+        const rev = view.state.field(annotationField)[revisionId] as
+            | Annotation<"revision">
+            | undefined;
+        if (!rev) return;
+        syncVersionToParent(editor, view, revisionId, rev.currentlySelected);
         modalAnnotations = editor.state.field(annotationField);
         modalActiveAnnotation = getActiveAnnotation(editor.state);
-    }
-
-    function moveCursorToEnd(activeEditor: EditorView) {
-        const end = activeEditor.state.doc.length;
-        activeEditor.dispatch({
-            selection: { anchor: end },
-            scrollIntoView: true,
-        });
-        activeEditor.focus();
-    }
-
-    function destroyEditor() {
-        editor?.destroy();
-        editor = undefined;
-        modalAnnotations = undefined;
-        modalActiveAnnotation = undefined;
-    }
-
-    function close() {
-        modalStack.pop();
-    }
-
-    // Close the version dropdown when clicking outside of it.
-    $effect(() => {
-        if (openDropdown === -1) return;
-        const handler = (e: MouseEvent) => {
-            if (!(e.target as HTMLElement).closest(".version-trigger, .version-popover")) {
-                openDropdown = -1;
-            }
-        };
-        document.addEventListener("click", handler);
-        return () => document.removeEventListener("click", handler);
     });
+    editor = new EditorView({ state, parent: editorHost });
+    modalAnnotations = editor.state.field(annotationField);
+    modalActiveAnnotation = getActiveAnnotation(editor.state);
+}
 
+function moveCursorToEnd(activeEditor: EditorView) {
+    const end = activeEditor.state.doc.length;
+    activeEditor.dispatch({
+        selection: { anchor: end },
+        scrollIntoView: true,
+    });
+    activeEditor.focus();
+}
 
-    /**
-     * Execute a pending nested annotation command (comment or
-     * sub-revision) that was queued in the modal stack entry
-     * when this modal was opened. Sets the selection in the
-     * nested editor and dispatches the appropriate annotation.
-     */
-    function executePendingNestedCommand(
-        activeEditor: EditorView,
-        cmd: { type: string; selectionFrom: number; selectionTo: number },
-    ) {
-        const s = activeEditor.state;
-        const docLen = s.doc.length;
-        const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
-        const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
-        activeEditor.dispatch({
-            selection: EditorSelection.range(from, to),
-        });
-        activeEditor.focus();
-        if (cmd.type === "comment") {
-            const s2 = activeEditor.state;
-            if (
-                !s2.selection.main.empty
-                && canCreateNewComment(s2.field(annotationField))
-            ) {
-                activeEditor.dispatch(
-                    s2.update({
-                        effects: [
-                            addAnnotation.of(
-                                createNewAnnotation(
-                                    s2.field(annotationField),
-                                    s2.selection,
-                                    "comment",
-                                ),
+function destroyEditor() {
+    editor?.destroy();
+    editor = undefined;
+    modalAnnotations = undefined;
+    modalActiveAnnotation = undefined;
+}
+
+function close() {
+    modalStack.pop();
+}
+
+// Close the version dropdown when clicking outside of it.
+$effect(() => {
+    if (openDropdown === -1) return;
+    const handler = (e: MouseEvent) => {
+        if (!(e.target as HTMLElement).closest(".version-trigger, .version-popover")) {
+            openDropdown = -1;
+        }
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+});
+
+/**
+ * Execute a pending nested annotation command (comment or
+ * sub-revision) that was queued in the modal stack entry
+ * when this modal was opened. Sets the selection in the
+ * nested editor and dispatches the appropriate annotation.
+ */
+function executePendingNestedCommand(
+    activeEditor: EditorView,
+    cmd: { type: string; selectionFrom: number; selectionTo: number },
+) {
+    const s = activeEditor.state;
+    const docLen = s.doc.length;
+    const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
+    const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
+    activeEditor.dispatch({
+        selection: EditorSelection.range(from, to),
+    });
+    activeEditor.focus();
+    if (cmd.type === "comment") {
+        const s2 = activeEditor.state;
+        if (!s2.selection.main.empty && canCreateNewComment(s2.field(annotationField))) {
+            activeEditor.dispatch(
+                s2.update({
+                    effects: [
+                        addAnnotation.of(
+                            createNewAnnotation(s2.field(annotationField), s2.selection, "comment"),
+                        ),
+                    ],
+                    annotations: Transaction.addToHistory.of(true),
+                }),
+            );
+        }
+    } else if (cmd.type === "revision") {
+        const s2 = activeEditor.state;
+        if (!s2.selection.main.empty) {
+            const selectedText = s2.sliceDoc(s2.selection.main.from, s2.selection.main.to);
+            activeEditor.dispatch(
+                s2.update({
+                    effects: [
+                        addAnnotation.of({
+                            ...createNewAnnotation(
+                                s2.field(annotationField),
+                                s2.selection,
+                                "revision",
                             ),
-                        ],
-                        annotations: Transaction.addToHistory.of(true),
-                    }),
-                );
-            }
-        } else if (cmd.type === "revision") {
-            const s2 = activeEditor.state;
-            if (!s2.selection.main.empty) {
-                const selectedText = s2.sliceDoc(
-                    s2.selection.main.from,
-                    s2.selection.main.to,
-                );
-                activeEditor.dispatch(
-                    s2.update({
-                        effects: [
-                            addAnnotation.of({
-                                ...createNewAnnotation(
-                                    s2.field(annotationField),
-                                    s2.selection,
-                                    "revision",
-                                ),
-                                currentlySelected: 0,
-                                versions: [{ doc: selectedText }],
-                            }),
-                        ],
-                        annotations: Transaction.addToHistory.of(true),
-                    }),
-                );
-            }
+                            currentlySelected: 0,
+                            versions: [{ doc: selectedText }],
+                        }),
+                    ],
+                    annotations: Transaction.addToHistory.of(true),
+                }),
+            );
         }
     }
+}
 
-    // Open the <dialog> as a modal, bootstrap the nested editor,
-    // and run any pending nested annotation command.
-    $effect(() => {
-        if (!dialogEl) return;
-        if (!dialogEl.open) dialogEl.showModal();
-        tick().then(() => {
-            const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-            if (rev && !editor) {
-                createEditor(rev.versions[rev.currentlySelected]);
-            }
-            const activeEditor = editor;
-            const entry = $modalStack[stackIndex];
-            if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
-                executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
-            } else if (activeEditor) {
-                moveCursorToEnd(activeEditor);
-            }
-        });
+// Open the <dialog> as a modal, bootstrap the nested editor,
+// and run any pending nested annotation command.
+$effect(() => {
+    if (!dialogEl) return;
+    if (!dialogEl.open) dialogEl.showModal();
+    tick().then(() => {
+        const rev = view.state.field(annotationField)[revisionId] as
+            | Annotation<"revision">
+            | undefined;
+        if (rev && !editor) {
+            createEditor(rev.versions[rev.currentlySelected]);
+        }
+        const activeEditor = editor;
+        const entry = $modalStack[stackIndex];
+        if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
+            executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
+        } else if (activeEditor) {
+            moveCursorToEnd(activeEditor);
+        }
     });
+});
 
-    onDestroy(() => {
-        destroyEditor();
-    });
+onDestroy(() => {
+    destroyEditor();
+});
 
-    let revisionThread = $state(
-       (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [],
-       // modalAnnotations !== undefined ? (modalAnnotations[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [] : [],
+let revisionThread = $state(
+    (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ??
+        [],
+    // modalAnnotations !== undefined ? (modalAnnotations[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [] : [],
+);
+
+function dispatchUpdateThread(newThreadValue: ThreadType) {
+    view.dispatch(
+        view.state.update({
+            effects: [
+                updateThread.of({
+                    annotationId: revisionId,
+                    newThread: newThreadValue,
+                }),
+            ],
+        }),
     );
-
-    function dispatchUpdateThread(newThreadValue: ThreadType) {
-        view.dispatch(
-            view.state.update({
-                effects: [
-                    updateThread.of({
-                        annotationId: revisionId,
-                        newThread: newThreadValue,
-                    }),
-                ],
-            }),
-        );
-      revisionThread = (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [];
-    }
+    revisionThread =
+        (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)
+            ?.thread ?? [];
+}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->

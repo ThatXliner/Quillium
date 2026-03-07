@@ -16,31 +16,31 @@
       - Writes `tutorialActive` store when the "?" button is clicked.
 -->
 <script lang="ts">
-    import Save from "$lib/save/Save.svelte";
-    import SettingsModal from "$lib/settings/SettingsModal.svelte";
-    import { listen } from "@tauri-apps/api/event";
-    import { tutorialActive } from "$lib/stores";
-    import { debugPanelActive } from "$lib/debug/store.svelte";
-    import { Settings2 } from "lucide-svelte";
+import Save from "$lib/save/Save.svelte";
+import SettingsModal from "$lib/settings/SettingsModal.svelte";
+import { listen } from "@tauri-apps/api/event";
+import { tutorialActive } from "$lib/stores";
+import { debugPanelActive } from "$lib/debug/store.svelte";
+import { Settings2 } from "lucide-svelte";
 
-    const { words, chars, selWords, selChars } = $props();
+const { words, chars, selWords, selChars } = $props();
 
-    /**
-     * Tracks whether the current document is persisted to disk.
-     * Toggled by Tauri backend events emitted during the auto-save
-     * cycle: "saving" (write started) and "saved" (write completed).
-     */
-    let fileSaved = $state<boolean>(true);
-    let settingsOpen = $state(false);
+/**
+ * Tracks whether the current document is persisted to disk.
+ * Toggled by Tauri backend events emitted during the auto-save
+ * cycle: "saving" (write started) and "saved" (write completed).
+ */
+let fileSaved = $state<boolean>(true);
+let settingsOpen = $state(false);
 
-    // Tauri event listeners — fire whenever the Rust backend starts
-    // or finishes writing the document file.
-    listen("saved", () => {
-        fileSaved = true;
-    });
-    listen("saving", () => {
-        fileSaved = false;
-    });
+// Tauri event listeners — fire whenever the Rust backend starts
+// or finishes writing the document file.
+listen("saved", () => {
+    fileSaved = true;
+});
+listen("saving", () => {
+    fileSaved = false;
+});
 </script>
 
 <div

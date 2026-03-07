@@ -79,9 +79,27 @@ describe("getLastId", () => {
 // ── isAnnotationOfType ────────────────────────────────────────────────────────
 
 describe("isAnnotationOfType", () => {
-    const comment: GenericAnnotation = { id: 0, _type: "comment", selection: sel(0, 5), thread: [] };
-    const revision: GenericAnnotation = { id: 1, _type: "revision", selection: sel(0, 5), thread: [], currentlySelected: 0, versions: [] };
-    const suggestion: GenericAnnotation = { id: 2, _type: "suggestion", selection: sel(0, 5), thread: [], replacements: [] };
+    const comment: GenericAnnotation = {
+        id: 0,
+        _type: "comment",
+        selection: sel(0, 5),
+        thread: [],
+    };
+    const revision: GenericAnnotation = {
+        id: 1,
+        _type: "revision",
+        selection: sel(0, 5),
+        thread: [],
+        currentlySelected: 0,
+        versions: [],
+    };
+    const suggestion: GenericAnnotation = {
+        id: 2,
+        _type: "suggestion",
+        selection: sel(0, 5),
+        thread: [],
+        replacements: [],
+    };
 
     it("returns true for matching type", () => {
         expect(isAnnotationOfType(comment, "comment")).toBe(true);

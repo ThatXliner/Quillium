@@ -1,83 +1,75 @@
 <script lang="ts">
-  /**
-   * Suggestion.svelte — Displays an AI-generated suggestion card
-   * with one or more replacement options, inline diff preview,
-   * and actions to apply or branch into a revision.
-   *
-   * Props:
-   *   - suggestion: Annotation<"suggestion"> — the annotation data
-   *   - isActive: boolean — whether this card is currently selected
-   *   - view: EditorView — the parent CodeMirror editor
-   *   - remove: () => void — callback to delete this annotation
-   *   - updateThread: (thread: ThreadType) => void — callback to
-   *     replace the thread array
-   *
-   * Events emitted: none (delegates via callbacks and CodeMirror
-   *   dispatch for applySuggestion / branchSuggestion effects)
-   * Stores:
-   *   - modalStack (write): pushes a DiffModal entry for full-view
-   *
-   * Parent: Annotations.svelte
-   * Children: Thread.svelte (for user replies below the suggestion)
-   *
-   * Local state:
-   *   - selectedIndex: which replacement option is highlighted
-   *   - diffExpanded: whether the inline diff panel is visible
-   */
-  import type { EditorView } from "@codemirror/view";
-  import {
-    ChevronDownIcon,
-    GitBranchIcon,
-    Maximize2,
-    SparklesIcon,
-    Trash2,
-  } from "lucide-svelte";
-  import {
+/**
+ * Suggestion.svelte — Displays an AI-generated suggestion card
+ * with one or more replacement options, inline diff preview,
+ * and actions to apply or branch into a revision.
+ *
+ * Props:
+ *   - suggestion: Annotation<"suggestion"> — the annotation data
+ *   - isActive: boolean — whether this card is currently selected
+ *   - view: EditorView — the parent CodeMirror editor
+ *   - remove: () => void — callback to delete this annotation
+ *   - updateThread: (thread: ThreadType) => void — callback to
+ *     replace the thread array
+ *
+ * Events emitted: none (delegates via callbacks and CodeMirror
+ *   dispatch for applySuggestion / branchSuggestion effects)
+ * Stores:
+ *   - modalStack (write): pushes a DiffModal entry for full-view
+ *
+ * Parent: Annotations.svelte
+ * Children: Thread.svelte (for user replies below the suggestion)
+ *
+ * Local state:
+ *   - selectedIndex: which replacement option is highlighted
+ *   - diffExpanded: whether the inline diff panel is visible
+ */
+import type { EditorView } from "@codemirror/view";
+import { ChevronDownIcon, GitBranchIcon, Maximize2, SparklesIcon, Trash2 } from "lucide-svelte";
+import {
     applySuggestion,
     branchSuggestion,
     diffTokens,
     tokenize,
     type Annotation,
     type Thread as ThreadType,
-  } from ".";
-  import Thread from "./Thread.svelte";
-  import { modalStack } from "$lib/stores";
-  import posthog from "posthog-js";
+} from ".";
+import Thread from "./Thread.svelte";
+import { modalStack } from "$lib/stores";
+import posthog from "posthog-js";
 
-  const {
+const {
     suggestion,
     isActive,
     view,
     remove,
     updateThread,
-  }: {
+}: {
     suggestion: Annotation<"suggestion">;
     isActive: boolean;
     view: EditorView;
     remove: () => void;
     updateThread: (thread: ThreadType) => void;
-  } = $props();
+} = $props();
 
-  const thread = $derived(suggestion.thread);
+const thread = $derived(suggestion.thread);
 
-  // Auto-select the only replacement when there is exactly one
-  let selectedIndex = $state<number | null>(
-    suggestion.replacements.length === 1 ? 0 : null,
-  );
+// Auto-select the only replacement when there is exactly one
+let selectedIndex = $state<number | null>(suggestion.replacements.length === 1 ? 0 : null);
 
-  let diffExpanded = $state(false);
+let diffExpanded = $state(false);
 
-  /**
-   * Compute token-level diff operations between the original
-   * document text and the chosen replacement text.
-   */
-  function getDiffOps(replacementIndex: number) {
+/**
+ * Compute token-level diff operations between the original
+ * document text and the chosen replacement text.
+ */
+function getDiffOps(replacementIndex: number) {
     const { from, to } = suggestion.selection.main;
     const original = view.state.sliceDoc(from, to);
     const replacement = suggestion.replacements[replacementIndex];
     if (!replacement) return [];
     return diffTokens(tokenize(original), tokenize(replacement.text));
-  }
+}
 </script>
 
 <div

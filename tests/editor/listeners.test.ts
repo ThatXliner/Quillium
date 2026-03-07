@@ -3,10 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { listeners } from "$lib/editor/listeners";
-import {
-    addAnnotation,
-    annotationField,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
 
 function makeView(options: Parameters<typeof listeners>[0] = {}) {

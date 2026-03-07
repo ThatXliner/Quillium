@@ -7,14 +7,9 @@ import {
     annotationKeymap,
     annotations as annotationExtensions,
 } from "$lib/editor/plugins/annotations";
-import {
-    addAnnotation,
-    annotationField,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
-import {
-    annotationUiEvent,
-} from "$lib/stores";
+import { annotationUiEvent } from "$lib/stores";
 
 function createView(doc: string) {
     const state = EditorState.create({

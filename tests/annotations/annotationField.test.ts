@@ -31,11 +31,7 @@ function makeState(doc = "Hello, world!") {
     });
 }
 
-function makeComment(
-    id: number,
-    from: number,
-    to: number,
-): GenericAnnotation {
+function makeComment(id: number, from: number, to: number): GenericAnnotation {
     return {
         id,
         _type: "comment",
@@ -139,9 +135,7 @@ describe("updateThread effect", () => {
         const withComment = state.update({
             effects: [addAnnotation.of(comment)],
         }).state;
-        const newThread = [
-            { message: "Hello", author: "alice", time: 1 },
-        ];
+        const newThread = [{ message: "Hello", author: "alice", time: 1 }];
         const updated = withComment.update({
             effects: [
                 updateThread.of({
@@ -240,15 +234,11 @@ describe("previewSuggestion + suggestionPreviewField", () => {
                 }),
             ],
         }).state;
-        expect(
-            withPreview.field(suggestionPreviewField),
-        ).not.toBeNull();
+        expect(withPreview.field(suggestionPreviewField)).not.toBeNull();
         const afterDocChange = withPreview.update({
             changes: { from: 0, insert: "X" },
         }).state;
-        expect(
-            afterDocChange.field(suggestionPreviewField),
-        ).toBeNull();
+        expect(afterDocChange.field(suggestionPreviewField)).toBeNull();
     });
 
     it("clears preview when set to null", () => {
@@ -273,18 +263,14 @@ describe("previewSuggestion + suggestionPreviewField", () => {
 describe("applySuggestion", () => {
     it("removes annotation and inserts replacement text", () => {
         const state = makeState("The quick brown fox");
-        const suggestion = makeSuggestion(0, 4, 9, [
-            { text: "fast" },
-        ]);
+        const suggestion = makeSuggestion(0, 4, 9, [{ text: "fast" }]);
         const withSuggestion = state.update({
             effects: [addAnnotation.of(suggestion)],
         }).state;
         const applied = applySuggestion(withSuggestion, 0, 0);
         const newState = withSuggestion.update(applied).state;
         expect(newState.doc.toString()).toBe("The fast brown fox");
-        expect(
-            Object.keys(newState.field(annotationField)),
-        ).toHaveLength(0);
+        expect(Object.keys(newState.field(annotationField))).toHaveLength(0);
     });
 });
 
@@ -297,21 +283,15 @@ describe("setActiveRevisionVersion", () => {
         const withComment = state.update({
             effects: [addAnnotation.of(comment)],
         }).state;
-        expect(() =>
-            setActiveRevisionVersion(withComment, 0, 0),
-        ).toThrow("Annotation is not a revision");
+        expect(() => setActiveRevisionVersion(withComment, 0, 0)).toThrow(
+            "Annotation is not a revision",
+        );
     });
 
     it("changes doc content and updates currentlySelected", () => {
         const doc = "Hello, world!";
         const state = makeState(doc);
-        const revision = makeRevision(
-            0,
-            0,
-            5,
-            [{ doc: "Hello" }, { doc: "Howdy" }],
-            0,
-        );
+        const revision = makeRevision(0, 0, 5, [{ doc: "Hello" }, { doc: "Howdy" }], 0);
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;
@@ -335,27 +315,18 @@ describe("createNewRevision", () => {
         const withComment = state.update({
             effects: [addAnnotation.of(comment)],
         }).state;
-        expect(() => createNewRevision(withComment, 0)).toThrow(
-            "Annotation is not a revision",
-        );
+        expect(() => createNewRevision(withComment, 0)).toThrow("Annotation is not a revision");
     });
 
     it("inserts placeholder text and creates a new version", () => {
         const state = makeState("Hello, world!");
-        const revision = makeRevision(
-            0,
-            0,
-            5,
-            [{ doc: "Hello" }],
-            0,
-        );
+        const revision = makeRevision(0, 0, 5, [{ doc: "Hello" }], 0);
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;
         const tr = createNewRevision(withRevision, 0);
         const newState = withRevision.update(tr).state;
-        const placeholder =
-            "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
+        const placeholder = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
         expect(newState.doc.toString()).toContain(placeholder);
         const ann = newState.field(annotationField)[0];
         if (ann._type === "revision") {
@@ -370,21 +341,13 @@ describe("createNewRevision", () => {
 describe("deleteRevisionVersion", () => {
     it("deleting the last version removes the whole revision", () => {
         const state = makeState("Hello, world!");
-        const revision = makeRevision(
-            0,
-            0,
-            5,
-            [{ doc: "Hello" }],
-            0,
-        );
+        const revision = makeRevision(0, 0, 5, [{ doc: "Hello" }], 0);
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;
         const tr = deleteRevisionVersion(withRevision, 0, 0);
         const newState = withRevision.update(tr).state;
-        expect(
-            Object.keys(newState.field(annotationField)),
-        ).toHaveLength(0);
+        expect(Object.keys(newState.field(annotationField))).toHaveLength(0);
         // The text covered by the revision is removed
         expect(newState.doc.toString()).toBe(", world!");
     });
@@ -441,18 +404,9 @@ describe("toJSON / fromJSON round-trip", () => {
     it("serializes and deserializes preserving selections", () => {
         const state = makeState("Hello, world!");
         const comment = makeComment(0, 0, 5);
-        const revision = makeRevision(
-            1,
-            7,
-            12,
-            [{ doc: "world" }],
-            0,
-        );
+        const revision = makeRevision(1, 7, 12, [{ doc: "world" }], 0);
         const withAnnotations = state.update({
-            effects: [
-                addAnnotation.of(comment),
-                addAnnotation.of(revision),
-            ],
+            effects: [addAnnotation.of(comment), addAnnotation.of(revision)],
         }).state;
         const annotations = withAnnotations.field(annotationField);
         const json = withAnnotations.toJSON({
@@ -467,12 +421,8 @@ describe("toJSON / fromJSON round-trip", () => {
         );
         const restored = restoredState.field(annotationField);
         // Selections must be equal
-        expect(
-            restored[0].selection.eq(annotations[0].selection),
-        ).toBe(true);
-        expect(
-            restored[1].selection.eq(annotations[1].selection),
-        ).toBe(true);
+        expect(restored[0].selection.eq(annotations[0].selection)).toBe(true);
+        expect(restored[1].selection.eq(annotations[1].selection)).toBe(true);
         // Types preserved
         expect(restored[0]._type).toBe("comment");
         expect(restored[1]._type).toBe("revision");
@@ -515,13 +465,7 @@ describe("remapAnnotationSelections", () => {
 
     it("revision survives zero-width range", () => {
         const state = makeState("Hello, world!");
-        const revision = makeRevision(
-            0,
-            0,
-            5,
-            [{ doc: "Hello" }],
-            0,
-        );
+        const revision = makeRevision(0, 0, 5, [{ doc: "Hello" }], 0);
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;

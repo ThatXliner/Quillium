@@ -24,23 +24,19 @@ import type { EditorView } from "@codemirror/view";
 import { tick } from "svelte";
 import { updateThread, removeAnnotation } from "./annotationField";
 import { canCreateNewComment } from "./utils";
-import {
-	isAnnotationOfType,
-	type Annotations,
-	type GenericAnnotation,
-} from "./models";
+import { isAnnotationOfType, type Annotations, type GenericAnnotation } from "./models";
 import posthog from "posthog-js";
 
 const {
-	view,
-	annotationsData,
-	pendingAnnotation,
-	activeAnnotationData,
+    view,
+    annotationsData,
+    pendingAnnotation,
+    activeAnnotationData,
 }: {
-	view: EditorView;
-	annotationsData: Annotations;
-	pendingAnnotation?: GenericAnnotation;
-	activeAnnotationData?: GenericAnnotation;
+    view: EditorView;
+    annotationsData: Annotations;
+    pendingAnnotation?: GenericAnnotation;
+    activeAnnotationData?: GenericAnnotation;
 } = $props();
 
 let commentText = $state("");
@@ -48,45 +44,42 @@ let textarea = $state<HTMLTextAreaElement | undefined>();
 let focusedPendingId = $state<number | undefined>(undefined);
 
 function resolvePendingComment() {
-	if (
-		pendingAnnotation &&
-		isAnnotationOfType(pendingAnnotation, "comment") &&
-		pendingAnnotation.thread.length === 0
-	) {
-		return pendingAnnotation;
-	}
-	if (
-		activeAnnotationData &&
-		isAnnotationOfType(activeAnnotationData, "comment") &&
-		activeAnnotationData.thread.length === 0
-	) {
-		return activeAnnotationData;
-	}
-	return undefined;
+    if (
+        pendingAnnotation &&
+        isAnnotationOfType(pendingAnnotation, "comment") &&
+        pendingAnnotation.thread.length === 0
+    ) {
+        return pendingAnnotation;
+    }
+    if (
+        activeAnnotationData &&
+        isAnnotationOfType(activeAnnotationData, "comment") &&
+        activeAnnotationData.thread.length === 0
+    ) {
+        return activeAnnotationData;
+    }
+    return undefined;
 }
 
 const pendingComment = $derived(resolvePendingComment());
 
 // Auto-focus the textarea when a pending (unsaved) comment exists
 $effect(() => {
-	if (
-		!canCreateNewComment(annotationsData) &&
-		pendingComment &&
-		pendingComment.id !== focusedPendingId
-	) {
-		focusedPendingId = pendingComment.id;
-		tick().then(() => textarea?.focus());
-	}
+    if (
+        !canCreateNewComment(annotationsData) &&
+        pendingComment &&
+        pendingComment.id !== focusedPendingId
+    ) {
+        focusedPendingId = pendingComment.id;
+        tick().then(() => textarea?.focus());
+    }
 });
 
 // Derive the highlighted text range the pending comment refers to
 const selectedText = $derived(
-	pendingComment
-		? view.state.sliceDoc(
-				pendingComment.selection.main.from,
-				pendingComment.selection.main.to,
-			)
-		: "",
+    pendingComment
+        ? view.state.sliceDoc(pendingComment.selection.main.from, pendingComment.selection.main.to)
+        : "",
 );
 
 /**
@@ -94,33 +87,29 @@ const selectedText = $derived(
  * annotation's thread via a CodeMirror updateThread effect.
  */
 function addComment() {
-	if (
-		!pendingComment ||
-		!isAnnotationOfType(pendingComment, "comment")
-	)
-		return;
-	posthog.capture("comment_created", {
-		has_selection: !!selectedText,
-		comment_length: commentText.length,
-	});
-	view.dispatch(
-		view.state.update({
-			effects: [
-				updateThread.of({
-					annotationId: pendingComment.id,
-					newThread: [
-						...pendingComment.thread,
-						{
-							message: commentText,
-							author: "User",
-							time: Date.now(),
-						},
-					],
-				}),
-			],
-		}),
-	);
-	commentText = "";
+    if (!pendingComment || !isAnnotationOfType(pendingComment, "comment")) return;
+    posthog.capture("comment_created", {
+        has_selection: !!selectedText,
+        comment_length: commentText.length,
+    });
+    view.dispatch(
+        view.state.update({
+            effects: [
+                updateThread.of({
+                    annotationId: pendingComment.id,
+                    newThread: [
+                        ...pendingComment.thread,
+                        {
+                            message: commentText,
+                            author: "User",
+                            time: Date.now(),
+                        },
+                    ],
+                }),
+            ],
+        }),
+    );
+    commentText = "";
 }
 
 /**
@@ -128,17 +117,13 @@ function addComment() {
  * the CodeMirror state entirely.
  */
 function cancelComment() {
-	if (
-		!pendingComment ||
-		!isAnnotationOfType(pendingComment, "comment")
-	)
-		return;
-	view.dispatch(
-		view.state.update({
-			effects: [removeAnnotation.of(pendingComment)],
-		}),
-	);
-	commentText = "";
+    if (!pendingComment || !isAnnotationOfType(pendingComment, "comment")) return;
+    view.dispatch(
+        view.state.update({
+            effects: [removeAnnotation.of(pendingComment)],
+        }),
+    );
+    commentText = "";
 }
 </script>
 

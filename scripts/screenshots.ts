@@ -29,7 +29,8 @@ const VIEWPORT = { width: 1440, height: 900 };
 // ── Content ───────────────────────────────────────────────────────────────────
 
 // Public domain — opening of A Tale of Two Cities (Dickens)
-const PROSE_SHORT = `It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity.`;
+const PROSE_SHORT =
+    "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity.";
 
 const PROSE_LONG = `It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair.
 
@@ -64,33 +65,25 @@ async function installTauriMock(
             localStorage.setItem("quillium_tutorial_seen", "1");
 
             let nextCallbackId = 1;
-            const callbacks = new Map<
-                number,
-                (...args: unknown[]) => unknown
-            >();
+            const callbacks = new Map<number, (...args: unknown[]) => unknown>();
             const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
 
             (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
                 invokeCalls,
             };
 
-            (
-                window as unknown as Record<string, unknown>
-            ).__TAURI_INTERNALS__ = {
+            (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
                 invoke: async (cmd: string, args: unknown) => {
                     invokeCalls.push({ cmd, args });
                     if (cmd === "load") return payload.loadResponse;
                     if (cmd === "save") return true;
-                    if (cmd === "get_api_key")
-                        return payload.fakeApiKey ? "sk-demo-key" : null;
+                    if (cmd === "get_api_key") return payload.fakeApiKey ? "sk-demo-key" : null;
                     if (cmd === "set_api_key") return null;
                     if (cmd === "plugin:event|listen") return 1;
                     if (cmd === "plugin:event|unlisten") return null;
                     return null;
                 },
-                transformCallback: (
-                    callback: (...args: unknown[]) => unknown,
-                ) => {
+                transformCallback: (callback: (...args: unknown[]) => unknown) => {
                     const id = nextCallbackId;
                     nextCallbackId += 1;
                     callbacks.set(id, callback);
@@ -102,9 +95,7 @@ async function installTauriMock(
                 convertFileSrc: (filePath: string) => filePath,
             };
 
-            (
-                window as unknown as Record<string, unknown>
-            ).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+            (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
                 unregisterListener: () => {},
             };
         },
@@ -150,14 +141,10 @@ async function startServer(): Promise<ChildProcess> {
     console.log("Starting preview server…");
 
     // Build first, then preview
-    const server = spawn(
-        "bun",
-        ["run", "vite", "preview", "--port", "4173", "--strictPort"],
-        {
-            stdio: ["ignore", "pipe", "pipe"],
-            detached: false,
-        },
-    );
+    const server = spawn("bun", ["run", "vite", "preview", "--port", "4173", "--strictPort"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: false,
+    });
 
     server.stdout?.on("data", (chunk: Buffer) => {
         process.stdout.write(`[server] ${chunk}`);
@@ -172,10 +159,7 @@ async function startServer(): Promise<ChildProcess> {
     return server;
 }
 
-async function pollUntilReady(
-    url: string,
-    timeoutMs = 30_000,
-): Promise<void> {
+async function pollUntilReady(url: string, timeoutMs = 30_000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         try {
@@ -203,7 +187,9 @@ async function shot(page: Page, name: string): Promise<void> {
  * 1. editor-default — Clean editor, short prose, status bar visible,
  *    AI sidebar in collapsed pill state (default on load).
  */
-async function scenarioEditorDefault(browser: Awaited<ReturnType<typeof chromium.launch>>): Promise<void> {
+async function scenarioEditorDefault(
+    browser: Awaited<ReturnType<typeof chromium.launch>>,
+): Promise<void> {
     const page = await browser.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page);
@@ -225,7 +211,9 @@ async function scenarioEditorDefault(browser: Awaited<ReturnType<typeof chromium
  * 2. editor-with-text — Longer fiction passage, scrolled to show
  *    the full document card with its shadow.
  */
-async function scenarioEditorWithText(browser: Awaited<ReturnType<typeof chromium.launch>>): Promise<void> {
+async function scenarioEditorWithText(
+    browser: Awaited<ReturnType<typeof chromium.launch>>,
+): Promise<void> {
     const page = await browser.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page);
@@ -249,7 +237,9 @@ async function scenarioEditorWithText(browser: Awaited<ReturnType<typeof chromiu
  *    for the screenshot — the settings panel redirects, so we click
  *    force to bypass the hasApiKey guard for display purposes).
  */
-async function scenarioAiSidebarChat(browser: Awaited<ReturnType<typeof chromium.launch>>): Promise<void> {
+async function scenarioAiSidebarChat(
+    browser: Awaited<ReturnType<typeof chromium.launch>>,
+): Promise<void> {
     const page = await browser.newPage();
     await page.setViewportSize(VIEWPORT);
     // fakeApiKey=true so hasApiKey() returns true and the sidebar opens chat
@@ -272,7 +262,9 @@ async function scenarioAiSidebarChat(browser: Awaited<ReturnType<typeof chromium
 /**
  * 4. ai-sidebar-feedback — AI sidebar open on the Feedback tab.
  */
-async function scenarioAiSidebarFeedback(browser: Awaited<ReturnType<typeof chromium.launch>>): Promise<void> {
+async function scenarioAiSidebarFeedback(
+    browser: Awaited<ReturnType<typeof chromium.launch>>,
+): Promise<void> {
     const page = await browser.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page, { fakeApiKey: true });
@@ -306,7 +298,9 @@ async function scenarioAiSidebarFeedback(browser: Awaited<ReturnType<typeof chro
  *    For simplicity we select text and dispatch the CodeMirror effect
  *    directly via evaluate().
  */
-async function scenarioAnnotationsPanel(browser: Awaited<ReturnType<typeof chromium.launch>>): Promise<void> {
+async function scenarioAnnotationsPanel(
+    browser: Awaited<ReturnType<typeof chromium.launch>>,
+): Promise<void> {
     const page = await browser.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page);
@@ -356,8 +350,7 @@ async function scenarioAnnotationsPanel(browser: Awaited<ReturnType<typeof chrom
         // The app can intercept it or we can trigger the keyboard shortcut.
         // Since we can't import CodeMirror internals here, store selection info
         // and trigger via keyboard shortcut instead.
-        (window as unknown as Record<string, unknown>).__screenshot_selection__ =
-            { from, to };
+        (window as unknown as Record<string, unknown>).__screenshot_selection__ = { from, to };
         return true;
     });
 
@@ -405,8 +398,7 @@ async function scenarioFullUi(browser: Awaited<ReturnType<typeof chromium.launch
             (s) => s.toString() === "Symbol(cmView)",
         );
         if (!viewSymbol) return;
-        (window as unknown as Record<string, unknown>).__screenshot_selection__ =
-            true;
+        (window as unknown as Record<string, unknown>).__screenshot_selection__ = true;
     });
 
     // Mod-Alt-m is the keybinding for createCommentCommand (annotationKeymap)

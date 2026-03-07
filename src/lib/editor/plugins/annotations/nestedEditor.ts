@@ -50,9 +50,7 @@ export function syncVersionToParent(
         | Annotation<"revision">
         | undefined;
     if (!rev) return;
-    parentView.dispatch(
-        updateRevisionVersionState(parentView.state, revisionId, versionId, blob),
-    );
+    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blob));
 }
 
 /**
@@ -62,7 +60,5 @@ export function syncVersionToParent(
 export function previewVersionText(version: VersionState, maxLen = VERSION_PREVIEW_MAX): string {
     const flattened = versionText(version).replace(/\s+/g, " ").trim();
     if (!flattened) return "(empty)";
-    return flattened.length > maxLen
-        ? `${flattened.slice(0, maxLen)}…`
-        : flattened;
+    return flattened.length > maxLen ? `${flattened.slice(0, maxLen)}…` : flattened;
 }

@@ -16,78 +16,78 @@
     Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
-    import { editorView } from "$lib/stores";
-    import { debugPanelActive } from "$lib/debug/store.svelte";
-    import { scenarios, type Scenario } from "$lib/debug/scenarios";
-    import { EditorState } from "@codemirror/state";
-    import { EditorView } from "@codemirror/view";
-    import { getExtensions, savedFields } from "$lib/editor/extensions";
-    import { invoke } from "@tauri-apps/api/core";
+import { editorView } from "$lib/stores";
+import { debugPanelActive } from "$lib/debug/store.svelte";
+import { scenarios, type Scenario } from "$lib/debug/scenarios";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { getExtensions, savedFields } from "$lib/editor/extensions";
+import { invoke } from "@tauri-apps/api/core";
 
-    const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
+const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
 
-    let loading = $state<string | null>(null);
-    let lastLoaded = $state<string | null>(null);
-    let error = $state<string | null>(null);
+let loading = $state<string | null>(null);
+let lastLoaded = $state<string | null>(null);
+let error = $state<string | null>(null);
 
-    function close() {
-        $debugPanelActive = false;
+function close() {
+    $debugPanelActive = false;
+}
+
+async function runScenario(scenario: Scenario) {
+    if (!$editorView) {
+        error = "Editor not ready — wait for the editor to initialise.";
+        return;
     }
 
-    async function runScenario(scenario: Scenario) {
-        if (!$editorView) {
-            error = "Editor not ready — wait for the editor to initialise.";
-            return;
-        }
+    loading = scenario.id;
+    error = null;
 
-        loading = scenario.id;
-        error = null;
+    try {
+        // 1. Build a temporary EditorState with the full extension stack
+        //    (annotationField included) but no persist listener, so our
+        //    intermediate dispatches don't trigger spurious auto-saves.
+        const tempState = EditorState.create({
+            doc: scenario.doc,
+            extensions: getExtensions({ persist: false }),
+        });
 
-        try {
-            // 1. Build a temporary EditorState with the full extension stack
-            //    (annotationField included) but no persist listener, so our
-            //    intermediate dispatches don't trigger spurious auto-saves.
-            const tempState = EditorState.create({
-                doc: scenario.doc,
-                extensions: getExtensions({ persist: false }),
-            });
+        // 2. Mount a headless EditorView so we can dispatch transactions
+        //    through the full extension pipeline (annotation decorations,
+        //    StateField reducer, etc.).
+        const tempParent = document.createElement("div");
+        const tempView = new EditorView({ state: tempState, parent: tempParent });
 
-            // 2. Mount a headless EditorView so we can dispatch transactions
-            //    through the full extension pipeline (annotation decorations,
-            //    StateField reducer, etc.).
-            const tempParent = document.createElement("div");
-            const tempView = new EditorView({ state: tempState, parent: tempParent });
+        // 3. Run the scenario setup — dispatches addAnnotation effects.
+        scenario.setup(tempView);
 
-            // 3. Run the scenario setup — dispatches addAnnotation effects.
-            scenario.setup(tempView);
+        // 4. Serialize the resulting state (doc + annotationField) to JSON.
+        //    We use mapValues to convert EditorSelection objects to their
+        //    JSON form, matching what annotationField.toJSON does internally.
+        const json = tempView.state.toJSON(savedFields);
 
-            // 4. Serialize the resulting state (doc + annotationField) to JSON.
-            //    We use mapValues to convert EditorSelection objects to their
-            //    JSON form, matching what annotationField.toJSON does internally.
-            const json = tempView.state.toJSON(savedFields);
+        tempView.destroy();
 
-            tempView.destroy();
+        // 5. Write to disk via the same Tauri "save" command the auto-save
+        //    listener uses, so the next load sees the scenario state.
+        await invoke("save", { state: JSON.stringify(json) });
 
-            // 5. Write to disk via the same Tauri "save" command the auto-save
-            //    listener uses, so the next load sees the scenario state.
-            await invoke("save", { state: JSON.stringify(json) });
+        // 6. Reload the live editor from disk — re-runs the full
+        //    EditorState.fromJSON path with all extensions wired up.
+        await reloadEditor();
 
-            // 6. Reload the live editor from disk — re-runs the full
-            //    EditorState.fromJSON path with all extensions wired up.
-            await reloadEditor();
-
-            lastLoaded = scenario.id;
-        } catch (e) {
-            error = e instanceof Error ? e.message : String(e);
-            console.error("[DebugPanel] scenario load failed:", e);
-        } finally {
-            loading = null;
-        }
+        lastLoaded = scenario.id;
+    } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+        console.error("[DebugPanel] scenario load failed:", e);
+    } finally {
+        loading = null;
     }
+}
 
-    function handleKeydown(e: KeyboardEvent) {
-        if (e.key === "Escape") close();
-    }
+function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") close();
+}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />

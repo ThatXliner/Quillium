@@ -63,13 +63,13 @@ import Revise from "./Revise.svelte";
 import AISettings from "./AISettings.svelte";
 import DocumentContext from "./DocumentContext.svelte";
 import {
-	MessageCircleIcon,
-	ZapIcon,
-	PenLineIcon,
-	XIcon,
-	Settings2Icon,
-	CompassIcon,
-	Minimize2Icon,
+    MessageCircleIcon,
+    ZapIcon,
+    PenLineIcon,
+    XIcon,
+    Settings2Icon,
+    CompassIcon,
+    Minimize2Icon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
 import posthog from "posthog-js";
@@ -78,53 +78,53 @@ type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
 let action = $state<Action>(null);
 
 const actions: {
-	id: NonNullable<Action>;
-	icon: any;
-	label: string;
-	activeClass: string;
-	hoverClass: string;
-	requiresApiKey: boolean;
+    id: NonNullable<Action>;
+    icon: typeof MessageCircleIcon;
+    label: string;
+    activeClass: string;
+    hoverClass: string;
+    requiresApiKey: boolean;
 }[] = [
-	{
-		id: "chat",
-		icon: MessageCircleIcon,
-		label: "Chat",
-		activeClass: "text-blue-600 bg-white/60",
-		hoverClass: "hover:text-blue-600",
-		requiresApiKey: true,
-	},
-	{
-		id: "feedback",
-		icon: ZapIcon,
-		label: "Feedback",
-		activeClass: "text-green-600 bg-white/60",
-		hoverClass: "hover:text-green-600",
-		requiresApiKey: true,
-	},
-	{
-		id: "revise",
-		icon: PenLineIcon,
-		label: "Revise",
-		activeClass: "text-purple-600 bg-white/60",
-		hoverClass: "hover:text-purple-600",
-		requiresApiKey: true,
-	},
-	{
-		id: "context",
-		icon: CompassIcon,
-		label: "Document Context",
-		activeClass: "text-amber-600 bg-white/60",
-		hoverClass: "hover:text-amber-600",
-		requiresApiKey: true,
-	},
+    {
+        id: "chat",
+        icon: MessageCircleIcon,
+        label: "Chat",
+        activeClass: "text-blue-600 bg-white/60",
+        hoverClass: "hover:text-blue-600",
+        requiresApiKey: true,
+    },
+    {
+        id: "feedback",
+        icon: ZapIcon,
+        label: "Feedback",
+        activeClass: "text-green-600 bg-white/60",
+        hoverClass: "hover:text-green-600",
+        requiresApiKey: true,
+    },
+    {
+        id: "revise",
+        icon: PenLineIcon,
+        label: "Revise",
+        activeClass: "text-purple-600 bg-white/60",
+        hoverClass: "hover:text-purple-600",
+        requiresApiKey: true,
+    },
+    {
+        id: "context",
+        icon: CompassIcon,
+        label: "Document Context",
+        activeClass: "text-amber-600 bg-white/60",
+        hoverClass: "hover:text-amber-600",
+        requiresApiKey: true,
+    },
 ];
 
 const panelTitles: Record<NonNullable<Action>, string> = {
-	chat: "Chat with AI",
-	feedback: "Get Feedback",
-	revise: "Revise & Rewrite",
-	context: "Document Context",
-	settings: "AI Settings",
+    chat: "Chat with AI",
+    feedback: "Get Feedback",
+    revise: "Revise & Rewrite",
+    context: "Document Context",
+    settings: "AI Settings",
 };
 
 const expanded = $derived(action !== null);
@@ -154,16 +154,16 @@ const isCustomSize = $derived(customWidth !== null || customHeight !== null);
 
 // Inline style only when expanded AND user has resized (overrides Tailwind)
 const containerSizeStyle = $derived(
-	expanded && (customWidth !== null || customHeight !== null)
-		? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
-		: "",
+    expanded && (customWidth !== null || customHeight !== null)
+        ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
+        : "",
 );
 
 // Disable transition during active drag; keep it for expand/collapse
 const transitionClass = $derived(
-	isResizing
-		? ""
-		: "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
+    isResizing
+        ? ""
+        : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
 );
 
 let container: HTMLDivElement;
@@ -171,117 +171,103 @@ let iconStrip = $state<HTMLDivElement>();
 let iconEls = $state<HTMLButtonElement[]>([]);
 
 function handleClickOutside(e: MouseEvent) {
-	if (justResized) {
-		justResized = false;
-		return;
-	}
-	const target = e.target as Node;
-	if (
-		expanded &&
-		container &&
-		!container.contains(target) &&
-		!(target as Element).closest?.(".cm-editor")
-	) {
-		action = null;
-	}
+    if (justResized) {
+        justResized = false;
+        return;
+    }
+    const target = e.target as Node;
+    if (
+        expanded &&
+        container &&
+        !container.contains(target) &&
+        !(target as Element).closest?.(".cm-editor")
+    ) {
+        action = null;
+    }
 }
 
 function selectAction(id: NonNullable<Action>) {
-	const def = actions.find((a) => a.id === id);
-	if (def?.requiresApiKey && !hasApiKey()) {
-		action = "settings";
-		return;
-	}
-	action = id;
-	posthog.capture("ai_sidebar_opened", { mode: id });
-	scrollActiveIntoCenter(id);
+    const def = actions.find((a) => a.id === id);
+    if (def?.requiresApiKey && !hasApiKey()) {
+        action = "settings";
+        return;
+    }
+    action = id;
+    posthog.capture("ai_sidebar_opened", { mode: id });
+    scrollActiveIntoCenter(id);
 }
 
 function scrollActiveIntoCenter(id: NonNullable<Action>) {
-	tick().then(() => {
-		if (!iconStrip) return;
-		const idx = actions.findIndex((a) => a.id === id);
-		const el = iconEls[idx];
-		if (!el) return;
-		const stripRect = iconStrip.getBoundingClientRect();
-		const elRect = el.getBoundingClientRect();
-		const offset =
-			elRect.left -
-			stripRect.left +
-			elRect.width / 2 -
-			stripRect.width / 2;
-		iconStrip.scrollBy({ left: offset, behavior: "smooth" });
-	});
+    tick().then(() => {
+        if (!iconStrip) return;
+        const idx = actions.findIndex((a) => a.id === id);
+        const el = iconEls[idx];
+        if (!el) return;
+        const stripRect = iconStrip.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const offset = elRect.left - stripRect.left + elRect.width / 2 - stripRect.width / 2;
+        iconStrip.scrollBy({ left: offset, behavior: "smooth" });
+    });
 }
 
 function resetSize() {
-	customWidth = null;
-	customHeight = null;
+    customWidth = null;
+    customHeight = null;
 }
 
 function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
-	e.preventDefault();
-	e.stopPropagation();
-	activeHandle = handle;
-	resizeStartX = e.clientX;
-	resizeStartY = e.clientY;
-	resizeStartWidth = effectiveWidth;
-	resizeStartHeight = effectiveHeight;
-	isResizing = true;
-	window.addEventListener("mousemove", onResizeMove);
-	window.addEventListener("mouseup", onResizeEnd);
-	document.body.style.userSelect = "none";
-	document.body.style.cursor =
-		handle === "right"
-			? "ew-resize"
-			: handle === "bottom"
-				? "ns-resize"
-				: "nwse-resize";
+    e.preventDefault();
+    e.stopPropagation();
+    activeHandle = handle;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartWidth = effectiveWidth;
+    resizeStartHeight = effectiveHeight;
+    isResizing = true;
+    window.addEventListener("mousemove", onResizeMove);
+    window.addEventListener("mouseup", onResizeEnd);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor =
+        handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
 }
 
 function onResizeMove(e: MouseEvent) {
-	if (!activeHandle) return;
-	const dx = e.clientX - resizeStartX;
-	const dy = e.clientY - resizeStartY;
-	if (activeHandle === "right" || activeHandle === "corner") {
-		customWidth = Math.min(
-			MAX_WIDTH,
-			Math.max(MIN_WIDTH, resizeStartWidth + dx),
-		);
-	}
-	if (activeHandle === "bottom" || activeHandle === "corner") {
-		customHeight = Math.min(
-			MAX_HEIGHT,
-			Math.max(MIN_HEIGHT, resizeStartHeight + dy),
-		);
-	}
+    if (!activeHandle) return;
+    const dx = e.clientX - resizeStartX;
+    const dy = e.clientY - resizeStartY;
+    if (activeHandle === "right" || activeHandle === "corner") {
+        customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
+    }
+    if (activeHandle === "bottom" || activeHandle === "corner") {
+        customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
+    }
 }
 
 function onResizeEnd() {
-	isResizing = false;
-	activeHandle = null;
-	justResized = true;
-	window.removeEventListener("mousemove", onResizeMove);
-	window.removeEventListener("mouseup", onResizeEnd);
-	document.body.style.userSelect = "";
-	document.body.style.cursor = "";
+    isResizing = false;
+    activeHandle = null;
+    justResized = true;
+    window.removeEventListener("mousemove", onResizeMove);
+    window.removeEventListener("mouseup", onResizeEnd);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
 }
 
 // Center the active icon whenever the panel opens
 $effect(() => {
-	if (expanded && action && action !== "settings") {
-		scrollActiveIntoCenter(action);
-	}
+    if (expanded && action && action !== "settings") {
+        scrollActiveIntoCenter(action);
+    }
 });
 
 // Cleanup resize listeners on unmount
 $effect(() => {
-	return () => {
-		window.removeEventListener("mousemove", onResizeMove);
-		window.removeEventListener("mouseup", onResizeEnd);
-		document.body.style.userSelect = "";
-		document.body.style.cursor = "";
-	};
+    return () => {
+        window.removeEventListener("mousemove", onResizeMove);
+        window.removeEventListener("mouseup", onResizeEnd);
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+    };
 });
 </script>
 

@@ -12,40 +12,40 @@
     State persisted to localStorage via saveDocumentContext.
 -->
 <script lang="ts">
-    import { SparklesIcon } from "lucide-svelte";
-    import posthog from "posthog-js";
-    import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
-    import { generateContext } from "$lib/ai/clientStreams";
+import { SparklesIcon } from "lucide-svelte";
+import posthog from "posthog-js";
+import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
+import { generateContext } from "$lib/ai/clientStreams";
 
-    let promptInput = $state("");
-    let generating = $state(false);
-    let generateError = $state("");
+let promptInput = $state("");
+let generating = $state(false);
+let generateError = $state("");
 
-    async function generate() {
-        if (!promptInput.trim() || generating) return;
-        generating = true;
-        generateError = "";
-        try {
-            documentContext.freeform = await generateContext({
-                prompt: promptInput,
-                provider: aiSettings.provider,
-                model: aiSettings.model,
-                apiKey: aiSettings.apiKey,
-            });
-            saveDocumentContext();
-        } catch (e) {
-            generateError = String(e);
-        } finally {
-            generating = false;
-        }
-    }
-
-    function clearAll() {
-        posthog.capture("context_cleared");
-        documentContext.freeform = "";
-        promptInput = "";
+async function generate() {
+    if (!promptInput.trim() || generating) return;
+    generating = true;
+    generateError = "";
+    try {
+        documentContext.freeform = await generateContext({
+            prompt: promptInput,
+            provider: aiSettings.provider,
+            model: aiSettings.model,
+            apiKey: aiSettings.apiKey,
+        });
         saveDocumentContext();
+    } catch (e) {
+        generateError = String(e);
+    } finally {
+        generating = false;
     }
+}
+
+function clearAll() {
+    posthog.capture("context_cleared");
+    documentContext.freeform = "";
+    promptInput = "";
+    saveDocumentContext();
+}
 </script>
 
 <div class="flex flex-col h-full overflow-y-auto">

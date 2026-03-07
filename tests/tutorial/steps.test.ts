@@ -61,12 +61,7 @@ describe("steps", () => {
     });
 
     it("every step has all required fields defined", () => {
-        const requiredKeys: Array<keyof Step> = [
-            "selector",
-            "title",
-            "body",
-            "position",
-        ];
+        const requiredKeys: Array<keyof Step> = ["selector", "title", "body", "position"];
         for (const step of steps) {
             for (const key of requiredKeys) {
                 expect(step).toHaveProperty(key);

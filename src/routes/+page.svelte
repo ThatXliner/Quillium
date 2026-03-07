@@ -19,26 +19,26 @@
         completed the tutorial (checked via localStorage).
 -->
 <script lang="ts">
-    import { onMount } from "svelte";
-    import Editor from "$lib/editor/Editor.svelte";
-    import AiSidebar from "$lib/ai/AISidebar.svelte";
-    import Tutorial from "$lib/tutorial/Tutorial.svelte";
-    import { tutorialActive, modalStack, editorView } from "$lib/stores";
-    import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
-    import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
-    import { debugPanelActive } from "$lib/debug/store.svelte";
-    import DebugPanel from "$lib/debug/DebugPanel.svelte";
+import { onMount } from "svelte";
+import Editor from "$lib/editor/Editor.svelte";
+import AiSidebar from "$lib/ai/AISidebar.svelte";
+import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import { tutorialActive, modalStack, editorView } from "$lib/stores";
+import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
+import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
+import { debugPanelActive } from "$lib/debug/store.svelte";
+import DebugPanel from "$lib/debug/DebugPanel.svelte";
 
-    let editorComponent = $state<{ reload: () => Promise<void> }>();
+let editorComponent = $state<{ reload: () => Promise<void> }>();
 
-    /** Show the tutorial on first visit if the user hasn't seen it. */
-    function showTutorialOnFirstVisit() {
-        if (!localStorage.getItem("quillium_tutorial_seen")) {
-            $tutorialActive = true;
-        }
+/** Show the tutorial on first visit if the user hasn't seen it. */
+function showTutorialOnFirstVisit() {
+    if (!localStorage.getItem("quillium_tutorial_seen")) {
+        $tutorialActive = true;
     }
+}
 
-    onMount(showTutorialOnFirstVisit);
+onMount(showTutorialOnFirstVisit);
 </script>
 
 <AiSidebar />

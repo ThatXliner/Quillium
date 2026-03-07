@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-    buildDocumentContextPrompt,
-    injectDocumentContext,
-} from "$lib/ai/utils";
+import { buildDocumentContextPrompt, injectDocumentContext } from "$lib/ai/utils";
 
 // ── buildDocumentContextPrompt ────────────────────────────────────────────────
 
@@ -20,7 +17,9 @@ describe("buildDocumentContextPrompt", () => {
     });
 
     it("includes the freeform text when set", () => {
-        const result = buildDocumentContextPrompt({ freeform: "Goal: Write a thriller. Audience: adults." });
+        const result = buildDocumentContextPrompt({
+            freeform: "Goal: Write a thriller. Audience: adults.",
+        });
         expect(result).toContain("Goal: Write a thriller. Audience: adults.");
     });
 

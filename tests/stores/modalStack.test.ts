@@ -8,11 +8,21 @@ import type { EditorView } from "@codemirror/view";
 const fakeView = {} as EditorView;
 
 function diffEntry(id = 0): ModalEntry {
-    return { type: "diff", suggestionId: id, parentView: fakeView, label: `Diff ${id}` };
+    return {
+        type: "diff",
+        suggestionId: id,
+        parentView: fakeView,
+        label: `Diff ${id}`,
+    };
 }
 
 function revisionEntry(id = 0): ModalEntry {
-    return { type: "revision", revisionId: id, parentView: fakeView, label: `Rev ${id}` };
+    return {
+        type: "revision",
+        revisionId: id,
+        parentView: fakeView,
+        label: `Rev ${id}`,
+    };
 }
 
 beforeEach(() => {
@@ -87,7 +97,9 @@ describe("modalStack.popToAndRebuild", () => {
         modalStack.popToAndRebuild(0);
         const stack = get(modalStack);
         expect(stack).toHaveLength(1);
-        expect((stack[0] as ModalEntry & { rebuildToken?: number }).rebuildToken).toBeTypeOf("number");
+        expect((stack[0] as ModalEntry & { rebuildToken?: number }).rebuildToken).toBeTypeOf(
+            "number",
+        );
     });
 
     it("each call stamps a new rebuildToken (monotonically increasing)", async () => {

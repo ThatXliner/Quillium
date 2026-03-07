@@ -1,19 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { EditorState, EditorSelection } from "@codemirror/state";
-import {
-    annotationField,
-    addAnnotation,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeState(
-    doc: string,
-    cursorPos: number,
-    annotations: GenericAnnotation[] = [],
-) {
+function makeState(doc: string, cursorPos: number, annotations: GenericAnnotation[] = []) {
     const base = EditorState.create({ doc, extensions: [annotationField] });
     const tr = base.update({
         effects: annotations.map((a) => addAnnotation.of(a)),
@@ -36,12 +29,7 @@ function makeStateWithSelection(
     return tr.state;
 }
 
-function makeComment(
-    id: number,
-    from: number,
-    to: number,
-    threadLength = 1,
-): GenericAnnotation {
+function makeComment(id: number, from: number, to: number, threadLength = 1): GenericAnnotation {
     return {
         id,
         _type: "comment",
@@ -54,11 +42,7 @@ function makeComment(
     };
 }
 
-function makeRevision(
-    id: number,
-    from: number,
-    to: number,
-): GenericAnnotation {
+function makeRevision(id: number, from: number, to: number): GenericAnnotation {
     return {
         id,
         _type: "revision",
@@ -130,10 +114,7 @@ describe("getActiveAnnotation", () => {
     it("with two overlapping annotations, returns the narrower one when cursor is inside both", () => {
         const wide = makeComment(0, 0, 20);
         const narrow = makeComment(1, 5, 10);
-        const state = makeState("hello world, this is text", 7, [
-            wide,
-            narrow,
-        ]);
+        const state = makeState("hello world, this is text", 7, [wide, narrow]);
         const result = getActiveAnnotation(state);
         expect(result).toBeDefined();
         expect(result!.id).toBe(1);

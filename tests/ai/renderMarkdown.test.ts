@@ -18,9 +18,7 @@ describe("renderMarkdown", () => {
     });
 
     it("renders links as <a> with href", async () => {
-        const html = await renderMarkdown(
-            "[link text](https://example.com)",
-        );
+        const html = await renderMarkdown("[link text](https://example.com)");
         expect(html).toContain('<a href="https://example.com"');
         expect(html).toContain("link text");
     });
@@ -36,16 +34,12 @@ describe("renderMarkdown", () => {
     });
 
     it("strips <script> tags (XSS)", async () => {
-        const html = await renderMarkdown(
-            "<script>alert(1)</script>",
-        );
+        const html = await renderMarkdown("<script>alert(1)</script>");
         expect(html).not.toContain("<script>");
     });
 
     it("strips onerror attributes (XSS)", async () => {
-        const html = await renderMarkdown(
-            '<img src=x onerror=alert(1)>',
-        );
+        const html = await renderMarkdown("<img src=x onerror=alert(1)>");
         expect(html.toLowerCase()).not.toContain("onerror");
     });
 

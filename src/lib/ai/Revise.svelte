@@ -72,19 +72,19 @@ const { chat, clearChat } = createAiChat({ mode: "revise" });
 // Sync streaming state to the global AI processing indicator.
 // States: ready -> submitted -> streaming -> ready (or error).
 $effect(() => {
-	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
 function handleSubmit(event: SubmitEvent) {
-	event.preventDefault();
-	if (!input.trim() || chat.status !== "ready") return;
+    event.preventDefault();
+    if (!input.trim() || chat.status !== "ready") return;
 
-	posthog.capture("ai_revise_requested", {
-		has_selection: !!$selectedText,
-		trigger: "manual",
-	});
-	chat.sendMessage({ text: input });
-	input = "";
+    posthog.capture("ai_revise_requested", {
+        has_selection: !!$selectedText,
+        trigger: "manual",
+    });
+    chat.sendMessage({ text: input });
+    input = "";
 }
 
 /**
@@ -93,24 +93,24 @@ function handleSubmit(event: SubmitEvent) {
  * targets the whole document.
  */
 function reviseText() {
-	const context = $selectedText
-		? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
-		: "Please revise my document to improve flow and conciseness.";
+    const context = $selectedText
+        ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
+        : "Please revise my document to improve flow and conciseness.";
 
-	posthog.capture("ai_revise_requested", {
-		has_selection: !!$selectedText,
-		trigger: "quick_action",
-	});
-	input = context;
-	chat.sendMessage({ text: context });
+    posthog.capture("ai_revise_requested", {
+        has_selection: !!$selectedText,
+        trigger: "quick_action",
+    });
+    input = context;
+    chat.sendMessage({ text: context });
 }
 
 const quickPrompts = [
-	"Make this more concise",
-	"Improve the flow and transitions",
-	"Make this more engaging",
-	"Fix grammar and style issues",
-	"Simplify complex sentences",
+    "Make this more concise",
+    "Improve the flow and transitions",
+    "Make this more engaging",
+    "Fix grammar and style issues",
+    "Simplify complex sentences",
 ];
 
 /**
@@ -118,14 +118,14 @@ const quickPrompts = [
  * the current selection or the full document, then send it.
  */
 function useQuickPrompt(prompt: string) {
-	const target = $selectedText ? "this selected text" : "my document";
-	const message = `${prompt} in ${target}`;
-	posthog.capture("ai_revise_quick_prompt_used", {
-		prompt,
-		has_selection: !!$selectedText,
-	});
-	input = message;
-	chat.sendMessage({ text: message });
+    const target = $selectedText ? "this selected text" : "my document";
+    const message = `${prompt} in ${target}`;
+    posthog.capture("ai_revise_quick_prompt_used", {
+        prompt,
+        has_selection: !!$selectedText,
+    });
+    input = message;
+    chat.sendMessage({ text: message });
 }
 </script>
 
