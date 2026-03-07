@@ -1,6 +1,6 @@
 {
   "name": "quillium",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "",
   "type": "module",
   "scripts": {
@@ -17,7 +17,10 @@
     "test:coverage": "vitest run --coverage",
     "format": "biome format --write",
     "lint": "biome lint --write",
-    "biome": "bun run format && bun run lint"
+    "biome": "bun run format && bun run lint",
+    "bump": "bash scripts/bump.sh",
+    "bump:minor": "bash scripts/bump.sh minor",
+    "bump:major": "bash scripts/bump.sh major"
   },
   "license": "MIT",
   "dependencies": {
