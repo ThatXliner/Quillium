@@ -13,8 +13,7 @@ import {
 } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import {
-    revisionBoundaryNudge,
-    revisionOpenNestedEditor,
+    annotationUiEvent,
 } from "$lib/stores";
 
 function createView(doc: string) {
@@ -54,8 +53,7 @@ function addRevision(view: EditorView, from: number, to: number) {
 let view: EditorView | undefined;
 
 beforeEach(() => {
-    revisionBoundaryNudge.set(null);
-    revisionOpenNestedEditor.set(null);
+    annotationUiEvent.set(null);
     appSettings.atomicRevisions = true;
 });
 
@@ -73,12 +71,17 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Mod-Alt-k");
 
         expect(consumed).toBe(true);
-        expect(get(revisionOpenNestedEditor)).toEqual({
-            revisionId,
-            type: "revision",
-            selectionFrom: 2,
-            selectionTo: 2,
-        });
+        expect(get(annotationUiEvent)).toEqual(
+            expect.objectContaining({
+                type: "revision-open-nested-editor",
+                command: {
+                    revisionId,
+                    type: "revision",
+                    selectionFrom: 2,
+                    selectionTo: 2,
+                },
+            }),
+        );
     });
 
     it("redirects Mod-Alt-m to nested editor when cursor is inside revision", () => {
@@ -89,12 +92,17 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Mod-Alt-m");
 
         expect(consumed).toBe(true);
-        expect(get(revisionOpenNestedEditor)).toEqual({
-            revisionId,
-            type: "comment",
-            selectionFrom: 1,
-            selectionTo: 1,
-        });
+        expect(get(annotationUiEvent)).toEqual(
+            expect.objectContaining({
+                type: "revision-open-nested-editor",
+                command: {
+                    revisionId,
+                    type: "comment",
+                    selectionFrom: 1,
+                    selectionTo: 1,
+                },
+            }),
+        );
     });
 
     it("Backspace at revision start boundary fires nudge signal", () => {
@@ -105,7 +113,12 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Backspace");
 
         expect(consumed).toBe(false);
-        expect(get(revisionBoundaryNudge)).toBe(revisionId);
+        expect(get(annotationUiEvent)).toEqual(
+            expect.objectContaining({
+                type: "revision-boundary-nudge",
+                revisionId,
+            }),
+        );
     });
 
     it("Delete at revision end boundary fires nudge signal", () => {
@@ -116,7 +129,12 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Delete");
 
         expect(consumed).toBe(false);
-        expect(get(revisionBoundaryNudge)).toBe(revisionId);
+        expect(get(annotationUiEvent)).toEqual(
+            expect.objectContaining({
+                type: "revision-boundary-nudge",
+                revisionId,
+            }),
+        );
     });
 
     it("Backspace at revision end deletes adjacent revision range", () => {
@@ -137,7 +155,12 @@ describe("annotation keymap integration", () => {
 
         view.dispatch({ changes: { from: 6, insert: "X" } });
 
-        expect(get(revisionBoundaryNudge)).toBe(revisionId);
+        expect(get(annotationUiEvent)).toEqual(
+            expect.objectContaining({
+                type: "revision-boundary-nudge",
+                revisionId,
+            }),
+        );
     });
 
     it("Mod-Alt-k creates revision when not inside any revision", () => {
