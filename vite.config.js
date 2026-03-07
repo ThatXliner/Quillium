@@ -1,13 +1,18 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
 	plugins: [sveltekit(), tailwindcss()],
+	define: {
+		__APP_VERSION__: JSON.stringify(pkg.version),
+	},
 	resolve: {
 		dedupe: [
 			"@codemirror/state",
