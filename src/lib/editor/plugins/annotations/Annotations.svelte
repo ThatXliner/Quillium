@@ -223,13 +223,17 @@ function updateAnnotationPositions() {
 
 /**
  * Resize the inner scroll container so it can hold all cards,
- * and position it at the correct horizontal offset.
+ * and position it at the correct horizontal offset. The
+ * container width fills from leftPx to the viewport edge
+ * (minus a small right margin) so cards are not cramped.
  */
 function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     if (!scrollContainer) return;
     const inner = scrollContainer.firstElementChild as HTMLElement | null;
     if (inner) inner.style.height = `${lastBottom + 24}px`;
     scrollContainer.style.left = `${leftPx}px`;
+    const availableWidth = Math.max(0, window.innerWidth - leftPx - 16);
+    scrollContainer.style.width = `${availableWidth}px`;
 }
 
 /**
@@ -485,7 +489,7 @@ $effect(() => {
         position: fixed;
         top: 0;
         left: 0;
-        width: 256px;
+        width: 256px; /* overridden dynamically in updateScrollContainerSize */
         height: 100vh;
         overflow-y: auto;
         overflow-x: visible;
@@ -502,7 +506,7 @@ $effect(() => {
 
     .annotation-scroll-inner {
         position: relative;
-        width: 240px;
+        width: 100%;
         pointer-events: none;
     }
 
@@ -510,7 +514,7 @@ $effect(() => {
         position: absolute;
         top: 64px;
         left: 0;
-        width: 240px;
+        width: 100%;
         pointer-events: auto;
         transition: top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
