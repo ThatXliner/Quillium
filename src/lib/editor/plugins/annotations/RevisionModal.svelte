@@ -31,9 +31,9 @@
      */
     import { EditorState } from "@codemirror/state";
     import { EditorView, type ViewUpdate } from "@codemirror/view";
-    import { ChevronRight, ChevronDown, Check, X } from "lucide-svelte";
+    import { ChevronRight, ChevronDown, ChevronUp, Check, X } from "lucide-svelte";
     import { onDestroy, tick } from "svelte";
-    import { scale } from "svelte/transition";
+    import { scale, slide } from "svelte/transition";
     import { getExtensions, savedFields } from "$lib/editor/extensions";
     import {
         addAnnotation,
@@ -57,6 +57,118 @@
     const { revisionId, view, stackIndex }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
     const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
+
+    // Context snippet: lazy-loaded chunks around the revision range
+    const CHUNK = 300; // chars per load step
+    let contextBefore = $state(CHUNK); // how many chars before to show
+    let contextAfter = $state(CHUNK);  // how many chars after to show
+
+    const docContext = $derived.by(() => {
+        // Reading modalAnnotations here makes this derived re-run whenever
+        // the nested editor writes a change back to the parent view.
+        void modalAnnotations;
+        const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+        if (!rev) return null;
+        const doc = view.state.doc;
+        const from = rev.selection.main.from;
+        const to = rev.selection.main.to;
+        const beforeStart = Math.max(0, from - contextBefore);
+        const afterEnd = Math.min(doc.length, to + contextAfter);
+        return {
+            before: doc.sliceString(beforeStart, from),
+            revision: doc.sliceString(from, to),
+            after: doc.sliceString(to, afterEnd),
+            hasMoreBefore: beforeStart > 0,
+            hasMoreAfter: afterEnd < doc.length,
+        };
+    });
+
+    let contextCollapsed = $state(false);
+    let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
+    let contextRevisionEl = $state<HTMLSpanElement | undefined>(undefined);
+
+    // "above" | "below" | null — whether revision highlight is out of view
+    let revisionDirection = $state<"above" | "below" | null>(null);
+
+    // Scroll edge state for dynamic mask
+    let contextAtTop = $state(true);
+    let contextAtBottom = $state(false);
+
+    function scrollRevisionIntoCenter(behavior: ScrollBehavior = "smooth") {
+        if (!contextScrollEl || !contextRevisionEl) return;
+        const container = contextScrollEl;
+        const containerRect = container.getBoundingClientRect();
+        const revisionRect = contextRevisionEl.getBoundingClientRect();
+        const currentTop = container.scrollTop;
+        const targetTop =
+            currentTop
+            + (revisionRect.top - containerRect.top)
+            - (container.clientHeight / 2 - revisionRect.height / 2);
+        container.scrollTo({ top: targetTop, behavior });
+    }
+
+    // Keep the revision centered whenever context is shown/updated.
+    $effect(() => {
+        if (contextCollapsed || !contextRevisionEl || !contextScrollEl) return;
+        requestAnimationFrame(() => scrollRevisionIntoCenter("auto"));
+        const timeoutId = window.setTimeout(() => {
+            scrollRevisionIntoCenter("auto");
+        }, 220);
+        return () => window.clearTimeout(timeoutId);
+    });
+
+    // IntersectionObserver: track whether revision span is visible in scroll container
+    $effect(() => {
+        if (!contextRevisionEl || !contextScrollEl) return;
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    revisionDirection = null;
+                } else {
+                    const rect = entry.boundingClientRect;
+                    const rootRect = entry.rootBounds;
+                    if (rootRect) {
+                        revisionDirection = rect.top < rootRect.top ? "above" : "below";
+                    }
+                }
+            },
+            { root: contextScrollEl, threshold: 0.1 },
+        );
+        observer.observe(contextRevisionEl);
+        return () => observer.disconnect();
+    });
+
+    // Auto-load more when scrolling near the top or bottom edge;
+    // also track edge state for mask
+    $effect(() => {
+        const el = contextScrollEl;
+        if (!el) return;
+        function updateEdges() {
+            if (!el) return;
+            contextAtTop = el.scrollTop <= 0;
+            contextAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 0;
+        }
+        // Set initial state
+        updateEdges();
+        function handleScroll() {
+            if (!el) return;
+            updateEdges();
+            const THRESHOLD = 40;
+            if (el.scrollTop < THRESHOLD && docContext?.hasMoreBefore) {
+                const prevHeight = el.scrollHeight;
+                contextBefore += CHUNK;
+                // Preserve scroll position after content is prepended
+                requestAnimationFrame(() => {
+                    el.scrollTop += el.scrollHeight - prevHeight;
+                });
+            }
+            if (el.scrollHeight - el.scrollTop - el.clientHeight < THRESHOLD && docContext?.hasMoreAfter) {
+                contextAfter += CHUNK;
+            }
+        }
+        el.addEventListener("scroll", handleScroll, { passive: true });
+        return () => el.removeEventListener("scroll", handleScroll);
+    });
 
     // Track selected version index per crumb level reactively
     let crumbSelectedVersions = $state<number[]>([]);
@@ -201,6 +313,7 @@
         return () => document.removeEventListener("click", handler);
     });
 
+
     /**
      * Execute a pending nested annotation command (comment or
      * sub-revision) that was queued in the modal stack entry
@@ -281,6 +394,8 @@
             const entry = $modalStack[stackIndex];
             if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
                 executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
+            } else if (activeEditor) {
+                moveCursorToEnd(activeEditor);
             }
         });
     });
@@ -483,7 +598,7 @@
       <div
         class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col bg-purple-50/90"
       >
-        <div class="px-4 py-3 border-b border-purple-100/50">
+        <div class="px-4 py-3 border-b border-purple-100/50 shrink-0">
           <span
             class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider"
             >Thread</span
@@ -510,22 +625,74 @@
         class="revision-modal-editor flex-1 overflow-hidden"
       ></div>
 
-      <!-- Annotations sidebar -->
-      {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
-        <div
-          class="w-64 shrink-0 border-l border-purple-100/60 overflow-y-auto bg-purple-50/20 px-2 py-3"
-        >
-          <div
-            class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1"
-          >
-            Annotations
-          </div>
-          <Annotations
-            view={editor}
-            annotationsData={modalAnnotations}
-            activeAnnotationData={modalActiveAnnotation}
-            layout="inline"
-          />
+      <!-- Right sidebar: context + annotations -->
+      {#if docContext || (editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
+        <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col bg-purple-50/20">
+
+          <!-- Context panel -->
+          {#if docContext}
+            <div class="border-b border-purple-100/60 shrink-0">
+              <button
+                class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors"
+                onclick={() => contextCollapsed = !contextCollapsed}
+              >
+                <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Context</span>
+                {#if contextCollapsed}
+                  <ChevronDown size={10} class="text-purple-400/50" />
+                {:else}
+                  <ChevronUp size={10} class="text-purple-400/50" />
+                {/if}
+              </button>
+              {#if !contextCollapsed}
+                <div transition:slide={{ duration: 180 }} class="relative">
+                  <div
+                    bind:this={contextScrollEl}
+                    class="context-scroll"
+                    style="mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%); -webkit-mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%);"
+                  >
+                    <div class="context-text">
+                      {#if docContext.before}<span class="context-surrounding">{docContext.before}</span>{/if}
+                      <span
+                        bind:this={contextRevisionEl}
+                        class="{docContext.revision ? 'context-revision' : 'context-revision context-revision-empty'}"
+                      >{docContext.revision || "(empty)"}</span>
+                      {#if docContext.after}<span class="context-surrounding">{docContext.after}</span>{/if}
+                    </div>
+                  </div>
+                  {#if revisionDirection}
+                    <button
+                      class="context-jump-btn {revisionDirection === 'above' ? 'context-jump-top' : 'context-jump-bottom'}"
+                      onclick={() => scrollRevisionIntoCenter()}
+                      title="Jump to revision"
+                      transition:scale={{ start: 0.8, duration: 120, opacity: 0 }}
+                    >
+                      {#if revisionDirection === "above"}
+                        <ChevronUp size={14} />
+                      {:else}
+                        <ChevronDown size={14} />
+                      {/if}
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Annotations -->
+          {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
+            <div class="flex-1 overflow-y-auto px-2 py-3">
+              <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
+                Annotations
+              </div>
+              <Annotations
+                view={editor}
+                annotationsData={modalAnnotations}
+                activeAnnotationData={modalActiveAnnotation}
+                layout="inline"
+              />
+            </div>
+          {/if}
+
         </div>
       {/if}
     </div>
@@ -631,7 +798,6 @@
     color: rgba(109, 40, 217, 0.9);
     font-weight: 500;
   }
-
   .tutorial-inline-guide {
     position: absolute;
     right: 12px;
@@ -720,5 +886,86 @@
   .tutorial-inline-guide-next:disabled {
     background: rgb(147, 197, 253);
     cursor: not-allowed;
+  }
+
+  .context-scroll {
+    height: 160px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding: 10px 16px 10px 16px;
+    /* Carved glass */
+    background: rgba(245, 240, 255, 0.45);
+    backdrop-filter: blur(12px) saturate(1.3);
+    -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  }
+
+  .context-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .context-text {
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: rgba(0, 0, 0, 0.55);
+    font-family: var(--doc-font-family, system-ui, sans-serif);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .context-surrounding {
+    color: rgba(80, 40, 120, 0.38);
+  }
+
+  .context-revision {
+    background: rgba(147, 112, 219, 0.18);
+    color: rgba(88, 28, 135, 0.8);
+    border-radius: 3px;
+    padding: 1px 3px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.2);
+  }
+
+  .context-revision-empty {
+    font-style: italic;
+    color: rgba(0, 0, 0, 0.3);
+    background: none;
+    box-shadow: none;
+  }
+
+  .context-jump-btn {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 5px;
+    font-size: 10px;
+    font-weight: 500;
+    color: rgba(109, 40, 217, 0.8);
+    background: rgba(245, 240, 255, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(167, 139, 250, 0.35);
+    border-radius: 99px;
+    box-shadow: 0 2px 8px rgba(109, 40, 217, 0.12);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    z-index: 2;
+  }
+
+  .context-jump-btn:hover {
+    background: rgba(237, 233, 254, 0.95);
+    color: rgba(109, 40, 217, 1);
+  }
+
+  .context-jump-top {
+    top: 14px;
+  }
+
+  .context-jump-bottom {
+    bottom: 14px;
   }
 </style>

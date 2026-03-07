@@ -61,9 +61,11 @@ import { getActiveAnnotation } from "./utils";
 import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
+	revisionFocusRequest,
 	modalStack,
 	pendingNestedEditorSelection,
 } from "$lib/stores";
+import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import posthog from "posthog-js";
 
@@ -91,11 +93,11 @@ let isEditorOpen = $state(false);
 let userClosedEditor = false; // plain var — not reactive, just a gate
 
 // Auto-open the nested editor when this revision becomes active,
-// unless the user explicitly closed it. Reset the gate when the
-// card loses focus.
+// unless the user explicitly closed it or the setting is disabled.
+// Reset the gate when the card loses focus.
 $effect(() => {
 	if (isActive) {
-		if (!userClosedEditor) isEditorOpen = true;
+		if (!userClosedEditor && appSettings.showNestedEditor && appSettings.atomicRevisions) isEditorOpen = true;
 	} else {
 		isEditorOpen = false;
 		userClosedEditor = false;
@@ -151,6 +153,39 @@ $effect(() => {
 	});
 });
 
+// When the main doc is clicked inside this revision's atomic range,
+// focus the nested editor (opening it if needed), placing the cursor
+// at the relative position within the version text.
+// Falls back to opening the modal if the nested editor is disabled.
+$effect(() => {
+	const req = $revisionFocusRequest;
+	if (!req || req.id !== revision.id) return;
+	revisionFocusRequest.set(null);
+	const relPos = Math.min(req.relativePos, activeText.length);
+	if (appSettings.showNestedEditor) {
+		const placeCursor = (editor: EditorView) => {
+			editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
+			editor.focus();
+		};
+		if (isEditorOpen && recursiveEditor) {
+			placeCursor(recursiveEditor);
+		} else {
+			userClosedEditor = false;
+			isEditorOpen = true;
+			tick().then(() => { if (recursiveEditor) placeCursor(recursiveEditor); });
+		}
+	} else {
+		modalStack.push({
+			type: "revision",
+			revisionId: revision.id,
+			parentView: view,
+			label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+			// relative pos will be used by modal to place cursor
+			pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+		});
+	}
+});
+
 onDestroy(() => {
 	clearTimeout(boundaryHintTimeout);
 });
@@ -194,7 +229,9 @@ function createRecursiveEditor(version: VersionState) {
 			nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
 				recursiveEditor.state,
 			);
-			upsertVersionState(recursiveEditor);
+			if (appSettings.atomicRevisions) {
+				upsertVersionState(recursiveEditor);
+			}
 		},
 	});
 	// Restore full state (doc + annotations + history) if available,
@@ -383,18 +420,25 @@ onDestroy(() => {
         <button
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
-            onclick={() => {
+            onclick={async () => {
                 posthog.capture("revision_version_created", {
                     version_count: revision.versions.length,
                 });
                 view.dispatch(createNewRevision(view.state, revision.id));
-                view.focus();
+                await tick();
+                modalStack.push({
+                    type: "revision",
+                    revisionId: revision.id,
+                    parentView: view,
+                    label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+                });
             }}
             title="Create a new version"
         >
             <PlusIcon size={10} />
             <span>New version</span>
         </button>
+        {#if appSettings.showNestedEditor && appSettings.atomicRevisions}
         <button
             data-tutorial-action="toggle-nested-editor"
             data-revision-id={revision.id}
@@ -415,6 +459,7 @@ onDestroy(() => {
             {/if}
             <span>Nested editor</span>
         </button>
+        {/if}
         <button
             data-tutorial-action="expand-revision-modal"
             data-revision-id={revision.id}
@@ -429,15 +474,38 @@ onDestroy(() => {
 
     <!-- Boundary hint -->
     {#if showBoundaryHint}
-        <div class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md
-            bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug">
-            <span class="shrink-0 mt-px">↓</span>
-            <span>Use the nested editor to edit at revision boundaries.</span>
-        </div>
+        {#if appSettings.atomicRevisions && appSettings.showNestedEditor}
+            <button
+                class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
+                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
+                    hover:bg-purple-100/60 transition-colors text-left"
+                onclick={() => {
+                    if (isEditorOpen && recursiveEditor) {
+                        recursiveEditor.focus();
+                    } else {
+                        userClosedEditor = false;
+                        isEditorOpen = true;
+                    }
+                }}
+            >
+                <span class="shrink-0 mt-px">↓</span>
+                <span>Edit in the nested editor below.</span>
+            </button>
+        {:else}
+            <button
+                class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
+                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
+                    hover:bg-purple-100/60 transition-colors text-left"
+                onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
+            >
+                <span class="shrink-0 mt-px">↗</span>
+                <span>Open in the revision editor to edit at boundaries.</span>
+            </button>
+        {/if}
     {/if}
 
     <!-- Nested editor (collapsible) -->
-    {#if isEditorOpen}
+    {#if isEditorOpen && appSettings.showNestedEditor && appSettings.atomicRevisions}
         <div transition:slide={{ duration: 200 }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
             <div
                 bind:this={recursiveEditorHost}

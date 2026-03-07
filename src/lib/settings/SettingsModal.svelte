@@ -48,26 +48,13 @@ const UI_FONTS: FontOption[] = [
 ];
 
 // Local draft — a shallow copy of persisted settings
-let draft = $state({
-    selectTextInNestedEditor: appSettings.selectTextInNestedEditor,
-    docFontFamily: appSettings.docFontFamily,
-    docFontSize: appSettings.docFontSize,
-    uiFontFamily: appSettings.uiFontFamily,
-});
+let draft = $state({ ...appSettings });
 
 // Snapshot of what was persisted when the modal opened (for discard)
-const savedSnapshot = {
-    selectTextInNestedEditor: appSettings.selectTextInNestedEditor,
-    docFontFamily: appSettings.docFontFamily,
-    docFontSize: appSettings.docFontSize,
-    uiFontFamily: appSettings.uiFontFamily,
-};
+const savedSnapshot = { ...appSettings };
 
 let isDirty = $derived(
-    draft.selectTextInNestedEditor !== savedSnapshot.selectTextInNestedEditor ||
-    draft.docFontFamily !== savedSnapshot.docFontFamily ||
-    draft.docFontSize !== savedSnapshot.docFontSize ||
-    draft.uiFontFamily !== savedSnapshot.uiFontFamily,
+    JSON.stringify(draft) !== JSON.stringify(savedSnapshot),
 );
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
@@ -103,16 +90,13 @@ function handleChange() {
 }
 
 function save() {
-    appSettings.selectTextInNestedEditor = draft.selectTextInNestedEditor;
-    appSettings.docFontFamily = draft.docFontFamily;
-    appSettings.docFontSize = draft.docFontSize;
-    appSettings.uiFontFamily = draft.uiFontFamily;
+    Object.assign(appSettings, draft);
     persistSettings();
     onclose();
 }
 
 function discard() {
-    applySettings(savedSnapshot as typeof draft);
+    applySettings(savedSnapshot);
     onclose();
 }
 
@@ -183,7 +167,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Font family</div>
-                    <div class="setting-desc">Typeface used in the writing area</div>
+                    <div class="setting-desc">Editor font</div>
                 </div>
                 <!-- Custom dropdown -->
                 <div class="font-dropdown relative" role="none">
@@ -224,7 +208,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Font size</div>
-                    <div class="setting-desc">Editor text size (14–24 px)</div>
+                    <div class="setting-desc">Text size (14-24 px)</div>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
                     <input
@@ -249,7 +233,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">UI font family</div>
-                    <div class="setting-desc">Typeface for panels and chrome</div>
+                    <div class="setting-desc">UI font</div>
                 </div>
                 <div class="font-dropdown relative" role="none">
                     <button
@@ -290,11 +274,61 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- EDITOR section -->
             <div class="section-label">Editor</div>
 
-            <!-- Select text toggle -->
+            <!-- Show nested editor toggle -->
             <div class="setting-row">
                 <div class="setting-meta">
+                    <div class="setting-title">Nested editor in revisions</div>
+                    <div class="setting-desc">Show inline editor in revision cards</div>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={draft.showNestedEditor}
+                    aria-label="Toggle nested editor in revision card"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showNestedEditor ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showNestedEditor = !draft.showNestedEditor;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+
+            <!-- Atomic revisions toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Atomic revisions</div>
+                    <div class="setting-desc">Lock revision text; edit in the revision editor only</div>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={draft.atomicRevisions}
+                    aria-label="Toggle atomic revisions"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.atomicRevisions ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.atomicRevisions = !draft.atomicRevisions;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.atomicRevisions ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+
+            <!-- Select text toggle -->
+            <div class="setting-row {!draft.showNestedEditor ? 'opacity-40 pointer-events-none' : ''}">
+                <div class="setting-meta">
                     <div class="setting-title">Select text in nested editor</div>
-                    <div class="setting-desc">Auto-select the same text when a revision opens</div>
+                    <div class="setting-desc">Match selection when a revision opens</div>
                 </div>
                 <button
                     role="switch"
@@ -320,7 +354,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         <!-- Footer -->
         <div class="flex items-center justify-between gap-2 px-5 py-3 border-t border-black/[0.06] shrink-0">
             <span class="text-[11px] text-rose-400/80 transition-opacity duration-200 {isDirty ? 'opacity-100' : 'opacity-0'}">
-                Unsaved changes
+                Unsaved
             </span>
             <div class="flex items-center gap-2">
                 <button

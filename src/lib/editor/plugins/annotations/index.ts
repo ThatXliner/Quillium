@@ -98,6 +98,7 @@ import {
 import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
+	revisionFocusRequest,
 	pendingCommentAlert,
 	pendingNestedEditorSelection,
 	type NestedEditorCommand,
@@ -223,6 +224,7 @@ function redirectToNestedEditor(
 	type: NestedEditorCommand["type"],
 ): StateCommand {
 	return (view) => {
+		if (!appSettings.atomicRevisions) return false;
 		const activeRevision = getActiveRevisionAnnotation(view.state);
 		if (!activeRevision) return false; // fall through to original keymap
 		const revFrom = activeRevision.selection.main.from;
@@ -248,41 +250,22 @@ function redirectToNestedEditor(
 //
 // Provides: EditorView.atomicRanges
 // -------------------------------------------------------
-const revisionAtomicRanges = ViewPlugin.fromClass(
-	class {
-		ranges: DecorationSet;
+function buildAtomicRanges(state: EditorState): DecorationSet {
+	if (!appSettings.atomicRevisions) return Decoration.none;
+	const builder = new RangeSetBuilder<Decoration>();
+	const revisions = Object.values(state.field(annotationField)).filter(
+		(annotation) => isAnnotationOfType(annotation, "revision"),
+	);
+	for (const revision of revisions) {
+		const { from, to } = revision.selection.main;
+		if (from === to) continue;
+		builder.add(from, to, Decoration.mark({}));
+	}
+	return builder.finish();
+}
 
-		constructor(view: EditorView) {
-			this.ranges = this.buildRanges(view.state);
-		}
-
-		update(update: ViewUpdate) {
-			if (update.docChanged || annotationsChanged(update)) {
-				this.ranges = this.buildRanges(update.state);
-			}
-		}
-
-		buildRanges(state: EditorState): DecorationSet {
-			const builder = new RangeSetBuilder<Decoration>();
-			const revisions = Object.values(
-				state.field(annotationField),
-			).filter((annotation) =>
-				isAnnotationOfType(annotation, "revision"),
-			);
-			for (const revision of revisions) {
-				const { from, to } = revision.selection.main;
-				if (from === to) continue;
-				builder.add(from, to, Decoration.mark({}));
-			}
-			return builder.finish();
-		}
-	},
-	{
-		provide: (plugin) =>
-			EditorView.atomicRanges.of(
-				(view) => view.plugin(plugin)?.ranges ?? Decoration.none,
-			),
-	},
+const revisionAtomicRanges = EditorView.atomicRanges.of(
+	(view) => buildAtomicRanges(view.state),
 );
 
 // -------------------------------------------------------
@@ -305,6 +288,7 @@ const revisionAtomicRanges = ViewPlugin.fromClass(
 const collapsedRevisionResolver = ViewPlugin.fromClass(
 	class {
 		update(update: ViewUpdate) {
+			if (!appSettings.atomicRevisions) return;
 			if (!update.docChanged) return;
 			if (
 				update.transactions.some((tr) =>
@@ -338,6 +322,40 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
 					);
 				}
 				return; // handle one at a time to avoid stale state
+			}
+		}
+	},
+);
+
+// -------------------------------------------------------
+// boundaryInsertNudge ViewPlugin
+//
+// Fires revisionBoundaryNudge when the user inserts text
+// immediately adjacent to a revision boundary from outside:
+//   - inserting at position === revision.from (would push into the start)
+//   - inserting at position === revision.to   (appends just after the end)
+// Complements nudgeBoundary which only covers Backspace/Delete.
+// -------------------------------------------------------
+const boundaryInsertNudge = ViewPlugin.fromClass(
+	class {
+		update(update: ViewUpdate) {
+			if (!update.docChanged) return;
+			if (update.transactions.some((tr) => tr.annotation(allowRevisionDocEdit))) return;
+			const annotations = update.startState.field(annotationField);
+			for (const tr of update.transactions) {
+				if (!tr.docChanged) continue;
+				tr.changes.iterChanges((fromA, _toA, _fromB, _toB, inserted) => {
+					if (inserted.length === 0) return; // deletion, not insertion
+					for (const annotation of Object.values(annotations)) {
+						if (!isAnnotationOfType(annotation, "revision")) continue;
+						const { from, to } = annotation.selection.main;
+						if (from === to) continue;
+						if (fromA === from || fromA === to) {
+							revisionBoundaryNudge.set(annotation.id);
+							return;
+						}
+					}
+				});
 			}
 		}
 	},
@@ -874,12 +892,35 @@ export const annotationKeymap: KeyBinding[] = [
 //   5. collapsedRevisionResolver ViewPlugin (auto-cleanup).
 //   6. invertedAnnotationFieldEffects (undo/redo support).
 // -------------------------------------------------------
+const revisionClickHandler = EditorView.domEventHandlers({
+	mousedown(event, view) {
+		if (!appSettings.atomicRevisions) return false;
+		const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+		if (pos === null) return false;
+		const annotations = view.state.field(annotationField);
+		for (const annotation of Object.values(annotations)) {
+			if (!isAnnotationOfType(annotation, "revision")) continue;
+			const { from, to } = annotation.selection.main;
+			if (pos >= from && pos <= to) {
+				// Move cursor to clicked position so the annotation becomes active
+				view.dispatch({ selection: { anchor: pos }, scrollIntoView: false });
+				revisionFocusRequest.set({ id: annotation.id, relativePos: pos - from });
+				return false;
+			}
+		}
+		return false;
+	},
+});
+
 export const annotations = () => [
 	Prec.high(keymap.of(annotationKeymap)),
 	annotationField,
 	suggestionPreviewField,
 	annotationDecorations,
+	revisionAtomicRanges,
+	revisionClickHandler,
 	collapsedRevisionResolver,
+	boundaryInsertNudge,
 	invertedAnnotationFieldEffects,
 ];
 export * from "./models";
