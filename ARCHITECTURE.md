@@ -89,14 +89,15 @@ Used for UI state that needs to be reactive across components:
 ```typescript
 // Global stores in src/lib/stores.ts
 export const editorView = writable<EditorView | null>(null);
-export const annotations = writable<Annotation[]>([]);
-export const activeComment = writable<string | null>(null);
+export const annotations = writable<Annotations | undefined>();
+export const activeAnnotation = writable<GenericAnnotation | undefined>();
+export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
 ```
 
 **Manages:**
 - Editor view instance reference
 - UI panel visibility and state
-- Cross-component communication
+- Cross-component editor UI events (one-shot event channel)
 - AI chat history and context
 
 ### State Synchronization
@@ -108,6 +109,8 @@ The challenge is keeping CodeMirror state and Svelte stores in sync. This is han
 3. **Event System**: Custom events for complex state changes
 
 See `src/lib/editor/listeners.ts` and `src/lib/editor/Editor.svelte`.
+
+`getExtensions()` wires update listeners through `listeners(options)` only (single registration path) to avoid duplicate callback execution.
 
 ## Editor System
 
@@ -247,7 +250,7 @@ User clicks version 2:
 
 User opens nested editor (Ctrl+Alt+K inside revision):
   → redirectToNestedEditor fires first
-  → revisionOpenNestedEditor store set
+  → annotationUiEvent published { type: "revision-open-nested-editor", command }
   → Revision.svelte opens nested CodeMirror instance
   → Full annotation support in nested editor
   → Text changes sync back via _updateRevisionVersionText
@@ -296,14 +299,14 @@ Ctrl+Alt+K pressed
   → redirectToNestedEditor() fires first (high priority)
   → getActiveAnnotation() finds a revision under cursor
   → selection mapped to revision-relative offsets
-  → revisionOpenNestedEditor store set with NestedEditorCommand
+  → annotationUiEvent published with NestedEditorCommand
   → returns true (swallows keypress)
 ```
 
 **Step 2 — Execute in nested editor** (`Revision.svelte` / `RevisionModal.svelte`):
 
 ```
-revisionOpenNestedEditor store changes
+annotationUiEvent changes (type = revision-open-nested-editor)
   → Revision.svelte reacts (if revisionId matches)
   → If inline editor already open: dispatch command immediately
   → If modal needed: push entry onto modalStack with pendingNestedCommand
@@ -313,7 +316,7 @@ revisionOpenNestedEditor store changes
 The types involved (`stores.ts`):
 
 ```typescript
-// Set on the store when main editor intercepts the command
+// Published on annotationUiEvent when main editor intercepts command
 type NestedEditorCommand = {
     revisionId: number;
     type: "comment" | "revision";
@@ -380,7 +383,7 @@ The goal is to prevent accidental partial edits to revision text or frustration 
 
 #### Boundary nudge, not hard block
 
-When the user presses Backspace or Delete at the boundary of an active revision, the `nudgeBoundary` command fires a signal on `revisionBoundaryNudge` (the revision's ID) and returns `false` — it does **not** consume the keypress. The Revision card reacts by showing a brief hint pointing to the nested editor.
+When the user presses Backspace or Delete at the boundary of an active revision, the `nudgeBoundary` command publishes `annotationUiEvent` with `{ type: "revision-boundary-nudge", revisionId }` and returns `false` — it does **not** consume the keypress. The Revision card reacts by showing a brief hint pointing to the nested editor.
 
 This is intentionally non-blocking: the user can still delete the character before/after the revision boundary. The nudge is informational, not a guard.
 
