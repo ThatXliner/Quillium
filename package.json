@@ -20,7 +20,9 @@
     "biome": "bun run format && bun run lint",
     "bump": "bash scripts/bump.sh",
     "bump:minor": "bash scripts/bump.sh minor",
-    "bump:major": "bash scripts/bump.sh major"
+    "bump:major": "bash scripts/bump.sh major",
+    "screenshots": "bun run build && bun scripts/screenshots.ts",
+    "screenshots:dev": "bun scripts/screenshots.ts"
   },
   "license": "MIT",
   "dependencies": {
