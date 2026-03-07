@@ -167,7 +167,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Font family</div>
-                    <div class="setting-desc">Typeface used in the writing area</div>
+                    <div class="setting-desc">Editor font</div>
                 </div>
                 <!-- Custom dropdown -->
                 <div class="font-dropdown relative" role="none">
@@ -208,7 +208,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Font size</div>
-                    <div class="setting-desc">Editor text size (14–24 px)</div>
+                    <div class="setting-desc">Text size (14-24 px)</div>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
                     <input
@@ -233,7 +233,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">UI font family</div>
-                    <div class="setting-desc">Typeface for panels and chrome</div>
+                    <div class="setting-desc">UI font</div>
                 </div>
                 <div class="font-dropdown relative" role="none">
                     <button
@@ -277,8 +277,8 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- Show nested editor toggle -->
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">Show nested editor in revision card</div>
-                    <div class="setting-desc">Display the inline editor inside each revision — disable to use only the full modal</div>
+                    <div class="setting-title">Nested editor in revisions</div>
+                    <div class="setting-desc">Show inline editor in revision cards</div>
                 </div>
                 <button
                     role="switch"
@@ -303,7 +303,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Atomic revisions</div>
-                    <div class="setting-desc">Lock revision text in the document — edits must go through the editor. Disable to edit revision content freely in place.</div>
+                    <div class="setting-desc">Lock revision text; edit in the revision editor only</div>
                 </div>
                 <button
                     role="switch"
@@ -328,7 +328,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row {!draft.showNestedEditor ? 'opacity-40 pointer-events-none' : ''}">
                 <div class="setting-meta">
                     <div class="setting-title">Select text in nested editor</div>
-                    <div class="setting-desc">Auto-select the same text when a revision opens</div>
+                    <div class="setting-desc">Match selection when a revision opens</div>
                 </div>
                 <button
                     role="switch"
@@ -354,7 +354,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         <!-- Footer -->
         <div class="flex items-center justify-between gap-2 px-5 py-3 border-t border-black/[0.06] shrink-0">
             <span class="text-[11px] text-rose-400/80 transition-opacity duration-200 {isDirty ? 'opacity-100' : 'opacity-0'}">
-                Unsaved changes
+                Unsaved
             </span>
             <div class="flex items-center gap-2">
                 <button
