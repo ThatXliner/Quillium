@@ -24,8 +24,13 @@ import {
   closeBracketsKeymap,
   completionKeymap,
 } from "@codemirror/autocomplete";
-import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { history, historyField, historyKeymap } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyField,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { lintKeymap } from "@codemirror/lint";
 import { search, searchKeymap } from "@codemirror/search";
@@ -35,6 +40,7 @@ import {
   dropCursor,
   highlightSpecialChars,
   keymap,
+  type KeyBinding,
 } from "@codemirror/view";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
@@ -43,6 +49,16 @@ import { type ListenerOptions, listeners } from "./listeners";
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
 export const savedFields = { historyField, annotationField };
+
+const editorKeymap: KeyBinding[] = [
+  ...closeBracketsKeymap,
+  ...defaultKeymap,
+  ...searchKeymap,
+  ...historyKeymap,
+  ...completionKeymap,
+  ...lintKeymap,
+  indentWithTab,
+] as unknown as KeyBinding[];
 
 export const getExtensions = (options?: ListenerOptions) => [
   highlightSpecialChars(),
@@ -59,16 +75,7 @@ export const getExtensions = (options?: ListenerOptions) => [
   search(),
   // rectangularSelection(),
   // highlightSelectionMatches(),
-  keymap.of([
-    ...closeBracketsKeymap,
-    ...defaultKeymap,
-    ...searchKeymap,
-    ...historyKeymap,
-    // ...foldKeymap,
-    ...completionKeymap,
-    ...lintKeymap,
-    indentWithTab,
-  ]),
+  keymap.of(editorKeymap),
   EditorView.lineWrapping,
   EditorView.contentAttributes.of({
     spellcheck: "true",

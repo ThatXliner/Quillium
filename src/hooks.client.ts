@@ -14,19 +14,25 @@
  */
 import posthog from "posthog-js";
 import type { HandleClientError } from "@sveltejs/kit";
-import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from "$env/static/public";
 
 declare const __APP_VERSION__: string;
 
-// Initialize PostHog analytics at app boot.
-posthog.init(PUBLIC_POSTHOG_KEY, {
-	api_host: PUBLIC_POSTHOG_HOST,
-	ui_host: "https://us.posthog.com",
-	defaults: "2026-01-30",
-	capture_exceptions: true,
-});
+const posthogKey = import.meta.env.PUBLIC_POSTHOG_KEY;
+const posthogHost = import.meta.env.PUBLIC_POSTHOG_HOST;
 
-posthog.register({ app_version: __APP_VERSION__ });
+// Initialize PostHog analytics at app boot.
+if (posthogKey && posthogHost) {
+	posthog.init(posthogKey, {
+		api_host: posthogHost,
+		ui_host: "https://us.posthog.com",
+		defaults: "2026-01-30",
+		capture_exceptions: true,
+	});
+}
+
+const appVersion =
+	typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+posthog.register({ app_version: appVersion });
 
 /**
  * SvelteKit client error handler — forwards unhandled exceptions

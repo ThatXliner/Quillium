@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 type TauriMockOptions = {
     loadResponse: string | null;
+    apiKey: string | null;
 };
 
 async function installTauriMock(
@@ -9,8 +10,9 @@ async function installTauriMock(
     options: Partial<TauriMockOptions> = {},
 ) {
     const loadResponse = options.loadResponse ?? null;
+    const apiKey = options.apiKey ?? null;
 
-    await page.addInitScript((payload: { loadResponse: string | null }) => {
+    await page.addInitScript((payload: { loadResponse: string | null; apiKey: string | null }) => {
         localStorage.setItem("quillium_tutorial_seen", "1");
 
         let nextCallbackId = 1;
@@ -26,6 +28,7 @@ async function installTauriMock(
                 invokeCalls.push({ cmd, args });
                 if (cmd === "load") return payload.loadResponse;
                 if (cmd === "save") return true;
+                if (cmd === "get_api_key") return payload.apiKey;
                 if (cmd === "plugin:event|listen") return 1;
                 if (cmd === "plugin:event|unlisten") return null;
                 return null;
@@ -45,7 +48,7 @@ async function installTauriMock(
         (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener: () => {},
         };
-    }, { loadResponse });
+    }, { loadResponse, apiKey });
 }
 
 test("uses default document when mocked load returns null", async ({ page }) => {
@@ -120,7 +123,7 @@ test("tutorial opens from status bar", async ({ page }) => {
 });
 
 test("AI sidebar can open chat and feedback panels", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null });
+    await installTauriMock(page, { loadResponse: null, apiKey: "test-api-key" });
     await page.goto("/");
 
     await page.locator("#ai-tab-chat").click({ force: true });
@@ -137,7 +140,8 @@ test("settings modal opens from status bar", async ({ page }) => {
     await installTauriMock(page, { loadResponse: null });
     await page.goto("/");
 
-    await page.getByRole("button", { name: "Open settings" }).click();
+    await expect(page.locator("#status-bar")).toBeVisible();
+    await page.locator("#status-bar button[aria-label='Open settings']").click();
     const modal = page.locator(".settings-modal-inner");
     await expect(modal.getByText("Settings")).toBeVisible();
     await expect(modal.getByText("Document", { exact: true })).toBeVisible();

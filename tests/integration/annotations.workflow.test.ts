@@ -193,7 +193,7 @@ describe("annotation workflows integration", () => {
 
         expect(() =>
             createComment({
-                view,
+                view: view!,
                 comment: "Missing target",
             }),
         ).toThrow("Must specify at least either targetText or editorSelection");
@@ -204,7 +204,7 @@ describe("annotation workflows integration", () => {
 
         expect(() =>
             createComment({
-                view,
+                view: view!,
                 targetText: "Beta",
                 editorSelection: EditorSelection.single(6, 10),
                 comment: "Ambiguous target",

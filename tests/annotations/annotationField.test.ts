@@ -24,7 +24,7 @@ function sel(from: number, to: number) {
     return EditorSelection.create([EditorSelection.range(from, to)]);
 }
 
-function makeState(doc: string = "Hello, world!") {
+function makeState(doc = "Hello, world!") {
     return EditorState.create({
         doc,
         extensions: [annotationField, suggestionPreviewField],
@@ -49,7 +49,7 @@ function makeRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected: number = 0,
+    currentlySelected = 0,
 ): GenericAnnotation {
     return {
         id,
@@ -454,16 +454,18 @@ describe("toJSON / fromJSON round-trip", () => {
                 addAnnotation.of(revision),
             ],
         }).state;
-        const annotations =
-            withAnnotations.field(annotationField);
-        const json = annotationField.spec.toJSON!(
-            annotations,
-            withAnnotations,
-        );
-        const restored = annotationField.spec.fromJSON!(
+        const annotations = withAnnotations.field(annotationField);
+        const json = withAnnotations.toJSON({
+            annotationField,
+        });
+        const restoredState = EditorState.fromJSON(
             json,
-            withAnnotations,
+            { extensions: [annotationField] },
+            {
+                annotationField,
+            },
         );
+        const restored = restoredState.field(annotationField);
         // Selections must be equal
         expect(
             restored[0].selection.eq(annotations[0].selection),

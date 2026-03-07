@@ -154,7 +154,8 @@ export type AnnotationUiEvent =
           to: number;
       };
 
-export type AnnotationUiEventInput = Omit<AnnotationUiEvent, "token">;
+type WithoutToken<T> = T extends { token: number } ? Omit<T, "token"> : never;
+export type AnnotationUiEventInput = WithoutToken<AnnotationUiEvent>;
 
 export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
 
