@@ -94,18 +94,27 @@
     let contextAtTop = $state(true);
     let contextAtBottom = $state(false);
 
-    function scrollRevisionIntoCenter() {
+    function scrollRevisionIntoCenter(behavior: ScrollBehavior = "smooth") {
         if (!contextScrollEl || !contextRevisionEl) return;
         const container = contextScrollEl;
-        const targetMid = contextRevisionEl.offsetTop + contextRevisionEl.offsetHeight / 2;
-        container.scrollTo({ top: targetMid - container.clientHeight / 2, behavior: "smooth" });
+        const containerRect = container.getBoundingClientRect();
+        const revisionRect = contextRevisionEl.getBoundingClientRect();
+        const currentTop = container.scrollTop;
+        const targetTop =
+            currentTop
+            + (revisionRect.top - containerRect.top)
+            - (container.clientHeight / 2 - revisionRect.height / 2);
+        container.scrollTo({ top: targetTop, behavior });
     }
 
-    // Scroll the revision into center on mount and whenever it expands
+    // Keep the revision centered whenever context is shown/updated.
     $effect(() => {
-        if (!contextCollapsed && contextRevisionEl && contextScrollEl) {
-            requestAnimationFrame(() => scrollRevisionIntoCenter());
-        }
+        if (contextCollapsed || !contextRevisionEl || !contextScrollEl) return;
+        requestAnimationFrame(() => scrollRevisionIntoCenter("auto"));
+        const timeoutId = window.setTimeout(() => {
+            scrollRevisionIntoCenter("auto");
+        }, 220);
+        return () => window.clearTimeout(timeoutId);
     });
 
     // IntersectionObserver: track whether revision span is visible in scroll container
@@ -618,7 +627,7 @@
                   {#if revisionDirection}
                     <button
                       class="context-jump-btn {revisionDirection === 'above' ? 'context-jump-top' : 'context-jump-bottom'}"
-                      onclick={scrollRevisionIntoCenter}
+                      onclick={() => scrollRevisionIntoCenter()}
                       title="Jump to revision"
                       transition:scale={{ start: 0.8, duration: 120, opacity: 0 }}
                     >
