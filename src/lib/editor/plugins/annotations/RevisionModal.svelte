@@ -64,6 +64,9 @@
     let contextAfter = $state(CHUNK);  // how many chars after to show
 
     const docContext = $derived.by(() => {
+        // Reading modalAnnotations here makes this derived re-run whenever
+        // the nested editor writes a change back to the parent view.
+        void modalAnnotations;
         const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
         if (!rev) return null;
         const doc = view.state.doc;
@@ -551,59 +554,6 @@
       <div
         class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col bg-purple-50/90"
       >
-
-        <!-- Context panel -->
-        {#if docContext}
-          <div class="border-b border-purple-100/60 shrink-0">
-            <!-- Collapse header -->
-            <button
-              class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors"
-              onclick={() => contextCollapsed = !contextCollapsed}
-            >
-              <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Context</span>
-              {#if contextCollapsed}
-                <ChevronDown size={10} class="text-purple-400/50" />
-              {:else}
-                <ChevronUp size={10} class="text-purple-400/50" />
-              {/if}
-            </button>
-            {#if !contextCollapsed}
-              <div transition:slide={{ duration: 180 }} class="relative">
-                <!-- Glass wheel scroll area -->
-                <div
-                  bind:this={contextScrollEl}
-                  class="context-scroll"
-                  style="mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%); -webkit-mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%);"
-                >
-                  <div class="context-text">
-                    {#if docContext.before}<span class="context-surrounding">{docContext.before}</span>{/if}
-                    <span
-                      bind:this={contextRevisionEl}
-                      class="{docContext.revision ? 'context-revision' : 'context-revision context-revision-empty'}"
-                    >{docContext.revision || "(empty)"}</span>
-                    {#if docContext.after}<span class="context-surrounding">{docContext.after}</span>{/if}
-                  </div>
-                </div>
-                <!-- Revision-out-of-view indicator -->
-                {#if revisionDirection}
-                  <button
-                    class="context-jump-btn {revisionDirection === 'above' ? 'context-jump-top' : 'context-jump-bottom'}"
-                    onclick={scrollRevisionIntoCenter}
-                    title="Jump to revision"
-                    transition:scale={{ start: 0.8, duration: 120, opacity: 0 }}
-                  >
-                    {#if revisionDirection === "above"}
-                      <ChevronUp size={14} />
-                    {:else}
-                      <ChevronDown size={14} />
-                    {/if}
-                  </button>
-                {/if}
-              </div>
-            {/if}
-          </div>
-        {/if}
-
         <div class="px-4 py-3 border-b border-purple-100/50 shrink-0">
           <span
             class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider"
@@ -631,22 +581,74 @@
         class="revision-modal-editor flex-1 overflow-hidden"
       ></div>
 
-      <!-- Annotations sidebar -->
-      {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
-        <div
-          class="w-64 shrink-0 border-l border-purple-100/60 overflow-y-auto bg-purple-50/20 px-2 py-3"
-        >
-          <div
-            class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1"
-          >
-            Annotations
-          </div>
-          <Annotations
-            view={editor}
-            annotationsData={modalAnnotations}
-            activeAnnotationData={modalActiveAnnotation}
-            layout="inline"
-          />
+      <!-- Right sidebar: context + annotations -->
+      {#if docContext || (editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
+        <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col bg-purple-50/20">
+
+          <!-- Context panel -->
+          {#if docContext}
+            <div class="border-b border-purple-100/60 shrink-0">
+              <button
+                class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors"
+                onclick={() => contextCollapsed = !contextCollapsed}
+              >
+                <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Context</span>
+                {#if contextCollapsed}
+                  <ChevronDown size={10} class="text-purple-400/50" />
+                {:else}
+                  <ChevronUp size={10} class="text-purple-400/50" />
+                {/if}
+              </button>
+              {#if !contextCollapsed}
+                <div transition:slide={{ duration: 180 }} class="relative">
+                  <div
+                    bind:this={contextScrollEl}
+                    class="context-scroll"
+                    style="mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%); -webkit-mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%);"
+                  >
+                    <div class="context-text">
+                      {#if docContext.before}<span class="context-surrounding">{docContext.before}</span>{/if}
+                      <span
+                        bind:this={contextRevisionEl}
+                        class="{docContext.revision ? 'context-revision' : 'context-revision context-revision-empty'}"
+                      >{docContext.revision || "(empty)"}</span>
+                      {#if docContext.after}<span class="context-surrounding">{docContext.after}</span>{/if}
+                    </div>
+                  </div>
+                  {#if revisionDirection}
+                    <button
+                      class="context-jump-btn {revisionDirection === 'above' ? 'context-jump-top' : 'context-jump-bottom'}"
+                      onclick={scrollRevisionIntoCenter}
+                      title="Jump to revision"
+                      transition:scale={{ start: 0.8, duration: 120, opacity: 0 }}
+                    >
+                      {#if revisionDirection === "above"}
+                        <ChevronUp size={14} />
+                      {:else}
+                        <ChevronDown size={14} />
+                      {/if}
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Annotations -->
+          {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
+            <div class="flex-1 overflow-y-auto px-2 py-3">
+              <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
+                Annotations
+              </div>
+              <Annotations
+                view={editor}
+                annotationsData={modalAnnotations}
+                activeAnnotationData={modalActiveAnnotation}
+                layout="inline"
+              />
+            </div>
+          {/if}
+
         </div>
       {/if}
     </div>
