@@ -29,6 +29,7 @@
 // CodeMirror StateField toJSON/fromJSON). If a class-based approach that
 // remains JSON-serializable is found, it could replace this.
 import { EditorSelection } from "@codemirror/state";
+import { z } from "zod";
 
 // what about multiple authors and stuff???
 export type ThreadMessage = { message: string; author: string; time: number };
@@ -115,8 +116,46 @@ export type Annotation<T extends GenericAnnotation["_type"]> = Extract<
 
 export type AnnotationType = GenericAnnotation["_type"];
 
-export type RawAnnotation = GenericAnnotation & {
-    selection: EditorSelection["toJSON"];
-};
-export type RawAnnotations = { [id: number]: RawAnnotation };
+// ── Zod schemas for the persisted (raw JSON) shape ──────────────
+// These describe what toJSON writes and what fromJSON reads.
+// TypeScript types for the raw layer are derived from these schemas
+// so there is a single source of truth.
+export const ThreadMessageSchema = z.object({
+    message: z.string(),
+    author: z.string(),
+    time: z.number(),
+});
+const EditorSelectionSchema = z.object({
+    ranges: z.array(z.object({ anchor: z.number(), head: z.number() })).min(1),
+    mainIndex: z.number().optional(),
+});
+export const SuggestionReplacementSchema = z.object({
+    text: z.string(),
+    rationale: z.string().optional(),
+});
+export const VersionStateSchema = z.object({
+    doc: z.string(),
+    label: z.string().optional(),
+});
+const RawBaseSchema = z.object({
+    id: z.number(),
+    thread: z.array(ThreadMessageSchema),
+    selection: EditorSelectionSchema,
+});
+export const RawAnnotationSchema = z.discriminatedUnion("_type", [
+    RawBaseSchema.extend({ _type: z.literal("comment") }),
+    RawBaseSchema.extend({
+        _type: z.literal("suggestion"),
+        replacements: z.array(SuggestionReplacementSchema),
+    }),
+    RawBaseSchema.extend({
+        _type: z.literal("revision"),
+        currentlySelected: z.number(),
+        versions: z.array(VersionStateSchema).min(1),
+    }),
+]);
+export const RawAnnotationsSchema = z.record(z.string(), RawAnnotationSchema);
+
+export type RawAnnotation = z.infer<typeof RawAnnotationSchema>;
+export type RawAnnotations = z.infer<typeof RawAnnotationsSchema>;
 export type Annotations = { [id: number]: GenericAnnotation };

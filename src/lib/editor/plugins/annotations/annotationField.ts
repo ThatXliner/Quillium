@@ -56,6 +56,7 @@ import {
     getNewId,
     isAnnotationOfType,
     versionText,
+    RawAnnotationsSchema,
     type Annotations,
     type GenericAnnotation,
     type RawAnnotations,
@@ -584,12 +585,19 @@ export const annotationField = StateField.define<Annotations>({
         }));
     },
     fromJSON(value: unknown) {
-        // See issue #79: add Zod validation here so malformed persisted data
-        // surfaces a clear error instead of a downstream crash.
-        return mapValues(value as RawAnnotations, (x) => ({
+        const result = RawAnnotationsSchema.safeParse(value);
+        if (!result.success) {
+            console.warn(
+                "[annotationField] fromJSON: persisted annotation data failed validation,",
+                "starting with an empty annotation map.",
+                result.error.flatten(),
+            );
+            return {} as Annotations;
+        }
+        return mapValues(result.data, (x) => ({
             ...x,
             selection: EditorSelection.fromJSON(x.selection),
-        }));
+        })) as Annotations;
     },
 });
 export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) => {
