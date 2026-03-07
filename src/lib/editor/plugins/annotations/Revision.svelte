@@ -32,7 +32,6 @@
  *   - showBoundaryHint: transient hint shown when the user tries
  *     to delete at the revision boundary in the main editor
  */
-import { EditorState } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
 	ChevronDown,
@@ -44,17 +43,15 @@ import {
 } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
-import { getExtensions, savedFields } from "$lib/editor/extensions";
 import {
-	annotationField,
 	createNewRevision,
 	deleteRevisionVersion,
 	setActiveRevisionVersion,
-	updateRevisionVersionState,
 	type Annotation,
 	type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
+import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
 import {
 	annotationUiEvent,
@@ -82,8 +79,6 @@ const {
 const thread = $derived(revision.thread);
 const activeVersion = $derived(revision.versions[revision.currentlySelected]);
 const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
-const VERSION_PREVIEW_MAX = 34;
-
 let isEditorOpen = $state(false);
 let userClosedEditor = false; // plain var — not reactive, just a gate
 
@@ -232,24 +227,12 @@ function upsertVersionState(
 	currentEditor: EditorView,
 	versionId = revision.currentlySelected,
 ) {
-	const blob = currentEditor.state.toJSON(savedFields) as VersionState;
 	// Track what we just pushed so syncRecursiveEditorToActiveVersion
 	// doesn't mistake our own update for an external mutation.
 	if (versionId === revision.currentlySelected) {
 		lastSyncedText = currentEditor.state.doc.toString();
 	}
-	view.dispatch(
-		updateRevisionVersionState(view.state, revision.id, versionId, blob),
-	);
-}
-
-/** Flatten version text into a short preview string for pills. */
-function previewVersionText(version: VersionState) {
-	const flattened = versionText(version).replace(/\s+/g, " ").trim();
-	if (!flattened) return "(empty)";
-	return flattened.length > VERSION_PREVIEW_MAX
-		? `${flattened.slice(0, VERSION_PREVIEW_MAX)}…`
-		: flattened;
+	syncVersionToParent(currentEditor, view, revision.id, versionId);
 }
 
 /**
@@ -260,24 +243,15 @@ function previewVersionText(version: VersionState) {
  */
 function createRecursiveEditor(version: VersionState) {
 	if (!recursiveEditorHost || recursiveEditor) return;
-	const extensions = getExtensions({
-		persist: false,
-		updateListener(update: ViewUpdate) {
-			if (!recursiveEditor || isSyncingFromAnnotation) return;
-			nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
-				recursiveEditor.state,
-			);
-			if (appSettings.atomicRevisions) {
-				upsertVersionState(recursiveEditor);
-			}
-		},
+	const state = createVersionState(version, (update: ViewUpdate) => {
+		if (!recursiveEditor || isSyncingFromAnnotation) return;
+		nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
+			recursiveEditor.state,
+		);
+		if (appSettings.atomicRevisions) {
+			upsertVersionState(recursiveEditor);
+		}
 	});
-	// Restore full state (doc + annotations + history) if available,
-	// otherwise create a fresh editor with just the text.
-	const state =
-		"annotationField" in version
-			? EditorState.fromJSON(version, { extensions }, savedFields)
-			: EditorState.create({ doc: versionText(version), extensions });
 	recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
 	lastSyncedText = versionText(version);
 	nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
@@ -366,17 +340,10 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 	}
 	// Same version but text drifted (external edit or undo): reload state
 	// from the annotation blob so history/cursor are consistent too.
-	const extensions = getExtensions({
-		persist: false,
-		updateListener(update: ViewUpdate) {
-			if (!recursiveEditor || isSyncingFromAnnotation) return;
-			upsertVersionState(recursiveEditor);
-		},
+	const nextState = createVersionState(activeVersion, (update: ViewUpdate) => {
+		if (!recursiveEditor || isSyncingFromAnnotation) return;
+		upsertVersionState(recursiveEditor);
 	});
-	const nextState =
-		"annotationField" in activeVersion
-			? EditorState.fromJSON(activeVersion, { extensions }, savedFields)
-			: EditorState.create({ doc: targetText, extensions });
 	recursiveEditor.setState(nextState);
 	lastSyncedText = targetText;
 	isSyncingFromAnnotation = false;
