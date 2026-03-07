@@ -99,7 +99,8 @@ export const removeAnnotation = StateEffect.define<GenericAnnotation>({
 // a better way to do it for now. I guess it's good to have your states explicit...
 // Lowk what if we just had our own FSM and states instead of using StateEffect...
 
-// TODO: figure if delete can just need ID or not
+// updateThread carries the full annotation ID + new thread; using only an ID
+// would require reading startState inside effects, which is more complex.
 // === Generic annotation thread management ===
 export const updateThread = StateEffect.define<{
     annotationId: number;
@@ -384,7 +385,8 @@ export function applySuggestion(
 // render highlights.
 // -------------------------------------------------------
 
-// TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
+// See issue #78: implicit annotation deletion via text deletion is not tracked
+// in the undo history — undoing text does not restore the annotation.
 
 /**
  * Phase 1: Remap all annotation selections through the
@@ -500,7 +502,6 @@ export const annotationField = StateField.define<Annotations>({
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
                 console.log("Adding annotation!", e.value);
-                // TODO: what if we just annotations.push
                 annotations[e.value.id] = e.value;
             } else if (e.is(removeAnnotation)) {
                 console.log("Removing annotation internally");
@@ -583,7 +584,8 @@ export const annotationField = StateField.define<Annotations>({
         }));
     },
     fromJSON(value: unknown) {
-        // TODO: use Zod to verify?
+        // See issue #79: add Zod validation here so malformed persisted data
+        // surfaces a clear error instead of a downstream crash.
         return mapValues(value as RawAnnotations, (x) => ({
             ...x,
             selection: EditorSelection.fromJSON(x.selection),

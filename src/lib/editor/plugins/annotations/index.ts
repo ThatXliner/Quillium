@@ -48,9 +48,6 @@
  *     (via stores) to render the annotation panel.
  */
 
-// TODO: since we've refactored, now we can hone in on the issues
-// but first let's make it based on the id
-
 import { SearchCursor } from "@codemirror/search";
 import {
     EditorSelection,
@@ -383,25 +380,22 @@ const annotationDecorations = ViewPlugin.fromClass(
         }
 
         getDecorations(view: EditorView, type: AnnotationType, classPrefix: string): DecorationSet {
-            // TODO: optimize algorithm to be linear time complexity
-            // using some sort of greedy algorithm
+            // See issue #38: this is O(n*m); could be optimized to O(n log n)
+            // with a greedy sweep-line / interval-merge approach.
             const builder = new RangeSetBuilder<Decoration>();
             const annotationRanges = flatMap(
                 filter(Object.values(view.state.field(annotationField)), (annotation) =>
                     isAnnotationOfType(annotation, type),
                 ),
-                // We can assume a single selection
-                // because we are not implementing multi-selection support
-                // for now
+                // Currently only .main is used; multi-range support tracked in #38.
                 (annotation) => annotation.selection.main,
             );
-            // TODO: use multiple
+            // Only .main is used for active ranges; multi-range support tracked in #38.
             const activeRanges: readonly SelectionRange[] =
                 getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
             // If you don't add annotations in order, the plugin will crash
             annotationRanges.sort((a, b) => a.from - b.from);
 
-            // TODO: care about multiple selections
             const toHighlight = [
                 ...annotationRanges.map((x) => ({
                     active: false,
@@ -524,9 +518,6 @@ export function createSuggestion({
     replacements,
     comment,
     author = "AI",
-    // TODO: replace this with the simpler
-    // view because this was originally being
-    // mocked as a command
     dispatch,
     state,
 }: {
@@ -615,7 +606,7 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
         });
         return true;
     }
-    // TODO: multi selection support
+    // Multi-selection support tracked in issue #38; currently only main range is used.
     if (state.selection.main.empty) return false;
 
     dispatch(

@@ -91,7 +91,8 @@ export function getActiveAnnotation<T extends AnnotationType>(
     for (const annotation of Object.values(annotations)) {
         if (type !== undefined && !isAnnotationOfType(annotation, type)) continue;
         if (type === undefined) {
-            // TODO: change these "active checks" to use the state machine
+                // Active-state checks below use thread/version length as a proxy for
+            // "pending" state; a proper FSM would make this more explicit (see #38).
             if (isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0)
                 return annotation;
             if (isAnnotationOfType(annotation, "revision") && annotation.versions.length === 0) {

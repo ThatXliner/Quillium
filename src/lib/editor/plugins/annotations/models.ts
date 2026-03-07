@@ -25,10 +25,9 @@
  *     types.
  */
 
-// Ok so I know this looks like I'm really trying to not use classes
-// but the reason why we're using this is because it needs to be JSON serializable
-// If we can use classes but also JSON serializable, we should do that instead
-// TODO yea I really want to make my own class. What if we extend RangeValue
+// Plain objects rather than classes for JSON serializability (required by
+// CodeMirror StateField toJSON/fromJSON). If a class-based approach that
+// remains JSON-serializable is found, it could replace this.
 import { EditorSelection } from "@codemirror/state";
 
 // what about multiple authors and stuff???
@@ -46,8 +45,8 @@ export function isAnnotationOfType<T extends AnnotationType>(
 ): annotation is Annotation<T> {
     return annotation._type === type;
 }
-// TODO: replace this with either a single Selection or a Range
-// unless we want to keep it as an EditorSelection so we can extend the range?
+// EditorSelection is kept (rather than a plain Range) so we can extend
+// to multi-range selections in the future without a breaking change.
 type BaseAnnotation = {
     selection: EditorSelection;
     id: number;
@@ -84,7 +83,7 @@ export function createNewAnnotation<T extends AnnotationType>(
 type CommentAnnotation = BaseAnnotation & {
     _type: "comment";
 };
-// TODO: statuses for Revision and comment (might make it a FSM)
+// See issue #38: annotation status / FSM for active-state tracking.
 export type SuggestionReplacement = {
     text: string;
     rationale?: string;

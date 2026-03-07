@@ -21,7 +21,7 @@ import posthog from "posthog-js";
 function scrapDraftAndReload() {
     posthog.capture("draft_scrapped");
     invoke("scrap").then(() => {
-        // TODO: a popup when loaded
+        // See issue #80: show a confirmation toast after reload.
         window.location.reload();
     });
 }
