@@ -1,5 +1,12 @@
-// Tauri doesn't have a Node.js server to do proper SSR
-// so we will use adapter-static to prerender the app (SSG)
-// See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
+/**
+ * +layout.ts — SvelteKit routing configuration for Tauri.
+ *
+ * Tauri embeds the frontend as static files (no Node.js server),
+ * so we disable SSR and enable prerendering via the static adapter.
+ * This ensures every route is compiled to plain HTML/JS at build
+ * time, which Tauri's webview can load directly from disk.
+ *
+ * See: https://v2.tauri.app/start/frontend/sveltekit/
+ */
 export const prerender = true;
 export const ssr = false;

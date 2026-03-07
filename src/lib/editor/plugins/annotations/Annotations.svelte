@@ -1,4 +1,32 @@
 <script lang="ts">
+    /**
+     * Annotations.svelte — Container that renders all annotation
+     * cards (comments, revisions, suggestions) in either a
+     * "floating" layout (absolutely positioned beside the editor)
+     * or an "inline" layout (stacked vertically inside a sidebar).
+     *
+     * Props:
+     *   - view?: EditorView — CodeMirror instance (falls back to
+     *     the global editorView store)
+     *   - annotationsData?: AnnotationMap — annotation map (falls
+     *     back to the global annotations store)
+     *   - activeAnnotationData?: GenericAnnotation — currently
+     *     selected annotation (falls back to activeAnnotation store)
+     *   - layout?: "floating" | "inline" — positioning strategy
+     *
+     * Events emitted: none (dispatches CodeMirror effects directly)
+     * Stores read: editorView, annotations, activeAnnotation
+     *   (only when corresponding props are not provided)
+     *
+     * Parent: +page.svelte (floating), RevisionModal.svelte (inline)
+     * Children: Comment, Revision, Suggestion, PreComment
+     *
+     * Floating layout uses viewport-relative positioning: each card
+     * is absolutely placed at the Y coordinate of its annotation's
+     * text range, with overlap avoidance that pushes cards downward.
+     * A ResizeObserver recalculates positions when card heights
+     * change (e.g. nested editor toggle).
+     */
     import type { EditorView } from "@codemirror/view";
     import Comment from "./Comment.svelte";
     import {
@@ -10,9 +38,8 @@
         type GenericAnnotation,
         type Thread,
     } from "$lib/editor/plugins/annotations";
-    import { activeAnnotation, annotations, editorView } from "$lib/stores";
+    import { activeAnnotation, annotations, editorView, pendingCommentAlert } from "$lib/stores";
     import Revision from "./Revision.svelte";
-    import { canCreateNewComment } from "./utils";
     import PreComment from "./PreComment.svelte";
     import Suggestion from "./Suggestion.svelte";
     import { tick } from "svelte";
@@ -29,11 +56,16 @@
         layout?: "floating" | "inline";
     } = $props();
 
+    // Resolve props vs global stores so child components get a
+    // single consistent data source regardless of context.
     const resolvedView = $derived(view ?? $editorView);
     const resolvedAnnotations = $derived(annotationsData ?? $annotations);
     const resolvedActiveAnnotation = $derived(activeAnnotationData ?? $activeAnnotation);
     const isFloating = $derived(layout === "floating");
 
+    /**
+     * Remove an annotation by its ID from the CodeMirror state.
+     */
     function remove(index: number) {
         if (!resolvedView) return;
         const annotation = resolvedView.state.field(annotationField)[index];
@@ -45,6 +77,10 @@
         );
     }
 
+    /**
+     * Replace the thread of a given annotation via the CodeMirror
+     * updateThread effect.
+     */
     function dispatchUpdateThread(annotationId: number, newThread: Thread) {
         if (!resolvedView) return;
         resolvedView.dispatch(
@@ -59,6 +95,11 @@
         );
     }
 
+    /**
+     * Check whether a click/key event target is an interactive
+     * element (button, input, etc.) so that the card-level click
+     * handler can avoid stealing focus.
+     */
     function isInteractiveTarget(target: EventTarget | null): boolean {
         if (!(target instanceof HTMLElement)) return false;
         return !!target.closest(
@@ -66,6 +107,10 @@
         );
     }
 
+    /**
+     * Map an annotation to its viewport Y coordinate by looking
+     * up the screen position of the annotation's start offset.
+     */
     function getAnnotationViewportY(annotation: GenericAnnotation): number {
         if (!resolvedView) return 0;
         try {
@@ -77,6 +122,10 @@
         }
     }
 
+    /**
+     * Compute the left pixel offset for the floating annotation
+     * column, positioned to the right of the editor document.
+     */
     function getAnnotationLeft(): number {
         if (!resolvedView) return 0;
         const rect = resolvedView.scrollDOM.getBoundingClientRect();
@@ -85,6 +134,7 @@
 
     let scrollContainer = $state<HTMLDivElement | undefined>();
 
+    // Sort annotations by document position for stable rendering
     const sortedAnnotations = $derived(
         resolvedAnnotations
             ? Object.values(resolvedAnnotations).sort(
@@ -92,7 +142,15 @@
               )
             : [],
     );
+    const pendingComment = $derived(
+        sortedAnnotations.find(
+            (annotation) =>
+                isAnnotationOfType(annotation, "comment") &&
+                annotation.thread.length === 0,
+        ),
+    );
 
+    // Pair each annotation with its viewport Y position
     const positionedAnnotations = $derived(() => {
         if (!sortedAnnotations.length || !resolvedView || !isFloating) return [];
         return sortedAnnotations.map((annotation) => ({
@@ -104,6 +162,7 @@
     let annotationElements: { [id: number]: HTMLDivElement } = $state({});
     let resizeObserver: ResizeObserver | undefined;
 
+    // Reposition cards when the active annotation or list changes
     $effect(() => {
         if (!isFloating) return;
         if (resolvedActiveAnnotation !== undefined || sortedAnnotations.length) {
@@ -111,8 +170,9 @@
         }
     });
 
-    // Re-run positioning whenever any card changes height (e.g. nested editor toggle).
-    // Re-observes whenever the annotation list changes.
+    // Re-run positioning whenever any card changes height
+    // (e.g. nested editor toggle). Re-observes whenever the
+    // annotation list changes.
     $effect(() => {
         if (!isFloating) return;
         void sortedAnnotations; // track additions/removals
@@ -126,12 +186,18 @@
         return () => resizeObserver?.disconnect();
     });
 
-    let updateTimeout: number;
+    let updateTimeout: ReturnType<typeof setTimeout>;
     function debouncedUpdatePositions() {
         clearTimeout(updateTimeout);
         updateTimeout = setTimeout(updateAnnotationPositions, 16);
     }
 
+    /**
+     * Core layout algorithm for floating mode: assigns each card
+     * a top position aligned to its annotation's viewport Y, with
+     * downward nudging to prevent overlap. Also scrolls the
+     * container to keep the active card visible.
+     */
     function updateAnnotationPositions() {
         if (!resolvedView || !isFloating) return;
 
@@ -144,6 +210,7 @@
             (a, b) => a.viewportY - b.viewportY,
         );
 
+        // Walk cards top-to-bottom, pushing each below the previous
         const adjustedY: { [id: number]: number } = {};
         let lastBottom = TOP_CLAMP;
 
@@ -155,40 +222,102 @@
             lastBottom = y + height + MIN_SPACING;
         });
 
-        // Update inner container height so it's tall enough to contain all cards
-        if (scrollContainer) {
-            const inner = scrollContainer.firstElementChild as HTMLElement | null;
-            if (inner) inner.style.height = `${lastBottom + 24}px`;
-            // Position the scroll container at the right x coordinate
-            scrollContainer.style.left = `${leftPx}px`;
-        }
+        updateScrollContainerSize(lastBottom, leftPx);
+        applyCardPositions(positions, adjustedY, TOP_CLAMP);
+        scrollActiveCardIntoView(adjustedY);
+    }
 
+    /**
+     * Resize the inner scroll container so it can hold all cards,
+     * and position it at the correct horizontal offset.
+     */
+    function updateScrollContainerSize(
+        lastBottom: number,
+        leftPx: number,
+    ) {
+        if (!scrollContainer) return;
+        const inner = scrollContainer.firstElementChild as HTMLElement | null;
+        if (inner) inner.style.height = `${lastBottom + 24}px`;
+        scrollContainer.style.left = `${leftPx}px`;
+    }
+
+    /**
+     * Apply computed top/left positions to each card DOM element.
+     */
+    function applyCardPositions(
+        positions: { annotation: GenericAnnotation; viewportY: number }[],
+        adjustedY: { [id: number]: number },
+        topClamp: number,
+    ) {
         positions.forEach(({ annotation }) => {
             const el = annotationElements[annotation.id];
             if (el) {
-                el.style.top = `${adjustedY[annotation.id] ?? TOP_CLAMP}px`;
+                el.style.top = `${adjustedY[annotation.id] ?? topClamp}px`;
                 el.style.left = "0px";
             }
         });
+    }
 
-        // Scroll the container so the active card is visible
-        if (scrollContainer && resolvedActiveAnnotation) {
-            const activeEl = annotationElements[resolvedActiveAnnotation.id];
-            const activeTop = adjustedY[resolvedActiveAnnotation.id];
-            if (activeEl && activeTop !== undefined) {
-                const cardHeight = activeEl.offsetHeight;
-                const containerHeight = scrollContainer.clientHeight;
-                const currentScroll = scrollContainer.scrollTop;
-                const cardBottom = activeTop + cardHeight;
-                if (activeTop < currentScroll) {
-                    scrollContainer.scrollTo({ top: activeTop - 16, behavior: "smooth" });
-                } else if (cardBottom > currentScroll + containerHeight) {
-                    scrollContainer.scrollTo({ top: cardBottom - containerHeight + 16, behavior: "smooth" });
-                }
+    /**
+     * If an annotation is active, scroll the floating container
+     * so that card is fully visible.
+     */
+    function scrollActiveCardIntoView(
+        adjustedY: { [id: number]: number },
+    ) {
+        if (!scrollContainer || !resolvedActiveAnnotation) return;
+        const activeEl = annotationElements[resolvedActiveAnnotation.id];
+        const activeTop = adjustedY[resolvedActiveAnnotation.id];
+        if (activeEl && activeTop !== undefined) {
+            const cardHeight = activeEl.offsetHeight;
+            const containerHeight = scrollContainer.clientHeight;
+            const currentScroll = scrollContainer.scrollTop;
+            const cardBottom = activeTop + cardHeight;
+            if (activeTop < currentScroll) {
+                scrollContainer.scrollTo({ top: activeTop - 16, behavior: "smooth" });
+            } else if (cardBottom > currentScroll + containerHeight) {
+                scrollContainer.scrollTo({ top: cardBottom - containerHeight + 16, behavior: "smooth" });
             }
         }
     }
 
+    // Track which pending card is currently showing the alert animation
+    let alertingPendingId = $state<number | undefined>(undefined);
+
+    // React to pendingCommentAlert signals: scroll the pending card
+    // into view, then play a shake + red-outline-fade animation on it.
+    $effect(() => {
+        if (!isFloating) return;
+        const token = $pendingCommentAlert;
+        if (!token || !pendingComment) return;
+
+        // Reset so the same token can re-trigger if needed
+        pendingCommentAlert.set(null);
+
+        const el = annotationElements[pendingComment.id];
+        if (!el) return;
+
+        // Scroll the editor to show the pending comment's highlighted text
+        if (resolvedView) {
+            resolvedView.dispatch({
+                selection: { anchor: pendingComment.selection.main.from },
+                scrollIntoView: true,
+            });
+        }
+
+        // Scroll the pending card into view
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+        // Trigger shake + ring by setting alertingPendingId.
+        alertingPendingId = pendingComment.id;
+        el.classList.add("pending-shake");
+        setTimeout(() => {
+            el.classList.remove("pending-shake");
+            alertingPendingId = undefined;
+        }, 1400);
+    });
+
+    // Listen for editor scroll and window resize to reposition cards
     $effect(() => {
         if (!isFloating || !resolvedView) return;
         const update = () => debouncedUpdatePositions();
@@ -209,14 +338,12 @@
                 {#each sortedAnnotations as c}
                     {@const i = c.id}
                     {@const isActive = resolvedActiveAnnotation?.id === c.id}
-                    {@const isPendingComment =
-                        !canCreateNewComment(resolvedAnnotations) &&
-                        i === Math.max(...sortedAnnotations.map((x) => x.id))}
+                    {@const isPendingComment = pendingComment?.id === c.id}
                     <div
                         bind:this={annotationElements[i]}
                         class="annotation-card"
                         class:is-active={isActive}
-                        style="z-index: {isActive ? 100 : 50};"
+                        style="z-index: {isActive ? 120 : isPendingComment ? 110 : 50};"
                         onclick={(e) => {
                             if (isInteractiveTarget(e.target)) return;
                             if (!isActive && resolvedView) {
@@ -249,6 +376,14 @@
                                 updateThread={dispatchUpdateThread.bind(null, i)}
                             />
                         {/if}
+                        {#if isAnnotationOfType(c, "comment") && isPendingComment}
+                            <PreComment
+                                view={resolvedView}
+                                annotationsData={resolvedAnnotations}
+                                pendingAnnotation={c}
+                                activeAnnotationData={resolvedActiveAnnotation}
+                            />
+                        {/if}
                         {#if isAnnotationOfType(c, "revision")}
                             <Revision
                                 revision={c}
@@ -267,18 +402,11 @@
                                 updateThread={dispatchUpdateThread.bind(null, i)}
                             />
                         {/if}
+                        {#if alertingPendingId === c.id}
+                            <div class="alert-ring rounded-[14px]"></div>
+                        {/if}
                     </div>
                 {/each}
-
-                {#if !canCreateNewComment(resolvedAnnotations)}
-                    <div class="annotation-card">
-                        <PreComment
-                            view={resolvedView}
-                            annotationsData={resolvedAnnotations}
-                            activeAnnotationData={resolvedActiveAnnotation}
-                        />
-                    </div>
-                {/if}
             </div>
         </div>
     {:else}
@@ -286,9 +414,7 @@
             {#each sortedAnnotations as c}
                 {@const i = c.id}
                 {@const isActive = resolvedActiveAnnotation?.id === c.id}
-                {@const isPendingComment =
-                    !canCreateNewComment(resolvedAnnotations) &&
-                    i === Math.max(...sortedAnnotations.map((x) => x.id))}
+                {@const isPendingComment = pendingComment?.id === c.id}
                 <div
                     bind:this={annotationElements[i]}
                     class="annotation-card-inline"
@@ -325,6 +451,14 @@
                             updateThread={dispatchUpdateThread.bind(null, i)}
                         />
                     {/if}
+                    {#if isAnnotationOfType(c, "comment") && isPendingComment}
+                        <PreComment
+                            view={resolvedView}
+                            annotationsData={resolvedAnnotations}
+                            pendingAnnotation={c}
+                            activeAnnotationData={resolvedActiveAnnotation}
+                        />
+                    {/if}
                     {#if isAnnotationOfType(c, "revision")}
                         <Revision
                             revision={c}
@@ -345,16 +479,6 @@
                     {/if}
                 </div>
             {/each}
-
-            {#if !canCreateNewComment(resolvedAnnotations)}
-                <div class="annotation-card-inline">
-                    <PreComment
-                        view={resolvedView}
-                        annotationsData={resolvedAnnotations}
-                        activeAnnotationData={resolvedActiveAnnotation}
-                    />
-                </div>
-            {/if}
         </div>
     {/if}
 {/if}
@@ -403,5 +527,39 @@
     .annotation-card-inline {
         position: relative;
         width: 100%;
+    }
+
+    @keyframes pending-shake {
+        0%   { transform: translateX(0); }
+        10%  { transform: translateX(-6px); }
+        20%  { transform: translateX(6px); }
+        30%  { transform: translateX(-5px); }
+        40%  { transform: translateX(5px); }
+        50%  { transform: translateX(-3px); }
+        60%  { transform: translateX(3px); }
+        70%  { transform: translateX(-1px); }
+        80%  { transform: translateX(1px); }
+        100% { transform: translateX(0); }
+    }
+
+    :global(.annotation-card.pending-shake) {
+        animation: pending-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    /* Overlay div sits on top of the card content as a sibling,
+       so it's never clipped by overflow-hidden on the inner card. */
+    .alert-ring {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        animation: pending-ring-fade 1.4s ease-out both;
+        /* ring-rose-400 = #fb7185, 3px, matches blue's chroma */
+        box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85);
+    }
+
+    @keyframes pending-ring-fade {
+        0%   { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85); }
+        70%  { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85); }
+        100% { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0); }
     }
 </style>

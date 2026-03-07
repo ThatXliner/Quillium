@@ -1,21 +1,87 @@
+<!--
+    Chat.svelte — Free-form conversational AI panel (blue theme).
+
+    Provides a simple chat interface where the writer can ask questions
+    about their document. Uses the "chat" mode stream which has no tool
+    definitions — the LLM responds with plain text only.
+
+    State machine (driven by `chat.status` from @ai-sdk/svelte Chat):
+      ready     — user can type and submit.
+      submitted — message sent, waiting for first token.
+      streaming — tokens arriving, "Thinking..." indicator shown.
+      error     — request failed, error message displayed.
+
+    The `$effect` block syncs `chat.status` to `aiProcessing.active`
+    so the sidebar glow activates during requests.
+
+    Dependencies: chatFactory (createAiChat), utils (renderMarkdown),
+    stores (selectedText, documentContent), posthog.
+-->
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+/*
+ * Chat.svelte
+ *
+ * Free-form conversational AI panel (blue theme).
+ *
+ * Renders:
+ *   A scrollable message list with user/assistant bubbles, a
+ *   streaming indicator, error display, and a bottom input form
+ *   with selection-context chip.
+ *
+ * Props: none.
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - $selectedText — shown as a context chip above the input;
+ *     included in the chat's system prompt by chatFactory.
+ *   - $documentContent — used by chatFactory for document context.
+ *
+ * Stores written:
+ *   - aiProcessing.active (via setAiProcessing) — set true while
+ *     streaming so the sidebar glow activates.
+ *
+ * AI streaming layer:
+ *   Uses createAiChat({ mode: "chat" }) which returns a chat
+ *   object from @ai-sdk/svelte. No tool definitions — the LLM
+ *   responds with plain text only. Messages render markdown via
+ *   renderMarkdown (async, returns sanitized HTML).
+ *
+ * State machine (chat.status):
+ *   ready -> submitted -> streaming -> ready
+ *                                   \-> error
+ */
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import posthog from "posthog-js";
 
-    let input = $state("");
-    const { chat, clearChat } = createAiChat({ mode: "chat" });
+let input = $state("");
+const { chat, clearChat } = createAiChat({ mode: "chat" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+// Sync streaming state to the global AI processing indicator
+// so the sidebar glow activates during chat requests.
+// States: ready -> submitted -> streaming -> ready (or error).
+$effect(() => {
+	setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
 
-    async function handleSubmit(event: Event) {
-        event.preventDefault();
-        const formData = new FormData(event.target as HTMLFormElement);
-        const userMessage = formData.get("message") as string;
-        if (!userMessage.trim() || chat.status !== "ready") return;
-        await chat.sendMessage({ text: userMessage });
-        input = "";
-    }
+/**
+ * Extract the user's message from the form, validate it, send it
+ * to the AI chat, and clear the input. Captures a posthog event
+ * with selection context and message length.
+ */
+async function handleSubmit(event: Event) {
+	event.preventDefault();
+	const formData = new FormData(event.target as HTMLFormElement);
+	const userMessage = formData.get("message") as string;
+	if (!userMessage.trim() || chat.status !== "ready") return;
+	posthog.capture("ai_chat_message_sent", {
+		has_selection: !!$selectedText,
+		message_length: userMessage.length,
+	});
+	await chat.sendMessage({ text: userMessage });
+	input = "";
+}
 </script>
 
 <div class="flex flex-col h-full">

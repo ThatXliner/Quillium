@@ -1,3 +1,26 @@
+/**
+ * listeners.ts — CodeMirror update listeners for persistence and
+ * change reactions.
+ *
+ * Role: Provides the `listeners()` factory that returns an array of
+ * CodeMirror extensions responsible for reacting to editor state
+ * changes. Currently the only built-in listener is the auto-save
+ * listener that serialises the editor state to the Tauri backend.
+ *
+ * Key dependencies:
+ *   - ./extensions (savedFields) — determines which StateFields are
+ *     included in the serialised JSON snapshot
+ *   - Tauri invoke("save") — writes the serialised state to disk
+ *   - ./plugins/annotations (annotationsChanged) — detects whether
+ *     an update includes annotation mutations
+ *
+ * Interactions:
+ *   - extensions.ts includes `listeners(options)` in the extension
+ *     stack so these listeners are active for every EditorView.
+ *   - The save listener fires after every transaction and only
+ *     writes to disk when the document or annotations actually
+ *     changed, keeping I/O to a minimum.
+ */
 import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
@@ -8,6 +31,32 @@ export interface ListenerOptions {
   // onCommentChanged?: (comments: Comment[]) => void;
 }
 
+/**
+ * Serialises the current editor state (including history and
+ * annotations) and sends it to the Tauri backend for persistence.
+ */
+function persistStateToDisk(update: ViewUpdate) {
+  const state = JSON.stringify(update.state.toJSON(savedFields));
+  invoke("save", { state }).then((success) => {
+    console.log("saved", success);
+  });
+}
+
+// ── Auto-save listener ────────────────────────────────────────────
+// Uses EditorView.updateListener (post-transaction, read-only).
+// Chosen over transactionFilter/transactionExtender because we only
+// need to *react* to changes, not modify them.
+//
+// State: none of its own — it reads the latest EditorState from
+// the ViewUpdate on every firing.
+// Triggers: any CodeMirror transaction (keystrokes, programmatic
+// dispatches, undo/redo).
+// Guard: only persists when the document text or annotation state
+// actually changed, avoiding redundant disk writes on pure
+// selection or scroll updates.
+// Downstream: Tauri invoke("save") writes to the filesystem.
+//
+// Future consideration: debounce to reduce write frequency.
 const save =
   // There are 3 different approaches to
   // reacting to state changes or transactions. This is what Claude says
@@ -40,10 +89,7 @@ const save =
   EditorView.updateListener.of((update: ViewUpdate) => {
     console.log(update.transactions, update.changes);
     if (update.docChanged || annotationsChanged(update)) {
-      const state = JSON.stringify(update.state.toJSON(savedFields));
-      invoke("save", { state }).then((success) => {
-        console.log("saved", success);
-      });
+      persistStateToDisk(update);
     }
   });
 export const listeners = (options?: ListenerOptions) => [

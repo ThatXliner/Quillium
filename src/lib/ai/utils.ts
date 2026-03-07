@@ -1,3 +1,24 @@
+/**
+ * Shared utilities for the AI subsystem.
+ *
+ * Provides three concerns used across multiple AI components:
+ *
+ * 1. **Markdown rendering** (`renderMarkdown`) — converts AI response
+ *    text into sanitized HTML for display in chat bubbles. Uses the
+ *    unified/remark/rehype pipeline with DOMPurify for XSS safety.
+ *
+ * 2. **Document context prompt building** (`buildDocumentContextPrompt`)
+ *    — serializes the writer's document-context fields (goal, tone,
+ *    audience, etc.) into a string appended to system prompts so the
+ *    LLM can tailor its responses.
+ *
+ * 3. **Document injection** (`injectDocumentContext`) — wraps the
+ *    current editor content and any selected text into a
+ *    `UserModelMessage` that is appended to every LLM call so the
+ *    model has access to the writer's document.
+ *
+ * Dependencies: unified ecosystem, dompurify, ai SDK types.
+ */
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";

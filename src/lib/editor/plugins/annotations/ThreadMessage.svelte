@@ -1,4 +1,26 @@
 <script lang="ts">
+    /**
+     * ThreadMessage.svelte — Renders a single message within an
+     * annotation thread (avatar, author, timestamp, body).
+     *
+     * Props:
+     *   - message: ThreadMessage — the message data to display
+     *   - thread: Thread — full thread array (needed to produce an
+     *     updated copy when the user edits this message)
+     *   - index: number — position of this message within the thread
+     *   - updateThread: (thread: Thread) => void — callback to
+     *     replace the thread array after an edit
+     *
+     * Events emitted: none (delegates via updateThread callback)
+     * Stores: none
+     *
+     * Parent: Thread.svelte
+     * Children: none
+     *
+     * Local state:
+     *   - editing: whether the inline edit textarea is visible
+     *   - editMessage: draft text while editing
+     */
     import type { Thread, ThreadMessage } from ".";
 
     let {
@@ -6,16 +28,19 @@
         thread,
         index,
         updateThread,
+        truncate = false,
     }: {
         message: ThreadMessage;
         updateThread: (thread: Thread) => void;
         thread: Thread;
         index: number;
+        truncate?: boolean;
     } = $props();
 
     let editing = $state(false);
     let editMessage = $state(message.message);
 
+    /** Commit the in-place edit back to the parent via updateThread. */
     function saveEdit() {
         const newThread = [...thread];
         newThread[index] = { ...thread[index], message: editMessage };
@@ -23,6 +48,7 @@
         editing = false;
     }
 
+    /** Extract up to 2-character initials from an author name. */
     function initials(author: string) {
         return author
             .split(" ")
@@ -32,6 +58,7 @@
             .slice(0, 2);
     }
 
+    /** Format a unix-ms timestamp into a short human-readable string. */
     function formatTime(ts: number) {
         return new Intl.DateTimeFormat("default", {
             month: "short",
@@ -75,11 +102,13 @@
                 >Cancel</button>
             </div>
         {:else}
-            <p class="text-xs text-black/70 mt-0.5 leading-relaxed whitespace-pre-wrap">{message.message}</p>
-            <button
-                onclick={() => (editing = true)}
-                class="text-[10px] text-black/30 hover:text-black/50 mt-0.5"
-            >Edit</button>
+            <p class="text-xs text-black/70 mt-0.5 leading-relaxed {truncate ? 'truncate' : 'whitespace-pre-wrap'}">{message.message}</p>
+            {#if !truncate}
+                <button
+                    onclick={() => (editing = true)}
+                    class="text-[10px] text-black/30 hover:text-black/50 mt-0.5"
+                >Edit</button>
+            {/if}
         {/if}
     </div>
 </div>

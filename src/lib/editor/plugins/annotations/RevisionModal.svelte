@@ -1,4 +1,34 @@
 <script lang="ts">
+    /**
+     * RevisionModal.svelte — Full-screen modal that hosts a nested
+     * CodeMirror editor for a single revision version.
+     *
+     * Props:
+     *   - revisionId: number — ID of the revision annotation in the
+     *     parent editor's annotationField
+     *   - view: EditorView — the parent CodeMirror editor that owns
+     *     the revision (used to read/write annotation state)
+     *   - stackIndex: number — this modal's position in the global
+     *     modalStack (used for breadcrumb rendering and navigation)
+     *
+     * Events emitted: none
+     * Stores:
+     *   - modalStack (read/write): breadcrumb trail, pop on close,
+     *     popTo for breadcrumb nav, popToAndRebuild for cross-level
+     *     version switching
+     *
+     * Parent: rendered by the modal layer in +page.svelte
+     * Children: Annotations.svelte (sidebar for nested annotations)
+     *
+     * Key behaviour:
+     *   - Creates a nested CodeMirror editor whose content is
+     *     persisted back to the parent revision's version state on
+     *     every keystroke via updateRevisionVersionState.
+     *   - Supports multi-level nesting: revisions inside revisions,
+     *     with breadcrumb version dropdowns at each level.
+     *   - Handles a pendingNestedCommand from the modal stack entry
+     *     to auto-create a comment or sub-revision on open.
+     */
     import { EditorState } from "@codemirror/state";
     import { EditorView, type ViewUpdate } from "@codemirror/view";
     import { ChevronRight, ChevronDown, Check, X } from "lucide-svelte";
@@ -10,15 +40,19 @@
         annotationField,
         setActiveRevisionVersion,
         updateRevisionVersionState,
+        updateThread,
         type Annotation,
         type Annotations as AnnotationsMap,
         type GenericAnnotation,
+        type Thread as ThreadType,
     } from ".";
+
     import { canCreateNewComment, getActiveAnnotation } from "./utils";
     import { createNewAnnotation, versionText, type VersionState } from "./models";
     import { EditorSelection, Transaction } from "@codemirror/state";
     import { modalStack, tutorialModalGuide, tutorialNavCommand, type ModalEntry } from "$lib/stores";
     import Annotations from "./Annotations.svelte";
+    import Thread from "./Thread.svelte";
 
     const { revisionId, view, stackIndex }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
@@ -29,6 +63,8 @@
     // Which crumb dropdown is open (-1 = none)
     let openDropdown = $state(-1);
 
+    // Sync the version-dropdown selections for each breadcrumb
+    // whenever the crumbs array or underlying revision state changes.
     $effect(() => {
         crumbSelectedVersions = crumbs.map((crumb) => {
             if (crumb.type !== "revision") return 0;
@@ -37,6 +73,12 @@
         });
     });
 
+    /**
+     * Handle selecting a version from a breadcrumb dropdown.
+     * If the version belongs to the current (deepest) modal,
+     * rebuild the editor in-place. Otherwise pop the stack back
+     * to the target level and signal it to rebuild.
+     */
     function selectVersion(ci: number, vi: number, crumb: typeof crumbs[number], isCurrent: boolean) {
         if (crumb.type !== "revision") return;
         crumbSelectedVersions[ci] = vi;
@@ -46,7 +88,10 @@
             destroyEditor();
             tick().then(() => {
                 const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-                if (v) createEditor(v.versions[v.currentlySelected]);
+                if (v) {
+                    createEditor(v.versions[v.currentlySelected]);
+                    if (editor) moveCursorToEnd(editor);
+                }
             });
         } else {
             // Pop back to that level and signal it to rebuild its editor
@@ -65,7 +110,10 @@
             destroyEditor();
             tick().then(() => {
                 const v = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-                if (v) createEditor(v.versions[v.currentlySelected]);
+                if (v) {
+                    createEditor(v.versions[v.currentlySelected]);
+                    if (editor) moveCursorToEnd(editor);
+                }
             });
         }
     });
@@ -90,6 +138,13 @@
     let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
     let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
+    /**
+     * Bootstrap a nested CodeMirror editor from a VersionState.
+     * Restores from JSON if the version already contains serialised
+     * editor state, otherwise creates a fresh state from the doc
+     * text. Attaches an updateListener that persists every change
+     * back into the parent revision via updateRevisionVersionState.
+     */
     function createEditor(version: VersionState) {
         if (!editorHost || editor) return;
         const extensions = getExtensions({
@@ -114,6 +169,15 @@
         modalActiveAnnotation = getActiveAnnotation(editor.state);
     }
 
+    function moveCursorToEnd(activeEditor: EditorView) {
+        const end = activeEditor.state.doc.length;
+        activeEditor.dispatch({
+            selection: { anchor: end },
+            scrollIntoView: true,
+        });
+        activeEditor.focus();
+    }
+
     function destroyEditor() {
         editor?.destroy();
         editor = undefined;
@@ -125,6 +189,7 @@
         modalStack.pop();
     }
 
+    // Close the version dropdown when clicking outside of it.
     $effect(() => {
         if (openDropdown === -1) return;
         const handler = (e: MouseEvent) => {
@@ -136,6 +201,74 @@
         return () => document.removeEventListener("click", handler);
     });
 
+    /**
+     * Execute a pending nested annotation command (comment or
+     * sub-revision) that was queued in the modal stack entry
+     * when this modal was opened. Sets the selection in the
+     * nested editor and dispatches the appropriate annotation.
+     */
+    function executePendingNestedCommand(
+        activeEditor: EditorView,
+        cmd: { type: string; selectionFrom: number; selectionTo: number },
+    ) {
+        const s = activeEditor.state;
+        const docLen = s.doc.length;
+        const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
+        const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
+        activeEditor.dispatch({
+            selection: EditorSelection.range(from, to),
+        });
+        activeEditor.focus();
+        if (cmd.type === "comment") {
+            const s2 = activeEditor.state;
+            if (
+                !s2.selection.main.empty
+                && canCreateNewComment(s2.field(annotationField))
+            ) {
+                activeEditor.dispatch(
+                    s2.update({
+                        effects: [
+                            addAnnotation.of(
+                                createNewAnnotation(
+                                    s2.field(annotationField),
+                                    s2.selection,
+                                    "comment",
+                                ),
+                            ),
+                        ],
+                        annotations: Transaction.addToHistory.of(true),
+                    }),
+                );
+            }
+        } else if (cmd.type === "revision") {
+            const s2 = activeEditor.state;
+            if (!s2.selection.main.empty) {
+                const selectedText = s2.sliceDoc(
+                    s2.selection.main.from,
+                    s2.selection.main.to,
+                );
+                activeEditor.dispatch(
+                    s2.update({
+                        effects: [
+                            addAnnotation.of({
+                                ...createNewAnnotation(
+                                    s2.field(annotationField),
+                                    s2.selection,
+                                    "revision",
+                                ),
+                                currentlySelected: 0,
+                                versions: [{ doc: selectedText }],
+                            }),
+                        ],
+                        annotations: Transaction.addToHistory.of(true),
+                    }),
+                );
+            }
+        }
+    }
+
+    // Open the <dialog> as a modal, bootstrap the nested editor,
+    // and run any pending nested annotation command.
     $effect(() => {
         if (!dialogEl) return;
         if (!dialogEl.open) dialogEl.showModal();
@@ -144,45 +277,10 @@
             if (rev && !editor) {
                 createEditor(rev.versions[rev.currentlySelected]);
             }
-            // Run any pending nested annotation command passed when opening the modal
             const activeEditor = editor;
             const entry = $modalStack[stackIndex];
             if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
-                const cmd = entry.pendingNestedCommand;
-                const s = activeEditor.state;
-                const docLen = s.doc.length;
-                const from = Math.max(0, Math.min(cmd.selectionFrom, docLen));
-                const to = Math.max(from, Math.min(cmd.selectionTo, docLen));
-                activeEditor.dispatch({ selection: EditorSelection.range(from, to) });
-                activeEditor.focus();
-                if (cmd.type === "comment") {
-                    const s2 = activeEditor.state;
-                    if (!s2.selection.main.empty && canCreateNewComment(s2.field(annotationField))) {
-                        activeEditor.dispatch(
-                            s2.update({
-                                effects: [addAnnotation.of(createNewAnnotation(s2.field(annotationField), s2.selection, "comment"))],
-                                annotations: Transaction.addToHistory.of(true),
-                            }),
-                        );
-                    }
-                } else if (cmd.type === "revision") {
-                    const s2 = activeEditor.state;
-                    if (!s2.selection.main.empty) {
-                        const selectedText = s2.sliceDoc(s2.selection.main.from, s2.selection.main.to);
-                        activeEditor.dispatch(
-                            s2.update({
-                                effects: [
-                                    addAnnotation.of({
-                                        ...createNewAnnotation(s2.field(annotationField), s2.selection, "revision"),
-                                        currentlySelected: 0,
-                                        versions: [{ doc: selectedText }],
-                                    }),
-                                ],
-                                annotations: Transaction.addToHistory.of(true),
-                            }),
-                        );
-                    }
-                }
+                executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
             }
         });
     });
@@ -190,122 +288,159 @@
     onDestroy(() => {
         destroyEditor();
     });
+
+    let revisionThread = $state(
+       (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [],
+       // modalAnnotations !== undefined ? (modalAnnotations[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [] : [],
+    );
+
+    function dispatchUpdateThread(newThreadValue: ThreadType) {
+        view.dispatch(
+            view.state.update({
+                effects: [
+                    updateThread.of({
+                        annotationId: revisionId,
+                        newThread: newThreadValue,
+                    }),
+                ],
+            }),
+        );
+      revisionThread = (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [];
+    }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 <dialog
-    bind:this={dialogEl}
-    class="revision-modal"
-    onclick={(e) => { if (e.target === dialogEl) close(); }}
+  bind:this={dialogEl}
+  class="revision-modal"
+  onclick={(e) => {
+    if (e.target === dialogEl) close();
+  }}
 >
-    <div class="revision-modal-inner">
-        <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0">
-            <!-- Breadcrumb trail -->
-            <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
-                {#each crumbs as crumb, ci}
-                    {@const isCurrent = ci === crumbs.length - 1}
-                    {@const crumbRevision = crumb.type === "revision"
-                        ? (crumb.parentView.state.field(annotationField)[crumb.revisionId] as Annotation<"revision"> | undefined)
-                        : undefined}
-                    {@const selectedVi = crumbSelectedVersions[ci] ?? 0}
+  <div class="revision-modal-inner">
+    <!-- Header -->
+    <div
+      class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0"
+    >
+      <!-- Breadcrumb trail -->
+      <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
+        {#each crumbs as crumb, ci}
+          {@const isCurrent = ci === crumbs.length - 1}
+          {@const crumbRevision =
+            crumb.type === "revision"
+              ? (crumb.parentView.state.field(annotationField)[
+                  crumb.revisionId
+                ] as Annotation<"revision"> | undefined)
+              : undefined}
+          {@const selectedVi = crumbSelectedVersions[ci] ?? 0}
 
-                    {#if ci > 0}
-                        <ChevronRight size={10} class="text-purple-300/60 shrink-0" />
-                    {/if}
+          {#if ci > 0}
+            <ChevronRight size={10} class="text-purple-300/60 shrink-0" />
+          {/if}
 
-                    <div class="flex items-center gap-1.5">
-                        <!-- "Revision" label — clickable back if not current -->
-                        {#if isCurrent}
-                            <span class="text-[10px] font-semibold text-purple-700/70 uppercase tracking-wider shrink-0">Revision</span>
-                        {:else}
-                            <button
-                                class="text-[10px] text-purple-400/60 hover:text-purple-600/80 transition-colors uppercase tracking-wider shrink-0"
-                                onclick={() => modalStack.popTo(ci)}
-                            >Revision</button>
-                        {/if}
+          <div class="flex items-center gap-1.5">
+            <!-- "Revision" label — clickable back if not current -->
+            {#if isCurrent}
+              <span
+                class="text-[10px] font-semibold text-purple-700/70 uppercase tracking-wider shrink-0"
+                >Revision</span
+              >
+            {:else}
+              <button
+                class="text-[10px] text-purple-400/60 hover:text-purple-600/80 transition-colors uppercase tracking-wider shrink-0"
+                onclick={() => modalStack.popTo(ci)}>Revision</button
+              >
+            {/if}
 
-                        <!-- Version dropdown -->
-                        {#if crumbRevision && crumbRevision.versions.length > 0}
-                            <!-- svelte-ignore a11y_no_static_element_interactions -->
-                            <div
-                                class="relative"
-                                onkeydown={(e) => { if (e.key === "Escape") openDropdown = -1; }}
-                            >
-                                <!-- Trigger -->
-                                <button
-                                    class="version-trigger flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium
+            <!-- Version dropdown -->
+            {#if crumbRevision && crumbRevision.versions.length > 0}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div
+                class="relative"
+                onkeydown={(e) => {
+                  if (e.key === "Escape") openDropdown = -1;
+                }}
+              >
+                <!-- Trigger -->
+                <button
+                  class="version-trigger flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium
                                         transition-all duration-150
                                         {isCurrent
-                                            ? 'bg-purple-100/70 text-purple-700/80 hover:bg-purple-100 ring-1 ring-purple-200/60'
-                                            : 'bg-black/5 text-black/45 hover:bg-black/8 ring-1 ring-black/10'}
-                                        {openDropdown === ci ? 'ring-2 ' + (isCurrent ? 'ring-purple-300/60' : 'ring-black/20') : ''}"
-                                    onclick={(e) => { e.stopPropagation(); openDropdown = openDropdown === ci ? -1 : ci; }}
-                                >
-                                    <span>{crumbRevision.versions[selectedVi]?.label ?? previewVersionText(crumbRevision.versions[selectedVi])}</span>
-                                    <ChevronDown
-                                        size={9}
-                                        class="transition-transform duration-200 {openDropdown === ci ? 'rotate-180' : ''}
-                                            {isCurrent ? 'text-purple-400/70' : 'text-black/30'}"
-                                    />
-                                </button>
+                    ? 'bg-purple-100/70 text-purple-700/80 hover:bg-purple-100 ring-1 ring-purple-200/60'
+                    : 'bg-black/5 text-black/45 hover:bg-black/8 ring-1 ring-black/10'}
+                                        {openDropdown === ci
+                    ? 'ring-2 ' +
+                      (isCurrent ? 'ring-purple-300/60' : 'ring-black/20')
+                    : ''}"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    openDropdown = openDropdown === ci ? -1 : ci;
+                  }}
+                >
+                  <span
+                    >{crumbRevision.versions[selectedVi]?.label ??
+                      previewVersionText(
+                        crumbRevision.versions[selectedVi],
+                      )}</span
+                  >
+                  <ChevronDown
+                    size={9}
+                    class="transition-transform duration-200 {openDropdown ===
+                    ci
+                      ? 'rotate-180'
+                      : ''}
+                                            {isCurrent
+                      ? 'text-purple-400/70'
+                      : 'text-black/30'}"
+                  />
+                </button>
 
-                                <!-- Popover -->
-                                {#if openDropdown === ci}
-                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                    <div
-                                        class="version-popover"
-                                        transition:scale={{ start: 0.92, duration: 150, opacity: 0 }}
-                                        style="transform-origin: top left;"
-                                    >
-                                        {#each crumbRevision.versions as version, vi}
-                                            {@const isSelected = vi === selectedVi}
-                                            <button
-                                                class="version-option {isSelected ? 'version-option-active' : ''}"
-                                                onclick={() => selectVersion(ci, vi, crumb, isCurrent)}
-                                            >
-                                                <span class="flex-1 text-left truncate">{version.label ?? previewVersionText(version)}</span>
-                                                {#if isSelected}
-                                                    <Check size={10} class="text-purple-500/70 shrink-0" />
-                                                {/if}
-                                            </button>
-                                        {/each}
-                                    </div>
-                                {/if}
-                            </div>
+                <!-- Popover -->
+                {#if openDropdown === ci}
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <div
+                    class="version-popover"
+                    transition:scale={{
+                      start: 0.92,
+                      duration: 150,
+                      opacity: 0,
+                    }}
+                    style="transform-origin: top left;"
+                  >
+                    {#each crumbRevision.versions as version, vi}
+                      {@const isSelected = vi === selectedVi}
+                      <button
+                        class="version-option {isSelected
+                          ? 'version-option-active'
+                          : ''}"
+                        onclick={() => selectVersion(ci, vi, crumb, isCurrent)}
+                      >
+                        <span class="flex-1 text-left truncate"
+                          >{version.label ?? previewVersionText(version)}</span
+                        >
+                        {#if isSelected}
+                          <Check
+                            size={10}
+                            class="text-purple-500/70 shrink-0"
+                          />
                         {/if}
-                    </div>
-                {/each}
-            </nav>
-
-            <button
-                class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors shrink-0"
-                onclick={close}
-            >
-                <X size={16} />
-            </button>
-        </div>
-
-        <!-- Body: editor + annotations panel -->
-        <div class="flex flex-1 overflow-hidden">
-            <!-- Editor -->
-            <div bind:this={editorHost} class="revision-modal-editor flex-1 overflow-hidden"></div>
-
-            <!-- Annotations sidebar -->
-            {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
-                <div class="w-64 shrink-0 border-l border-purple-100/60 overflow-y-auto bg-purple-50/20 px-2 py-3">
-                    <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
-                        Annotations
-                    </div>
-                    <Annotations
-                        view={editor}
-                        annotationsData={modalAnnotations}
-                        activeAnnotationData={modalActiveAnnotation}
-                        layout="inline"
-                    />
-                </div>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
             {/if}
-        </div>
+          </div>
+        {/each}
+      </nav>
+
+      <button
+        class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors shrink-0"
+        onclick={close}
+      >
+        <X size={16} />
+      </button>
+    </div>
 
         {#if $tutorialModalGuide.visible}
             <div class="tutorial-inline-guide">
@@ -341,188 +476,249 @@
                 </div>
             </div>
         {/if}
+
+    <!-- Body: thread + editor + annotations panel -->
+    <div class="flex flex-1 overflow-hidden">
+      <!-- Thread sidebar (left) -->
+      <div
+        class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col bg-purple-50/90"
+      >
+        <div class="px-4 py-3 border-b border-purple-100/50">
+          <span
+            class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider"
+            >Thread</span
+          >
+        </div>
+        <div class="flex-1 overflow-y-auto px-4 py-3">
+          {#if revisionThread.length === 0}
+            <p class="text-[11px] text-black/30 leading-relaxed mb-3">
+              No messages yet.
+            </p>
+          {/if}
+          <Thread
+            thread={revisionThread}
+            updateThread={dispatchUpdateThread}
+            accentClass="text-purple-600/80 hover:text-purple-700"
+            focusRingClass="focus-within:ring-purple-300/50"
+          />
+        </div>
+      </div>
+
+      <!-- Editor -->
+      <div
+        bind:this={editorHost}
+        class="revision-modal-editor flex-1 overflow-hidden"
+      ></div>
+
+      <!-- Annotations sidebar -->
+      {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
+        <div
+          class="w-64 shrink-0 border-l border-purple-100/60 overflow-y-auto bg-purple-50/20 px-2 py-3"
+        >
+          <div
+            class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1"
+          >
+            Annotations
+          </div>
+          <Annotations
+            view={editor}
+            annotationsData={modalAnnotations}
+            activeAnnotationData={modalActiveAnnotation}
+            layout="inline"
+          />
+        </div>
+      {/if}
     </div>
+  </div>
 </dialog>
 
 <style>
-    .revision-modal {
-        border: none;
-        padding: 0;
-        background: transparent;
-        width: 100vw;
-        height: 100vh;
-        max-width: 100vw;
-        max-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+  .revision-modal {
+    border: none;
+    padding: 0;
+    background: transparent;
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 
-    .revision-modal::backdrop {
-        background: rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(4px);
-    }
+  .revision-modal::backdrop {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+  }
 
-    .revision-modal-inner {
-        display: flex;
-        flex-direction: column;
-        width: 900px;
-        height: 72vh;
-        background: white;
-        border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        overflow: hidden;
-    }
+  .revision-modal-inner {
+    display: flex;
+    flex-direction: column;
+    width: 1060px;
+    height: 72vh;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+  }
 
-    .revision-modal-editor :global(.cm-editor) {
-        height: 100%;
-        width: 100%;
-        background: transparent;
-    }
+  .revision-modal-thread {
+    width: 220px;
+  }
 
-    .revision-modal-editor :global(.cm-scroller) {
-        overflow: auto;
-        line-height: 1.7;
-        height: 100%;
-    }
+  .revision-modal-editor :global(.cm-editor) {
+    height: 100%;
+    width: 100%;
+    background: transparent;
+  }
 
-    .revision-modal-editor :global(.cm-content) {
-        text-indent: 0;
-        min-height: 100%;
-        padding: 20px 32px 32px 32px;
-        font-size: 15px;
-    }
+  .revision-modal-editor :global(.cm-scroller) {
+    overflow: auto;
+    line-height: 1.7;
+    height: 100%;
+  }
 
-    .revision-modal-editor :global(.cm-focused) {
-        outline: none;
-    }
+  .revision-modal-editor :global(.cm-content) {
+    text-indent: 0;
+    min-height: 100%;
+    padding: 20px 32px 32px 32px;
+    font-size: 15px;
+  }
 
-    .version-popover {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        min-width: 160px;
-        max-width: 240px;
-        background: white;
-        border: 1px solid rgba(147, 112, 219, 0.15);
-        border-radius: 10px;
-        box-shadow: 0 8px 24px -4px rgba(0,0,0,0.12), 0 2px 8px -2px rgba(0,0,0,0.08);
-        padding: 4px;
-        z-index: 10;
-        overflow: hidden;
-    }
+  .revision-modal-editor :global(.cm-focused) {
+    outline: none;
+  }
 
-    .version-option {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        width: 100%;
-        padding: 5px 8px;
-        border-radius: 6px;
-        font-size: 11px;
-        color: rgba(0,0,0,0.6);
-        transition: background 0.1s, color 0.1s;
-        cursor: pointer;
-    }
+  .version-popover {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 160px;
+    max-width: 240px;
+    background: white;
+    border: 1px solid rgba(147, 112, 219, 0.15);
+    border-radius: 10px;
+    box-shadow:
+      0 8px 24px -4px rgba(0, 0, 0, 0.12),
+      0 2px 8px -2px rgba(0, 0, 0, 0.08);
+    padding: 4px;
+    z-index: 10;
+    overflow: hidden;
+  }
 
-    .version-option:hover {
-        background: rgba(147, 112, 219, 0.08);
-        color: rgba(109, 40, 217, 0.85);
-    }
+  .version-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: rgba(0, 0, 0, 0.6);
+    transition:
+      background 0.1s,
+      color 0.1s;
+    cursor: pointer;
+  }
 
-    .version-option-active {
-        background: rgba(147, 112, 219, 0.1);
-        color: rgba(109, 40, 217, 0.9);
-        font-weight: 500;
-    }
+  .version-option:hover {
+    background: rgba(147, 112, 219, 0.08);
+    color: rgba(109, 40, 217, 0.85);
+  }
 
-    .tutorial-inline-guide {
-        position: absolute;
-        right: 12px;
-        bottom: 12px;
-        width: 320px;
-        background: rgba(229, 231, 235, 0.95);
-        border: 1px solid rgba(255, 255, 255, 0.7);
-        border-radius: 14px;
-        box-shadow: 0 14px 28px -10px rgba(0, 0, 0, 0.25);
-        backdrop-filter: blur(8px);
-        padding: 12px;
-        z-index: 40;
-    }
+  .version-option-active {
+    background: rgba(147, 112, 219, 0.1);
+    color: rgba(109, 40, 217, 0.9);
+    font-weight: 500;
+  }
 
-    .tutorial-inline-guide-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: rgba(0, 0, 0, 0.82);
-    }
+  .tutorial-inline-guide {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    width: 320px;
+    background: rgba(229, 231, 235, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 14px;
+    box-shadow: 0 14px 28px -10px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(8px);
+    padding: 12px;
+    z-index: 40;
+  }
 
-    .tutorial-inline-guide-body {
-        margin-top: 4px;
-        font-size: 12px;
-        line-height: 1.45;
-        color: rgba(0, 0, 0, 0.62);
-    }
+  .tutorial-inline-guide-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.82);
+  }
 
-    .tutorial-inline-guide-hint {
-        margin-top: 8px;
-        font-size: 11px;
-        line-height: 1.35;
-        color: rgba(146, 64, 14, 1);
-        background: rgba(255, 251, 235, 0.95);
-        border: 1px solid rgba(253, 230, 138, 0.9);
-        border-radius: 8px;
-        padding: 6px 8px;
-    }
+  .tutorial-inline-guide-body {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: rgba(0, 0, 0, 0.62);
+  }
 
-    .tutorial-inline-guide-actions {
-        margin-top: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-    }
+  .tutorial-inline-guide-hint {
+    margin-top: 8px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: rgba(146, 64, 14, 1);
+    background: rgba(255, 251, 235, 0.95);
+    border: 1px solid rgba(253, 230, 138, 0.9);
+    border-radius: 8px;
+    padding: 6px 8px;
+  }
 
-    .tutorial-inline-guide-main-actions {
-        display: flex;
-        gap: 8px;
-    }
+  .tutorial-inline-guide-actions {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
 
-    .tutorial-inline-guide-skip {
-        font-size: 11px;
-        color: rgba(0, 0, 0, 0.42);
-    }
+  .tutorial-inline-guide-main-actions {
+    display: flex;
+    gap: 8px;
+  }
 
-    .tutorial-inline-guide-skip:hover {
-        color: rgba(0, 0, 0, 0.58);
-    }
+  .tutorial-inline-guide-skip {
+    font-size: 11px;
+    color: rgba(0, 0, 0, 0.42);
+  }
 
-    .tutorial-inline-guide-back {
-        font-size: 12px;
-        border-radius: 9999px;
-        padding: 6px 12px;
-        color: rgba(0, 0, 0, 0.65);
-        background: rgba(255, 255, 255, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.8);
-    }
+  .tutorial-inline-guide-skip:hover {
+    color: rgba(0, 0, 0, 0.58);
+  }
 
-    .tutorial-inline-guide-back:hover {
-        background: rgba(255, 255, 255, 0.9);
-    }
+  .tutorial-inline-guide-back {
+    font-size: 12px;
+    border-radius: 9999px;
+    padding: 6px 12px;
+    color: rgba(0, 0, 0, 0.65);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+  }
 
-    .tutorial-inline-guide-next {
-        font-size: 12px;
-        border-radius: 9999px;
-        padding: 6px 12px;
-        color: white;
-        background: rgb(59, 130, 246);
-    }
+  .tutorial-inline-guide-back:hover {
+    background: rgba(255, 255, 255, 0.9);
+  }
 
-    .tutorial-inline-guide-next:hover {
-        background: rgb(37, 99, 235);
-    }
+  .tutorial-inline-guide-next {
+    font-size: 12px;
+    border-radius: 9999px;
+    padding: 6px 12px;
+    color: white;
+    background: rgb(59, 130, 246);
+  }
 
-    .tutorial-inline-guide-next:disabled {
-        background: rgb(147, 197, 253);
-        cursor: not-allowed;
-    }
+  .tutorial-inline-guide-next:hover {
+    background: rgb(37, 99, 235);
+  }
+
+  .tutorial-inline-guide-next:disabled {
+    background: rgb(147, 197, 253);
+    cursor: not-allowed;
+  }
 </style>

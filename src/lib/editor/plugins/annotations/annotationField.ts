@@ -1,3 +1,46 @@
+/**
+ * annotationField.ts — Core annotation state and effects
+ *
+ * This file defines the CodeMirror StateField that holds all
+ * annotation data (comments, revisions, suggestions) and the
+ * StateEffects that mutate it. It is the single source of
+ * truth for annotation state.
+ *
+ * Role in the annotation subsystem:
+ *   - Owns `annotationField`, the StateField whose value is
+ *     an `Annotations` map (id -> GenericAnnotation).
+ *   - Declares all StateEffects that can modify annotations
+ *     (add, remove, thread updates, version management,
+ *     suggestion application).
+ *   - Exports transaction-builder functions (e.g.
+ *     setActiveRevisionVersion, createNewRevision) that
+ *     bundle effects + doc changes into atomic updates.
+ *   - Provides undo/redo support via invertedEffects.
+ *
+ * State lifecycle:
+ *   - Created as an empty map `[]`.
+ *   - On every transaction, the reducer:
+ *     1. Remaps all annotation selections through doc changes.
+ *     2. Processes effects (add/remove/update).
+ *     3. Syncs active revision version text with the document.
+ *   - Serialized/deserialized via toJSON/fromJSON for
+ *     persistence.
+ *
+ * Key dependencies:
+ *   - @codemirror/state (StateField, StateEffect, Transaction)
+ *   - @codemirror/commands (invertedEffects) for undo support
+ *   - @codemirror/search (SearchCursor) for text-based
+ *     suggestion placement
+ *   - ./models for type definitions
+ *   - ./utils for range mapping helpers
+ *
+ * Interactions:
+ *   - index.ts imports effects and transaction builders to
+ *     wire up keybindings and public API functions.
+ *   - utils.ts reads annotationField for cursor queries.
+ *   - Svelte stores sync with this field via updateListener.
+ */
+
 import {
   Annotation,
   EditorSelection,
@@ -24,6 +67,19 @@ import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import { filter, mapValues } from "lodash-es";
+// -------------------------------------------------------
+// StateEffect declarations
+//
+// Each effect represents a discrete mutation on the
+// annotation map. Separating them (rather than a single
+// "updateAnnotation" effect) makes undo/redo inversion
+// straightforward — each effect has a clear inverse.
+//
+// Effects that carry a GenericAnnotation use `map: mapRange`
+// so their positional data stays accurate when mapped
+// through the undo history.
+// -------------------------------------------------------
+
 // lowk I might change this to our own state machine so we can have that sweet sweet typesafety
 // === For all annotations ===
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
@@ -333,51 +389,172 @@ export function applySuggestion(
     }),
   });
 }
-// StateField to track annotation data
+// -------------------------------------------------------
+// annotationField — the central StateField
+//
+// State shape: Annotations (a record of id -> annotation).
+//
+// The reducer runs in three phases on every transaction:
+//   1. remapAnnotationSelections — shift all annotation
+//      ranges through the document change set so they track
+//      edits. Annotations whose ranges collapse to zero
+//      width are removed (except revisions, which survive
+//      to allow version switching).
+//   2. applyAnnotationEffects — process each StateEffect
+//      in the transaction to add/remove/mutate annotations.
+//   3. syncRevisionDocsWithDocument — when no explicit
+//      revision effect fired, copy the document slice
+//      under each active revision back into its version
+//      state so the stored text stays current.
+//
+// Triggers: any transaction (doc changes, effects, or both).
+// Downstream: Svelte stores sync via Editor.svelte's
+// updateListener; decoration plugins read this field to
+// render highlights.
+// -------------------------------------------------------
+
 // TODO: when a comment gets deleted by a deletion action, track that too so we can later undo it
+
+/**
+ * Phase 1: Remap all annotation selections through the
+ * transaction's change set. Removes annotations whose
+ * ranges were fully consumed (collapsed to zero width),
+ * except revisions which are kept alive via allowEmpty.
+ */
+function remapAnnotationSelections(
+    annotations: Annotations,
+    tr: Transaction,
+): Annotations {
+    return Object.fromEntries(
+        filter(
+            Object.entries(
+                mapValues(annotations, (x) => {
+                    const isRevision =
+                        isAnnotationOfType(x, "revision");
+                    const newSelection = cleanRangesOf(
+                        x.selection.map(
+                            tr.changes,
+                            isRevision ? 1 : 0,
+                        ),
+                        isRevision,
+                    );
+                    if (newSelection) {
+                        return { ...x, selection: newSelection };
+                    }
+                    return null;
+                }),
+            ),
+            ([k, v]) => v !== null,
+        ),
+    ) as Annotations;
+}
+
+/**
+ * Handles _addVersionToRevision, _deleteVersionFromRevision,
+ * and _updateActiveRevisionVersion effects on a single
+ * revision annotation. Mutates the annotation in place and
+ * returns whether a revision effect was processed.
+ */
+function applyRevisionVersionEffect(
+    e: StateEffect<{ annotationId: number; [key: string]: unknown }>,
+    annotation: GenericAnnotation,
+    oldAnnotations: Annotations,
+    tr: Transaction,
+): void {
+    if (!isAnnotationOfType(annotation, "revision")) return;
+
+    if (e.is(_addVersionToRevision)) {
+        const insertionIndex = Math.max(
+            0,
+            Math.min(
+                e.value.at ?? annotation.versions.length,
+                annotation.versions.length,
+            ),
+        );
+        annotation.versions.splice(
+            insertionIndex,
+            0,
+            e.value.newVersion,
+        );
+        annotation.currentlySelected = insertionIndex;
+    } else if (e.is(_deleteVersionFromRevision)) {
+        annotation.versions.splice(e.value.versionId, 1);
+        if (e.value.versionId < annotation.currentlySelected) {
+            annotation.currentlySelected -= 1;
+        } else if (
+            annotation.currentlySelected >=
+            annotation.versions.length
+        ) {
+            annotation.currentlySelected = Math.max(
+                0,
+                annotation.versions.length - 1,
+            );
+        }
+    } else if (e.is(_updateActiveRevisionVersion)) {
+        annotation.currentlySelected = e.value.to;
+        // When switching versions, reconstruct the selection
+        // to cover the inserted text. This is critical for
+        // collapsed ranges (all text was deleted) where
+        // selection.map() keeps the range collapsed instead
+        // of expanding around the newly inserted version
+        // text.
+        const oldAnnotation =
+            oldAnnotations[e.value.annotationId];
+        if (oldAnnotation) {
+            const from = tr.changes.mapPos(
+                oldAnnotation.selection.main.from,
+                -1,
+            );
+            const vText = versionText(
+                annotation.versions[e.value.to] ?? { doc: "" },
+            );
+            const to = from + vText.length;
+            annotation.selection = EditorSelection.single(
+                from,
+                to,
+            );
+        }
+    }
+}
+
+/**
+ * Phase 3: For revisions not touched by an explicit effect,
+ * sync the active version's doc text with the actual document
+ * content under the revision's range.
+ */
+function syncRevisionDocsWithDocument(
+    annotations: Annotations,
+    tr: Transaction,
+): Annotations {
+    return mapValues(annotations, (x) => {
+        if (isAnnotationOfType(x, "revision")) {
+            const text = tr.state.doc
+                .slice(
+                    x.selection.main.from,
+                    x.selection.main.to,
+                )
+                .toString();
+            x.versions[x.currentlySelected] = {
+                ...x.versions[x.currentlySelected],
+                doc: text,
+            };
+        }
+        return x;
+    });
+}
+
 export const annotationField = StateField.define<Annotations>({
   create(): Annotations {
     return [];
   },
   update(oldAnnotations: Annotations, tr: Transaction): Annotations {
-    let annotations = oldAnnotations;
+    // Phase 1: remap annotation ranges through doc changes
+    let annotations = remapAnnotationSelections(
+        oldAnnotations,
+        tr,
+    );
 
-    // Map our old annotations to the new state
-    // ranges, as we don't want our revision/highlighted/etc
-    // to be static markers of a row and column but instead change with the
-    // document
-    annotations = Object.fromEntries(
-      filter(
-        Object.entries(
-          mapValues(annotations, (x) => {
-            // Run it through deletions
-            const isRevision = isAnnotationOfType(x, "revision");
-            const newSelection = cleanRangesOf(
-              x.selection.map(tr.changes, isRevision ? 1 : 0),
-              isRevision, // keep revision alive even when empty
-            );
-
-            // Idk how adding to the end of a revision version should work
-            // which is why this code is currently commented out
-            // if (x.value.type === "revision") {
-            // 	newSelection = newSelection.addRange(
-            // 		newSelection.main.extend(
-            // 			newSelection.main.from,
-            // 			newSelection.main.to,
-            // 		),
-            // 	);
-            // }
-            if (newSelection) {
-              return { ...x, selection: newSelection };
-            }
-            return null;
-          }),
-        ),
-        ([k, v]) => v !== null,
-      ),
-      // Too lazy to tell TypeScript that value will never be null
-    ) as Annotations;
-
+    // Phase 2: apply effects
     // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
     let doUpdateRevision = true;
     for (const e of tr.effects) {
@@ -409,47 +586,12 @@ export const annotationField = StateField.define<Annotations>({
         let annotation = annotations[e.value.annotationId];
         if (!isAnnotationOfType(annotation, "revision")) continue;
         doUpdateRevision = false;
-        if (e.is(_addVersionToRevision)) {
-          const insertionIndex = Math.max(
-            0,
-            Math.min(e.value.at ?? annotation.versions.length, annotation.versions.length),
-          );
-          annotation.versions.splice(insertionIndex, 0, e.value.newVersion);
-          annotation.currentlySelected = insertionIndex;
-        } else if (e.is(_deleteVersionFromRevision)) {
-          annotation.versions.splice(e.value.versionId, 1);
-          if (e.value.versionId < annotation.currentlySelected) {
-            annotation.currentlySelected -= 1;
-          } else if (
-            annotation.currentlySelected >= annotation.versions.length
-          ) {
-            annotation.currentlySelected = Math.max(
-              0,
-              annotation.versions.length - 1,
-            );
-          }
-        } else if (e.is(_updateActiveRevisionVersion)) {
-          annotation.currentlySelected = e.value.to;
-          // When switching versions, reconstruct the selection to
-          // cover the inserted text. This is critical for collapsed
-          // ranges (all text was deleted) where selection.map()
-          // keeps the range collapsed instead of expanding around
-          // the newly inserted version text.
-          const oldAnnotation =
-              oldAnnotations[e.value.annotationId];
-          if (oldAnnotation) {
-              const from = tr.changes.mapPos(
-                  oldAnnotation.selection.main.from,
-                  -1,
-              );
-              const vText = versionText(annotation.versions[e.value.to] ?? { doc: "" });
-              const to = from + vText.length;
-              annotation.selection = EditorSelection.single(
-                  from,
-                  to,
-              );
-          }
-        }
+        applyRevisionVersionEffect(
+            e,
+            annotation,
+            oldAnnotations,
+            tr,
+        );
 
         // well uh i think this is unnecessary since
         // JavaScript would give annotation a reference to the annotation object
@@ -493,20 +635,13 @@ export const annotationField = StateField.define<Annotations>({
         delete annotations[e.value.annotationId];
       }
     }
-    // doc -> revision: keep the active version's doc text in sync with the main document
+    // Phase 3: keep active revision version text in sync
+    // with the document when no explicit revision effect ran
     if (doUpdateRevision) {
-      annotations = mapValues(annotations, (x) => {
-        if (isAnnotationOfType(x, "revision")) {
-          const text = tr.state.doc
-            .slice(x.selection.main.from, x.selection.main.to)
-            .toString();
-          x.versions[x.currentlySelected] = {
-            ...x.versions[x.currentlySelected],
-            doc: text,
-          };
-        }
-        return x;
-      });
+      annotations = syncRevisionDocsWithDocument(
+          annotations,
+          tr,
+      );
     }
     return annotations;
   },

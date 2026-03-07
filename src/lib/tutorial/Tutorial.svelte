@@ -1,8 +1,32 @@
+<!--
+    Tutorial.svelte — Full-screen guided tour overlay.
+
+    Renders a semi-transparent backdrop with an SVG spotlight mask
+    that highlights one UI element at a time, alongside a floating
+    tooltip card with step content and navigation controls.
+
+    Lifecycle:
+      1. On mount, the overlay fades in and the first step's target
+         element is spotlighted.
+      2. The user navigates forward/back through the step list defined
+         in ./steps.ts. Each step change triggers repositioning of the
+         spotlight and tooltip via the `$effect` on `step`.
+      3. On completion (or skip), the component persists a
+         "quillium_tutorial_seen" flag to localStorage, fires a PostHog
+         analytics event, sets `tutorialActive = false`, and calls the
+         parent's `onComplete` callback.
+
+    State interactions:
+      - Writes `tutorialActive` (store) to false on complete/skip.
+      - Reads `steps` from ./steps.ts for step content and selectors.
+      - Fires PostHog events: "tutorial_completed" / "tutorial_skipped".
+-->
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { tutorialActive, annotations, modalStack, tutorialModalGuide, tutorialNavCommand } from "$lib/stores";
     import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotations";
     import { steps, type Step } from "./steps";
+    import posthog from "posthog-js";
 
     const { onComplete }: { onComplete: () => void } = $props();
 
@@ -162,61 +186,10 @@
         return rects;
     }
 
-    function computeTooltipPos(
-        rect: DOMRect | null,
-        position: string,
-        tipW: number,
-        tipH: number,
-    ): { top: number; left: number } {
-        const pad = 16;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        if (!rect || position === "center") {
-            return {
-                top: vh / 2 - tipH / 2,
-                left: vw / 2 - tipW / 2,
-            };
-        }
-
-        switch (position) {
-            case "right":
-                return {
-                    top: Math.min(
-                        Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
-                        vh - tipH - pad,
-                    ),
-                    left: Math.min(rect.right + pad, vw - tipW - pad),
-                };
-            case "left":
-                return {
-                    top: Math.min(
-                        Math.max(rect.top + rect.height / 2 - tipH / 2, pad),
-                        vh - tipH - pad,
-                    ),
-                    left: Math.max(rect.left - tipW - pad, pad),
-                };
-            case "bottom":
-                return {
-                    top: Math.min(rect.bottom + pad, vh - tipH - pad),
-                    left: Math.min(
-                        Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
-                        vw - tipW - pad,
-                    ),
-                };
-            case "top":
-                return {
-                    top: Math.max(rect.top - tipH - pad, pad),
-                    left: Math.min(
-                        Math.max(rect.left + rect.width / 2 - tipW / 2, pad),
-                        vw - tipW - pad,
-                    ),
-                };
-            default:
-                return { top: vh / 2 - tipH / 2, left: vw / 2 - tipW / 2 };
-        }
-    }
-
+    /**
+     * Recompute spotlight rect and tooltip position for the
+     * current step. Called on every step change and on mount.
+     */
     function positionTooltip() {
         if (sectionPickerOpen) return;
         const rects = getTargetRects(step);
@@ -284,6 +257,51 @@
         setTimeout(positionTooltip, 80);
     }
 
+    function computeTooltipPos(
+        rect: DOMRect | null,
+        position: Step["position"],
+        tipW: number,
+        tipH: number,
+    ): { top: number; left: number } {
+        const pad = 16;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        if (!rect || position === "center") {
+            return {
+                top: vh / 2 - tipH / 2,
+                left: vw / 2 - tipW / 2,
+            };
+        }
+
+        let top: number;
+        let left: number;
+
+        switch (position) {
+            case "right":
+                top = Math.min(Math.max(rect.top + rect.height / 2 - tipH / 2, pad), vh - tipH - pad);
+                left = Math.min(rect.right + pad, vw - tipW - pad);
+                break;
+            case "left":
+                top = Math.min(Math.max(rect.top + rect.height / 2 - tipH / 2, pad), vh - tipH - pad);
+                left = Math.max(rect.left - tipW - pad, pad);
+                break;
+            case "bottom":
+                top = Math.min(rect.bottom + pad, vh - tipH - pad);
+                left = Math.min(Math.max(rect.left + rect.width / 2 - tipW / 2, pad), vw - tipW - pad);
+                break;
+            case "top":
+                top = Math.max(rect.top - tipH - pad, pad);
+                left = Math.min(Math.max(rect.left + rect.width / 2 - tipW / 2, pad), vw - tipW - pad);
+                break;
+            default:
+                return { top: vh / 2 - tipH / 2, left: vw / 2 - tipW / 2 };
+        }
+
+        return { top, left };
+    }
+
+    /** Move to the next step, or finish the tour on the last step. */
     function advance() {
         if (nextDisabled) return;
         if (isLast) {
@@ -293,11 +311,16 @@
         stepIndex++;
     }
 
+    /** Move to the previous step (no-op on the first step). */
     function back() {
         if (!isFirst) stepIndex--;
     }
 
-    function complete() {
+    /**
+     * End the tutorial — persist the "seen" flag, fire analytics,
+     * hide the overlay, and notify the parent via onComplete.
+     */
+    function complete(skipped = false) {
         tutorialModalGuide.set({
             visible: false,
             title: "",
@@ -309,12 +332,20 @@
         });
         visible = false;
         localStorage.setItem("quillium_tutorial_seen", "true");
+        if (skipped) {
+            posthog.capture("tutorial_skipped", {
+                step_reached: stepIndex + 1,
+                total_steps: steps.length,
+            });
+        } else {
+            posthog.capture("tutorial_completed", { total_steps: steps.length });
+        }
         $tutorialActive = false;
         onComplete();
     }
 
     function skip() {
-        complete();
+        complete(true);
     }
 
     $effect(() => {
@@ -397,6 +428,7 @@
         });
     });
 
+    // On mount, reveal the overlay.
     onMount(() => {
         visible = true;
     });
