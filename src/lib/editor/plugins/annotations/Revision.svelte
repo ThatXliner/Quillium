@@ -108,6 +108,10 @@ let recursiveEditor = $state<EditorView | undefined>(undefined);
 let nestedEditorHasActiveAnnotation = $state(false);
 let isSyncingFromAnnotation = false;
 let previousVersionId = revision.currentlySelected;
+// Track the last text we pushed INTO the nested editor so we can
+// detect when the parent annotation was changed externally (e.g.
+// via undo) even when the new text equals what was there before.
+let lastSyncedText: string | undefined = undefined;
 let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
 let lastFocusRequestToken = 0;
@@ -229,6 +233,11 @@ function upsertVersionState(
 	versionId = revision.currentlySelected,
 ) {
 	const blob = currentEditor.state.toJSON(savedFields) as VersionState;
+	// Track what we just pushed so syncRecursiveEditorToActiveVersion
+	// doesn't mistake our own update for an external mutation.
+	if (versionId === revision.currentlySelected) {
+		lastSyncedText = currentEditor.state.doc.toString();
+	}
 	view.dispatch(
 		updateRevisionVersionState(view.state, revision.id, versionId, blob),
 	);
@@ -270,6 +279,7 @@ function createRecursiveEditor(version: VersionState) {
 			? EditorState.fromJSON(version, { extensions }, savedFields)
 			: EditorState.create({ doc: versionText(version), extensions });
 	recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
+	lastSyncedText = versionText(version);
 	nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
 		recursiveEditor.state,
 	);
@@ -305,6 +315,10 @@ function destroyRecursiveEditor() {
  * Swap the nested editor's content to match the currently
  * selected version. Saves the outgoing version's state first
  * if switching between versions.
+ *
+ * Also handles the case where the parent annotation was mutated
+ * externally (e.g. the user edited the main doc or pressed undo)
+ * so the nested editor's text is out of sync with activeText.
  */
 function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 	if (!recursiveEditor || !activeVersion) return;
@@ -313,10 +327,22 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 		previousVersionId !== revision.currentlySelected;
 	const currentText = recursiveEditor.state.doc.toString();
 	const targetText = activeText;
-	// Always reload state when switching versions, even if doc text matches,
-	// so cursor/selection/annotation state does not leak across versions.
-	if (!versionChanged && currentText === targetText) return;
-	// Save the current editor state back to whichever version we're leaving
+
+	// Detect external mutation: the annotation's version text was
+	// changed (by main-doc edit or undo) without the nested editor
+	// being the source. We compare against lastSyncedText rather
+	// than the nested editor's current text, because after an undo
+	// the two may coincidentally match even though the annotation
+	// state changed underneath us.
+	const externallyMutated =
+		!versionChanged &&
+		lastSyncedText !== undefined &&
+		lastSyncedText !== targetText;
+
+	// Nothing to do: same version, nested editor already has the right text.
+	if (!versionChanged && !externallyMutated && currentText === targetText) return;
+
+	// Save the current editor state back to whichever version we're leaving.
 	if (versionChanged) {
 		upsertVersionState(recursiveEditor, previousVersionId);
 	}
@@ -338,6 +364,8 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 		);
 		return;
 	}
+	// Same version but text drifted (external edit or undo): reload state
+	// from the annotation blob so history/cursor are consistent too.
 	const extensions = getExtensions({
 		persist: false,
 		updateListener(update: ViewUpdate) {
@@ -350,6 +378,7 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
 			? EditorState.fromJSON(activeVersion, { extensions }, savedFields)
 			: EditorState.create({ doc: targetText, extensions });
 	recursiveEditor.setState(nextState);
+	lastSyncedText = targetText;
 	isSyncingFromAnnotation = false;
 	nestedEditorHasActiveAnnotation = !!getActiveAnnotation(
 		recursiveEditor.state,

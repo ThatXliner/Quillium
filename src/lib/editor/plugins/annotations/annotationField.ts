@@ -521,13 +521,17 @@ function applyRevisionVersionEffect(
  * Phase 3: For revisions not touched by an explicit effect,
  * sync the active version's doc text with the actual document
  * content under the revision's range.
+ *
+ * @param skipIds - revision IDs that had an explicit effect this
+ *   transaction and should not be synced here.
  */
 function syncRevisionDocsWithDocument(
     annotations: Annotations,
     tr: Transaction,
+    skipIds: Set<number> = new Set(),
 ): Annotations {
     return mapValues(annotations, (x) => {
-        if (isAnnotationOfType(x, "revision")) {
+        if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
             const text = tr.state.doc
                 .slice(
                     x.selection.main.from,
@@ -556,7 +560,9 @@ export const annotationField = StateField.define<Annotations>({
 
     // Phase 2: apply effects
     // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
-    let doUpdateRevision = true;
+    // Track which revision IDs had an explicit effect so Phase 3
+    // can skip syncing only those revisions (not all of them).
+    const revisionsWithExplicitEffect = new Set<number>();
     for (const e of tr.effects) {
       if (e.is(addAnnotation)) {
         console.log("Adding annotation!", e.value);
@@ -585,7 +591,7 @@ export const annotationField = StateField.define<Annotations>({
       ) {
         let annotation = annotations[e.value.annotationId];
         if (!isAnnotationOfType(annotation, "revision")) continue;
-        doUpdateRevision = false;
+        revisionsWithExplicitEffect.add(e.value.annotationId);
         applyRevisionVersionEffect(
             e,
             annotation,
@@ -600,7 +606,7 @@ export const annotationField = StateField.define<Annotations>({
       } else if (e.is(_updateRevisionVersionState)) {
         let annotation = annotations[e.value.annotationId];
         if (!isAnnotationOfType(annotation, "revision")) continue;
-        doUpdateRevision = false;
+        revisionsWithExplicitEffect.add(e.value.annotationId);
         annotation.versions[e.value.versionId] = e.value.versionState;
         if (
           annotation.currentlySelected === e.value.versionId &&
@@ -635,12 +641,14 @@ export const annotationField = StateField.define<Annotations>({
         delete annotations[e.value.annotationId];
       }
     }
-    // Phase 3: keep active revision version text in sync
-    // with the document when no explicit revision effect ran
-    if (doUpdateRevision) {
+    // Phase 3: keep active revision version text in sync with the
+    // document, but only for revisions that had no explicit effect
+    // this transaction and only when the document actually changed.
+    if (tr.docChanged) {
       annotations = syncRevisionDocsWithDocument(
           annotations,
           tr,
+          revisionsWithExplicitEffect,
       );
     }
     return annotations;
