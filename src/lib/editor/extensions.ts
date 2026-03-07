@@ -26,11 +26,7 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { history, historyField, historyKeymap } from "@codemirror/commands";
-import {
-  bracketMatching,
-  defaultHighlightStyle,
-  syntaxHighlighting,
-} from "@codemirror/language";
+import { bracketMatching } from "@codemirror/language";
 import { lintKeymap } from "@codemirror/lint";
 import { search, searchKeymap } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
@@ -81,9 +77,4 @@ export const getExtensions = (options?: ListenerOptions) => [
   }),
   listeners(options),
   annotations(),
-  // Attach the caller-provided update listener (used by Editor.svelte
-  // to sync CodeMirror state into Svelte stores on every transaction).
-  ...(options?.updateListener
-    ? [EditorView.updateListener.of(options.updateListener)]
-    : []),
 ];

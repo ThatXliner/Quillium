@@ -19,11 +19,8 @@
  * be arbitrarily deep (revisions inside revisions).
  */
 import type { EditorView } from "@codemirror/view";
-import { writable, derived } from "svelte/store";
-
-import { getActiveAnnotation } from "./editor/plugins/annotations/utils";
+import { writable } from "svelte/store";
 import type {
-  Annotation,
   Annotations,
   GenericAnnotation,
 } from "./editor/plugins/annotations";
@@ -79,24 +76,6 @@ export const documentContent = writable<string>("");
 export const selectedText = writable<string>("");
 
 /**
- * Boundary-nudge signal for nested revision editors.
- * Fired when the user presses a delete key at the boundary of an
- * active revision — signals that the recursive editor is available
- * for boundary edits. Value is a timestamp token; null means idle.
- */
-export const revisionBoundaryNudge = writable<number | null>(null);
-
-/**
- * Fired when the user clicks inside an atomic revision range in the
- * main document. Carries the revision ID and the click position
- * relative to the revision's start, for cursor placement in the
- * nested editor or modal.
- * Written by: index.ts (domEventHandlers mousedown)
- * Read by: Revision.svelte (focuses nested editor or opens modal)
- */
-export const revisionFocusRequest = writable<{ id: number; relativePos: number } | null>(null);
-
-/**
  * Controls tutorial overlay visibility.
  * Written by: +page.svelte (on first visit), StatusBar.svelte
  *             (the "?" button), Tutorial.svelte (on complete).
@@ -140,9 +119,55 @@ export type NestedEditorCommand = {
     selectionFrom: number;
     selectionTo: number;
 };
-export const revisionOpenNestedEditor = writable<
-    NestedEditorCommand | null
->(null);
+
+/**
+ * One-shot UI events emitted by annotation commands/plugins and
+ * consumed by Svelte components. Keeps editor plugin logic decoupled
+ * from component-specific stores.
+ */
+export type AnnotationUiEvent =
+    | {
+          token: number;
+          type: "revision-boundary-nudge";
+          revisionId: number;
+      }
+    | {
+          token: number;
+          type: "revision-open-nested-editor";
+          command: NestedEditorCommand;
+      }
+    | {
+          token: number;
+          type: "revision-focus-request";
+          revisionId: number;
+          relativePos: number;
+      }
+    | {
+          token: number;
+          type: "pending-comment-alert";
+      }
+    | {
+          token: number;
+          type: "pending-nested-editor-selection";
+          annotationId: number;
+          from: number;
+          to: number;
+      };
+
+export type AnnotationUiEventInput = Omit<AnnotationUiEvent, "token">;
+
+export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
+
+let nextAnnotationUiEventToken = 1;
+
+export function publishAnnotationUiEvent(
+    event: AnnotationUiEventInput,
+) {
+    annotationUiEvent.set({
+        ...event,
+        token: nextAnnotationUiEventToken++,
+    } as AnnotationUiEvent);
+}
 
 // ── Modal stack types ────────────────────────────────────────
 
@@ -192,27 +217,6 @@ const _modalStack = writable<ModalEntry[]>([]);
  *                          target modal recreates its editor
  *   clear()             — close all modals
  */
-/**
- * Fired when the user attempts to create a new comment while one
- * is already pending. Triggers a shake + red-outline animation on
- * the pending comment card to draw attention to it.
- * Value is a timestamp used as a signal token (null = idle).
- */
-export const pendingCommentAlert = writable<number | null>(null);
-
-/**
- * When the user creates a revision (or comment) annotation from a
- * text selection, and the "select text in nested editor" setting is
- * enabled, this store carries the selection range (relative to the
- * revision's start) that the nested editor should apply after mount.
- * Reset to null once consumed by Revision.svelte.
- */
-export const pendingNestedEditorSelection = writable<{
-    annotationId: number;
-    from: number;
-    to: number;
-} | null>(null);
-
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>

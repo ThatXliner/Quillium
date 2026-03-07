@@ -38,7 +38,7 @@
         type GenericAnnotation,
         type Thread,
     } from "$lib/editor/plugins/annotations";
-    import { activeAnnotation, annotations, editorView, pendingCommentAlert } from "$lib/stores";
+    import { activeAnnotation, annotations, editorView, annotationUiEvent } from "$lib/stores";
     import Revision from "./Revision.svelte";
     import PreComment from "./PreComment.svelte";
     import Suggestion from "./Suggestion.svelte";
@@ -283,16 +283,21 @@
 
     // Track which pending card is currently showing the alert animation
     let alertingPendingId = $state<number | undefined>(undefined);
+    let lastPendingAlertToken = 0;
 
-    // React to pendingCommentAlert signals: scroll the pending card
+    // React to pending-comment events: scroll the pending card
     // into view, then play a shake + red-outline-fade animation on it.
     $effect(() => {
         if (!isFloating) return;
-        const token = $pendingCommentAlert;
-        if (!token || !pendingComment) return;
-
-        // Reset so the same token can re-trigger if needed
-        pendingCommentAlert.set(null);
+        const event = $annotationUiEvent;
+        if (
+            !event ||
+            event.token === lastPendingAlertToken ||
+            event.type !== "pending-comment-alert" ||
+            !pendingComment
+        )
+            return;
+        lastPendingAlertToken = event.token;
 
         const el = annotationElements[pendingComment.id];
         if (!el) return;

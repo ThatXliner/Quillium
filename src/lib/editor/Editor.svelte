@@ -101,10 +101,8 @@
         doc: string,
         selText: string,
     ) {
-        $annotations = Object.values(
-            update.state.field(annotationField),
-        );
-        $activeAnnotation = getActiveAnnotation($editorView.state);
+        $annotations = update.state.field(annotationField);
+        $activeAnnotation = getActiveAnnotation(update.state);
         $documentContent = doc;
         $selectedText = selText;
     }
