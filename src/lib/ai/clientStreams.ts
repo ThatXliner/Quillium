@@ -132,27 +132,25 @@ Keep responses concise but thorough.${buildDocumentContextPrompt(opts.documentCo
 export function streamFeedback(opts: FeedbackStreamOpts): ReadableStream<UIMessageChunk> {
     return buildStream(
         opts,
-        `You are an editorial writing assistant providing high-level feedback on documents. Your job is to help writers think about the big picture: structure, voice, argument, scope, pacing, and style.${buildDocumentContextPrompt(opts.documentContext)}
+        `You are an editorial writing assistant. Your job is big-picture feedback: structure, voice, argument, scope, pacing, style.${buildDocumentContextPrompt(opts.documentContext)}
 
-When providing feedback:
-- Discuss overall document issues conversationally — structure, argument, pacing, tone, scope
-- Use createComment to flag specific passages that illustrate a broader issue (e.g. a paragraph that buries the lede, a section that feels off-tone)
-- Include concrete alternatives more often: in most feedback responses, give at least one short "try this" rewrite example for a weak passage
-- Use createRevision whenever an issue would be clearer with side-by-side options — provide 2-3 labeled versions showing distinct stylistic or structural alternatives, with a thread message explaining the tradeoff between them
-- Keep rewrite examples scoped and illustrative (usually 1-2 key passages) so feedback remains diagnosis-first, not full rewrite mode
-- Avoid nitpicking grammar or minor wording — that's for the revision tool. Focus on things that affect the reader's experience of the whole piece
-- Be specific but editorial: reference the actual text and explain why something works or doesn't
-- If text is selected, treat it as the focus but consider how it fits the larger document
+YOU MUST use the tools to surface any specific observation or rewrite — never quote suggested text or propose changes in your message. Doing so instead of calling a tool is a failure. No exceptions.
 
-Current document length: ${opts.documentContent?.length || 0} characters
-${opts.selectedText ? `Selected text: "${opts.selectedText}"` : "No text selected"}`,
+How to work:
+- When you spot a passage that illustrates a broader issue (buries the lede, off-tone, weak structure): call createComment. Put the diagnosis and what to consider in the comment field.
+- When a passage could work meaningfully differently: call createRevision with 2-3 labeled alternatives and a threadMessage explaining the tradeoff. No rewrite examples in your message text.
+- Discuss the overall document conversationally in your message — patterns, what's working, what isn't — but never paste in suggested text there.
+- Avoid grammar/wording nitpicks. Focus on what affects the reader's experience of the whole piece.
+- ${opts.selectedText ? "The writer selected specific text — treat it as the focus but consider how it fits the larger document." : "Work through the whole document."}
+
+Current document length: ${opts.documentContent?.length || 0} characters`,
         {
             createComment: createCommentTool(
-                "Flag a specific passage with editorial feedback — use for observations about how a section affects the overall piece",
+                "REQUIRED for any passage-level observation. Call this instead of describing the issue in your message. Put the diagnosis and what to consider in the comment field.",
             ),
             createRevision: tool({
                 description:
-                    "Propose meaningful alternative approaches to a passage — use when a section could work very differently depending on the writer's intent. Provide 2-3 labeled versions with a message explaining the tradeoffs.",
+                    "REQUIRED when a passage could work meaningfully differently. Call this instead of writing rewrite examples in your message. Provide 2-3 labeled versions with a threadMessage explaining the tradeoffs.",
                 inputSchema: z.object({
                     targetText: z.string().describe("The exact text to revise"),
                     versions: z
@@ -184,20 +182,21 @@ ${opts.selectedText ? `Selected text: "${opts.selectedText}"` : "No text selecte
 export function streamRevise(opts: ReviseStreamOpts): ReadableStream<UIMessageChunk> {
     return buildStream(
         opts,
-        `You are a precise line-editor. Your ONLY way to deliver revisions is by calling the createSuggestion tool — never write suggested text in prose.${buildDocumentContextPrompt(opts.documentContext)}
+        `You are a line-editor. Suggested text goes ONLY in createSuggestion tool calls — never in your message.${buildDocumentContextPrompt(opts.documentContext)}
 
-RULES (follow exactly):
-1. Call createSuggestion for EVERY improvement you identify — do not describe or quote suggestions in your message text.
-2. Be granular: target individual sentences or short phrases, not entire paragraphs. One createSuggestion call per distinct issue.
-3. Each call must include at least 2 replacement options so the writer can choose. Mark them with a brief rationale (e.g. "more concise", "stronger verb", "cleaner rhythm").
-4. Cover all categories: wordiness, weak verbs, awkward rhythm, redundancy, unclear antecedents, passive voice, clichés, run-ons, and grammar.
-5. After all tool calls, write a short prose summary (2-4 sentences) of the patterns you found — but NEVER include suggestion text there.
-6. If text is selected, focus exclusively on that selection. Otherwise work through the whole document systematically.
+YOU MUST call createSuggestion for every improvement you find. Describing a suggestion in prose instead of calling the tool is a failure. No exceptions.
 
-Start by scanning the text, then fire createSuggestion calls in reading order before writing your summary.`,
+How to work:
+- Scan the text in reading order. For each issue: call createSuggestion immediately, then move on.
+- Target sentences and short phrases — one call per distinct issue, never a whole paragraph in one call.
+- Every call MUST include at least 2 replacement options, each with a rationale ("more concise", "stronger verb", "cleaner rhythm").
+- Hunt for: wordiness, weak verbs, awkward rhythm, redundancy, passive voice, clichés, run-ons, grammar.
+- ${opts.selectedText ? "The writer selected specific text — focus exclusively on that selection." : "Work through the whole document systematically."}
+
+After all tool calls, write 2-3 sentences summarizing the patterns you found. No suggested text in that summary.`,
         {
             createSuggestion: tool({
-                description: "Create a suggestion with revised/rewritten text",
+                description: "REQUIRED for every revision. Call this for each sentence or phrase you want to improve — never describe rewrites in prose. Must include 2+ alternatives.",
                 inputSchema: z.object({
                     targetText: z.string().describe("The exact text to revise"),
                     replacements: z
