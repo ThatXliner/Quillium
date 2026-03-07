@@ -281,6 +281,8 @@
             const entry = $modalStack[stackIndex];
             if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
                 executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
+            } else if (activeEditor) {
+                moveCursorToEnd(activeEditor);
             }
         });
     });
