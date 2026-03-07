@@ -61,6 +61,7 @@ import { getActiveAnnotation } from "./utils";
 import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
+	revisionFocusRequest,
 	modalStack,
 	pendingNestedEditorSelection,
 } from "$lib/stores";
@@ -150,6 +151,39 @@ $effect(() => {
 			selectionTo: cmd.selectionTo,
 		},
 	});
+});
+
+// When the main doc is clicked inside this revision's atomic range,
+// focus the nested editor (opening it if needed), placing the cursor
+// at the relative position within the version text.
+// Falls back to opening the modal if the nested editor is disabled.
+$effect(() => {
+	const req = $revisionFocusRequest;
+	if (!req || req.id !== revision.id) return;
+	revisionFocusRequest.set(null);
+	const relPos = Math.min(req.relativePos, activeText.length);
+	if (appSettings.showNestedEditor) {
+		const placeCursor = (editor: EditorView) => {
+			editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
+			editor.focus();
+		};
+		if (isEditorOpen && recursiveEditor) {
+			placeCursor(recursiveEditor);
+		} else {
+			userClosedEditor = false;
+			isEditorOpen = true;
+			tick().then(() => { if (recursiveEditor) placeCursor(recursiveEditor); });
+		}
+	} else {
+		modalStack.push({
+			type: "revision",
+			revisionId: revision.id,
+			parentView: view,
+			label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+			// relative pos will be used by modal to place cursor
+			pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+		});
+	}
 });
 
 onDestroy(() => {
@@ -434,11 +468,34 @@ onDestroy(() => {
 
     <!-- Boundary hint -->
     {#if showBoundaryHint}
-        <div class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md
-            bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug">
-            <span class="shrink-0 mt-px">↓</span>
-            <span>Use the nested editor to edit at revision boundaries.</span>
-        </div>
+        {#if appSettings.atomicRevisions && appSettings.showNestedEditor}
+            <button
+                class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
+                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
+                    hover:bg-purple-100/60 transition-colors text-left"
+                onclick={() => {
+                    if (isEditorOpen && recursiveEditor) {
+                        recursiveEditor.focus();
+                    } else {
+                        userClosedEditor = false;
+                        isEditorOpen = true;
+                    }
+                }}
+            >
+                <span class="shrink-0 mt-px">↓</span>
+                <span>Edit in the nested editor below.</span>
+            </button>
+        {:else}
+            <button
+                class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
+                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
+                    hover:bg-purple-100/60 transition-colors text-left"
+                onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
+            >
+                <span class="shrink-0 mt-px">↗</span>
+                <span>Open in the revision editor to edit at boundaries.</span>
+            </button>
+        {/if}
     {/if}
 
     <!-- Nested editor (collapsible) -->

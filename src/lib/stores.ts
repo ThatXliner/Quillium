@@ -87,6 +87,16 @@ export const selectedText = writable<string>("");
 export const revisionBoundaryNudge = writable<number | null>(null);
 
 /**
+ * Fired when the user clicks inside an atomic revision range in the
+ * main document. Carries the revision ID and the click position
+ * relative to the revision's start, for cursor placement in the
+ * nested editor or modal.
+ * Written by: index.ts (domEventHandlers mousedown)
+ * Read by: Revision.svelte (focuses nested editor or opens modal)
+ */
+export const revisionFocusRequest = writable<{ id: number; relativePos: number } | null>(null);
+
+/**
  * Controls tutorial overlay visibility.
  * Written by: +page.svelte (on first visit), StatusBar.svelte
  *             (the "?" button), Tutorial.svelte (on complete).
@@ -122,7 +132,7 @@ export type DiffOp = {
 
 /** A command queued for execution inside a nested revision editor. */
 export type PendingNestedCommand = {
-    type: "comment" | "revision";
+    type: "comment" | "revision" | "cursor";
     selectionFrom: number;
     selectionTo: number;
 };

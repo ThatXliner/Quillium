@@ -98,6 +98,7 @@ import {
 import {
 	revisionBoundaryNudge,
 	revisionOpenNestedEditor,
+	revisionFocusRequest,
 	pendingCommentAlert,
 	pendingNestedEditorSelection,
 	type NestedEditorCommand,
@@ -891,12 +892,33 @@ export const annotationKeymap: KeyBinding[] = [
 //   5. collapsedRevisionResolver ViewPlugin (auto-cleanup).
 //   6. invertedAnnotationFieldEffects (undo/redo support).
 // -------------------------------------------------------
+const revisionClickHandler = EditorView.domEventHandlers({
+	mousedown(event, view) {
+		if (!appSettings.atomicRevisions) return false;
+		const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+		if (pos === null) return false;
+		const annotations = view.state.field(annotationField);
+		for (const annotation of Object.values(annotations)) {
+			if (!isAnnotationOfType(annotation, "revision")) continue;
+			const { from, to } = annotation.selection.main;
+			if (pos >= from && pos <= to) {
+				// Move cursor to clicked position so the annotation becomes active
+				view.dispatch({ selection: { anchor: pos }, scrollIntoView: false });
+				revisionFocusRequest.set({ id: annotation.id, relativePos: pos - from });
+				return false;
+			}
+		}
+		return false;
+	},
+});
+
 export const annotations = () => [
 	Prec.high(keymap.of(annotationKeymap)),
 	annotationField,
 	suggestionPreviewField,
 	annotationDecorations,
 	revisionAtomicRanges,
+	revisionClickHandler,
 	collapsedRevisionResolver,
 	boundaryInsertNudge,
 	invertedAnnotationFieldEffects,
