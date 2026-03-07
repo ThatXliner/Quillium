@@ -428,6 +428,10 @@
         });
     });
 
+    function handleKeydown(e: KeyboardEvent) {
+        if (e.key === "Escape") skip();
+    }
+
     // On mount, reveal the overlay.
     onMount(() => {
         visible = true;
@@ -445,6 +449,8 @@
         });
     });
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 {#if visible}
     <div
