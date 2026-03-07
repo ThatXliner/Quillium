@@ -308,15 +308,13 @@
         // Scroll the pending card into view
         el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-        // Trigger CSS animation by toggling the class.
-        // Use setTimeout matching the longest animation duration (1s)
-        // rather than animationend, since two animations run in parallel.
+        // Trigger shake + ring by setting alertingPendingId.
         alertingPendingId = pendingComment.id;
-        el.classList.add("pending-alert");
+        el.classList.add("pending-shake");
         setTimeout(() => {
-            el.classList.remove("pending-alert");
+            el.classList.remove("pending-shake");
             alertingPendingId = undefined;
-        }, 1000);
+        }, 1400);
     });
 
     // Listen for editor scroll and window resize to reposition cards
@@ -403,6 +401,9 @@
                                 remove={remove.bind(null, i)}
                                 updateThread={dispatchUpdateThread.bind(null, i)}
                             />
+                        {/if}
+                        {#if alertingPendingId === c.id}
+                            <div class="alert-ring rounded-[14px]"></div>
                         {/if}
                     </div>
                 {/each}
@@ -541,19 +542,24 @@
         100% { transform: translateX(0); }
     }
 
-    /* ring-rose-400/80 → #fb7185 at 80% opacity, fading out over 1s.
-       Uses outline so overflow-hidden on the inner card can't clip it. */
-    @keyframes pending-ring-fade {
-        0%   { outline-color: rgba(251, 113, 133, 0.8); }
-        55%  { outline-color: rgba(251, 113, 133, 0.8); }
-        100% { outline-color: rgba(251, 113, 133, 0); }
+    :global(.annotation-card.pending-shake) {
+        animation: pending-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
     }
 
-    :global(.annotation-card.pending-alert) {
-        animation:
-            pending-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both,
-            pending-ring-fade 1s ease-out both;
-        outline: 2px solid rgba(251, 113, 133, 0.8);
-        border-radius: 14px;
+    /* Overlay div sits on top of the card content as a sibling,
+       so it's never clipped by overflow-hidden on the inner card. */
+    .alert-ring {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        animation: pending-ring-fade 1.4s ease-out both;
+        /* ring-rose-400 = #fb7185, 3px, matches blue's chroma */
+        box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85);
+    }
+
+    @keyframes pending-ring-fade {
+        0%   { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85); }
+        70%  { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85); }
+        100% { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0); }
     }
 </style>
