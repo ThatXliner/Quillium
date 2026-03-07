@@ -232,7 +232,7 @@ function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     const inner = scrollContainer.firstElementChild as HTMLElement | null;
     if (inner) inner.style.height = `${lastBottom + 24}px`;
     scrollContainer.style.left = `${leftPx}px`;
-    const availableWidth = Math.max(0, window.innerWidth - leftPx - 16);
+    const availableWidth = Math.max(0, window.innerWidth - leftPx - 24);
     scrollContainer.style.width = `${availableWidth}px`;
 }
 
