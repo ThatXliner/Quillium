@@ -184,16 +184,17 @@ ${opts.selectedText ? `Selected text: "${opts.selectedText}"` : "No text selecte
 export function streamRevise(opts: ReviseStreamOpts): ReadableStream<UIMessageChunk> {
     return buildStream(
         opts,
-        `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.${buildDocumentContextPrompt(opts.documentContext)}
+        `You are a precise line-editor. Your ONLY way to deliver revisions is by calling the createSuggestion tool — never write suggested text in prose.${buildDocumentContextPrompt(opts.documentContext)}
 
-When revising text:
-- Use createSuggestion to propose specific rewrites and improvements
-- Focus on making text more concise, clear, and engaging
-- Improve sentence structure and flow
-- Fix grammar and style issues
-- Maintain the original meaning and tone unless specifically asked to change it
-- Provide multiple alternatives when possible
-- If text is selected, focus on revising that selection`,
+RULES (follow exactly):
+1. Call createSuggestion for EVERY improvement you identify — do not describe or quote suggestions in your message text.
+2. Be granular: target individual sentences or short phrases, not entire paragraphs. One createSuggestion call per distinct issue.
+3. Each call must include at least 2 replacement options so the writer can choose. Mark them with a brief rationale (e.g. "more concise", "stronger verb", "cleaner rhythm").
+4. Cover all categories: wordiness, weak verbs, awkward rhythm, redundancy, unclear antecedents, passive voice, clichés, run-ons, and grammar.
+5. After all tool calls, write a short prose summary (2-4 sentences) of the patterns you found — but NEVER include suggestion text there.
+6. If text is selected, focus exclusively on that selection. Otherwise work through the whole document systematically.
+
+Start by scanning the text, then fire createSuggestion calls in reading order before writing your summary.`,
         {
             createSuggestion: tool({
                 description: "Create a suggestion with revised/rewritten text",
