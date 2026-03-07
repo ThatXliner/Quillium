@@ -40,25 +40,12 @@ export async function renderMarkdown(markdown: string): Promise<string> {
   return sanitizedHTML;
 }
 type DocumentContext = {
-  goal?: string;
-  tone?: string;
-  audience?: string;
-  emphasize?: string;
-  avoid?: string;
-  notes?: string;
+  freeform?: string;
 };
 
 export function buildDocumentContextPrompt(ctx?: DocumentContext): string {
-  if (!ctx) return "";
-  const lines: string[] = [];
-  if (ctx.goal?.trim()) lines.push(`Goal: ${ctx.goal.trim()}`);
-  if (ctx.tone?.trim()) lines.push(`Tone: ${ctx.tone.trim()}`);
-  if (ctx.audience?.trim()) lines.push(`Audience: ${ctx.audience.trim()}`);
-  if (ctx.emphasize?.trim()) lines.push(`Emphasize: ${ctx.emphasize.trim()}`);
-  if (ctx.avoid?.trim()) lines.push(`Avoid: ${ctx.avoid.trim()}`);
-  if (ctx.notes?.trim()) lines.push(`Notes: ${ctx.notes.trim()}`);
-  if (lines.length === 0) return "";
-  return `\n\nDocument context provided by the writer:\n${lines.join("\n")}`;
+  if (!ctx?.freeform?.trim()) return "";
+  return `\n\nDocument context provided by the writer:\n${ctx.freeform.trim()}`;
 }
 
 export function injectDocumentContext({

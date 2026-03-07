@@ -28,7 +28,7 @@
 import {
     convertToModelMessages,
     streamText,
-    generateObject,
+    generateText,
     tool,
     type UIMessage,
     type UIMessageChunk,
@@ -56,14 +56,7 @@ export type ChatStreamOpts = StreamOpts;
 export type FeedbackStreamOpts = StreamOpts;
 export type ReviseStreamOpts = StreamOpts;
 
-export interface GeneratedContext {
-    goal: string;
-    tone: string;
-    audience: string;
-    emphasize: string;
-    avoid: string;
-    notes: string;
-}
+export type GeneratedContext = string;
 
 // ---------------------------------------------------------------------------
 // Shared tools
@@ -232,22 +225,12 @@ export async function generateContext(
     opts: BaseOpts & { prompt: string },
 ): Promise<GeneratedContext> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model);
-    const { object } = await generateObject({
+    const { text } = await generateText({
         model: llm,
-        schema: z.object({
-            goal: z.string().describe("What this piece of writing needs to accomplish — the core purpose or objective"),
-            tone: z.string().describe("The voice, register, and emotional quality the writing should have"),
-            audience: z.string().describe("Who will read this and what they're looking for"),
-            emphasize: z.string().describe("What to foreground — themes, qualities, arguments, or details that should be prominent"),
-            avoid: z.string().describe("Common pitfalls, off-tone moves, or things that would undermine this piece"),
-            notes: z.string().describe("Any other important context, constraints, or strategic considerations"),
-        }),
-        prompt: `You are helping a writer understand the strategic requirements of their writing task.
-
-Analyze the following writing prompt or brief and generate a focused document profile that will guide AI writing assistance. Be specific and actionable — think like an experienced editor who has seen many pieces succeed or fail at this kind of task.
+        prompt: `You are helping a writer set up AI writing assistance for a specific piece. Based on the prompt or brief below, write a concise document context in plain text — the kind of notes an editor would jot before working with a writer. Cover what matters: the goal, intended audience, tone, what to emphasize, what to avoid, and any other strategic constraints. Write it as flowing notes, not a form. Be specific and opinionated.
 
 Writing prompt / brief:
 ${opts.prompt}`,
     });
-    return object;
+    return text;
 }

@@ -15,46 +15,22 @@ describe("buildDocumentContextPrompt", () => {
         expect(buildDocumentContextPrompt({})).toBe("");
     });
 
-    it("returns empty string when all fields are whitespace-only", () => {
-        expect(buildDocumentContextPrompt({
-            goal: "   ",
-            tone: "\t",
-            audience: "",
-        })).toBe("");
+    it("returns empty string when freeform is whitespace-only", () => {
+        expect(buildDocumentContextPrompt({ freeform: "   " })).toBe("");
     });
 
-    it("includes only the fields that are set", () => {
-        const result = buildDocumentContextPrompt({ goal: "Write a thriller", tone: "Tense" });
-        expect(result).toContain("Goal: Write a thriller");
-        expect(result).toContain("Tone: Tense");
-        expect(result).not.toContain("Audience");
-        expect(result).not.toContain("Emphasize");
+    it("includes the freeform text when set", () => {
+        const result = buildDocumentContextPrompt({ freeform: "Goal: Write a thriller. Audience: adults." });
+        expect(result).toContain("Goal: Write a thriller. Audience: adults.");
     });
 
-    it("trims whitespace from field values", () => {
-        const result = buildDocumentContextPrompt({ goal: "  Be concise  " });
-        expect(result).toContain("Goal: Be concise");
-    });
-
-    it("includes all six fields when all are provided", () => {
-        const result = buildDocumentContextPrompt({
-            goal: "G",
-            tone: "T",
-            audience: "A",
-            emphasize: "E",
-            avoid: "V",
-            notes: "N",
-        });
-        expect(result).toContain("Goal: G");
-        expect(result).toContain("Tone: T");
-        expect(result).toContain("Audience: A");
-        expect(result).toContain("Emphasize: E");
-        expect(result).toContain("Avoid: V");
-        expect(result).toContain("Notes: N");
+    it("trims whitespace from the freeform value", () => {
+        const result = buildDocumentContextPrompt({ freeform: "  Be concise  " });
+        expect(result).toContain("Be concise");
     });
 
     it("starts with a newline prefix when non-empty", () => {
-        const result = buildDocumentContextPrompt({ goal: "Write" });
+        const result = buildDocumentContextPrompt({ freeform: "Some context" });
         expect(result.startsWith("\n\nDocument context provided by the writer:")).toBe(true);
     });
 });

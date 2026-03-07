@@ -1,100 +1,37 @@
 <!--
-    DocumentContext.svelte — Writer's document-context editor panel.
+    DocumentContext.svelte — Writer's document-context panel.
 
-    Allows the writer to define structured metadata about their document
-    (goal, tone, audience, emphasize, avoid, notes). These fields are
-    injected into every AI system prompt via `buildDocumentContextPrompt`
-    in utils.ts, letting the LLM tailor its responses.
+    A single freeform textarea where the writer can describe whatever
+    is relevant: goal, audience, tone, constraints, what to emphasize,
+    what to avoid. The placeholder suggests a structure but doesn't
+    enforce it.
 
-    Features two input modes:
-      1. Manual editing — directly fill in each field's textarea.
-      2. AI generation — paste a writing prompt/brief and click
-         "Generate context" to have the LLM auto-populate all fields
-         via the `generateContext` non-streaming call in clientStreams.ts.
+    Also supports AI generation: paste a writing prompt or brief and
+    click "Generate context" to have the LLM populate the textarea.
 
-    State variables:
-      `promptInput`    — text area for the AI generation prompt.
-      `generating`     — true while the generateContext call is in flight.
-      `generateError`  — error message from a failed generation attempt.
-
-    All fields are persisted to localStorage via `saveDocumentContext`
-    (called on textarea blur and after AI generation).
-
-    Dependencies: settings.svelte.ts (documentContext, saveDocumentContext,
-    aiSettings), clientStreams.ts (generateContext).
+    State persisted to localStorage via saveDocumentContext.
 -->
 <script lang="ts">
-    /*
-     * DocumentContext.svelte
-     *
-     * Writer's document-context metadata editor panel (amber theme).
-     *
-     * Renders:
-     *   A prompt textarea for AI-powered context generation, a
-     *   "Generate context" button, and a grid of manually editable
-     *   metadata fields (goal, tone, audience, emphasize, avoid,
-     *   notes).
-     *
-     * Props: none.
-     * Events: none dispatched.
-     *
-     * Stores read:
-     *   - aiSettings (settings.svelte.ts) — provider, model, and
-     *     apiKey used for the generateContext API call. apiKey also
-     *     gates the generate button (disabled when empty).
-     *
-     * Stores written:
-     *   - documentContext (settings.svelte.ts) — each field is
-     *     bound to a textarea. Persisted to localStorage via
-     *     saveDocumentContext on blur and after AI generation.
-     *
-     * AI interaction:
-     *   Uses generateContext (clientStreams.ts) — a non-streaming
-     *   API call that returns structured field values. This is NOT
-     *   the streaming chat layer; it's a one-shot request.
-     *
-     * Async state (generate function):
-     *   idle -> generating (API in flight) -> idle
-     *   On success: fields written via applyGeneratedContext.
-     *   On failure: generateError set for display.
-     */
     import { SparklesIcon } from "lucide-svelte";
     import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
     import { generateContext } from "$lib/ai/clientStreams";
-
-    const FIELDS: { key: keyof typeof documentContext; label: string; placeholder: string }[] = [
-        { key: "goal", label: "Goal", placeholder: "What should this piece accomplish?" },
-        { key: "tone", label: "Tone", placeholder: "e.g. reflective and personal, formal, darkly comic" },
-        { key: "audience", label: "Audience", placeholder: "Who's reading this and what are they looking for?" },
-        { key: "emphasize", label: "Emphasize", placeholder: "Themes, qualities, or details to foreground" },
-        { key: "avoid", label: "Avoid", placeholder: "Pitfalls or moves that would hurt this piece" },
-        { key: "notes", label: "Notes", placeholder: "Any other context, constraints, or strategy" },
-    ];
 
     let promptInput = $state("");
     let generating = $state(false);
     let generateError = $state("");
 
-    function hasContext() {
-        return FIELDS.some((f) => documentContext[f.key].trim() !== "");
-    }
-
-    // AI-powered context generation.
-    // State: idle -> generating (API call in flight) -> idle.
-    // On success, each returned field is written into documentContext
-    // and persisted to localStorage. On failure, generateError is set.
     async function generate() {
         if (!promptInput.trim() || generating) return;
         generating = true;
         generateError = "";
         try {
-            const data = await generateContext({
+            documentContext.freeform = await generateContext({
                 prompt: promptInput,
                 provider: aiSettings.provider,
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
             });
-            applyGeneratedContext(data);
+            saveDocumentContext();
         } catch (e) {
             generateError = String(e);
         } finally {
@@ -102,18 +39,8 @@
         }
     }
 
-    /** Write AI-generated fields into reactive state and persist. */
-    function applyGeneratedContext(
-        data: Record<string, string>,
-    ) {
-        for (const f of FIELDS) {
-            if (data[f.key]) documentContext[f.key] = data[f.key];
-        }
-        saveDocumentContext();
-    }
-
     function clearAll() {
-        for (const f of FIELDS) documentContext[f.key] = "";
+        documentContext.freeform = "";
         promptInput = "";
         saveDocumentContext();
     }
@@ -127,7 +54,7 @@
         </p>
         <textarea
             bind:value={promptInput}
-            placeholder="Paste your essay prompt, assignment, or brief here and the AI will configure the context fields below…"
+            placeholder="Paste your essay prompt, assignment, or brief here and the AI will generate context below…"
             rows={4}
             class="w-full resize-none rounded-lg bg-white/50 border border-black/10 px-2.5 py-2
                 text-xs text-black/70 placeholder:text-black/25 outline-none leading-relaxed
@@ -157,39 +84,29 @@
         {/if}
     </div>
 
-    <!-- Editable fields -->
-    <div class="flex flex-col gap-0 p-3 pb-4">
-        <div class="flex items-center justify-between mb-2.5">
+    <!-- Freeform context textarea -->
+    <div class="flex flex-col gap-2 p-3 pb-4">
+        <div class="flex items-center justify-between">
             <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
                 Document Context
             </p>
-            {#if hasContext()}
+            {#if documentContext.freeform.trim()}
                 <button
                     onclick={clearAll}
                     class="text-[10px] text-black/30 hover:text-red-500/70 transition-colors"
                 >
-                    Clear all
+                    Clear
                 </button>
             {/if}
         </div>
-
-        <div class="flex flex-col gap-3">
-            {#each FIELDS as field}
-                <div class="flex flex-col gap-1">
-                    <label class="text-[10px] font-medium text-black/50">
-                        {field.label}
-                    </label>
-                    <textarea
-                        bind:value={documentContext[field.key]}
-                        onblur={saveDocumentContext}
-                        placeholder={field.placeholder}
-                        rows={2}
-                        class="w-full resize-none rounded-lg bg-white/50 border border-black/10 px-2.5 py-2
-                            text-xs text-black/70 placeholder:text-black/20 outline-none leading-relaxed
-                            focus:border-blue-400/60 transition-colors"
-                    ></textarea>
-                </div>
-            {/each}
-        </div>
+        <textarea
+            bind:value={documentContext.freeform}
+            onblur={saveDocumentContext}
+            placeholder="Describe whatever context is relevant to this piece — what it needs to accomplish, who's reading it, the tone to aim for, what to emphasize or avoid, any constraints. E.g: Goal: … / Audience: … / Tone: …"
+            rows={10}
+            class="w-full resize-none rounded-lg bg-white/50 border border-black/10 px-2.5 py-2
+                text-xs text-black/70 placeholder:text-black/20 outline-none leading-relaxed
+                focus:border-blue-400/60 transition-colors"
+        ></textarea>
     </div>
 </div>

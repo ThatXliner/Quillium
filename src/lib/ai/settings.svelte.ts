@@ -31,21 +31,16 @@ const MODEL_KEY = "quillium-ai-model";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 
 export type DocumentContext = {
-    goal: string;
-    tone: string;
-    audience: string;
-    emphasize: string;
-    avoid: string;
-    notes: string;
+    freeform: string;
 };
 
 function loadDocumentContext(): DocumentContext {
-    if (typeof localStorage === "undefined") return { goal: "", tone: "", audience: "", emphasize: "", avoid: "", notes: "" };
+    if (typeof localStorage === "undefined") return { freeform: "" };
     try {
         const stored = localStorage.getItem(DOCUMENT_CONTEXT_KEY);
         if (stored) return JSON.parse(stored);
     } catch {}
-    return { goal: "", tone: "", audience: "", emphasize: "", avoid: "", notes: "" };
+    return { freeform: "" };
 }
 
 export function saveDocumentContext() {
@@ -54,6 +49,10 @@ export function saveDocumentContext() {
 }
 
 export const documentContext = $state<DocumentContext>(loadDocumentContext());
+
+export function hasDocumentContext(): boolean {
+    return documentContext.freeform.trim().length > 0;
+}
 
 // ---------------------------------------------------------------------------
 // AI processing indicator — purely for UI feedback (e.g. sidebar glow).
