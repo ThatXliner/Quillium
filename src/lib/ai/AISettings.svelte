@@ -41,13 +41,13 @@ const PROVIDERS: { id: Provider; label: string; color: string }[] = [
 
 const MODEL_OPTIONS: Record<Provider, { id: string; label: string; description: string }[]> = {
     openai: [
-        { id: "gpt-4o", label: "GPT-4o", description: "Most capable" },
+        { id: "gpt-5.4", label: "GPT-5.4", description: "Most capable" },
         {
-            id: "gpt-4o-mini",
-            label: "GPT-4o Mini",
+            id: "gpt-5-mini",
+            label: "GPT-5 Mini",
             description: "Fast and efficient",
         },
-        { id: "o3-mini", label: "o3 Mini", description: "Advanced reasoning" },
+        { id: "gpt-5-nano", label: "GPT-5 Nano", description: "Fastest, most cost-efficient" },
     ],
     anthropic: [
         {
@@ -68,19 +68,19 @@ const MODEL_OPTIONS: Record<Provider, { id: string; label: string; description: 
     ],
     google: [
         {
-            id: "gemini-2.0-flash",
-            label: "Gemini 2.0 Flash",
-            description: "Fast multimodal",
-        },
-        {
-            id: "gemini-2.0-flash-lite",
-            label: "Gemini 2.0 Flash Lite",
-            description: "Most efficient",
-        },
-        {
-            id: "gemini-2.5-pro-preview-03-25",
-            label: "Gemini 2.5 Pro",
+            id: "gemini-3.1-pro-preview",
+            label: "Gemini 3.1 Pro",
             description: "Most capable",
+        },
+        {
+            id: "gemini-3-flash-preview",
+            label: "Gemini 3 Flash",
+            description: "Fast and capable",
+        },
+        {
+            id: "gemini-3.1-flash-lite-preview",
+            label: "Gemini 3.1 Flash Lite",
+            description: "Fastest, most efficient",
         },
     ],
 };
