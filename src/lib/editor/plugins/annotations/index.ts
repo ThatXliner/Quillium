@@ -90,7 +90,6 @@ import {
     addAnnotation,
     allowRevisionDocEdit,
     removeAnnotation,
-    setActiveRevisionVersion,
     invertedAnnotationFieldEffects,
     suggestionPreviewField,
 } from "./annotationField";
@@ -259,11 +258,11 @@ const revisionAtomicRanges = EditorView.atomicRanges.of((view) => buildAtomicRan
 //   allowRevisionDocEdit (which marks intentional version
 //   switches).
 // Downstream effects:
-//   - If the revision has >1 version: dispatches
-//     setActiveRevisionVersion to switch to an adjacent
-//     version, restoring the revision's text.
-//   - If only 1 version: dispatches removeAnnotation to
-//     clean up the empty revision.
+//   - Dispatches removeAnnotation tagged addToHistory.of(false)
+//     to clean up the collapsed revision without creating a
+//     new undo history entry.
+//   - Undo restoration is handled by invertedAnnotationFieldEffects
+//     via the _restoreAnnotation effect stored at deletion time.
 //   - Handles one collapsed revision per update cycle to
 //     avoid stale-state issues from cascading dispatches.
 // -------------------------------------------------------
@@ -278,28 +277,18 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
                 if (!isAnnotationOfType(annotation, "revision")) continue;
                 const { from, to } = annotation.selection.main;
                 if (from !== to) continue;
-                // Revision range collapsed — all text was deleted
-                if (annotation.versions.length <= 1) {
-                    // Only one version, nothing to fall back to — remove it
-                    queueMicrotask(() => {
-                        // Guard: if state has advanced (e.g. undo), skip.
-                        if (update.view.state !== update.state) return;
-                        update.view.dispatch({
-                            effects: [removeAnnotation.of(annotation)],
-                        });
+                // Revision range collapsed — remove it without adding a history
+                // entry so that a single Cmd+Z fully undoes the deletion.
+                // invertedAnnotationFieldEffects already stored a _restoreAnnotation
+                // effect at deletion time, so undo will re-expand the revision.
+                queueMicrotask(() => {
+                    // Guard: if state has advanced (e.g. undo), skip.
+                    if (update.view.state !== update.state) return;
+                    update.view.dispatch({
+                        effects: [removeAnnotation.of(annotation)],
+                        annotations: [Transaction.addToHistory.of(false)],
                     });
-                } else {
-                    // Switch to the next available version
-                    const nextVersion =
-                        annotation.currentlySelected > 0 ? annotation.currentlySelected - 1 : 1;
-                    queueMicrotask(() => {
-                        // Guard: if state has advanced (e.g. undo), skip.
-                        if (update.view.state !== update.state) return;
-                        update.view.dispatch(
-                            setActiveRevisionVersion(update.state, annotation.id, nextVersion),
-                        );
-                    });
-                }
+                });
                 return; // handle one at a time to avoid stale state
             }
         }

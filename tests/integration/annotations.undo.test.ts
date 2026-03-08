@@ -312,3 +312,102 @@ describe("undo restores revision whose selection collapsed after text deletion",
         expect(anns[0].selection.main.to).toBe(11);
     });
 });
+
+// ── Post-microtask undo tests (issue: collapsedRevisionResolver race) ─────────
+//
+// These tests flush microtasks (via `await Promise.resolve()`) after the
+// deletion so that collapsedRevisionResolver's deferred dispatch runs before
+// the undo. This mirrors real-world usage where the user pauses before pressing
+// Cmd+Z. With the fix, the resolver dispatches removeAnnotation tagged
+// addToHistory.of(false), so no extra undo history entry is created and a
+// single Cmd+Z fully restores the document and annotation.
+
+describe("single undo restores revision after collapsedRevisionResolver fires", () => {
+    it("restores single-version revision after resolver fires", async () => {
+        // "aaaHELLObbb" — revision on "HELLO" [3,8], one version
+        view = createView("aaaHELLObbb");
+        addRevision(view, 3, 8, [{ doc: "HELLO" }]);
+
+        // Delete entire document
+        view.dispatch({ changes: { from: 0, to: 11 } });
+        expect(view.state.doc.toString()).toBe("");
+
+        // Flush microtasks so the resolver fires before undo
+        await Promise.resolve();
+
+        // Annotation should now be gone (removed by the resolver)
+        expect(getAnnotations(view)).toHaveLength(0);
+
+        // A single undo must fully restore text and annotation
+        undo(view);
+        expect(view.state.doc.toString()).toBe("aaaHELLObbb");
+        const anns = getAnnotations(view);
+        expect(anns).toHaveLength(1);
+        expect(isAnnotationOfType(anns[0], "revision")).toBe(true);
+        expect(anns[0].selection.main.from).toBe(3);
+        expect(anns[0].selection.main.to).toBe(8);
+    });
+
+    it("restores multi-version revision after resolver fires", async () => {
+        // "aaaHELLObbb" — revision on "HELLO" [3,8], two versions
+        view = createView("aaaHELLObbb");
+        addRevision(view, 3, 8, [{ doc: "HELLO" }, { doc: "Howdy" }], 0);
+
+        // Delete entire document
+        view.dispatch({ changes: { from: 0, to: 11 } });
+        expect(view.state.doc.toString()).toBe("");
+
+        // Flush microtasks so the resolver fires before undo
+        await Promise.resolve();
+
+        // Annotation should now be gone (removed by the resolver)
+        expect(getAnnotations(view)).toHaveLength(0);
+
+        // A single undo must fully restore text and annotation (all versions)
+        undo(view);
+        expect(view.state.doc.toString()).toBe("aaaHELLObbb");
+        const anns = getAnnotations(view);
+        expect(anns).toHaveLength(1);
+        expect(isAnnotationOfType(anns[0], "revision")).toBe(true);
+        expect(anns[0].selection.main.from).toBe(3);
+        expect(anns[0].selection.main.to).toBe(8);
+        if (isAnnotationOfType(anns[0], "revision")) {
+            expect(anns[0].versions).toHaveLength(2);
+            expect(anns[0].versions[0]?.doc).toBe("HELLO");
+            expect(anns[0].versions[1]?.doc).toBe("Howdy");
+        }
+    });
+
+    it("no extra undo steps needed after resolver fires", async () => {
+        // Regression: before the fix, up to 3 Cmd+Z presses were needed because
+        // collapsedRevisionResolver created a spurious history entry (H2) between
+        // the deletion (H1) and the addAnnotation (H0). After the fix the resolver
+        // uses addToHistory:false, so H2 never appears. The expected history is:
+        //   H0: addAnnotation  →  undo removes annotation, text stays
+        //   H1: deletion       →  undo restores text + annotation
+        // There is no intermediate broken state from H2.
+        view = createView("Hello, world!");
+        addRevision(view, 0, 5, [{ doc: "Hello" }]);
+
+        view.dispatch({ changes: { from: 0, to: 5 } });
+        expect(view.state.doc.toString()).toBe(", world!");
+
+        // Let the resolver clean up the collapsed annotation
+        await Promise.resolve();
+        expect(getAnnotations(view)).toHaveLength(0);
+
+        // First undo (H1) must fully restore text and annotation in one step
+        undo(view);
+        expect(view.state.doc.toString()).toBe("Hello, world!");
+        expect(getAnnotations(view)).toHaveLength(1);
+        expect(getAnnotations(view)[0].selection.main.from).toBe(0);
+        expect(getAnnotations(view)[0].selection.main.to).toBe(5);
+
+        // Second undo (H0) removes the annotation — this is the addAnnotation
+        // that was dispatched when the revision was created, NOT a spurious
+        // resolver entry. Text stays, annotation is removed cleanly.
+        undo(view);
+        expect(view.state.doc.toString()).toBe("Hello, world!");
+        expect(getAnnotations(view)).toHaveLength(0);
+    });
+});
