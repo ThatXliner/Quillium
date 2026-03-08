@@ -39,7 +39,7 @@ function formatDate(ms: number): string {
                 : trashMode
                   ? 'bg-white/60 border-white/60 shadow-sm hover:shadow-md hover:border-red-200/60'
                   : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"
-        onclick={trashMode ? onSelect : onSelect}
+        onclick={onSelect}
         ondblclick={trashMode ? undefined : onOpen}
         onkeydown={(e) => e.key === "Enter" && (trashMode ? onSelect() : onOpen())}
         role="button"
