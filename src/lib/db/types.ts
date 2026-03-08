@@ -1,3 +1,11 @@
+/**
+ * types.ts — Shared TypeScript types for the database layer.
+ *
+ * These types mirror the Rust structs in src-tauri/src/db/mod.rs.
+ * Rust uses `#[serde(rename_all = "camelCase")]` so all fields
+ * arrive over IPC already in camelCase.
+ */
+
 export type DocumentMeta = {
     id: string;
     title: string;
@@ -5,18 +13,38 @@ export type DocumentMeta = {
     updatedAt: number;
     wordCount: number;
     previewText: string;
-    tags: string[];
+    /** JSON-encoded string array, e.g. '["fiction","novel"]' */
+    tags: string;
 };
 
-export type DocumentRecord = DocumentMeta & { stateJson: string };
-
-export type RawDocumentRow = {
+export type DraftMeta = {
     id: string;
-    title: string;
-    created_at: number;
-    updated_at: number;
-    word_count: number;
-    preview_text: string;
-    tags: string;
-    state_json: string;
+    documentId: string;
+    label: string;
+    createdAt: number;
+    isActive: boolean;
+};
+
+export type AppendEventResult = {
+    eventSeq: number;
+    needsSnapshot: boolean;
+};
+
+export type EventRecord = {
+    id: number;
+    seq: number;
+    eventType: string;
+    payload: string;
+    createdAt: number;
+};
+
+export type LoadResult = {
+    snapshotStateJson: string | null;
+    snapshotEventSeq: number;
+    eventsSince: EventRecord[];
+};
+
+export type MigrationResult = {
+    migrated: boolean;
+    documentId: string | null;
 };
