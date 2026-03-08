@@ -1,11 +1,11 @@
 import { goto } from "$app/navigation";
 
-export function goToLibrary() {
+export function goToLibrary(): Promise<void> {
     document.documentElement.setAttribute("data-direction", "left");
-    goto("/library");
+    return goto("/library");
 }
 
-export function goToEditor() {
+export function goToEditor(): Promise<void> {
     document.documentElement.setAttribute("data-direction", "right");
-    goto("/");
+    return goto("/");
 }
