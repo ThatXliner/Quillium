@@ -30,6 +30,9 @@ let loading = $state<string | null>(null);
 let lastLoaded = $state<string | null>(null);
 let error = $state<string | null>(null);
 
+const debugScenarios = scenarios.filter((s) => s.category === "debug");
+const demoScenarios = scenarios.filter((s) => s.category === "demo");
+
 function close() {
     $debugPanelActive = false;
 }
@@ -62,8 +65,6 @@ async function runScenario(scenario: Scenario) {
         scenario.setup(tempView);
 
         // 4. Serialize the resulting state (doc + annotationField) to JSON.
-        //    We use mapValues to convert EditorSelection objects to their
-        //    JSON form, matching what annotationField.toJSON does internally.
         const json = tempView.state.toJSON(savedFields);
 
         tempView.destroy();
@@ -100,7 +101,7 @@ function handleKeydown(e: KeyboardEvent) {
 >
     <!-- Panel -->
     <div
-        class="relative bg-white/90 backdrop-blur-md border border-white/50 rounded-2xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col overflow-hidden"
+        class="relative bg-white/90 backdrop-blur-md border border-white/50 rounded-2xl shadow-2xl w-[860px] max-h-[82vh] flex flex-col overflow-hidden"
         onclick={(e) => e.stopPropagation()}
         onkeydown={(e) => e.stopPropagation()}
         role="dialog"
@@ -111,7 +112,7 @@ function handleKeydown(e: KeyboardEvent) {
         <div class="flex items-center justify-between px-5 py-4 border-b border-black/10">
             <div class="flex items-center gap-2.5">
                 <span class="text-lg">🐛</span>
-                <span class="font-semibold text-black/80 text-sm">Debug Scenarios</span>
+                <span class="font-semibold text-black/80 text-sm">Scenarios</span>
                 <span class="text-[10px] font-mono bg-amber-100 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">DEV</span>
             </div>
             <button
@@ -133,40 +134,95 @@ function handleKeydown(e: KeyboardEvent) {
             </div>
         {/if}
 
-        <!-- Scenario list -->
-        <div class="overflow-y-auto flex-1 px-4 py-3 flex flex-col gap-2">
-            {#each scenarios as scenario}
-                {@const isLoading = loading === scenario.id}
-                {@const isLoaded = lastLoaded === scenario.id && loading === null}
-                <div
-                    class={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${
-                        isLoaded
-                            ? "border-green-200 bg-green-50/70"
-                            : "border-black/10 bg-white/60 hover:bg-white/90"
-                    }`}
-                >
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-medium text-black/80">{scenario.label}</span>
-                            {#if isLoaded}
-                                <span class="text-[10px] text-green-600 font-medium">✓ loaded</span>
-                            {/if}
-                        </div>
-                        <p class="text-[11px] text-black/50 mt-0.5 leading-snug">{scenario.description}</p>
-                    </div>
-                    <button
-                        onclick={() => runScenario(scenario)}
-                        disabled={loading !== null}
-                        class={`shrink-0 text-[11px] font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                            isLoading
-                                ? "bg-blue-100 text-blue-400 cursor-wait"
-                                : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                        }`}
-                    >
-                        {isLoading ? "Saving…" : "Load"}
-                    </button>
+        <!-- Two-column body -->
+        <div class="flex flex-1 overflow-hidden min-h-0">
+
+            <!-- Debug column -->
+            <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
+                <div class="px-4 pt-3 pb-2 flex items-center gap-2">
+                    <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Debug</span>
                 </div>
-            {/each}
+                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
+                    {#each debugScenarios as scenario}
+                        {@const isLoading = loading === scenario.id}
+                        {@const isLoaded = lastLoaded === scenario.id && loading === null}
+                        <div
+                            class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
+                                isLoaded
+                                    ? "border-green-200 bg-green-50/70"
+                                    : "border-black/8 bg-white/50 hover:bg-white/80"
+                            }`}
+                        >
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                    {#if isLoaded}
+                                        <span class="text-[10px] text-green-600 font-medium">✓ loaded</span>
+                                    {/if}
+                                </div>
+                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                            </div>
+                            <button
+                                onclick={() => runScenario(scenario)}
+                                disabled={loading !== null}
+                                class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                                    isLoading
+                                        ? "bg-blue-100 text-blue-400 cursor-wait"
+                                        : "bg-black/8 hover:bg-black/14 text-black/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                }`}
+                            >
+                                {isLoading ? "Saving…" : "Load"}
+                            </button>
+                        </div>
+                    {/each}
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="w-px bg-black/8 self-stretch my-3"></div>
+
+            <!-- Demo column -->
+            <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
+                <div class="px-4 pt-3 pb-2 flex items-center gap-2">
+                    <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Demo</span>
+                    <span class="text-[10px] text-black/30">polished · show-ready</span>
+                </div>
+                <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
+                    {#each demoScenarios as scenario}
+                        {@const isLoading = loading === scenario.id}
+                        {@const isLoaded = lastLoaded === scenario.id && loading === null}
+                        <div
+                            class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
+                                isLoaded
+                                    ? "border-blue-200 bg-blue-50/60"
+                                    : "border-black/8 bg-white/50 hover:bg-white/80"
+                            }`}
+                        >
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                    {#if isLoaded}
+                                        <span class="text-[10px] text-blue-500 font-medium">✓ loaded</span>
+                                    {/if}
+                                </div>
+                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                            </div>
+                            <button
+                                onclick={() => runScenario(scenario)}
+                                disabled={loading !== null}
+                                class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                                    isLoading
+                                        ? "bg-blue-100 text-blue-400 cursor-wait"
+                                        : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                }`}
+                            >
+                                {isLoading ? "Saving…" : "Load"}
+                            </button>
+                        </div>
+                    {/each}
+                </div>
+            </div>
+
         </div>
 
         <!-- Footer -->
