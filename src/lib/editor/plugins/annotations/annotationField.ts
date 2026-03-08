@@ -134,6 +134,13 @@ export const updateThread = StateEffect.define<{
     newThread: Thread;
 }>();
 export const allowRevisionDocEdit = Annotation.define<boolean>();
+// Marks a transaction dispatched by collapsedRevisionResolver to remove
+// collapsed revisions after a deletion. addToHistory.of(false) ensures no
+// new undo entry is created, and this annotation prevents invertedEffects from
+// generating spurious addAnnotation effects that would pollute the deletion's
+// undo entry (since the deletion's undo already carries the correct
+// _restoreAnnotation effects for every collapsed revision).
+export const _revisionCleanup = Annotation.define<boolean>();
 // export const addThreadToAnnotation = StateEffect.define<{
 // 	annotationId: number;
 // 	threadMessage: ThreadMessage;
@@ -636,6 +643,15 @@ export const annotationField = StateField.define<Annotations>({
 export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) => {
     const effects = [];
     const oldAnnotations = transaction.startState.field(annotationField);
+
+    // Skip cleanup transactions dispatched by collapsedRevisionResolver.
+    // Those transactions remove collapsed revisions with addToHistory.of(false),
+    // so they don't create a new undo entry. Without this guard,
+    // invertedEffects would generate addAnnotation(collapsed) effects that get
+    // merged into the deletion's undo entry — re-inserting orphaned collapsed
+    // annotations on Cmd+Z. The deletion already stores _restoreAnnotation
+    // effects for every collapsed revision, so nothing more is needed.
+    if (transaction.annotation(_revisionCleanup)) return [];
 
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
     // when text they were anchored to was deleted. These have no explicit effect,

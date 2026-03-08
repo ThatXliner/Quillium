@@ -411,3 +411,69 @@ describe("single undo restores revision after collapsedRevisionResolver fires", 
         expect(getAnnotations(view)).toHaveLength(0);
     });
 });
+
+// ── Multiple revision deletion ────────────────────────────────────────────────
+//
+// When a single deletion collapses multiple revision annotations, the
+// collapsedRevisionResolver must clean up ALL of them (not just the first),
+// and a single Cmd+Z must restore all of them.
+
+describe("deleting multiple revisions in one selection", () => {
+    it("cleans up both collapsed revisions after resolver fires", async () => {
+        // "aaa[REV1]bbb[REV2]ccc" — delete everything, both revisions collapse
+        view = createView("aaaREV1bbbREV2ccc");
+        addRevision(view, 3, 7, [{ doc: "REV1" }]);
+        addRevision(view, 10, 14, [{ doc: "REV2" }]);
+
+        view.dispatch({ changes: { from: 0, to: 17 } });
+        expect(view.state.doc.toString()).toBe("");
+
+        // Both revisions survive as collapsed annotations before the resolver fires
+        expect(getAnnotations(view)).toHaveLength(2);
+        expect(getAnnotations(view).every((a) => a.selection.main.empty)).toBe(true);
+
+        // Flush microtasks — resolver should remove both in one dispatch
+        await Promise.resolve();
+        expect(getAnnotations(view)).toHaveLength(0);
+    });
+
+    it("restores both revisions with a single undo after resolver fires", async () => {
+        // "aaa[REV1]bbb[REV2]ccc" — delete everything, undo after resolver runs
+        view = createView("aaaREV1bbbREV2ccc");
+        addRevision(view, 3, 7, [{ doc: "REV1" }]);
+        addRevision(view, 10, 14, [{ doc: "REV2" }]);
+
+        view.dispatch({ changes: { from: 0, to: 17 } });
+        await Promise.resolve(); // let the resolver fire
+        expect(getAnnotations(view)).toHaveLength(0);
+
+        // Single undo must restore text and both annotations
+        undo(view);
+        expect(view.state.doc.toString()).toBe("aaaREV1bbbREV2ccc");
+        const anns = getAnnotations(view);
+        expect(anns).toHaveLength(2);
+        const positions = anns.map((a) => ({
+            from: a.selection.main.from,
+            to: a.selection.main.to,
+        }));
+        expect(positions).toContainEqual({ from: 3, to: 7 });
+        expect(positions).toContainEqual({ from: 10, to: 14 });
+    });
+
+    it("no orphaned collapsed annotations after undo when resolver fired", async () => {
+        // Regression: spurious addAnnotation(collapsed) effects from invertedEffects
+        // used to re-insert collapsed annotations after undo.
+        view = createView("aaaREV1bbbREV2ccc");
+        addRevision(view, 3, 7, [{ doc: "REV1" }]);
+        addRevision(view, 10, 14, [{ doc: "REV2" }]);
+
+        view.dispatch({ changes: { from: 0, to: 17 } });
+        await Promise.resolve(); // resolver fires, removes both
+
+        undo(view);
+        const anns = getAnnotations(view);
+        // All restored annotations must have non-empty selections
+        expect(anns.every((a) => !a.selection.main.empty)).toBe(true);
+        expect(anns).toHaveLength(2);
+    });
+});
