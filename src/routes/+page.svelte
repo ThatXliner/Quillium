@@ -39,6 +39,45 @@ function showTutorialOnFirstVisit() {
 }
 
 onMount(showTutorialOnFirstVisit);
+
+// DEV only: expose window.__runScenario__(id) for the screenshot script.
+// Runs the same save+reload cycle as DebugPanel without opening the panel UI.
+if (import.meta.env.DEV) {
+    onMount(async () => {
+        const { scenarios } = await import("$lib/debug/scenarios");
+        const { EditorState } = await import("@codemirror/state");
+        const { EditorView } = await import("@codemirror/view");
+        const { getExtensions, savedFields } = await import("$lib/editor/extensions");
+        const { invoke } = await import("@tauri-apps/api/core");
+
+        (window as unknown as Record<string, unknown>).__runScenario__ = async (
+            id: string,
+        ) => {
+            const scenario = scenarios.find((s) => s.id === id);
+            if (!scenario) {
+                console.warn(`[screenshot] unknown scenario: ${id}`);
+                return false;
+            }
+            try {
+                const tempState = EditorState.create({
+                    doc: scenario.doc,
+                    extensions: getExtensions({ persist: false }),
+                });
+                const tempParent = document.createElement("div");
+                const tempView = new EditorView({ state: tempState, parent: tempParent });
+                scenario.setup(tempView);
+                const json = tempView.state.toJSON(savedFields);
+                tempView.destroy();
+                await invoke("save", { state: JSON.stringify(json) });
+                await editorComponent?.reload();
+                return true;
+            } catch (e) {
+                console.error("[screenshot] runScenario failed:", e);
+                return false;
+            }
+        };
+    });
+}
 </script>
 
 <AiSidebar />
