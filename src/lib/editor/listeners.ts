@@ -220,11 +220,14 @@ async function doAppend(update: ViewUpdate) {
     const previewText = docText.slice(0, 200);
     if (metaDebounceTimer !== null) clearTimeout(metaDebounceTimer);
     metaDebounceTimer = setTimeout(() => {
-        // Guard: abort if the user has navigated to a different document.
-        if (get(currentDocumentId) !== docId) return;
-        currentDocumentTitle.set(title);
-        updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
-        metaDebounceTimer = null;
+        try {
+            // Guard: abort if the user has navigated to a different document.
+            if (get(currentDocumentId) !== docId) return;
+            currentDocumentTitle.set(title);
+            updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
+        } finally {
+            metaDebounceTimer = null;
+        }
     }, 500);
 }
 
