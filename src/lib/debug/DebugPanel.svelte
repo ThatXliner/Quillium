@@ -15,14 +15,13 @@
     Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
-import { editorView, currentDocumentId, currentDraftId } from "$lib/stores";
+import { editorView, currentDocumentId, currentDocumentTitle, currentDraftId } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { createSnapshot } from "$lib/db";
-import { get } from "svelte/store";
+import { resetDb, createDocument, createDraft, createSnapshot } from "$lib/db";
 
 const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
 
@@ -68,9 +67,15 @@ async function runScenario(scenario: Scenario) {
 
         tempView.destroy();
 
-        // 5. Write to the DB as a snapshot so the next load sees the scenario.
-        const draftId = get(currentDraftId);
-        if (!draftId) throw new Error("No active draft — open a document first.");
+        // 5. Wipe the entire DB and create a fresh document + draft so the
+        //    scenario starts from a completely clean slate with no leftover
+        //    events or snapshots from previous sessions.
+        await resetDb();
+        const docId = await createDocument("Untitled");
+        const draftId = await createDraft(docId, "Draft");
+        currentDocumentId.set(docId);
+        currentDocumentTitle.set("Untitled");
+        currentDraftId.set(draftId);
         await createSnapshot(draftId, JSON.stringify(json), -1);
 
         // 6. Reload the live editor from disk — re-runs the full

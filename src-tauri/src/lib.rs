@@ -128,6 +128,24 @@ fn cmd_migrate_from_state_json(
     migrate_from_state_json(&conn, &state_json_path).map_err(|e| e.to_string())
 }
 
+// ── Debug reset command ───────────────────────────────────────────
+
+/// Wipes all user data from the database (documents, drafts, events,
+/// snapshots) and re-initialises the schema. Used by the debug panel
+/// to guarantee a clean slate before loading a scenario.
+#[tauri::command]
+fn cmd_reset_db(state: tauri::State<DbState>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "DELETE FROM snapshots;
+         DELETE FROM events;
+         DELETE FROM drafts;
+         DELETE FROM documents;
+         DELETE FROM _meta;",
+    )
+    .map_err(|e| e.to_string())
+}
+
 // ── Legacy scrap command ──────────────────────────────────────────
 // Kept for Save.svelte compatibility. In the new DB world, "scrapping"
 // a draft means deleting the document. The UI reloads after this call.
@@ -169,6 +187,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            cmd_reset_db,
             scrap,
             cmd_list_documents,
             cmd_get_document,

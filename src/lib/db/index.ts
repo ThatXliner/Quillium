@@ -26,6 +26,16 @@ export async function initDb(): Promise<MigrationResult> {
     return invoke<MigrationResult>("cmd_migrate_from_state_json");
 }
 
+// ── Reset ─────────────────────────────────────────────────────────
+
+/**
+ * Wipes all user data (documents, drafts, events, snapshots) and
+ * re-initialises the schema. Only used by the dev debug panel.
+ */
+export async function resetDb(): Promise<void> {
+    return invoke<void>("cmd_reset_db");
+}
+
 // ── Documents ─────────────────────────────────────────────────────
 
 export async function listDocuments(): Promise<DocumentMeta[]> {

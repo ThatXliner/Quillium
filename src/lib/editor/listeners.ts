@@ -43,8 +43,11 @@ export interface ListenerOptions {
     persist?: boolean;
 }
 
-// ── Debounce timer for metadata updates ───────────────────────────
+// ── Debounce timers ───────────────────────────────────────────────
 let metaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+// Only show "Saving…" if the write takes longer than this threshold.
+// This keeps the indicator on "Saved" during normal fast writes.
+let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 
 function extractTitle(text: string): string {
     return text.split("\n")[0].trim().slice(0, 80) || "Untitled";
@@ -201,9 +204,19 @@ async function persistTransaction(update: ViewUpdate) {
     const payload = buildEventPayload(update);
     if (!payload) return;
 
-    saveStatus.set("saving");
+    // Only flip to "Saving…" if the write hasn't resolved within 150 ms.
+    // Fast writes (the common case) stay on "Saved" the whole time.
+    if (savingIndicatorTimer !== null) clearTimeout(savingIndicatorTimer);
+    savingIndicatorTimer = setTimeout(() => {
+        saveStatus.set("saving");
+        savingIndicatorTimer = null;
+    }, 150);
     try {
         const result = await appendEvent(draftId, JSON.stringify(payload));
+        if (savingIndicatorTimer !== null) {
+            clearTimeout(savingIndicatorTimer);
+            savingIndicatorTimer = null;
+        }
         saveStatus.set("saved");
 
         if (result.needsSnapshot) {
@@ -212,6 +225,10 @@ async function persistTransaction(update: ViewUpdate) {
         }
     } catch (e) {
         console.error("[listeners] appendEvent failed:", e);
+        if (savingIndicatorTimer !== null) {
+            clearTimeout(savingIndicatorTimer);
+            savingIndicatorTimer = null;
+        }
         saveStatus.set("error");
         return;
     }
