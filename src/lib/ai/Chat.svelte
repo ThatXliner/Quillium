@@ -53,10 +53,22 @@
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { appSettings } from "$lib/settings.svelte";
 import posthog from "posthog-js";
 
 let input = $state("");
 const { chat, clearChat } = createAiChat({ mode: "chat" });
+
+let customChatPrompts = $derived(
+    appSettings.customQuickActions.filter((a) => a.panel === "chat"),
+);
+
+function useQuickPrompt(prompt: string) {
+    posthog.capture("ai_chat_quick_prompt_used", {
+        has_selection: !!$selectedText,
+    });
+    chat.sendMessage({ text: prompt });
+}
 
 // Sync streaming state to the global AI processing indicator
 // so the sidebar glow activates during chat requests.
@@ -166,6 +178,19 @@ async function handleSubmit(event: Event) {
 
     <!-- Input form -->
     <div class="border-t border-black/10 p-3 bg-white/30">
+        {#if customChatPrompts.length > 0}
+            <div class="mb-2 flex flex-wrap gap-1.5">
+                {#each customChatPrompts as { label, prompt }}
+                    <button
+                        onclick={() => useQuickPrompt(prompt)}
+                        disabled={chat.status !== "ready" || !$documentContent}
+                        class="px-2 py-1 text-xs bg-white hover:bg-blue-50 rounded border border-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {label}
+                    </button>
+                {/each}
+            </div>
+        {/if}
         {#if $selectedText}
             <div
                 class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"

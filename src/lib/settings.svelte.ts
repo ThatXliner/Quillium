@@ -7,6 +7,12 @@
 
 const STORAGE_KEY = "quillium-app-settings";
 
+export type CustomQuickAction = {
+    label: string;
+    prompt: string;
+    panel: "revise" | "feedback" | "chat";
+};
+
 type AppSettings = {
     selectTextInNestedEditor: boolean;
     showNestedEditor: boolean;
@@ -14,6 +20,7 @@ type AppSettings = {
     docFontFamily: string;
     docFontSize: number;
     uiFontFamily: string;
+    customQuickActions: CustomQuickAction[];
 };
 
 const DEFAULTS: AppSettings = {
@@ -23,6 +30,7 @@ const DEFAULTS: AppSettings = {
     docFontFamily: '"SF Pro Text", system-ui, sans-serif',
     docFontSize: 18,
     uiFontFamily: "system-ui, -apple-system, sans-serif",
+    customQuickActions: [],
 };
 
 function loadSettings(): AppSettings {

@@ -59,6 +59,7 @@
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { appSettings } from "$lib/settings.svelte";
 import posthog from "posthog-js";
 
 let input = $state("");

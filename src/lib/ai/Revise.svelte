@@ -63,6 +63,7 @@
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { appSettings } from "$lib/settings.svelte";
 import posthog from "posthog-js";
 
 let input = $state("");
@@ -105,13 +106,20 @@ function reviseText() {
     chat.sendMessage({ text: context });
 }
 
-const quickPrompts = [
-    "Make this more concise",
-    "Improve the flow and transitions",
-    "Make this more engaging",
-    "Fix grammar and style issues",
-    "Simplify complex sentences",
+const defaultQuickPrompts = [
+    { label: "Make this more concise", prompt: "Make this more concise" },
+    { label: "Improve the flow and transitions", prompt: "Improve the flow and transitions" },
+    { label: "Make this more engaging", prompt: "Make this more engaging" },
+    { label: "Fix grammar and style issues", prompt: "Fix grammar and style issues" },
+    { label: "Simplify complex sentences", prompt: "Simplify complex sentences" },
 ];
+
+let allRevisePrompts = $derived([
+    ...defaultQuickPrompts,
+    ...appSettings.customQuickActions
+        .filter((a) => a.panel === "revise")
+        .map((a) => ({ label: a.label, prompt: a.prompt })),
+]);
 
 /**
  * Compose a revision message from a quick-prompt chip, scoped to
@@ -149,13 +157,13 @@ function useQuickPrompt(prompt: string) {
 
         <!-- Quick prompts -->
         <div class="mt-2 grid grid-cols-2 gap-1.5">
-            {#each quickPrompts as prompt}
+            {#each allRevisePrompts as { label, prompt }}
                 <button
                     onclick={() => useQuickPrompt(prompt)}
                     disabled={chat.status !== "ready" || !$documentContent}
                     class="px-2 py-1.5 text-xs bg-white hover:bg-purple-50 rounded border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
                 >
-                    {prompt}
+                    {label}
                 </button>
             {/each}
         </div>
