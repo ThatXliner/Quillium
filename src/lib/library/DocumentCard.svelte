@@ -29,7 +29,7 @@ function formatDate(ms: number): string {
     <button
         onclick={onSelect}
         ondblclick={onOpen}
-        class="group text-left rounded-xl p-4 flex flex-col gap-2 border transition-all duration-200 cursor-pointer w-full overflow-hidden
+        class="group text-left rounded-xl p-4 flex flex-col gap-2 border transition-all duration-200 cursor-pointer w-full min-w-0 overflow-hidden
             {selected
                 ? 'bg-blue-50 border-blue-300 shadow-md ring-2 ring-blue-400/30'
                 : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"
@@ -41,8 +41,8 @@ function formatDate(ms: number): string {
             </p>
         </div>
 
-        <div class="flex flex-col gap-0.5 min-w-0">
-            <span class="text-sm font-medium text-black/80 truncate">{doc.title}</span>
+        <div class="flex flex-col gap-0.5 w-full overflow-hidden">
+            <p class="text-sm font-medium text-black/80 truncate w-full">{doc.title}</p>
             <div class="flex items-center gap-2 text-[11px] text-black/40">
                 <span>{doc.wordCount.toLocaleString()} words</span>
                 <span>·</span>
