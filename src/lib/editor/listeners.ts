@@ -183,9 +183,18 @@ async function doAppend(update: ViewUpdate) {
     // Only flip to "Saving…" if the write hasn't resolved within 150 ms.
     // Fast writes (the common case) stay on "Saved" the whole time.
     if (savingIndicatorTimer !== null) clearTimeout(savingIndicatorTimer);
+    const scheduledDocId = docId;
+    const scheduledDraftId = draftId;
     savingIndicatorTimer = setTimeout(() => {
-        saveStatus.set("saving");
-        savingIndicatorTimer = null;
+        try {
+            // Guard: abort if the user has navigated to a different document or draft.
+            if (get(currentDocumentId) !== scheduledDocId || get(currentDraftId) !== scheduledDraftId) {
+                return;
+            }
+            saveStatus.set("saving");
+        } finally {
+            savingIndicatorTimer = null;
+        }
     }, 150);
     try {
         const result = await appendEvent(draftId, JSON.stringify(payload));
