@@ -100,6 +100,32 @@ function askForFeedback() {
     input = context;
     chat.sendMessage({ text: context });
 }
+
+const feedbackQuickPrompts = [
+    { label: "Pacing", prompt: "Focus on pacing — does the story/argument move at the right speed?" },
+    { label: "Voice & tone", prompt: "Focus on voice and tone — is the writing voice consistent?" },
+    { label: "Clarity", prompt: "Focus on clarity — are there confusing or unclear passages?" },
+    { label: "Structure", prompt: "Focus on structure — is the piece well-organized?" },
+    { label: "Opening / closing", prompt: "Focus on the opening and closing — is the hook effective? Does it land?" },
+];
+
+let allFeedbackPrompts = $derived([
+    ...feedbackQuickPrompts,
+    ...appSettings.customQuickActions
+        .filter((a) => a.panel === "feedback")
+        .map((a) => ({ label: a.label, prompt: a.prompt })),
+]);
+
+function useQuickPrompt(prompt: string) {
+    const target = $selectedText ? "this selected text" : "my document";
+    const message = `${prompt} In ${target}.`;
+    posthog.capture("ai_feedback_quick_prompt_used", {
+        prompt,
+        has_selection: !!$selectedText,
+    });
+    input = message;
+    chat.sendMessage({ text: message });
+}
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
@@ -121,6 +147,19 @@ function askForFeedback() {
                     : "Add content to get feedback"}
             </div>
         </button>
+
+        <!-- Quick prompts -->
+        <div class="mt-2 grid grid-cols-2 gap-1.5">
+            {#each allFeedbackPrompts as { label, prompt }}
+                <button
+                    onclick={() => useQuickPrompt(prompt)}
+                    disabled={chat.status !== "ready" || !$documentContent}
+                    class="px-2 py-1.5 text-xs bg-white hover:bg-green-50 rounded border border-green-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                >
+                    {label}
+                </button>
+            {/each}
+        </div>
     </div>
 
     <!-- Chat messages -->
