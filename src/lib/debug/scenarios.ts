@@ -686,7 +686,7 @@ export const scenarios: Scenario[] = [
 
             createComment({
                 targetText:
-                    "Not — " She stopped. Started again. "Not because I would have done anything differently.",
+                    '"Not — " She stopped. Started again. "Not because I would have done anything differently."',
                 comment:
                     "The interrupted speech is right but slightly over-punctuated. The em-dash already signals the stop; 'She stopped' restates it. 'Started again' is the keeper — that's the beat you want. Try: '\"Not —\" She started again. \"Not because I would have done anything differently.\"' The repetition of 'Not' at the start of both fragments is very good — it sounds like someone finding their way into a sentence.",
                 author: "Editor",
