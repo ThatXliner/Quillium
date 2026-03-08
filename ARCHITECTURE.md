@@ -387,20 +387,62 @@ $effect(() => {
 
 ## Persistence
 
-Both the undo history and annotation state are persisted together on every meaningful change:
+Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodic snapshots. All database operations run in Rust via Tauri commands — the TypeScript layer calls `invoke()` wrappers in `src/lib/db/index.ts`.
+
+### Schema overview
+
+| Table | Purpose |
+|---|---|
+| `documents` | Document metadata (title, word count, preview, tags) |
+| `drafts` | Named drafts per document (default one per document) |
+| `events` | Append-only log of CM transactions, one row per update |
+| `snapshots` | Full `EditorState.toJSON()` blobs, kept at most 3 per draft |
+| `_meta` | Key/value flags (migration guard, active draft pointers) |
+
+The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
+
+### Event log flow
 
 ```typescript
 // extensions.ts
 export const savedFields = { historyField, annotationField };
 
-// Save (listeners.ts)
-invoke("save", { state: JSON.stringify(update.state.toJSON(savedFields)) });
-
-// Load (Editor.svelte)
-EditorState.fromJSON(parsed, { extensions: getExtensions(...) }, savedFields);
+// On every docChanged || annotationsChanged (listeners.ts):
+const result = await appendEvent(draftId, JSON.stringify(payload));
+if (result.needsSnapshot) {
+    createSnapshot(draftId, JSON.stringify(state.toJSON(savedFields)), result.eventSeq);
+}
 ```
 
-Save is triggered by `listeners.ts` on every transaction where `docChanged || annotationsChanged(update)`. Because `historyField` and `annotationField` are serialized together, undo history and annotation positions survive app restarts in sync.
+`appendEvent` (Rust) atomically inserts the event row, bumps `documents.updated_at`, and returns `{ eventSeq, needsSnapshot }`. A snapshot is triggered when ≥50 events have accumulated since the last snapshot, or ≥120 seconds have elapsed.
+
+### Load flow
+
+```typescript
+// Editor.svelte
+const loaded = await loadDocumentState(docId, draftId);
+// loaded.snapshotStateJson  → latest snapshot blob
+// loaded.snapshotEventSeq   → seq of that snapshot (-1 for seed)
+// loaded.eventsSince        → events after the snapshot (replay deferred to v2)
+```
+
+`loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `seq > snapshot.up_to_event_seq`. In v1, only the snapshot is restored; the `eventsSince` list is logged as a warning.
+
+### Migration from state.json
+
+On first launch after upgrading, `migrate_from_state_json` (Rust) runs automatically. It reads the legacy `state.json`, creates a document + draft + seed snapshot (with `up_to_event_seq = -1`), and sets a `_meta` flag so it never runs again. The operation is idempotent.
+
+### Event payload format
+
+Each event has a `type` field that determines its shape:
+
+- `doc_change` — pure text edit `{ changes: [{from, to, insert}], selection }`
+- `annotation_add` / `annotation_remove` / `annotation_update` — annotation mutations
+- `compound` — doc change + annotation effects in the same CM transaction
+
+### Snapshot pruning
+
+`create_snapshot` (Rust) keeps only the latest 3 snapshots per draft. After inserting, it deletes all older snapshots for that draft.
 
 `VersionState` blobs (nested editor state) are also serialized inside `annotationField.toJSON()` — they're stored as opaque objects within the `versions` array and round-trip correctly because they're already JSON-safe.
 

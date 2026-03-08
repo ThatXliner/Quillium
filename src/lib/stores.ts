@@ -86,6 +86,13 @@ export const currentDocumentId = writable<string | null>(null);
 export const currentDocumentTitle = writable<string>("Untitled");
 
 /**
+ * The ID of the active draft for the current document.
+ * Written by: Editor.svelte on load and when switching drafts.
+ * Read by: listeners.ts to route append_event calls.
+ */
+export const currentDraftId = writable<string | null>(null);
+
+/**
  * Controls tutorial overlay visibility.
  * Written by: +page.svelte (on first visit), StatusBar.svelte
  *             (the "?" button), Tutorial.svelte (on complete).

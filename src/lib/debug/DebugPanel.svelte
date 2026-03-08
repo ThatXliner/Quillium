@@ -6,23 +6,23 @@
          annotationField and annotation decorations).
       2. Runs scenario.setup() to dispatch annotations onto that state.
       3. Serializes the resulting state via toJSON(savedFields) and writes
-         it to disk via invoke("save") — the same path as normal auto-save.
-      4. Calls reloadEditor() (exported from Editor.svelte) which re-runs
-         invoke("load") → EditorState.fromJSON → view.setState, so the
-         live view gets the complete extension stack including its update
-         listener and annotation decoration plugins.
+         it to the DB as a snapshot via createSnapshot().
+      4. Calls reloadEditor() which reloads from the DB so the live view
+         gets the complete extension stack including its update listener
+         and annotation decoration plugins.
 
     Activation: click the 🐛 button in the StatusBar, or press Escape to close.
     Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
-import { editorView } from "$lib/stores";
+import { editorView, currentDocumentId, currentDraftId } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { invoke } from "@tauri-apps/api/core";
+import { createSnapshot } from "$lib/db";
+import { get } from "svelte/store";
 
 const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
 
@@ -68,9 +68,10 @@ async function runScenario(scenario: Scenario) {
 
         tempView.destroy();
 
-        // 5. Write to disk via the same Tauri "save" command the auto-save
-        //    listener uses, so the next load sees the scenario state.
-        await invoke("save", { state: JSON.stringify(json) });
+        // 5. Write to the DB as a snapshot so the next load sees the scenario.
+        const draftId = get(currentDraftId);
+        if (!draftId) throw new Error("No active draft — open a document first.");
+        await createSnapshot(draftId, JSON.stringify(json), -1);
 
         // 6. Reload the live editor from disk — re-runs the full
         //    EditorState.fromJSON path with all extensions wired up.
