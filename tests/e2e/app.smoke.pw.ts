@@ -95,7 +95,7 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
     );
 }
 
-test("renders a blank editor when no documents exist", async ({ page }) => {
+test("renders a blank editor when an existing blank document is loaded", async ({ page }) => {
     await installTauriMock(page);
     await page.goto("/");
 
