@@ -1,116 +1,190 @@
-use std::fs;
+pub mod db;
+mod keychain;
 
-use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager};
+use std::sync::Mutex;
+use tauri::Manager;
 
-const KEYCHAIN_SERVICE: &str = "com.bryanhu.quillium";
+use db::{
+    documents::{
+        create_document, create_draft, delete_document, get_document, list_documents, list_drafts,
+        update_document_meta,
+    },
+    events::{append_event, create_snapshot},
+    load::load_document_state,
+    migration::migrate_from_state_json,
+    schema::open_db,
+    AppendEventResult, DocumentMeta, DraftMeta, LoadResult, MigrationResult,
+};
+use keychain::{delete_api_key, get_api_key, set_api_key};
+
+pub struct DbState(pub Mutex<rusqlite::Connection>);
+
+// ── Document commands ─────────────────────────────────────────────
 
 #[tauri::command]
-fn set_api_key(provider: String, key: String) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
-        .map_err(|e| e.to_string())?;
-    entry.set_password(&key).map_err(|e| e.to_string())
+fn cmd_list_documents(state: tauri::State<DbState>) -> Result<Vec<DocumentMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_documents(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_api_key(provider: String) -> Result<Option<String>, String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
-        .map_err(|e| e.to_string())?;
-    match entry.get_password() {
-        Ok(key) => Ok(Some(key)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(e.to_string()),
+fn cmd_get_document(
+    state: tauri::State<DbState>,
+    id: String,
+) -> Result<Option<DocumentMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_document(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_document(state: tauri::State<DbState>, title: String) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_document(&conn, &title).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_update_document_meta(
+    state: tauri::State<DbState>,
+    id: String,
+    title: String,
+    word_count: i64,
+    preview_text: String,
+    tags: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    update_document_meta(&conn, &id, &title, word_count, &preview_text, &tags)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_delete_document(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_document(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_drafts(
+    state: tauri::State<DbState>,
+    doc_id: String,
+) -> Result<Vec<DraftMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_drafts(&conn, &doc_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_draft(
+    state: tauri::State<DbState>,
+    doc_id: String,
+    label: String,
+) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_draft(&conn, &doc_id, &label).map_err(|e| e.to_string())
+}
+
+// ── Event/snapshot commands ───────────────────────────────────────
+
+#[tauri::command]
+fn cmd_append_event(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    payload_json: String,
+) -> Result<AppendEventResult, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    append_event(&conn, &draft_id, &payload_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_snapshot(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    state_json: String,
+    up_to_event_seq: i64,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_snapshot(&conn, &draft_id, &state_json, up_to_event_seq).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_load_document_state(
+    state: tauri::State<DbState>,
+    doc_id: String,
+    draft_id: Option<String>,
+) -> Result<LoadResult, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    load_document_state(&conn, &doc_id, draft_id.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_migrate_from_state_json(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<DbState>,
+) -> Result<MigrationResult, String> {
+    let state_json_path = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("state.json");
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    migrate_from_state_json(&conn, &state_json_path).map_err(|e| e.to_string())
+}
+
+// ── Legacy scrap command ──────────────────────────────────────────
+// Kept for Save.svelte compatibility. In the new DB world, "scrapping"
+// a draft means deleting the document. The UI reloads after this call.
+#[tauri::command]
+fn scrap(state: tauri::State<DbState>) -> bool {
+    // Get the first (most-recently-updated) document and delete it.
+    let conn = match state.0.lock() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let doc_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM documents ORDER BY updated_at DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    if let Some(id) = doc_id {
+        let _ = conn.execute("DELETE FROM documents WHERE id = ?1", rusqlite::params![id]);
     }
+    true
 }
 
-#[tauri::command]
-fn delete_api_key(provider: String) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &provider)
-        .map_err(|e| e.to_string())?;
-    match entry.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn save(app: tauri::AppHandle, state: String) -> bool {
-    app.emit("saving", ()).unwrap();
-    // How the saving algorithm should work
-    // (don't implement it yet as it doesnt really matter)
-    // on a change, initiate a save
-    // if there is already a save action in progress, mark it as cancelled
-    // and/by queueing a new save
-    //
-    // in the save code, when atomic saving the file (writing to file first and then moving it)
-    // and there's a cancellation, delete the temporary file and abort
-    // and then use the newest queued action.
-    // however, if there hasn't been a save in the past ___ seconds,
-    // ignore the change in queue size and write to disk first, and then skip to the latest
-    //
-    // start autosave action when typing debounce (when we implement multiple documents lol)
-    // but save cache on every single time history gets updated
-    let dir = app.path().app_local_data_dir().unwrap();
-    {
-        // Sec issue because we're cheking perms before creating the dir?
-        if !dir.exists() {
-            fs::create_dir(&dir).unwrap();
-        }
-    }
-    let output = fs::write(dir.join("state.json"), state).is_ok();
-    app.emit("saved", ()).unwrap();
-    output
-}
-#[tauri::command]
-fn scrap(app: tauri::AppHandle) -> bool {
-    app.emit("saving", ()).unwrap();
-    let dir = app.path().app_local_data_dir().unwrap();
-    let scrap_dir = dir.join("scrapped");
-    {
-        // Sec issue because we're cheking perms before creating the dir?
-        if !scrap_dir.exists() {
-            fs::create_dir_all(&scrap_dir).unwrap();
-        }
-    }
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let output = fs::rename(
-        dir.join("state.json"),
-        scrap_dir.join(format!("{}.json", current_time)),
-    )
-    .is_ok();
-    app.emit("saved", ()).unwrap();
-    output
-}
-#[tauri::command]
-fn load(app_handle: tauri::AppHandle) -> Option<String> {
-    fs::read_to_string(
-        app_handle
-            .path()
-            .app_local_data_dir()
-            .unwrap()
-            .join("state.json"),
-    )
-    .ok()
-}
-
-#[tauri::command]
-fn migrate_from_state_json(app_handle: tauri::AppHandle) -> Option<String> {
-    fs::read_to_string(
-        app_handle.path().app_local_data_dir().unwrap().join("state.json")
-    ).ok()
-}
+// ── App entry point ───────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_sql::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![save, load, scrap, set_api_key, get_api_key, delete_api_key, migrate_from_state_json])
+        .setup(|app| {
+            let db_path = app
+                .path()
+                .app_local_data_dir()
+                .expect("failed to resolve app local data dir");
+            std::fs::create_dir_all(&db_path).expect("failed to create app data dir");
+            let db_file = db_path.join("quillium.db");
+            let conn = open_db(&db_file).expect("failed to open database");
+            app.manage(DbState(Mutex::new(conn)));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            scrap,
+            cmd_list_documents,
+            cmd_get_document,
+            cmd_create_document,
+            cmd_update_document_meta,
+            cmd_delete_document,
+            cmd_list_drafts,
+            cmd_create_draft,
+            cmd_append_event,
+            cmd_create_snapshot,
+            cmd_load_document_state,
+            cmd_migrate_from_state_json,
+            set_api_key,
+            get_api_key,
+            delete_api_key,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
