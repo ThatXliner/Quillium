@@ -86,6 +86,13 @@ export const currentDocumentId = writable<string | null>(null);
 export const currentDocumentTitle = writable<string>("Untitled");
 
 /**
+ * Save status for the status bar indicator.
+ * Written by: listeners.ts — 'saving' on dispatch, 'saved' on success, 'error' on failure.
+ * Read by: StatusBar.svelte.
+ */
+export const saveStatus = writable<"saved" | "saving" | "error">("saved");
+
+/**
  * The ID of the active draft for the current document.
  * Written by: Editor.svelte on load and when switching drafts.
  * Read by: listeners.ts to route append_event calls.

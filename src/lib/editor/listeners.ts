@@ -18,7 +18,7 @@
 import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { get } from "svelte/store";
-import { currentDocumentId, currentDraftId, currentDocumentTitle } from "$lib/stores";
+import { currentDocumentId, currentDraftId, currentDocumentTitle, saveStatus } from "$lib/stores";
 import {
     appendEvent,
     createSnapshot,
@@ -201,8 +201,10 @@ async function persistTransaction(update: ViewUpdate) {
     const payload = buildEventPayload(update);
     if (!payload) return;
 
+    saveStatus.set("saving");
     try {
         const result = await appendEvent(draftId, JSON.stringify(payload));
+        saveStatus.set("saved");
 
         if (result.needsSnapshot) {
             const stateJson = JSON.stringify(update.state.toJSON(savedFields));
@@ -210,6 +212,7 @@ async function persistTransaction(update: ViewUpdate) {
         }
     } catch (e) {
         console.error("[listeners] appendEvent failed:", e);
+        saveStatus.set("error");
         return;
     }
 
