@@ -85,6 +85,8 @@ const selectedText = $derived(
 /**
  * Commit the new comment: append the user's message to the
  * annotation's thread via a CodeMirror updateThread effect.
+ * After saving, restore the editor selection to cover the
+ * commented text (Google Docs behaviour).
  */
 function addComment() {
     if (!pendingComment || !isAnnotationOfType(pendingComment, "comment")) return;
@@ -92,6 +94,7 @@ function addComment() {
         has_selection: !!selectedText,
         comment_length: commentText.length,
     });
+    const { from, to } = pendingComment.selection.main;
     view.dispatch(
         view.state.update({
             effects: [
@@ -107,6 +110,9 @@ function addComment() {
                     ],
                 }),
             ],
+            // Select the commented text so the active annotation is immediately
+            // shown and the card bubbles up next to the highlighted text.
+            selection: { anchor: from, head: to },
         }),
     );
     commentText = "";

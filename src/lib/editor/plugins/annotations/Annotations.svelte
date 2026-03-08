@@ -190,9 +190,13 @@ function debouncedUpdatePositions() {
 
 /**
  * Core layout algorithm for floating mode: assigns each card
- * a top position aligned to its annotation's viewport Y, with
- * downward nudging to prevent overlap. Also scrolls the
- * container to keep the active card visible.
+ * a top position aligned to its annotation's viewport Y.
+ *
+ * Google Docs-style: the active card anchors at its natural text
+ * Y first. Cards above it are pushed upward to avoid overlap;
+ * cards below it are pushed downward. This ensures the selected
+ * card always sits next to its highlighted text rather than being
+ * displaced by earlier cards.
  */
 function updateAnnotationPositions() {
     if (!resolvedView || !isFloating) return;
@@ -203,22 +207,89 @@ function updateAnnotationPositions() {
     const leftPx = getAnnotationLeft();
 
     const sortedByPos = [...positions].sort((a, b) => a.viewportY - b.viewportY);
-
-    // Walk cards top-to-bottom, pushing each below the previous
     const adjustedY: { [id: number]: number } = {};
-    let lastBottom = TOP_CLAMP;
 
-    for (const { annotation, viewportY } of sortedByPos) {
-        const el = annotationElements[annotation.id];
-        const height = el ? el.offsetHeight || 80 : 80;
-        const y = Math.max(viewportY, lastBottom, TOP_CLAMP);
-        adjustedY[annotation.id] = y;
-        lastBottom = y + height + MIN_SPACING;
+    // Find the active card index in the sorted list
+    const activeIdx = resolvedActiveAnnotation
+        ? sortedByPos.findIndex((p) => p.annotation.id === resolvedActiveAnnotation!.id)
+        : -1;
+
+    if (activeIdx === -1) {
+        // No active card: simple top-to-bottom pass (original behaviour)
+        let lastBottom = TOP_CLAMP;
+        for (const { annotation, viewportY } of sortedByPos) {
+            const el = annotationElements[annotation.id];
+            const height = el ? el.offsetHeight || 80 : 80;
+            const y = Math.max(viewportY, lastBottom, TOP_CLAMP);
+            adjustedY[annotation.id] = y;
+            lastBottom = y + height + MIN_SPACING;
+        }
+    } else {
+        // Active card anchors at its natural text Y
+        const activeItem = sortedByPos[activeIdx];
+        const activeEl = annotationElements[activeItem.annotation.id];
+        const activeHeight = activeEl ? activeEl.offsetHeight || 80 : 80;
+        const activeY = activeItem.viewportY;
+        adjustedY[activeItem.annotation.id] = activeY;
+
+        // Walk cards ABOVE the active card upward (reverse order).
+        // Prefer natural Y; push up past the top edge if needed —
+        // the scroll container will hide them until the user scrolls.
+        {
+            let ceiling = activeY - MIN_SPACING;
+            for (let i = activeIdx - 1; i >= 0; i--) {
+                const { annotation, viewportY } = sortedByPos[i];
+                const el = annotationElements[annotation.id];
+                const height = el ? el.offsetHeight || 80 : 80;
+                const y = Math.min(viewportY, ceiling - height);
+                adjustedY[annotation.id] = y;
+                ceiling = y - MIN_SPACING;
+            }
+        }
+
+        // Walk cards BELOW the active card downward.
+        // Prefer natural Y; push down past the bottom if needed.
+        let lastBottom = activeY + activeHeight + MIN_SPACING;
+        for (let i = activeIdx + 1; i < sortedByPos.length; i++) {
+            const { annotation, viewportY } = sortedByPos[i];
+            const el = annotationElements[annotation.id];
+            const height = el ? el.offsetHeight || 80 : 80;
+            const y = Math.max(viewportY, lastBottom);
+            adjustedY[annotation.id] = y;
+            lastBottom = y + height + MIN_SPACING;
+        }
     }
 
-    updateScrollContainerSize(lastBottom, leftPx);
-    applyCardPositions(positions, adjustedY, TOP_CLAMP);
-    scrollActiveCardIntoView(adjustedY);
+    // Shift all positions so the minimum Y is 0, adding an overhead
+    // buffer so cards pushed above the active card are reachable by
+    // scrolling. The scroll container is then scrolled by exactly
+    // `overhead` so the active card (or the topmost card when nothing
+    // is active) lands at its correct viewport position.
+    const minY = Math.min(...Object.values(adjustedY));
+    const overhead = minY < 0 ? -minY : 0;
+    for (const id of Object.keys(adjustedY) as unknown as number[]) {
+        adjustedY[id] += overhead;
+    }
+
+    // Compute total inner height
+    let maxBottom = 0;
+    for (const { annotation } of sortedByPos) {
+        const el = annotationElements[annotation.id];
+        const height = el ? el.offsetHeight || 80 : 80;
+        maxBottom = Math.max(maxBottom, (adjustedY[annotation.id] ?? 0) + height + MIN_SPACING);
+    }
+
+    updateScrollContainerSize(maxBottom, leftPx);
+    applyCardPositions(positions, adjustedY);
+
+    // Scroll so the active card sits at its natural viewport Y.
+    // When nothing is active, restore scroll to 0 (top of column).
+    if (scrollContainer) {
+        const targetScroll = overhead;
+        if (Math.abs(scrollContainer.scrollTop - targetScroll) > 1) {
+            scrollContainer.scrollTo({ top: targetScroll, behavior: "smooth" });
+        }
+    }
 }
 
 /**
@@ -242,40 +313,16 @@ function updateScrollContainerSize(lastBottom: number, leftPx: number) {
 function applyCardPositions(
     positions: { annotation: GenericAnnotation; viewportY: number }[],
     adjustedY: { [id: number]: number },
-    topClamp: number,
 ) {
     for (const { annotation } of positions) {
         const el = annotationElements[annotation.id];
         if (el) {
-            el.style.top = `${adjustedY[annotation.id] ?? topClamp}px`;
+            el.style.top = `${adjustedY[annotation.id] ?? 0}px`;
             el.style.left = "0px";
         }
     }
 }
 
-/**
- * If an annotation is active, scroll the floating container
- * so that card is fully visible.
- */
-function scrollActiveCardIntoView(adjustedY: { [id: number]: number }) {
-    if (!scrollContainer || !resolvedActiveAnnotation) return;
-    const activeEl = annotationElements[resolvedActiveAnnotation.id];
-    const activeTop = adjustedY[resolvedActiveAnnotation.id];
-    if (activeEl && activeTop !== undefined) {
-        const cardHeight = activeEl.offsetHeight;
-        const containerHeight = scrollContainer.clientHeight;
-        const currentScroll = scrollContainer.scrollTop;
-        const cardBottom = activeTop + cardHeight;
-        if (activeTop < currentScroll) {
-            scrollContainer.scrollTo({ top: activeTop - 16, behavior: "smooth" });
-        } else if (cardBottom > currentScroll + containerHeight) {
-            scrollContainer.scrollTo({
-                top: cardBottom - containerHeight + 16,
-                behavior: "smooth",
-            });
-        }
-    }
-}
 
 // Track which pending card is currently showing the alert animation
 let alertingPendingId = $state<number | undefined>(undefined);
