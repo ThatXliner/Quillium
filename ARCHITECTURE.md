@@ -174,7 +174,7 @@ remapAnnotationSelections(annotations, tr)
 Maps every annotation's `selection` through `tr.changes` so positions stay accurate as text is inserted or deleted.
 
 - Comments and suggestions are **removed** if their range collapses to zero width (text was fully deleted).
-- Revisions **survive** empty ranges via `allowEmpty: true` in `cleanRangesOf()`. A revision is a structural slot — it persists even with no content so its version list can be recovered. `collapsedRevisionResolver` (a `ViewPlugin`) handles switching to the next version automatically.
+- Revisions **temporarily survive** empty ranges via `allowEmpty: true` in `cleanRangesOf()`. This keeps the annotation alive (with its version list) long enough for `collapsedRevisionResolver` to dispatch a clean removal. The revision is then removed without creating a history entry, and undo fully restores both text and annotation via `_restoreAnnotation` effects stored by `invertedAnnotationFieldEffects`.
 
 #### Phase 2: Apply effects
 
@@ -222,6 +222,11 @@ Registered via `invertedEffects.of(...)` from `@codemirror/commands`. When CodeM
 | `_updateActiveRevisionVersion` | `_updateActiveRevisionVersion` with old index |
 | `_updateRevisionVersionState` | `_updateRevisionVersionState` with old blob |
 | `_applySuggestion` | `addAnnotation` (restores the suggestion) |
+| *(implicit)* collapsed revision in doc-change | `removeAnnotation(collapsed)` + `_restoreAnnotation(original)` |
+
+The last row is generated **implicitly** (no explicit `StateEffect` needed): when a doc-changing transaction collapses a revision's range to zero width, `invertedAnnotationFieldEffects` stores both a `removeAnnotation` for the collapsed state and a `_restoreAnnotation` for the original pre-deletion annotation. On undo (which re-inserts the deleted text), `_restoreAnnotation` re-adds the annotation with its original selection. `_restoreAnnotation` is also used for comments/suggestions that were silently dropped by a deletion.
+
+**`_revisionCleanup` guard:** The cleanup transaction dispatched by `collapsedRevisionResolver` (tagged `_revisionCleanup.of(true)` and `addToHistory.of(false)`) is skipped entirely by `invertedAnnotationFieldEffects`. Without this guard, the `removeAnnotation` effects in the cleanup would generate spurious `addAnnotation(collapsed)` effects that would be merged into the deletion's undo entry alongside the correct `_restoreAnnotation` effects, causing orphaned collapsed annotations to re-appear on undo.
 
 `addAnnotation`/`removeAnnotation` carry the full annotation object (not just an ID) precisely to make inversion cheap — no `startState` lookup needed.
 
@@ -254,6 +259,14 @@ A `Transaction.annotation` (not a `StateEffect`) set to `true` on any transactio
 
 Because it is a `Transaction.annotation` and not a `StateEffect`, it is **not** stored in history and **not** inverted. This is correct — the inverted effects already carry the semantic meaning of "undo this revision op."
 
+### `_revisionCleanup` — the cleanup-transaction flag
+
+```typescript
+export const _revisionCleanup = Annotation.define<boolean>();
+```
+
+Set to `true` on the transaction dispatched by `collapsedRevisionResolver` when it removes collapsed revisions. Always paired with `Transaction.addToHistory.of(false)`. Its sole consumer is `invertedAnnotationFieldEffects`, which returns an empty effects array immediately when it sees this annotation — preventing the cleanup's `removeAnnotation` effects from generating spurious `addAnnotation(collapsed)` effects in the undo entry for the deletion.
+
 ---
 
 ## ViewPlugins
@@ -276,12 +289,15 @@ Marks all **inactive** revision ranges as atomic via `EditorView.atomicRanges`. 
 
 ### `collapsedRevisionResolver`
 
-Monitors for revision ranges that collapsed to `from === to` in a `docChanged` transaction. When found (and the transaction is not annotated `allowRevisionDocEdit`):
+Monitors for revision ranges that collapsed to `from === to` in a `docChanged` transaction (that is not annotated `allowRevisionDocEdit`). Collects **all** such collapsed revisions and, in a single `queueMicrotask`-deferred dispatch:
 
-- If `versions.length > 1`: switch to the adjacent version via `setActiveRevisionVersion`, restoring text.
-- If `versions.length === 1`: remove the annotation entirely.
+- Removes all collapsed revisions via `removeAnnotation` effects.
+- Tags the transaction `Transaction.addToHistory.of(false)` so no new undo history entry is created.
+- Tags the transaction `_revisionCleanup.of(true)` so `invertedAnnotationFieldEffects` skips it entirely (no spurious `addAnnotation(collapsed)` effects are generated).
 
-Uses `queueMicrotask()` to dispatch recovery asynchronously, avoiding the "dispatch inside update" error. Handles one collapsed revision per update cycle.
+Undo is handled entirely by the `_restoreAnnotation` effects that `invertedAnnotationFieldEffects` stored on the *deletion* transaction — a single Cmd+Z re-inserts the deleted text and restores all revision annotations (with all versions intact) in one step.
+
+The `queueMicrotask` defers the dispatch past the current update cycle (required to avoid "dispatch inside update"). The stale-state guard (`update.view.state !== update.state`) prevents a double-dispatch if the user presses Cmd+Z synchronously before the microtask fires.
 
 ### `boundaryInsertNudge`
 
