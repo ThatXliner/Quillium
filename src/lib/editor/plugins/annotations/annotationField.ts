@@ -11,11 +11,13 @@
  *     an `Annotations` map (id -> GenericAnnotation).
  *   - Declares all StateEffects that can modify annotations
  *     (add, remove, thread updates, version management,
- *     suggestion application).
+ *     suggestion application, undo-restore, cleanup).
  *   - Exports transaction-builder functions (e.g.
  *     setActiveRevisionVersion, createNewRevision) that
  *     bundle effects + doc changes into atomic updates.
- *   - Provides undo/redo support via invertedEffects.
+ *   - Exports `invertedAnnotationFieldEffects` (built with
+ *     the `invertedEffects` utility from @codemirror/commands)
+ *     so undo/redo correctly inverts annotation mutations.
  *
  * State lifecycle:
  *   - Created as an empty map `[]`.
