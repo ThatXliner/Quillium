@@ -52,6 +52,8 @@ import Annotations from "./plugins/annotations/Annotations.svelte";
 import type { ListenerOptions } from "./listeners";
 import { annotationField } from "./plugins/annotations";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
+import { replayEvents } from "./replay";
+import type { EventRecord } from "$lib/db/types";
 
 // ── Local UI state ──────────────────────────────────────────────
 let element = $state<HTMLDivElement>();
@@ -121,31 +123,31 @@ async function resolveActiveDraft(docId: string): Promise<string | null> {
 
 /**
  * Builds an EditorState from a LoadResult, restoring from the
- * latest snapshot and logging a warning if there are events to
- * replay (replay is deferred to v2).
+ * latest snapshot and replaying any events that occurred after it.
  */
 function buildStateFromLoad(
     snapshotJson: string | null,
-    eventCount: number,
+    eventsSince: EventRecord[],
 ): EditorState {
+    let base: EditorState;
     if (snapshotJson && snapshotJson !== "{}") {
-        if (eventCount > 0) {
-            console.warn(
-                `[Editor] ${eventCount} event(s) since last snapshot — ` +
-                    "full replay not yet implemented; loading snapshot only.",
-            );
-        }
         try {
-            return EditorState.fromJSON(
+            base = EditorState.fromJSON(
                 JSON.parse(snapshotJson),
                 { extensions: getExtensions(getExtensionOptions) },
                 savedFields,
             );
         } catch {
-            // fall through to blank state
+            base = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
         }
+    } else {
+        base = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
     }
-    return EditorState.create({ extensions: getExtensions(getExtensionOptions) });
+
+    if (eventsSince.length === 0) return base;
+
+    console.log(`[Editor] Replaying ${eventsSince.length} event(s) since last snapshot.`);
+    return replayEvents(base, eventsSince);
 }
 
 // ── State restoration ───────────────────────────────────────────
@@ -166,7 +168,7 @@ const fromSave = (async () => {
             );
             return buildStateFromLoad(
                 loaded.snapshotStateJson,
-                loaded.eventsSince.length,
+                loaded.eventsSince,
             );
         }
     } else {
@@ -183,7 +185,7 @@ const fromSave = (async () => {
                 const loaded = await loadDocumentState(doc.id, draftId);
                 return buildStateFromLoad(
                     loaded.snapshotStateJson,
-                    loaded.eventsSince.length,
+                    loaded.eventsSince,
                 );
             }
         }
@@ -247,7 +249,7 @@ export async function loadDocument(id: string) {
             : "Untitled",
     );
 
-    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince.length);
+    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
     $editorView.setState(state);
     const text = state.doc.toString();
     stats = { words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 };
