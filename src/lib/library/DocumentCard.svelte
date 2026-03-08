@@ -29,7 +29,7 @@ function formatDate(ms: number): string {
     <button
         onclick={onSelect}
         ondblclick={onOpen}
-        class="group text-left rounded-xl p-4 flex flex-col gap-2 border transition-all duration-200 cursor-pointer
+        class="group text-left rounded-xl p-4 flex flex-col gap-2 border transition-all duration-200 cursor-pointer w-full overflow-hidden
             {selected
                 ? 'bg-blue-50 border-blue-300 shadow-md ring-2 ring-blue-400/30'
                 : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"

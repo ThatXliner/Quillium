@@ -17,7 +17,7 @@ const { visible }: Props = $props();
 {#if visible}
     <button
         onclick={goToEditor}
-        class="fixed bottom-6 right-6 flex items-center gap-2 px-5 py-3 rounded-full bg-white/90 border border-white/60 shadow-xl backdrop-blur-md text-sm font-medium text-black/70 hover:text-black hover:bg-white hover:shadow-2xl transition-all duration-200"
+        class="fixed bottom-6 left-6 flex items-center gap-2 px-5 py-3 rounded-full bg-white/90 border border-white/60 shadow-xl backdrop-blur-md text-sm font-medium text-black/70 hover:text-black hover:bg-white hover:shadow-2xl transition-all duration-200"
     >
         <ArrowLeft size={16} />
         Continue editing
