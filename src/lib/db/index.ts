@@ -70,6 +70,18 @@ export async function deleteDocument(id: string): Promise<void> {
     return invoke<void>("cmd_delete_document", { id });
 }
 
+export async function trashDocument(id: string): Promise<void> {
+    return invoke<void>("cmd_trash_document", { id });
+}
+
+export async function restoreDocument(id: string): Promise<void> {
+    return invoke<void>("cmd_restore_document", { id });
+}
+
+export async function listTrashedDocuments(): Promise<DocumentMeta[]> {
+    return invoke<DocumentMeta[]>("cmd_list_trashed_documents");
+}
+
 // ── Drafts ────────────────────────────────────────────────────────
 
 export async function listDrafts(docId: string): Promise<DraftMeta[]> {

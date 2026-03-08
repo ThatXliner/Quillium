@@ -15,6 +15,7 @@ export type DocumentMeta = {
     previewText: string;
     /** JSON-encoded string array, e.g. '["fiction","novel"]' */
     tags: string;
+    deletedAt: number | null;
 };
 
 export type DraftMeta = {
