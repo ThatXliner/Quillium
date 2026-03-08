@@ -116,6 +116,14 @@ She nodded, slowly, looking at something through the windscreen. He followed her
 
 He wasn't sure what it meant, but it didn't sound like the end of something. It sounded like the middle.`;
 
+// Public domain — A Tale of Two Cities (Dickens), used by the screenshot script
+const DICKENS_DOC = `It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair.
+
+We had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way. There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France.
+
+It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this. Mrs. Southcott had recently attained her five-and-twentieth blessed birthday, of whom a prophetic private in the Life Guards had heralded the sublime appearance by announcing that arrangements were made for the swallowing up of London and Westminster.`;
+
+
 // ── Scenarios ─────────────────────────────────────────────────────────────────
 
 export const scenarios: Scenario[] = [
@@ -911,6 +919,194 @@ export const scenarios: Scenario[] = [
                 author: "Editor",
                 view,
             });
+        },
+    },
+
+    // ── Screenshot scenarios (Dickens) ────────────────────────────────────────
+    // Used by scripts/screenshots.ts via window.__runScenario__. These mirror
+    // the debug scenarios above but operate on the Dickens passage so the
+    // annotations match the text already loaded into the editor.
+
+    {
+        id: "screenshot-comment-thread",
+        label: "Screenshot: comment thread (Dickens)",
+        description:
+            "A comment with a multi-message back-and-forth thread — click the yellow highlight to expand",
+        category: "debug",
+        doc: DICKENS_DOC,
+        setup(view) {
+            const state = view.state;
+            const target = "it was the age of wisdom, it was the age of foolishness";
+            const from = state.doc.toString().indexOf(target);
+            if (from === -1) return;
+            const to = from + target.length;
+            const selection = EditorSelection.create([EditorSelection.range(from, to)]);
+            view.dispatch(
+                state.update({
+                    effects: [
+                        addAnnotation.of({
+                            ...createNewAnnotation(state.field(annotationField), selection, "comment"),
+                            thread: [
+                                {
+                                    message:
+                                        "The parallelism here is doing a lot of heavy lifting. Worth asking: does the accumulation land, or does it tip into self-parody by the end of the sentence?",
+                                    author: "Editor",
+                                    time: Date.now() - 3600_000,
+                                },
+                                {
+                                    message:
+                                        "I think it lands — the rhythm is the point. Dickens is parodying the era, not the writing. The excess is the argument.",
+                                    author: "User",
+                                    time: Date.now() - 1800_000,
+                                },
+                                {
+                                    message:
+                                        "Agreed. In that case, protect it — editors who trim this on instinct are missing the rhetorical intent. Leave a note in the manuscript.",
+                                    author: "Editor",
+                                    time: Date.now() - 900_000,
+                                },
+                            ],
+                        }),
+                    ],
+                }),
+            );
+            // Also add a second comment nearby so the panel feels populated
+            createComment({
+                targetText: "it was the spring of hope, it was the winter of despair",
+                comment:
+                    "Seasonal contrast is effective but well-worn. The force here is cumulative — don't pull it forward or it loses context.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
+        id: "screenshot-revision-active",
+        label: "Screenshot: revision active (Dickens)",
+        description:
+            "A revision annotation ready to be activated — click the purple highlight in the editor",
+        category: "debug",
+        doc: DICKENS_DOC,
+        setup(view) {
+            createRevision({
+                targetText:
+                    "Spiritual revelations were conceded to England at that favoured period, as at this.",
+                versions: [
+                    {
+                        label: "Active voice",
+                        text: "England received its spiritual revelations at that favoured period, as it does now.",
+                    },
+                    {
+                        label: "Compressed",
+                        text: "Spiritual revelations visited England then, as now.",
+                    },
+                ],
+                threadMessage:
+                    "The passive voice feels period-appropriate but distances the reader. Two alternatives: activate the grammar, or compress ruthlessly.",
+                author: "Editor",
+                view,
+            });
+            // A comment alongside so the panel isn't empty
+            createComment({
+                targetText: "it was the season of Light, it was the season of Darkness",
+                comment:
+                    "Capitalisation is deliberate — Light and Darkness as proper nouns lend them allegorical weight. Don't normalise.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
+        id: "screenshot-annotations",
+        label: "Screenshot: annotations (Dickens)",
+        description:
+            "Mixed annotations on the A Tale of Two Cities passage — used by the screenshot script",
+        category: "debug",
+        doc: DICKENS_DOC,
+        setup(view) {
+            createComment({
+                targetText: "it was the age of wisdom, it was the age of foolishness",
+                comment:
+                    "The parallelism is relentless here — intentional, but consider whether one more beat pushes it past the tipping point into self-parody.",
+                author: "Editor",
+                view,
+            });
+            createSuggestion({
+                state: view.state,
+                dispatch: (tr) => view.dispatch(tr),
+                targetText: "we were all going direct to Heaven, we were all going direct the other way",
+                replacements: [
+                    {
+                        text: "we were all going directly to Heaven, and all going directly the other way",
+                        rationale: "Loosens the inversion slightly for modern readers",
+                    },
+                    {
+                        text: "all going direct to Heaven, all going direct the other way",
+                        rationale: "Drop 'we were' for tighter parallelism",
+                    },
+                ],
+                author: "Editor",
+            });
+            createRevision({
+                targetText:
+                    "Spiritual revelations were conceded to England at that favoured period, as at this.",
+                versions: [
+                    {
+                        label: "Active",
+                        text: "England received its spiritual revelations at that favoured period, as it does now.",
+                    },
+                    {
+                        label: "Compressed",
+                        text: "Spiritual revelations visited England then, as now.",
+                    },
+                ],
+                threadMessage:
+                    "The passive voice feels period-appropriate but distances the reader. Two alternatives: activate the grammar, or compress ruthlessly.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
+        id: "screenshot-dense",
+        label: "Screenshot: dense annotations (Dickens)",
+        description:
+            "Several comments across the Dickens passage for the full-ui screenshot",
+        category: "debug",
+        doc: DICKENS_DOC,
+        setup(view) {
+            const passages = [
+                {
+                    text: "it was the worst of times",
+                    comment: "The inversion here is the engine of the whole opening — worth protecting.",
+                },
+                {
+                    text: "it was the season of Darkness",
+                    comment: "Capitalisation is deliberate and correct for Dickens; don't normalise.",
+                },
+                {
+                    text: "the spring of hope, it was the winter of despair",
+                    comment:
+                        "Seasonal contrast lands well. Note that hope/spring and despair/winter are well-worn — the force here is accumulation, not novelty.",
+                },
+                {
+                    text: "a king with a large jaw",
+                    comment:
+                        "The physical detail is satirical caricature — makes both monarchs ridiculous, which is the point.",
+                },
+                {
+                    text: "arrangements were made for the swallowing up of London and Westminster",
+                    comment:
+                        "Bathetic climax — the grand apocalyptic image undercut by bureaucratic phrasing. Very much intentional.",
+                },
+            ];
+            for (const { text, comment } of passages) {
+                try {
+                    createComment({ targetText: text, comment, author: "Editor", view });
+                } catch {
+                    // Skip if text not found after previous annotations shifted ranges
+                }
+            }
         },
     },
 ];
