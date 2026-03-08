@@ -66,19 +66,14 @@ export function setAiProcessing(value: boolean) {
     aiProcessing.active = value;
 }
 
-function loadProvider(): Provider {
-    if (typeof localStorage === "undefined") return "openai";
-    return (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";
-}
-
-function loadModel(): string {
-    if (typeof localStorage === "undefined") return "gpt-4o-mini";
-    return localStorage.getItem(MODEL_KEY) ?? "gpt-4o-mini";
+function loadString(key: string, defaultValue: string): string {
+    if (typeof localStorage === "undefined") return defaultValue;
+    return localStorage.getItem(key) ?? defaultValue;
 }
 
 export const aiSettings = $state({
-    provider: loadProvider() as Provider,
-    model: loadModel(),
+    provider: loadString(PROVIDER_KEY, "openai") as Provider,
+    model: loadString(MODEL_KEY, "gpt-4o-mini"),
     apiKey: "",
 });
 
