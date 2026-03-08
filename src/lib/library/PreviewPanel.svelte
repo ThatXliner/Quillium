@@ -4,14 +4,20 @@
 -->
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
-import { FileText, ExternalLink } from "lucide-svelte";
+import { FileText, ExternalLink, Trash2, RotateCcw } from "lucide-svelte";
 
 interface Props {
     doc: DocumentMeta | null;
+    trashMode: boolean;
     onOpen: () => void;
+    onTrash: () => void;
+    onRestore: () => void;
+    onDeletePermanent: () => void;
 }
 
-const { doc, onOpen }: Props = $props();
+const { doc, trashMode, onOpen, onTrash, onRestore, onDeletePermanent }: Props = $props();
+
+let confirmingDelete = $state(false);
 
 function formatDate(ms: number): string {
     return new Date(ms).toLocaleDateString("en-US", {
@@ -21,6 +27,20 @@ function formatDate(ms: number): string {
         day: "numeric",
     });
 }
+
+function handleDeletePermanent() {
+    if (confirmingDelete) {
+        confirmingDelete = false;
+        onDeletePermanent();
+    } else {
+        confirmingDelete = true;
+    }
+}
+
+$effect(() => {
+    // Reset confirmation when the selected doc changes
+    if (doc) confirmingDelete = false;
+});
 </script>
 
 <div class="h-full flex flex-col bg-white/50 border-l border-black/8">
@@ -53,14 +73,41 @@ function formatDate(ms: number): string {
             </div>
         </div>
 
-        <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-black/5">
-            <button
-                onclick={onOpen}
-                class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
-            >
-                <ExternalLink size={16} />
-                Open document
-            </button>
+        <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-black/5 flex flex-col gap-2">
+            {#if trashMode}
+                <button
+                    onclick={onRestore}
+                    class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                >
+                    <RotateCcw size={16} />
+                    Restore document
+                </button>
+                <button
+                    onclick={handleDeletePermanent}
+                    class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-medium transition-colors
+                        {confirmingDelete
+                            ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm'
+                            : 'text-red-400 hover:bg-red-50'}"
+                >
+                    <Trash2 size={16} />
+                    {confirmingDelete ? "Confirm permanent delete" : "Delete permanently"}
+                </button>
+            {:else}
+                <button
+                    onclick={onOpen}
+                    class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                >
+                    <ExternalLink size={16} />
+                    Open document
+                </button>
+                <button
+                    onclick={onTrash}
+                    class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-red-400 hover:bg-red-50 transition-colors"
+                >
+                    <Trash2 size={13} />
+                    Move to trash
+                </button>
+            {/if}
         </div>
     {:else}
         <div class="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
