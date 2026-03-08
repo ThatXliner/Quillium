@@ -34,7 +34,7 @@ fn test_schema_creation() {
 }
 
 #[test]
-fn test_append_event_increments_seq() {
+fn test_append_event_increments_id() {
     let conn = in_memory_db();
     let doc_id = create_document(&conn, "Test Doc").expect("create doc");
     let draft_id = create_draft(&conn, &doc_id, "Draft").expect("create draft");
@@ -42,13 +42,12 @@ fn test_append_event_increments_seq() {
     let payload = r#"{"type":"doc_change","changes":[]}"#;
 
     let r0 = append_event(&conn, &draft_id, payload).expect("append 0");
-    assert_eq!(r0.event_seq, 0);
-
     let r1 = append_event(&conn, &draft_id, payload).expect("append 1");
-    assert_eq!(r1.event_seq, 1);
-
     let r2 = append_event(&conn, &draft_id, payload).expect("append 2");
-    assert_eq!(r2.event_seq, 2);
+
+    // IDs must be strictly increasing (autoincrement guarantees this)
+    assert!(r0.event_id < r1.event_id);
+    assert!(r1.event_id < r2.event_id);
 }
 
 #[test]
@@ -62,13 +61,11 @@ fn test_snapshot_threshold_event_count() {
     // First 49 events — should not trigger snapshot
     for i in 0..49 {
         let r = append_event(&conn, &draft_id, payload).expect("append");
-        assert_eq!(r.event_seq, i);
         assert!(!r.needs_snapshot, "event {i}: should not need snapshot yet");
     }
 
     // 50th event — threshold reached
     let r = append_event(&conn, &draft_id, payload).expect("append 50th");
-    assert_eq!(r.event_seq, 49);
     assert!(r.needs_snapshot, "50th event should trigger snapshot");
 }
 
@@ -87,7 +84,7 @@ fn test_snapshot_threshold_time() {
         - 130_000; // 130 seconds ago
 
     conn.execute(
-        "INSERT INTO snapshots (draft_id, up_to_event_seq, state_json, created_at)
+        "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
          VALUES (?1, -1, '{}', ?2)",
         rusqlite::params![draft_id, old_time_ms],
     )
@@ -123,10 +120,11 @@ fn test_load_with_events_since_snapshot() {
 
     let result = load_document_state(&conn, &doc_id, None).expect("load");
     assert!(result.snapshot_state_json.is_some());
-    assert_eq!(result.snapshot_event_seq, -1);
+    assert_eq!(result.snapshot_event_id, -1);
     assert_eq!(result.events_since.len(), 3);
-    assert_eq!(result.events_since[0].seq, 0);
-    assert_eq!(result.events_since[2].seq, 2);
+    // IDs must be strictly increasing
+    assert!(result.events_since[0].id < result.events_since[1].id);
+    assert!(result.events_since[1].id < result.events_since[2].id);
 }
 
 #[test]

@@ -39,7 +39,7 @@ pub fn load_document_state(
     if resolved_draft_id.is_empty() {
         return Ok(LoadResult {
             snapshot_state_json: None,
-            snapshot_event_seq: -1,
+            snapshot_event_id: -1,
             events_since: vec![],
         });
     }
@@ -47,38 +47,37 @@ pub fn load_document_state(
     // Get the latest snapshot
     let snapshot: Option<(String, i64)> = conn
         .query_row(
-            "SELECT state_json, up_to_event_seq FROM snapshots
-             WHERE draft_id = ?1 ORDER BY up_to_event_seq DESC LIMIT 1",
+            "SELECT state_json, up_to_event_id FROM snapshots
+             WHERE draft_id = ?1 ORDER BY up_to_event_id DESC LIMIT 1",
             params![resolved_draft_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
         )
         .ok();
 
-    let (snapshot_state_json, snapshot_event_seq) = match snapshot {
-        Some((json, seq)) => (Some(json), seq),
+    let (snapshot_state_json, snapshot_event_id) = match snapshot {
+        Some((json, id)) => (Some(json), id),
         None => (None, -1),
     };
 
     // Get events after the snapshot
     let mut stmt = conn.prepare(
-        "SELECT id, seq, event_type, payload, created_at FROM events
-         WHERE draft_id = ?1 AND seq > ?2 ORDER BY seq ASC",
+        "SELECT id, event_type, payload, created_at FROM events
+         WHERE draft_id = ?1 AND id > ?2 ORDER BY id ASC",
     )?;
     let events: Vec<EventRecord> = stmt
-        .query_map(params![resolved_draft_id, snapshot_event_seq], |row| {
+        .query_map(params![resolved_draft_id, snapshot_event_id], |row| {
             Ok(EventRecord {
                 id: row.get(0)?,
-                seq: row.get(1)?,
-                event_type: row.get(2)?,
-                payload: row.get(3)?,
-                created_at: row.get(4)?,
+                event_type: row.get(1)?,
+                payload: row.get(2)?,
+                created_at: row.get(3)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
 
     Ok(LoadResult {
         snapshot_state_json,
-        snapshot_event_seq,
+        snapshot_event_id,
         events_since: events,
     })
 }

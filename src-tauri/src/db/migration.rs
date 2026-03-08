@@ -88,9 +88,9 @@ pub fn migrate_from_state_json(
             params![draft_id, doc_id, now],
         )?;
 
-        // Seed snapshot with up_to_event_seq = -1
+        // Seed snapshot with up_to_event_id = -1 (no events yet)
         conn.execute(
-            "INSERT INTO snapshots (draft_id, up_to_event_seq, state_json, created_at)
+            "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
              VALUES (?1, -1, ?2, ?3)",
             params![draft_id, raw, now],
         )?;

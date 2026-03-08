@@ -57,10 +57,10 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
 
                     // Load returns empty (blank editor)
                     if (cmd === "cmd_load_document_state")
-                        return { snapshotStateJson: null, snapshotEventSeq: -1, eventsSince: [] };
+                        return { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
 
                     // Append event — acknowledge with no snapshot needed
-                    if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
+                    if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
 
                     // Snapshot / meta
                     if (cmd === "cmd_create_snapshot") return null;

@@ -6,10 +6,9 @@ import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/ann
 import { replayEvents } from "$lib/editor/replay";
 import type { EventRecord } from "$lib/db/types";
 
-function makeRecord(seq: number, payload: object): EventRecord {
+function makeRecord(id: number, payload: object): EventRecord {
     return {
-        id: seq,
-        seq,
+        id,
         eventType: (payload as { type: string }).type,
         payload: JSON.stringify(payload),
         createdAt: Date.now(),

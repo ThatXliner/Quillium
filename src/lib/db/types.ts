@@ -27,13 +27,12 @@ export type DraftMeta = {
 };
 
 export type AppendEventResult = {
-    eventSeq: number;
+    eventId: number;
     needsSnapshot: boolean;
 };
 
 export type EventRecord = {
     id: number;
-    seq: number;
     eventType: string;
     payload: string;
     createdAt: number;
@@ -41,7 +40,7 @@ export type EventRecord = {
 
 export type LoadResult = {
     snapshotStateJson: string | null;
-    snapshotEventSeq: number;
+    snapshotEventId: number;
     eventsSince: EventRecord[];
 };
 

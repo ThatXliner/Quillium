@@ -32,17 +32,15 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS events (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             draft_id   TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
-            seq        INTEGER NOT NULL,
             event_type TEXT NOT NULL,
             payload    TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            UNIQUE(draft_id, seq)
+            created_at INTEGER NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS snapshots (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
             draft_id         TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
-            up_to_event_seq  INTEGER NOT NULL,
+            up_to_event_id   INTEGER NOT NULL,
             state_json       TEXT NOT NULL,
             created_at       INTEGER NOT NULL
         );
@@ -52,8 +50,8 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             value TEXT NOT NULL
         );
 
-        CREATE INDEX IF NOT EXISTS idx_events_draft_seq ON events(draft_id, seq);
-        CREATE INDEX IF NOT EXISTS idx_snapshots_draft ON snapshots(draft_id, up_to_event_seq DESC);
+        CREATE INDEX IF NOT EXISTS idx_events_draft ON events(draft_id, id);
+        CREATE INDEX IF NOT EXISTS idx_snapshots_draft ON snapshots(draft_id, up_to_event_id DESC);
         ",
     )?;
     // Additive migration: add deleted_at if it doesn't exist yet.

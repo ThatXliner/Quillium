@@ -113,13 +113,13 @@ function applyEventPayload(state: EditorState, payload: EventPayload): EditorSta
  * Replays an ordered sequence of EventRecord objects on top of the
  * given EditorState (typically loaded from the latest snapshot).
  *
- * Events must be sorted by ascending `seq` (as returned by
+ * Events must be sorted by ascending `id` (as returned by
  * `loadDocumentState`).  Each event is applied in turn; if one
  * fails it is skipped with a console warning and replay continues
  * with the remaining events.
  *
  * @param state      Base EditorState — from a snapshot or freshly created.
- * @param events     Events to apply, ordered by ascending seq.
+ * @param events     Events to apply, ordered by ascending id.
  * @returns          Updated EditorState with all events applied.
  */
 export function replayEvents(state: EditorState, events: EventRecord[]): EditorState {
@@ -130,7 +130,7 @@ export function replayEvents(state: EditorState, events: EventRecord[]): EditorS
             current = applyEventPayload(current, payload);
         } catch (err) {
             console.warn(
-                `[Editor] Failed to replay event seq=${record.seq}, skipping:`,
+                `[Editor] Failed to replay event id=${record.id}, skipping:`,
                 err,
             );
         }

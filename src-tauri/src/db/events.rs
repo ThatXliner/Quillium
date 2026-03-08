@@ -20,23 +20,17 @@ pub fn append_event(
 ) -> Result<AppendEventResult> {
     let now = now_ms();
 
-    // Determine next sequence number
-    let next_seq: i64 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(seq), -1) + 1 FROM events WHERE draft_id = ?1",
-            params![draft_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
     // Derive event_type from payload JSON
     let event_type = extract_event_type(payload_json);
 
     conn.execute(
-        "INSERT INTO events (draft_id, seq, event_type, payload, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![draft_id, next_seq, event_type, payload_json, now],
+        "INSERT INTO events (draft_id, event_type, payload, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![draft_id, event_type, payload_json, now],
     )?;
+
+    // The AUTOINCREMENT id is the canonical event identifier.
+    let event_id = conn.last_insert_rowid();
 
     // Update document updated_at via draft join
     conn.execute(
@@ -49,7 +43,7 @@ pub fn append_event(
     let needs_snapshot = check_snapshot_threshold(conn, draft_id, now)?;
 
     Ok(AppendEventResult {
-        event_seq: next_seq,
+        event_id,
         needs_snapshot,
     })
 }
@@ -68,8 +62,8 @@ fn check_snapshot_threshold(conn: &Connection, draft_id: &str, now_ms: i64) -> R
     // Get the latest snapshot for this draft
     let latest_snapshot: Option<(i64, i64)> = conn
         .query_row(
-            "SELECT up_to_event_seq, created_at FROM snapshots
-             WHERE draft_id = ?1 ORDER BY up_to_event_seq DESC LIMIT 1",
+            "SELECT up_to_event_id, created_at FROM snapshots
+             WHERE draft_id = ?1 ORDER BY up_to_event_id DESC LIMIT 1",
             params![draft_id],
             |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
         )
@@ -85,11 +79,11 @@ fn check_snapshot_threshold(conn: &Connection, draft_id: &str, now_ms: i64) -> R
             )?;
             Ok(total >= SNAPSHOT_EVENT_THRESHOLD)
         }
-        Some((last_seq, last_snap_time)) => {
+        Some((last_event_id, last_snap_time)) => {
             // Events since last snapshot
             let events_since: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM events WHERE draft_id = ?1 AND seq > ?2",
-                params![draft_id, last_seq],
+                "SELECT COUNT(*) FROM events WHERE draft_id = ?1 AND id > ?2",
+                params![draft_id, last_event_id],
                 |row| row.get(0),
             )?;
             let secs_since = (now_ms - last_snap_time) / 1000;
@@ -103,13 +97,13 @@ pub fn create_snapshot(
     conn: &Connection,
     draft_id: &str,
     state_json: &str,
-    up_to_event_seq: i64,
+    up_to_event_id: i64,
 ) -> Result<()> {
     let now = now_ms();
     conn.execute(
-        "INSERT INTO snapshots (draft_id, up_to_event_seq, state_json, created_at)
+        "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
          VALUES (?1, ?2, ?3, ?4)",
-        params![draft_id, up_to_event_seq, state_json, now],
+        params![draft_id, up_to_event_id, state_json, now],
     )?;
 
     // Prune: keep only the latest 3 snapshots per draft
@@ -117,7 +111,7 @@ pub fn create_snapshot(
         "DELETE FROM snapshots WHERE draft_id = ?1
          AND id NOT IN (
              SELECT id FROM snapshots WHERE draft_id = ?1
-             ORDER BY up_to_event_seq DESC LIMIT 3
+             ORDER BY up_to_event_id DESC LIMIT 3
          )",
         params![draft_id],
     )?;

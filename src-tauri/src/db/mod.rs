@@ -32,7 +32,7 @@ pub struct DraftMeta {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppendEventResult {
-    pub event_seq: i64,
+    pub event_id: i64,
     pub needs_snapshot: bool,
 }
 
@@ -40,7 +40,6 @@ pub struct AppendEventResult {
 #[serde(rename_all = "camelCase")]
 pub struct EventRecord {
     pub id: i64,
-    pub seq: i64,
     pub event_type: String,
     pub payload: String,
     pub created_at: i64,
@@ -50,7 +49,7 @@ pub struct EventRecord {
 #[serde(rename_all = "camelCase")]
 pub struct LoadResult {
     pub snapshot_state_json: Option<String>,
-    pub snapshot_event_seq: i64,
+    pub snapshot_event_id: i64,
     pub events_since: Vec<EventRecord>,
 }
 

@@ -45,7 +45,7 @@ describe("listeners integration", () => {
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
             // Return a valid AppendEventResult so the listener doesn't error
-            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
+            if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
             return null;
         });
 
@@ -60,7 +60,7 @@ describe("listeners integration", () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
-            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
+            if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
             return null;
         });
 
@@ -85,7 +85,7 @@ describe("listeners integration", () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
-            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
+            if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
             return null;
         });
 
@@ -108,7 +108,7 @@ describe("listeners integration", () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
-            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
+            if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
             return null;
         });
 

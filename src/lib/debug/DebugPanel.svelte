@@ -93,16 +93,16 @@ async function runScenario(scenario: Scenario) {
         currentDraftId.set(draftId);
 
         // 4. Replay events into the event log — this is the "real history".
-        let lastSeq = -1;
+        let lastEventId = -1;
         for (const payload of collectedPayloads) {
             const result = await appendEvent(draftId, JSON.stringify(payload));
-            lastSeq = result.eventSeq;
+            lastEventId = result.eventId;
         }
 
         // 5. Write a snapshot of the final state so the editor loads fast,
         //    and update document metadata so the library shows a preview.
         const stateJson = JSON.stringify(finalState.toJSON(savedFields));
-        await createSnapshot(draftId, stateJson, lastSeq);
+        await createSnapshot(draftId, stateJson, lastEventId);
 
         const docText = finalState.doc.toString();
         const title = scenario.label;

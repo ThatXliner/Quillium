@@ -198,7 +198,7 @@ async function persistTransaction(update: ViewUpdate) {
 
         if (result.needsSnapshot) {
             const stateJson = JSON.stringify(update.state.toJSON(savedFields));
-            createSnapshot(draftId, stateJson, result.eventSeq).catch(console.error);
+            createSnapshot(draftId, stateJson, result.eventId).catch(console.error);
         }
     } catch (e) {
         console.error("[listeners] appendEvent failed:", e);

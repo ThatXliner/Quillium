@@ -119,10 +119,10 @@ fn cmd_create_snapshot(
     state: tauri::State<DbState>,
     draft_id: String,
     state_json: String,
-    up_to_event_seq: i64,
+    up_to_event_id: i64,
 ) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    create_snapshot(&conn, &draft_id, &state_json, up_to_event_seq).map_err(|e| e.to_string())
+    create_snapshot(&conn, &draft_id, &state_json, up_to_event_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

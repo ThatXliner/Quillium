@@ -122,9 +122,9 @@ export async function appendEvent(
 export async function createSnapshot(
     draftId: string,
     stateJson: string,
-    upToEventSeq: number,
+    upToEventId: number,
 ): Promise<void> {
-    return invoke<void>("cmd_create_snapshot", { draftId, stateJson, upToEventSeq });
+    return invoke<void>("cmd_create_snapshot", { draftId, stateJson, upToEventId });
 }
 
 export async function loadDocumentState(
