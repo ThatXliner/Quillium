@@ -88,11 +88,11 @@ import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import {
     annotationField,
     addAnnotation,
-    allowRevisionDocEdit,
+    revisionInternalEdit,
     removeAnnotation,
-    setActiveRevisionVersion,
     invertedAnnotationFieldEffects,
     suggestionPreviewField,
+    _revisionCleanup,
 } from "./annotationField";
 import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -139,7 +139,7 @@ function deleteAdjacentRevision(direction: "backward" | "forward"): StateCommand
                     insert: "",
                 }),
                 effects: [removeAnnotation.of(target)],
-                annotations: [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)],
+                annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
             }),
         );
         return true;
@@ -256,52 +256,69 @@ const revisionAtomicRanges = EditorView.atomicRanges.of((view) => buildAtomicRan
 // State monitored: annotationField revisions where
 //   selection.main.from === selection.main.to (collapsed).
 // Trigger: any doc-changing transaction NOT annotated with
-//   allowRevisionDocEdit (which marks intentional version
+//   revisionInternalEdit (which marks intentional version
 //   switches).
 // Downstream effects:
-//   - If the revision has >1 version: dispatches
-//     setActiveRevisionVersion to switch to an adjacent
-//     version, restoring the revision's text.
-//   - If only 1 version: dispatches removeAnnotation to
-//     clean up the empty revision.
-//   - Handles one collapsed revision per update cycle to
-//     avoid stale-state issues from cascading dispatches.
+//   - Collects ALL collapsed revisions in one pass and
+//     dispatches all removeAnnotation effects in a single
+//     microtask-deferred transaction tagged addToHistory.of(false)
+//     + _revisionCleanup.of(true), so:
+//     * No new undo history entry is created.
+//     * invertedAnnotationFieldEffects skips the cleanup
+//       transaction entirely (no spurious addAnnotation
+//       effects pollute the deletion's undo entry).
+//   - Undo restoration is handled by invertedAnnotationFieldEffects
+//     via the _restoreAnnotation effects stored at deletion time.
 // -------------------------------------------------------
 const collapsedRevisionResolver = ViewPlugin.fromClass(
     class {
         update(update: ViewUpdate) {
             if (!appSettings.atomicRevisions) return;
             if (!update.docChanged) return;
-            if (update.transactions.some((tr) => tr.annotation(allowRevisionDocEdit))) return;
+            if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
             const annotations = update.state.field(annotationField);
-            for (const annotation of Object.values(annotations)) {
-                if (!isAnnotationOfType(annotation, "revision")) continue;
-                const { from, to } = annotation.selection.main;
-                if (from !== to) continue;
-                // Revision range collapsed — all text was deleted
-                if (annotation.versions.length <= 1) {
-                    // Only one version, nothing to fall back to — remove it
-                    queueMicrotask(() => {
-                        // Guard: if state has advanced (e.g. undo), skip.
-                        if (update.view.state !== update.state) return;
-                        update.view.dispatch({
-                            effects: [removeAnnotation.of(annotation)],
-                        });
-                    });
-                } else {
-                    // Switch to the next available version
-                    const nextVersion =
-                        annotation.currentlySelected > 0 ? annotation.currentlySelected - 1 : 1;
-                    queueMicrotask(() => {
-                        // Guard: if state has advanced (e.g. undo), skip.
-                        if (update.view.state !== update.state) return;
-                        update.view.dispatch(
-                            setActiveRevisionVersion(update.state, annotation.id, nextVersion),
-                        );
-                    });
-                }
-                return; // handle one at a time to avoid stale state
-            }
+            const collapsed = Object.values(annotations).filter(
+                (a) => isAnnotationOfType(a, "revision") && a.selection.main.empty,
+            );
+            if (collapsed.length === 0) return;
+            // Remove all collapsed revisions in one transaction without creating a
+            // history entry. invertedAnnotationFieldEffects already stored a
+            // _restoreAnnotation effect for each collapsed revision at deletion
+            // time, so a single Cmd+Z fully restores text and annotations.
+            //
+            // queueMicrotask: dispatching inside update() is illegal in
+            // CodeMirror — the update cycle must finish before the view
+            // accepts a new dispatch. A microtask defers to the next
+            // microtask checkpoint (before the next task/paint) so the
+            // cleanup still feels synchronous to the user but doesn't
+            // violate CodeMirror's invariant.
+            queueMicrotask(() => {
+                // Guard: the state may have advanced since this update fired
+                // (e.g. the user pressed Cmd+Z before the microtask ran).
+                // If so, the collapsed revision was already cleaned up or
+                // restored by the undo, and dispatching now would double-remove.
+                if (update.view.state !== update.state) return;
+                update.view.dispatch({
+                    effects: collapsed.map((a) => removeAnnotation.of(a)),
+                    annotations: [
+                        // addToHistory:false — without this the cleanup would
+                        // create its own undo entry (H2) between the deletion
+                        // (H1) and the original addAnnotation (H0). The user
+                        // would need two Cmd+Z presses to undo a single
+                        // deletion, and the intermediate state would show the
+                        // revision missing but its text present.
+                        Transaction.addToHistory.of(false),
+                        // _revisionCleanup — tells invertedAnnotationFieldEffects
+                        // to skip this transaction entirely. Without this guard,
+                        // invertedEffects would see the removeAnnotation effects
+                        // here and generate addAnnotation(collapsed) effects that
+                        // get merged into H1's undo entry — so Cmd+Z would
+                        // re-insert an orphaned zero-width revision on top of the
+                        // _restoreAnnotation that already does the right thing.
+                        _revisionCleanup.of(true),
+                    ],
+                });
+            });
         }
     },
 );
@@ -319,7 +336,7 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
     class {
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
-            if (update.transactions.some((tr) => tr.annotation(allowRevisionDocEdit))) return;
+            if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
             const annotations = update.startState.field(annotationField);
             for (const tr of update.transactions) {
                 if (!tr.docChanged) continue;
