@@ -302,12 +302,15 @@ async function saveApiKey() {
             </div>
             <button
                 onclick={saveApiKey}
+                disabled={!apiKey.trim() && !keyLoading}
                 class="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-colors
                     {saveStatus === 'saved'
                         ? 'bg-green-500/15 text-green-700'
                         : saveStatus === 'error'
                           ? 'bg-red-500/15 text-red-700'
-                          : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25'}"
+                          : !apiKey.trim()
+                            ? 'bg-black/5 text-black/25 cursor-not-allowed'
+                            : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25'}"
             >
                 {#if saveStatus === "saved"}
                     <CheckIcon size={12} />
