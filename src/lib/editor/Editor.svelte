@@ -125,10 +125,7 @@ async function resolveActiveDraft(docId: string): Promise<string | null> {
  * Builds an EditorState from a LoadResult, restoring from the
  * latest snapshot and replaying any events that occurred after it.
  */
-function buildStateFromLoad(
-    snapshotJson: string | null,
-    eventsSince: EventRecord[],
-): EditorState {
+function buildStateFromLoad(snapshotJson: string | null, eventsSince: EventRecord[]): EditorState {
     let base: EditorState;
     if (snapshotJson && snapshotJson !== "{}") {
         try {
@@ -166,10 +163,7 @@ const fromSave = (async () => {
                     ? extractTitleFromStateJson(loaded.snapshotStateJson)
                     : "Untitled",
             );
-            return buildStateFromLoad(
-                loaded.snapshotStateJson,
-                loaded.eventsSince,
-            );
+            return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
         }
     } else {
         // No document set — load the most-recently-updated document
@@ -183,10 +177,7 @@ const fromSave = (async () => {
             currentDraftId.set(draftId);
             if (draftId) {
                 const loaded = await loadDocumentState(doc.id, draftId);
-                return buildStateFromLoad(
-                    loaded.snapshotStateJson,
-                    loaded.eventsSince,
-                );
+                return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
             }
         }
     }
@@ -204,15 +195,12 @@ const fromSave = (async () => {
 
 function extractTitleFromStateJson(stateJson: string): string {
     try {
-        const parsed = JSON.parse(stateJson);
-        const doc = parsed?.doc;
-        if (typeof doc === "string") {
-            return doc.split("\n")[0].trim().slice(0, 80) || "Untitled";
-        }
+        const parsed = JSON.parse(stateJson) as EditorState;
+        const doc = parsed.doc.toString();
+        return doc.split("\n")[0].trim().slice(0, 80) || "Untitled";
     } catch {
-        // ignore
+        return "Unknown";
     }
-    return "Untitled";
 }
 
 /**
@@ -244,9 +232,7 @@ export async function loadDocument(id: string) {
 
     const loaded = await loadDocumentState(id, draftId);
     currentDocumentTitle.set(
-        loaded.snapshotStateJson
-            ? extractTitleFromStateJson(loaded.snapshotStateJson)
-            : "Untitled",
+        loaded.snapshotStateJson ? extractTitleFromStateJson(loaded.snapshotStateJson) : "Untitled",
     );
 
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
