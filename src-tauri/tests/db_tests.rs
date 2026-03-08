@@ -109,7 +109,7 @@ fn test_load_with_events_since_snapshot() {
     )
     .expect("set meta");
 
-    // Seed snapshot at seq -1
+    // Seed snapshot at event_id -1 (before any events)
     create_snapshot(&conn, &draft_id, r#"{"doc":"hello"}"#, -1).expect("snapshot");
 
     // Append 3 events

@@ -473,11 +473,11 @@ const loaded = await loadDocumentState(docId, draftId);
 // loaded.eventsSince        → events after the snapshot
 ```
 
-`loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `seq > snapshot.up_to_event_seq`. The snapshot is restored first, then any `eventsSince` are replayed in order via `replayEvents()` to reconstruct the full editor state.
+`loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `event_id > snapshot.up_to_event_id`. The snapshot is restored first, then any `eventsSince` are replayed in order via `replayEvents()` to reconstruct the full editor state.
 
 ### Migration from state.json
 
-On first launch after upgrading, `migrate_from_state_json` (Rust) runs automatically. It reads the legacy `state.json`, creates a document + draft + seed snapshot (with `up_to_event_seq = -1`), and sets a `_meta` flag so it never runs again. The operation is idempotent.
+On first launch after upgrading, `migrate_from_state_json` (Rust) runs automatically. It reads the legacy `state.json`, creates a document + draft + seed snapshot (with `up_to_event_id = -1`), and sets a `_meta` flag so it never runs again. The operation is idempotent.
 
 > **TODO: remove when safe.** Once all users are on a build that includes the SQLite persistence layer, this migration path can be deleted. Files to remove/change:
 >
