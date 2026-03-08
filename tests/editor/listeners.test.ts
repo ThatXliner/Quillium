@@ -5,6 +5,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { listeners } from "$lib/editor/listeners";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
+import { currentDocumentId, currentDraftId } from "$lib/stores";
 
 function makeView(options: Parameters<typeof listeners>[0] = {}) {
     const state = EditorState.create({
@@ -25,19 +26,26 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Set up a document + draft so the persist path is active
+    currentDocumentId.set("doc-1");
+    currentDraftId.set("draft-1");
 });
 
 afterEach(() => {
     view?.destroy();
     view = undefined;
     consoleErrorSpy.mockRestore();
+    currentDocumentId.set(null);
+    currentDraftId.set(null);
 });
 
 describe("listeners integration", () => {
-    it("invokes save when the document changes", async () => {
+    it("invokes cmd_append_event when the document changes", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
+            // Return a valid AppendEventResult so the listener doesn't error
+            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
             return null;
         });
 
@@ -45,13 +53,14 @@ describe("listeners integration", () => {
         view.dispatch({ changes: { from: 0, insert: "Hi " } });
         await flushMicrotasks();
 
-        expect(invoked.some((call) => call.cmd === "save")).toBe(true);
+        expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(true);
     });
 
-    it("invokes save when annotations change even without doc changes", async () => {
+    it("invokes cmd_append_event when annotations change even without doc changes", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
             return null;
         });
 
@@ -69,13 +78,14 @@ describe("listeners integration", () => {
         );
         await flushMicrotasks();
 
-        expect(invoked.some((call) => call.cmd === "save")).toBe(true);
+        expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(true);
     });
 
-    it("sends serialized editor state containing updated document text", async () => {
+    it("sends a doc_change payload containing the inserted text", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
             return null;
         });
 
@@ -83,17 +93,22 @@ describe("listeners integration", () => {
         view.dispatch({ changes: { from: 0, insert: "Draft: " } });
         await flushMicrotasks();
 
-        const saveCall = invoked.find((call) => call.cmd === "save");
-        expect(saveCall).toBeDefined();
-        const payload = (saveCall?.args ?? {}) as { state?: string };
-        expect(payload.state).toBeTypeOf("string");
-        expect(payload.state ?? "").toContain("Draft: Hello world");
+        const appendCall = invoked.find((call) => call.cmd === "cmd_append_event");
+        expect(appendCall).toBeDefined();
+        const args = appendCall?.args as { payloadJson?: string };
+        expect(args.payloadJson).toBeTypeOf("string");
+        const payload = JSON.parse(args.payloadJson ?? "{}") as Record<string, unknown>;
+        expect(payload.type).toBe("doc_change");
+        // The change inserts "Draft: " at position 0
+        const changes = payload.changes as Array<{ from: number; insert: string }>;
+        expect(changes.some((c) => c.insert === "Draft: ")).toBe(true);
     });
 
-    it("serializes annotation state in save payload after annotation updates", async () => {
+    it("sends an annotation_add payload when an annotation is added", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventSeq: 0, needsSnapshot: false };
             return null;
         });
 
@@ -106,14 +121,15 @@ describe("listeners integration", () => {
         view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
         await flushMicrotasks();
 
-        const saveCall = invoked.find((call) => call.cmd === "save");
-        expect(saveCall).toBeDefined();
-        const payload = (saveCall?.args ?? {}) as { state?: string };
-        const decoded = JSON.parse(payload.state ?? "{}") as Record<string, unknown>;
-        expect(decoded.annotationField).toBeDefined();
+        const appendCall = invoked.find((call) => call.cmd === "cmd_append_event");
+        expect(appendCall).toBeDefined();
+        const args = appendCall?.args as { payloadJson?: string };
+        const payload = JSON.parse(args.payloadJson ?? "{}") as Record<string, unknown>;
+        expect(payload.type).toBe("annotation_add");
+        expect(payload.annotation).toBeDefined();
     });
 
-    it("does not invoke save on selection-only updates", async () => {
+    it("does not invoke cmd_append_event on selection-only updates", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {
             invoked.push({ cmd, args });
@@ -124,7 +140,7 @@ describe("listeners integration", () => {
         view.dispatch({ selection: { anchor: 3 } });
         await flushMicrotasks();
 
-        expect(invoked.some((call) => call.cmd === "save")).toBe(false);
+        expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(false);
     });
 
     it("respects persist=false and skips saving", async () => {
@@ -138,7 +154,7 @@ describe("listeners integration", () => {
         view.dispatch({ changes: { from: 0, insert: "Hi " } });
         await flushMicrotasks();
 
-        expect(invoked.some((call) => call.cmd === "save")).toBe(false);
+        expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(false);
     });
 
     it("invokes the optional updateListener callback", () => {
@@ -151,9 +167,9 @@ describe("listeners integration", () => {
         expect(onUpdate.mock.calls[0]?.[0].docChanged).toBe(true);
     });
 
-    it("logs save errors and does not throw when persistence fails", async () => {
+    it("logs errors and does not throw when persistence fails", async () => {
         mockIPC((cmd) => {
-            if (cmd === "save") {
+            if (cmd === "cmd_append_event") {
                 return Promise.reject(new Error("disk full"));
             }
             return null;
@@ -166,6 +182,22 @@ describe("listeners integration", () => {
         await flushMicrotasks();
 
         expect(consoleErrorSpy).toHaveBeenCalled();
-        expect(consoleErrorSpy.mock.calls[0]?.[0]).toBe("save failed");
+    });
+
+    it("skips persisting when no document or draft is set", async () => {
+        currentDocumentId.set(null);
+        currentDraftId.set(null);
+
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Hi " } });
+        await flushMicrotasks();
+
+        expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(false);
     });
 });

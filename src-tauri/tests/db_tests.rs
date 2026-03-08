@@ -3,7 +3,7 @@ use quillium_lib::db::{
     events::{append_event, create_snapshot},
     load::load_document_state,
     migration::migrate_from_state_json,
-    schema::{init_schema, open_db},
+    schema::init_schema,
 };
 use rusqlite::Connection;
 use std::path::Path;
