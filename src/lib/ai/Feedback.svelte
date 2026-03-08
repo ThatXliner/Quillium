@@ -128,9 +128,9 @@ function askForFeedback() {
         {#if chat.messages.length > 0}
             <button
                 onclick={clearChat}
-                title="Clear chat"
-                class="absolute top-2 right-2 text-[10px] text-black/25 hover:text-black/50 transition-colors"
-            >Clear</button>
+                title="Start a fresh conversation (clears all messages)"
+                class="absolute top-2 right-2 text-[10px] text-black/25 hover:text-red-400 transition-colors"
+            >New chat</button>
         {/if}
         {#each chat.messages as message, messageIndex (messageIndex)}
             {#each message.parts as part, partIndex (partIndex)}
