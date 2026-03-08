@@ -88,7 +88,7 @@ import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import {
     annotationField,
     addAnnotation,
-    allowRevisionDocEdit,
+    revisionInternalEdit,
     removeAnnotation,
     invertedAnnotationFieldEffects,
     suggestionPreviewField,
@@ -139,7 +139,7 @@ function deleteAdjacentRevision(direction: "backward" | "forward"): StateCommand
                     insert: "",
                 }),
                 effects: [removeAnnotation.of(target)],
-                annotations: [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)],
+                annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
             }),
         );
         return true;
@@ -256,7 +256,7 @@ const revisionAtomicRanges = EditorView.atomicRanges.of((view) => buildAtomicRan
 // State monitored: annotationField revisions where
 //   selection.main.from === selection.main.to (collapsed).
 // Trigger: any doc-changing transaction NOT annotated with
-//   allowRevisionDocEdit (which marks intentional version
+//   revisionInternalEdit (which marks intentional version
 //   switches).
 // Downstream effects:
 //   - Collects ALL collapsed revisions in one pass and
@@ -275,7 +275,7 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
         update(update: ViewUpdate) {
             if (!appSettings.atomicRevisions) return;
             if (!update.docChanged) return;
-            if (update.transactions.some((tr) => tr.annotation(allowRevisionDocEdit))) return;
+            if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
             const annotations = update.state.field(annotationField);
             const collapsed = Object.values(annotations).filter(
                 (a) => isAnnotationOfType(a, "revision") && a.selection.main.empty,
@@ -336,7 +336,7 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
     class {
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
-            if (update.transactions.some((tr) => tr.annotation(allowRevisionDocEdit))) return;
+            if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
             const annotations = update.startState.field(annotationField);
             for (const tr of update.transactions) {
                 if (!tr.docChanged) continue;

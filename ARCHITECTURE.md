@@ -119,7 +119,7 @@ User types / dispatches transaction
 CodeMirror has two mechanisms for attaching metadata to a transaction:
 
 - **`StateEffect`** — persistent. Stored in history, can be inverted for undo. Used for all annotation mutations.
-- **`Transaction.annotation()`** — ephemeral metadata on the transaction itself. Not stored in history, not invertible. Used for flags like `allowRevisionDocEdit` (signals to `ViewPlugin`s that a transaction is "intentional" and should not trigger auto-cleanup).
+- **`Transaction.annotation()`** — ephemeral metadata on the transaction itself. Not stored in history, not invertible. Used for flags like `revisionInternalEdit` (signals to `ViewPlugin`s that a transaction is revision-system-driven and should not trigger auto-cleanup).
 
 ---
 
@@ -246,18 +246,21 @@ applySuggestion(state, annotationId, replacementIndex)
 
 Each builder returns a `TransactionSpec` (not dispatched yet). The caller is responsible for `view.dispatch(builder(...))`.
 
-### `allowRevisionDocEdit` — the intentional-edit flag
+### `revisionInternalEdit` — the revision-system-driven flag
 
 ```typescript
-export const allowRevisionDocEdit = Annotation.define<boolean>();
+export const revisionInternalEdit = Annotation.define<boolean>();
 ```
 
-A `Transaction.annotation` (not a `StateEffect`) set to `true` on any transaction that intentionally changes a revision's document range: version switches, version deletion, etc. It has two consumers:
+A `Transaction.annotation` (not a `StateEffect`) set to `true` on every transaction dispatched by the public revision API builders (`setActiveRevisionVersion`, `createNewRevision`, `deleteRevisionVersion`, `updateRevisionVersionState`, `branchSuggestion`). It marks the transaction as revision-system-driven — the doc change is part of the revision system's own operation, not user typing.
 
-1. **`collapsedRevisionResolver`** (`ViewPlugin`) — skips auto-recovery when it sees this annotation, because the collapse was intentional (the builder is about to restore text).
-2. **`boundaryInsertNudge`** (`ViewPlugin`) — skips emitting nudge events for programmatic changes.
+Three consumers check for this flag:
 
-Because it is a `Transaction.annotation` and not a `StateEffect`, it is **not** stored in history and **not** inverted. This is correct — the inverted effects already carry the semantic meaning of "undo this revision op."
+1. **`collapsedRevisionResolver`** (`ViewPlugin`) — skips auto-removal of collapsed revisions, because the collapse is intentional (the builder is replacing the text with the correct version content).
+2. **`boundaryInsertNudge`** (`ViewPlugin`) — skips emitting nudge UI events for programmatic insertions.
+3. **`invertedAnnotationFieldEffects`** — skips implicit annotation remapping detection, because these transactions manage their own annotation state via explicit `StateEffect`s.
+
+Because it is a `Transaction.annotation` and not a `StateEffect`, it is **not** stored in history and **not** inverted. The inverted `StateEffect`s on each transaction already carry the full semantic meaning of "undo this op."
 
 ### `_revisionCleanup` — the cleanup-transaction flag
 
@@ -289,7 +292,7 @@ Marks all **inactive** revision ranges as atomic via `EditorView.atomicRanges`. 
 
 ### `collapsedRevisionResolver`
 
-Monitors for revision ranges that collapsed to `from === to` in a `docChanged` transaction (that is not annotated `allowRevisionDocEdit`). Collects **all** such collapsed revisions and, in a single `queueMicrotask`-deferred dispatch:
+Monitors for revision ranges that collapsed to `from === to` in a `docChanged` transaction (that is not annotated `revisionInternalEdit`). Collects **all** such collapsed revisions and, in a single `queueMicrotask`-deferred dispatch:
 
 - Removes all collapsed revisions via `removeAnnotation` effects.
 - Tags the transaction `Transaction.addToHistory.of(false)` so no new undo history entry is created.
@@ -471,7 +474,7 @@ User clicks version pill N
   Transaction contains:
     - _updateActiveRevisionVersion effect (N)
     - doc change: replace revision range with versions[N].doc
-    - allowRevisionDocEdit.of(true)  ← prevents collapsedRevisionResolver from firing
+    - revisionInternalEdit.of(true)  ← prevents collapsedRevisionResolver from firing
     - Transaction.addToHistory.of(true)
 → annotationField Phase 2: updates currentlySelected, rebuilds selection to new span
 → Phase 3 skipped for this revision (it's in revisionsWithExplicitEffect)
