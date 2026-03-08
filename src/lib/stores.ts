@@ -72,7 +72,7 @@ export const selectedText = writable<string>("");
 
 /**
  * The ID of the document currently open in the editor.
- * null means the legacy single-document mode (state.json).
+ * null means no document is open (e.g., on the library page).
  * Written by: Editor.svelte on load, library page on "Open".
  * Read by: listeners.ts (save branch), StatusBar, library.
  */
