@@ -98,11 +98,19 @@ fn load(app_handle: tauri::AppHandle) -> Option<String> {
     .ok()
 }
 
+#[tauri::command]
+fn migrate_from_state_json(app_handle: tauri::AppHandle) -> Option<String> {
+    fs::read_to_string(
+        app_handle.path().app_local_data_dir().unwrap().join("state.json")
+    ).ok()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![save, load, scrap, set_api_key, get_api_key, delete_api_key])
+        .plugin(tauri_plugin_sql::Builder::default().build())
+        .invoke_handler(tauri::generate_handler![save, load, scrap, set_api_key, get_api_key, delete_api_key, migrate_from_state_json])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

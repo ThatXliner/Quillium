@@ -71,6 +71,21 @@ export const documentContent = writable<string>("");
 export const selectedText = writable<string>("");
 
 /**
+ * The ID of the document currently open in the editor.
+ * null means the legacy single-document mode (state.json).
+ * Written by: Editor.svelte on load, library page on "Open".
+ * Read by: listeners.ts (save branch), StatusBar, library.
+ */
+export const currentDocumentId = writable<string | null>(null);
+
+/**
+ * The display title of the currently open document.
+ * Written by: listeners.ts on every save (derived from first line).
+ * Read by: StatusBar, library page ContinuePill.
+ */
+export const currentDocumentTitle = writable<string>("Untitled");
+
+/**
  * Controls tutorial overlay visibility.
  * Written by: +page.svelte (on first visit), StatusBar.svelte
  *             (the "?" button), Tutorial.svelte (on complete).

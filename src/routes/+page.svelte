@@ -28,6 +28,7 @@ import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
+import { goToLibrary } from "$lib/navigation";
 
 let editorComponent = $state<{ reload: () => Promise<void> }>();
 
@@ -38,8 +39,17 @@ function showTutorialOnFirstVisit() {
     }
 }
 
+function handleKeydown(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "o") {
+        e.preventDefault();
+        goToLibrary();
+    }
+}
+
 onMount(showTutorialOnFirstVisit);
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <AiSidebar />
 

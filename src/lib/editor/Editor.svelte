@@ -25,6 +25,7 @@
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
 import { onMount } from "svelte";
 import posthog from "posthog-js";
 import { getExtensions, savedFields } from "./extensions";
@@ -34,7 +35,10 @@ import {
     documentContent,
     selectedText,
     activeAnnotation,
+    currentDocumentId,
+    currentDocumentTitle,
 } from "$lib/stores";
+import { initDb, listDocuments, getDocument } from "$lib/db";
 import "./plugins/annotations/default.css";
 import type { ViewUpdate } from "@codemirror/view";
 import StatusBar from "./StatusBar.svelte";
@@ -120,27 +124,53 @@ const getExtensionOptions: ListenerOptions = {
 };
 
 // ── State restoration ───────────────────────────────────────────
-// On module init we ask the Tauri backend for any previously
-// saved editor state. If found, we deserialise it (including
-// history and annotation fields); otherwise we create a fresh
-// EditorState. The resulting promise (`fromSave`) is awaited
-// both in the template (to defer rendering) and in onMount (to
-// attach the EditorView once the DOM is ready).
-const fromSave = invoke("load").then((d: unknown) => {
-    const data = d as string | null;
+// On module init we determine which document to load:
+//   1. If currentDocumentId is set, load that document from SQLite.
+//   2. Otherwise, run initDb() (migration) and load the most recent
+//      document from SQLite. Falls back to legacy invoke("load") if
+//      the DB is empty.
+// The resulting promise (`fromSave`) is awaited both in the template
+// (to defer rendering) and in onMount (to attach the EditorView).
+const fromSave = (async () => {
+    await initDb();
+    const docId = get(currentDocumentId);
+    let data: string | null = null;
+
+    if (docId) {
+        const doc = await getDocument(docId);
+        data = doc?.stateJson ?? null;
+    } else {
+        const docs = await listDocuments();
+        if (docs.length > 0) {
+            currentDocumentId.set(docs[0].id);
+            currentDocumentTitle.set(docs[0].title);
+            const doc = await getDocument(docs[0].id);
+            data = doc?.stateJson ?? null;
+        } else {
+            // Legacy fallback: load from state.json
+            data = (await invoke("load")) as string | null;
+        }
+    }
+
     let state: EditorState;
-    if (data) {
-        state = EditorState.fromJSON(
-            JSON.parse(data),
-            { extensions: getExtensions(getExtensionOptions) },
-            savedFields,
-        );
+    if (data && data !== "{}") {
+        try {
+            state = EditorState.fromJSON(
+                JSON.parse(data),
+                { extensions: getExtensions(getExtensionOptions) },
+                savedFields,
+            );
+        } catch {
+            state = EditorState.create({
+                extensions: getExtensions(getExtensionOptions),
+            });
+        }
     } else {
         state = EditorState.create({
-            doc: "Hello World",
             extensions: getExtensions(getExtensionOptions),
         });
     }
+
     const doc = state.doc.toString();
     stats = {
         words: getWordCount(doc),
@@ -149,7 +179,7 @@ const fromSave = invoke("load").then((d: unknown) => {
         selChars: 0,
     };
     return state;
-});
+})();
 
 /**
  * Reloads the editor from the Tauri backend's saved state.
@@ -174,6 +204,35 @@ export async function reload() {
         selWords: 0,
         selChars: 0,
     };
+}
+
+/**
+ * Loads a specific document from SQLite into the editor.
+ * Called by the library when the user opens a document.
+ */
+export async function loadDocument(id: string) {
+    if (!$editorView) return;
+    currentDocumentId.set(id);
+    const doc = await getDocument(id);
+    if (!doc) return;
+    currentDocumentTitle.set(doc.title);
+    let state: EditorState;
+    if (doc.stateJson && doc.stateJson !== "{}") {
+        try {
+            state = EditorState.fromJSON(
+                JSON.parse(doc.stateJson),
+                { extensions: getExtensions(getExtensionOptions) },
+                savedFields,
+            );
+        } catch {
+            state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
+        }
+    } else {
+        state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
+    }
+    $editorView.setState(state);
+    const text = state.doc.toString();
+    stats = { words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 };
 }
 
 onMount(() => {
