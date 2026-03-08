@@ -8,6 +8,18 @@ Quillium is the world's first non-linear editor for prose. Built on the belief t
 
 Read the [Manifesto](./MANIFESTO.md).
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Editor](screenshots/01-editor.png) | ![Feedback panel](screenshots/02-feedback.png) |
+| *Focused writing environment* | *AI feedback with quick-action chips* |
+| ![Annotations](screenshots/03-annotations.png) | ![Comment thread](screenshots/04-comment-active.png) |
+| *Comments, suggestions, and revisions beside the text* | *Active comment with back-and-forth thread* |
+
+![Revision with nested editor](screenshots/05-revision-active.png)
+*Revision card: version pills and the inline nested editor*
+
 ## What Makes Quillium Different
 
 - **Non-linear editing**: Keep multiple versions of text segments alive at once. Explore different directions without losing work.
