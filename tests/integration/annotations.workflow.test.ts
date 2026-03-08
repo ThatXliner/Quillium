@@ -133,7 +133,7 @@ describe("annotation workflows integration", () => {
         expect(annotations).toHaveLength(0);
     });
 
-    it("collapsed revision resolver removes the annotation without creating a history entry", async () => {
+    it("single undo fully restores deleted revision", async () => {
         // When a revision's text is fully deleted, the resolver dispatches
         // removeAnnotation tagged addToHistory.of(false). This ensures a single
         // Cmd+Z fully restores both the text and the annotation (via the
