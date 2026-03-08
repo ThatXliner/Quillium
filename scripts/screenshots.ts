@@ -5,7 +5,8 @@
  * each UI scenario, and writes PNG files to screenshots/.
  *
  * Usage:
- *   bun run screenshots
+ *   bun run screenshots              # auto-start dev server on :4173 if needed
+ *   bun run screenshots --no-server  # use already-running server on :1420 (tauri dev)
  *
  * Output: screenshots/
  *   editor-default.png
@@ -22,7 +23,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const BASE_URL = "http://127.0.0.1:4173";
+const noServer = process.argv.includes("--no-server");
+const BASE_URL = noServer ? "http://localhost:1420" : "http://localhost:4173";
 const OUT_DIR = "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -109,10 +111,18 @@ async function installTauriMock(
  * Wait for the CodeMirror editor to be visible and ready.
  */
 async function waitForEditor(page: Page): Promise<void> {
-    await page.locator("#editor-document .cm-content").waitFor({
+    // Wait for the #editor-document container first (gated by {#await fromSave}),
+    // then for CodeMirror to mount its .cm-editor inside it.
+    await page.locator("#editor-document").waitFor({
+        state: "attached",
+        timeout: 15_000,
+    });
+    await page.locator("#editor-document .cm-editor").waitFor({
         state: "visible",
         timeout: 15_000,
     });
+    // Small pause for CodeMirror's initial render pass to complete
+    await page.waitForTimeout(200);
 }
 
 /**
@@ -137,13 +147,16 @@ async function setEditorText(page: Page, text: string): Promise<void> {
 
 // ── Server lifecycle ──────────────────────────────────────────────────────────
 
-async function startServer(): Promise<ChildProcess> {
-    console.log("Starting preview server…");
 
-    // Build first, then preview
-    const server = spawn("bun", ["run", "vite", "preview", "--port", "4173", "--strictPort"], {
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: false,
+async function startServer(): Promise<ChildProcess> {
+    console.log("Starting dev server…");
+
+    const server = spawn(
+        "bun",
+        ["run", "dev", "--", "--host", "localhost", "--port", "4173", "--strictPort"],
+        {
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: false,
     });
 
     server.stdout?.on("data", (chunk: Buffer) => {
@@ -417,22 +430,35 @@ async function scenarioFullUi(browser: Awaited<ReturnType<typeof chromium.launch
 async function main(): Promise<void> {
     await mkdir(OUT_DIR, { recursive: true });
 
-    // Try connecting to an already-running server before launching one
     let server: ChildProcess | null = null;
-    let serverAlreadyRunning = false;
 
-    try {
-        const res = await fetch(BASE_URL);
-        if (res.ok || res.status === 304 || res.status === 200) {
-            serverAlreadyRunning = true;
+    if (noServer) {
+        try {
+            const res = await fetch(BASE_URL);
+            if (!res.ok && res.status !== 304 && res.status !== 200) {
+                throw new Error(`Server returned ${res.status}`);
+            }
             console.log(`Using existing server at ${BASE_URL}`);
+        } catch {
+            throw new Error(
+                `--no-server was set but no server is reachable at ${BASE_URL}`,
+            );
         }
-    } catch {
-        // Need to start one
-    }
+    } else {
+        let serverAlreadyRunning = false;
+        try {
+            const res = await fetch(BASE_URL);
+            if (res.ok || res.status === 304 || res.status === 200) {
+                serverAlreadyRunning = true;
+                console.log(`Using existing server at ${BASE_URL}`);
+            }
+        } catch {
+            // Need to start one
+        }
 
-    if (!serverAlreadyRunning) {
-        server = await startServer();
+        if (!serverAlreadyRunning) {
+            server = await startServer();
+        }
     }
 
     const browser = await chromium.launch({

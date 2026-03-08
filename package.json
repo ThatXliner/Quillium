@@ -21,8 +21,8 @@
     "bump": "bash scripts/bump.sh",
     "bump:minor": "bash scripts/bump.sh minor",
     "bump:major": "bash scripts/bump.sh major",
-    "screenshots": "bun run build && bun scripts/screenshots.ts",
-    "screenshots:dev": "bun scripts/screenshots.ts"
+    "screenshots": "bun scripts/screenshots.ts",
+    "screenshots:no-server": "bun scripts/screenshots.ts --no-server"
   },
   "license": "MIT",
   "dependencies": {
