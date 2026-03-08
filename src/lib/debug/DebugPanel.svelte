@@ -22,7 +22,7 @@
 import { editorView, currentDocumentId, currentDocumentTitle, currentDraftId } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
-import { EditorState, type Transaction } from "@codemirror/state";
+import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
 import {
@@ -33,14 +33,8 @@ import {
     createSnapshot,
     updateDocumentMeta,
 } from "$lib/db";
-import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
-import {
-    addAnnotation,
-    removeAnnotation,
-    updateThread,
-    annotationField,
-} from "$lib/editor/plugins/annotations/annotationField";
-import type { ViewUpdate } from "@codemirror/view";
+import type { EventPayload } from "$lib/db/events";
+import { buildEventPayload } from "$lib/editor/listeners";
 
 const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
 
@@ -53,95 +47,6 @@ const demoScenarios = scenarios.filter((s) => s.category === "demo");
 
 function close() {
     $debugPanelActive = false;
-}
-
-// ── Event payload extraction (mirrors listeners.ts) ───────────────
-
-function extractSelection(update: ViewUpdate): SelectionJSON {
-    const sel = update.state.selection;
-    return {
-        ranges: sel.ranges.map((r) => ({ anchor: r.anchor, head: r.head })),
-        main: sel.mainIndex,
-    };
-}
-
-function extractAnnotationEvents(tr: Transaction, startState: EditorState): AnnotationEvent[] {
-    const events: AnnotationEvent[] = [];
-    for (const effect of tr.effects) {
-        if (effect.is(addAnnotation)) {
-            const annotation = effect.value;
-            events.push({
-                type: "annotation_add",
-                annotation: JSON.parse(
-                    JSON.stringify({
-                        ...annotation,
-                        selection: annotation.selection.toJSON(),
-                    }),
-                ),
-            });
-        } else if (effect.is(removeAnnotation)) {
-            events.push({
-                type: "annotation_remove",
-                annotationId: effect.value.id,
-            });
-        } else if (effect.is(updateThread)) {
-            const { annotationId, newThread } = effect.value;
-            const ann = startState.field(annotationField)[annotationId];
-            if (ann) {
-                events.push({
-                    type: "annotation_update",
-                    annotation: JSON.parse(
-                        JSON.stringify({
-                            ...ann,
-                            selection: ann.selection.toJSON(),
-                            thread: newThread,
-                        }),
-                    ),
-                });
-            }
-        }
-    }
-    return events;
-}
-
-function buildEventPayload(update: ViewUpdate): EventPayload | null {
-    let allDocChanges: ChangeSpec[] = [];
-    let allAnnotationEvents: AnnotationEvent[] = [];
-
-    for (const tr of update.transactions) {
-        if (tr.docChanged) {
-            const changes: ChangeSpec[] = [];
-            tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-                changes.push({ from: fromA, to: toA, insert: inserted.toString() });
-            });
-            allDocChanges = allDocChanges.concat(changes);
-        }
-        allAnnotationEvents = allAnnotationEvents.concat(
-            extractAnnotationEvents(tr, update.startState),
-        );
-    }
-
-    const hasDocChange = allDocChanges.length > 0;
-    const hasAnnotationChange = allAnnotationEvents.length > 0;
-    if (!hasDocChange && !hasAnnotationChange) return null;
-
-    const selection = extractSelection(update);
-
-    if (hasDocChange && hasAnnotationChange) {
-        return {
-            type: "compound",
-            docChanges: allDocChanges,
-            annotationEvents: allAnnotationEvents,
-            selection,
-        };
-    }
-    if (hasDocChange) {
-        return { type: "doc_change", changes: allDocChanges, selection };
-    }
-    if (allAnnotationEvents.length === 1) {
-        return allAnnotationEvents[0] as EventPayload;
-    }
-    return { type: "compound", docChanges: [], annotationEvents: allAnnotationEvents, selection };
 }
 
 // ── Scenario runner ───────────────────────────────────────────────
