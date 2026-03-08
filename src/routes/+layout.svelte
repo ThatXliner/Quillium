@@ -14,6 +14,7 @@ const { children } = $props();
 
 onNavigate((navigation) => {
     if (!document.startViewTransition) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     return new Promise((resolve) => {
         document.startViewTransition(async () => {
             resolve();
@@ -54,5 +55,12 @@ onNavigate((navigation) => {
     }
     :global(html[data-direction="right"]) :global(::view-transition-new(root)) {
         animation: slide-from-left 0.3s ease both;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        :global(::view-transition-old(root)),
+        :global(::view-transition-new(root)) {
+            animation: none !important;
+        }
     }
 </style>
