@@ -17,8 +17,17 @@ interface Props {
     onDeletePermanent: () => void;
 }
 
-const { doc, selected, viewMode, trashMode, onSelect, onOpen, onTrash, onRestore, onDeletePermanent }: Props =
-    $props();
+const {
+    doc,
+    selected,
+    viewMode,
+    trashMode,
+    onSelect,
+    onOpen,
+    onTrash,
+    onRestore,
+    onDeletePermanent,
+}: Props = $props();
 
 function formatDate(ms: number): string {
     const d = new Date(ms);
@@ -27,13 +36,18 @@ function formatDate(ms: number): string {
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: diffDays > 365 ? "numeric" : undefined });
+    return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: diffDays > 365 ? "numeric" : undefined,
+    });
 }
 </script>
 
 {#if viewMode === "grid"}
+    <!-- Having "on select" animations/transitions feel instant generally feels better -->
     <div
-        class="group relative text-left rounded-xl p-4 flex flex-col gap-2 border transition-all duration-200 w-full min-w-0 overflow-hidden cursor-pointer
+        class="group relative text-left rounded-xl p-4 flex flex-col gap-2 border w-full min-w-0 overflow-hidden cursor-pointer
             {selected
                 ? 'bg-blue-50 border-blue-300 shadow-md ring-2 ring-blue-400/30'
                 : trashMode
@@ -97,8 +111,9 @@ function formatDate(ms: number): string {
         {/if}
     </div>
 {:else}
+    <!-- Having "on select" animations/transitions feel instant generally feels better -->
     <div
-        class="group relative text-left w-full rounded-xl px-4 py-3 flex items-center gap-4 border transition-all duration-200 cursor-pointer
+        class="group relative text-left w-full rounded-xl px-4 py-3 flex items-center gap-4 border cursor-pointer
             {selected
                 ? 'bg-blue-50 border-blue-300 shadow-sm ring-2 ring-blue-400/30'
                 : trashMode
