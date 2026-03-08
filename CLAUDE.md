@@ -55,8 +55,8 @@ Two primary state management approaches are used:
 
 Key global stores in `src/lib/stores.ts`:
 - `editorView`: Main CodeMirror editor instance
-- `annotations`: Manually synced annotation state 
-- `activeComment`: Currently selected comment annotation
+- `annotations`: Manually synced annotation state
+- `activeAnnotation`: Currently focused annotation (comment, revision, or suggestion)
 
 ### Core Components
 

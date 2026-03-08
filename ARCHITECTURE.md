@@ -43,31 +43,57 @@ src/
 ├── lib/
 │   ├── ai/
 │   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise)
+│   │   ├── AISettings.svelte  # Provider/model configuration
 │   │   ├── Chat.svelte        # General AI chat
+│   │   ├── DocumentContext.svelte # Context reference display
 │   │   ├── Feedback.svelte    # AI feedback on document or selection
-│   │   └── Revise.svelte      # AI-powered revision generation
+│   │   ├── Revise.svelte      # AI-powered revision generation
+│   │   ├── chatFactory.ts     # Shared AI request/streaming helpers
+│   │   ├── clientStreams.ts   # Streaming response handling
+│   │   ├── provider.ts        # Provider-agnostic client setup
+│   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
+│   │   └── utils.ts           # Shared AI utilities
+│   ├── debug/
+│   │   └── DebugPanel.svelte  # Development-only debug overlay
 │   ├── editor/
 │   │   ├── Editor.svelte      # CodeMirror mount point + state sync
 │   │   ├── extensions.ts      # Full CodeMirror extension stack
 │   │   ├── listeners.ts       # Persistence + change listeners
+│   │   ├── replay.ts          # Event log replay for state reconstruction
 │   │   ├── StatusBar.svelte   # Word count, WPM, character count
 │   │   └── plugins/
 │   │       └── annotations/
 │   │           ├── models.ts          # Type defs, factory helpers, type guards
 │   │           ├── annotationField.ts # StateField + all StateEffects + undo support
 │   │           ├── utils.ts           # Range mapping, active annotation queries
+│   │           ├── diff.ts            # Diff computation for suggestions
+│   │           ├── nestedEditor.ts    # Nested editor lifecycle helpers
 │   │           ├── index.ts           # Keybindings, ViewPlugins, public API
 │   │           ├── Annotations.svelte # Right panel container + card positioning
 │   │           ├── Comment.svelte     # Comment card
+│   │           ├── DiffModal.svelte   # Full-screen diff view overlay
+│   │           ├── PreComment.svelte  # Draft form for empty-thread comment
 │   │           ├── Revision.svelte    # Revision card + inline nested editor
 │   │           ├── RevisionModal.svelte # Full-screen nested editor overlay
 │   │           ├── Suggestion.svelte  # Suggestion card with diff view
 │   │           ├── Thread.svelte      # Message list inside a card
 │   │           ├── ThreadMessage.svelte # Single message (with inline edit)
-│   │           ├── PreComment.svelte  # Draft form for empty-thread comment
+│   │           ├── TutorialGuide.svelte # In-editor tutorial callouts
 │   │           └── default.css        # Highlight CSS classes for all annotation types
+│   ├── library/
+│   │   ├── ContinuePill.svelte  # "Continue writing" shortcut on library page
+│   │   ├── DocumentCard.svelte  # Single document card in the grid
+│   │   ├── DocumentGrid.svelte  # Grid layout for document list
+│   │   ├── EmptyState.svelte    # Empty library placeholder
+│   │   ├── LibraryTopBar.svelte # Library page header + actions
+│   │   └── PreviewPanel.svelte  # Document preview sidebar
 │   ├── save/
 │   │   └── Save.svelte        # Save indicator (separated for future extension)
+│   ├── settings/
+│   │   └── SettingsModal.svelte # App-level settings overlay
+│   ├── tutorial/
+│   │   ├── Tutorial.svelte    # Onboarding tutorial overlay
+│   │   └── steps.ts           # Tutorial step definitions
 │   ├── stores.ts              # Global Svelte stores
 │   └── settings.svelte.ts     # App settings (reactive, persisted)
 └── routes/
@@ -107,6 +133,8 @@ User types / dispatches transaction
     │  $activeAnnotation           │ ← read by Comment/Revision cards
     │  $documentContent            │ ← read by AI sidebar
     │  $selectedText               │ ← read by AI sidebar
+    │  $saveStatus                 │ ← read by StatusBar
+    │  $currentDocumentTitle       │ ← read by StatusBar, library
     └──────────────────────────────┘
 ```
 
@@ -272,9 +300,9 @@ Set to `true` on the transaction dispatched by `collapsedRevisionResolver` when 
 
 ---
 
-## ViewPlugins
+## ViewPlugins and Extensions
 
-Four `ViewPlugin`s in `index.ts` react to editor updates:
+`index.ts` registers three `ViewPlugin`s and one facet extension that react to editor updates:
 
 ### `annotationDecorations`
 
@@ -288,7 +316,7 @@ Active state is determined by `getActiveAnnotation()` — the annotation whose r
 
 ### `revisionAtomicRanges`
 
-Marks all **inactive** revision ranges as atomic via `EditorView.atomicRanges`. The cursor jumps over the entire span instead of entering it. This does *not* block edits — `atomicRanges` only governs cursor placement.
+Registered via `EditorView.atomicRanges.of(...)` (a facet provider, not a `ViewPlugin`). Marks all **inactive** revision ranges as atomic. The cursor jumps over the entire span instead of entering it. This does *not* block edits — `atomicRanges` only governs cursor placement.
 
 ### `collapsedRevisionResolver`
 
@@ -429,11 +457,11 @@ export const savedFields = { historyField, annotationField };
 // On every docChanged || annotationsChanged (listeners.ts):
 const result = await appendEvent(draftId, JSON.stringify(payload));
 if (result.needsSnapshot) {
-    createSnapshot(draftId, JSON.stringify(state.toJSON(savedFields)), result.eventSeq);
+    createSnapshot(draftId, JSON.stringify(state.toJSON(savedFields)), result.eventId);
 }
 ```
 
-`appendEvent` (Rust) atomically inserts the event row, bumps `documents.updated_at`, and returns `{ eventSeq, needsSnapshot }`. A snapshot is triggered when ≥50 events have accumulated since the last snapshot, or ≥120 seconds have elapsed.
+`appendEvent` (Rust) atomically inserts the event row, bumps `documents.updated_at`, and returns `{ eventId, needsSnapshot }`. A snapshot is triggered when ≥50 events have accumulated since the last snapshot, or ≥120 seconds have elapsed.
 
 ### Load flow
 
@@ -441,7 +469,7 @@ if (result.needsSnapshot) {
 // Editor.svelte
 const loaded = await loadDocumentState(docId, draftId);
 // loaded.snapshotStateJson  → latest snapshot blob
-// loaded.snapshotEventSeq   → seq of that snapshot (-1 for seed)
+// loaded.snapshotEventId    → id of that snapshot (-1 for seed)
 // loaded.eventsSince        → events after the snapshot
 ```
 
@@ -606,15 +634,24 @@ Both carry the complete annotation object (not just an ID). This lets the undo i
 
 | Event | When | File |
 |---|---|---|
+| `app_session_started` | Editor mounts with a document | `Editor.svelte` |
 | `ai_sidebar_opened` | User opens AI sidebar to a mode | `AISidebar.svelte` |
+| `ai_message_sent` | Any AI request is dispatched | `chatFactory.ts` |
 | `ai_chat_message_sent` | User sends AI chat message | `Chat.svelte` |
+| `ai_chat_quick_prompt_used` | User uses a chat quick prompt | `Chat.svelte` |
 | `ai_feedback_requested` | User requests AI feedback | `Feedback.svelte` |
+| `ai_feedback_quick_prompt_used` | User uses a feedback quick prompt | `Feedback.svelte` |
 | `ai_revise_requested` | User triggers AI revision | `Revise.svelte` |
-| `ai_revise_quick_prompt_used` | User uses a quick prompt | `Revise.svelte` |
+| `ai_revise_quick_prompt_used` | User uses a revise quick prompt | `Revise.svelte` |
+| `context_generated` | AI context is generated for a document | `clientStreams.ts` |
+| `context_cleared` | User clears document context | `DocumentContext.svelte` |
+| `annotation_created` | AI creates a comment, suggestion, or revision | `chatFactory.ts` |
 | `comment_created` | User submits a new comment | `PreComment.svelte` |
 | `comment_ai_suggestion_requested` | User requests AI suggestion in thread | `Comment.svelte` |
 | `suggestion_applied` | User applies an AI suggestion | `Suggestion.svelte` |
 | `suggestion_branched` | User converts suggestion to revision | `Suggestion.svelte` |
+| `suggestion_diff_viewed` | User views a suggestion diff inline | `Suggestion.svelte` |
+| `suggestion_diff_modal_opened` | User opens the full-screen diff modal | `Suggestion.svelte` |
 | `revision_version_created` | User creates a new revision version | `Revision.svelte` |
 | `annotation_deleted` | User deletes a comment, suggestion, or revision | `Comment.svelte`, `Suggestion.svelte`, `Revision.svelte` |
 | `tutorial_completed` | User completes onboarding | `Tutorial.svelte` |
