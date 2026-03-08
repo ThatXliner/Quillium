@@ -3,7 +3,15 @@
 -->
 <script lang="ts">
 import { onMount } from "svelte";
-import { listDocuments, createDocument, initDb } from "$lib/db";
+import {
+    listDocuments,
+    listTrashedDocuments,
+    createDocument,
+    initDb,
+    trashDocument,
+    restoreDocument,
+    deleteDocument,
+} from "$lib/db";
 import type { DocumentMeta } from "$lib/db/types";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
 import { goToEditor } from "$lib/navigation";
@@ -14,19 +22,25 @@ import ContinuePill from "$lib/library/ContinuePill.svelte";
 import EmptyState from "$lib/library/EmptyState.svelte";
 
 let documents = $state<DocumentMeta[]>([]);
+let trashedDocuments = $state<DocumentMeta[]>([]);
 let selectedId = $state<string | null>(null);
 let viewMode = $state<"grid" | "list">("grid");
 let query = $state("");
 let loading = $state(true);
+let tab = $state<"library" | "trash">("library");
+
+const trashMode = $derived(tab === "trash");
+
+const activeDocuments = $derived(trashMode ? trashedDocuments : documents);
 
 const filtered = $derived(
     query.trim()
-        ? documents.filter(
+        ? activeDocuments.filter(
               (d) =>
                   d.title.toLowerCase().includes(query.toLowerCase()) ||
                   d.previewText.toLowerCase().includes(query.toLowerCase()),
           )
-        : documents,
+        : activeDocuments,
 );
 
 const selectedDoc = $derived(filtered.find((d) => d.id === selectedId) ?? null);
@@ -35,7 +49,10 @@ const hasContinue = $derived($currentDocumentId !== null);
 async function load() {
     loading = true;
     await initDb();
-    documents = await listDocuments();
+    [documents, trashedDocuments] = await Promise.all([
+        listDocuments(),
+        listTrashedDocuments(),
+    ]);
     if (!selectedId && documents.length > 0) {
         selectedId = documents[0].id;
     }
@@ -56,6 +73,47 @@ function handleOpen(id: string) {
     goToEditor();
 }
 
+async function handleTrash(id: string) {
+    await trashDocument(id);
+    if (selectedId === id) {
+        const remaining = documents.filter((d) => d.id !== id);
+        selectedId = remaining.length > 0 ? remaining[0].id : null;
+    }
+    [documents, trashedDocuments] = await Promise.all([
+        listDocuments(),
+        listTrashedDocuments(),
+    ]);
+}
+
+async function handleRestore(id: string) {
+    await restoreDocument(id);
+    if (selectedId === id) {
+        const remaining = trashedDocuments.filter((d) => d.id !== id);
+        selectedId = remaining.length > 0 ? remaining[0].id : null;
+    }
+    [documents, trashedDocuments] = await Promise.all([
+        listDocuments(),
+        listTrashedDocuments(),
+    ]);
+}
+
+async function handleDeletePermanent(id: string) {
+    await deleteDocument(id);
+    if (selectedId === id) {
+        const remaining = trashedDocuments.filter((d) => d.id !== id);
+        selectedId = remaining.length > 0 ? remaining[0].id : null;
+    }
+    trashedDocuments = await listTrashedDocuments();
+}
+
+function handleTabChange(newTab: "library" | "trash") {
+    tab = newTab;
+    query = "";
+    selectedId = null;
+    const list = newTab === "trash" ? trashedDocuments : documents;
+    if (list.length > 0) selectedId = list[0].id;
+}
+
 onMount(load);
 </script>
 
@@ -68,7 +126,11 @@ onMount(load);
             <div class="mb-5">
                 <h1 class="text-2xl font-semibold text-black/75">Your Library</h1>
                 <p class="text-sm text-black/40 mt-0.5">
-                    {documents.length} {documents.length === 1 ? "document" : "documents"}
+                    {#if trashMode}
+                        {trashedDocuments.length} {trashedDocuments.length === 1 ? "document" : "documents"} in trash
+                    {:else}
+                        {documents.length} {documents.length === 1 ? "document" : "documents"}
+                    {/if}
                 </p>
             </div>
             <LibraryTopBar
@@ -77,6 +139,8 @@ onMount(load);
                 {query}
                 onQueryChange={(q) => (query = q)}
                 onNew={handleNew}
+                {tab}
+                onTabChange={handleTabChange}
             />
         </header>
 
@@ -85,8 +149,12 @@ onMount(load);
                 <div class="flex items-center justify-center h-40">
                     <div class="w-6 h-6 rounded-full border-2 border-blue-400 border-t-transparent animate-spin"></div>
                 </div>
-            {:else if filtered.length === 0 && documents.length === 0}
+            {:else if filtered.length === 0 && activeDocuments.length === 0 && !trashMode}
                 <EmptyState onNew={handleNew} />
+            {:else if filtered.length === 0 && activeDocuments.length === 0 && trashMode}
+                <div class="flex flex-col items-center justify-center h-40 gap-2">
+                    <p class="text-sm text-black/40">Trash is empty.</p>
+                </div>
             {:else if filtered.length === 0}
                 <div class="flex flex-col items-center justify-center h-40">
                     <p class="text-sm text-black/40">No documents match your search.</p>
@@ -96,8 +164,12 @@ onMount(load);
                     documents={filtered}
                     {selectedId}
                     {viewMode}
+                    {trashMode}
                     onSelect={(id) => (selectedId = id)}
                     onOpen={handleOpen}
+                    onTrash={handleTrash}
+                    onRestore={handleRestore}
+                    onDeletePermanent={handleDeletePermanent}
                 />
             {/if}
         </div>
@@ -107,7 +179,11 @@ onMount(load);
     <div class="w-1/2 h-full">
         <PreviewPanel
             doc={selectedDoc}
+            {trashMode}
             onOpen={() => selectedId && handleOpen(selectedId)}
+            onTrash={() => selectedId && handleTrash(selectedId)}
+            onRestore={() => selectedId && handleRestore(selectedId)}
+            onDeletePermanent={() => selectedId && handleDeletePermanent(selectedId)}
         />
     </div>
 

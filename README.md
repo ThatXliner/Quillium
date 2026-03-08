@@ -96,10 +96,11 @@ bun run check:watch     # Watch mode
 - ✅ Infinitely nestable revision system
 - ✅ AI integration framework with multiple providers
 - ✅ Cross-platform desktop app via Tauri
+- ✅ SQLite-backed durable data persistence layer
+
 
 ### Near-term
 
-- **Robust data persistence**: Never lose work, even during crashes
 - **Enhanced revision system**: True non-linear editing with branching histories
 - **Improved AI integration**: Configurable prompts
 <!--- **Offline-first architecture**: Work without internet connectivity-->
