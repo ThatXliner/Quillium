@@ -38,8 +38,9 @@ function handleDeletePermanent() {
 }
 
 $effect(() => {
-    // Reset confirmation when the selected doc changes
-    if (doc) confirmingDelete = false;
+    // Reset confirmation whenever the selected doc changes (including to null)
+    doc;
+    confirmingDelete = false;
 });
 </script>
 
