@@ -40,7 +40,7 @@ function showTutorialOnFirstVisit() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+    if ((e.metaKey || e.ctrlKey) && e.key === "o") {
         e.preventDefault();
         goToLibrary();
     }
