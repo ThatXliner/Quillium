@@ -29,6 +29,7 @@ import {
     removeAnnotation,
     updateThread,
     annotationsChanged,
+    type GenericAnnotation,
 } from "./plugins/annotations";
 import type {
     AnnotationEvent,
@@ -78,21 +79,20 @@ function extractChanges(tr: Transaction): ChangeSpec[] {
  * the serialised selection reflects any range remapping that happened in the
  * same transaction (e.g. doc changes before the thread update).
  */
+function serializeAnnotation(annotation: GenericAnnotation): Record<string, unknown> {
+    return JSON.parse(
+        JSON.stringify({ ...annotation, selection: annotation.selection.toJSON() }),
+    );
+}
+
 function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     const { annotationField } = savedFields;
     const events: AnnotationEvent[] = [];
     for (const effect of tr.effects) {
         if (effect.is(addAnnotation)) {
-            // Serialise the annotation: selection must be converted to plain JSON.
-            const annotation = effect.value;
             events.push({
                 type: "annotation_add",
-                annotation: JSON.parse(
-                    JSON.stringify({
-                        ...annotation,
-                        selection: annotation.selection.toJSON(),
-                    }),
-                ),
+                annotation: serializeAnnotation(effect.value),
             });
         } else if (effect.is(removeAnnotation)) {
             events.push({
@@ -106,12 +106,7 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
             if (ann) {
                 events.push({
                     type: "annotation_update",
-                    annotation: JSON.parse(
-                        JSON.stringify({
-                            ...ann,
-                            selection: ann.selection.toJSON(),
-                        }),
-                    ),
+                    annotation: serializeAnnotation(ann),
                 });
             }
         }
@@ -123,7 +118,7 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
  * Builds a single EventPayload from all transactions in a ViewUpdate.
  * Returns null if there is nothing worth persisting.
  */
-function buildEventPayload(update: ViewUpdate): EventPayload | null {
+export function buildEventPayload(update: ViewUpdate): EventPayload | null {
     let allDocChanges: ChangeSpec[] = [];
     let allAnnotationEvents: AnnotationEvent[] = [];
 
