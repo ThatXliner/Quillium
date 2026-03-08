@@ -74,8 +74,12 @@ function extractChanges(tr: Transaction): ChangeSpec[] {
 
 /**
  * Extracts annotation mutation effects from a single CM transaction.
+ * For updateThread, reads the post-transaction annotation from tr.state so
+ * the serialised selection reflects any range remapping that happened in the
+ * same transaction (e.g. doc changes before the thread update).
  */
 function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
+    const { annotationField } = savedFields;
     const events: AnnotationEvent[] = [];
     for (const effect of tr.effects) {
         if (effect.is(addAnnotation)) {
@@ -96,40 +100,23 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
                 annotationId: effect.value.id,
             });
         } else if (effect.is(updateThread)) {
-            const { annotationId, newThread } = effect.value;
-            // Fetch annotation from state and merge thread update
-            const ann = update_annotation_thread(annotationId, newThread);
+            // Read from tr.state (post-transaction) so the selection has already
+            // been remapped through any doc changes in the same transaction.
+            const ann = tr.state.field(annotationField)[effect.value.annotationId];
             if (ann) {
-                events.push({ type: "annotation_update", annotation: ann });
+                events.push({
+                    type: "annotation_update",
+                    annotation: JSON.parse(
+                        JSON.stringify({
+                            ...ann,
+                            selection: ann.selection.toJSON(),
+                        }),
+                    ),
+                });
             }
         }
     }
     return events;
-}
-
-// Sentinel: we need view state to get annotation — pass update reference via closure.
-// This is reset per-update before extractAnnotationEvents is called.
-let _currentUpdateRef: ViewUpdate | null = null;
-
-function update_annotation_thread(
-    annotationId: number,
-    newThread: unknown[],
-): Record<string, unknown> | null {
-    if (!_currentUpdateRef) return null;
-    try {
-        const { annotationField } = savedFields;
-        const ann =
-            _currentUpdateRef.startState.field(annotationField)[annotationId];
-        if (!ann) return null;
-        const merged = {
-            ...ann,
-            selection: ann.selection.toJSON(),
-            thread: newThread,
-        };
-        return JSON.parse(JSON.stringify(merged));
-    } catch {
-        return null;
-    }
 }
 
 /**
@@ -137,9 +124,6 @@ function update_annotation_thread(
  * Returns null if there is nothing worth persisting.
  */
 function buildEventPayload(update: ViewUpdate): EventPayload | null {
-    // Set the closure reference for annotation thread lookups
-    _currentUpdateRef = update;
-
     let allDocChanges: ChangeSpec[] = [];
     let allAnnotationEvents: AnnotationEvent[] = [];
 
@@ -151,8 +135,6 @@ function buildEventPayload(update: ViewUpdate): EventPayload | null {
             extractAnnotationEvents(tr),
         );
     }
-
-    _currentUpdateRef = null;
 
     const hasDocChange = allDocChanges.length > 0;
     const hasAnnotationChange = allAnnotationEvents.length > 0;
