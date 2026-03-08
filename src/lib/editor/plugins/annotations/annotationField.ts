@@ -667,8 +667,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     // Skip undo/redo replays (they already carry stored effects) and
     // revision-internal edits (allowRevisionDocEdit), which handle their
     // own annotation state via explicit effects.
-    const isUndoRedo =
-        transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
+    const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
     const isRevisionEdit = transaction.annotation(allowRevisionDocEdit);
     if (transaction.docChanged && !isUndoRedo && !isRevisionEdit) {
         for (const annotation of Object.values(oldAnnotations)) {
@@ -682,9 +681,18 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 // pre-deletion selection so undo re-adds it at the right position.
                 effects.push(_restoreAnnotation.of(annotation));
             } else if (isRevision && remapped !== null && remapped.main.empty) {
-                // Revision survived with a collapsed selection. On undo the doc
-                // is restored, so remove the collapsed state and re-add the
-                // original annotation with the correct pre-deletion span.
+                // Revision survived remapping but collapsed to a point. Two
+                // effects are needed on undo:
+                //   1. removeAnnotation(collapsed) — the collapsed revision
+                //      still exists in the field at undo time (collapsedRevisionResolver
+                //      fires asynchronously in a microtask); undo must remove it
+                //      first, otherwise the field ends up with two entries for
+                //      the same annotation ID.
+                //   2. _restoreAnnotation(original) — re-adds the annotation
+                //      with its full pre-deletion selection. Using _restoreAnnotation
+                //      instead of addAnnotation means the map function does not
+                //      filter collapsed ranges, so positions remap correctly
+                //      through the undo's inverse change.
                 effects.push(removeAnnotation.of({ ...annotation, selection: remapped }));
                 effects.push(_restoreAnnotation.of(annotation));
             }

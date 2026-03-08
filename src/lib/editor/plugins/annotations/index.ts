@@ -285,13 +285,36 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
             // history entry. invertedAnnotationFieldEffects already stored a
             // _restoreAnnotation effect for each collapsed revision at deletion
             // time, so a single Cmd+Z fully restores text and annotations.
+            //
+            // queueMicrotask: dispatching inside update() is illegal in
+            // CodeMirror — the update cycle must finish before the view
+            // accepts a new dispatch. A microtask defers to the next
+            // microtask checkpoint (before the next task/paint) so the
+            // cleanup still feels synchronous to the user but doesn't
+            // violate CodeMirror's invariant.
             queueMicrotask(() => {
-                // Guard: if state has advanced (e.g. undo), skip.
+                // Guard: the state may have advanced since this update fired
+                // (e.g. the user pressed Cmd+Z before the microtask ran).
+                // If so, the collapsed revision was already cleaned up or
+                // restored by the undo, and dispatching now would double-remove.
                 if (update.view.state !== update.state) return;
                 update.view.dispatch({
                     effects: collapsed.map((a) => removeAnnotation.of(a)),
                     annotations: [
+                        // addToHistory:false — without this the cleanup would
+                        // create its own undo entry (H2) between the deletion
+                        // (H1) and the original addAnnotation (H0). The user
+                        // would need two Cmd+Z presses to undo a single
+                        // deletion, and the intermediate state would show the
+                        // revision missing but its text present.
                         Transaction.addToHistory.of(false),
+                        // _revisionCleanup — tells invertedAnnotationFieldEffects
+                        // to skip this transaction entirely. Without this guard,
+                        // invertedEffects would see the removeAnnotation effects
+                        // here and generate addAnnotation(collapsed) effects that
+                        // get merged into H1's undo entry — so Cmd+Z would
+                        // re-insert an orphaned zero-width revision on top of the
+                        // _restoreAnnotation that already does the right thing.
                         _revisionCleanup.of(true),
                     ],
                 });
