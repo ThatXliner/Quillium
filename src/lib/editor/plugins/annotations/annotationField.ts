@@ -133,7 +133,33 @@ export const updateThread = StateEffect.define<{
     annotationId: number;
     newThread: Thread;
 }>();
-export const allowRevisionDocEdit = Annotation.define<boolean>();
+// Marks a transaction as a revision-internal doc edit — i.e. the document
+// change is part of the revision system's own operation (version switch,
+// version delete, branch, etc.), not the user typing. Set to true on every
+// transaction dispatched by the public revision API builders.
+//
+// Two consumers check for this flag to avoid treating system-driven changes
+// as user edits:
+//   - collapsedRevisionResolver: skips auto-removal of collapsed revisions,
+//     because the collapse is intentional (the builder is about to replace
+//     the text with the correct version content).
+//   - boundaryInsertNudge: skips emitting nudge UI events for programmatic
+//     insertions.
+//   - invertedAnnotationFieldEffects: skips implicit annotation remapping
+//     detection, because these transactions manage their own annotation state
+//     via explicit StateEffects.
+//
+// This is a Transaction.annotation (not a StateEffect), so it is never
+// stored in history and never inverted. The inverted StateEffects on each
+// transaction already carry the full semantic meaning of "undo this op."
+export const revisionInternalEdit = Annotation.define<boolean>();
+// Marks a transaction dispatched by collapsedRevisionResolver to remove
+// collapsed revisions after a deletion. addToHistory.of(false) ensures no
+// new undo entry is created, and this annotation prevents invertedEffects from
+// generating spurious addAnnotation effects that would pollute the deletion's
+// undo entry (since the deletion's undo already carries the correct
+// _restoreAnnotation effects for every collapsed revision).
+export const _revisionCleanup = Annotation.define<boolean>();
 // export const addThreadToAnnotation = StateEffect.define<{
 // 	annotationId: number;
 // 	threadMessage: ThreadMessage;
@@ -180,7 +206,7 @@ export function setActiveRevisionVersion(state: EditorState, annotationId: numbe
                 to,
             }),
         ],
-        annotations: [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)],
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
         changes: state.changes({
             from: original.selection.main.from,
             to: original.selection.main.to,
@@ -210,7 +236,7 @@ export function createNewRevision(state: EditorState, annotationId: number) {
         }),
         // Place cursor at start of the new version so isActive becomes true.
         selection: EditorSelection.cursor(from),
-        annotations: [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)],
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
     });
 }
 export function deleteRevisionVersion(state: EditorState, annotationId: number, versionId: number) {
@@ -226,7 +252,7 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
     if (original.versions.length === 1) {
         return state.update({
             effects: [removeAnnotation.of(original)],
-            annotations: [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)],
+            annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
             changes: state.changes({
                 from: original.selection.main.from,
                 to: original.selection.main.to,
@@ -258,7 +284,7 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
         );
     }
 
-    const annotations = [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)];
+    const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)];
     if (versionId === original.currentlySelected) {
         return state.update({
             effects,
@@ -293,7 +319,7 @@ export function updateRevisionVersionState(
             versionState: newVersionState,
         }),
     ];
-    const annotations = [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)];
+    const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)];
     if (original.currentlySelected !== versionId) {
         return state.update({
             effects,
@@ -339,7 +365,7 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
     return state.update({
         effects: [removeAnnotation.of(annotation), addAnnotation.of(newRevision)],
         changes: state.changes({ from, to, insert: firstReplacement }),
-        annotations: [allowRevisionDocEdit.of(true), Transaction.addToHistory.of(true)],
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
     });
 }
 // === For suggestions ===
@@ -637,6 +663,15 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     const effects = [];
     const oldAnnotations = transaction.startState.field(annotationField);
 
+    // Skip cleanup transactions dispatched by collapsedRevisionResolver.
+    // Those transactions remove collapsed revisions with addToHistory.of(false),
+    // so they don't create a new undo entry. Without this guard,
+    // invertedEffects would generate addAnnotation(collapsed) effects that get
+    // merged into the deletion's undo entry — re-inserting orphaned collapsed
+    // annotations on Cmd+Z. The deletion already stores _restoreAnnotation
+    // effects for every collapsed revision, so nothing more is needed.
+    if (transaction.annotation(_revisionCleanup)) return [];
+
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
     // when text they were anchored to was deleted. These have no explicit effect,
     // so invertedEffects would never see them.
@@ -649,11 +684,10 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     // around the annotation.
     // Only generate implicit restore effects for plain user text edits.
     // Skip undo/redo replays (they already carry stored effects) and
-    // revision-internal edits (allowRevisionDocEdit), which handle their
+    // revision-internal edits (revisionInternalEdit), which handle their
     // own annotation state via explicit effects.
-    const isUndoRedo =
-        transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
-    const isRevisionEdit = transaction.annotation(allowRevisionDocEdit);
+    const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
+    const isRevisionEdit = transaction.annotation(revisionInternalEdit);
     if (transaction.docChanged && !isUndoRedo && !isRevisionEdit) {
         for (const annotation of Object.values(oldAnnotations)) {
             const isRevision = isAnnotationOfType(annotation, "revision");
@@ -666,9 +700,18 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 // pre-deletion selection so undo re-adds it at the right position.
                 effects.push(_restoreAnnotation.of(annotation));
             } else if (isRevision && remapped !== null && remapped.main.empty) {
-                // Revision survived with a collapsed selection. On undo the doc
-                // is restored, so remove the collapsed state and re-add the
-                // original annotation with the correct pre-deletion span.
+                // Revision survived remapping but collapsed to a point. Two
+                // effects are needed on undo:
+                //   1. removeAnnotation(collapsed) — the collapsed revision
+                //      still exists in the field at undo time (collapsedRevisionResolver
+                //      fires asynchronously in a microtask); undo must remove it
+                //      first, otherwise the field ends up with two entries for
+                //      the same annotation ID.
+                //   2. _restoreAnnotation(original) — re-adds the annotation
+                //      with its full pre-deletion selection. Using _restoreAnnotation
+                //      instead of addAnnotation means the map function does not
+                //      filter collapsed ranges, so positions remap correctly
+                //      through the undo's inverse change.
                 effects.push(removeAnnotation.of({ ...annotation, selection: remapped }));
                 effects.push(_restoreAnnotation.of(annotation));
             }

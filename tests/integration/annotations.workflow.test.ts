@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { history, undo } from "@codemirror/commands";
 import {
     annotations as annotationExtensions,
     createComment,
@@ -17,7 +18,7 @@ import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/ann
 function createView(doc: string) {
     const state = EditorState.create({
         doc,
-        extensions: [annotationExtensions()],
+        extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
     });
     const parent = document.createElement("div");
     document.body.appendChild(parent);
@@ -132,7 +133,13 @@ describe("annotation workflows integration", () => {
         expect(annotations).toHaveLength(0);
     });
 
-    it("collapsed revision resolver restores another version when one exists", async () => {
+    it("single undo fully restores deleted revision", async () => {
+        // When a revision's text is fully deleted, the resolver dispatches
+        // removeAnnotation tagged addToHistory.of(false). This ensures a single
+        // Cmd+Z fully restores both the text and the annotation (via the
+        // _restoreAnnotation effect stored at deletion time) without spurious
+        // intermediate undo entries. The old version-switch behaviour was removed
+        // because it created a separate history entry that required 3 Cmd+Z presses.
         view = createView("Alpha Delta Gamma");
 
         const revision = {
@@ -152,15 +159,24 @@ describe("annotation workflows integration", () => {
         view.dispatch({ changes: { from: 6, to: 11, insert: "" } });
         await flushMicrotasks();
 
+        // After the resolver fires, the collapsed annotation is removed and
+        // no version text is inserted — the doc retains only the surrounding text.
         const annotations = getAnnotations(view);
-        expect(annotations).toHaveLength(1);
-        expect(isAnnotationOfType(annotations[0], "revision")).toBe(true);
-        if (!isAnnotationOfType(annotations[0], "revision")) return;
+        expect(annotations).toHaveLength(0);
+        expect(view.state.doc.toString()).toBe("Alpha  Gamma");
 
-        expect(annotations[0].currentlySelected).toBe(0);
-        expect(view.state.doc.toString()).toBe("Alpha Beta Gamma");
-        const { from, to } = annotations[0].selection.main;
-        expect(view.state.sliceDoc(from, to)).toBe("Beta");
+        // A single undo must restore both the text and the annotation (with all
+        // versions intact) because the resolver did NOT create a history entry.
+        undo(view);
+        const restored = getAnnotations(view);
+        expect(restored).toHaveLength(1);
+        expect(isAnnotationOfType(restored[0], "revision")).toBe(true);
+        expect(view.state.doc.toString()).toBe("Alpha Delta Gamma");
+        if (isAnnotationOfType(restored[0], "revision")) {
+            expect(restored[0].versions).toHaveLength(2);
+            expect(restored[0].versions[0]?.doc).toBe("Beta");
+            expect(restored[0].versions[1]?.doc).toBe("Delta");
+        }
     });
 
     it("createRevision captures original text and provided alternatives", () => {

@@ -36,6 +36,7 @@ import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
+import { cubicOut } from "svelte/easing";
 import {
     createNewRevision,
     deleteRevisionVersion,
@@ -517,14 +518,14 @@ onDestroy(() => {
 
     <!-- Nested editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor && appSettings.atomicRevisions}
-        <div transition:slide={{ duration: 200 }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+        <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
             <div
                 bind:this={recursiveEditorHost}
                 class="revision-recursive-editor h-[220px] overflow-hidden"
                 class:cursor-arriving={cursorArriving}
             ></div>
             {#if nestedEditorHasActiveAnnotation}
-                <div transition:slide={{ duration: 150 }}
+                <div transition:slide={{ duration: 100, easing: cubicOut }}
                     class="border-t border-purple-100/60 px-3 py-2 flex items-center justify-between gap-2">
                     <span class="text-[10px] text-purple-500/70">Annotation selected</span>
                     <button

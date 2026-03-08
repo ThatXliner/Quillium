@@ -20,6 +20,8 @@
  * Children: ThreadMessage.svelte (one per message)
  */
 import { SparklesIcon } from "lucide-svelte";
+import { slide } from "svelte/transition";
+import { cubicOut } from "svelte/easing";
 import ThreadMessage from "./ThreadMessage.svelte";
 import type { Thread as ThreadType } from ".";
 
@@ -56,7 +58,7 @@ function send() {
 {#if thread.length > 0}
     <div class="space-y-3 {previewOnly ? '' : 'mb-0'}">
         {#each thread as message, i}
-            {#if !previewOnly || i === 0}
+            {#if i === 0}
                 <ThreadMessage
                     {message}
                     index={i}
@@ -64,11 +66,21 @@ function send() {
                     {thread}
                     truncate={previewOnly && i === 0}
                 />
+            {:else if !previewOnly}
+                <div transition:slide={{ duration: 180, easing: cubicOut }}>
+                    <ThreadMessage
+                        {message}
+                        index={i}
+                        {updateThread}
+                        {thread}
+                        truncate={false}
+                    />
+                </div>
             {/if}
         {/each}
 
         {#if previewOnly && thread.length > 1}
-            <p class="text-[10px] text-black/40 pl-9">
+            <p transition:slide={{ duration: 180, easing: cubicOut }} class="text-[10px] text-black/40 pl-9">
                 {thread.length - 1} more repl{thread.length === 2 ? "y" : "ies"}
             </p>
         {/if}
@@ -77,7 +89,8 @@ function send() {
 
 <!-- Reply input — hidden in previewOnly mode -->
 {#if !previewOnly}
-    <div class="mt-3 rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
+    <div transition:slide={{ duration: 200, easing: cubicOut }}
+        class="mt-3 rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
         ring-1 ring-black/5 focus-within:ring-2 {focusRingClass} transition-shadow">
         <textarea
             bind:value={newMessage}
