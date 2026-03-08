@@ -24,13 +24,20 @@ export type Scenario = {
     setup: (view: EditorView) => void;
 };
 
-// ── Shared sample document ────────────────────────────────────────────────────
+// ── Shared sample documents ───────────────────────────────────────────────────
 
 const SAMPLE_DOC = `The old lighthouse keeper had watched storms roll in from the sea for forty years. Each one was different — some crept in slowly, giving him hours to prepare, while others arrived without warning, the sky turning green and angry before the wind even picked up.
 
 He checked the lamp mechanism one last time, running his fingers along the brass gears the way a pianist touches keys before a concert. Everything had to work tonight.
 
 The fog had been thick all week, and three ships were expected in the harbour before dawn.`;
+
+// Public domain — A Tale of Two Cities (Dickens), used by the screenshot script
+const DICKENS_DOC = `It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair.
+
+We had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way. There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France.
+
+It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this. Mrs. Southcott had recently attained her five-and-twentieth blessed birthday, of whom a prophetic private in the Life Guards had heralded the sublime appearance by announcing that arrangements were made for the swallowing up of London and Westminster.`;
 
 // ── Scenarios ─────────────────────────────────────────────────────────────────
 
@@ -282,6 +289,103 @@ export const scenarios: Scenario[] = [
                 {
                     text: "checked the lamp mechanism",
                     comment: "Action shows routine without stating it explicitly.",
+                },
+            ];
+            for (const { text, comment } of passages) {
+                try {
+                    createComment({ targetText: text, comment, author: "Editor", view });
+                } catch {
+                    // Skip if text not found after previous annotations shifted ranges
+                }
+            }
+        },
+    },
+
+    // ── Screenshot scenarios (Dickens) ────────────────────────────────────────
+    // Used by scripts/screenshots.ts via window.__runScenario__. These mirror
+    // the debug scenarios above but operate on the Dickens passage so the
+    // annotations match the text already loaded into the editor.
+
+    {
+        id: "screenshot-annotations",
+        label: "Screenshot: annotations (Dickens)",
+        description:
+            "Mixed annotations on the A Tale of Two Cities passage — used by the screenshot script",
+        doc: DICKENS_DOC,
+        setup(view) {
+            createComment({
+                targetText: "it was the age of wisdom, it was the age of foolishness",
+                comment:
+                    "The parallelism is relentless here — intentional, but consider whether one more beat pushes it past the tipping point into self-parody.",
+                author: "Editor",
+                view,
+            });
+            createSuggestion({
+                state: view.state,
+                dispatch: (tr) => view.dispatch(tr),
+                targetText: "we were all going direct to Heaven, we were all going direct the other way",
+                replacements: [
+                    {
+                        text: "we were all going directly to Heaven, and all going directly the other way",
+                        rationale: "Loosens the inversion slightly for modern readers",
+                    },
+                    {
+                        text: "all going direct to Heaven, all going direct the other way",
+                        rationale: "Drop 'we were' for tighter parallelism",
+                    },
+                ],
+                author: "Editor",
+            });
+            createRevision({
+                targetText:
+                    "Spiritual revelations were conceded to England at that favoured period, as at this.",
+                versions: [
+                    {
+                        label: "Active",
+                        text: "England received its spiritual revelations at that favoured period, as it does now.",
+                    },
+                    {
+                        label: "Compressed",
+                        text: "Spiritual revelations visited England then, as now.",
+                    },
+                ],
+                threadMessage:
+                    "The passive voice feels period-appropriate but distances the reader. Two alternatives: activate the grammar, or compress ruthlessly.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
+        id: "screenshot-dense",
+        label: "Screenshot: dense annotations (Dickens)",
+        description:
+            "Several comments across the Dickens passage for the full-ui screenshot",
+        doc: DICKENS_DOC,
+        setup(view) {
+            const passages = [
+                {
+                    text: "it was the worst of times",
+                    comment: "The inversion here is the engine of the whole opening — worth protecting.",
+                },
+                {
+                    text: "it was the season of Darkness",
+                    comment: "Capitalisation is deliberate and correct for Dickens; don't normalise.",
+                },
+                {
+                    text: "the spring of hope, it was the winter of despair",
+                    comment:
+                        "Seasonal contrast lands well. Note that hope/spring and despair/winter are well-worn — the force here is accumulation, not novelty.",
+                },
+                {
+                    text: "a king with a large jaw",
+                    comment:
+                        "The physical detail is satirical caricature — makes both monarchs ridiculous, which is the point.",
+                },
+                {
+                    text: "arrangements were made for the swallowing up of London and Westminster",
+                    comment:
+                        "Bathetic climax — the grand apocalyptic image undercut by bureaucratic phrasing. Very much intentional.",
                 },
             ];
             for (const { text, comment } of passages) {

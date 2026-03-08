@@ -17,7 +17,7 @@
  *   full-ui.png
  */
 
-import { chromium, type Page } from "@playwright/test";
+import { chromium, type BrowserContext, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 
@@ -27,6 +27,8 @@ const noServer = process.argv.includes("--no-server");
 const BASE_URL = noServer ? "http://localhost:1420" : "http://localhost:4173";
 const OUT_DIR = "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
+// 2× device scale factor for crisp retina-quality screenshots
+const DEVICE_SCALE_FACTOR = 2;
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -70,6 +72,10 @@ async function installTauriMock(
             const callbacks = new Map<number, (...args: unknown[]) => unknown>();
             const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
 
+            // Mutable saved state — updated by "save" so "load" returns the
+            // latest value (needed for the scenario reload cycle).
+            let savedState: string | null = payload.loadResponse;
+
             (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = {
                 invokeCalls,
             };
@@ -77,8 +83,11 @@ async function installTauriMock(
             (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
                 invoke: async (cmd: string, args: unknown) => {
                     invokeCalls.push({ cmd, args });
-                    if (cmd === "load") return payload.loadResponse;
-                    if (cmd === "save") return true;
+                    if (cmd === "load") return savedState;
+                    if (cmd === "save") {
+                        savedState = (args as { state: string }).state;
+                        return true;
+                    }
                     if (cmd === "get_api_key") return payload.fakeApiKey ? "sk-demo-key" : null;
                     if (cmd === "set_api_key") return null;
                     if (cmd === "plugin:event|listen") return 1;
@@ -111,8 +120,6 @@ async function installTauriMock(
  * Wait for the CodeMirror editor to be visible and ready.
  */
 async function waitForEditor(page: Page): Promise<void> {
-    // Wait for the #editor-document container first (gated by {#await fromSave}),
-    // then for CodeMirror to mount its .cm-editor inside it.
     await page.locator("#editor-document").waitFor({
         state: "attached",
         timeout: 15_000,
@@ -121,7 +128,6 @@ async function waitForEditor(page: Page): Promise<void> {
         state: "visible",
         timeout: 15_000,
     });
-    // Small pause for CodeMirror's initial render pass to complete
     await page.waitForTimeout(200);
 }
 
@@ -133,7 +139,6 @@ async function setEditorText(page: Page, text: string): Promise<void> {
     const editor = page.locator("#editor-document .cm-content");
     await editor.click();
     await page.keyboard.press("ControlOrMeta+a");
-    // Use clipboard for multi-line content to avoid slow character-by-character typing
     await page.evaluate((t: string) => {
         const dt = new DataTransfer();
         dt.setData("text/plain", t);
@@ -141,12 +146,46 @@ async function setEditorText(page: Page, text: string): Promise<void> {
             new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }),
         );
     }, text);
-    // Small pause for CodeMirror to process the paste
     await page.waitForTimeout(300);
 }
 
-// ── Server lifecycle ──────────────────────────────────────────────────────────
+/**
+ * Apply a debug scenario by ID using the window.__runScenario__ bridge.
+ *
+ * The debug panel (available in dev/preview builds) exposes this global
+ * after the editor mounts. Returns true if the scenario ran successfully.
+ */
+async function applyDebugScenario(page: Page, scenarioId: string): Promise<boolean> {
+    // __runScenario__ is async — evaluate() can await a Promise returned
+    // from the page context, so we return the promise directly.
+    const ok = await page.evaluate(async (id: string) => {
+        const fn = (window as unknown as Record<string, unknown>).__runScenario__;
+        if (typeof fn !== "function") return false;
+        return (fn as (id: string) => Promise<boolean>)(id);
+    }, scenarioId);
+    // Extra wait for setState + Svelte reactivity + annotation decorations to render
+    if (ok) await page.waitForTimeout(800);
+    return ok;
+}
 
+/**
+ * Fallback annotation injection when the debug bridge isn't available.
+ *
+ * Selects the first paragraph via triple-click and fires the
+ * Cmd+Alt+M shortcut to create a pending comment annotation.
+ */
+async function addFallbackAnnotation(page: Page): Promise<void> {
+    const editor = page.locator("#editor-document .cm-content");
+    await editor.click();
+    await editor.click({ clickCount: 3 });
+    await page.waitForTimeout(100);
+    await page.keyboard.press("Meta+Alt+m");
+    await page.waitForTimeout(600);
+    await page.mouse.click(720, 800);
+    await page.waitForTimeout(400);
+}
+
+// ── Server lifecycle ──────────────────────────────────────────────────────────
 
 async function startServer(): Promise<ChildProcess> {
     console.log("Starting dev server…");
@@ -157,7 +196,8 @@ async function startServer(): Promise<ChildProcess> {
         {
             stdio: ["ignore", "pipe", "pipe"],
             detached: false,
-    });
+        },
+    );
 
     server.stdout?.on("data", (chunk: Buffer) => {
         process.stdout.write(`[server] ${chunk}`);
@@ -166,7 +206,6 @@ async function startServer(): Promise<ChildProcess> {
         process.stderr.write(`[server] ${chunk}`);
     });
 
-    // Poll until the server responds
     await pollUntilReady(BASE_URL);
     console.log("Server ready.");
     return server;
@@ -198,21 +237,17 @@ async function shot(page: Page, name: string): Promise<void> {
 
 /**
  * 1. editor-default — Clean editor, short prose, status bar visible,
- *    AI sidebar in collapsed pill state (default on load).
+ *    AI sidebar in collapsed pill state.
  */
-async function scenarioEditorDefault(
-    browser: Awaited<ReturnType<typeof chromium.launch>>,
-): Promise<void> {
-    const page = await browser.newPage();
+async function scenarioEditorDefault(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
 
-    // Replace the default "Hello World" text with short prose
     await setEditorText(page, PROSE_SHORT);
 
-    // Click somewhere neutral to deselect
     await page.mouse.click(720, 800);
     await page.waitForTimeout(200);
 
@@ -221,13 +256,11 @@ async function scenarioEditorDefault(
 }
 
 /**
- * 2. editor-with-text — Longer fiction passage, scrolled to show
- *    the full document card with its shadow.
+ * 2. editor-with-text — Longer fiction passage showing the full document
+ *    card with shadow and the status bar.
  */
-async function scenarioEditorWithText(
-    browser: Awaited<ReturnType<typeof chromium.launch>>,
-): Promise<void> {
-    const page = await browser.newPage();
+async function scenarioEditorWithText(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page);
     await page.goto(BASE_URL);
@@ -235,7 +268,6 @@ async function scenarioEditorWithText(
 
     await setEditorText(page, PROSE_LONG);
 
-    // Scroll slightly to show the document card in full
     await page.mouse.click(720, 800);
     await page.waitForTimeout(300);
     await page.evaluate(() => window.scrollTo({ top: 0 }));
@@ -245,17 +277,12 @@ async function scenarioEditorWithText(
 }
 
 /**
- * 3. ai-sidebar-chat — AI sidebar open on the Chat tab.
- *    Shows the empty "Start a conversation" state (no API key needed
- *    for the screenshot — the settings panel redirects, so we click
- *    force to bypass the hasApiKey guard for display purposes).
+ * 3. ai-sidebar-chat — AI sidebar open on the Chat tab (empty state).
+ *    fakeApiKey=true so the panel opens instead of redirecting to settings.
  */
-async function scenarioAiSidebarChat(
-    browser: Awaited<ReturnType<typeof chromium.launch>>,
-): Promise<void> {
-    const page = await browser.newPage();
+async function scenarioAiSidebarChat(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
-    // fakeApiKey=true so hasApiKey() returns true and the sidebar opens chat
     await installTauriMock(page, { fakeApiKey: true });
     await page.goto(BASE_URL);
     await waitForEditor(page);
@@ -265,7 +292,6 @@ async function scenarioAiSidebarChat(
     // Open chat panel
     await page.locator("#ai-tab-chat").click({ force: true });
     await page.locator("#ai-sidebar").waitFor({ state: "visible" });
-    // Wait for the expanded state to animate in
     await page.waitForTimeout(500);
 
     await shot(page, "ai-sidebar-chat");
@@ -273,12 +299,10 @@ async function scenarioAiSidebarChat(
 }
 
 /**
- * 4. ai-sidebar-feedback — AI sidebar open on the Feedback tab.
+ * 4. ai-sidebar-feedback — AI sidebar open on the Feedback tab (empty state).
  */
-async function scenarioAiSidebarFeedback(
-    browser: Awaited<ReturnType<typeof chromium.launch>>,
-): Promise<void> {
-    const page = await browser.newPage();
+async function scenarioAiSidebarFeedback(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page, { fakeApiKey: true });
     await page.goto(BASE_URL);
@@ -294,7 +318,8 @@ async function scenarioAiSidebarFeedback(
     // Switch to Feedback tab inside the expanded sidebar
     await page
         .locator("#ai-sidebar .overflow-x-auto button[aria-label='Feedback']")
-        .click({ force: true });
+        .click({ force: true })
+        .catch(() => {});
     await page.waitForTimeout(300);
 
     await shot(page, "ai-sidebar-feedback");
@@ -302,79 +327,28 @@ async function scenarioAiSidebarFeedback(
 }
 
 /**
- * 5. annotations-panel — Editor with prose and a highlighted comment
- *    annotation visible beside the document.
+ * 5. annotations-panel — Editor with prose and realistic annotation cards
+ *    (comments, suggestion, revision) visible beside the document.
  *
- *    We seed the annotation by typing the text, selecting a phrase,
- *    then using the keyboard shortcut to open a comment (Mod+Shift+C
- *    or whatever the keymap defines — we use the UI menu if needed).
- *    For simplicity we select text and dispatch the CodeMirror effect
- *    directly via evaluate().
+ *    Uses the "mixed-annotations" debug scenario which seeds a comment,
+ *    a suggestion, and a revision across the text. Falls back to a single
+ *    keyboard-shortcut comment if the debug bridge isn't available.
  */
-async function scenarioAnnotationsPanel(
-    browser: Awaited<ReturnType<typeof chromium.launch>>,
-): Promise<void> {
-    const page = await browser.newPage();
+async function scenarioAnnotationsPanel(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
     await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
 
-    await setEditorText(page, PROSE_LONG);
-
-    // Select the first sentence to annotate it
-    const editor = page.locator("#editor-document .cm-content");
-    await editor.click();
-
-    // Use triple-click to select the first line, then create a comment
-    await editor.click({ clickCount: 3 });
-    await page.waitForTimeout(100);
-
-    // Dispatch CodeMirror addAnnotation effect via evaluate
-    const annotated = await page.evaluate(() => {
-        // Find the CodeMirror view on the DOM
-        const cmEditor = document.querySelector(".cm-editor") as HTMLElement & {
-            [key: string | symbol]: unknown;
-        };
-        if (!cmEditor) return false;
-
-        // CodeMirror stores the EditorView on the DOM node
-        const viewSymbol = Object.getOwnPropertySymbols(cmEditor).find(
-            (s) => s.toString() === "Symbol(cmView)",
-        );
-        if (!viewSymbol) return false;
-
-        const view = cmEditor[viewSymbol] as {
-            state: {
-                selection: {
-                    main: { from: number; to: number; empty: boolean };
-                };
-                field(f: unknown): unknown;
-                doc: { toString(): string };
-            };
-            dispatch(tr: object): void;
-        };
-
-        const { from, to } = view.state.selection.main;
-        if (from === to) return false;
-
-        // Access the addAnnotation StateEffect from window if the app exposes it.
-        // The app doesn't expose StateEffects globally, so we fire a custom event.
-        // The app can intercept it or we can trigger the keyboard shortcut.
-        // Since we can't import CodeMirror internals here, store selection info
-        // and trigger via keyboard shortcut instead.
-        (window as unknown as Record<string, unknown>).__screenshot_selection__ = { from, to };
-        return true;
-    });
-
-    if (annotated) {
-        // Trigger the comment shortcut (Mod+Shift+C based on CM keymaps)
-        // Mod-Alt-m is the keybinding for createCommentCommand (annotationKeymap)
-        await page.keyboard.press("Meta+Alt+m");
-        await page.waitForTimeout(500);
+    // The scenario sets its own doc (Dickens) via the reload cycle.
+    // No need to paste text first — it will be overwritten.
+    const applied = await applyDebugScenario(page, "screenshot-annotations");
+    if (!applied) {
+        await setEditorText(page, PROSE_LONG);
+        await addFallbackAnnotation(page);
     }
 
-    // Deselect by clicking elsewhere, then wait for annotation card to appear
     await page.mouse.click(720, 800);
     await page.waitForTimeout(600);
 
@@ -383,43 +357,33 @@ async function scenarioAnnotationsPanel(
 }
 
 /**
- * 6. full-ui — Wide shot showing all three panels simultaneously:
- *    collapsed AI sidebar pill, editor with text, and annotation card.
+ * 6. full-ui — All three panels simultaneously: AI sidebar expanded on
+ *    the Chat tab (left), editor with text (centre), annotation cards
+ *    (right). Uses a wider viewport so nothing is squeezed.
  */
-async function scenarioFullUi(browser: Awaited<ReturnType<typeof chromium.launch>>): Promise<void> {
-    const page = await browser.newPage();
-    // Extra-wide viewport to show all panels
+async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    // Wide enough that editor + both sidebars are comfortably visible
     await page.setViewportSize({ width: 1600, height: 900 });
-    await installTauriMock(page);
+    await installTauriMock(page, { fakeApiKey: true });
     await page.goto(BASE_URL);
     await waitForEditor(page);
 
-    await setEditorText(page, PROSE_LONG);
+    // Seed annotations first (sets the doc too)
+    const applied = await applyDebugScenario(page, "screenshot-annotations");
+    if (!applied) {
+        await setEditorText(page, PROSE_LONG);
+        await addFallbackAnnotation(page);
+    }
 
-    // Select first paragraph to annotate
-    const editor = page.locator("#editor-document .cm-content");
-    await editor.click();
-    await editor.click({ clickCount: 3 });
-    await page.waitForTimeout(100);
-
-    await page.evaluate(() => {
-        const cmEditor = document.querySelector(".cm-editor") as HTMLElement & {
-            [key: string | symbol]: unknown;
-        };
-        if (!cmEditor) return;
-        const viewSymbol = Object.getOwnPropertySymbols(cmEditor).find(
-            (s) => s.toString() === "Symbol(cmView)",
-        );
-        if (!viewSymbol) return;
-        (window as unknown as Record<string, unknown>).__screenshot_selection__ = true;
-    });
-
-    // Mod-Alt-m is the keybinding for createCommentCommand (annotationKeymap)
-    await page.keyboard.press("Meta+Alt+m");
+    // Now open the AI sidebar on the Chat tab
+    await page.locator("#ai-tab-chat").click({ force: true });
+    await page.locator("#ai-sidebar").waitFor({ state: "visible" });
     await page.waitForTimeout(500);
 
-    await page.mouse.click(800, 700);
-    await page.waitForTimeout(400);
+    // Deselect so no text is highlighted
+    await page.mouse.click(900, 600);
+    await page.waitForTimeout(300);
 
     await shot(page, "full-ui");
     await page.close();
@@ -466,18 +430,25 @@ async function main(): Promise<void> {
         args: ["--no-sandbox", "--disable-dev-shm-usage"],
     });
 
+    // Create a shared browser context with 2× device scale factor for
+    // retina-quality screenshots (crisp text and UI at the saved size).
+    const context = await browser.newContext({
+        deviceScaleFactor: DEVICE_SCALE_FACTOR,
+    });
+
     try {
         console.log("\nCapturing screenshots…\n");
 
-        await scenarioEditorDefault(browser);
-        await scenarioEditorWithText(browser);
-        await scenarioAiSidebarChat(browser);
-        await scenarioAiSidebarFeedback(browser);
-        await scenarioAnnotationsPanel(browser);
-        await scenarioFullUi(browser);
+        await scenarioEditorDefault(context);
+        await scenarioEditorWithText(context);
+        await scenarioAiSidebarChat(context);
+        await scenarioAiSidebarFeedback(context);
+        await scenarioAnnotationsPanel(context);
+        await scenarioFullUi(context);
 
         console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
     } finally {
+        await context.close();
         await browser.close();
         if (server) {
             server.kill();
