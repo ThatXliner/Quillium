@@ -41,7 +41,14 @@ function formatDate(ms: number): string {
                   : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"
         onclick={onSelect}
         ondblclick={trashMode ? undefined : onOpen}
-        onkeydown={(e) => e.key === "Enter" && (trashMode ? onSelect() : onOpen())}
+        onkeydown={(e) => {
+            if (e.key === "Enter") {
+                trashMode ? onSelect() : onOpen();
+            } else if (e.key === " " || e.key === "Spacebar") {
+                e.preventDefault();
+                trashMode ? onSelect() : onOpen();
+            }
+        }}
         role="button"
         tabindex="0"
     >
