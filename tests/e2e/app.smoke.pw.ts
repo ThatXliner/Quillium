@@ -124,6 +124,14 @@ test("calls migration and list exactly once during startup", async ({ page }) =>
                 .length,
     );
     expect(migrateCalls).toBe(1);
+
+    const listCalls = await page.evaluate(
+        () =>
+            (
+                window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
+            ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "cmd_list_documents").length,
+    );
+    expect(listCalls).toBe(1);
 });
 
 test("typing updates stats and triggers cmd_append_event", async ({ page }) => {
