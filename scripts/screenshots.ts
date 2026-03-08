@@ -14,6 +14,8 @@
  *   ai-sidebar-chat.png
  *   ai-sidebar-feedback.png
  *   annotations-panel.png
+ *   comment-thread.png
+ *   revision-expanded.png
  *   full-ui.png
  */
 
@@ -147,6 +149,63 @@ async function setEditorText(page: Page, text: string): Promise<void> {
         );
     }, text);
     await page.waitForTimeout(300);
+}
+
+/**
+ * Click text inside a CodeMirror annotation highlight to move the cursor
+ * into that range, activating the annotation card.
+ *
+ * Finds the first `.cm-annotation` mark (or any decorated span) whose
+ * text content contains the target substring and clicks it.
+ */
+async function clickAnnotatedText(page: Page, targetSubstring: string): Promise<void> {
+    const clicked = await page.evaluate((target: string) => {
+        // CodeMirror renders annotation highlights as spans inside .cm-content.
+        // They may have class names like cm-annotation-comment, cm-annotation-revision, etc.
+        const spans = Array.from(
+            document.querySelectorAll<HTMLElement>(
+                ".cm-content span[class*='cm-annotation'], .cm-content mark",
+            ),
+        );
+        const match = spans.find((el) => el.textContent?.includes(target));
+        if (match) {
+            match.click();
+            return true;
+        }
+        // Fallback: search all text nodes in cm-content
+        const content = document.querySelector(".cm-content");
+        if (!content) return false;
+        const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+        let node: Text | null;
+        while ((node = walker.nextNode() as Text | null)) {
+            if (node.textContent?.includes(target) && node.parentElement) {
+                node.parentElement.click();
+                return true;
+            }
+        }
+        return false;
+    }, targetSubstring);
+
+    if (!clicked) {
+        // Last resort: use the editor's find-text mechanism via CodeMirror
+        await page.evaluate((target: string) => {
+            const cmEl = document.querySelector(".cm-editor") as HTMLElement & {
+                [k: string | symbol]: unknown;
+            };
+            if (!cmEl) return;
+            const sym = Object.getOwnPropertySymbols(cmEl).find(
+                (s) => s.toString() === "Symbol(cmView)",
+            );
+            if (!sym) return;
+            const view = cmEl[sym] as {
+                state: { doc: { toString(): string } };
+                dispatch(tr: object): void;
+            };
+            const text = view.state.doc.toString();
+            const pos = text.indexOf(target);
+            if (pos !== -1) view.dispatch({ selection: { anchor: pos + 5 } });
+        }, targetSubstring);
+    }
 }
 
 /**
@@ -357,6 +416,61 @@ async function scenarioAnnotationsPanel(ctx: BrowserContext): Promise<void> {
 }
 
 /**
+ * 7. comment-thread — A comment card in its active/expanded state with
+ *    a realistic multi-message back-and-forth thread visible.
+ *    Achieved by loading the scenario then clicking the highlighted
+ *    text in the editor to move the cursor into the annotated range.
+ */
+async function scenarioCommentThread(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+
+    const applied = await applyDebugScenario(page, "screenshot-comment-thread");
+    if (!applied) {
+        await setEditorText(page, PROSE_LONG);
+        await addFallbackAnnotation(page);
+    }
+
+    // Click inside the highlighted (annotated) text in the editor to
+    // move the cursor there, which sets it as the active annotation and
+    // expands the thread in the card.
+    await clickAnnotatedText(page, "it was the age of wisdom");
+    await page.waitForTimeout(400);
+
+    await shot(page, "comment-thread");
+    await page.close();
+}
+
+/**
+ * 8. revision-expanded — A revision card in its active state, showing
+ *    version pills and the inline nested editor open with the version text.
+ */
+async function scenarioRevisionExpanded(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+
+    const applied = await applyDebugScenario(page, "screenshot-revision-active");
+    if (!applied) {
+        await setEditorText(page, PROSE_LONG);
+        await addFallbackAnnotation(page);
+    }
+
+    // Click the revision's highlighted text to activate the card and
+    // open the nested editor.
+    await clickAnnotatedText(page, "Spiritual revelations were conceded");
+    await page.waitForTimeout(600); // nested editor needs a moment to mount
+
+    await shot(page, "revision-expanded");
+    await page.close();
+}
+
+/**
  * 6. full-ui — All three panels simultaneously: AI sidebar expanded on
  *    the Chat tab (left), editor with text (centre), annotation cards
  *    (right). Uses a wider viewport so nothing is squeezed.
@@ -444,6 +558,8 @@ async function main(): Promise<void> {
         await scenarioAiSidebarChat(context);
         await scenarioAiSidebarFeedback(context);
         await scenarioAnnotationsPanel(context);
+        await scenarioCommentThread(context);
+        await scenarioRevisionExpanded(context);
         await scenarioFullUi(context);
 
         console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);

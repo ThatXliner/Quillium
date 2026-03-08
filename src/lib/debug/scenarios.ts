@@ -307,6 +307,93 @@ export const scenarios: Scenario[] = [
     // annotations match the text already loaded into the editor.
 
     {
+        id: "screenshot-comment-thread",
+        label: "Screenshot: comment thread (Dickens)",
+        description:
+            "A comment with a multi-message back-and-forth thread — click the yellow highlight to expand",
+        doc: DICKENS_DOC,
+        setup(view) {
+            const state = view.state;
+            const target = "it was the age of wisdom, it was the age of foolishness";
+            const from = state.doc.toString().indexOf(target);
+            if (from === -1) return;
+            const to = from + target.length;
+            const selection = EditorSelection.create([EditorSelection.range(from, to)]);
+            view.dispatch(
+                state.update({
+                    effects: [
+                        addAnnotation.of({
+                            ...createNewAnnotation(state.field(annotationField), selection, "comment"),
+                            thread: [
+                                {
+                                    message:
+                                        "The parallelism here is doing a lot of heavy lifting. Worth asking: does the accumulation land, or does it tip into self-parody by the end of the sentence?",
+                                    author: "Editor",
+                                    time: Date.now() - 3600_000,
+                                },
+                                {
+                                    message:
+                                        "I think it lands — the rhythm is the point. Dickens is parodying the era, not the writing. The excess is the argument.",
+                                    author: "User",
+                                    time: Date.now() - 1800_000,
+                                },
+                                {
+                                    message:
+                                        "Agreed. In that case, protect it — editors who trim this on instinct are missing the rhetorical intent. Leave a note in the manuscript.",
+                                    author: "Editor",
+                                    time: Date.now() - 900_000,
+                                },
+                            ],
+                        }),
+                    ],
+                }),
+            );
+            // Also add a second comment nearby so the panel feels populated
+            createComment({
+                targetText: "it was the spring of hope, it was the winter of despair",
+                comment:
+                    "Seasonal contrast is effective but well-worn. The force here is cumulative — don't pull it forward or it loses context.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
+        id: "screenshot-revision-active",
+        label: "Screenshot: revision active (Dickens)",
+        description:
+            "A revision annotation ready to be activated — click the purple highlight in the editor",
+        doc: DICKENS_DOC,
+        setup(view) {
+            createRevision({
+                targetText:
+                    "Spiritual revelations were conceded to England at that favoured period, as at this.",
+                versions: [
+                    {
+                        label: "Active voice",
+                        text: "England received its spiritual revelations at that favoured period, as it does now.",
+                    },
+                    {
+                        label: "Compressed",
+                        text: "Spiritual revelations visited England then, as now.",
+                    },
+                ],
+                threadMessage:
+                    "The passive voice feels period-appropriate but distances the reader. Two alternatives: activate the grammar, or compress ruthlessly.",
+                author: "Editor",
+                view,
+            });
+            // A comment alongside so the panel isn't empty
+            createComment({
+                targetText: "it was the season of Light, it was the season of Darkness",
+                comment:
+                    "Capitalisation is deliberate — Light and Darkness as proper nouns lend them allegorical weight. Don't normalise.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
         id: "screenshot-annotations",
         label: "Screenshot: annotations (Dickens)",
         description:
