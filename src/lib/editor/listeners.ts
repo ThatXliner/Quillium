@@ -19,11 +19,7 @@ import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { get } from "svelte/store";
 import { currentDocumentId, currentDraftId, currentDocumentTitle, saveStatus } from "$lib/stores";
-import {
-    appendEvent,
-    createSnapshot,
-    updateDocumentMeta,
-} from "$lib/db";
+import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
 import {
     addAnnotation,
     removeAnnotation,
@@ -31,12 +27,7 @@ import {
     annotationsChanged,
     type GenericAnnotation,
 } from "./plugins/annotations";
-import type {
-    AnnotationEvent,
-    ChangeSpec,
-    EventPayload,
-    SelectionJSON,
-} from "$lib/db/events";
+import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
 import type { Transaction } from "@codemirror/state";
 
 export interface ListenerOptions {
@@ -49,6 +40,12 @@ let metaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 // Only show "Saving…" if the write takes longer than this threshold.
 // This keeps the indicator on "Saved" during normal fast writes.
 let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
+
+// ── Write serialisation queue ─────────────────────────────────────
+// Ensures appendEvent calls are ordered by transaction order, not
+// DB completion order, and that saveStatus reflects the last write.
+// The outer .catch keeps the chain alive if doAppend throws.
+let persistQueue: Promise<void> = Promise.resolve();
 
 function extractTitle(text: string): string {
     return text.split("\n")[0].trim().slice(0, 80) || "Untitled";
@@ -80,9 +77,7 @@ function extractChanges(tr: Transaction): ChangeSpec[] {
  * same transaction (e.g. doc changes before the thread update).
  */
 function serializeAnnotation(annotation: GenericAnnotation): Record<string, unknown> {
-    return JSON.parse(
-        JSON.stringify({ ...annotation, selection: annotation.selection.toJSON() }),
-    );
+    return JSON.parse(JSON.stringify({ ...annotation, selection: annotation.selection.toJSON() }));
 }
 
 function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
@@ -126,9 +121,7 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
         if (tr.docChanged) {
             allDocChanges = allDocChanges.concat(extractChanges(tr));
         }
-        allAnnotationEvents = allAnnotationEvents.concat(
-            extractAnnotationEvents(tr),
-        );
+        allAnnotationEvents = allAnnotationEvents.concat(extractAnnotationEvents(tr));
     }
 
     const hasDocChange = allDocChanges.length > 0;
@@ -172,8 +165,14 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
 
 /**
  * Persists one ViewUpdate to the event log.
+ * Enqueues the write so concurrent updates are ordered by transaction
+ * order rather than DB completion order.
  */
-async function persistTransaction(update: ViewUpdate) {
+function persistTransaction(update: ViewUpdate): void {
+    persistQueue = persistQueue.then(() => doAppend(update)).catch(() => {});
+}
+
+async function doAppend(update: ViewUpdate) {
     const docId = get(currentDocumentId);
     const draftId = get(currentDraftId);
     if (!docId || !draftId) return;
@@ -194,12 +193,13 @@ async function persistTransaction(update: ViewUpdate) {
             clearTimeout(savingIndicatorTimer);
             savingIndicatorTimer = null;
         }
-        saveStatus.set("saved");
 
         if (result.needsSnapshot) {
             const stateJson = JSON.stringify(update.state.toJSON(savedFields));
-            createSnapshot(draftId, stateJson, result.eventId).catch(console.error);
+            await createSnapshot(draftId, stateJson, result.eventId).catch(console.error);
         }
+
+        saveStatus.set("saved");
     } catch (e) {
         console.error("[listeners] appendEvent failed:", e);
         if (savingIndicatorTimer !== null) {
@@ -218,9 +218,7 @@ async function persistTransaction(update: ViewUpdate) {
         const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
         const previewText = docText.slice(0, 200);
         currentDocumentTitle.set(title);
-        updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(
-            console.error,
-        );
+        updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
         metaDebounceTimer = null;
     }, 500);
 }
@@ -234,7 +232,5 @@ const save = EditorView.updateListener.of((update: ViewUpdate) => {
 
 export const listeners = (options?: ListenerOptions) => [
     ...(options?.persist === false ? [] : [save]),
-    ...(options?.updateListener
-        ? [EditorView.updateListener.of(options.updateListener)]
-        : []),
+    ...(options?.updateListener ? [EditorView.updateListener.of(options.updateListener)] : []),
 ];
