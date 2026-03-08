@@ -6,9 +6,9 @@ use tauri::Manager;
 
 use db::{
     documents::{
-        create_document, create_draft, delete_document, get_document, list_documents,
-        list_trashed_documents, list_drafts, restore_document, trash_document,
-        update_document_meta,
+        create_document, create_draft, delete_document, get_document, get_trash_retention,
+        list_documents, list_drafts, list_trashed_documents, purge_expired_trash,
+        restore_document, set_trash_retention, trash_document, update_document_meta,
     },
     events::{append_event, create_snapshot},
     load::load_document_state,
@@ -149,6 +149,36 @@ fn cmd_migrate_from_state_json(
     migrate_from_state_json(&conn, &state_json_path).map_err(|e| e.to_string())
 }
 
+// ── Trash retention commands ──────────────────────────────────────
+
+/// Returns the trash auto-empty setting in days, or null if "never".
+#[tauri::command]
+fn cmd_get_trash_retention(state: tauri::State<DbState>) -> Result<Option<i64>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_trash_retention(&conn).map_err(|e| e.to_string())
+}
+
+/// Persists the trash auto-empty setting. Pass null to disable.
+#[tauri::command]
+fn cmd_set_trash_retention(
+    state: tauri::State<DbState>,
+    days: Option<i64>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_trash_retention(&conn, days).map_err(|e| e.to_string())
+}
+
+/// Purges trashed documents that have been in the trash longer than
+/// the configured retention period. Returns the number of deleted documents.
+#[tauri::command]
+fn cmd_purge_expired_trash(state: tauri::State<DbState>) -> Result<u64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    match get_trash_retention(&conn).map_err(|e| e.to_string())? {
+        Some(days) => purge_expired_trash(&conn, days).map_err(|e| e.to_string()),
+        None => Ok(0),
+    }
+}
+
 // ── Debug reset command ───────────────────────────────────────────
 
 /// Wipes all user data from the database (documents, drafts, events,
@@ -204,12 +234,19 @@ pub fn run() {
             std::fs::create_dir_all(&db_path).expect("failed to create app data dir");
             let db_file = db_path.join("quillium.db");
             let conn = open_db(&db_file).expect("failed to open database");
+            // Auto-purge expired trash on startup.
+            if let Ok(Some(days)) = get_trash_retention(&conn) {
+                let _ = purge_expired_trash(&conn, days);
+            }
             app.manage(DbState(Mutex::new(conn)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             cmd_reset_db,
             scrap,
+            cmd_get_trash_retention,
+            cmd_set_trash_retention,
+            cmd_purge_expired_trash,
             cmd_list_documents,
             cmd_get_document,
             cmd_create_document,

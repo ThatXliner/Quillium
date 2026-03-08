@@ -82,6 +82,24 @@ export async function listTrashedDocuments(): Promise<DocumentMeta[]> {
     return invoke<DocumentMeta[]>("cmd_list_trashed_documents");
 }
 
+/** Returns the trash auto-empty period in days, or null if disabled. */
+export async function getTrashRetention(): Promise<number | null> {
+    return invoke<number | null>("cmd_get_trash_retention");
+}
+
+/** Saves the trash auto-empty setting. Pass null to disable auto-empty. */
+export async function setTrashRetention(days: number | null): Promise<void> {
+    return invoke<void>("cmd_set_trash_retention", { days });
+}
+
+/**
+ * Purges trashed documents older than the configured retention period.
+ * Returns the number of permanently deleted documents.
+ */
+export async function purgeExpiredTrash(): Promise<number> {
+    return invoke<number>("cmd_purge_expired_trash");
+}
+
 // ── Drafts ────────────────────────────────────────────────────────
 
 export async function listDrafts(docId: string): Promise<DraftMeta[]> {

@@ -11,6 +11,8 @@ import {
     trashDocument,
     restoreDocument,
     deleteDocument,
+    getTrashRetention,
+    setTrashRetention,
 } from "$lib/db";
 import type { DocumentMeta } from "$lib/db/types";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
@@ -28,6 +30,7 @@ let viewMode = $state<"grid" | "list">("grid");
 let query = $state("");
 let loading = $state(true);
 let tab = $state<"library" | "trash">("library");
+let trashRetention = $state<number | null>(null);
 
 const trashMode = $derived(tab === "trash");
 
@@ -49,14 +52,20 @@ const hasContinue = $derived($currentDocumentId !== null);
 async function load() {
     loading = true;
     await initDb();
-    [documents, trashedDocuments] = await Promise.all([
+    [documents, trashedDocuments, trashRetention] = await Promise.all([
         listDocuments(),
         listTrashedDocuments(),
+        getTrashRetention(),
     ]);
     if (!selectedId && documents.length > 0) {
         selectedId = documents[0].id;
     }
     loading = false;
+}
+
+async function handleTrashRetentionChange(days: number | null) {
+    trashRetention = days;
+    await setTrashRetention(days);
 }
 
 async function handleNew() {
@@ -141,6 +150,8 @@ onMount(load);
                 onNew={handleNew}
                 {tab}
                 onTabChange={handleTabChange}
+                {trashRetention}
+                onTrashRetentionChange={handleTrashRetentionChange}
             />
         </header>
 

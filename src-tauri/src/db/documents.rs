@@ -124,6 +124,50 @@ pub fn delete_document(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Returns the configured trash retention in days, or None if "never".
+pub fn get_trash_retention(conn: &Connection) -> Result<Option<i64>> {
+    let result: rusqlite::Result<String> = conn.query_row(
+        "SELECT value FROM _meta WHERE key = 'trash_retention_days'",
+        [],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(val) => {
+            if val == "never" {
+                Ok(None)
+            } else {
+                Ok(val.parse::<i64>().ok())
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Persists the trash retention setting. Pass None to disable auto-empty.
+pub fn set_trash_retention(conn: &Connection, days: Option<i64>) -> Result<()> {
+    let value = match days {
+        Some(d) => d.to_string(),
+        None => "never".to_string(),
+    };
+    conn.execute(
+        "INSERT INTO _meta (key, value) VALUES ('trash_retention_days', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![value],
+    )?;
+    Ok(())
+}
+
+/// Permanently deletes trashed documents older than `days` days.
+pub fn purge_expired_trash(conn: &Connection, days: i64) -> Result<u64> {
+    let cutoff = now_ms() - days * 24 * 60 * 60 * 1000;
+    let count = conn.execute(
+        "DELETE FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < ?1",
+        params![cutoff],
+    )?;
+    Ok(count as u64)
+}
+
 pub fn list_drafts(conn: &Connection, doc_id: &str) -> Result<Vec<DraftMeta>> {
     let mut stmt = conn.prepare(
         "SELECT id, document_id, label, created_at, is_active FROM drafts

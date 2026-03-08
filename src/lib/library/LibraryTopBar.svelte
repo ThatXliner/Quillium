@@ -3,7 +3,7 @@
     view toggle, and "+ New" merged into one pill.
 -->
 <script lang="ts">
-import { LayoutGrid, List, Plus, Search, Trash2 } from "lucide-svelte";
+import { LayoutGrid, List, Plus, Search, Trash2, Timer } from "lucide-svelte";
 
 interface Props {
     viewMode: "grid" | "list";
@@ -13,10 +13,33 @@ interface Props {
     onNew: () => void;
     tab: "library" | "trash";
     onTabChange: (tab: "library" | "trash") => void;
+    trashRetention: number | null;
+    onTrashRetentionChange: (days: number | null) => void;
 }
 
-const { viewMode, onViewModeChange, query, onQueryChange, onNew, tab, onTabChange }: Props =
-    $props();
+const {
+    viewMode,
+    onViewModeChange,
+    query,
+    onQueryChange,
+    onNew,
+    tab,
+    onTabChange,
+    trashRetention,
+    onTrashRetentionChange,
+}: Props = $props();
+
+const retentionOptions: { label: string; value: number | null }[] = [
+    { label: "Never", value: null },
+    { label: "7 days", value: 7 },
+    { label: "30 days", value: 30 },
+    { label: "60 days", value: 60 },
+    { label: "90 days", value: 90 },
+];
+
+const retentionLabel = $derived(
+    retentionOptions.find((o) => o.value === trashRetention)?.label ?? "Never",
+);
 </script>
 
 <!-- Tab row -->
@@ -40,6 +63,38 @@ const { viewMode, onViewModeChange, query, onQueryChange, onNew, tab, onTabChang
         <Trash2 size={12} />
         Trash
     </button>
+
+    {#if tab === "trash"}
+        <div class="ml-auto flex items-center gap-1.5">
+            <Timer size={12} class="text-black/35" />
+            <span class="text-xs text-black/40">Auto-empty:</span>
+            <div class="relative">
+                <select
+                    value={trashRetention ?? "never"}
+                    onchange={(e) => {
+                        const raw = (e.target as HTMLSelectElement).value;
+                        onTrashRetentionChange(raw === "never" ? null : Number(raw));
+                    }}
+                    class="appearance-none text-xs font-medium text-black/60 bg-black/5
+                           hover:bg-black/10 rounded-full px-2.5 py-1 pr-5 cursor-pointer
+                           border-0 focus:outline-none focus:ring-1 focus:ring-blue-400
+                           transition-colors"
+                >
+                    {#each retentionOptions as opt}
+                        <option value={opt.value ?? "never"}>{opt.label}</option>
+                    {/each}
+                </select>
+                <!-- chevron -->
+                <svg
+                    class="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-black/35"
+                    width="10" height="10" viewBox="0 0 10 10" fill="none"
+                >
+                    <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+        </div>
+    {/if}
 </div>
 
 <div class="flex items-center rounded-full bg-white/80 border border-white/60 shadow-sm overflow-hidden h-11">
