@@ -210,13 +210,18 @@ async function doAppend(update: ViewUpdate) {
         return;
     }
 
-    // Debounce metadata update (title, word count, preview)
+    // Debounce metadata update (title, word count, preview).
+    // Capture derived values now so the timer closure doesn't read
+    // update.view.state, which may belong to a different document by
+    // the time the 500 ms fires.
+    const docText = update.state.doc.toString();
+    const title = extractTitle(docText);
+    const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
+    const previewText = docText.slice(0, 200);
     if (metaDebounceTimer !== null) clearTimeout(metaDebounceTimer);
     metaDebounceTimer = setTimeout(() => {
-        const docText = update.view.state.doc.toString();
-        const title = extractTitle(docText);
-        const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
-        const previewText = docText.slice(0, 200);
+        // Guard: abort if the user has navigated to a different document.
+        if (get(currentDocumentId) !== docId) return;
         currentDocumentTitle.set(title);
         updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
         metaDebounceTimer = null;
