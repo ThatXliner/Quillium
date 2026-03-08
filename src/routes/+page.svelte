@@ -29,6 +29,7 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
+import type { EventPayload } from "$lib/db/events";
 
 let editorComponent = $state<{ reload: () => Promise<void> }>();
 
@@ -56,7 +57,17 @@ if (import.meta.env.DEV) {
         const { EditorState } = await import("@codemirror/state");
         const { EditorView } = await import("@codemirror/view");
         const { getExtensions, savedFields } = await import("$lib/editor/extensions");
-        const { invoke } = await import("@tauri-apps/api/core");
+        const {
+            resetDb,
+            createDocument,
+            createDraft,
+            appendEvent,
+            createSnapshot,
+            updateDocumentMeta,
+        } = await import("$lib/db");
+        const { buildEventPayload } = await import("$lib/editor/listeners");
+        const { currentDocumentId, currentDocumentTitle, currentDraftId } =
+            await import("$lib/stores");
 
         (window as unknown as Record<string, unknown>).__runScenario__ = async (
             id: string,
@@ -67,16 +78,44 @@ if (import.meta.env.DEV) {
                 return false;
             }
             try {
+                const collectedPayloads: EventPayload[] = [];
+
                 const tempState = EditorState.create({
                     doc: scenario.doc,
-                    extensions: getExtensions({ persist: false }),
+                    extensions: getExtensions({
+                        persist: false,
+                        updateListener(update) {
+                            const payload = buildEventPayload(update);
+                            if (payload) collectedPayloads.push(payload);
+                        },
+                    }),
                 });
                 const tempParent = document.createElement("div");
                 const tempView = new EditorView({ state: tempState, parent: tempParent });
                 scenario.setup(tempView);
-                const json = tempView.state.toJSON(savedFields);
+                const finalState = tempView.state;
                 tempView.destroy();
-                await invoke("save", { state: JSON.stringify(json) });
+
+                await resetDb();
+                const docId = await createDocument(scenario.label);
+                const draftId = await createDraft(docId, "Draft");
+                currentDocumentId.set(docId);
+                currentDocumentTitle.set(scenario.label);
+                currentDraftId.set(draftId);
+
+                let lastEventId = -1;
+                for (const payload of collectedPayloads) {
+                    const result = await appendEvent(draftId, JSON.stringify(payload));
+                    lastEventId = result.eventId;
+                }
+
+                const stateJson = JSON.stringify(finalState.toJSON(savedFields));
+                await createSnapshot(draftId, stateJson, lastEventId);
+
+                const docText = finalState.doc.toString();
+                const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
+                await updateDocumentMeta(docId, scenario.label, wordCount, docText.slice(0, 200), "[]");
+
                 await editorComponent?.reload();
                 return true;
             } catch (e) {
