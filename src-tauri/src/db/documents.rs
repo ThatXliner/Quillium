@@ -13,8 +13,8 @@ fn now_ms() -> i64 {
 
 pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags
-         FROM documents ORDER BY updated_at DESC",
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+         FROM documents WHERE deleted_at IS NULL ORDER BY updated_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(DocumentMeta {
@@ -25,6 +25,27 @@ pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
             word_count: row.get(4)?,
             preview_text: row.get(5)?,
             tags: row.get(6)?,
+            deleted_at: row.get(7)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn list_trashed_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+         FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(DocumentMeta {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            created_at: row.get(2)?,
+            updated_at: row.get(3)?,
+            word_count: row.get(4)?,
+            preview_text: row.get(5)?,
+            tags: row.get(6)?,
+            deleted_at: row.get(7)?,
         })
     })?;
     rows.collect()
@@ -32,7 +53,7 @@ pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
 
 pub fn get_document(conn: &Connection, id: &str) -> Result<Option<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
          FROM documents WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| {
@@ -44,6 +65,7 @@ pub fn get_document(conn: &Connection, id: &str) -> Result<Option<DocumentMeta>>
             word_count: row.get(4)?,
             preview_text: row.get(5)?,
             tags: row.get(6)?,
+            deleted_at: row.get(7)?,
         })
     })?;
     match rows.next() {
@@ -76,6 +98,23 @@ pub fn update_document_meta(
         "UPDATE documents SET title = ?1, updated_at = ?2, word_count = ?3,
          preview_text = ?4, tags = ?5 WHERE id = ?6",
         params![title, now, word_count, preview_text, tags, id],
+    )?;
+    Ok(())
+}
+
+pub fn trash_document(conn: &Connection, id: &str) -> Result<()> {
+    let now = now_ms();
+    conn.execute(
+        "UPDATE documents SET deleted_at = ?1 WHERE id = ?2",
+        params![now, id],
+    )?;
+    Ok(())
+}
+
+pub fn restore_document(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE documents SET deleted_at = NULL WHERE id = ?1",
+        params![id],
     )?;
     Ok(())
 }

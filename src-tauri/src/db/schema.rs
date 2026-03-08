@@ -55,5 +55,10 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_events_draft_seq ON events(draft_id, seq);
         CREATE INDEX IF NOT EXISTS idx_snapshots_draft ON snapshots(draft_id, up_to_event_seq DESC);
         ",
-    )
+    )?;
+    // Additive migration: add deleted_at if it doesn't exist yet.
+    let _ = conn.execute_batch(
+        "ALTER TABLE documents ADD COLUMN deleted_at INTEGER DEFAULT NULL;",
+    );
+    Ok(())
 }

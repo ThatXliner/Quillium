@@ -6,7 +6,8 @@ use tauri::Manager;
 
 use db::{
     documents::{
-        create_document, create_draft, delete_document, get_document, list_documents, list_drafts,
+        create_document, create_draft, delete_document, get_document, list_documents,
+        list_trashed_documents, list_drafts, restore_document, trash_document,
         update_document_meta,
     },
     events::{append_event, create_snapshot},
@@ -60,6 +61,26 @@ fn cmd_update_document_meta(
 fn cmd_delete_document(state: tauri::State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     delete_document(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_trash_document(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    trash_document(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_restore_document(state: tauri::State<DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    restore_document(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_trashed_documents(
+    state: tauri::State<DbState>,
+) -> Result<Vec<DocumentMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_trashed_documents(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -194,6 +215,9 @@ pub fn run() {
             cmd_create_document,
             cmd_update_document_meta,
             cmd_delete_document,
+            cmd_trash_document,
+            cmd_restore_document,
+            cmd_list_trashed_documents,
             cmd_list_drafts,
             cmd_create_draft,
             cmd_append_event,

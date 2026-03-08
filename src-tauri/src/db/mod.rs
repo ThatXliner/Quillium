@@ -16,6 +16,7 @@ pub struct DocumentMeta {
     pub word_count: i64,
     pub preview_text: String,
     pub tags: String,
+    pub deleted_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
