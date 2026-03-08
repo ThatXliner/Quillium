@@ -72,7 +72,7 @@ src/
 │   └── settings.svelte.ts     # App settings (reactive, persisted)
 └── routes/
     ├── +page.svelte           # Root layout: three panels + modal stack renderer
-    └── api/                   # SvelteKit API routes for AI calls
+    └── library/               # Library page (document list, trash/restore)
 ```
 
 ---
@@ -288,7 +288,7 @@ Active state is determined by `getActiveAnnotation()` — the annotation whose r
 
 ### `revisionAtomicRanges`
 
-Marks all **inactive** revision ranges as atomic via `EditorView.atomicRanges`. The cursor jumps over the entire span instead of entering it. This does *not* block edits — `atomicRanges` only governs cursor placement. Edit blocking is done by a separate transaction filter (`blockDirectRevisionEdits`).
+Marks all **inactive** revision ranges as atomic via `EditorView.atomicRanges`. The cursor jumps over the entire span instead of entering it. This does *not* block edits — `atomicRanges` only governs cursor placement.
 
 ### `collapsedRevisionResolver`
 
@@ -442,10 +442,10 @@ if (result.needsSnapshot) {
 const loaded = await loadDocumentState(docId, draftId);
 // loaded.snapshotStateJson  → latest snapshot blob
 // loaded.snapshotEventSeq   → seq of that snapshot (-1 for seed)
-// loaded.eventsSince        → events after the snapshot (replay deferred to v2)
+// loaded.eventsSince        → events after the snapshot
 ```
 
-`loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `seq > snapshot.up_to_event_seq`. In v1, only the snapshot is restored; the `eventsSince` list is logged as a warning.
+`loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `seq > snapshot.up_to_event_seq`. The snapshot is restored first, then any `eventsSince` are replayed in order via `replayEvents()` to reconstruct the full editor state.
 
 ### Migration from state.json
 
@@ -570,7 +570,7 @@ Each nested editor has its own annotations, history, and keybindings. The comple
 
 ### Direct editing of active revisions is blocked
 
-The `blockDirectRevisionEdits` transaction filter drops any document change that touches an inactive revision range. Active revision ranges are *also* blocked in the current model — all revision editing goes through the nested editor. See `ARCHITECTURE.md § Direct editing of the active revision from the parent document` for the full reasoning.
+Direct editing of revision ranges from the main document is not explicitly blocked by a transaction filter. Inactive revision ranges use `atomicRanges` to govern cursor placement only. All intentional revision editing goes through the nested editor.
 
 ### Separate `StateEffect` per mutation, not a generic update
 
@@ -607,7 +607,7 @@ Both carry the complete annotation object (not just an ID). This lets the undo i
 | `suggestion_applied` | User applies an AI suggestion | `Suggestion.svelte` |
 | `suggestion_branched` | User converts suggestion to revision | `Suggestion.svelte` |
 | `revision_version_created` | User creates a new revision version | `Revision.svelte` |
-| `annotation_deleted` | User deletes a comment or revision | `Comment.svelte`, `Revision.svelte` |
+| `annotation_deleted` | User deletes a comment, suggestion, or revision | `Comment.svelte`, `Suggestion.svelte`, `Revision.svelte` |
 | `tutorial_completed` | User completes onboarding | `Tutorial.svelte` |
 | `tutorial_skipped` | User skips onboarding | `Tutorial.svelte` |
 | `ai_settings_provider_changed` | User changes AI provider | `AISettings.svelte` |
