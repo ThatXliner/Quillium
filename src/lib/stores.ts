@@ -71,6 +71,35 @@ export const documentContent = writable<string>("");
 export const selectedText = writable<string>("");
 
 /**
+ * The ID of the document currently open in the editor.
+ * null means no document is open (e.g., on the library page).
+ * Written by: Editor.svelte on load, library page on "Open".
+ * Read by: listeners.ts (save branch), StatusBar, library.
+ */
+export const currentDocumentId = writable<string | null>(null);
+
+/**
+ * The display title of the currently open document.
+ * Written by: listeners.ts on every save (derived from first line).
+ * Read by: StatusBar, library page ContinuePill.
+ */
+export const currentDocumentTitle = writable<string>("Untitled");
+
+/**
+ * Save status for the status bar indicator.
+ * Written by: listeners.ts — 'saving' on dispatch, 'saved' on success, 'error' on failure.
+ * Read by: StatusBar.svelte.
+ */
+export const saveStatus = writable<"saved" | "saving" | "error">("saved");
+
+/**
+ * The ID of the active draft for the current document.
+ * Written by: Editor.svelte on load and when switching drafts.
+ * Read by: listeners.ts to route append_event calls.
+ */
+export const currentDraftId = writable<string | null>(null);
+
+/**
  * Controls tutorial overlay visibility.
  * Written by: +page.svelte (on first visit), StatusBar.svelte
  *             (the "?" button), Tutorial.svelte (on complete).

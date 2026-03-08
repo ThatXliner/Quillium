@@ -3,26 +3,38 @@
 
     How it works:
       1. Creates a temporary EditorState with full extensions (including
-         annotationField and annotation decorations).
-      2. Runs scenario.setup() to dispatch annotations onto that state.
-      3. Serializes the resulting state via toJSON(savedFields) and writes
-         it to disk via invoke("save") — the same path as normal auto-save.
-      4. Calls reloadEditor() (exported from Editor.svelte) which re-runs
-         invoke("load") → EditorState.fromJSON → view.setState, so the
-         live view gets the complete extension stack including its update
-         listener and annotation decoration plugins.
+         annotationField and annotation decorations) but no persist listener.
+      2. Mounts a headless EditorView and intercepts every transaction
+         dispatched during scenario.setup(), converting each to an
+         EventPayload (same format as the live persistence layer).
+      3. Wipes the DB and creates a fresh document + draft.
+      4. Appends each collected EventPayload to the event log via
+         appendEvent(), so the document has a real replay-able history.
+      5. Takes a final snapshot of the temp state for fast initial load,
+         and calls updateDocumentMeta() so the library shows a preview.
+      6. Calls reloadEditor() — the editor restores state via the normal
+         snapshot + replayEvents path, identical to a real session restore.
 
     Activation: click the 🐛 button in the StatusBar, or press Escape to close.
     Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
-import { editorView } from "$lib/stores";
+import { editorView, currentDocumentId, currentDocumentTitle, currentDraftId } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { invoke } from "@tauri-apps/api/core";
+import {
+    resetDb,
+    createDocument,
+    createDraft,
+    appendEvent,
+    createSnapshot,
+    updateDocumentMeta,
+} from "$lib/db";
+import type { EventPayload } from "$lib/db/events";
+import { buildEventPayload } from "$lib/editor/listeners";
 
 const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
 
@@ -37,6 +49,8 @@ function close() {
     $debugPanelActive = false;
 }
 
+// ── Scenario runner ───────────────────────────────────────────────
+
 async function runScenario(scenario: Scenario) {
     if (!$editorView) {
         error = "Editor not ready — wait for the editor to initialise.";
@@ -47,34 +61,56 @@ async function runScenario(scenario: Scenario) {
     error = null;
 
     try {
-        // 1. Build a temporary EditorState with the full extension stack
-        //    (annotationField included) but no persist listener, so our
-        //    intermediate dispatches don't trigger spurious auto-saves.
+        // 1. Collect EventPayloads from the scenario's transactions.
+        const collectedPayloads: EventPayload[] = [];
+
         const tempState = EditorState.create({
             doc: scenario.doc,
-            extensions: getExtensions({ persist: false }),
+            extensions: getExtensions({
+                persist: false,
+                updateListener(update) {
+                    const payload = buildEventPayload(update);
+                    if (payload) collectedPayloads.push(payload);
+                },
+            }),
         });
 
-        // 2. Mount a headless EditorView so we can dispatch transactions
-        //    through the full extension pipeline (annotation decorations,
-        //    StateField reducer, etc.).
         const tempParent = document.createElement("div");
         const tempView = new EditorView({ state: tempState, parent: tempParent });
 
-        // 3. Run the scenario setup — dispatches addAnnotation effects.
+        // 2. Run the scenario — each dispatch fires the updateListener above.
         scenario.setup(tempView);
 
-        // 4. Serialize the resulting state (doc + annotationField) to JSON.
-        const json = tempView.state.toJSON(savedFields);
-
+        const finalState = tempView.state;
         tempView.destroy();
 
-        // 5. Write to disk via the same Tauri "save" command the auto-save
-        //    listener uses, so the next load sees the scenario state.
-        await invoke("save", { state: JSON.stringify(json) });
+        // 3. Fresh DB: new document + draft.
+        await resetDb();
+        const docId = await createDocument(scenario.label);
+        const draftId = await createDraft(docId, "Draft");
+        currentDocumentId.set(docId);
+        currentDocumentTitle.set(scenario.label);
+        currentDraftId.set(draftId);
 
-        // 6. Reload the live editor from disk — re-runs the full
-        //    EditorState.fromJSON path with all extensions wired up.
+        // 4. Replay events into the event log — this is the "real history".
+        let lastEventId = -1;
+        for (const payload of collectedPayloads) {
+            const result = await appendEvent(draftId, JSON.stringify(payload));
+            lastEventId = result.eventId;
+        }
+
+        // 5. Write a snapshot of the final state so the editor loads fast,
+        //    and update document metadata so the library shows a preview.
+        const stateJson = JSON.stringify(finalState.toJSON(savedFields));
+        await createSnapshot(draftId, stateJson, lastEventId);
+
+        const docText = finalState.doc.toString();
+        const title = scenario.label;
+        const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
+        const previewText = docText.slice(0, 200);
+        await updateDocumentMeta(docId, title, wordCount, previewText, "[]");
+
+        // 6. Reload the editor via the normal snapshot + replay path.
         await reloadEditor();
 
         lastLoaded = scenario.id;

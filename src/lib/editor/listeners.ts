@@ -1,105 +1,253 @@
 /**
- * listeners.ts — CodeMirror update listeners for persistence and
- * change reactions.
+ * listeners.ts — CodeMirror update listeners for event-log persistence.
  *
  * Role: Provides the `listeners()` factory that returns an array of
- * CodeMirror extensions responsible for reacting to editor state
- * changes. Currently the only built-in listener is the auto-save
- * listener that serialises the editor state to the Tauri backend.
+ * CodeMirror extensions. On every transaction that changes the document
+ * or annotations, we:
+ *   1. Build an EventPayload from the transaction(s).
+ *   2. Call `appendEvent` (Rust) to store it in the event log.
+ *   3. If `needsSnapshot`, call `createSnapshot` with the full state.
+ *   4. Debounce `updateDocumentMeta` for the library metadata.
  *
  * Key dependencies:
- *   - ./extensions (savedFields) — determines which StateFields are
- *     included in the serialised JSON snapshot
- *   - Tauri invoke("save") — writes the serialised state to disk
- *   - ./plugins/annotations (annotationsChanged) — detects whether
- *     an update includes annotation mutations
- *
- * Interactions:
- *   - extensions.ts includes `listeners(options)` in the extension
- *     stack so these listeners are active for every EditorView.
- *   - The save listener fires after every transaction and only
- *     writes to disk when the document or annotations actually
- *     changed, keeping I/O to a minimum.
+ *   - ./extensions (savedFields) — which StateFields are snapshotted
+ *   - $lib/db (appendEvent, createSnapshot, updateDocumentMeta)
+ *   - ./plugins/annotations (addAnnotation, removeAnnotation, updateThread,
+ *     annotationsChanged)
  */
 import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { invoke } from "@tauri-apps/api/core";
-import { annotationsChanged } from "./plugins/annotations";
+import { get } from "svelte/store";
+import { currentDocumentId, currentDraftId, currentDocumentTitle, saveStatus } from "$lib/stores";
+import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
+import {
+    addAnnotation,
+    removeAnnotation,
+    updateThread,
+    annotationsChanged,
+    type GenericAnnotation,
+} from "./plugins/annotations";
+import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
+import type { Transaction } from "@codemirror/state";
+
 export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
     persist?: boolean;
-    // onCommentChanged?: (comments: Comment[]) => void;
+}
+
+// ── Debounce timers ───────────────────────────────────────────────
+let metaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+// Only show "Saving…" if the write takes longer than this threshold.
+// This keeps the indicator on "Saved" during normal fast writes.
+let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
+
+// ── Write serialisation queue ─────────────────────────────────────
+// Ensures appendEvent calls are ordered by transaction order, not
+// DB completion order, and that saveStatus reflects the last write.
+// The outer .catch keeps the chain alive if doAppend throws.
+let persistQueue: Promise<void> = Promise.resolve();
+
+function extractTitle(text: string): string {
+    return text.split("\n")[0].trim().slice(0, 80) || "Untitled";
+}
+
+function extractSelection(update: ViewUpdate): SelectionJSON {
+    const sel = update.state.selection;
+    return {
+        ranges: sel.ranges.map((r) => ({ anchor: r.anchor, head: r.head })),
+        main: sel.mainIndex,
+    };
 }
 
 /**
- * Serialises the current editor state (including history and
- * annotations) and sends it to the Tauri backend for persistence.
+ * Extracts all doc change ops from a single CM transaction.
  */
-function persistStateToDisk(update: ViewUpdate) {
-    const state = JSON.stringify(update.state.toJSON(savedFields));
-    invoke("save", { state })
-        .then((success) => {
-            console.log("saved", success);
-        })
-        .catch((error) => {
-            console.error("save failed", error);
-        });
+function extractChanges(tr: Transaction): ChangeSpec[] {
+    const changes: ChangeSpec[] = [];
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        changes.push({ from: fromA, to: toA, insert: inserted.toString() });
+    });
+    return changes;
+}
+
+/**
+ * Extracts annotation mutation effects from a single CM transaction.
+ * For updateThread, reads the post-transaction annotation from tr.state so
+ * the serialised selection reflects any range remapping that happened in the
+ * same transaction (e.g. doc changes before the thread update).
+ */
+function serializeAnnotation(annotation: GenericAnnotation): Record<string, unknown> {
+    return JSON.parse(JSON.stringify({ ...annotation, selection: annotation.selection.toJSON() }));
+}
+
+function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
+    const { annotationField } = savedFields;
+    const events: AnnotationEvent[] = [];
+    for (const effect of tr.effects) {
+        if (effect.is(addAnnotation)) {
+            events.push({
+                type: "annotation_add",
+                annotation: serializeAnnotation(effect.value),
+            });
+        } else if (effect.is(removeAnnotation)) {
+            events.push({
+                type: "annotation_remove",
+                annotationId: effect.value.id,
+            });
+        } else if (effect.is(updateThread)) {
+            // Read from tr.state (post-transaction) so the selection has already
+            // been remapped through any doc changes in the same transaction.
+            const ann = tr.state.field(annotationField)[effect.value.annotationId];
+            if (ann) {
+                events.push({
+                    type: "annotation_update",
+                    annotation: serializeAnnotation(ann),
+                });
+            }
+        }
+    }
+    return events;
+}
+
+/**
+ * Builds a single EventPayload from all transactions in a ViewUpdate.
+ * Returns null if there is nothing worth persisting.
+ */
+export function buildEventPayload(update: ViewUpdate): EventPayload | null {
+    let allDocChanges: ChangeSpec[] = [];
+    let allAnnotationEvents: AnnotationEvent[] = [];
+
+    for (const tr of update.transactions) {
+        if (tr.docChanged) {
+            allDocChanges = allDocChanges.concat(extractChanges(tr));
+        }
+        allAnnotationEvents = allAnnotationEvents.concat(extractAnnotationEvents(tr));
+    }
+
+    const hasDocChange = allDocChanges.length > 0;
+    const hasAnnotationChange = allAnnotationEvents.length > 0;
+
+    if (!hasDocChange && !hasAnnotationChange) return null;
+
+    const selection = extractSelection(update);
+
+    if (hasDocChange && hasAnnotationChange) {
+        return {
+            type: "compound",
+            docChanges: allDocChanges,
+            annotationEvents: allAnnotationEvents,
+            selection,
+        };
+    }
+
+    if (hasDocChange) {
+        return {
+            type: "doc_change",
+            changes: allDocChanges,
+            selection,
+        };
+    }
+
+    // Annotation-only: return the first annotation event directly
+    // (multiple annotation events are wrapped as compound if alongside doc changes)
+    if (allAnnotationEvents.length === 1) {
+        return allAnnotationEvents[0] as EventPayload;
+    }
+
+    // Multiple annotation-only events: wrap as compound with no doc changes
+    return {
+        type: "compound",
+        docChanges: [],
+        annotationEvents: allAnnotationEvents,
+        selection,
+    };
+}
+
+/**
+ * Persists one ViewUpdate to the event log.
+ * Enqueues the write so concurrent updates are ordered by transaction
+ * order rather than DB completion order.
+ */
+function persistTransaction(update: ViewUpdate): void {
+    persistQueue = persistQueue.then(() => doAppend(update)).catch(() => {});
+}
+
+async function doAppend(update: ViewUpdate) {
+    const docId = get(currentDocumentId);
+    const draftId = get(currentDraftId);
+    if (!docId || !draftId) return;
+
+    const payload = buildEventPayload(update);
+    if (!payload) return;
+
+    // Only flip to "Saving…" if the write hasn't resolved within 150 ms.
+    // Fast writes (the common case) stay on "Saved" the whole time.
+    if (savingIndicatorTimer !== null) clearTimeout(savingIndicatorTimer);
+    const scheduledDocId = docId;
+    const scheduledDraftId = draftId;
+    savingIndicatorTimer = setTimeout(() => {
+        try {
+            // Guard: abort if the user has navigated to a different document or draft.
+            if (get(currentDocumentId) !== scheduledDocId || get(currentDraftId) !== scheduledDraftId) {
+                return;
+            }
+            saveStatus.set("saving");
+        } finally {
+            savingIndicatorTimer = null;
+        }
+    }, 150);
+    try {
+        const result = await appendEvent(draftId, JSON.stringify(payload));
+        if (savingIndicatorTimer !== null) {
+            clearTimeout(savingIndicatorTimer);
+            savingIndicatorTimer = null;
+        }
+
+        if (result.needsSnapshot) {
+            const stateJson = JSON.stringify(update.state.toJSON(savedFields));
+            await createSnapshot(draftId, stateJson, result.eventId).catch(console.error);
+        }
+
+        saveStatus.set("saved");
+    } catch (e) {
+        console.error("[listeners] appendEvent failed:", e);
+        if (savingIndicatorTimer !== null) {
+            clearTimeout(savingIndicatorTimer);
+            savingIndicatorTimer = null;
+        }
+        saveStatus.set("error");
+        return;
+    }
+
+    // Debounce metadata update (title, word count, preview).
+    // Capture derived values now so the timer closure doesn't read
+    // update.view.state, which may belong to a different document by
+    // the time the 500 ms fires.
+    const docText = update.state.doc.toString();
+    const title = extractTitle(docText);
+    const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
+    const previewText = docText.slice(0, 200);
+    if (metaDebounceTimer !== null) clearTimeout(metaDebounceTimer);
+    metaDebounceTimer = setTimeout(() => {
+        try {
+            // Guard: abort if the user has navigated to a different document.
+            if (get(currentDocumentId) !== docId) return;
+            currentDocumentTitle.set(title);
+            updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
+        } finally {
+            metaDebounceTimer = null;
+        }
+    }, 500);
 }
 
 // ── Auto-save listener ────────────────────────────────────────────
-// Uses EditorView.updateListener (post-transaction, read-only).
-// Chosen over transactionFilter/transactionExtender because we only
-// need to *react* to changes, not modify them.
-//
-// State: none of its own — it reads the latest EditorState from
-// the ViewUpdate on every firing.
-// Triggers: any CodeMirror transaction (keystrokes, programmatic
-// dispatches, undo/redo).
-// Guard: only persists when the document text or annotation state
-// actually changed, avoiding redundant disk writes on pure
-// selection or scroll updates.
-// Downstream: Tauri invoke("save") writes to the filesystem.
-//
-// Future consideration: debounce to reduce write frequency.
-const save =
-    // There are 3 different approaches to
-    // reacting to state changes or transactions. This is what Claude says
-    // > Here's how these approaches differ:
-    // > 1. `EditorView.updateListener`:
-    // >    - Runs after the transaction is applied
-    // >    - Best for reactive updates like UI changes
-    // >    - Cannot modify the transaction
-    // >    - Simpler to implement
-    // >    - Good for most use cases where you just need to respond to changes
-    // > 2. `EditorState.transactionFilter`:
-    // >    - Runs before the transaction is applied
-    // >    - Can modify or cancel the transaction
-    // >    - Access to both previous and new state
-    // >    - Good for validation or preventing certain history changes
-    // >    - More complex but more powerful
-    // > 3. `EditorState.transactionExtender`:
-    // >    - Runs after filters but before the transaction is applied
-    // >    - Can add effects but cannot modify the transaction
-    // >    - Good for adding metadata or triggering side effects
-    // >    - Middle ground between filter and listener
-    //
-    // > For most cases where you just want to track history changes, `EditorView.updateListener` is probably the simplest and most straightforward approach. Use `transactionFilter` if you need to:
-    // > - Prevent certain undo/redo operations
-    // > - Modify the history state before it changes
-    // > - Need access to both the previous and new state
-    //
-    // Therefore, I use the simplest approach. In the future,
-    // I might want to debounce this
-    EditorView.updateListener.of((update: ViewUpdate) => {
-        console.log(update.transactions, update.changes);
-        if (update.docChanged || annotationsChanged(update)) {
-            persistStateToDisk(update);
-        }
-    });
+const save = EditorView.updateListener.of((update: ViewUpdate) => {
+    if (update.docChanged || annotationsChanged(update)) {
+        persistTransaction(update);
+    }
+});
+
 export const listeners = (options?: ListenerOptions) => [
     ...(options?.persist === false ? [] : [save]),
-    // ...(options?.onCommentChanged
-    // 	? [onCommentChanged(options.onCommentChanged)]
-    // 	: []),
     ...(options?.updateListener ? [EditorView.updateListener.of(options.updateListener)] : []),
 ];

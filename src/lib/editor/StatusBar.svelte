@@ -11,36 +11,21 @@
       - selWords / selChars: selection-only counts (0 when nothing selected)
 
     State interactions:
-      - Listens to Tauri "saved" / "saving" events to toggle the
-        save-status indicator between green (saved) and yellow (saving).
+      - Reads the `saveStatus` store (written by listeners.ts) to toggle
+        the save-status indicator between green (saved) and yellow (saving).
       - Writes `tutorialActive` store when the "?" button is clicked.
 -->
 <script lang="ts">
 import Save from "$lib/save/Save.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { listen } from "@tauri-apps/api/event";
-import { tutorialActive } from "$lib/stores";
+import { tutorialActive, saveStatus } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
-import { Settings2 } from "lucide-svelte";
+import { goToLibrary } from "$lib/navigation";
+import { Settings2, LayoutGrid } from "lucide-svelte";
 
 const { words, chars, selWords, selChars } = $props();
 
-/**
- * Tracks whether the current document is persisted to disk.
- * Toggled by Tauri backend events emitted during the auto-save
- * cycle: "saving" (write started) and "saved" (write completed).
- */
-let fileSaved = $state<boolean>(true);
 let settingsOpen = $state(false);
-
-// Tauri event listeners — fire whenever the Rust backend starts
-// or finishes writing the document file.
-listen("saved", () => {
-    fileSaved = true;
-});
-listen("saving", () => {
-    fileSaved = false;
-});
 </script>
 
 <div
@@ -50,12 +35,21 @@ listen("saving", () => {
     {#if settingsOpen}
         <SettingsModal onclose={() => (settingsOpen = false)} />
     {/if}
+    <button
+        onclick={goToLibrary}
+        title="Library (⌘O)"
+        aria-label="Open library"
+        class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
+    >
+        <LayoutGrid size={20} />
+    </button>
+    <div class="w-px h-8 bg-black/20"></div>
     <div class="flex items-center gap-2">
         <div
-            class={`w-2 h-2 rounded-full ${fileSaved ? "bg-green-400" : "bg-yellow-400"}`}
+            class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
         ></div>
         <span class="text-sm text-black/90"
-            >{fileSaved ? "Saved" : "Saving..."}</span
+            >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
         >
     </div>
     <div class="w-px h-8 bg-black/20"></div>

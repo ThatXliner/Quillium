@@ -43,36 +43,62 @@ src/
 ├── lib/
 │   ├── ai/
 │   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise)
+│   │   ├── AISettings.svelte  # Provider/model configuration
 │   │   ├── Chat.svelte        # General AI chat
+│   │   ├── DocumentContext.svelte # Context reference display
 │   │   ├── Feedback.svelte    # AI feedback on document or selection
-│   │   └── Revise.svelte      # AI-powered revision generation
+│   │   ├── Revise.svelte      # AI-powered revision generation
+│   │   ├── chatFactory.ts     # Shared AI request/streaming helpers
+│   │   ├── clientStreams.ts   # Streaming response handling
+│   │   ├── provider.ts        # Provider-agnostic client setup
+│   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
+│   │   └── utils.ts           # Shared AI utilities
+│   ├── debug/
+│   │   └── DebugPanel.svelte  # Development-only debug overlay
 │   ├── editor/
 │   │   ├── Editor.svelte      # CodeMirror mount point + state sync
 │   │   ├── extensions.ts      # Full CodeMirror extension stack
 │   │   ├── listeners.ts       # Persistence + change listeners
+│   │   ├── replay.ts          # Event log replay for state reconstruction
 │   │   ├── StatusBar.svelte   # Word count, WPM, character count
 │   │   └── plugins/
 │   │       └── annotations/
 │   │           ├── models.ts          # Type defs, factory helpers, type guards
 │   │           ├── annotationField.ts # StateField + all StateEffects + undo support
 │   │           ├── utils.ts           # Range mapping, active annotation queries
+│   │           ├── diff.ts            # Diff computation for suggestions
+│   │           ├── nestedEditor.ts    # Nested editor lifecycle helpers
 │   │           ├── index.ts           # Keybindings, ViewPlugins, public API
 │   │           ├── Annotations.svelte # Right panel container + card positioning
 │   │           ├── Comment.svelte     # Comment card
+│   │           ├── DiffModal.svelte   # Full-screen diff view overlay
+│   │           ├── PreComment.svelte  # Draft form for empty-thread comment
 │   │           ├── Revision.svelte    # Revision card + inline nested editor
 │   │           ├── RevisionModal.svelte # Full-screen nested editor overlay
 │   │           ├── Suggestion.svelte  # Suggestion card with diff view
 │   │           ├── Thread.svelte      # Message list inside a card
 │   │           ├── ThreadMessage.svelte # Single message (with inline edit)
-│   │           ├── PreComment.svelte  # Draft form for empty-thread comment
+│   │           ├── TutorialGuide.svelte # In-editor tutorial callouts
 │   │           └── default.css        # Highlight CSS classes for all annotation types
+│   ├── library/
+│   │   ├── ContinuePill.svelte  # "Continue writing" shortcut on library page
+│   │   ├── DocumentCard.svelte  # Single document card in the grid
+│   │   ├── DocumentGrid.svelte  # Grid layout for document list
+│   │   ├── EmptyState.svelte    # Empty library placeholder
+│   │   ├── LibraryTopBar.svelte # Library page header + actions
+│   │   └── PreviewPanel.svelte  # Document preview sidebar
 │   ├── save/
 │   │   └── Save.svelte        # Save indicator (separated for future extension)
+│   ├── settings/
+│   │   └── SettingsModal.svelte # App-level settings overlay
+│   ├── tutorial/
+│   │   ├── Tutorial.svelte    # Onboarding tutorial overlay
+│   │   └── steps.ts           # Tutorial step definitions
 │   ├── stores.ts              # Global Svelte stores
 │   └── settings.svelte.ts     # App settings (reactive, persisted)
 └── routes/
     ├── +page.svelte           # Root layout: three panels + modal stack renderer
-    └── api/                   # SvelteKit API routes for AI calls
+    └── library/               # Library page (document list, trash/restore)
 ```
 
 ---
@@ -107,6 +133,8 @@ User types / dispatches transaction
     │  $activeAnnotation           │ ← read by Comment/Revision cards
     │  $documentContent            │ ← read by AI sidebar
     │  $selectedText               │ ← read by AI sidebar
+    │  $saveStatus                 │ ← read by StatusBar
+    │  $currentDocumentTitle       │ ← read by StatusBar, library
     └──────────────────────────────┘
 ```
 
@@ -272,9 +300,9 @@ Set to `true` on the transaction dispatched by `collapsedRevisionResolver` when 
 
 ---
 
-## ViewPlugins
+## ViewPlugins and Extensions
 
-Four `ViewPlugin`s in `index.ts` react to editor updates:
+`index.ts` registers three `ViewPlugin`s and one facet extension that react to editor updates:
 
 ### `annotationDecorations`
 
@@ -288,7 +316,7 @@ Active state is determined by `getActiveAnnotation()` — the annotation whose r
 
 ### `revisionAtomicRanges`
 
-Marks all **inactive** revision ranges as atomic via `EditorView.atomicRanges`. The cursor jumps over the entire span instead of entering it. This does *not* block edits — `atomicRanges` only governs cursor placement. Edit blocking is done by a separate transaction filter (`blockDirectRevisionEdits`).
+Registered via `EditorView.atomicRanges.of(...)` (a facet provider, not a `ViewPlugin`). Marks all **inactive** revision ranges as atomic. The cursor jumps over the entire span instead of entering it. This does *not* block edits — `atomicRanges` only governs cursor placement.
 
 ### `collapsedRevisionResolver`
 
@@ -406,20 +434,71 @@ $effect(() => {
 
 ## Persistence
 
-Both the undo history and annotation state are persisted together on every meaningful change:
+Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodic snapshots. All database operations run in Rust via Tauri commands — the TypeScript layer calls `invoke()` wrappers in `src/lib/db/index.ts`.
+
+### Schema overview
+
+| Table | Purpose |
+|---|---|
+| `documents` | Document metadata (title, word count, preview, tags) |
+| `drafts` | Named drafts per document (default one per document) |
+| `events` | Append-only log of CM transactions, one row per update |
+| `snapshots` | Full `EditorState.toJSON()` blobs, kept at most 3 per draft |
+| `_meta` | Key/value flags (migration guard, active draft pointers) |
+
+The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
+
+### Event log flow
 
 ```typescript
 // extensions.ts
 export const savedFields = { historyField, annotationField };
 
-// Save (listeners.ts)
-invoke("save", { state: JSON.stringify(update.state.toJSON(savedFields)) });
-
-// Load (Editor.svelte)
-EditorState.fromJSON(parsed, { extensions: getExtensions(...) }, savedFields);
+// On every docChanged || annotationsChanged (listeners.ts):
+const result = await appendEvent(draftId, JSON.stringify(payload));
+if (result.needsSnapshot) {
+    createSnapshot(draftId, JSON.stringify(state.toJSON(savedFields)), result.eventId);
+}
 ```
 
-Save is triggered by `listeners.ts` on every transaction where `docChanged || annotationsChanged(update)`. Because `historyField` and `annotationField` are serialized together, undo history and annotation positions survive app restarts in sync.
+`appendEvent` (Rust) atomically inserts the event row, bumps `documents.updated_at`, and returns `{ eventId, needsSnapshot }`. A snapshot is triggered when ≥50 events have accumulated since the last snapshot, or ≥120 seconds have elapsed.
+
+### Load flow
+
+```typescript
+// Editor.svelte
+const loaded = await loadDocumentState(docId, draftId);
+// loaded.snapshotStateJson  → latest snapshot blob
+// loaded.snapshotEventId    → id of that snapshot (-1 for seed)
+// loaded.eventsSince        → events after the snapshot
+```
+
+`loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `event_id > snapshot.up_to_event_id`. The snapshot is restored first, then any `eventsSince` are replayed in order via `replayEvents()` to reconstruct the full editor state.
+
+### Migration from state.json
+
+On first launch after upgrading, `migrate_from_state_json` (Rust) runs automatically. It reads the legacy `state.json`, creates a document + draft + seed snapshot (with `up_to_event_id = -1`), and sets a `_meta` flag so it never runs again. The operation is idempotent.
+
+> **TODO: remove when safe.** Once all users are on a build that includes the SQLite persistence layer, this migration path can be deleted. Files to remove/change:
+>
+> - `src-tauri/src/db/migration.rs` — delete entirely
+> - `src-tauri/src/db/mod.rs` — remove `pub mod migration;` and the `MigrationResult` struct
+> - `src-tauri/src/lib.rs` — remove `migration::migrate_from_state_json` import, `MigrationResult` import, and `cmd_migrate_from_state_json` command + its registration in `invoke_handler!`
+> - `src/lib/db/index.ts` — replace `initDb()` body with a no-op (or just `return`); the function can stay as a call-site no-op while callers are cleaned up
+> - `src/lib/db/types.ts` — remove the `MigrationResult` type
+> - `tests/e2e/app.smoke.pw.ts` — remove the `cmd_migrate_from_state_json` mock and the assertion that it is called once
+
+### Event payload format
+
+Each event has a `type` field that determines its shape:
+
+- `doc_change` — pure text edit `{ changes: [{from, to, insert}], selection }`
+- `annotation_add` / `annotation_remove` / `annotation_update` — annotation mutations
+- `compound` — doc change + annotation effects in the same CM transaction
+
+### Snapshot pruning
+
+`create_snapshot` (Rust) keeps only the latest 3 snapshots per draft. After inserting, it deletes all older snapshots for that draft.
 
 `VersionState` blobs (nested editor state) are also serialized inside `annotationField.toJSON()` — they're stored as opaque objects within the `versions` array and round-trip correctly because they're already JSON-safe.
 
@@ -528,7 +607,7 @@ Each nested editor has its own annotations, history, and keybindings. The comple
 
 ### Direct editing of active revisions is blocked
 
-The `blockDirectRevisionEdits` transaction filter drops any document change that touches an inactive revision range. Active revision ranges are *also* blocked in the current model — all revision editing goes through the nested editor. See `ARCHITECTURE.md § Direct editing of the active revision from the parent document` for the full reasoning.
+Direct editing of revision ranges from the main document is not explicitly blocked by a transaction filter. Inactive revision ranges use `atomicRanges` to govern cursor placement only. All intentional revision editing goes through the nested editor.
 
 ### Separate `StateEffect` per mutation, not a generic update
 
@@ -555,17 +634,26 @@ Both carry the complete annotation object (not just an ID). This lets the undo i
 
 | Event | When | File |
 |---|---|---|
+| `app_session_started` | Editor mounts with a document | `Editor.svelte` |
 | `ai_sidebar_opened` | User opens AI sidebar to a mode | `AISidebar.svelte` |
+| `ai_message_sent` | Any AI request is dispatched | `chatFactory.ts` |
 | `ai_chat_message_sent` | User sends AI chat message | `Chat.svelte` |
+| `ai_chat_quick_prompt_used` | User uses a chat quick prompt | `Chat.svelte` |
 | `ai_feedback_requested` | User requests AI feedback | `Feedback.svelte` |
+| `ai_feedback_quick_prompt_used` | User uses a feedback quick prompt | `Feedback.svelte` |
 | `ai_revise_requested` | User triggers AI revision | `Revise.svelte` |
-| `ai_revise_quick_prompt_used` | User uses a quick prompt | `Revise.svelte` |
+| `ai_revise_quick_prompt_used` | User uses a revise quick prompt | `Revise.svelte` |
+| `context_generated` | AI context is generated for a document | `clientStreams.ts` |
+| `context_cleared` | User clears document context | `DocumentContext.svelte` |
+| `annotation_created` | AI creates a comment, suggestion, or revision | `chatFactory.ts` |
 | `comment_created` | User submits a new comment | `PreComment.svelte` |
 | `comment_ai_suggestion_requested` | User requests AI suggestion in thread | `Comment.svelte` |
 | `suggestion_applied` | User applies an AI suggestion | `Suggestion.svelte` |
 | `suggestion_branched` | User converts suggestion to revision | `Suggestion.svelte` |
+| `suggestion_diff_viewed` | User views a suggestion diff inline | `Suggestion.svelte` |
+| `suggestion_diff_modal_opened` | User opens the full-screen diff modal | `Suggestion.svelte` |
 | `revision_version_created` | User creates a new revision version | `Revision.svelte` |
-| `annotation_deleted` | User deletes a comment or revision | `Comment.svelte`, `Revision.svelte` |
+| `annotation_deleted` | User deletes a comment, suggestion, or revision | `Comment.svelte`, `Suggestion.svelte`, `Revision.svelte` |
 | `tutorial_completed` | User completes onboarding | `Tutorial.svelte` |
 | `tutorial_skipped` | User skips onboarding | `Tutorial.svelte` |
 | `ai_settings_provider_changed` | User changes AI provider | `AISettings.svelte` |

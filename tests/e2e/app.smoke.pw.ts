@@ -1,16 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 
 type TauriMockOptions = {
-    loadResponse: string | null;
     apiKey: string | null;
 };
 
 async function installTauriMock(page: Page, options: Partial<TauriMockOptions> = {}) {
-    const loadResponse = options.loadResponse ?? null;
     const apiKey = options.apiKey ?? null;
 
     await page.addInitScript(
-        (payload: { loadResponse: string | null; apiKey: string | null }) => {
+        (payload: { apiKey: string | null }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
 
             let nextCallbackId = 1;
@@ -24,11 +22,57 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
             (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
                 invoke: async (cmd: string, args: unknown) => {
                     invokeCalls.push({ cmd, args });
-                    if (cmd === "load") return payload.loadResponse;
-                    if (cmd === "save") return true;
+
+                    // Migration: no legacy state.json — return not-migrated
+                    if (cmd === "cmd_migrate_from_state_json")
+                        return { migrated: false, documentId: null };
+
+                    // One document exists so the editor loads with a draft ID
+                    if (cmd === "cmd_list_documents")
+                        return [
+                            {
+                                id: "doc-test-1",
+                                title: "Untitled",
+                                createdAt: 0,
+                                updatedAt: 0,
+                                wordCount: 0,
+                                previewText: "",
+                                tags: "[]",
+                            },
+                        ];
+
+                    // Document / draft creation
+                    if (cmd === "cmd_create_document") return "doc-test-1";
+                    if (cmd === "cmd_create_draft") return "draft-test-1";
+                    if (cmd === "cmd_list_drafts")
+                        return [
+                            {
+                                id: "draft-test-1",
+                                documentId: "doc-test-1",
+                                label: "Draft",
+                                createdAt: 0,
+                                isActive: true,
+                            },
+                        ];
+
+                    // Load returns empty (blank editor)
+                    if (cmd === "cmd_load_document_state")
+                        return { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
+
+                    // Append event — acknowledge with no snapshot needed
+                    if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
+
+                    // Snapshot / meta
+                    if (cmd === "cmd_create_snapshot") return null;
+                    if (cmd === "cmd_update_document_meta") return null;
+
+                    // Keychain
                     if (cmd === "get_api_key") return payload.apiKey;
+
+                    // Tauri event plumbing
                     if (cmd === "plugin:event|listen") return 1;
                     if (cmd === "plugin:event|unlisten") return null;
+
                     return null;
                 },
                 transformCallback: (callback: (...args: unknown[]) => unknown) => {
@@ -47,40 +91,51 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
                 unregisterListener: () => {},
             };
         },
-        { loadResponse, apiKey },
+        { apiKey },
     );
 }
 
-test("uses default document when mocked load returns null", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null });
+test("renders a blank editor when an existing blank document is loaded", async ({ page }) => {
+    await installTauriMock(page);
     await page.goto("/");
 
-    await expect(page.locator("#editor-document .cm-content")).toContainText("Hello World");
+    await expect(page.locator("#editor-document .cm-content")).toBeVisible();
 
     const commands = await page.evaluate(() =>
         (
             window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
         ).__TAURI_MOCK__.invokeCalls.map((x) => x.cmd),
     );
-    expect(commands).toContain("load");
+    expect(commands).toContain("cmd_migrate_from_state_json");
+    expect(commands).toContain("cmd_list_documents");
 });
 
-test("calls mocked load exactly once during startup", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null });
+test("calls migration and list exactly once during startup", async ({ page }) => {
+    await installTauriMock(page);
     await page.goto("/");
 
     await expect(page.locator("#editor-document .cm-content")).toBeVisible();
-    const loadCalls = await page.evaluate(
+
+    const migrateCalls = await page.evaluate(
         () =>
             (
                 window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
-            ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "load").length,
+            ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "cmd_migrate_from_state_json")
+                .length,
     );
-    expect(loadCalls).toBe(1);
+    expect(migrateCalls).toBe(1);
+
+    const listCalls = await page.evaluate(
+        () =>
+            (
+                window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
+            ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "cmd_list_documents").length,
+    );
+    expect(listCalls).toBe(1);
 });
 
-test("typing updates stats and triggers mocked save", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null });
+test("typing updates stats and triggers cmd_append_event", async ({ page }) => {
+    await installTauriMock(page);
     await page.goto("/");
 
     const editor = page.locator("#editor-document .cm-content");
@@ -102,19 +157,22 @@ test("typing updates stats and triggers mocked save", async ({ page }) => {
                         window as unknown as {
                             __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> };
                         }
-                    ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "save").length,
+                    ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "cmd_append_event").length,
             );
         })
         .toBeGreaterThan(0);
 });
 
 test("selection updates status bar to show selected counts", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null });
+    await installTauriMock(page);
     await page.goto("/");
 
     const editor = page.locator("#editor-document .cm-content");
     const status = page.locator("#status-bar");
+
+    await expect(editor).toBeVisible();
     await editor.click();
+    await page.keyboard.type("Hello World");
     await page.keyboard.press("ControlOrMeta+a");
 
     await expect(status).toContainText("Words: 2");
@@ -124,7 +182,7 @@ test("selection updates status bar to show selected counts", async ({ page }) =>
 });
 
 test("tutorial opens from status bar", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null });
+    await installTauriMock(page);
     await page.goto("/");
 
     await page.getByRole("button", { name: "Take tour" }).click();
@@ -132,7 +190,7 @@ test("tutorial opens from status bar", async ({ page }) => {
 });
 
 test("AI sidebar can open chat and feedback panels", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null, apiKey: "test-api-key" });
+    await installTauriMock(page, { apiKey: "test-api-key" });
     await page.goto("/");
 
     await page.locator("#ai-tab-chat").click({ force: true });
@@ -146,7 +204,7 @@ test("AI sidebar can open chat and feedback panels", async ({ page }) => {
 });
 
 test("settings modal opens from status bar", async ({ page }) => {
-    await installTauriMock(page, { loadResponse: null });
+    await installTauriMock(page);
     await page.goto("/");
 
     await expect(page.locator("#status-bar")).toBeVisible();
