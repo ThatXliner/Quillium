@@ -41,6 +41,7 @@ import {
     initDb,
     listDocuments,
     listDrafts,
+    createDocument,
     createDraft,
     loadDocumentState,
 } from "$lib/db";
@@ -188,7 +189,14 @@ const fromSave = (async () => {
         }
     }
 
-    // Blank editor (new installation or empty DB after migration)
+    // Blank editor (new installation or empty DB after migration).
+    // Create an initial document + draft so the event log can record
+    // edits immediately without waiting for the user to visit the library.
+    const newDocId = await createDocument("Untitled");
+    const newDraftId = await createDraft(newDocId, "Draft");
+    currentDocumentId.set(newDocId);
+    currentDocumentTitle.set("Untitled");
+    currentDraftId.set(newDraftId);
     return EditorState.create({ extensions: getExtensions(getExtensionOptions) });
 })();
 
