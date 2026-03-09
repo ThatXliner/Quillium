@@ -15,6 +15,7 @@ interface Props {
     onTabChange: (tab: "library" | "trash") => void;
     trashRetention: number | null;
     onTrashRetentionChange: (days: number | null) => void;
+    searchInputEl?: HTMLInputElement | null;
 }
 
 const {
@@ -27,6 +28,7 @@ const {
     onTabChange,
     trashRetention,
     onTrashRetentionChange,
+    searchInputEl = $bindable(),
 }: Props = $props();
 
 const retentionOptions: { label: string; value: number | null }[] = [
@@ -102,12 +104,14 @@ const retentionLabel = $derived(
     <div class="relative flex-1 flex items-center">
         <Search size={15} class="absolute left-4 text-black/35 pointer-events-none flex-shrink-0" />
         <input
+            bind:this={searchInputEl}
             type="search"
             placeholder={tab === "trash" ? "Search trash…" : "Search documents…"}
             value={query}
             oninput={(e) => onQueryChange((e.target as HTMLInputElement).value)}
-            class="w-full h-full pl-10 pr-4 bg-transparent text-sm text-black/80 placeholder:text-black/35 focus:outline-none"
+            class="w-full h-full pl-10 pr-10 bg-transparent text-sm text-black/80 placeholder:text-black/35 focus:outline-none"
         />
+        <kbd class="absolute right-3 text-[10px] font-mono bg-black/10 border border-black/10 rounded px-1 py-0.5 text-black/25 leading-none pointer-events-none">/</kbd>
     </div>
 
     <!-- Divider -->
@@ -117,16 +121,16 @@ const retentionLabel = $derived(
     <div class="flex items-center px-1.5 gap-0.5">
         <button
             onclick={() => onViewModeChange("grid")}
-            title="Grid view"
-            class="w-8 h-8 rounded-full flex items-center justify-center transition-colors
+            title="Grid view (G)"
+            class="group w-8 h-8 rounded-full flex items-center justify-center transition-colors
                 {viewMode === 'grid' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/70 hover:bg-black/5'}"
         >
             <LayoutGrid size={15} />
         </button>
         <button
             onclick={() => onViewModeChange("list")}
-            title="List view"
-            class="w-8 h-8 rounded-full flex items-center justify-center transition-colors
+            title="List view (L)"
+            class="group w-8 h-8 rounded-full flex items-center justify-center transition-colors
                 {viewMode === 'list' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/70 hover:bg-black/5'}"
         >
             <List size={15} />
@@ -140,10 +144,11 @@ const retentionLabel = $derived(
         <!-- New document -->
         <button
             onclick={onNew}
-            class="flex items-center gap-1.5 px-4 h-full text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+            class="group flex items-center gap-2 px-4 h-full text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
         >
             <Plus size={15} />
             New
+            <kbd class="text-[10px] font-mono bg-blue-100/60 border border-blue-200/60 rounded px-1 py-0.5 text-blue-400/70 group-hover:text-blue-500 transition-colors leading-none">N</kbd>
         </button>
     {/if}
 </div>

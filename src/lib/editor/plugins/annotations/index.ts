@@ -497,6 +497,9 @@ function getSelection({
         const selections = [...query].map(({ from: anchor, to: head }) =>
             EditorSelection.range(anchor, head),
         );
+        if (selections.length === 0) {
+            throw new Error(`Target text not found in document: "${targetText.slice(0, 60)}…"`);
+        }
         selection = EditorSelection.create(selections);
     }
     return selection;

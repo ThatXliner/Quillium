@@ -38,11 +38,15 @@ import {
     type GenericAnnotation,
     type Thread,
 } from "$lib/editor/plugins/annotations";
-import { activeAnnotation, annotations, editorView, annotationUiEvent } from "$lib/stores";
+import { activeAnnotation, annotations, editorView, annotationUiEvent, selectedText } from "$lib/stores";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
 import { tick } from "svelte";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const mod = isMac ? "⌘" : "Ctrl";
+const opt = isMac ? "⌥" : "Alt";
 
 const {
     view = undefined,
@@ -140,6 +144,20 @@ const sortedAnnotations = $derived(
           )
         : [],
 );
+
+const hasSelection = $derived($selectedText.length > 0);
+const hasComments = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "comment")));
+const hasRevisions = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "revision")));
+
+const selectionY = $derived.by(() => {
+    void $selectedText; // re-run when selection changes
+    if (!resolvedView || !hasSelection) return null;
+    const sel = resolvedView.state.selection.main;
+    const from = resolvedView.coordsAtPos(sel.from);
+    const to = resolvedView.coordsAtPos(sel.to);
+    if (!from || !to) return null;
+    return (from.top + to.bottom) / 2;
+});
 const pendingComment = $derived(
     sortedAnnotations.find(
         (annotation) => isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0,
@@ -379,6 +397,26 @@ $effect(() => {
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
+    {#if isFloating && hasSelection && selectionY !== null && (!hasComments || !hasRevisions)}
+        {@const leftPx = getAnnotationLeft()}
+        <div
+            class="fixed z-40 flex flex-col gap-2 pointer-events-none -translate-y-1/2"
+            style="left: {leftPx}px; top: {selectionY}px"
+        >
+            {#if !hasComments}
+                <div class="flex items-center gap-2 text-black/40">
+                    <kbd class="bg-white/90 border border-black/12 shadow-sm rounded-md px-2 py-1 text-xs font-mono text-black/50 leading-none">{mod}{opt}M</kbd>
+                    <span class="text-sm font-medium text-black/35">comment</span>
+                </div>
+            {/if}
+            {#if !hasRevisions}
+                <div class="flex items-center gap-2 text-black/40">
+                    <kbd class="bg-white/90 border border-black/12 shadow-sm rounded-md px-2 py-1 text-xs font-mono text-black/50 leading-none">{mod}{opt}K</kbd>
+                    <span class="text-sm font-medium text-black/35">revision</span>
+                </div>
+            {/if}
+        </div>
+    {/if}
     {#if isFloating}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
             <div class="annotation-scroll-inner">
