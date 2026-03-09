@@ -384,7 +384,7 @@ $effect(() => {
 });
 
 // Annotation keyboard shortcuts:
-//   ⌘/          — focus reply textarea (comment / suggestion)
+//   ⌘/          — focus reply textarea (comment / suggestion / revision)
 //   ⌘⇧V         — add new version (revision)
 $effect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -393,7 +393,7 @@ $effect(() => {
         if (!active) return;
 
         if (e.key === "/" && !e.shiftKey) {
-            if (active._type === "comment" || active._type === "suggestion") {
+            if (active._type === "comment" || active._type === "suggestion" || active._type === "revision") {
                 e.preventDefault();
                 publishAnnotationUiEvent({ type: "annotation-focus-reply", annotationId: active.id });
             }
