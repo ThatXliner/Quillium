@@ -22,6 +22,7 @@ import { tutorialActive, saveStatus } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToLibrary } from "$lib/navigation";
 import { Settings2, LayoutGrid } from "lucide-svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 const { words, chars, selWords, selChars } = $props();
 
@@ -38,16 +39,8 @@ let settingsOpen = $state(false);
     id="status-bar"
     class="relative w-fit mx-auto py-4 px-8 backdrop-blur-md rounded-full bg-gray-300/70 border border-white/30 shadow-lg flex gap-4 items-center justify-center"
 >
-    <button
-        onclick={goToLibrary}
-        title="Library ({modKey}O)"
-        aria-label="Open library"
-        class="group h-12 px-3 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center gap-2 hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
-    >
-        <LayoutGrid size={20} />
-        <kbd class="text-[10px] font-mono bg-black/10 border border-black/10 rounded px-1 py-0.5 text-black/30 group-hover:text-black/50 transition-colors leading-none">{modKey}O</kbd>
-    </button>
-    <div class="w-px h-8 bg-black/20"></div>
+
+    <!-- <div class="w-px h-8 bg-black/20"></div> -->
     <div class="flex items-center gap-2">
         <div
             class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
@@ -63,7 +56,7 @@ let settingsOpen = $state(false);
             <span class="text-[10px] text-black/50">{words} total</span>
         {/if}
     </div>
-    <div class="w-px h-8 bg-black/20"></div>
+    <!-- <div class="w-px h-4 bg-black/20"></div> -->
     <div class="flex flex-col items-center leading-tight">
         <span class="text-sm text-black/90">Characters: {selChars > 0 ? selChars : chars}</span>
         {#if selChars > 0}
@@ -71,6 +64,15 @@ let settingsOpen = $state(false);
         {/if}
     </div>
     <div class="w-px h-8 bg-black/20"></div>
+    <button
+        onclick={goToLibrary}
+        title="Library ({modKey}O)"
+        aria-label="Open library"
+        class="group h-12 px-3 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center gap-2 hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
+    >
+        <LayoutGrid size={20} />
+        <Kbd>{modKey}O</Kbd>
+    </button>
     <button
         onclick={() => (settingsOpen = !settingsOpen)}
         aria-label="Open settings"
@@ -80,6 +82,7 @@ let settingsOpen = $state(false);
     >
         <Settings2 size={20} />
     </button>
+    <div class="w-px h-8 bg-black/20"></div>
     <button
         onclick={() => ($tutorialActive = true)}
         aria-label="Take tour"
@@ -87,7 +90,7 @@ let settingsOpen = $state(false);
         class="w-5 h-5 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-[11px] font-semibold leading-none flex items-center justify-center"
     >?</button>
     {#if import.meta.env.DEV}
-        <div class="w-px h-8 bg-black/20"></div>
+
         <button
             onclick={() => ($debugPanelActive = true)}
             aria-label="Open debug panel"

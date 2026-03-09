@@ -43,6 +43,7 @@ import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
 import { tick } from "svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -405,13 +406,13 @@ $effect(() => {
         >
             {#if !hasComments}
                 <div class="flex items-center gap-2 text-black/40">
-                    <kbd class="bg-white/90 border border-black/12 shadow-sm rounded-md px-2 py-1 text-xs font-mono text-black/50 leading-none">{mod}{opt}M</kbd>
+                    <Kbd variant="large">{mod}{opt}M</Kbd>
                     <span class="text-sm font-medium text-black/35">comment</span>
                 </div>
             {/if}
             {#if !hasRevisions}
                 <div class="flex items-center gap-2 text-black/40">
-                    <kbd class="bg-white/90 border border-black/12 shadow-sm rounded-md px-2 py-1 text-xs font-mono text-black/50 leading-none">{mod}{opt}K</kbd>
+                    <Kbd variant="large">{mod}{opt}K</Kbd>
                     <span class="text-sm font-medium text-black/35">revision</span>
                 </div>
             {/if}

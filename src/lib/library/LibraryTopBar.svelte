@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 import { LayoutGrid, List, Plus, Search, Trash2, Timer } from "lucide-svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 interface Props {
     viewMode: "grid" | "list";
@@ -18,7 +19,7 @@ interface Props {
     searchInputEl?: HTMLInputElement | null;
 }
 
-const {
+let {
     viewMode,
     onViewModeChange,
     query,
@@ -111,7 +112,7 @@ const retentionLabel = $derived(
             oninput={(e) => onQueryChange((e.target as HTMLInputElement).value)}
             class="w-full h-full pl-10 pr-10 bg-transparent text-sm text-black/80 placeholder:text-black/35 focus:outline-none"
         />
-        <kbd class="absolute right-3 text-[10px] font-mono bg-black/10 border border-black/10 rounded px-1 py-0.5 text-black/25 leading-none pointer-events-none">/</kbd>
+        <span class="absolute right-3 pointer-events-none"><Kbd>/</Kbd></span>
     </div>
 
     <!-- Divider -->
@@ -148,7 +149,7 @@ const retentionLabel = $derived(
         >
             <Plus size={15} />
             New
-            <kbd class="text-[10px] font-mono bg-blue-100/60 border border-blue-200/60 rounded px-1 py-0.5 text-blue-400/70 group-hover:text-blue-500 transition-colors leading-none">N</kbd>
+            <Kbd>N</Kbd>
         </button>
     {/if}
 </div>
