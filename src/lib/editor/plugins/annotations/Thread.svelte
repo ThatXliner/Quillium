@@ -39,6 +39,8 @@ let {
     onAiSuggest = undefined,
     // Accent colour class for the Send button; defaults to blue
     accentClass = "text-blue-600/80 hover:text-blue-700",
+    // Pill bg/text classes for the send pill (active state)
+    sendPillClass = "bg-blue-500 text-white hover:bg-blue-600",
     // Focus ring colour class applied to the reply box wrapper
     focusRingClass = "focus-within:ring-blue-300/50",
 }: {
@@ -49,12 +51,14 @@ let {
     previewOnly?: boolean;
     onAiSuggest?: (() => void) | undefined;
     accentClass?: string;
+    sendPillClass?: string;
     focusRingClass?: string;
 } = $props();
 
 let newMessage = $state("");
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
+const hasText = $derived(!!newMessage.trim());
 let lastFocusReplyToken = 0;
 
 function blurToEditor() {
@@ -154,16 +158,19 @@ function send() {
                 {/if}
             </div>
             <div class="flex items-center gap-1.5">
-                {#if newMessage.trim()}
-                    <button
-                        onclick={send}
-                        class="text-xs font-medium transition-colors {accentClass}"
-                    >Send</button>
-                {:else if isFocused}
-                    <span class="flex items-center gap-0.5 opacity-40"><Kbd keys={["⌘", "↵"]} /></span>
-                {:else}
-                    <span class="flex items-center gap-0.5 opacity-40"><Kbd keys={["⌘", "/"]} /></span>
-                {/if}
+                <button
+                    onclick={hasText ? send : undefined}
+                    class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
+                        {hasText
+                            ? `${sendPillClass} shadow-sm`
+                            : 'bg-black/5 text-black/30'}"
+                >
+                    {isFocused || hasText ? "Send" : "Reply"}
+                    <span class="flex items-center gap-0.5">
+                        <Kbd keys={isFocused || hasText ? ["⌘", "↵"] : ["⌘", "/"]}
+                            variant={hasText ? "blue" : "default"} />
+                    </span>
+                </button>
             </div>
         </div>
     </div>

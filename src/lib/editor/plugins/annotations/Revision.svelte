@@ -574,6 +574,7 @@ onDestroy(() => {
                 annotationId={revision.id}
                 previewOnly={!isActive}
                 accentClass="text-purple-600/80 hover:text-purple-700"
+                sendPillClass="bg-purple-500 text-white hover:bg-purple-600"
             />
         </div>
     {/if}
