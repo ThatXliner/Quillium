@@ -59,9 +59,7 @@ import posthog from "posthog-js";
 let input = $state("");
 const { chat, clearChat } = createAiChat({ mode: "chat" });
 
-let customChatPrompts = $derived(
-    appSettings.customQuickActions.filter((a) => a.panel === "chat"),
-);
+let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
 
 function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
@@ -97,15 +95,19 @@ async function handleSubmit(event: Event) {
 </script>
 
 <div class="flex flex-col h-full">
-    <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 relative">
-        {#if chat.messages.length > 0}
+    <!-- Clear chat row -->
+    {#if chat.messages.length > 0}
+        <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
                 onclick={clearChat}
                 title="Start a fresh conversation (clears all messages)"
-                class="absolute top-2 right-2 text-[10px] text-black/25 hover:text-red-400 transition-colors"
+                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
             >New chat</button>
-        {/if}
+        </div>
+    {/if}
+
+    <!-- Chat messages -->
+    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message (message.id)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
