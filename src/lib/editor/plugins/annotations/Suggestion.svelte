@@ -123,7 +123,8 @@ function getDiffOps(replacementIndex: number) {
           ? 'bg-green-100/80 border-green-400/50 ring-1 ring-green-400/40'
           : 'bg-white/50 border-green-100/60 hover:bg-white/70 hover:border-green-200/60'}"
         onclick={() => {
-          selectedIndex = selectedIndex === index ? null : index;
+          // Allow deselecting only when there are multiple options
+          selectedIndex = suggestion.replacements.length > 1 && selectedIndex === index ? null : index;
           diffExpanded = false;
         }}
       >
@@ -205,8 +206,8 @@ function getDiffOps(replacementIndex: number) {
     </div>
   {/if}
 
-  <!-- Apply / Branch row — only when active -->
-  {#if isActive}
+  <!-- Apply / Branch row — shown when active or when a replacement is selected -->
+  {#if isActive || selectedIndex !== null}
     <div class="flex items-center gap-1.5 px-3 pb-3">
       <button
         aria-label="Branch instead"
@@ -249,10 +250,6 @@ function getDiffOps(replacementIndex: number) {
   {#if (thread[0]?.author === "AI" ? thread.slice(1) : thread).length > 0}
     <div class="border-t border-green-100/60 px-3 py-2.5">
       <Thread {thread} {updateThread} />
-      <!-- <Thread
-        thread={thread[0]?.author === "AI" ? thread.slice(1) : thread}
-        {updateThread}
-      /> -->
     </div>
   {/if}
 </div>
