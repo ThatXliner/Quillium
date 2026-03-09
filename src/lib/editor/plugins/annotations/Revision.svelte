@@ -367,17 +367,23 @@ $effect(() => {
         event.token === lastAddVersionToken ||
         event.type !== "annotation-add-version" ||
         event.annotationId !== revision.id
-    ) return;
+    )
+        return;
     lastAddVersionToken = event.token;
     posthog.capture("revision_version_created", { version_count: revision.versions.length });
     view.dispatch(createNewRevision(view.state, revision.id));
     tick().then(() => {
-        modalStack.push({
-            type: "revision",
-            revisionId: revision.id,
-            parentView: view,
-            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-        });
+        if (appSettings.showNestedEditor) {
+            userClosedEditor = false;
+            isEditorOpen = true;
+        } else {
+            modalStack.push({
+                type: "revision",
+                revisionId: revision.id,
+                parentView: view,
+                label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            });
+        }
     });
 });
 

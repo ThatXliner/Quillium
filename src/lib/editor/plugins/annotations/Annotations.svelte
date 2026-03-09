@@ -388,7 +388,7 @@ $effect(() => {
 //   ⌘⇧V         — add new version (revision)
 $effect(() => {
     function onKeydown(e: KeyboardEvent) {
-        if (!(e.metaKey || e.ctrlKey)) return;
+if (!(e.metaKey || e.ctrlKey)) return;
         const active = resolvedActiveAnnotation;
         if (!active) return;
 
@@ -397,7 +397,7 @@ $effect(() => {
                 e.preventDefault();
                 publishAnnotationUiEvent({ type: "annotation-focus-reply", annotationId: active.id });
             }
-        } else if (e.key === "V" && e.shiftKey) {
+        } else if ((e.key === "v" || e.key === "V") && e.shiftKey) {
             if (active._type === "revision") {
                 e.preventDefault();
                 publishAnnotationUiEvent({ type: "annotation-add-version", annotationId: active.id });
