@@ -33,6 +33,7 @@ import {
 import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotations";
 import { steps, type Step } from "./steps";
 import posthog from "posthog-js";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -58,6 +59,8 @@ const shortcutGroups = [
         shortcuts: [
             { keys: [mod, opt, "M"], label: "Add comment" },
             { keys: [mod, opt, "K"], label: "Add revision" },
+            { keys: [mod, "/"], label: "Reply to annotation" },
+            { keys: [mod, "⇧", "V"], label: "New revision version" },
             { keys: [mod, "↵"], label: "Send reply" },
         ],
     },
@@ -696,14 +699,7 @@ onDestroy(() => {
                                         <div class="flex items-center justify-between">
                                             <span class="text-[11px] text-black/65">{shortcut.label}</span>
                                             <div class="flex items-center gap-0.5">
-                                                {#each shortcut.keys as key, ki}
-                                                    <kbd class="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 text-[10px] font-mono bg-white/80 border border-black/15 shadow-sm rounded text-black/60">
-                                                        {key}
-                                                    </kbd>
-                                                    {#if ki < shortcut.keys.length - 1}
-                                                        <span class="text-[9px] text-black/25 px-0.5">+</span>
-                                                    {/if}
-                                                {/each}
+                                                <Kbd keys={shortcut.keys} />
                                             </div>
                                         </div>
                                     {/each}

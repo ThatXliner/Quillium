@@ -38,11 +38,12 @@ import {
     type GenericAnnotation,
     type Thread,
 } from "$lib/editor/plugins/annotations";
-import { activeAnnotation, annotations, editorView, annotationUiEvent, selectedText } from "$lib/stores";
+import { activeAnnotation, annotations, editorView, annotationUiEvent, selectedText, publishAnnotationUiEvent } from "$lib/stores";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
 import { tick } from "svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -382,6 +383,31 @@ $effect(() => {
     }, 1400);
 });
 
+// Annotation keyboard shortcuts:
+//   ⌘/          — focus reply textarea (comment / suggestion / revision)
+//   ⌘⇧V         — add new version (revision)
+$effect(() => {
+    function onKeydown(e: KeyboardEvent) {
+if (!(e.metaKey || e.ctrlKey)) return;
+        const active = resolvedActiveAnnotation;
+        if (!active) return;
+
+        if (e.key === "/" && !e.shiftKey) {
+            if (active._type === "comment" || active._type === "suggestion" || active._type === "revision") {
+                e.preventDefault();
+                publishAnnotationUiEvent({ type: "annotation-focus-reply", annotationId: active.id });
+            }
+        } else if ((e.key === "v" || e.key === "V") && e.shiftKey) {
+            if (active._type === "revision") {
+                e.preventDefault();
+                publishAnnotationUiEvent({ type: "annotation-add-version", annotationId: active.id });
+            }
+        }
+    }
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+});
+
 // Listen for editor scroll and window resize to reposition cards
 $effect(() => {
     if (!isFloating || !resolvedView) return;
@@ -405,13 +431,13 @@ $effect(() => {
         >
             {#if !hasComments}
                 <div class="flex items-center gap-2 text-black/40">
-                    <kbd class="bg-white/90 border border-black/12 shadow-sm rounded-md px-2 py-1 text-xs font-mono text-black/50 leading-none">{mod}{opt}M</kbd>
+                    <Kbd variant="large" keys={[mod, opt, "M"]} />
                     <span class="text-sm font-medium text-black/35">comment</span>
                 </div>
             {/if}
             {#if !hasRevisions}
                 <div class="flex items-center gap-2 text-black/40">
-                    <kbd class="bg-white/90 border border-black/12 shadow-sm rounded-md px-2 py-1 text-xs font-mono text-black/50 leading-none">{mod}{opt}K</kbd>
+                    <Kbd variant="large" keys={[mod, opt, "K"]} />
                     <span class="text-sm font-medium text-black/35">revision</span>
                 </div>
             {/if}

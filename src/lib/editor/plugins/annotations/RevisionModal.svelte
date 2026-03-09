@@ -572,6 +572,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <Thread
             thread={revisionThread}
             updateThread={dispatchUpdateThread}
+            annotationId={revisionId}
             accentClass="text-purple-600/80 hover:text-purple-700"
             focusRingClass="focus-within:ring-purple-300/50"
           />

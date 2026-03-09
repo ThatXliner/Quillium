@@ -249,7 +249,7 @@ function getDiffOps(replacementIndex: number) {
   <!-- User thread replies (skip first message if it's the AI's overall comment) -->
   {#if (thread[0]?.author === "AI" ? thread.slice(1) : thread).length > 0}
     <div class="border-t border-green-100/60 px-3 py-2.5">
-      <Thread {thread} {updateThread} />
+      <Thread {thread} {updateThread} annotationId={suggestion.id} />
     </div>
   {/if}
 </div>

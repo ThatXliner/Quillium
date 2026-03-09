@@ -176,6 +176,16 @@ export type AnnotationUiEvent =
           annotationId: number;
           from: number;
           to: number;
+      }
+    | {
+          token: number;
+          type: "annotation-focus-reply";
+          annotationId: number;
+      }
+    | {
+          token: number;
+          type: "annotation-add-version";
+          annotationId: number;
       };
 
 type WithoutToken<T> = T extends { token: number } ? Omit<T, "token"> : never;

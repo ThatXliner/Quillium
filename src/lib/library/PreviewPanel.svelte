@@ -5,6 +5,7 @@
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
 import { FileText, ExternalLink, Trash2, RotateCcw } from "lucide-svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -103,7 +104,7 @@ $effect(() => {
                 >
                     <ExternalLink size={16} />
                     Open document
-                    <kbd class="text-[10px] font-mono bg-white/20 border border-white/20 rounded px-1 py-0.5 text-white/60 group-hover:text-white/80 transition-colors leading-none">↵</kbd>
+                    <Kbd variant="fullWhite" keys="↵" />
                 </button>
                 <button
                     onclick={onTrash}
@@ -111,7 +112,7 @@ $effect(() => {
                 >
                     <Trash2 size={13} />
                     Move to trash
-                    <kbd class="text-[10px] font-mono bg-red-50 border border-red-100 rounded px-1 py-0.5 text-red-300/70 group-hover:text-red-400 transition-colors leading-none">{modKey}⌫</kbd>
+                    <Kbd variant="red" keys={[modKey, "⌫"]} />
                 </button>
             {/if}
         </div>

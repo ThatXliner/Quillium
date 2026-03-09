@@ -103,6 +103,7 @@ let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
 let lastFocusRequestToken = 0;
 let lastNestedSelectionToken = 0;
+let lastAddVersionToken = 0;
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -358,6 +359,34 @@ $effect(() => {
     syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined);
 });
 
+// ⌘Enter when this revision is active → create a new version
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastAddVersionToken ||
+        event.type !== "annotation-add-version" ||
+        event.annotationId !== revision.id
+    )
+        return;
+    lastAddVersionToken = event.token;
+    posthog.capture("revision_version_created", { version_count: revision.versions.length });
+    view.dispatch(createNewRevision(view.state, revision.id));
+    tick().then(() => {
+        if (appSettings.showNestedEditor) {
+            userClosedEditor = false;
+            isEditorOpen = true;
+        } else {
+            modalStack.push({
+                type: "revision",
+                revisionId: revision.id,
+                parentView: view,
+                label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            });
+        }
+    });
+});
+
 onDestroy(() => {
     destroyRecursiveEditor();
 });
@@ -547,8 +576,11 @@ onDestroy(() => {
             <Thread
                 {thread}
                 {updateThread}
+                {view}
+                annotationId={revision.id}
                 previewOnly={!isActive}
                 accentClass="text-purple-600/80 hover:text-purple-700"
+                sendPillClass="bg-purple-500 text-white hover:bg-purple-600"
             />
         </div>
     {/if}

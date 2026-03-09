@@ -6,6 +6,7 @@
 import { currentDocumentTitle } from "$lib/stores";
 import { goToEditor } from "$lib/navigation";
 import { ArrowLeft } from "lucide-svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 interface Props {
     visible: boolean;
@@ -22,6 +23,6 @@ const { visible }: Props = $props();
         <ArrowLeft size={16} />
         Continue editing
         <span class="max-w-[140px] truncate text-black/50 font-normal">— {$currentDocumentTitle}</span>
-        <kbd class="text-[10px] font-mono bg-black/10 border border-black/10 rounded px-1 py-0.5 text-black/25 group-hover:text-black/40 transition-colors leading-none">Esc</kbd>
+        <Kbd keys="Esc" />
     </button>
 {/if}

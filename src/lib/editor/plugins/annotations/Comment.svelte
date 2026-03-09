@@ -186,6 +186,8 @@ async function streamAiResponse(prompt: string): Promise<string> {
         <Thread
             {thread}
             {updateThread}
+            {view}
+            annotationId={comment.id}
             previewOnly={!isActive}
             onAiSuggest={isActive ? aiSuggestion : undefined}
             accentClass="text-blue-600/80 hover:text-blue-700"
