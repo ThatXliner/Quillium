@@ -71,7 +71,7 @@ let settingsOpen = $state(false);
         class="group h-12 px-3 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center gap-2 hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
     >
         <LayoutGrid size={20} />
-        <Kbd>{modKey}O</Kbd>
+        <Kbd keys={[modKey, "O"]} />
     </button>
     <button
         onclick={() => (settingsOpen = !settingsOpen)}

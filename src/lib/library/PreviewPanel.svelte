@@ -104,7 +104,7 @@ $effect(() => {
                 >
                     <ExternalLink size={16} />
                     Open document
-                    <Kbd variant="blue">↵</Kbd>
+                    <Kbd variant="blue" keys="↵" />
                 </button>
                 <button
                     onclick={onTrash}
@@ -112,7 +112,7 @@ $effect(() => {
                 >
                     <Trash2 size={13} />
                     Move to trash
-                    <Kbd variant="red">{modKey}⌫</Kbd>
+                    <Kbd variant="red" keys={[modKey, "⌫"]} />
                 </button>
             {/if}
         </div>

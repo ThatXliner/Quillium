@@ -406,13 +406,13 @@ $effect(() => {
         >
             {#if !hasComments}
                 <div class="flex items-center gap-2 text-black/40">
-                    <Kbd variant="large">{mod}{opt}M</Kbd>
+                    <Kbd variant="large" keys={[mod, opt, "M"]} />
                     <span class="text-sm font-medium text-black/35">comment</span>
                 </div>
             {/if}
             {#if !hasRevisions}
                 <div class="flex items-center gap-2 text-black/40">
-                    <Kbd variant="large">{mod}{opt}K</Kbd>
+                    <Kbd variant="large" keys={[mod, opt, "K"]} />
                     <span class="text-sm font-medium text-black/35">revision</span>
                 </div>
             {/if}

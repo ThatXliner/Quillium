@@ -23,6 +23,6 @@ const { visible }: Props = $props();
         <ArrowLeft size={16} />
         Continue editing
         <span class="max-w-[140px] truncate text-black/50 font-normal">— {$currentDocumentTitle}</span>
-        <Kbd>Esc</Kbd>
+        <Kbd keys="Esc" />
     </button>
 {/if}

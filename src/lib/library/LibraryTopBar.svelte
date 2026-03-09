@@ -112,7 +112,7 @@ const retentionLabel = $derived(
             oninput={(e) => onQueryChange((e.target as HTMLInputElement).value)}
             class="w-full h-full pl-10 pr-10 bg-transparent text-sm text-black/80 placeholder:text-black/35 focus:outline-none"
         />
-        <span class="absolute right-3 pointer-events-none"><Kbd>/</Kbd></span>
+        <span class="absolute right-3 pointer-events-none"><Kbd keys="/" /></span>
     </div>
 
     <!-- Divider -->
@@ -149,7 +149,7 @@ const retentionLabel = $derived(
         >
             <Plus size={15} />
             New
-            <Kbd>N</Kbd>
+            <Kbd keys="N" />
         </button>
     {/if}
 </div>
