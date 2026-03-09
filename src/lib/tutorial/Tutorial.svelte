@@ -300,9 +300,15 @@ function getRequirementState(currentStep: Step | undefined): { met: boolean; hin
 
 function startTour() {
     sectionPickerOpen = false;
-    stepIndex = 0;
     lastStepId = null;
     resetNestedGuideState();
+    // If shortcuts is the only optional section selected, jump straight to it.
+    if (includeShortcuts && !includeAi && !includeNested) {
+        const idx = activeSteps.findIndex((s) => s.id === "keyboard-shortcuts");
+        stepIndex = idx >= 0 ? idx : 0;
+    } else {
+        stepIndex = 0;
+    }
     setTimeout(positionTooltip, 80);
 }
 
