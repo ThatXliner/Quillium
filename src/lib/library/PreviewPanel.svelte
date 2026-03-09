@@ -104,7 +104,7 @@ $effect(() => {
                 >
                     <ExternalLink size={16} />
                     Open document
-                    <Kbd variant="blue" keys="↵" />
+                    <Kbd variant="white" keys="↵" />
                 </button>
                 <button
                     onclick={onTrash}

@@ -74,7 +74,8 @@ $effect(() => {
         event.token === lastFocusReplyToken ||
         event.type !== "annotation-focus-reply" ||
         event.annotationId !== annotationId
-    ) return;
+    )
+        return;
     lastFocusReplyToken = event.token;
     textareaEl?.focus();
 });
@@ -167,7 +168,7 @@ function send() {
                     {isFocused ? "Send" : "Reply"}
                     <span class="flex items-center gap-0.5">
                         <Kbd keys={isFocused ? ["⌘", "↵"] : ["⌘", "/"]}
-                            variant={sendActive ? "white" : isFocused ? "ghost" : "default"} />
+                            variant={sendActive ? "fullWhite" : isFocused ? "whiteGhost" : "default"} />
                     </span>
                 </button>
             </div>
