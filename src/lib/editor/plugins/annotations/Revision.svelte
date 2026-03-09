@@ -303,8 +303,9 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
     // Nothing to do: same version, nested editor already has the right text.
     if (!versionChanged && !externallyMutated && currentText === targetText) return;
 
-    // Save the current editor state back to whichever version we're leaving.
-    if (versionChanged) {
+    // Save the current editor state back to whichever version we're leaving,
+    // but only if that version still exists (it may have just been deleted).
+    if (versionChanged && previousVersionId !== undefined && previousVersionId < revision.versions.length) {
         upsertVersionState(recursiveEditor, previousVersionId);
     }
     isSyncingFromAnnotation = true;
