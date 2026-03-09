@@ -17,8 +17,17 @@ interface Props {
     onDeletePermanent: (id: string) => void;
 }
 
-const { documents, selectedId, viewMode, trashMode, onSelect, onOpen, onTrash, onRestore, onDeletePermanent }: Props =
-    $props();
+const {
+    documents,
+    selectedId,
+    viewMode,
+    trashMode,
+    onSelect,
+    onOpen,
+    onTrash,
+    onRestore,
+    onDeletePermanent,
+}: Props = $props();
 </script>
 
 {#if viewMode === "grid"}

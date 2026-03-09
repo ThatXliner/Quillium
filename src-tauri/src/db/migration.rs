@@ -33,11 +33,14 @@ pub fn migrate_from_state_json(
         });
     }
 
+    let app_data_dir = state_json_path.parent().expect("state.json has no parent");
+
     // Attempt to read legacy state.json
     let raw = match std::fs::read_to_string(state_json_path) {
         Ok(content) => content,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // No legacy file — just mark as migrated
+            // No legacy file — just mark as migrated and clean up
+            delete_scrapped_dir(app_data_dir);
             set_migrated(conn)?;
             return Ok(MigrationResult {
                 migrated: false,
@@ -46,6 +49,7 @@ pub fn migrate_from_state_json(
         }
         Err(e) => {
             eprintln!("[migration] I/O error reading state.json: {e}");
+            delete_scrapped_dir(app_data_dir);
             set_migrated(conn)?;
             return Ok(MigrationResult {
                 migrated: false,
@@ -110,10 +114,13 @@ pub fn migrate_from_state_json(
     })();
 
     match result {
-        Ok(()) => Ok(MigrationResult {
-            migrated: true,
-            document_id: Some(doc_id),
-        }),
+        Ok(()) => {
+            delete_scrapped_dir(app_data_dir);
+            Ok(MigrationResult {
+                migrated: true,
+                document_id: Some(doc_id),
+            })
+        }
         Err(e) => {
             eprintln!("[migration] SQL error during migration: {e}");
             // Prevent retry loop even on SQL error
@@ -122,6 +129,15 @@ pub fn migrate_from_state_json(
                 migrated: false,
                 document_id: None,
             })
+        }
+    }
+}
+
+fn delete_scrapped_dir(app_data_dir: &Path) {
+    let scrapped = app_data_dir.join("scrapped");
+    if scrapped.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&scrapped) {
+            eprintln!("[migration] Failed to delete scrapped dir: {e}");
         }
     }
 }
