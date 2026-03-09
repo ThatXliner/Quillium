@@ -65,7 +65,7 @@ const shortcutGroups = [
 
 const { onComplete }: { onComplete: () => void } = $props();
 
-type SectionKey = "ai" | "nested";
+type SectionKey = "ai" | "nested" | "shortcuts";
 
 let stepIndex = $state(0);
 let spotlightRects = $state<DOMRect[]>([]);
@@ -76,6 +76,7 @@ let sectionPickerOpen = $state(true);
 
 let includeAi = $state(true);
 let includeNested = $state(true);
+let includeShortcuts = $state(true);
 
 let lastStepId = $state<string | null>(null);
 
@@ -91,6 +92,7 @@ const activeSteps = $derived(
         if (s.section === "core") return true;
         if (s.section === "ai") return includeAi;
         if (s.section === "nested") return includeNested;
+        if (s.section === "shortcuts") return includeShortcuts;
         return true;
     }),
 );
@@ -109,6 +111,7 @@ const useInlineModalGuide = $derived(
 function setSection(section: SectionKey, checked: boolean) {
     if (section === "ai") includeAi = checked;
     if (section === "nested") includeNested = checked;
+    if (section === "shortcuts") includeShortcuts = checked;
 }
 
 function resetNestedGuideState() {
@@ -609,6 +612,19 @@ onDestroy(() => {
                         <span>
                             <span class="block text-xs font-medium text-black/80">Nested Revision Walkthrough</span>
                             <span class="block text-[11px] text-black/55">Interactive steps for creating and expanding nested revisions</span>
+                        </span>
+                    </label>
+
+                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
+                        <input
+                            type="checkbox"
+                            checked={includeShortcuts}
+                            onchange={(e) => setSection("shortcuts", (e.currentTarget as HTMLInputElement).checked)}
+                            class="mt-0.5"
+                        />
+                        <span>
+                            <span class="block text-xs font-medium text-black/80">Keyboard Shortcuts</span>
+                            <span class="block text-[11px] text-black/55">Quick reference for all keyboard shortcuts</span>
                         </span>
                     </label>
                 </div>

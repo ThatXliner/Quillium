@@ -13,12 +13,12 @@
     State interactions:
       - Reads the `saveStatus` store (written by listeners.ts) to toggle
         the save-status indicator between green (saved) and yellow (saving).
-      - Writes `tutorialActive` store when the "?" button is clicked.
+      - Writes `tutorialActive` and `tutorialStartStep` stores when the ⌨
+        button is clicked to jump directly to the shortcuts tutorial step.
 -->
 <script lang="ts">
 import Save from "$lib/save/Save.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import KeyboardShortcuts from "$lib/KeyboardShortcuts.svelte";
 import { tutorialActive, saveStatus } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToLibrary } from "$lib/navigation";
@@ -30,19 +30,16 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 const modKey = isMac ? "⌘" : "Ctrl";
 
 let settingsOpen = $state(false);
-let shortcutsOpen = $state(false);
 </script>
+
+{#if settingsOpen}
+    <SettingsModal onclose={() => (settingsOpen = false)} />
+{/if}
 
 <div
     id="status-bar"
     class="relative w-fit mx-auto py-4 px-8 backdrop-blur-md rounded-full bg-gray-300/70 border border-white/30 shadow-lg flex gap-4 items-center justify-center"
 >
-    {#if settingsOpen}
-        <SettingsModal onclose={() => (settingsOpen = false)} />
-    {/if}
-    {#if shortcutsOpen}
-        <KeyboardShortcuts onclose={() => (shortcutsOpen = false)} />
-    {/if}
     <button
         onclick={goToLibrary}
         title="Library ({modKey}O)"
@@ -85,13 +82,6 @@ let shortcutsOpen = $state(false);
     >
         <Settings2 size={20} />
     </button>
-    <button
-        onclick={() => (shortcutsOpen = !shortcutsOpen)}
-        aria-label="Keyboard shortcuts"
-        title="Keyboard shortcuts"
-        class="w-5 h-5 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-[11px] font-semibold leading-none flex items-center justify-center
-            {shortcutsOpen ? 'bg-blue-100 text-blue-600' : ''}"
-    >⌨</button>
     <button
         onclick={() => ($tutorialActive = true)}
         aria-label="Take tour"
