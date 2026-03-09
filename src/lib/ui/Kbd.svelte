@@ -21,39 +21,28 @@ const { keys, variant = "default" }: Props = $props();
 
 const keyList = $derived(Array.isArray(keys) ? keys : [keys]);
 
-const base =
-    "inline-flex items-center justify-center font-mono leading-none";
+const base = "inline-flex items-center justify-center font-mono leading-none";
 
 const styles: Record<string, string> = {
     default: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-white/80 border border-black/15 shadow-sm rounded text-black/60`,
-    blue:    `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-white/20 border border-white/20 shadow-sm rounded text-white/70`,
-    red:     `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-red-50 border border-red-100 shadow-sm rounded text-red-400/80`,
-    large:   `${base} min-w-[24px] h-[22px] px-2 text-xs bg-white/90 border border-black/12 shadow-sm rounded-md text-black/55`,
-};
-
-const separatorStyles: Record<string, string> = {
-    default: "text-[9px] text-black/25 px-0.5",
-    blue:    "text-[9px] text-white/30 px-0.5",
-    red:     "text-[9px] text-red-300/50 px-0.5",
-    large:   "text-[9px] text-black/25 px-0.5",
+    blue: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-white/20 border border-white/20 shadow-sm rounded text-white/70`,
+    red: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-red-50 border border-red-100 shadow-sm rounded text-red-400/80`,
+    large: `${base} min-w-[24px] h-[22px] px-2 text-xs bg-white/90 border border-black/12 shadow-sm rounded-md text-black/55`,
 };
 
 const iconSize: Record<string, number> = {
     default: 10,
-    blue:    10,
-    red:     10,
-    large:   12,
+    blue: 10,
+    red: 10,
+    large: 12,
 };
 
 function isCommandKey(k: string) {
     return k === "⌘" || k.toLowerCase() === "cmd";
 }
 </script>
-
-{#each keyList as key, i}
-    {#if i > 0}
-        <span class={separatorStyles[variant]}>+</span>
-    {/if}
+<div class={`${base} space-x-px`}>
+{#each keyList as key}
     <kbd class={styles[variant]}>
         {#if isCommandKey(key)}
             <Command size={iconSize[variant]} strokeWidth={2} />
@@ -62,3 +51,4 @@ function isCommandKey(k: string) {
         {/if}
     </kbd>
 {/each}
+</div>
