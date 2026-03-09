@@ -26,6 +26,7 @@ import { streamChat } from "$lib/ai/clientStreams";
 import { aiSettings } from "$lib/ai/settings.svelte";
 import posthog from "posthog-js";
 import type { EditorView } from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
 import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
 
@@ -162,12 +163,21 @@ async function streamAiResponse(prompt: string): Promise<string> {
         </button>
     </div>
 
-    <!-- Quoted text chip -->
+    <!-- Quoted text chip — clicking jumps cursor into the annotation range -->
     {#if selectedText}
         <div class="px-3 pt-3 pb-0">
-            <div class="text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic">
+            <button
+                class="w-full text-left text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic hover:text-black/70 hover:border-yellow-500/80 transition-colors cursor-pointer"
+                onclick={() => {
+                    view.dispatch({
+                        selection: EditorSelection.cursor(comment.selection.main.from),
+                        scrollIntoView: true,
+                    });
+                }}
+                title="Jump to this comment in the document"
+            >
                 {selectedText.slice(0, 80)}{selectedText.length > 80 ? "…" : ""}
-            </div>
+            </button>
         </div>
     {/if}
 
