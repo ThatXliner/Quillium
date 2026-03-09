@@ -38,7 +38,7 @@ import {
     type GenericAnnotation,
     type Thread,
 } from "$lib/editor/plugins/annotations";
-import { activeAnnotation, annotations, editorView, annotationUiEvent, selectedText } from "$lib/stores";
+import { activeAnnotation, annotations, editorView, annotationUiEvent, selectedText, publishAnnotationUiEvent } from "$lib/stores";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
@@ -381,6 +381,31 @@ $effect(() => {
         el.classList.remove("pending-shake");
         alertingPendingId = undefined;
     }, 1400);
+});
+
+// Annotation keyboard shortcuts:
+//   ⌘/          — focus reply textarea (comment / suggestion)
+//   ⌘⇧V         — add new version (revision)
+$effect(() => {
+    function onKeydown(e: KeyboardEvent) {
+        if (!(e.metaKey || e.ctrlKey)) return;
+        const active = resolvedActiveAnnotation;
+        if (!active) return;
+
+        if (e.key === "/" && !e.shiftKey) {
+            if (active._type === "comment" || active._type === "suggestion") {
+                e.preventDefault();
+                publishAnnotationUiEvent({ type: "annotation-focus-reply", annotationId: active.id });
+            }
+        } else if (e.key === "V" && e.shiftKey) {
+            if (active._type === "revision") {
+                e.preventDefault();
+                publishAnnotationUiEvent({ type: "annotation-add-version", annotationId: active.id });
+            }
+        }
+    }
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
 });
 
 // Listen for editor scroll and window resize to reposition cards

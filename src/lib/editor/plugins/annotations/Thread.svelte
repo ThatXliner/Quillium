@@ -24,10 +24,15 @@ import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
 import ThreadMessage from "./ThreadMessage.svelte";
 import type { Thread as ThreadType } from ".";
+import { annotationUiEvent, editorView } from "$lib/stores";
+import Kbd from "$lib/ui/Kbd.svelte";
+import type { EditorView } from "@codemirror/view";
 
 let {
     thread,
     updateThread,
+    annotationId,
+    view = undefined,
     // When true shows only the first message (collapsed comment card preview)
     previewOnly = false,
     // When provided, renders the AI suggest button in the reply footer
@@ -39,6 +44,8 @@ let {
 }: {
     thread: ThreadType;
     updateThread: (thread: ThreadType) => void;
+    annotationId: number;
+    view?: EditorView | undefined;
     previewOnly?: boolean;
     onAiSuggest?: (() => void) | undefined;
     accentClass?: string;
@@ -46,6 +53,26 @@ let {
 } = $props();
 
 let newMessage = $state("");
+let textareaEl = $state<HTMLTextAreaElement | undefined>();
+let isFocused = $state(false);
+let lastFocusReplyToken = 0;
+
+function blurToEditor() {
+    textareaEl?.blur();
+    (view ?? $editorView)?.focus();
+}
+
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastFocusReplyToken ||
+        event.type !== "annotation-focus-reply" ||
+        event.annotationId !== annotationId
+    ) return;
+    lastFocusReplyToken = event.token;
+    textareaEl?.focus();
+});
 
 function send() {
     if (!newMessage.trim()) return;
@@ -93,15 +120,21 @@ function send() {
         class="mt-3 rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
         ring-1 ring-black/5 focus-within:ring-2 {focusRingClass} transition-shadow">
         <textarea
+            bind:this={textareaEl}
             bind:value={newMessage}
             placeholder="Reply…"
             rows="2"
             class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
                 text-black/70 placeholder:text-black/30"
+            onfocus={() => (isFocused = true)}
+            onblur={() => (isFocused = false)}
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                     e.preventDefault();
                     send();
+                } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    blurToEditor();
                 }
             }}
         ></textarea>
@@ -120,14 +153,16 @@ function send() {
                     </button>
                 {/if}
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5">
                 {#if newMessage.trim()}
                     <button
                         onclick={send}
                         class="text-xs font-medium transition-colors {accentClass}"
                     >Send</button>
+                {:else if isFocused}
+                    <span class="flex items-center gap-0.5 opacity-40"><Kbd keys={["⌘", "↵"]} /></span>
                 {:else}
-                    <span class="text-[10px] text-black/25">⌘↵ to send</span>
+                    <span class="flex items-center gap-0.5 opacity-40"><Kbd keys={["⌘", "/"]} /></span>
                 {/if}
             </div>
         </div>
