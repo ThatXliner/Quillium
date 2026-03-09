@@ -13,7 +13,7 @@
 
 export type Step = {
     id: string;
-    section: "core" | "ai" | "nested";
+    section: "core" | "ai" | "nested" | "shortcuts";
     selector: string | null;
     title: string;
     body: string;
@@ -130,10 +130,10 @@ export const steps: Step[] = [
     },
     {
         id: "keyboard-shortcuts",
-        section: "core",
+        section: "shortcuts",
         selector: "#status-bar",
         title: "Keyboard Shortcuts",
-        body: "Quillium is designed to be keyboard-first. Here's a reference you can revisit anytime via the ⌨ button in the status bar.",
+        body: "Quillium is designed to be keyboard-first. Here's a quick reference.",
         showShortcuts: true,
         position: "bottom",
     },

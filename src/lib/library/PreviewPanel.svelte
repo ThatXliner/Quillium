@@ -6,6 +6,9 @@
 import type { DocumentMeta } from "$lib/db/types";
 import { FileText, ExternalLink, Trash2, RotateCcw } from "lucide-svelte";
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
+
 interface Props {
     doc: DocumentMeta | null;
     trashMode: boolean;
@@ -96,17 +99,19 @@ $effect(() => {
             {:else}
                 <button
                     onclick={onOpen}
-                    class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
                 >
                     <ExternalLink size={16} />
                     Open document
+                    <kbd class="text-[10px] font-mono bg-white/20 border border-white/20 rounded px-1 py-0.5 text-white/60 group-hover:text-white/80 transition-colors leading-none">↵</kbd>
                 </button>
                 <button
                     onclick={onTrash}
-                    class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-red-400 hover:bg-red-50 transition-colors"
+                    class="group w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-red-400 hover:bg-red-50 transition-colors"
                 >
                     <Trash2 size={13} />
                     Move to trash
+                    <kbd class="text-[10px] font-mono bg-red-50 border border-red-100 rounded px-1 py-0.5 text-red-300/70 group-hover:text-red-400 transition-colors leading-none">{modKey}⌫</kbd>
                 </button>
             {/if}
         </div>
