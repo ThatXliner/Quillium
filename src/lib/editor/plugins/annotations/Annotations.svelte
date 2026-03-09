@@ -323,7 +323,6 @@ function applyCardPositions(
     }
 }
 
-
 // Track which pending card is currently showing the alert animation
 let alertingPendingId = $state<number | undefined>(undefined);
 let lastPendingAlertToken = 0;

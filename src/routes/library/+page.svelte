@@ -88,10 +88,7 @@ async function handleTrash(id: string) {
         const remaining = documents.filter((d) => d.id !== id);
         selectedId = remaining.length > 0 ? remaining[0].id : null;
     }
-    [documents, trashedDocuments] = await Promise.all([
-        listDocuments(),
-        listTrashedDocuments(),
-    ]);
+    [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
 }
 
 async function handleRestore(id: string) {
@@ -100,10 +97,7 @@ async function handleRestore(id: string) {
         const remaining = trashedDocuments.filter((d) => d.id !== id);
         selectedId = remaining.length > 0 ? remaining[0].id : null;
     }
-    [documents, trashedDocuments] = await Promise.all([
-        listDocuments(),
-        listTrashedDocuments(),
-    ]);
+    [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
 }
 
 async function handleDeletePermanent(id: string) {

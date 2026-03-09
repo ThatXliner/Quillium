@@ -188,7 +188,10 @@ async function doAppend(update: ViewUpdate) {
     savingIndicatorTimer = setTimeout(() => {
         try {
             // Guard: abort if the user has navigated to a different document or draft.
-            if (get(currentDocumentId) !== scheduledDocId || get(currentDraftId) !== scheduledDraftId) {
+            if (
+                get(currentDocumentId) !== scheduledDocId ||
+                get(currentDraftId) !== scheduledDraftId
+            ) {
                 return;
             }
             saveStatus.set("saving");

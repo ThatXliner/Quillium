@@ -82,7 +82,9 @@ async function installTauriMock(
                     callbacks.set(id, callback);
                     return id;
                 },
-                unregisterCallback: (id: number) => { callbacks.delete(id); },
+                unregisterCallback: (id: number) => {
+                    callbacks.delete(id);
+                },
                 convertFileSrc: (filePath: string) => filePath,
             };
 
@@ -98,7 +100,9 @@ async function installTauriMock(
 
 async function waitForEditor(page: Page): Promise<void> {
     await page.locator("#editor-document").waitFor({ state: "attached", timeout: 15_000 });
-    await page.locator("#editor-document .cm-editor").waitFor({ state: "visible", timeout: 15_000 });
+    await page
+        .locator("#editor-document .cm-editor")
+        .waitFor({ state: "visible", timeout: 15_000 });
     await page.waitForTimeout(200);
 }
 
@@ -183,7 +187,9 @@ async function pollUntilReady(url: string, timeoutMs = 30_000): Promise<void> {
         try {
             const res = await fetch(url);
             if (res.ok || res.status === 304) return;
-        } catch { /* not ready yet */ }
+        } catch {
+            /* not ready yet */
+        }
         await new Promise((r) => setTimeout(r, 300));
     }
     throw new Error(`Server at ${url} did not become ready within ${timeoutMs}ms`);
@@ -329,7 +335,9 @@ async function main(): Promise<void> {
                 serverAlreadyRunning = true;
                 console.log(`Using existing server at ${BASE_URL}`);
             }
-        } catch { /* need to start one */ }
+        } catch {
+            /* need to start one */
+        }
 
         if (!serverAlreadyRunning) server = await startServer();
     }

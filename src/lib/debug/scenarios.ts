@@ -123,7 +123,6 @@ We had everything before us, we had nothing before us, we were all going direct 
 
 It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this. Mrs. Southcott had recently attained her five-and-twentieth blessed birthday, of whom a prophetic private in the Life Guards had heralded the sublime appearance by announcing that arrangements were made for the swallowing up of London and Westminster.`;
 
-
 // ── Scenarios ─────────────────────────────────────────────────────────────────
 
 export const scenarios: Scenario[] = [
@@ -407,8 +406,7 @@ export const scenarios: Scenario[] = [
                 replacements: [
                     {
                         text: "three ships were due before dawn",
-                        rationale:
-                            "Strips 'in the harbour' — the context implies it",
+                        rationale: "Strips 'in the harbour' — the context implies it",
                     },
                 ],
                 comment: "Tighten.",
@@ -426,10 +424,19 @@ export const scenarios: Scenario[] = [
             const passages = [
                 { text: "forty years", comment: "Establishes experience without backstory." },
                 { text: "some crept in slowly", comment: "Nice contrast. Could expand." },
-                { text: "giving him hours to prepare", comment: "What does preparation look like?" },
+                {
+                    text: "giving him hours to prepare",
+                    comment: "What does preparation look like?",
+                },
                 { text: "the sky turning green", comment: "Meteorologically accurate." },
-                { text: "angry before the wind even picked up", comment: "Colour change precedes wind shift — correct." },
-                { text: "checked the lamp mechanism", comment: "Action shows routine without stating it." },
+                {
+                    text: "angry before the wind even picked up",
+                    comment: "Colour change precedes wind shift — correct.",
+                },
+                {
+                    text: "checked the lamp mechanism",
+                    comment: "Action shows routine without stating it.",
+                },
             ];
             for (const { text, comment } of passages) {
                 try {
@@ -443,7 +450,8 @@ export const scenarios: Scenario[] = [
     {
         id: "revision-long-versions",
         label: "Revision — long alternatives",
-        description: "A revision with verbose alternatives — tests card expansion and text overflow",
+        description:
+            "A revision with verbose alternatives — tests card expansion and text overflow",
         category: "debug",
         doc: DOC_ESSAY_DRAFT,
         setup(view) {
@@ -715,8 +723,7 @@ export const scenarios: Scenario[] = [
             createSuggestion({
                 state: view.state,
                 dispatch: (tr) => view.dispatch(tr),
-                targetText:
-                    "James considered this carefully, which was perhaps already an answer.",
+                targetText: "James considered this carefully, which was perhaps already an answer.",
                 replacements: [
                     {
                         text: "James considered this. Which was, perhaps, already an answer.",
@@ -945,7 +952,11 @@ export const scenarios: Scenario[] = [
                 state.update({
                     effects: [
                         addAnnotation.of({
-                            ...createNewAnnotation(state.field(annotationField), selection, "comment"),
+                            ...createNewAnnotation(
+                                state.field(annotationField),
+                                selection,
+                                "comment",
+                            ),
                             thread: [
                                 {
                                     message:
@@ -1034,7 +1045,8 @@ export const scenarios: Scenario[] = [
             createSuggestion({
                 state: view.state,
                 dispatch: (tr) => view.dispatch(tr),
-                targetText: "we were all going direct to Heaven, we were all going direct the other way",
+                targetText:
+                    "we were all going direct to Heaven, we were all going direct the other way",
                 replacements: [
                     {
                         text: "we were all going directly to Heaven, and all going directly the other way",
@@ -1070,19 +1082,20 @@ export const scenarios: Scenario[] = [
     {
         id: "screenshot-dense",
         label: "Screenshot: dense annotations (Dickens)",
-        description:
-            "Several comments across the Dickens passage for the full-ui screenshot",
+        description: "Several comments across the Dickens passage for the full-ui screenshot",
         category: "debug",
         doc: DICKENS_DOC,
         setup(view) {
             const passages = [
                 {
                     text: "it was the worst of times",
-                    comment: "The inversion here is the engine of the whole opening — worth protecting.",
+                    comment:
+                        "The inversion here is the engine of the whole opening — worth protecting.",
                 },
                 {
                     text: "it was the season of Darkness",
-                    comment: "Capitalisation is deliberate and correct for Dickens; don't normalise.",
+                    comment:
+                        "Capitalisation is deliberate and correct for Dickens; don't normalise.",
                 },
                 {
                     text: "the spring of hope, it was the winter of despair",

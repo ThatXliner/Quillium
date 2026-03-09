@@ -46,10 +46,7 @@ export type AnnotationUpdateEvent = {
     annotation: RawAnnotation;
 };
 
-export type AnnotationEvent =
-    | AnnotationAddEvent
-    | AnnotationRemoveEvent
-    | AnnotationUpdateEvent;
+export type AnnotationEvent = AnnotationAddEvent | AnnotationRemoveEvent | AnnotationUpdateEvent;
 
 // ── Top-level event payload union ────────────────────────────────
 

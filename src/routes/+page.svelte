@@ -66,12 +66,11 @@ if (import.meta.env.DEV) {
             updateDocumentMeta,
         } = await import("$lib/db");
         const { buildEventPayload } = await import("$lib/editor/listeners");
-        const { currentDocumentId, currentDocumentTitle, currentDraftId } =
-            await import("$lib/stores");
+        const { currentDocumentId, currentDocumentTitle, currentDraftId } = await import(
+            "$lib/stores"
+        );
 
-        (window as unknown as Record<string, unknown>).__runScenario__ = async (
-            id: string,
-        ) => {
+        (window as unknown as Record<string, unknown>).__runScenario__ = async (id: string) => {
             const scenario = scenarios.find((s) => s.id === id);
             if (!scenario) {
                 console.warn(`[screenshot] unknown scenario: ${id}`);
@@ -114,7 +113,13 @@ if (import.meta.env.DEV) {
 
                 const docText = finalState.doc.toString();
                 const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
-                await updateDocumentMeta(docId, scenario.label, wordCount, docText.slice(0, 200), "[]");
+                await updateDocumentMeta(
+                    docId,
+                    scenario.label,
+                    wordCount,
+                    docText.slice(0, 200),
+                    "[]",
+                );
 
                 await editorComponent?.reload();
                 return true;

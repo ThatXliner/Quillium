@@ -33,10 +33,7 @@ import type { AnnotationEvent, EventPayload } from "$lib/db/events";
 function deserializeAnnotation(raw: unknown): GenericAnnotation | null {
     const result = RawAnnotationSchema.safeParse(raw);
     if (!result.success) {
-        console.warn(
-            "[replay] Annotation failed validation, skipping:",
-            result.error.flatten(),
-        );
+        console.warn("[replay] Annotation failed validation, skipping:", result.error.flatten());
         return null;
     }
     return {
@@ -135,10 +132,7 @@ export function replayEvents(state: EditorState, events: EventRecord[]): EditorS
             const payload = JSON.parse(record.payload) as EventPayload;
             current = applyEventPayload(current, payload);
         } catch (err) {
-            console.warn(
-                `[Editor] Failed to replay event id=${record.id}, skipping:`,
-                err,
-            );
+            console.warn(`[Editor] Failed to replay event id=${record.id}, skipping:`, err);
         }
     }
     return current;
