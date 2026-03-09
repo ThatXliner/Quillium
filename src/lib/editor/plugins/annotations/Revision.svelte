@@ -95,6 +95,7 @@ let recursiveEditor = $state<EditorView | undefined>(undefined);
 let nestedEditorHasActiveAnnotation = $state(false);
 let isSyncingFromAnnotation = false;
 let previousVersionId = revision.currentlySelected;
+let previousVersionCount = revision.versions.length;
 // Track the last text we pushed INTO the nested editor so we can
 // detect when the parent annotation was changed externally (e.g.
 // via undo) even when the new text equals what was there before.
@@ -284,7 +285,7 @@ function destroyRecursiveEditor() {
  * externally (e.g. the user edited the main doc or pressed undo)
  * so the nested editor's text is out of sync with activeText.
  */
-function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
+function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionDeleted = false) {
     if (!recursiveEditor || !activeVersion) return;
     const versionChanged =
         previousVersionId !== undefined && previousVersionId !== revision.currentlySelected;
@@ -304,8 +305,8 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
     if (!versionChanged && !externallyMutated && currentText === targetText) return;
 
     // Save the current editor state back to whichever version we're leaving,
-    // but only if that version still exists (it may have just been deleted).
-    if (versionChanged && previousVersionId !== undefined && previousVersionId < revision.versions.length) {
+    // unless a version was just deleted (the previous index is stale/gone).
+    if (versionChanged && !versionDeleted) {
         upsertVersionState(recursiveEditor, previousVersionId);
     }
     isSyncingFromAnnotation = true;
@@ -356,8 +357,11 @@ $effect(() => {
 $effect(() => {
     if (!recursiveEditor || !isEditorOpen) return;
     const prev = previousVersionId;
+    const prevCount = previousVersionCount;
     previousVersionId = revision.currentlySelected;
-    syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined);
+    previousVersionCount = revision.versions.length;
+    const versionDeleted = revision.versions.length < prevCount;
+    syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined, versionDeleted);
 });
 
 // ⌘Enter when this revision is active → create a new version
