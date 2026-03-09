@@ -77,10 +77,13 @@ import posthog from "posthog-js";
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
 let action = $state<Action>(null);
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
 const actions: {
     id: NonNullable<Action>;
     icon: typeof MessageCircleIcon;
     label: string;
+    shortcut: string;
     activeClass: string;
     hoverClass: string;
     requiresApiKey: boolean;
@@ -89,6 +92,7 @@ const actions: {
         id: "chat",
         icon: MessageCircleIcon,
         label: "Chat",
+        shortcut: isMac ? "⌘⇧1" : "Ctrl+Shift+1",
         activeClass: "text-blue-600 bg-white/60",
         hoverClass: "hover:text-blue-600",
         requiresApiKey: true,
@@ -97,6 +101,7 @@ const actions: {
         id: "feedback",
         icon: ZapIcon,
         label: "Feedback",
+        shortcut: isMac ? "⌘⇧2" : "Ctrl+Shift+2",
         activeClass: "text-green-600 bg-white/60",
         hoverClass: "hover:text-green-600",
         requiresApiKey: true,
@@ -105,6 +110,7 @@ const actions: {
         id: "revise",
         icon: PenLineIcon,
         label: "Revise",
+        shortcut: isMac ? "⌘⇧3" : "Ctrl+Shift+3",
         activeClass: "text-purple-600 bg-white/60",
         hoverClass: "hover:text-purple-600",
         requiresApiKey: true,
@@ -113,6 +119,7 @@ const actions: {
         id: "context",
         icon: CompassIcon,
         label: "Document Context",
+        shortcut: isMac ? "⌘⇧4" : "Ctrl+Shift+4",
         activeClass: "text-amber-600 bg-white/60",
         hoverClass: "hover:text-amber-600",
         requiresApiKey: true,
@@ -269,9 +276,39 @@ $effect(() => {
         document.body.style.cursor = "";
     };
 });
+
+// Keyboard shortcuts for the sidebar
+const actionKeys: Record<string, NonNullable<Action>> = {
+    "1": "chat",
+    "2": "feedback",
+    "3": "revise",
+    "4": "context",
+};
+
+function handleKeydown(e: KeyboardEvent) {
+    // Escape closes the sidebar
+    if (e.key === "Escape" && expanded) {
+        // Only close if focus is not inside an input/textarea in the sidebar
+        const target = e.target as HTMLElement;
+        const isInInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+        if (!isInInput) {
+            action = null;
+        }
+        return;
+    }
+    // Cmd/Ctrl+Shift+1-4 to open specific panels
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && actionKeys[e.key]) {
+        e.preventDefault();
+        selectAction(actionKeys[e.key]);
+    }
+}
 </script>
 
-<svelte:window onclick={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} onkeydown={handleKeydown} />
+
+{#snippet kbdHint(key: string)}
+    <span class="ml-auto text-[9px] font-mono opacity-50 bg-black/10 px-1 py-0.5 rounded">{key}</span>
+{/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -299,8 +336,8 @@ $effect(() => {
                 <button
                     id="ai-tab-{a.id}"
                     onclick={() => selectAction(a.id)}
-                    aria-label={disabled ? `${a.label} (add API key in settings)` : a.label}
-                    title={disabled ? `${a.label} — add an API key in settings` : a.label}
+                    aria-label={disabled ? `${a.label} (add API key in settings)` : `${a.label} (${a.shortcut})`}
+                    title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
                     class="p-2 rounded-full transition-colors
                         {disabled
                             ? 'text-black/20 cursor-pointer'
@@ -346,8 +383,8 @@ $effect(() => {
                     <button
                         bind:this={iconEls[i]}
                         onclick={() => selectAction(a.id)}
-                        aria-label={disabled ? `${a.label} (add API key in settings)` : a.label}
-                        title={disabled ? `${a.label} — add an API key in settings` : a.label}
+                        aria-label={disabled ? `${a.label} (add API key in settings)` : `${a.label} (${a.shortcut})`}
+                        title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
                         style="transform: scale({scale}); opacity: {disabled ? opacity * 0.4 : opacity};"
                         class="p-2 rounded-full shrink-0 transition-all duration-200
                             {action === a.id

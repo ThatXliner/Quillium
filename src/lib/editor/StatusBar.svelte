@@ -18,6 +18,7 @@
 <script lang="ts">
 import Save from "$lib/save/Save.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
+import KeyboardShortcuts from "$lib/KeyboardShortcuts.svelte";
 import { tutorialActive, saveStatus } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToLibrary } from "$lib/navigation";
@@ -25,7 +26,11 @@ import { Settings2, LayoutGrid } from "lucide-svelte";
 
 const { words, chars, selWords, selChars } = $props();
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
+
 let settingsOpen = $state(false);
+let shortcutsOpen = $state(false);
 </script>
 
 <div
@@ -35,9 +40,12 @@ let settingsOpen = $state(false);
     {#if settingsOpen}
         <SettingsModal onclose={() => (settingsOpen = false)} />
     {/if}
+    {#if shortcutsOpen}
+        <KeyboardShortcuts onclose={() => (shortcutsOpen = false)} />
+    {/if}
     <button
         onclick={goToLibrary}
-        title="Library (⌘O)"
+        title="Library ({modKey}O)"
         aria-label="Open library"
         class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
     >
@@ -77,6 +85,13 @@ let settingsOpen = $state(false);
     >
         <Settings2 size={20} />
     </button>
+    <button
+        onclick={() => (shortcutsOpen = !shortcutsOpen)}
+        aria-label="Keyboard shortcuts"
+        title="Keyboard shortcuts"
+        class="w-5 h-5 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-[11px] font-semibold leading-none flex items-center justify-center
+            {shortcutsOpen ? 'bg-blue-100 text-blue-600' : ''}"
+    >⌨</button>
     <button
         onclick={() => ($tutorialActive = true)}
         aria-label="Take tour"

@@ -18,6 +18,8 @@ export type Step = {
     title: string;
     body: string;
     position: "right" | "left" | "top" | "bottom" | "center";
+    /** If true, the tooltip renders an inline keyboard shortcuts reference table. */
+    showShortcuts?: boolean;
     requirement?:
         | "createRevision"
         | "openRevisionModal"
@@ -124,6 +126,15 @@ export const steps: Step[] = [
         selector: "#status-bar",
         title: "Track Your Progress",
         body: "Word count, character count, save status — always visible, never in the way.",
+        position: "bottom",
+    },
+    {
+        id: "keyboard-shortcuts",
+        section: "core",
+        selector: "#status-bar",
+        title: "Keyboard Shortcuts",
+        body: "Quillium is designed to be keyboard-first. Here's a reference you can revisit anytime via the ⌨ button in the status bar.",
+        showShortcuts: true,
         position: "bottom",
     },
     {

@@ -34,6 +34,35 @@ import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotati
 import { steps, type Step } from "./steps";
 import posthog from "posthog-js";
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const mod = isMac ? "⌘" : "Ctrl";
+const opt = isMac ? "⌥" : "Alt";
+
+const shortcutGroups = [
+    {
+        title: "Navigation",
+        shortcuts: [{ keys: [mod, "O"], label: "Open library" }],
+    },
+    {
+        title: "AI Panels",
+        shortcuts: [
+            { keys: [mod, "⇧", "1"], label: "Chat" },
+            { keys: [mod, "⇧", "2"], label: "Feedback" },
+            { keys: [mod, "⇧", "3"], label: "Revise" },
+            { keys: [mod, "⇧", "4"], label: "Context" },
+            { keys: ["Esc"], label: "Close sidebar" },
+        ],
+    },
+    {
+        title: "Annotations",
+        shortcuts: [
+            { keys: [mod, opt, "M"], label: "Add comment" },
+            { keys: [mod, opt, "K"], label: "Add revision" },
+            { keys: [mod, "↵"], label: "Send reply" },
+        ],
+    },
+];
+
 const { onComplete }: { onComplete: () => void } = $props();
 
 type SectionKey = "ai" | "nested";
@@ -602,7 +631,8 @@ onDestroy(() => {
         {:else if step && !useInlineModalGuide}
             <div
                 bind:this={tooltipEl}
-                class="absolute pointer-events-auto w-[320px] backdrop-blur-md bg-gray-300/80 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3"
+                class="absolute pointer-events-auto backdrop-blur-md bg-gray-300/90 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3
+                    {step.showShortcuts ? 'w-[420px]' : 'w-[320px]'}"
                 style="
                     top: {tooltipPos.top}px;
                     left: {tooltipPos.left}px;
@@ -631,6 +661,35 @@ onDestroy(() => {
                         {step.body}
                     </p>
                 </div>
+
+                {#if step.showShortcuts}
+                    <div class="space-y-3 border-t border-black/10 pt-3">
+                        {#each shortcutGroups as group}
+                            <div>
+                                <h4 class="text-[9px] font-semibold text-black/40 uppercase tracking-widest mb-1.5">
+                                    {group.title}
+                                </h4>
+                                <div class="space-y-1">
+                                    {#each group.shortcuts as shortcut}
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-[11px] text-black/65">{shortcut.label}</span>
+                                            <div class="flex items-center gap-0.5">
+                                                {#each shortcut.keys as key, ki}
+                                                    <kbd class="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 text-[10px] font-mono bg-white/80 border border-black/15 shadow-sm rounded text-black/60">
+                                                        {key}
+                                                    </kbd>
+                                                    {#if ki < shortcut.keys.length - 1}
+                                                        <span class="text-[9px] text-black/25 px-0.5">+</span>
+                                                    {/if}
+                                                {/each}
+                                            </div>
+                                        </div>
+                                    {/each}
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
 
                 {#if requirementState}
                     <div
