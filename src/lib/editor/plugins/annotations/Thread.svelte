@@ -59,6 +59,7 @@ let newMessage = $state("");
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
 const hasText = $derived(!!newMessage.trim());
+const sendActive = $derived(isFocused && hasText);
 let lastFocusReplyToken = 0;
 
 function blurToEditor() {
@@ -159,16 +160,14 @@ function send() {
             </div>
             <div class="flex items-center gap-1.5">
                 <button
-                    onclick={hasText ? send : undefined}
+                    onclick={sendActive ? send : undefined}
                     class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
-                        {hasText
-                            ? `${sendPillClass} shadow-sm`
-                            : 'bg-black/5 text-black/30'}"
+                        {sendActive ? `${sendPillClass} shadow-sm` : 'bg-black/5 text-black/30'}"
                 >
-                    {isFocused || hasText ? "Send" : "Reply"}
+                    {isFocused ? "Send" : "Reply"}
                     <span class="flex items-center gap-0.5">
-                        <Kbd keys={isFocused || hasText ? ["⌘", "↵"] : ["⌘", "/"]}
-                            variant={hasText ? "blue" : "default"} />
+                        <Kbd keys={isFocused ? ["⌘", "↵"] : ["⌘", "/"]}
+                            variant={sendActive ? "white" : isFocused ? "ghost" : "default"} />
                     </span>
                 </button>
             </div>
