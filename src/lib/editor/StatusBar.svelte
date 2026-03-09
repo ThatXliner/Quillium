@@ -16,7 +16,6 @@
       - Writes `tutorialActive` store when the "?" button is clicked.
 -->
 <script lang="ts">
-import Save from "$lib/save/Save.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import KeyboardShortcuts from "$lib/KeyboardShortcuts.svelte";
 import { tutorialActive, saveStatus } from "$lib/stores";
@@ -43,15 +42,6 @@ let shortcutsOpen = $state(false);
     {#if shortcutsOpen}
         <KeyboardShortcuts onclose={() => (shortcutsOpen = false)} />
     {/if}
-    <button
-        onclick={goToLibrary}
-        title="Library ({modKey}O)"
-        aria-label="Open library"
-        class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
-    >
-        <LayoutGrid size={20} />
-    </button>
-    <div class="w-px h-8 bg-black/20"></div>
     <div class="flex items-center gap-2">
         <div
             class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
@@ -74,7 +64,14 @@ let shortcutsOpen = $state(false);
             <span class="text-[10px] text-black/50">{chars} total</span>
         {/if}
     </div>
-    <Save />
+    <button
+        onclick={goToLibrary}
+        title="Library ({modKey}O)"
+        aria-label="Open library"
+        class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
+    >
+        <LayoutGrid size={20} />
+    </button>
     <div class="w-px h-8 bg-black/20"></div>
     <button
         onclick={() => (settingsOpen = !settingsOpen)}
