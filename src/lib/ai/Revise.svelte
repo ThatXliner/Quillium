@@ -63,7 +63,8 @@
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
-import { appSettings } from "$lib/settings.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { Plus, Trash2 } from "lucide-svelte";
 import posthog from "posthog-js";
 
 let input = $state("");
@@ -114,12 +115,34 @@ const defaultQuickPrompts = [
     { label: "Simplify complex sentences", prompt: "Simplify complex sentences" },
 ];
 
-let allRevisePrompts = $derived([
-    ...defaultQuickPrompts,
-    ...appSettings.customQuickActions
-        .filter((a) => a.panel === "revise")
-        .map((a) => ({ label: a.label, prompt: a.prompt })),
-]);
+let customRevisePrompts = $derived(
+    appSettings.customQuickActions.filter((a) => a.panel === "revise"),
+);
+
+
+// Chip management
+let showAddChip = $state(false);
+let newChipLabel = $state("");
+let newChipPrompt = $state("");
+
+function addChip() {
+    if (!newChipLabel.trim() || !newChipPrompt.trim()) return;
+    appSettings.customQuickActions = [
+        ...appSettings.customQuickActions,
+        { label: newChipLabel.trim(), prompt: newChipPrompt.trim(), panel: "revise" },
+    ];
+    persistSettings();
+    newChipLabel = "";
+    newChipPrompt = "";
+    showAddChip = false;
+}
+
+function removeCustomChip(label: string, prompt: string) {
+    appSettings.customQuickActions = appSettings.customQuickActions.filter(
+        (a) => !(a.panel === "revise" && a.label === label && a.prompt === prompt),
+    );
+    persistSettings();
+}
 
 /**
  * Compose a revision message from a quick-prompt chip, scoped to
@@ -157,7 +180,7 @@ function useQuickPrompt(prompt: string) {
 
         <!-- Quick prompts -->
         <div class="mt-2 grid grid-cols-2 gap-1.5">
-            {#each allRevisePrompts as { label, prompt }}
+            {#each defaultQuickPrompts as { label, prompt }}
                 <button
                     onclick={() => useQuickPrompt(prompt)}
                     disabled={chat.status !== "ready" || !$documentContent}
@@ -166,7 +189,60 @@ function useQuickPrompt(prompt: string) {
                     {label}
                 </button>
             {/each}
+            {#each customRevisePrompts as { label, prompt }}
+                <div class="group relative">
+                    <button
+                        onclick={() => useQuickPrompt(prompt)}
+                        disabled={chat.status !== "ready" || !$documentContent}
+                        class="w-full px-2 py-1.5 text-xs bg-white hover:bg-purple-50 rounded border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left pr-5"
+                    >
+                        {label}
+                    </button>
+                    <button
+                        onclick={() => removeCustomChip(label, prompt)}
+                        aria-label="Remove chip"
+                        class="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-black/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                        <Trash2 size={9} />
+                    </button>
+                </div>
+            {/each}
         </div>
+
+        {#if showAddChip}
+            <div class="mt-2 flex flex-col gap-1">
+                <input
+                    bind:value={newChipLabel}
+                    placeholder="Label"
+                    class="w-full px-2 py-1 text-xs border border-black/10 rounded focus:outline-none focus:ring-1 focus:ring-purple-400/50 placeholder:text-black/25"
+                />
+                <textarea
+                    bind:value={newChipPrompt}
+                    placeholder="Prompt sent to AI…"
+                    rows="2"
+                    class="w-full px-2 py-1 text-xs border border-black/10 rounded focus:outline-none focus:ring-1 focus:ring-purple-400/50 resize-none placeholder:text-black/25"
+                ></textarea>
+                <div class="flex gap-1.5">
+                    <button
+                        onclick={addChip}
+                        disabled={!newChipLabel.trim() || !newChipPrompt.trim()}
+                        class="flex-1 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >Save</button>
+                    <button
+                        onclick={() => { showAddChip = false; newChipLabel = ""; newChipPrompt = ""; }}
+                        class="px-2 py-1 text-xs text-black/40 hover:text-black/60 transition-colors"
+                    >Cancel</button>
+                </div>
+            </div>
+        {:else}
+            <button
+                onclick={() => { showAddChip = true; }}
+                class="mt-2 flex items-center gap-1 text-[10px] text-black/30 hover:text-purple-600 transition-colors"
+            >
+                <Plus size={10} />
+                Add chip
+            </button>
+        {/if}
     </div>
 
     <!-- Clear chat row -->

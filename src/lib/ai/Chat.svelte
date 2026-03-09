@@ -53,13 +53,38 @@
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
-import { appSettings } from "$lib/settings.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { Plus, Trash2 } from "lucide-svelte";
 import posthog from "posthog-js";
 
 let input = $state("");
 const { chat, clearChat } = createAiChat({ mode: "chat" });
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
+
+// Chip management
+let showAddChip = $state(false);
+let newChipLabel = $state("");
+let newChipPrompt = $state("");
+
+function addChip() {
+    if (!newChipLabel.trim() || !newChipPrompt.trim()) return;
+    appSettings.customQuickActions = [
+        ...appSettings.customQuickActions,
+        { label: newChipLabel.trim(), prompt: newChipPrompt.trim(), panel: "chat" },
+    ];
+    persistSettings();
+    newChipLabel = "";
+    newChipPrompt = "";
+    showAddChip = false;
+}
+
+function removeChip(label: string, prompt: string) {
+    appSettings.customQuickActions = appSettings.customQuickActions.filter(
+        (a) => !(a.panel === "chat" && a.label === label && a.prompt === prompt),
+    );
+    persistSettings();
+}
 
 function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
@@ -180,18 +205,61 @@ async function handleSubmit(event: Event) {
 
     <!-- Input form -->
     <div class="border-t border-black/10 p-3 bg-white/30">
-        {#if customChatPrompts.length > 0}
+        {#if customChatPrompts.length > 0 || showAddChip}
             <div class="mb-2 flex flex-wrap gap-1.5">
                 {#each customChatPrompts as { label, prompt }}
-                    <button
-                        onclick={() => useQuickPrompt(prompt)}
-                        disabled={chat.status !== "ready" || !$documentContent}
-                        class="px-2 py-1 text-xs bg-white hover:bg-blue-50 rounded border border-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {label}
-                    </button>
+                    <div class="group relative flex items-center">
+                        <button
+                            onclick={() => useQuickPrompt(prompt)}
+                            disabled={chat.status !== "ready" || !$documentContent}
+                            class="px-2 py-1 text-xs bg-white hover:bg-blue-50 rounded border border-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed pr-5"
+                        >
+                            {label}
+                        </button>
+                        <button
+                            onclick={() => removeChip(label, prompt)}
+                            aria-label="Remove chip"
+                            class="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-black/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <Trash2 size={9} />
+                        </button>
+                    </div>
                 {/each}
             </div>
+        {/if}
+        {#if showAddChip}
+            <div class="mb-2 flex flex-col gap-1">
+                <input
+                    bind:value={newChipLabel}
+                    placeholder="Label"
+                    class="w-full px-2 py-1 text-xs border border-black/10 rounded focus:outline-none focus:ring-1 focus:ring-blue-400/50 placeholder:text-black/25"
+                />
+                <textarea
+                    bind:value={newChipPrompt}
+                    placeholder="Prompt sent to AI…"
+                    rows="2"
+                    class="w-full px-2 py-1 text-xs border border-black/10 rounded focus:outline-none focus:ring-1 focus:ring-blue-400/50 resize-none placeholder:text-black/25"
+                ></textarea>
+                <div class="flex gap-1.5">
+                    <button
+                        onclick={addChip}
+                        disabled={!newChipLabel.trim() || !newChipPrompt.trim()}
+                        class="flex-1 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >Save</button>
+                    <button
+                        onclick={() => { showAddChip = false; newChipLabel = ""; newChipPrompt = ""; }}
+                        class="px-2 py-1 text-xs text-black/40 hover:text-black/60 transition-colors"
+                    >Cancel</button>
+                </div>
+            </div>
+        {:else}
+            <button
+                onclick={() => { showAddChip = true; }}
+                class="mb-2 flex items-center gap-1 text-[10px] text-black/30 hover:text-blue-500 transition-colors"
+            >
+                <Plus size={10} />
+                Add chip
+            </button>
         {/if}
         {#if $selectedText}
             <div
