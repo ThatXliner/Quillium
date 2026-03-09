@@ -41,7 +41,7 @@ function isCommandKey(k: string) {
     return k === "⌘" || k.toLowerCase() === "cmd";
 }
 </script>
-<div class={`${base} space-x-px`}>
+<div class={`${base} space-x-0.5`}>
 {#each keyList as key}
     <kbd class={styles[variant]}>
         {#if isCommandKey(key)}
