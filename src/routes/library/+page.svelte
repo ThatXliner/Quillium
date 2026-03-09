@@ -23,6 +23,8 @@ import PreviewPanel from "$lib/library/PreviewPanel.svelte";
 import ContinuePill from "$lib/library/ContinuePill.svelte";
 import EmptyState from "$lib/library/EmptyState.svelte";
 
+let searchInputEl = $state<HTMLInputElement | null>(null);
+
 let documents = $state<DocumentMeta[]>([]);
 let trashedDocuments = $state<DocumentMeta[]>([]);
 let selectedId = $state<string | null>(null);
@@ -117,8 +119,80 @@ function handleTabChange(newTab: "library" | "trash") {
     if (list.length > 0) selectedId = list[0].id;
 }
 
+function handleKeydown(e: KeyboardEvent) {
+    const target = e.target as HTMLElement;
+    const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+
+    // Esc — back to editor (when a document is open)
+    if (e.key === "Escape" && hasContinue && !inInput) {
+        goToEditor();
+        return;
+    }
+
+    // N — new document (not in input, not trash tab)
+    if (e.key === "n" && !inInput && !e.metaKey && !e.ctrlKey && tab === "library") {
+        e.preventDefault();
+        handleNew();
+        return;
+    }
+
+    // / — focus search
+    if (e.key === "/" && !inInput) {
+        e.preventDefault();
+        searchInputEl?.focus();
+        return;
+    }
+
+    // Escape inside search — blur
+    if (e.key === "Escape" && inInput) {
+        (target as HTMLElement).blur();
+        return;
+    }
+
+    // ↑ / ↓ — navigate document list
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !inInput) {
+        e.preventDefault();
+        const list = tab === "trash" ? trashedDocuments : documents;
+        const currentFiltered = query.trim()
+            ? list.filter(
+                  (d) =>
+                      d.title.toLowerCase().includes(query.toLowerCase()) ||
+                      d.previewText.toLowerCase().includes(query.toLowerCase()),
+              )
+            : list;
+        if (currentFiltered.length === 0) return;
+        const idx = currentFiltered.findIndex((d) => d.id === selectedId);
+        if (e.key === "ArrowUp") {
+            selectedId = currentFiltered[Math.max(0, idx - 1)].id;
+        } else {
+            selectedId = currentFiltered[Math.min(currentFiltered.length - 1, idx + 1)].id;
+        }
+        return;
+    }
+
+    // Enter — open selected document
+    if (e.key === "Enter" && !inInput && selectedId && !trashMode) {
+        e.preventDefault();
+        handleOpen(selectedId);
+        return;
+    }
+
+    // Cmd/Ctrl+Backspace — trash selected document
+    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && !inInput && selectedId && !trashMode) {
+        e.preventDefault();
+        handleTrash(selectedId);
+        return;
+    }
+
+    // G — grid view, L — list view
+    if (e.key === "g" && !inInput) { viewMode = "grid"; return; }
+    if (e.key === "l" && !inInput) { viewMode = "list"; return; }
+}
+
 onMount(load);
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <!-- Full-screen 50/50 split -->
 <div class="h-screen flex" style="background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%)">
@@ -146,6 +220,7 @@ onMount(load);
                 onTabChange={handleTabChange}
                 {trashRetention}
                 onTrashRetentionChange={handleTrashRetentionChange}
+                bind:searchInputEl
             />
         </header>
 

@@ -28,7 +28,6 @@ const { words, chars, selWords, selChars } = $props();
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
-
 let settingsOpen = $state(false);
 </script>
 
@@ -44,9 +43,10 @@ let settingsOpen = $state(false);
         onclick={goToLibrary}
         title="Library ({modKey}O)"
         aria-label="Open library"
-        class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
+        class="group h-12 px-3 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center gap-2 hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
     >
         <LayoutGrid size={20} />
+        <kbd class="text-[10px] font-mono bg-black/10 border border-black/10 rounded px-1 py-0.5 text-black/30 group-hover:text-black/50 transition-colors leading-none">{modKey}O</kbd>
     </button>
     <div class="w-px h-8 bg-black/20"></div>
     <div class="flex items-center gap-2">
