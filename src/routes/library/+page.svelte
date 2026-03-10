@@ -13,6 +13,8 @@ import {
     deleteDocument,
     getTrashRetention,
     setTrashRetention,
+    updateDocumentMeta,
+    getDocumentMeta,
 } from "$lib/db";
 import type { DocumentMeta } from "$lib/db/types";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
@@ -24,6 +26,7 @@ import ContinuePill from "$lib/library/ContinuePill.svelte";
 import EmptyState from "$lib/library/EmptyState.svelte";
 
 let searchInputEl = $state<HTMLInputElement | null>(null);
+let previewPanel = $state<ReturnType<typeof PreviewPanel> | null>(null);
 
 let documents = $state<DocumentMeta[]>([]);
 let trashedDocuments = $state<DocumentMeta[]>([]);
@@ -82,6 +85,15 @@ function handleOpen(id: string) {
     const doc = documents.find((d) => d.id === id);
     if (doc) $currentDocumentTitle = doc.title;
     goToEditor();
+}
+
+async function handleRenameTitle(id: string, newTitle: string) {
+    const meta = await getDocumentMeta(id);
+    if (!meta) return;
+    await updateDocumentMeta(id, newTitle, meta.wordCount, meta.previewText, meta.tags);
+    documents = await listDocuments();
+    // Keep the store in sync if this is the currently open document
+    if ($currentDocumentId === id) $currentDocumentTitle = newTitle;
 }
 
 async function handleTrash(id: string) {
@@ -184,6 +196,13 @@ function handleKeydown(e: KeyboardEvent) {
         return;
     }
 
+    // R — rename selected document
+    if (e.key === "r" && !inInput && selectedId && !trashMode) {
+        e.preventDefault();
+        previewPanel?.startEditing();
+        return;
+    }
+
     // G — grid view, L — list view
     if (e.key === "g" && !inInput) { viewMode = "grid"; return; }
     if (e.key === "l" && !inInput) { viewMode = "list"; return; }
@@ -258,12 +277,14 @@ onMount(load);
     <!-- Right half: preview panel, full height, no rounding/border -->
     <div class="w-1/2 h-full">
         <PreviewPanel
+            bind:this={previewPanel}
             doc={selectedDoc}
             {trashMode}
             onOpen={() => selectedId && handleOpen(selectedId)}
             onTrash={() => selectedId && handleTrash(selectedId)}
             onRestore={() => selectedId && handleRestore(selectedId)}
             onDeletePermanent={() => selectedId && handleDeletePermanent(selectedId)}
+            onRenameTitle={handleRenameTitle}
         />
     </div>
 

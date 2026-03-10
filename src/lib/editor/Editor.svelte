@@ -44,6 +44,7 @@ import {
     createDocument,
     createDraft,
     loadDocumentState,
+    updateDocumentMeta,
 } from "$lib/db";
 import "./plugins/annotations/default.css";
 import type { ViewUpdate } from "@codemirror/view";
@@ -54,9 +55,69 @@ import { annotationField } from "./plugins/annotations";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { replayEvents } from "./replay";
 import type { EventRecord } from "$lib/db/types";
+import { appSettings } from "$lib/settings.svelte";
+import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
+import { createModel } from "$lib/ai/provider";
+import { generateText } from "ai";
+import { Pencil } from "lucide-svelte";
 
 // ── Local UI state ──────────────────────────────────────────────
 let element = $state<HTMLDivElement>();
+let titleEditing = $state(false);
+let titleInputEl = $state<HTMLInputElement | undefined>();
+let titleDraft = $state("");
+let titleSuggesting = $state(false);
+
+function startEditingTitle() {
+    titleDraft = $currentDocumentTitle;
+    titleEditing = true;
+    // Focus input on next tick after it mounts
+    setTimeout(() => titleInputEl?.select(), 0);
+}
+
+async function suggestTitle() {
+    const text = $editorView?.state.doc.toString() ?? "";
+    if (!text.trim() || titleSuggesting) return;
+    titleSuggesting = true;
+    try {
+        const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
+        const { text: suggested } = await generateText({
+            model,
+            prompt: `Suggest a single short, evocative title for this piece of writing. Reply with only the title — no quotes, no explanation, no punctuation at the end.\n\n${text.slice(0, 1000)}`,
+        });
+        const newTitle = suggested.trim().slice(0, 80);
+        if (newTitle) {
+            currentDocumentTitle.set(newTitle);
+            const docId = get(currentDocumentId);
+            if (docId) {
+                const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+                updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]").catch(
+                    console.error,
+                );
+            }
+        }
+    } catch (e) {
+        console.error("[suggestTitle]", e);
+    } finally {
+        titleSuggesting = false;
+    }
+}
+
+async function commitTitle() {
+    if (!titleEditing) return;
+    titleEditing = false;
+    const newTitle = titleDraft.trim() || "Untitled";
+    if (newTitle === $currentDocumentTitle) return;
+    currentDocumentTitle.set(newTitle);
+    const docId = get(currentDocumentId);
+    if (docId) {
+        const text = $editorView?.state.doc.toString() ?? "";
+        const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+        updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]").catch(
+            console.error,
+        );
+    }
+}
 let stats = $state<{
     words: number;
     chars: number;
@@ -255,7 +316,45 @@ onMount(() => {
 </script>
 
 <div class="w-full h-full overflow-y-auto relative">
-    <div class="sticky top-4 z-50"><StatusBar {...stats} /></div>
+    <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        <div class="pointer-events-auto"><StatusBar {...stats} /></div>
+        {#if appSettings.showDocumentTitle}
+            <div class="pointer-events-auto flex items-center gap-2 py-1.5 px-4 backdrop-blur-md rounded-full bg-gray-300/70 border border-white/30 shadow-lg">
+                {#if titleEditing}
+                    <input
+                        bind:this={titleInputEl}
+                        bind:value={titleDraft}
+                        onblur={commitTitle}
+                        onkeydown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+                            if (e.key === "Escape") { titleEditing = false; }
+                        }}
+                        class="text-sm font-medium text-black/70 bg-transparent border-none outline-none w-48 text-center placeholder:text-black/30"
+                        aria-label="Document title"
+                    />
+                {:else}
+                    <span class="text-sm font-medium text-black/60 max-w-48 truncate">{$currentDocumentTitle}</span>
+                    <button
+                        onclick={startEditingTitle}
+                        title="Edit title"
+                        class="text-black/30 hover:text-black/60 transition-colors"
+                    >
+                        <Pencil size={12} />
+                    </button>
+                {/if}
+                {#if hasApiKey()}
+                    <div class="w-px h-4 bg-black/20"></div>
+                    <button
+                        onclick={suggestTitle}
+                        disabled={titleSuggesting}
+                        title="Suggest a title with AI"
+                        class="text-black/30 hover:text-purple-500/70 transition-colors
+                            disabled:opacity-40 disabled:cursor-not-allowed text-sm leading-none"
+                    >{titleSuggesting ? "…" : "✦"}</button>
+                {/if}
+            </div>
+        {/if}
+    </div>
 
     {#await fromSave then}
         <div

@@ -70,6 +70,8 @@ if (import.meta.env.DEV) {
             "$lib/stores"
         );
 
+        (window as unknown as Record<string, unknown>).__modalStack__ = modalStack;
+
         (window as unknown as Record<string, unknown>).__runScenario__ = async (id: string) => {
             const scenario = scenarios.find((s) => s.id === id);
             if (!scenario) {

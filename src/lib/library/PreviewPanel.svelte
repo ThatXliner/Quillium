@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
-import { FileText, ExternalLink, Trash2, RotateCcw } from "lucide-svelte";
+import { FileText, ExternalLink, Trash2, RotateCcw, Pencil } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -17,11 +17,34 @@ interface Props {
     onTrash: () => void;
     onRestore: () => void;
     onDeletePermanent: () => void;
+    onRenameTitle: (id: string, newTitle: string) => void;
 }
 
-const { doc, trashMode, onOpen, onTrash, onRestore, onDeletePermanent }: Props = $props();
+const { doc, trashMode, onOpen, onTrash, onRestore, onDeletePermanent, onRenameTitle }: Props = $props();
 
 let confirmingDelete = $state(false);
+let titleEditing = $state(false);
+let titleDraft = $state("");
+let titleInputEl = $state<HTMLInputElement | undefined>();
+
+export function startEditing() {
+    if (!doc || trashMode) return;
+    titleDraft = doc.title;
+    titleEditing = true;
+    setTimeout(() => titleInputEl?.select(), 0);
+}
+
+function commitTitle() {
+    if (!doc || !titleEditing) return;
+    titleEditing = false;
+    const newTitle = titleDraft.trim() || "Untitled";
+    if (newTitle !== doc.title) onRenameTitle(doc.id, newTitle);
+}
+
+$effect(() => {
+    doc;
+    titleEditing = false;
+});
 
 function formatDate(ms: number): string {
     return new Date(ms).toLocaleDateString("en-US", {
@@ -51,7 +74,32 @@ $effect(() => {
 <div class="h-full flex flex-col bg-white/50 border-l border-black/8">
     {#if doc}
         <div class="flex-shrink-0 px-8 pt-8 pb-5 border-b border-black/5">
-            <h2 class="text-xl font-semibold text-black/80 leading-snug break-words">{doc.title}</h2>
+            {#if titleEditing}
+                <input
+                    bind:this={titleInputEl}
+                    bind:value={titleDraft}
+                    onblur={commitTitle}
+                    onkeydown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+                        if (e.key === "Escape") { titleEditing = false; }
+                    }}
+                    class="text-xl font-semibold text-black/80 leading-snug bg-transparent border-b-2 border-blue-400/60 outline-none w-full"
+                    aria-label="Document title"
+                />
+            {:else}
+                <div class="flex items-start gap-2">
+                    <h2 class="text-xl font-semibold text-black/80 leading-snug break-words">{doc.title}</h2>
+                    {#if !trashMode}
+                        <button
+                            onclick={startEditing}
+                            title="Rename (R)"
+                            class="mt-1 shrink-0 text-black/25 hover:text-black/55 transition-colors"
+                        >
+                            <Pencil size={14} />
+                        </button>
+                    {/if}
+                </div>
+            {/if}
             <p class="text-xs text-black/40 mt-1.5">Last edited {formatDate(doc.updatedAt)}</p>
         </div>
 

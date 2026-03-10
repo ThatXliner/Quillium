@@ -306,6 +306,31 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
+            <!-- Show document title toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Show document title</div>
+                    <div class="setting-desc">Display editable title in top-left of editor</div>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={draft.showDocumentTitle}
+                    aria-label="Toggle document title display"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showDocumentTitle ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showDocumentTitle = !draft.showDocumentTitle;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showDocumentTitle ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+
             <div class="section-divider"></div>
 
             <!-- EDITOR section -->

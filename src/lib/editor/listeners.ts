@@ -47,10 +47,6 @@ let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 // The outer .catch keeps the chain alive if doAppend throws.
 let persistQueue: Promise<void> = Promise.resolve();
 
-function extractTitle(text: string): string {
-    return text.split("\n")[0].trim().slice(0, 80) || "Untitled";
-}
-
 function extractSelection(update: ViewUpdate): SelectionJSON {
     const sel = update.state.selection;
     return {
@@ -227,7 +223,6 @@ async function doAppend(update: ViewUpdate) {
     // update.view.state, which may belong to a different document by
     // the time the 500 ms fires.
     const docText = update.state.doc.toString();
-    const title = extractTitle(docText);
     const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
     const previewText = docText.slice(0, 200);
     if (metaDebounceTimer !== null) clearTimeout(metaDebounceTimer);
@@ -235,7 +230,21 @@ async function doAppend(update: ViewUpdate) {
         try {
             // Guard: abort if the user has navigated to a different document.
             if (get(currentDocumentId) !== docId) return;
-            currentDocumentTitle.set(title);
+            // Auto-derive title once from the first line, but only while the
+            // title is still "Untitled" and the first line looks ready:
+            //   - user pressed Enter (first line ends / second line exists), OR
+            //   - first line has at least 4 words (enough to be a real title)
+            // After this fires once, the title is owned by the user/AI.
+            let title = get(currentDocumentTitle);
+            if (title === "Untitled") {
+                const firstLine = docText.split("\n")[0].trim();
+                const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
+                const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
+                if (firstLineComplete && firstLine) {
+                    title = firstLine.slice(0, 80);
+                    currentDocumentTitle.set(title);
+                }
+            }
             updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
         } finally {
             metaDebounceTimer = null;
