@@ -21,7 +21,7 @@ type AppSettings = {
     docFontSize: number;
     uiFontFamily: string;
     customQuickActions: CustomQuickAction[];
-    alwaysShowTitle: boolean;
+    titleVisibility: "hover" | "always" | "never";
 };
 
 const DEFAULTS: AppSettings = {
@@ -32,14 +32,20 @@ const DEFAULTS: AppSettings = {
     docFontSize: 18,
     uiFontFamily: "system-ui, -apple-system, sans-serif",
     customQuickActions: [],
-    alwaysShowTitle: false,
+    titleVisibility: "hover",
 };
 
 function loadSettings(): AppSettings {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return { ...DEFAULTS };
-        return { ...DEFAULTS, ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw);
+        // Migrate legacy alwaysShowTitle boolean
+        if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
+            parsed.titleVisibility = parsed.alwaysShowTitle ? "always" : "hover";
+            delete parsed.alwaysShowTitle;
+        }
+        return { ...DEFAULTS, ...parsed };
     } catch {
         return { ...DEFAULTS };
     }

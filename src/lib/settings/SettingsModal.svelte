@@ -306,29 +306,23 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
-            <!-- Always show title toggle -->
+            <!-- Title visibility -->
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">Always show title</div>
-                    <div class="setting-desc">Keep document title visible in the status bar; otherwise shown only on hover</div>
+                    <div class="setting-title">Document title</div>
+                    <div class="setting-desc">When to show the title in the status bar</div>
                 </div>
-                <button
-                    role="switch"
-                    aria-checked={draft.alwaysShowTitle}
-                    aria-label="Toggle always show title"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.alwaysShowTitle ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.alwaysShowTitle = !draft.alwaysShowTitle;
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.alwaysShowTitle ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
+                <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
+                    {#each ([["hover", "On hover"], ["always", "Always"], ["never", "Never"]] as const) as [val, label]}
+                        <button
+                            onclick={() => { draft.titleVisibility = val; handleChange(); }}
+                            class="px-3 py-1.5 text-[11px] font-medium transition-colors
+                                {draft.titleVisibility === val
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                        >{label}</button>
+                    {/each}
+                </div>
             </div>
 
             <div class="section-divider"></div>

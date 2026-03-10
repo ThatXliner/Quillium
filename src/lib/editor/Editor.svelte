@@ -322,7 +322,7 @@ onMount(() => {
 <div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
         <div class="pointer-events-auto">
-            <StatusBar {...stats} alwaysShowTitle={appSettings.alwaysShowTitle} titleForced={titleEditing}>
+            <StatusBar {...stats} titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
                 {#snippet children()}
                     <div class="flex items-center justify-center py-1.5 px-4 w-fit mx-auto mb-3 rounded-full">
                         {#if titleEditing}

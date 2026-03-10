@@ -9,7 +9,7 @@
     Props (from Editor.svelte):
       - words / chars: total document counts
       - selWords / selChars: selection-only counts (0 when nothing selected)
-      - alwaysShowTitle: if true, children (title) always visible; otherwise hover-only
+      - titleVisibility: "hover" | "always" | "never" — when to show the title
 
     State interactions:
       - Reads the `saveStatus` store (written by listeners.ts) to toggle
@@ -25,7 +25,7 @@ import { goToLibrary } from "$lib/navigation";
 import { Settings2, LayoutGrid } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
-const { words, chars, selWords, selChars, children, alwaysShowTitle = false, titleForced = false } = $props();
+const { words, chars, selWords, selChars, children, titleVisibility = "hover", titleForced = false } = $props();
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -121,7 +121,7 @@ $effect(() => {
     </div>
     <div
         class="overflow-hidden transition-all duration-300 ease-in-out"
-        style="max-height: {alwaysShowTitle || hovered || titleForced || titleLinger ? '4rem' : '0'}; opacity: {alwaysShowTitle || hovered || titleForced || titleLinger ? '1' : '0'};"
+        style="max-height: {titleVisibility !== 'never' && (titleVisibility === 'always' || hovered || titleForced || titleLinger) ? '4rem' : '0'}; opacity: {titleVisibility !== 'never' && (titleVisibility === 'always' || hovered || titleForced || titleLinger) ? '1' : '0'};"
     >
         {@render children?.()}
     </div>
