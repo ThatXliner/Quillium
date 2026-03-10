@@ -486,7 +486,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             </span>
             <div class="flex items-center gap-2">
                 <button
-                    onclick={tryClose}
+                    onclick={discard}
                     class="text-xs text-black/40 hover:text-black/60 transition-colors px-2 py-1"
                 >Cancel</button>
                 {#key alertKey}
