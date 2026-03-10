@@ -70,7 +70,7 @@ $effect(() => {
     onmouseenter={() => (hovered = true)}
     onmouseleave={() => (hovered = false)}
 >
-    <div class="flex gap-4 items-center py-1.5 px-8">
+    <div class="flex gap-4 items-center py-2 px-8">
         <!-- <div class="w-px h-8 bg-black/20"></div> -->
         <div class="flex items-center gap-2">
             <div
