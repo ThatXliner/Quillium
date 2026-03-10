@@ -93,9 +93,10 @@ $effect(() => {
                         <button
                             onclick={startEditing}
                             title="Rename (R)"
-                            class="mt-1 shrink-0 text-black/25 hover:text-black/55 transition-colors"
+                            class="mt-1 shrink-0 flex items-center gap-1.5 text-black/25 hover:text-black/55 transition-colors"
                         >
                             <Pencil size={14} />
+                            <Kbd keys="R" />
                         </button>
                     {/if}
                 </div>
