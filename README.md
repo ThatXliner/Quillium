@@ -10,15 +10,13 @@ Read the [Manifesto](./MANIFESTO.md).
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![Editor](screenshots/01-editor.png) | ![Feedback panel](screenshots/02-feedback.png) |
-| *Focused writing environment* | *AI feedback with quick-action chips* |
-| ![Annotations](screenshots/03-annotations.png) | ![Comment thread](screenshots/04-comment-active.png) |
-| *Comments, suggestions, and revisions beside the text* | *Active comment with back-and-forth thread* |
+![Editor](screenshots/01-editor.png)
+*Focused writing environment*
 
 ![Revision with nested editor](screenshots/05-revision-active.png)
-*Revision card: version pills and the inline nested editor*
+*Non-linear editing: version pills and the inline nested editor*
+
+→ [Full screenshot gallery](./SCREENSHOTS.md)
 
 ## What Makes Quillium Different
 
