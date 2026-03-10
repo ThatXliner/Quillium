@@ -284,7 +284,6 @@ export async function reload() {
  */
 export async function loadDocument(id: string) {
     if (!$editorView) return;
-    currentDocumentId.set(id);
 
     const draftId = await resolveActiveDraft(id);
     currentDraftId.set(draftId);
@@ -316,6 +315,20 @@ onMount(() => {
             word_count: getWordCount(state.doc.toString()),
         });
     });
+
+    // Watch for document switches (e.g. navigating from library to a new/different doc).
+    // fromSave only runs once at init, so we need to reload when currentDocumentId changes.
+    let initialised = false;
+    const unsubscribe = currentDocumentId.subscribe((id) => {
+        if (!initialised) {
+            initialised = true;
+            return; // skip the initial value — fromSave already handles it
+        }
+        if (id) {
+            fromSave.then(() => loadDocument(id));
+        }
+    });
+    return unsubscribe;
 });
 </script>
 
