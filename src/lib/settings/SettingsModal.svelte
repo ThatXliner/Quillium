@@ -492,7 +492,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                 {#key alertKey}
                     <button
                         onclick={save}
-                        class="text-xs text-white bg-blue-500/80 hover:bg-blue-600/80 transition-colors px-3 py-1.5 rounded-full font-medium {alertKey > 0 ? 'save-alert' : ''}"
+                        class="text-xs text-white transition-colors px-3 py-1.5 rounded-full font-medium {alertKey > 0 ? 'save-alert' : ''} {isDirty ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-500/50 hover:bg-blue-500/70'}"
                     >Save</button>
                 {/key}
             </div>

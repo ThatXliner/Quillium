@@ -25,7 +25,15 @@ import { goToLibrary } from "$lib/navigation";
 import { Settings2, LayoutGrid } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
-const { words, chars, selWords, selChars, children, titleVisibility = "hover", titleForced = false } = $props();
+const {
+    words,
+    chars,
+    selWords,
+    selChars,
+    children,
+    titleVisibility = "hover",
+    titleForced = false,
+} = $props();
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -39,7 +47,9 @@ $effect(() => {
         // titleForced just dropped — start the linger
         titleLinger = true;
         clearTimeout(lingerTimer);
-        lingerTimer = setTimeout(() => { titleLinger = false; }, 3000);
+        lingerTimer = setTimeout(() => {
+            titleLinger = false;
+        }, 3000);
     } else {
         // editing started again — cancel any pending linger
         clearTimeout(lingerTimer);
@@ -60,7 +70,7 @@ $effect(() => {
     onmouseenter={() => (hovered = true)}
     onmouseleave={() => (hovered = false)}
 >
-    <div class="flex gap-4 items-center py-4 px-8">
+    <div class="flex gap-4 items-center py-1.5 px-8">
         <!-- <div class="w-px h-8 bg-black/20"></div> -->
         <div class="flex items-center gap-2">
             <div
