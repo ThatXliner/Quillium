@@ -325,7 +325,7 @@ onMount(() => {
             return; // skip the initial value — fromSave already handles it
         }
         if (id) {
-            fromSave.then(() => loadDocument(id));
+            fromSave.then(() => setTimeout(() => loadDocument(id)));
         }
     });
     return unsubscribe;
@@ -362,12 +362,12 @@ onMount(() => {
                             </button>
                         {/if}
                         {#if hasApiKey()}
-                            <div class="w-px h-3.5 bg-black/20 shrink-0"></div>
+                            <div class="w-px h-3.5 bg-black/20 shrink-0 mx-1.5"></div>
                             <button
                                 onclick={suggestTitle}
                                 disabled={titleSuggesting}
                                 title="Suggest a title with AI"
-                                class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                                class="flex items-center gap-1 pr-2 py-1 rounded-md text-[10px] font-medium text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
                             >
                                 <SparklesIcon size={11} />
                                 <span>{titleSuggesting ? "…" : "Suggest"}</span>
