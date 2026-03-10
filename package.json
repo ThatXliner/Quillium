@@ -64,6 +64,8 @@
     "@types/lodash-es": "^4.17.12",
     "@vitest/coverage-v8": "^4.0.18",
     "jsdom": "^28.1.0",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
     "svelte": "^5.53.0",
     "svelte-check": "^4.4.1",
     "tailwindcss": "^4.2.0",

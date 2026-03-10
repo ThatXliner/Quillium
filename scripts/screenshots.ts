@@ -19,8 +19,11 @@
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
+import pixelmatch from "pixelmatch";
+import { PNG } from "pngjs";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +32,10 @@ const BASE_URL = noServer ? "http://localhost:1420" : "http://localhost:4173";
 const OUT_DIR = "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
 const DEVICE_SCALE_FACTOR = 2;
+
+// Minimum fraction of pixels that must differ for a screenshot to be considered
+// "significantly changed" and worth committing. 0.005 = 0.5% of total pixels.
+const DIFF_THRESHOLD = 0.005;
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -152,7 +159,20 @@ async function installTauriMock(
                     if (cmd === "cmd_trash_document") return null;
                     if (cmd === "cmd_restore_document") return null;
                     if (cmd === "cmd_delete_document") return null;
-                    if (cmd === "cmd_reset_db") return null;
+                    if (cmd === "cmd_reset_db") {
+                        savedState = null;
+                        return null;
+                    }
+                    if (cmd === "cmd_list_drafts") return [];
+                    if (cmd === "cmd_create_draft") return "draft-1";
+                    if (cmd === "cmd_append_event")
+                        return { eventId: Math.floor(Math.random() * 100000) };
+                    if (cmd === "cmd_create_snapshot") {
+                        savedState = (args as { stateJson: string }).stateJson;
+                        return null;
+                    }
+                    if (cmd === "cmd_load_document_state")
+                        return { snapshotStateJson: savedState, eventsSince: [] };
                     return null;
                 },
                 transformCallback: (callback: (...args: unknown[]) => unknown) => {
@@ -211,7 +231,7 @@ async function applyDebugScenario(page: Page, scenarioId: string): Promise<boole
         return (fn as (id: string) => Promise<boolean>)(id);
     }, scenarioId);
     // Wait for setState + Svelte reactivity + annotation decorations to settle
-    if (ok) await page.waitForTimeout(800);
+    if (ok) await page.waitForTimeout(1200);
     return ok;
 }
 
@@ -221,24 +241,24 @@ async function applyDebugScenario(page: Page, scenarioId: string): Promise<boole
  */
 async function activateAnnotation(page: Page, targetText: string): Promise<void> {
     await page.evaluate((target: string) => {
-        const cmEl = document.querySelector(".cm-editor") as HTMLElement & {
-            [k: string | symbol]: unknown;
-        };
-        if (!cmEl) return;
-        const sym = Object.getOwnPropertySymbols(cmEl).find(
-            (s) => s.toString() === "Symbol(cmView)",
-        );
-        if (!sym) return;
-        const view = cmEl[sym] as {
+        const editorViewStore = (window as unknown as Record<string, unknown>).__editorView__ as
+            | { subscribe(fn: (v: unknown) => void): () => void }
+            | undefined;
+        if (!editorViewStore) return;
+        let view: unknown;
+        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        unsub();
+        if (!view) return;
+        const v = view as {
             state: { doc: { toString(): string } };
             dispatch(tr: object): void;
             focus(): void;
         };
-        const pos = view.state.doc.toString().indexOf(target);
+        const pos = v.state.doc.toString().indexOf(target);
         if (pos === -1) return;
         // Place cursor mid-word so it falls squarely inside the annotation range
-        view.focus();
-        view.dispatch({ selection: { anchor: pos + Math.floor(target.length / 2) } });
+        v.focus();
+        v.dispatch({ selection: { anchor: pos + Math.floor(target.length / 2) } });
     }, targetText);
     // Let the activeAnnotation store update and Svelte re-render
     await page.waitForTimeout(400);
@@ -312,14 +332,23 @@ async function scenarioFeedback(ctx: BrowserContext): Promise<void> {
     await page.goto(BASE_URL);
     await waitForEditor(page);
     await setEditorText(page, PROSE_SHORT);
+    // Wait for the async loadApiKeyForProvider() call to resolve — without
+    // this, hasApiKey() returns false and the click redirects to "settings".
+    // The aria-label changes from "…add API key…" to "…⌘⇧2…" once resolved.
+    await page
+        .locator("#ai-tab-feedback")
+        .waitFor({ state: "visible" });
+    await page.waitForFunction(
+        () =>
+            document
+                .querySelector("#ai-tab-feedback")
+                ?.getAttribute("aria-label")
+                ?.includes("⌘") ?? false,
+        { timeout: 5000 },
+    ).catch(() => {});
     await page.locator("#ai-tab-feedback").click({ force: true });
     await page.locator("#ai-sidebar").waitFor({ state: "visible" });
     await page.waitForTimeout(500);
-    await page
-        .locator("#ai-sidebar .overflow-x-auto button[aria-label='Feedback']")
-        .click({ force: true })
-        .catch(() => {});
-    await page.waitForTimeout(300);
     await shot(page, "02-feedback");
     await page.close();
 }
@@ -435,12 +464,29 @@ async function scenarioRevisionModal(ctx: BrowserContext): Promise<void> {
     // Activate the revision card
     await activateAnnotation(page, "Spiritual revelations were conceded");
     await page.waitForTimeout(400);
-    // Click the "expand to modal" button
-    const expandBtn = page.locator('[data-tutorial-action="expand-revision-modal"]').first();
-    if ((await expandBtn.count()) > 0) {
-        await expandBtn.click({ force: true });
-        await page.waitForTimeout(600);
-    }
+    // Push directly to modalStack via the DEV bridge — more reliable than clicking
+    // the DOM button which can be blocked by clip-path or positioning.
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const stack = w.__modalStack__ as { push(entry: object): void } | undefined;
+        const editorViewStore = w.__editorView__ as
+            | { subscribe(fn: (v: unknown) => void): () => void }
+            | undefined;
+        if (!stack || !editorViewStore) return;
+        // Synchronously read the current EditorView from the Svelte store
+        let view: unknown;
+        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        unsub();
+        if (!view) return;
+        // Find the revision annotation id from the DOM
+        const revCard = document.querySelector("[data-tutorial-role='revision-card']");
+        const revisionIdStr = revCard?.getAttribute("data-revision-id");
+        if (!revisionIdStr) return;
+        const revisionId = parseInt(revisionIdStr, 10);
+        if (isNaN(revisionId)) return;
+        stack.push({ type: "revision", revisionId, parentView: view, label: "Revision" });
+    });
+    await page.waitForTimeout(600);
     await shot(page, "07-revision-modal");
     await page.close();
 }
