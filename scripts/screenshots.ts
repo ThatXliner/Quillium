@@ -14,6 +14,8 @@
  *   03-annotations.png      — all three annotation types collapsed beside the doc
  *   04-comment-active.png   — comment card active: full thread + reply input visible
  *   05-revision-active.png  — revision card active: version pills + nested editor open
+ *   06-library.png          — document library with multiple documents and preview panel
+ *   07-revision-modal.png   — revision full-screen modal editor open
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
@@ -36,9 +38,61 @@ const PROSE_SHORT =
 
 // ── Tauri mock ────────────────────────────────────────────────────────────────
 
+// ── Library mock data ─────────────────────────────────────────────────────────
+
+const LIBRARY_DOCUMENTS = [
+    {
+        id: "doc-1",
+        title: "The Lighthouse Keeper",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 5,
+        updatedAt: Date.now() - 1000 * 60 * 30,
+        wordCount: 312,
+        previewText:
+            "The old lighthouse keeper had watched storms roll in from the sea for forty years. Each one was different — some crept in slowly, giving him hours to prepare…",
+        tags: '["fiction","short story"]',
+        deletedAt: null,
+    },
+    {
+        id: "doc-2",
+        title: "On the Question of Forgetting",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 12,
+        updatedAt: Date.now() - 1000 * 60 * 60 * 2,
+        wordCount: 580,
+        previewText:
+            "There is a particular cruelty in the way memory works: it keeps what we would most like to lose and loses what we most want to keep…",
+        tags: '["essay","nonfiction"]',
+        deletedAt: null,
+    },
+    {
+        id: "doc-3",
+        title: "Inventory",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 20,
+        updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 1,
+        wordCount: 204,
+        previewText:
+            "Marcus kept a list of everything he had ever lost. It began, as these things often do, as a joke. He was twenty-four and had lost his keys for the third time that week…",
+        tags: '["fiction"]',
+        deletedAt: null,
+    },
+    {
+        id: "doc-4",
+        title: "Elena in Kraków",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 30,
+        updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 3,
+        wordCount: 421,
+        previewText:
+            "The morning Elena arrived in Kraków, the city was doing what it did best: pretending nothing had changed. Trams rattled past the Cloth Hall on their same iron tracks…",
+        tags: '["fiction","novel"]',
+        deletedAt: null,
+    },
+];
+
+// ── Tauri mock options ────────────────────────────────────────────────────────
+
 type TauriMockOptions = {
     loadResponse: string | null;
     fakeApiKey: boolean;
+    libraryMode: boolean;
 };
 
 async function installTauriMock(
@@ -47,9 +101,15 @@ async function installTauriMock(
 ): Promise<void> {
     const loadResponse = options.loadResponse ?? null;
     const fakeApiKey = options.fakeApiKey ?? false;
+    const libraryMode = options.libraryMode ?? false;
 
     await page.addInitScript(
-        (payload: { loadResponse: string | null; fakeApiKey: boolean }) => {
+        (payload: {
+            loadResponse: string | null;
+            fakeApiKey: boolean;
+            libraryMode: boolean;
+            libraryDocs: typeof LIBRARY_DOCUMENTS;
+        }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
 
             let nextCallbackId = 1;
@@ -74,6 +134,25 @@ async function installTauriMock(
                     if (cmd === "set_api_key") return null;
                     if (cmd === "plugin:event|listen") return 1;
                     if (cmd === "plugin:event|unlisten") return null;
+                    // Document library commands
+                    if (cmd === "cmd_migrate_from_state_json")
+                        return { migrated: false, documentId: null };
+                    if (cmd === "cmd_list_documents")
+                        return payload.libraryMode ? payload.libraryDocs : [];
+                    if (cmd === "cmd_list_trashed_documents") return [];
+                    if (cmd === "cmd_get_trash_retention") return 30;
+                    if (cmd === "cmd_set_trash_retention") return null;
+                    if (cmd === "cmd_purge_expired_trash") return 0;
+                    if (cmd === "cmd_get_document") {
+                        const id = (args as { id: string }).id;
+                        return payload.libraryDocs.find((d) => d.id === id) ?? null;
+                    }
+                    if (cmd === "cmd_create_document") return "doc-new";
+                    if (cmd === "cmd_update_document_meta") return null;
+                    if (cmd === "cmd_trash_document") return null;
+                    if (cmd === "cmd_restore_document") return null;
+                    if (cmd === "cmd_delete_document") return null;
+                    if (cmd === "cmd_reset_db") return null;
                     return null;
                 },
                 transformCallback: (callback: (...args: unknown[]) => unknown) => {
@@ -92,7 +171,7 @@ async function installTauriMock(
                 unregisterListener: () => {},
             };
         },
-        { loadResponse, fakeApiKey },
+        { loadResponse, fakeApiKey, libraryMode, libraryDocs: LIBRARY_DOCUMENTS },
     );
 }
 
@@ -310,6 +389,62 @@ async function scenarioRevisionActive(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
+/**
+ * 06. library — The document library with multiple documents in the grid
+ *    and the preview panel open on the right, showing the document
+ *    management system.
+ */
+async function scenarioLibrary(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { libraryMode: true });
+    await page.goto(`${BASE_URL}/library`);
+    // Wait for the document grid to load
+    await page.locator("h1").filter({ hasText: "Your Library" }).waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(800);
+    // Select the second document card to show the preview panel populated
+    // Cards are role="button" elements inside the grid container
+    const cards = page.locator('[role="button"]').filter({ hasText: /words/ });
+    const count = await cards.count();
+    if (count > 1) {
+        await cards.nth(1).click();
+        await page.waitForTimeout(300);
+    }
+    await shot(page, "06-library");
+    await page.close();
+}
+
+/**
+ * 07. revision-modal — The full-screen revision modal editor open, showing
+ *    the alternative text being edited in a distraction-free modal over
+ *    the main editor.
+ */
+async function scenarioRevisionModal(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-revision-active");
+    if (!applied) {
+        await setEditorText(page, PROSE_SHORT);
+        await shot(page, "07-revision-modal");
+        await page.close();
+        return;
+    }
+    // Activate the revision card
+    await activateAnnotation(page, "Spiritual revelations were conceded");
+    await page.waitForTimeout(400);
+    // Click the "expand to modal" button
+    const expandBtn = page.locator('[data-tutorial-action="expand-revision-modal"]').first();
+    if ((await expandBtn.count()) > 0) {
+        await expandBtn.click({ force: true });
+        await page.waitForTimeout(600);
+    }
+    await shot(page, "07-revision-modal");
+    await page.close();
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -356,6 +491,8 @@ async function main(): Promise<void> {
         await scenarioAnnotations(context);
         await scenarioCommentActive(context);
         await scenarioRevisionActive(context);
+        await scenarioLibrary(context);
+        await scenarioRevisionModal(context);
         console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
     } finally {
         await context.close();
