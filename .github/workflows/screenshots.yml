@@ -13,7 +13,7 @@ on:
 
 jobs:
   screenshots:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     permissions:
       contents: write
 
@@ -27,7 +27,7 @@ jobs:
         run: bun install
 
       - name: Install Playwright browsers
-        run: bunx playwright install chromium --with-deps
+        run: bunx playwright install chromium
 
       - name: Capture screenshots
         # The screenshots script auto-starts the Vite dev server on :4173.
