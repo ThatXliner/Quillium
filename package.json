@@ -21,8 +21,7 @@
     "bump": "bash scripts/bump.sh",
     "bump:minor": "bash scripts/bump.sh minor",
     "bump:major": "bash scripts/bump.sh major",
-    "screenshots": "bun scripts/screenshots.ts",
-    "screenshots:no-server": "bun scripts/screenshots.ts --no-server"
+    "screenshots": "playwright test --update-snapshots=all tests/e2e/screenshots.pw.ts"
   },
   "license": "MIT",
   "dependencies": {
@@ -64,8 +63,6 @@
     "@types/lodash-es": "^4.17.12",
     "@vitest/coverage-v8": "^4.0.18",
     "jsdom": "^28.1.0",
-    "pixelmatch": "^7.1.0",
-    "pngjs": "^7.0.0",
     "svelte": "^5.53.0",
     "svelte-check": "^4.4.1",
     "tailwindcss": "^4.2.0",

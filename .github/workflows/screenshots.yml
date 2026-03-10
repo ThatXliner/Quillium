@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "src/**"
-      - "scripts/screenshots.ts"
+      - "tests/e2e/screenshots.pw.ts"
       - "static/**"
       - "package.json"
   workflow_dispatch:
@@ -30,10 +30,10 @@ jobs:
         run: bunx playwright install chromium
 
       - name: Capture screenshots
-        # The screenshots script auto-starts the Vite dev server on :4173.
+        # --update-snapshots overwrites baselines in screenshots/.
         # The dev server is required (not the built preview) so that the
         # window.__runScenario__ bridge is available for seeding annotations.
-        run: bun run screenshots
+        run: bunx playwright test --update-snapshots=all tests/e2e/screenshots.pw.ts
 
       - name: Commit updated screenshots
         run: |

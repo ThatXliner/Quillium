@@ -3,9 +3,14 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
     testDir: "./tests/e2e",
     testMatch: "**/*.pw.ts",
-    timeout: 30_000,
+    timeout: 60_000,
     expect: {
         timeout: 5_000,
+        toHaveScreenshot: {
+            // Snapshots live in screenshots/ at the repo root (not next to test files)
+            // so they're easy to reference from the README.
+            snapshotPathTemplate: "screenshots/{arg}{ext}",
+        },
     },
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
