@@ -119,10 +119,12 @@ $effect(() => {
             >🐛</button>
         {/if}
     </div>
+    {#if titleVisibility !== "never"}
     <div
         class="overflow-hidden transition-all duration-300 ease-in-out"
-        style="max-height: {titleVisibility !== 'never' && (titleVisibility === 'always' || hovered || titleForced || titleLinger) ? '4rem' : '0'}; opacity: {titleVisibility !== 'never' && (titleVisibility === 'always' || hovered || titleForced || titleLinger) ? '1' : '0'};"
+        style="max-height: {titleVisibility === 'always' || hovered || titleForced || titleLinger ? '4rem' : '0'}; opacity: {titleVisibility === 'always' || hovered || titleForced || titleLinger ? '1' : '0'};"
     >
         {@render children?.()}
     </div>
+    {/if}
 </div>
