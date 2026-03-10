@@ -31,7 +31,7 @@ import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
 
-let editorComponent = $state<{ reload: () => Promise<void> }>();
+let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
 /** Show the tutorial on first visit if the user hasn't seen it. */
 function showTutorialOnFirstVisit() {
@@ -44,6 +44,10 @@ function handleKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === "o") {
         e.preventDefault();
         goToLibrary();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "l") {
+        e.preventDefault();
+        editorComponent?.startEditingTitle();
     }
 }
 

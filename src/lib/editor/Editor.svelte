@@ -59,16 +59,20 @@ import { appSettings } from "$lib/settings.svelte";
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { createModel } from "$lib/ai/provider";
 import { generateText } from "ai";
-import { Pencil } from "lucide-svelte";
+import { Pencil, SparklesIcon } from "lucide-svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 // ── Local UI state ──────────────────────────────────────────────
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
+
 let element = $state<HTMLDivElement>();
 let titleEditing = $state(false);
 let titleInputEl = $state<HTMLInputElement | undefined>();
 let titleDraft = $state("");
 let titleSuggesting = $state(false);
 
-function startEditingTitle() {
+export function startEditingTitle() {
     titleDraft = $currentDocumentTitle;
     titleEditing = true;
     // Focus input on next tick after it mounts
@@ -317,43 +321,49 @@ onMount(() => {
 
 <div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
-        <div class="pointer-events-auto"><StatusBar {...stats} /></div>
-        {#if appSettings.showDocumentTitle}
-            <div class="pointer-events-auto flex items-center gap-2 py-1.5 px-4 backdrop-blur-md rounded-full bg-gray-300/70 border border-white/30 shadow-lg">
-                {#if titleEditing}
-                    <input
-                        bind:this={titleInputEl}
-                        bind:value={titleDraft}
-                        onblur={commitTitle}
-                        onkeydown={(e) => {
-                            if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
-                            if (e.key === "Escape") { titleEditing = false; }
-                        }}
-                        class="text-sm font-medium text-black/70 bg-transparent border-none outline-none w-48 text-center placeholder:text-black/30"
-                        aria-label="Document title"
-                    />
-                {:else}
-                    <span class="text-sm font-medium text-black/60 max-w-48 truncate">{$currentDocumentTitle}</span>
-                    <button
-                        onclick={startEditingTitle}
-                        title="Edit title"
-                        class="text-black/30 hover:text-black/60 transition-colors"
-                    >
-                        <Pencil size={12} />
-                    </button>
-                {/if}
-                {#if hasApiKey()}
-                    <div class="w-px h-4 bg-black/20"></div>
-                    <button
-                        onclick={suggestTitle}
-                        disabled={titleSuggesting}
-                        title="Suggest a title with AI"
-                        class="text-black/30 hover:text-purple-500/70 transition-colors
-                            disabled:opacity-40 disabled:cursor-not-allowed text-sm leading-none"
-                    >{titleSuggesting ? "…" : "✦"}</button>
-                {/if}
-            </div>
-        {/if}
+        <div class="pointer-events-auto">
+            <StatusBar {...stats} alwaysShowTitle={appSettings.alwaysShowTitle} titleForced={titleEditing}>
+                {#snippet children()}
+                    <div class="flex items-center justify-center py-1.5 px-4 w-fit mx-auto mb-3 rounded-full">
+                        {#if titleEditing}
+                            <input
+                                bind:this={titleInputEl}
+                                bind:value={titleDraft}
+                                onblur={commitTitle}
+                                onkeydown={(e) => {
+                                    if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+                                    if (e.key === "Escape") { titleEditing = false; }
+                                }}
+                                class="text-sm font-medium text-black/70 bg-transparent border-none outline-none min-w-[8rem] max-w-[28rem] text-center placeholder:text-black/30"
+                                aria-label="Document title"
+                            />
+                        {:else}
+                            <button
+                                onclick={startEditingTitle}
+                                title="Rename title ({modKey}L)"
+                                class="flex items-center gap-2 text-sm font-medium text-black/60 hover:text-black/80 transition-colors max-w-[28rem]"
+                            >
+                                <span class="truncate">{$currentDocumentTitle}</span>
+                                <Pencil size={14} class="shrink-0 text-black/40" />
+                                <Kbd keys={[modKey, "L"]} />
+                            </button>
+                        {/if}
+                        {#if hasApiKey()}
+                            <div class="w-px h-3.5 bg-black/20 shrink-0"></div>
+                            <button
+                                onclick={suggestTitle}
+                                disabled={titleSuggesting}
+                                title="Suggest a title with AI"
+                                class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                            >
+                                <SparklesIcon size={11} />
+                                <span>{titleSuggesting ? "…" : "Suggest"}</span>
+                            </button>
+                        {/if}
+                    </div>
+                {/snippet}
+            </StatusBar>
+        </div>
     </div>
 
     {#await fromSave then}

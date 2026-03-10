@@ -21,7 +21,7 @@ type AppSettings = {
     docFontSize: number;
     uiFontFamily: string;
     customQuickActions: CustomQuickAction[];
-    showDocumentTitle: boolean;
+    alwaysShowTitle: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -32,7 +32,7 @@ const DEFAULTS: AppSettings = {
     docFontSize: 18,
     uiFontFamily: "system-ui, -apple-system, sans-serif",
     customQuickActions: [],
-    showDocumentTitle: true,
+    alwaysShowTitle: false,
 };
 
 function loadSettings(): AppSettings {
