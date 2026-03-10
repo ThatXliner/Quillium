@@ -294,12 +294,53 @@ async function pollUntilReady(url: string, timeoutMs = 30_000): Promise<void> {
     throw new Error(`Server at ${url} did not become ready within ${timeoutMs}ms`);
 }
 
+// ── Visual diff ───────────────────────────────────────────────────────────────
+
+let significantChanges = false;
+
+/**
+ * Compare two PNG buffers pixel-by-pixel. Returns the fraction of pixels
+ * that differ (0–1). Returns 1 if the images have different dimensions.
+ */
+function diffFraction(a: Buffer, b: Buffer): number {
+    const imgA = PNG.sync.read(a);
+    const imgB = PNG.sync.read(b);
+    if (imgA.width !== imgB.width || imgA.height !== imgB.height) return 1;
+    const total = imgA.width * imgA.height;
+    const changed = pixelmatch(
+        imgA.data,
+        imgB.data,
+        null,
+        imgA.width,
+        imgA.height,
+        { threshold: 0.1 },
+    );
+    return changed / total;
+}
+
 // ── Screenshot helper ─────────────────────────────────────────────────────────
 
 async function shot(page: Page, name: string): Promise<void> {
-    const path = `${OUT_DIR}/${name}.png`;
-    await page.screenshot({ path, fullPage: false });
-    console.log(`  ✓ ${path}`);
+    const filePath = `${OUT_DIR}/${name}.png`;
+    const newBytes = await page.screenshot({ fullPage: false });
+
+    if (existsSync(filePath)) {
+        const oldBytes = await readFile(filePath);
+        const fraction = diffFraction(oldBytes, newBytes);
+        const pct = (fraction * 100).toFixed(2);
+        if (fraction >= DIFF_THRESHOLD) {
+            significantChanges = true;
+            console.log(`  ✓ ${filePath} (${pct}% changed — significant)`);
+        } else {
+            console.log(`  – ${filePath} (${pct}% changed — skipped, below threshold)`);
+            return; // keep the existing file
+        }
+    } else {
+        significantChanges = true;
+        console.log(`  ✓ ${filePath} (new)`);
+    }
+
+    await writeFile(filePath, newBytes);
 }
 
 // ── Scenarios ─────────────────────────────────────────────────────────────────
@@ -539,7 +580,11 @@ async function main(): Promise<void> {
         await scenarioRevisionActive(context);
         await scenarioLibrary(context);
         await scenarioRevisionModal(context);
-        console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
+        if (significantChanges) {
+            console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
+        } else {
+            console.log(`\nDone. No significant visual changes detected — no files updated.`);
+        }
     } finally {
         await context.close();
         await browser.close();
