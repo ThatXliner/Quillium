@@ -689,6 +689,15 @@ const dev_dontuseinprod_createSuggestion: StateCommand = ({ state, dispatch }) =
     });
     return true;
 };
+function addRevisionVersionCommand(): StateCommand {
+    return ({ state }) => {
+        const annotation = getActiveRevisionAnnotation(state);
+        if (!annotation) return false;
+        publishAnnotationUiEvent({ type: "annotation-add-version", annotationId: annotation.id });
+        return true;
+    };
+}
+
 function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
     return ({ state, dispatch }) => {
         const annotation = getActiveRevisionAnnotation(state);
@@ -715,6 +724,10 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
 // next binding for the same key is tried.
 // -------------------------------------------------------
 export const annotationKeymap: KeyBinding[] = [
+    {
+        key: "Mod-Enter",
+        run: addRevisionVersionCommand(),
+    },
     {
         key: "Ctrl-[",
         run: navigateRevisionVersion("prev"),

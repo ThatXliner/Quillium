@@ -47,11 +47,15 @@ import {
 } from ".";
 import { versionText, type VersionState } from "./models";
 import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import Kbd from "$lib/ui/Kbd.svelte";
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import posthog from "$lib/posthog";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
 
 const {
     revision,
@@ -446,7 +450,7 @@ onDestroy(() => {
     </div>
 
     <!-- Version pills -->
-    <div class="px-3 pb-2 flex flex-wrap gap-1">
+    <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
         {#each revision.versions as version, i}
             {@const versionActive = i === revision.currentlySelected}
             {@const isEditingThis = editingLabelIndex === i}
@@ -501,12 +505,18 @@ onDestroy(() => {
                 </button>
             </div>
         {/each}
+        {#if isActive && revision.versions.length > 1}
+            <div class="ml-auto flex items-center gap-0.5 opacity-50">
+                <Kbd keys={["Ctrl", "["]} />
+                <Kbd keys={["Ctrl", "]"]} />
+            </div>
+        {/if}
     </div>
 
     <!-- Actions row -->
     <div class="px-3 pb-3 flex gap-1.5">
         <button
-            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/80
+            class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
             onclick={async () => {
                 posthog.capture("revision_version_created", {
@@ -526,10 +536,11 @@ onDestroy(() => {
                     });
                 }
             }}
-            title="Create a new version"
+            title="Create a new version ({modKey}↵)"
         >
             <PlusIcon size={10} />
             <span>New version</span>
+            <Kbd keys={[modKey, "↵"]} />
         </button>
         {#if appSettings.showNestedEditor}
         <button
