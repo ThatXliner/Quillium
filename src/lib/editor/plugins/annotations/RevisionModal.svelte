@@ -30,13 +30,15 @@
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { ChevronRight, ChevronDown, ChevronUp, Check, X } from "lucide-svelte";
+import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { scale, slide } from "svelte/transition";
 import {
     addAnnotation,
     annotationField,
     setActiveRevisionVersion,
+    createNewRevision,
+    updateRevisionVersionLabel,
     updateThread,
     type Annotation,
     type Annotations as AnnotationsMap,
@@ -52,6 +54,10 @@ import { createVersionState, syncVersionToParent, previewVersionText } from "./n
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
 
 const {
     revisionId,
@@ -393,6 +399,72 @@ onDestroy(() => {
     destroyEditor();
 });
 
+// Label editing state for the current crumb's version dropdown
+let editingVersionLabel = $state(false);
+let labelInputValue = $state("");
+let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
+
+function startLabelEdit() {
+    if (!revision) return;
+    labelInputValue = revision.versions[revision.currentlySelected]?.label ?? "";
+    editingVersionLabel = true;
+    tick().then(() => labelInputEl?.focus());
+}
+
+function commitLabelEdit() {
+    if (!revision) { editingVersionLabel = false; return; }
+    const trimmed = labelInputValue.trim();
+    view.dispatch(
+        updateRevisionVersionLabel(view.state, revisionId, revision.currentlySelected, trimmed || undefined),
+    );
+    editingVersionLabel = false;
+}
+
+function cancelLabelEdit() {
+    editingVersionLabel = false;
+}
+
+function addVersion() {
+    if (!revision) return;
+    view.dispatch(createNewRevision(view.state, revisionId));
+    // Rebuild the editor for the new (blank) version
+    tick().then(() => {
+        const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+        if (!rev) return;
+        destroyEditor();
+        tick().then(() => {
+            createEditor(rev.versions[rev.currentlySelected]);
+            if (editor) moveCursorToEnd(editor);
+        });
+    });
+}
+
+function navigateVersion(direction: "prev" | "next") {
+    if (!revision) return;
+    const count = revision.versions.length;
+    if (count <= 1) return;
+    const next = direction === "next"
+        ? (revision.currentlySelected + 1) % count
+        : (revision.currentlySelected - 1 + count) % count;
+    selectVersion(crumbs.length - 1, next, crumbs[crumbs.length - 1], true);
+}
+
+function onDialogKeydown(e: KeyboardEvent) {
+    // Don't fire when typing in an input
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (mod && e.key === "Enter") {
+        e.preventDefault();
+        addVersion();
+    } else if (e.ctrlKey && e.key === "[") {
+        e.preventDefault();
+        navigateVersion("prev");
+    } else if (e.ctrlKey && e.key === "]") {
+        e.preventDefault();
+        navigateVersion("next");
+    }
+}
+
 let revisionThread = $state(
     (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ??
         [],
@@ -423,6 +495,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   onclick={(e) => {
     if (e.target === dialogEl) close();
   }}
+  onkeydown={onDialogKeydown}
 >
   <div class="revision-modal-inner">
     <!-- Header -->
@@ -469,6 +542,21 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                 }}
               >
                 <!-- Trigger -->
+                {#if isCurrent && editingVersionLabel}
+                  <input
+                    bind:this={labelInputEl}
+                    bind:value={labelInputValue}
+                    class="pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium w-[120px]
+                        bg-purple-100/70 text-purple-700/80 ring-1 ring-purple-300/60 outline-none
+                        placeholder-purple-400/50"
+                    placeholder="Version name…"
+                    onblur={commitLabelEdit}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(); }
+                      else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
+                    }}
+                  />
+                {:else}
                 <button
                   class="version-trigger flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium
                                         transition-all duration-150
@@ -483,6 +571,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                     e.stopPropagation();
                     openDropdown = openDropdown === ci ? -1 : ci;
                   }}
+                  ondblclick={(e) => {
+                    if (isCurrent) { e.stopPropagation(); startLabelEdit(); }
+                  }}
+                  title={isCurrent ? "Double-click to rename" : undefined}
                 >
                   <span
                     >{crumbRevision.versions[selectedVi]?.label ??
@@ -501,6 +593,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                       : 'text-black/30'}"
                   />
                 </button>
+                {/if}
 
                 <!-- Popover -->
                 {#if openDropdown === ci}
@@ -541,12 +634,31 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
         {/each}
       </nav>
 
-      <button
-        class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors shrink-0"
-        onclick={close}
-      >
-        <X size={16} />
-      </button>
+      <!-- Right actions -->
+      <div class="flex items-center gap-2 shrink-0">
+        {#if revision && revision.versions.length > 1}
+          <div class="flex items-center gap-0.5 opacity-40">
+            <Kbd keys={["Ctrl", "["]} />
+            <Kbd keys={["Ctrl", "]"]} />
+          </div>
+        {/if}
+        <button
+          class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
+              bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
+          onclick={addVersion}
+          title="New version ({modKey}↵)"
+        >
+          <PlusIcon size={10} />
+          <span>New version</span>
+          <Kbd keys={[modKey, "↵"]} />
+        </button>
+        <button
+          class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+          onclick={close}
+        >
+          <X size={16} />
+        </button>
+      </div>
     </div>
 
         <TutorialGuide />
