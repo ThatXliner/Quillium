@@ -196,6 +196,11 @@ const _updateRevisionVersionState = StateEffect.define<{
     versionId: number;
     versionState: VersionState;
 }>();
+export const _updateRevisionVersionLabel = StateEffect.define<{
+    annotationId: number;
+    versionId: number;
+    label: string | undefined;
+}>();
 export function setActiveRevisionVersion(state: EditorState, annotationId: number, to: number) {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
@@ -221,7 +226,7 @@ export function createNewRevision(state: EditorState, annotationId: number) {
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
     }
-    const placeholder = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
+    const placeholder = "";
     const newVersionState: VersionState = { doc: placeholder };
     const from = original.selection.main.from;
     return state.update({
@@ -336,6 +341,23 @@ export function updateRevisionVersionState(
             to: original.selection.main.to,
             insert: text,
         }),
+    });
+}
+export function updateRevisionVersionLabel(
+    state: EditorState,
+    annotationId: number,
+    versionId: number,
+    label: string | undefined,
+) {
+    const original = state.field(annotationField)[annotationId];
+    if (!isAnnotationOfType(original, "revision")) {
+        throw new Error("Annotation is not a revision");
+    }
+    return state.update({
+        effects: [
+            _updateRevisionVersionLabel.of({ annotationId, versionId, label }),
+        ],
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
     });
 }
 export function branchSuggestion(state: EditorState, annotationId: number) {
@@ -595,6 +617,17 @@ export const annotationField = StateField.define<Annotations>({
                 // JavaScript would give annotation a reference to the annotation object
                 // but just in case, you know.
                 annotations[e.value.annotationId] = annotation;
+            } else if (e.is(_updateRevisionVersionLabel)) {
+                const annotation = annotations[e.value.annotationId];
+                if (!isAnnotationOfType(annotation, "revision")) continue;
+                const version = annotation.versions[e.value.versionId];
+                if (version) {
+                    annotation.versions[e.value.versionId] = {
+                        ...version,
+                        label: e.value.label,
+                    };
+                }
+                annotations[e.value.annotationId] = annotation;
             } else if (e.is(_updateRevisionVersionState)) {
                 const annotation = annotations[e.value.annotationId];
                 if (!isAnnotationOfType(annotation, "revision")) continue;
@@ -783,6 +816,16 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                     annotationId: oldAnnotation.id,
                     versionId: effect.value.versionId,
                     versionState: oldAnnotation.versions[effect.value.versionId],
+                }),
+            );
+        } else if (effect.is(_updateRevisionVersionLabel)) {
+            const oldAnnotation = oldAnnotations[effect.value.annotationId];
+            if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
+            effects.push(
+                _updateRevisionVersionLabel.of({
+                    annotationId: oldAnnotation.id,
+                    versionId: effect.value.versionId,
+                    label: oldAnnotation.versions[effect.value.versionId]?.label,
                 }),
             );
         } else if (effect.is(addSuggestion)) {

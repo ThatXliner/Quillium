@@ -41,6 +41,7 @@ import {
     createNewRevision,
     deleteRevisionVersion,
     setActiveRevisionVersion,
+    updateRevisionVersionLabel,
     type Annotation,
     type Thread as ThreadType,
 } from ".";
@@ -112,6 +113,35 @@ let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 // of this revision's content in the main document.
 let showBoundaryHint = $state(false);
 let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
+
+// Label editing state
+let editingLabelIndex = $state<number | null>(null);
+let labelInputValue = $state("");
+let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
+
+function startLabelEdit(i: number) {
+    editingLabelIndex = i;
+    labelInputValue = revision.versions[i]?.label ?? "";
+    tick().then(() => labelInputEl?.focus());
+}
+
+function commitLabelEdit() {
+    if (editingLabelIndex === null) return;
+    const trimmed = labelInputValue.trim();
+    view.dispatch(
+        updateRevisionVersionLabel(
+            view.state,
+            revision.id,
+            editingLabelIndex,
+            trimmed || undefined,
+        ),
+    );
+    editingLabelIndex = null;
+}
+
+function cancelLabelEdit() {
+    editingLabelIndex = null;
+}
 
 // Show a temporary hint when the boundary-nudge store fires
 // for this revision (user pressed delete at the edge).
@@ -419,27 +449,48 @@ onDestroy(() => {
     <div class="px-3 pb-2 flex flex-wrap gap-1">
         {#each revision.versions as version, i}
             {@const versionActive = i === revision.currentlySelected}
+            {@const isEditingThis = editingLabelIndex === i}
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
                     : 'bg-white/60 ring-1 ring-purple-200/40'}">
-                <button
-                    class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
-                        {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
-                    disabled={versionActive}
-                    title={versionText(version) || "(empty)"}
-                    onclick={() => {
-                        view.dispatch(
-                            setActiveRevisionVersion(view.state, revision.id, i),
-                        );
-                    }}
-                >
-                    {version.label ?? previewVersionText(version)}
-                </button>
+                {#if isEditingThis}
+                    <input
+                        bind:this={labelInputEl}
+                        bind:value={labelInputValue}
+                        class="px-2 py-1 text-[11px] font-medium w-[100px] bg-transparent text-white outline-none placeholder-white/50"
+                        placeholder="Version name…"
+                        onblur={commitLabelEdit}
+                        onkeydown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(); }
+                            else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
+                        }}
+                    />
+                {:else}
+                    <button
+                        class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
+                            {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
+                        disabled={!versionActive}
+                        title={versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
+                        onclick={() => {
+                            if (!versionActive) {
+                                view.dispatch(
+                                    setActiveRevisionVersion(view.state, revision.id, i),
+                                );
+                            }
+                        }}
+                        ondblclick={() => {
+                            if (versionActive) startLabelEdit(i);
+                        }}
+                    >
+                        {version.label ?? previewVersionText(version)}
+                    </button>
+                {/if}
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
                         {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
                     onclick={() => {
+                        if (editingLabelIndex === i) cancelLabelEdit();
                         view.dispatch(
                             deleteRevisionVersion(view.state, revision.id, i),
                         );

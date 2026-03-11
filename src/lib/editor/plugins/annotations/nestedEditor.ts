@@ -50,7 +50,12 @@ export function syncVersionToParent(
         | Annotation<"revision">
         | undefined;
     if (!rev) return;
-    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blob));
+    // Preserve the existing label so syncing the editor content doesn't wipe it.
+    const existingLabel = rev.versions[versionId]?.label;
+    const blobWithLabel: VersionState = existingLabel !== undefined
+        ? { ...blob, label: existingLabel }
+        : blob;
+    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel));
 }
 
 /**
