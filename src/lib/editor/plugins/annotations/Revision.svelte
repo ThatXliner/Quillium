@@ -78,7 +78,7 @@ let userClosedEditor = false; // plain var — not reactive, just a gate
 // Reset the gate when the card loses focus.
 $effect(() => {
     if (isActive) {
-        if (!userClosedEditor && appSettings.showNestedEditor && appSettings.atomicRevisions)
+        if (!userClosedEditor && appSettings.showNestedEditor)
             isEditorOpen = true;
     } else {
         isEditorOpen = false;
@@ -241,9 +241,7 @@ function createRecursiveEditor(version: VersionState) {
     const state = createVersionState(version, (update: ViewUpdate) => {
         if (!recursiveEditor || isSyncingFromAnnotation) return;
         nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
-        if (appSettings.atomicRevisions) {
-            upsertVersionState(recursiveEditor);
-        }
+        upsertVersionState(recursiveEditor);
     });
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     lastSyncedText = versionText(version);
@@ -381,13 +379,6 @@ $effect(() => {
         if (appSettings.showNestedEditor) {
             userClosedEditor = false;
             isEditorOpen = true;
-        } else {
-            modalStack.push({
-                type: "revision",
-                revisionId: revision.id,
-                parentView: view,
-                label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-            });
         }
     });
 });
@@ -472,19 +463,24 @@ onDestroy(() => {
                 });
                 view.dispatch(createNewRevision(view.state, revision.id));
                 await tick();
-                modalStack.push({
-                    type: "revision",
-                    revisionId: revision.id,
-                    parentView: view,
-                    label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-                });
+                if (appSettings.showNestedEditor) {
+                    userClosedEditor = false;
+                    isEditorOpen = true;
+                } else {
+                    modalStack.push({
+                        type: "revision",
+                        revisionId: revision.id,
+                        parentView: view,
+                        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+                    });
+                }
             }}
             title="Create a new version"
         >
             <PlusIcon size={10} />
             <span>New version</span>
         </button>
-        {#if appSettings.showNestedEditor && appSettings.atomicRevisions}
+        {#if appSettings.showNestedEditor}
         <button
             data-tutorial-action="toggle-nested-editor"
             data-revision-id={revision.id}
@@ -520,7 +516,7 @@ onDestroy(() => {
 
     <!-- Boundary hint -->
     {#if showBoundaryHint}
-        {#if appSettings.atomicRevisions && appSettings.showNestedEditor}
+        {#if appSettings.showNestedEditor}
             <button
                 class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
                     bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
@@ -551,7 +547,7 @@ onDestroy(() => {
     {/if}
 
     <!-- Nested editor (collapsible) -->
-    {#if isEditorOpen && appSettings.showNestedEditor && appSettings.atomicRevisions}
+    {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
             <div
                 bind:this={recursiveEditorHost}
