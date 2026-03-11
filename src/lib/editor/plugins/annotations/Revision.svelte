@@ -350,10 +350,14 @@ $effect(() => {
     });
 });
 
-// When the selected version changes while the editor is open,
-// swap the nested editor's content to the new version.
+// When the selected version or its text content changes while the editor
+// is open, sync the nested editor. This covers both version switches and
+// external mutations (undo/redo in the parent, main-doc edits).
 $effect(() => {
     if (!recursiveEditor || !isEditorOpen) return;
+    // Track activeText so undo/redo in the parent (which changes version
+    // content without changing currentlySelected) triggers a reload.
+    void activeText;
     const prev = previousVersionId;
     const prevCount = previousVersionCount;
     previousVersionId = revision.currentlySelected;
