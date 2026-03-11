@@ -45,7 +45,7 @@ import {
     type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
-import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import { createVersionState, makeParentUndoKeymap, syncVersionToParent, previewVersionText } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -242,7 +242,7 @@ function createRecursiveEditor(version: VersionState) {
         if (!recursiveEditor || isSyncingFromAnnotation) return;
         nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
         upsertVersionState(recursiveEditor);
-    });
+    }, makeParentUndoKeymap(view));
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     lastSyncedText = versionText(version);
     nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
@@ -330,7 +330,7 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
     const nextState = createVersionState(activeVersion, (update: ViewUpdate) => {
         if (!recursiveEditor || isSyncingFromAnnotation) return;
         upsertVersionState(recursiveEditor);
-    });
+    }, makeParentUndoKeymap(view));
     recursiveEditor.setState(nextState);
     lastSyncedText = targetText;
     isSyncingFromAnnotation = false;

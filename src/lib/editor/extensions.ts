@@ -49,6 +49,9 @@ import { type ListenerOptions, listeners } from "./listeners";
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
 export const savedFields = { historyField, annotationField };
+// Nested editors delegate undo/redo to the parent, so they don't own
+// a history stack. Only annotationField is persisted in version blobs.
+export const nestedSavedFields = { annotationField };
 
 const editorKeymap: KeyBinding[] = [
     ...closeBracketsKeymap,
@@ -60,28 +63,40 @@ const editorKeymap: KeyBinding[] = [
     indentWithTab,
 ] as unknown as KeyBinding[];
 
-export const getExtensions = (options?: ListenerOptions) => [
-    highlightSpecialChars(),
-    // Default is 500 milliseconds
-    // but I find that too long
-    history({ newGroupDelay: 250 }),
-    // Will re-enable for multi-selection support
-    // drawSelection(),
-    dropCursor(),
-    EditorState.allowMultipleSelections.of(true),
-    bracketMatching(),
-    closeBrackets(),
-    autocompletion(),
-    search(),
-    // rectangularSelection(),
-    // highlightSelectionMatches(),
-    keymap.of(editorKeymap),
-    EditorView.lineWrapping,
-    EditorView.contentAttributes.of({
-        spellcheck: "true",
-        autocorrect: "on",
-        autocapitalize: "on",
-    }),
-    listeners(options),
-    annotations(),
-];
+const nestedEditorKeymap: KeyBinding[] = [
+    ...closeBracketsKeymap,
+    ...defaultKeymap,
+    ...searchKeymap,
+    ...completionKeymap,
+    ...lintKeymap,
+    indentWithTab,
+] as unknown as KeyBinding[];
+
+export const getExtensions = (options?: ListenerOptions) => {
+    const withHistory = options?.history !== false;
+    return [
+        highlightSpecialChars(),
+        // Default is 500 milliseconds
+        // but I find that too long
+        ...(withHistory ? [history({ newGroupDelay: 250 })] : []),
+        // Will re-enable for multi-selection support
+        // drawSelection(),
+        dropCursor(),
+        EditorState.allowMultipleSelections.of(true),
+        bracketMatching(),
+        closeBrackets(),
+        autocompletion(),
+        search(),
+        // rectangularSelection(),
+        // highlightSelectionMatches(),
+        keymap.of(withHistory ? editorKeymap : nestedEditorKeymap),
+        EditorView.lineWrapping,
+        EditorView.contentAttributes.of({
+            spellcheck: "true",
+            autocorrect: "on",
+            autocapitalize: "on",
+        }),
+        listeners(options),
+        annotations(),
+    ];
+};

@@ -48,7 +48,7 @@ import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import { createNewAnnotation, versionText, type VersionState } from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { modalStack, type ModalEntry } from "$lib/stores";
-import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import { createVersionState, makeParentUndoKeymap, syncVersionToParent, previewVersionText } from "./nestedEditor";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
@@ -273,7 +273,7 @@ function createEditor(version: VersionState) {
         syncVersionToParent(editor, view, revisionId, rev.currentlySelected);
         modalAnnotations = editor.state.field(annotationField);
         modalActiveAnnotation = getActiveAnnotation(editor.state);
-    });
+    }, makeParentUndoKeymap(view));
     editor = new EditorView({ state, parent: editorHost });
     modalAnnotations = editor.state.field(annotationField);
     modalActiveAnnotation = getActiveAnnotation(editor.state);
