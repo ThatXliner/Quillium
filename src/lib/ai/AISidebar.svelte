@@ -72,7 +72,7 @@ import {
     Minimize2Icon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
 let action = $state<Action>(null);

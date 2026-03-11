@@ -50,7 +50,7 @@ import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 
 const {
     revision,

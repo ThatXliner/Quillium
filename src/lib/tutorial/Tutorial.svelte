@@ -32,7 +32,7 @@ import {
 } from "$lib/stores";
 import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotations";
 import { steps, type Step } from "./steps";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);

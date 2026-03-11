@@ -13,7 +13,7 @@
 -->
 <script lang="ts">
 import { SparklesIcon } from "lucide-svelte";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
 import { generateContext } from "$lib/ai/clientStreams";
 

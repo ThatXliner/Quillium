@@ -36,7 +36,7 @@ import {
 } from ".";
 import Thread from "./Thread.svelte";
 import { modalStack } from "$lib/stores";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 
 const {
     suggestion,

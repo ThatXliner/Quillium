@@ -25,7 +25,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { get } from "svelte/store";
 import { onMount } from "svelte";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 import { getExtensions, savedFields } from "./extensions";
 import {
     editorView,

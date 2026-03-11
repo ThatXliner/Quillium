@@ -32,7 +32,7 @@
 import { get } from "svelte/store";
 import { Chat } from "@ai-sdk/svelte";
 import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 import { documentContent, selectedText, editorView } from "$lib/stores";
 import { aiSettings, documentContext, setAiProcessing } from "./settings.svelte";
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";

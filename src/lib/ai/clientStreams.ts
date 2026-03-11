@@ -34,7 +34,7 @@ import {
     type UIMessageChunk,
 } from "ai";
 import { z } from "zod";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 import { createModel, type Provider } from "./provider";
 import { injectDocumentContext, buildDocumentContextPrompt } from "./utils";
 

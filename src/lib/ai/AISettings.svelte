@@ -31,7 +31,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon } from "lucide-svelte";
 import { aiSettings, hasApiKey, loadApiKeyForProvider } from "$lib/ai/settings.svelte";
 import type { Provider } from "$lib/ai/provider";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 
 const PROVIDERS: { id: Provider; label: string; color: string }[] = [
     { id: "openai", label: "OpenAI", color: "#10a37f" },

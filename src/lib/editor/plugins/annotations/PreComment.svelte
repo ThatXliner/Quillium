@@ -25,7 +25,7 @@ import { tick } from "svelte";
 import { updateThread, removeAnnotation } from "./annotationField";
 import { canCreateNewComment } from "./utils";
 import { isAnnotationOfType, type Annotations, type GenericAnnotation } from "./models";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 
 const {
     view,

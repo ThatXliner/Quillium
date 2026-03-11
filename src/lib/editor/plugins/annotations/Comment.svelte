@@ -24,7 +24,7 @@
 import { Trash2 } from "lucide-svelte";
 import { streamChat } from "$lib/ai/clientStreams";
 import { aiSettings } from "$lib/ai/settings.svelte";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import type { Annotation, Thread as ThreadType } from ".";

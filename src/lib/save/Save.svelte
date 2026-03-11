@@ -15,7 +15,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { DropdownMenu } from "bits-ui";
 import { Trash2, ChevronDown, Images, FolderPlus, SaveIcon, FlameIcon } from "lucide-svelte";
-import posthog from "posthog-js";
+import posthog from "$lib/posthog";
 
 /** Scrap the current draft via Tauri and reload the app. */
 function scrapDraftAndReload() {
