@@ -67,30 +67,55 @@ const {
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
-// Context snippet: lazy-loaded chunks around the revision range
+// Context snippet: lazy-loaded chunks around the outermost revision range
 const CHUNK = 300; // chars per load step
 let contextBefore = $state(CHUNK); // how many chars before to show
 let contextAfter = $state(CHUNK); // how many chars after to show
 
-const docContext = $derived.by(() => {
-    // Reading modalAnnotations here makes this derived re-run whenever
-    // the nested editor writes a change back to the parent view.
-    void modalAnnotations;
-    const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-    if (!rev) return null;
-    const doc = view.state.doc;
-    const from = rev.selection.main.from;
-    const to = rev.selection.main.to;
-    const beforeStart = Math.max(0, from - contextBefore);
-    const afterEnd = Math.min(doc.length, to + contextAfter);
-    return {
-        before: doc.sliceString(beforeStart, from),
-        revision: doc.sliceString(from, to),
-        after: doc.sliceString(to, afterEnd),
-        hasMoreBefore: beforeStart > 0,
-        hasMoreAfter: afterEnd < doc.length,
-    };
+// Build a context layer for each crumb level: from the root doc down to
+// the current revision. Each layer shows the surrounding text and
+// highlights the nested revision span within it.
+// Layer 0 = outermost (root doc), layer N-1 = immediate parent of current.
+type ContextLayer = {
+    before: string;
+    revision: string;
+    after: string;
+    hasMoreBefore: boolean;
+    hasMoreAfter: boolean;
+};
+
+const contextLayers = $derived.by((): ContextLayer[] => {
+    void modalAnnotations; // re-run when nested editor writes back
+    const layers: ContextLayer[] = [];
+    for (let ci = 0; ci < crumbs.length; ci++) {
+        const crumb = crumbs[ci];
+        if (crumb.type !== "revision") continue;
+        const parentState = crumb.parentView.state;
+        const rev = parentState.field(annotationField)[crumb.revisionId] as
+            | Annotation<"revision">
+            | undefined;
+        if (!rev) continue;
+        const doc = parentState.doc;
+        const from = rev.selection.main.from;
+        const to = rev.selection.main.to;
+        // Only the outermost layer gets infinite lazy-loading; inner layers
+        // show the full version text (it's already bounded).
+        const isOuter = ci === 0;
+        const beforeStart = isOuter ? Math.max(0, from - contextBefore) : 0;
+        const afterEnd = isOuter ? Math.min(doc.length, to + contextAfter) : doc.length;
+        layers.push({
+            before: doc.sliceString(beforeStart, from),
+            revision: doc.sliceString(from, to),
+            after: doc.sliceString(to, afterEnd),
+            hasMoreBefore: isOuter && beforeStart > 0,
+            hasMoreAfter: isOuter && afterEnd < doc.length,
+        });
+    }
+    return layers;
 });
+
+// Convenience: outermost layer for scroll/jump logic
+const docContext = $derived(contextLayers[0] ?? null);
 
 let contextCollapsed = $state(false);
 let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
@@ -698,11 +723,11 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       ></div>
 
       <!-- Right sidebar: context + annotations -->
-      {#if docContext || (editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
+      {#if contextLayers.length > 0 || (editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
         <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col bg-purple-50/20">
 
           <!-- Context panel -->
-          {#if docContext}
+          {#if contextLayers.length > 0}
             <div class="border-b border-purple-100/60 shrink-0">
               <button
                 class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors"
@@ -722,14 +747,20 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                     class="context-scroll"
                     style="mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%); -webkit-mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%);"
                   >
-                    <div class="context-text">
-                      {#if docContext.before}<span class="context-surrounding">{docContext.before}</span>{/if}
-                      <span
-                        bind:this={contextRevisionEl}
-                        class="{docContext.revision ? 'context-revision' : 'context-revision context-revision-empty'}"
-                      >{docContext.revision || "(empty)"}</span>
-                      {#if docContext.after}<span class="context-surrounding">{docContext.after}</span>{/if}
-                    </div>
+                    <!-- Nested context layers: outermost first, each wrapping the next -->
+                    {#snippet renderLayer(depth: number)}
+                      {@const layer = contextLayers[depth]}
+                      {@const isDeepest = depth === contextLayers.length - 1}
+                      <span class="context-text context-depth-{depth}">
+                        {#if layer.before}<span class="context-surrounding">{layer.before}</span>{/if}<!--
+                        --><span
+                          bind:this={depth === 0 ? contextRevisionEl : undefined}
+                          class="context-nest context-nest-{depth}"
+                        >{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(depth + 1)}{/if}</span><!--
+                        -->{#if layer.after}<span class="context-surrounding">{layer.after}</span>{/if}
+                      </span>
+                    {/snippet}
+                    {@render renderLayer(0)}
                   </div>
                   {#if revisionDirection}
                     <button
@@ -872,12 +903,11 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   }
 
   .context-scroll {
-    height: 160px;
+    height: 200px;
     overflow-y: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    padding: 10px 16px 10px 16px;
-    /* Carved glass */
+    padding: 10px 14px;
     background: rgba(245, 240, 255, 0.45);
     backdrop-filter: blur(12px) saturate(1.3);
     -webkit-backdrop-filter: blur(12px) saturate(1.3);
@@ -887,34 +917,58 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     display: none;
   }
 
+  /* Base text layer (outermost / depth-0) */
   .context-text {
-    font-size: 11.5px;
+    display: block;
+    font-size: 11px;
     line-height: 1.7;
-    color: rgba(0, 0, 0, 0.55);
+    color: rgba(80, 40, 120, 0.35);
     font-family: var(--doc-font-family, system-ui, sans-serif);
     white-space: pre-wrap;
     word-break: break-word;
   }
 
+  /* Surrounding text inherits parent color */
   .context-surrounding {
-    color: rgba(80, 40, 120, 0.38);
+    /* color inherited from .context-text / .context-nest */
   }
 
-  .context-revision {
-    background: rgba(147, 112, 219, 0.18);
-    color: rgba(88, 28, 135, 0.8);
-    border-radius: 3px;
-    padding: 1px 3px;
+  /* Each nesting level: inset block with deeper purple bg + stronger text */
+  .context-nest {
+    display: inline;
+    border-radius: 4px;
+    padding: 2px 4px;
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
-    box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.2);
   }
 
-  .context-revision-empty {
-    font-style: italic;
-    color: rgba(0, 0, 0, 0.3);
-    background: none;
-    box-shadow: none;
+  /* Depth 0: outermost revision highlight (light purple) */
+  .context-nest-0 {
+    background: rgba(147, 112, 219, 0.10);
+    color: rgba(88, 28, 135, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.18);
+  }
+
+  /* Depth 1: one level in (medium purple) */
+  .context-nest-1 {
+    background: rgba(126, 87, 194, 0.16);
+    color: rgba(88, 28, 135, 0.70);
+    box-shadow: inset 0 0 0 1px rgba(126, 87, 194, 0.25);
+  }
+
+  /* Depth 2: two levels in (deeper purple) */
+  .context-nest-2 {
+    background: rgba(109, 40, 217, 0.20);
+    color: rgba(88, 28, 135, 0.82);
+    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.30);
+  }
+
+  /* Depth 3+: innermost / deepest (richest purple) */
+  .context-nest-3 {
+    background: rgba(88, 28, 135, 0.24);
+    color: rgba(88, 28, 135, 0.92);
+    font-weight: 500;
+    box-shadow: inset 0 0 0 1px rgba(88, 28, 135, 0.35);
   }
 
   .context-jump-btn {
