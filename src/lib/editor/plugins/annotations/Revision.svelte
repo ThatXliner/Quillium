@@ -46,8 +46,9 @@ import {
     type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
-import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import { createVersionState, makeParentUndoKeymap, syncVersionToParent, previewVersionText } from "./nestedEditor";
 import Kbd from "$lib/ui/Kbd.svelte";
+
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -276,7 +277,7 @@ function createRecursiveEditor(version: VersionState) {
         if (!recursiveEditor || isSyncingFromAnnotation) return;
         nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
         upsertVersionState(recursiveEditor);
-    });
+    }, makeParentUndoKeymap(view));
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     lastSyncedText = versionText(version);
     nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
@@ -364,7 +365,7 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
     const nextState = createVersionState(activeVersion, (update: ViewUpdate) => {
         if (!recursiveEditor || isSyncingFromAnnotation) return;
         upsertVersionState(recursiveEditor);
-    });
+    }, makeParentUndoKeymap(view));
     recursiveEditor.setState(nextState);
     lastSyncedText = targetText;
     isSyncingFromAnnotation = false;
@@ -384,10 +385,14 @@ $effect(() => {
     });
 });
 
-// When the selected version changes while the editor is open,
-// swap the nested editor's content to the new version.
+// When the selected version or its text content changes while the editor
+// is open, sync the nested editor. This covers both version switches and
+// external mutations (undo/redo in the parent, main-doc edits).
 $effect(() => {
     if (!recursiveEditor || !isEditorOpen) return;
+    // Track activeText so undo/redo in the parent (which changes version
+    // content without changing currentlySelected) triggers a reload.
+    void activeText;
     const prev = previousVersionId;
     const prevCount = previousVersionCount;
     previousVersionId = revision.currentlySelected;

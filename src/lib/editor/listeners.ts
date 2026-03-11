@@ -33,6 +33,7 @@ import type { Transaction } from "@codemirror/state";
 export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
     persist?: boolean;
+    history?: boolean;
 }
 
 // ── Debounce timers ───────────────────────────────────────────────

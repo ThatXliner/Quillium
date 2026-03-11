@@ -9,8 +9,9 @@
  */
 
 import { EditorState } from "@codemirror/state";
-import type { EditorView, ViewUpdate } from "@codemirror/view";
-import { getExtensions, savedFields } from "$lib/editor/extensions";
+import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
+import { redo, undo } from "@codemirror/commands";
+import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import { updateRevisionVersionState } from "./annotationField";
 import { versionText, type VersionState } from "./models";
 import type { Annotation } from "./models";
@@ -23,15 +24,49 @@ const VERSION_PREVIEW_MAX = 34;
  * a serialised blob when available or creating a fresh state from
  * the doc text. The provided updateListener is installed so the
  * caller can react to every editor transaction.
+ *
+ * Nested editors have no history of their own — undo/redo is
+ * delegated to the parent via makeParentUndoKeymap(). The parent
+ * records every _updateRevisionVersionState blob change, so its
+ * undo stack is the single source of truth for version edits.
  */
 export function createVersionState(
     version: VersionState,
     updateListener: (update: ViewUpdate) => void,
+    parentUndoKeymap: ReturnType<typeof makeParentUndoKeymap>,
 ): EditorState {
-    const extensions = getExtensions({ persist: false, updateListener });
+    const extensions = [
+        ...getExtensions({ persist: false, history: false, updateListener }),
+        parentUndoKeymap,
+    ];
     return "annotationField" in version
-        ? EditorState.fromJSON(version, { extensions }, savedFields)
+        ? EditorState.fromJSON(version, { extensions }, nestedSavedFields)
         : EditorState.create({ doc: versionText(version), extensions });
+}
+
+/**
+ * Returns a high-priority keymap that intercepts Ctrl+Z / Ctrl+Y
+ * (and Mac equivalents) in the nested editor and dispatches them
+ * to the parent editor instead, keeping a single undo tree.
+ */
+export function makeParentUndoKeymap(parentView: EditorView) {
+    return keymap.of([
+        {
+            key: "Mod-z",
+            run() {
+                return undo(parentView);
+            },
+            preventDefault: true,
+        },
+        {
+            key: "Mod-y",
+            mac: "Mod-Shift-z",
+            run() {
+                return redo(parentView);
+            },
+            preventDefault: true,
+        },
+    ]);
 }
 
 /**
@@ -45,7 +80,7 @@ export function syncVersionToParent(
     revisionId: number,
     versionId: number,
 ): void {
-    const blob = nestedEditor.state.toJSON(savedFields) as VersionState;
+    const blob = nestedEditor.state.toJSON(nestedSavedFields) as VersionState;
     const rev = parentView.state.field(annotationField)[revisionId] as
         | Annotation<"revision">
         | undefined;

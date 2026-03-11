@@ -338,25 +338,59 @@ Fires a `revision-boundary-nudge` UI event when text is inserted immediately at 
 
 ## Nested Editors
 
-Each `RevisionAnnotation` supports a full nested `EditorView` — a complete CodeMirror instance with all extensions, including its own annotation system and undo history.
+Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline editor inside the revision card, and a full-screen modal. **The inline editor is over-engineered for what it actually needs to do** — see the planned simplification below.
 
 ### Two surfaces
 
 **Inline editor** (`Revision.svelte`): a 220px `EditorView` mounted inside the revision card. Visible when `isEditorOpen` is true. The nested editor's state is synced back to the parent annotation on every keystroke via `upsertVersionState()`, which calls `updateRevisionVersionState(...)` and dispatches a `_updateRevisionVersionState` effect to the parent.
 
-**Modal editor** (`RevisionModal.svelte`): a full-screen overlay. Pushed onto `modalStack` from `Revision.svelte` or triggered by `redirectToNestedEditor`. Supports arbitrary nesting (revisions inside revisions inside modals). Each modal carries a `parentView` — the `EditorView` it dispatches to.
+**Modal editor** (`RevisionModal.svelte`): a full-screen overlay with a full CodeMirror instance. Pushed onto `modalStack` from `Revision.svelte` or triggered by `redirectToNestedEditor`. Supports arbitrary nesting (revisions inside revisions inside modals). Each modal carries a `parentView` — the `EditorView` it dispatches to.
 
-### Keeping the nested editor in sync with the parent
+### Keeping the inline editor in sync with the parent
 
 The inline editor lifecycle:
 
 1. `createRecursiveEditor(version)` — mounts a new `EditorView`. If `version` has an `annotationField` key (it's a full blob), restores state via `EditorState.fromJSON`. Otherwise creates fresh from `doc`. Records `lastSyncedText`.
-2. `upsertVersionState(editor, versionId)` — serializes `editor.state.toJSON(savedFields)` and dispatches `updateRevisionVersionState` to the parent. Updates `lastSyncedText` to prevent false-positive reload detection.
-3. `syncRecursiveEditorToActiveVersion(prevId?)` — called whenever `revision.currentlySelected` or `activeText` changes:
+2. `upsertVersionState(editor, versionId)` — serializes `editor.state.toJSON(nestedSavedFields)` and dispatches `updateRevisionVersionState` to the parent. Updates `lastSyncedText` to prevent false-positive reload detection.
+3. `syncRecursiveEditorToActiveVersion(prevId?)` — called whenever `revision.currentlySelected` or `activeText` changes (the `$effect` reads `void activeText` to register it as a reactive dependency):
    - If version changed: save old version's state, destroy+recreate with new version blob.
-   - If text drifted externally (detected via `lastSyncedText !== activeText`): reload state from the annotation blob. This is the key fix for undo + main-doc-edit desync — `lastSyncedText` tracks what we last pushed in, so even if the nested editor's current text happens to equal the target text (coincidental match after undo), we still detect the annotation was externally mutated and force a reload.
+   - If text drifted externally (undo/redo or main-doc edit): reload state from the annotation blob. Detected via `lastSyncedText !== activeText` rather than comparing editor text directly — because after undo the editor text may coincidentally match the target text, masking the stale state.
 
-### `lastSyncedText` — why it exists
+### Undo history — current design and its problems
+
+The inline editor has **no independent undo stack** (`getExtensions({ history: false })`). Instead, `makeParentUndoKeymap(parentView)` intercepts `Mod-z` / `Mod-y` / `Mod-Shift-z` and delegates to `undo(parentView)` / `redo(parentView)`.
+
+The parent records every nested edit because `syncVersionToParent` dispatches `_updateRevisionVersionState` with `Transaction.addToHistory.of(true)`. Undoing on the parent restores the old `VersionState` blob via `invertedAnnotationFieldEffects`. The `$effect` in `Revision.svelte` detects the version text changed and calls `recursiveEditor.setState(createVersionState(activeVersion, ...))` to reload.
+
+**This works, but the bridging machinery is fragile:**
+
+- Undo fires on the parent CodeMirror instance. The parent has no reference to the nested `EditorView`. The only way to reload the nested editor is via Svelte's reactivity: `$effect` tracking `activeText` → `syncRecursiveEditorToActiveVersion` → `recursiveEditor.setState(...)`. If that reactive chain breaks (wrong dependency tracked, effect not re-running), the nested editor silently shows stale content.
+- The inline editor and parent editor are two `EditorView` instances pointing at the same logical content. Every sync operation (type → push to parent → detect drift → reload nested) is a round-trip through three layers: CodeMirror state → Svelte reactivity → CodeMirror state again.
+- `lastSyncedText`, `isSyncingFromAnnotation`, and the `previousVersionId` variable exist solely to prevent this round-trip from triggering infinite loops or phantom reloads.
+- `HistEvent.fromJSON` silently drops all `effects` — so even before undo delegation was added, annotation undo inside nested editors was broken after a session restart.
+
+**Known bug (fixed, but symptomatic):** The sync `$effect` previously only tracked `revision.currentlySelected`. A version-content change from undo (same index, different text) would not re-run the effect — nested editor showed stale text. Fixed by adding `void activeText` inside the effect, but this is a workaround for the structural problem above.
+
+### Planned simplification: replace inline editor with a textarea
+
+The inline editor is solving two problems: (1) edit version text, (2) support nested annotations. Problem 2 is already handled by the modal — when the nested editor has an active annotation, a "View in modal" button appears. The inline editor is therefore over-engineered for problem 1.
+
+**Proposed design:**
+
+| Surface | Technology | Purpose |
+|---|---|---|
+| Inline card | `<textarea>` | Quick text edits, version switching |
+| Modal | Full `EditorView` | Deep editing, nested annotations, undo |
+
+The textarea's `input` event calls `updateRevisionVersionState` directly — no second `EditorView`, no history delegation, no `lastSyncedText`, no `isSyncingFromAnnotation`. Undo/redo on the parent just works because there is only one `EditorView`. The entire `nestedEditor.ts` file would be reduced to `previewVersionText` and a small `syncVersionToParent` helper.
+
+**What the modal keeps:** Its full CodeMirror instance with its own history (independent from the parent, because while the modal is open it is the active editing surface — there is no ambiguity). Nested annotations continue to work inside modals. The breadcrumb system handles infinite nesting.
+
+**Migration:** `VersionState` is already opaque — `versionText()` always reads `.doc`. Old blobs with embedded CM state (from the old inline editor) continue to load correctly via `versionText()`. The modal still calls `EditorState.fromJSON` on them if they contain `annotationField`. No data migration needed.
+
+**Edge case to document:** The modal saves back a full CM state blob (with nested `annotationField`) on every keystroke. If that version is later opened in the new textarea inline editor, it shows only `.doc` — the nested annotations are invisible until the modal is opened again. This is intentional: the textarea is not a CM editor and cannot render annotations. Users who need to see or manage nested annotations must use the modal.
+
+### `lastSyncedText` — why it exists (current implementation)
 
 Before this pattern, `syncRecursiveEditorToActiveVersion` compared `currentText === targetText` to decide whether to reload. This silently failed in the following scenario:
 
@@ -376,6 +410,8 @@ currentText === targetText === "hello" → no reload → nested editor is STALE
 lastSyncedText solves this: we remember "hello world" was last pushed in,
 so lastSyncedText="hello world" ≠ targetText="hello" → force reload. ✓
 ```
+
+This complexity goes away entirely with the textarea approach — there is no second editor to reload.
 
 ---
 

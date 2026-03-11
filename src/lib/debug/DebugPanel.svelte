@@ -41,6 +41,8 @@ const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
 let loading = $state<string | null>(null);
 let lastLoaded = $state<string | null>(null);
 let error = $state<string | null>(null);
+let historyCleared = $state(false);
+let historyClearTimer: ReturnType<typeof setTimeout> | undefined;
 
 const debugScenarios = scenarios.filter((s) => s.category === "debug");
 const demoScenarios = scenarios.filter((s) => s.category === "demo");
@@ -120,6 +122,18 @@ async function runScenario(scenario: Scenario) {
     } finally {
         loading = null;
     }
+}
+
+function clearUndoHistory() {
+    const view = $editorView;
+    if (!view) return;
+    const json = view.state.toJSON(savedFields);
+    json.historyField = { done: [], undone: [] };
+    const extensions = getExtensions({ persist: false });
+    view.setState(EditorState.fromJSON(json, { extensions }, savedFields));
+    historyCleared = true;
+    clearTimeout(historyClearTimer);
+    historyClearTimer = setTimeout(() => { historyCleared = false; }, 2000);
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -264,7 +278,16 @@ function handleKeydown(e: KeyboardEvent) {
         <!-- Footer -->
         <div class="px-5 py-3 border-t border-black/10 text-[10px] text-black/35 flex items-center justify-between">
             <span>Press <kbd class="font-mono bg-black/10 px-1 rounded">Esc</kbd> to close</span>
-            <span>DEV only — stripped from production builds</span>
+            <div class="flex items-center gap-3">
+                <button
+                    onclick={clearUndoHistory}
+                    class="text-[10px] font-medium px-2 py-1 rounded-md transition-colors
+                        {historyCleared ? 'bg-green-50 text-green-600' : 'bg-black/6 hover:bg-red-50 hover:text-red-600'}"
+                >
+                    {historyCleared ? "✓ history cleared" : "Clear undo history"}
+                </button>
+                <span>DEV only — stripped from production builds</span>
+            </div>
         </div>
     </div>
 </div>
