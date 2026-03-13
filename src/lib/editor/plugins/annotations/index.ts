@@ -93,6 +93,7 @@ import {
     invertedAnnotationFieldEffects,
     suggestionPreviewField,
     _revisionCleanup,
+    setActiveRevisionVersion,
 } from "./annotationField";
 import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -688,6 +689,28 @@ const dev_dontuseinprod_createSuggestion: StateCommand = ({ state, dispatch }) =
     });
     return true;
 };
+function addRevisionVersionCommand(): StateCommand {
+    return ({ state }) => {
+        const annotation = getActiveRevisionAnnotation(state);
+        if (!annotation) return false;
+        publishAnnotationUiEvent({ type: "annotation-add-version", annotationId: annotation.id });
+        return true;
+    };
+}
+
+function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
+    return ({ state, dispatch }) => {
+        const annotation = getActiveRevisionAnnotation(state);
+        if (!annotation) return false;
+        const count = annotation.versions.length;
+        if (count <= 1) return true;
+        const current = annotation.currentlySelected;
+        const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
+        dispatch(setActiveRevisionVersion(state, annotation.id, next));
+        return true;
+    };
+}
+
 // -------------------------------------------------------
 // Annotation keymap
 //
@@ -699,6 +722,18 @@ const dev_dontuseinprod_createSuggestion: StateCommand = ({ state, dispatch }) =
 // next binding for the same key is tried.
 // -------------------------------------------------------
 export const annotationKeymap: KeyBinding[] = [
+    {
+        key: "Mod-Enter",
+        run: addRevisionVersionCommand(),
+    },
+    {
+        key: "Ctrl-[",
+        run: navigateRevisionVersion("prev"),
+    },
+    {
+        key: "Ctrl-]",
+        run: navigateRevisionVersion("next"),
+    },
     {
         key: "Backspace",
         run: nudgeBoundary("backward"),

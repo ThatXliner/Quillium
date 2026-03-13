@@ -326,8 +326,7 @@ describe("createNewRevision", () => {
         }).state;
         const tr = createNewRevision(withRevision, 0);
         const newState = withRevision.update(tr).state;
-        const placeholder = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
-        expect(newState.doc.toString()).toContain(placeholder);
+        expect(newState.doc.toString()).toBe(", world!");
         const ann = newState.field(annotationField)[0];
         if (ann._type === "revision") {
             expect(ann.versions).toHaveLength(2);

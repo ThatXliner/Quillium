@@ -12,10 +12,14 @@ import { EditorState } from "@codemirror/state";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
-import { updateRevisionVersionState } from "./annotationField";
+import {
+    setActiveRevisionVersion,
+    updateRevisionVersionState,
+} from "./annotationField";
 import { versionText, type VersionState } from "./models";
 import type { Annotation } from "./models";
 import { annotationField } from "./annotationField";
+import { getActiveAnnotation } from "./utils";
 
 const VERSION_PREVIEW_MAX = 34;
 
@@ -26,18 +30,19 @@ const VERSION_PREVIEW_MAX = 34;
  * caller can react to every editor transaction.
  *
  * Nested editors have no history of their own — undo/redo is
- * delegated to the parent via makeParentUndoKeymap(). The parent
- * records every _updateRevisionVersionState blob change, so its
- * undo stack is the single source of truth for version edits.
+ * delegated to the parent via makeParentUndoKeymap(), and version
+ * navigation shortcuts (Ctrl-[ / Ctrl-]) are rerouted to the parent
+ * so a single undo tree and active version index stay in sync.
  */
 export function createVersionState(
     version: VersionState,
     updateListener: (update: ViewUpdate) => void,
-    parentUndoKeymap: ReturnType<typeof makeParentUndoKeymap>,
+    parentView: EditorView,
 ): EditorState {
     const extensions = [
         ...getExtensions({ persist: false, history: false, updateListener }),
-        parentUndoKeymap,
+        makeParentUndoKeymap(parentView),
+        makeParentRevisionNavKeymap(parentView),
     ];
     return "annotationField" in version
         ? EditorState.fromJSON(version, { extensions }, nestedSavedFields)
@@ -69,6 +74,37 @@ export function makeParentUndoKeymap(parentView: EditorView) {
     ]);
 }
 
+export function makeParentRevisionNavKeymap(parentView: EditorView) {
+    const runNav = (direction: "prev" | "next") => {
+        const annotation = getActiveAnnotation(parentView.state, "revision");
+        if (!annotation) return false;
+        const count = annotation.versions.length;
+        if (count <= 1) return true;
+        const current = annotation.currentlySelected;
+        const next = direction === "next"
+            ? (current + 1) % count
+            : (current - 1 + count) % count;
+        parentView.dispatch(setActiveRevisionVersion(parentView.state, annotation.id, next));
+        return true;
+    };
+    return keymap.of([
+        {
+            key: "Ctrl-[",
+            run() {
+                return runNav("prev");
+            },
+            preventDefault: true,
+        },
+        {
+            key: "Ctrl-]",
+            run() {
+                return runNav("next");
+            },
+            preventDefault: true,
+        },
+    ]);
+}
+
 /**
  * Serialises the nested editor's current state and dispatches
  * an updateRevisionVersionState effect to the parent editor,
@@ -85,7 +121,12 @@ export function syncVersionToParent(
         | Annotation<"revision">
         | undefined;
     if (!rev) return;
-    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blob));
+    // Preserve the existing label so syncing the editor content doesn't wipe it.
+    const existingLabel = rev.versions[versionId]?.label;
+    const blobWithLabel: VersionState = existingLabel !== undefined
+        ? { ...blob, label: existingLabel }
+        : blob;
+    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel));
 }
 
 /**

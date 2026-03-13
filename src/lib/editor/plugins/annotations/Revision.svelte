@@ -41,16 +41,22 @@ import {
     createNewRevision,
     deleteRevisionVersion,
     setActiveRevisionVersion,
+    updateRevisionVersionLabel,
     type Annotation,
     type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
-import { createVersionState, makeParentUndoKeymap, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import Kbd from "$lib/ui/Kbd.svelte";
+
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import posthog from "$lib/posthog";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
 
 const {
     revision,
@@ -78,8 +84,7 @@ let userClosedEditor = false; // plain var — not reactive, just a gate
 // Reset the gate when the card loses focus.
 $effect(() => {
     if (isActive) {
-        if (!userClosedEditor && appSettings.showNestedEditor)
-            isEditorOpen = true;
+        if (!userClosedEditor && appSettings.showNestedEditor) isEditorOpen = true;
     } else {
         isEditorOpen = false;
         userClosedEditor = false;
@@ -92,7 +97,7 @@ function openEditor() {
 }
 let recursiveEditorHost = $state<HTMLDivElement>();
 let recursiveEditor = $state<EditorView | undefined>(undefined);
-let nestedEditorHasActiveAnnotation = $state(false);
+let activeAnnotation = $state<Annotation<any> | undefined>(undefined);
 let isSyncingFromAnnotation = false;
 let previousVersionId = revision.currentlySelected;
 let previousVersionCount = revision.versions.length;
@@ -108,10 +113,44 @@ let lastAddVersionToken = 0;
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 
+function shouldSyncNestedEditorUpdate(update: ViewUpdate) {
+    if (update.docChanged) return true;
+    return update.transactions.some((tr) => tr.effects.length > 0);
+}
+
 // Boundary nudge: show a hint when the user presses delete at the edge
 // of this revision's content in the main document.
 let showBoundaryHint = $state(false);
 let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
+
+// Label editing state
+let editingLabelIndex = $state<number | null>(null);
+let labelInputValue = $state("");
+let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
+
+function startLabelEdit(i: number) {
+    editingLabelIndex = i;
+    labelInputValue = revision.versions[i]?.label ?? "";
+    tick().then(() => labelInputEl?.focus());
+}
+
+function commitLabelEdit() {
+    if (editingLabelIndex === null) return;
+    const trimmed = labelInputValue.trim();
+    view.dispatch(
+        updateRevisionVersionLabel(
+            view.state,
+            revision.id,
+            editingLabelIndex,
+            trimmed || undefined,
+        ),
+    );
+    editingLabelIndex = null;
+}
+
+function cancelLabelEdit() {
+    editingLabelIndex = null;
+}
 
 // Show a temporary hint when the boundary-nudge store fires
 // for this revision (user pressed delete at the edge).
@@ -238,14 +277,19 @@ function upsertVersionState(currentEditor: EditorView, versionId = revision.curr
  */
 function createRecursiveEditor(version: VersionState) {
     if (!recursiveEditorHost || recursiveEditor) return;
-    const state = createVersionState(version, (update: ViewUpdate) => {
-        if (!recursiveEditor || isSyncingFromAnnotation) return;
-        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
-        upsertVersionState(recursiveEditor);
-    }, makeParentUndoKeymap(view));
+    const state = createVersionState(
+        version,
+        (update: ViewUpdate) => {
+            if (!recursiveEditor || isSyncingFromAnnotation) return;
+            activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+            if (!shouldSyncNestedEditorUpdate(update)) return;
+            upsertVersionState(recursiveEditor);
+        },
+        view,
+    );
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     lastSyncedText = versionText(version);
-    nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
+    activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 
     // Apply pending selection if this annotation just created one.
     const event = $annotationUiEvent;
@@ -271,7 +315,7 @@ function createRecursiveEditor(version: VersionState) {
 function destroyRecursiveEditor() {
     recursiveEditor?.destroy();
     recursiveEditor = undefined;
-    nestedEditorHasActiveAnnotation = false;
+    activeAnnotation = undefined;
 }
 
 /**
@@ -289,6 +333,9 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
         previousVersionId !== undefined && previousVersionId !== revision.currentlySelected;
     const currentText = recursiveEditor.state.doc.toString();
     const targetText = activeText;
+    const docRange = revision.selection.main;
+    const docText = view.state.doc.slice(docRange.from, docRange.to).toString();
+    const docMismatch = docText !== targetText;
 
     // Detect external mutation: the annotation's version text was
     // changed (by main-doc edit or undo) without the nested editor
@@ -301,6 +348,20 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
 
     // Nothing to do: same version, nested editor already has the right text.
     if (!versionChanged && !externallyMutated && currentText === targetText) return;
+
+    if (docMismatch) {
+        const docVersion: VersionState = { ...activeVersion, doc: docText };
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                revision.id,
+                revision.currentlySelected,
+                docVersion,
+                { addToHistory: false },
+            ),
+        );
+        return;
+    }
 
     // Save the current editor state back to whichever version we're leaving,
     // unless a version was just deleted (the previous index is stale/gone).
@@ -320,21 +381,26 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
             recursiveEditor.focus();
         }
         isSyncingFromAnnotation = false;
-        nestedEditorHasActiveAnnotation = !!(
-            recursiveEditor && getActiveAnnotation(recursiveEditor.state)
-        );
+        activeAnnotation =
+            recursiveEditor !== undefined ? getActiveAnnotation(recursiveEditor.state) : undefined;
         return;
     }
     // Same version but text drifted (external edit or undo): reload state
     // from the annotation blob so history/cursor are consistent too.
-    const nextState = createVersionState(activeVersion, (update: ViewUpdate) => {
-        if (!recursiveEditor || isSyncingFromAnnotation) return;
-        upsertVersionState(recursiveEditor);
-    }, makeParentUndoKeymap(view));
+    const nextState = createVersionState(
+        activeVersion,
+        (update: ViewUpdate) => {
+            if (!recursiveEditor || isSyncingFromAnnotation) return;
+            activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+            if (!shouldSyncNestedEditorUpdate(update)) return;
+            upsertVersionState(recursiveEditor);
+        },
+        view,
+    );
     recursiveEditor.setState(nextState);
     lastSyncedText = targetText;
     isSyncingFromAnnotation = false;
-    nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
+    activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 }
 
 // Create or destroy the nested editor when the toggle changes.
@@ -363,7 +429,10 @@ $effect(() => {
     previousVersionId = revision.currentlySelected;
     previousVersionCount = revision.versions.length;
     const versionDeleted = revision.versions.length < prevCount;
-    syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined, versionDeleted);
+    syncRecursiveEditorToActiveVersion(
+        prev !== revision.currentlySelected ? prev : undefined,
+        versionDeleted,
+    );
 });
 
 // ⌘Enter when this revision is active → create a new version
@@ -420,30 +489,51 @@ onDestroy(() => {
     </div>
 
     <!-- Version pills -->
-    <div class="px-3 pb-2 flex flex-wrap gap-1">
+    <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
         {#each revision.versions as version, i}
             {@const versionActive = i === revision.currentlySelected}
+            {@const isEditingThis = editingLabelIndex === i}
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
                     : 'bg-white/60 ring-1 ring-purple-200/40'}">
-                <button
-                    class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
-                        {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
-                    disabled={versionActive}
-                    title={versionText(version) || "(empty)"}
-                    onclick={() => {
-                        view.dispatch(
-                            setActiveRevisionVersion(view.state, revision.id, i),
-                        );
-                    }}
-                >
-                    {version.label ?? previewVersionText(version)}
-                </button>
+                {#if isEditingThis}
+                    <input
+                        bind:this={labelInputEl}
+                        bind:value={labelInputValue}
+                        class="px-2 py-1 text-[11px] font-medium w-[100px] bg-transparent text-white outline-none placeholder-white/50"
+                        placeholder="Version name…"
+                        onblur={commitLabelEdit}
+                        onkeydown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(); }
+                            else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
+                        }}
+                    />
+                {:else}
+                    <button
+                        class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
+                            {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
+                        disabled={versionActive}
+                        title={versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
+                        onclick={() => {
+                            if (!versionActive) {
+                                view.dispatch(
+                                    setActiveRevisionVersion(view.state, revision.id, i),
+                                );
+                            }
+                        }}
+                        ondblclick={() => {
+                            if (versionActive) startLabelEdit(i);
+                        }}
+                    >
+                        {version.label ?? previewVersionText(version)}
+                    </button>
+                {/if}
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
                         {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
                     onclick={() => {
+                        if (editingLabelIndex === i) cancelLabelEdit();
                         view.dispatch(
                             deleteRevisionVersion(view.state, revision.id, i),
                         );
@@ -454,12 +544,18 @@ onDestroy(() => {
                 </button>
             </div>
         {/each}
+        {#if isActive && revision.versions.length > 1}
+            <div class="ml-auto flex items-center gap-0.5 opacity-50">
+                <Kbd keys={["Ctrl", "["]} />
+                <Kbd keys={["Ctrl", "]"]} />
+            </div>
+        {/if}
     </div>
 
     <!-- Actions row -->
     <div class="px-3 pb-3 flex gap-1.5">
         <button
-            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/80
+            class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
             onclick={async () => {
                 posthog.capture("revision_version_created", {
@@ -479,10 +575,11 @@ onDestroy(() => {
                     });
                 }
             }}
-            title="Create a new version"
+            title="Create a new version ({modKey}↵)"
         >
             <PlusIcon size={10} />
             <span>New version</span>
+            <Kbd keys={[modKey, "↵"]} />
         </button>
         {#if appSettings.showNestedEditor}
         <button
@@ -558,7 +655,7 @@ onDestroy(() => {
                 class="revision-recursive-editor h-[220px] overflow-hidden"
                 class:cursor-arriving={cursorArriving}
             ></div>
-            {#if nestedEditorHasActiveAnnotation}
+            {#if !!activeAnnotation}
                 <div transition:slide={{ duration: 100, easing: cubicOut }}
                     class="border-t border-purple-100/60 px-3 py-2 flex items-center justify-between gap-2">
                     <span class="text-[10px] text-purple-500/70">Annotation selected</span>

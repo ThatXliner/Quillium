@@ -30,13 +30,15 @@
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { ChevronRight, ChevronDown, ChevronUp, Check, X } from "lucide-svelte";
+import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { scale, slide } from "svelte/transition";
 import {
     addAnnotation,
     annotationField,
     setActiveRevisionVersion,
+    createNewRevision,
+    updateRevisionVersionLabel,
     updateThread,
     type Annotation,
     type Annotations as AnnotationsMap,
@@ -48,10 +50,15 @@ import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import { createNewAnnotation, versionText, type VersionState } from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { modalStack, type ModalEntry } from "$lib/stores";
-import { createVersionState, makeParentUndoKeymap, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
+import { shouldHandleRevisionModalKeydown } from "./revisionModalKeyguard";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
 
 const {
     revisionId,
@@ -61,30 +68,55 @@ const {
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
-// Context snippet: lazy-loaded chunks around the revision range
+// Context snippet: lazy-loaded chunks around the outermost revision range
 const CHUNK = 300; // chars per load step
 let contextBefore = $state(CHUNK); // how many chars before to show
 let contextAfter = $state(CHUNK); // how many chars after to show
 
-const docContext = $derived.by(() => {
-    // Reading modalAnnotations here makes this derived re-run whenever
-    // the nested editor writes a change back to the parent view.
-    void modalAnnotations;
-    const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
-    if (!rev) return null;
-    const doc = view.state.doc;
-    const from = rev.selection.main.from;
-    const to = rev.selection.main.to;
-    const beforeStart = Math.max(0, from - contextBefore);
-    const afterEnd = Math.min(doc.length, to + contextAfter);
-    return {
-        before: doc.sliceString(beforeStart, from),
-        revision: doc.sliceString(from, to),
-        after: doc.sliceString(to, afterEnd),
-        hasMoreBefore: beforeStart > 0,
-        hasMoreAfter: afterEnd < doc.length,
-    };
+// Build a context layer for each crumb level: from the root doc down to
+// the current revision. Each layer shows the surrounding text and
+// highlights the nested revision span within it.
+// Layer 0 = outermost (root doc), layer N-1 = immediate parent of current.
+type ContextLayer = {
+    before: string;
+    revision: string;
+    after: string;
+    hasMoreBefore: boolean;
+    hasMoreAfter: boolean;
+};
+
+const contextLayers = $derived.by((): ContextLayer[] => {
+    void modalAnnotations; // re-run when nested editor writes back
+    const layers: ContextLayer[] = [];
+    for (let ci = 0; ci < crumbs.length; ci++) {
+        const crumb = crumbs[ci];
+        if (crumb.type !== "revision") continue;
+        const parentState = crumb.parentView.state;
+        const rev = parentState.field(annotationField)[crumb.revisionId] as
+            | Annotation<"revision">
+            | undefined;
+        if (!rev) continue;
+        const doc = parentState.doc;
+        const from = rev.selection.main.from;
+        const to = rev.selection.main.to;
+        // Only the outermost layer gets infinite lazy-loading; inner layers
+        // show the full version text (it's already bounded).
+        const isOuter = ci === 0;
+        const beforeStart = isOuter ? Math.max(0, from - contextBefore) : 0;
+        const afterEnd = isOuter ? Math.min(doc.length, to + contextAfter) : doc.length;
+        layers.push({
+            before: doc.sliceString(beforeStart, from),
+            revision: doc.sliceString(from, to),
+            after: doc.sliceString(to, afterEnd),
+            hasMoreBefore: isOuter && beforeStart > 0,
+            hasMoreAfter: isOuter && afterEnd < doc.length,
+        });
+    }
+    return layers;
 });
+
+// Convenience: outermost layer for scroll/jump logic
+const docContext = $derived(contextLayers[0] ?? null);
 
 let contextCollapsed = $state(false);
 let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
@@ -273,7 +305,7 @@ function createEditor(version: VersionState) {
         syncVersionToParent(editor, view, revisionId, rev.currentlySelected);
         modalAnnotations = editor.state.field(annotationField);
         modalActiveAnnotation = getActiveAnnotation(editor.state);
-    }, makeParentUndoKeymap(view));
+    }, view);
     editor = new EditorView({ state, parent: editorHost });
     modalAnnotations = editor.state.field(annotationField);
     modalActiveAnnotation = getActiveAnnotation(editor.state);
@@ -393,6 +425,71 @@ onDestroy(() => {
     destroyEditor();
 });
 
+// Label editing state for the current crumb's version dropdown
+let editingVersionLabel = $state(false);
+let labelInputValue = $state("");
+let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
+
+function startLabelEdit() {
+    if (!revision) return;
+    labelInputValue = revision.versions[revision.currentlySelected]?.label ?? "";
+    editingVersionLabel = true;
+    tick().then(() => labelInputEl?.focus());
+}
+
+function commitLabelEdit() {
+    if (!revision) { editingVersionLabel = false; return; }
+    const trimmed = labelInputValue.trim();
+    view.dispatch(
+        updateRevisionVersionLabel(view.state, revisionId, revision.currentlySelected, trimmed || undefined),
+    );
+    editingVersionLabel = false;
+}
+
+function cancelLabelEdit() {
+    editingVersionLabel = false;
+}
+
+function addVersion() {
+    if (!revision) return;
+    view.dispatch(createNewRevision(view.state, revisionId));
+    // Rebuild the editor for the new (blank) version
+    tick().then(() => {
+        const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+        if (!rev) return;
+        destroyEditor();
+        tick().then(() => {
+            createEditor(rev.versions[rev.currentlySelected]);
+            if (editor) moveCursorToEnd(editor);
+        });
+    });
+}
+
+function navigateVersion(direction: "prev" | "next") {
+    if (!revision) return;
+    const count = revision.versions.length;
+    if (count <= 1) return;
+    const next = direction === "next"
+        ? (revision.currentlySelected + 1) % count
+        : (revision.currentlySelected - 1 + count) % count;
+    selectVersion(crumbs.length - 1, next, crumbs[crumbs.length - 1], true);
+}
+
+function onDialogKeydown(e: KeyboardEvent) {
+    if (!shouldHandleRevisionModalKeydown(e)) return;
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (mod && e.key === "Enter") {
+        e.preventDefault();
+        addVersion();
+    } else if (e.ctrlKey && e.key === "[") {
+        e.preventDefault();
+        navigateVersion("prev");
+    } else if (e.ctrlKey && e.key === "]") {
+        e.preventDefault();
+        navigateVersion("next");
+    }
+}
+
 let revisionThread = $state(
     (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ??
         [],
@@ -423,6 +520,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   onclick={(e) => {
     if (e.target === dialogEl) close();
   }}
+  onkeydown={onDialogKeydown}
 >
   <div class="revision-modal-inner">
     <!-- Header -->
@@ -469,6 +567,21 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                 }}
               >
                 <!-- Trigger -->
+                {#if isCurrent && editingVersionLabel}
+                  <input
+                    bind:this={labelInputEl}
+                    bind:value={labelInputValue}
+                    class="pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium w-[120px]
+                        bg-purple-100/70 text-purple-700/80 ring-1 ring-purple-300/60 outline-none
+                        placeholder-purple-400/50"
+                    placeholder="Version name…"
+                    onblur={commitLabelEdit}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(); }
+                      else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
+                    }}
+                  />
+                {:else}
                 <button
                   class="version-trigger flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium
                                         transition-all duration-150
@@ -483,6 +596,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                     e.stopPropagation();
                     openDropdown = openDropdown === ci ? -1 : ci;
                   }}
+                  ondblclick={(e) => {
+                    if (isCurrent) { e.stopPropagation(); startLabelEdit(); }
+                  }}
+                  title={isCurrent ? "Double-click to rename" : undefined}
                 >
                   <span
                     >{crumbRevision.versions[selectedVi]?.label ??
@@ -501,6 +618,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                       : 'text-black/30'}"
                   />
                 </button>
+                {/if}
 
                 <!-- Popover -->
                 {#if openDropdown === ci}
@@ -541,12 +659,31 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
         {/each}
       </nav>
 
-      <button
-        class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors shrink-0"
-        onclick={close}
-      >
-        <X size={16} />
-      </button>
+      <!-- Right actions -->
+      <div class="flex items-center gap-2 shrink-0">
+        {#if revision && revision.versions.length > 1}
+          <div class="flex items-center gap-0.5 opacity-40">
+            <Kbd keys={["Ctrl", "["]} />
+            <Kbd keys={["Ctrl", "]"]} />
+          </div>
+        {/if}
+        <button
+          class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
+              bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
+          onclick={addVersion}
+          title="New version ({modKey}↵)"
+        >
+          <PlusIcon size={10} />
+          <span>New version</span>
+          <Kbd keys={[modKey, "↵"]} />
+        </button>
+        <button
+          class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+          onclick={close}
+        >
+          <X size={16} />
+        </button>
+      </div>
     </div>
 
         <TutorialGuide />
@@ -586,11 +723,11 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       ></div>
 
       <!-- Right sidebar: context + annotations -->
-      {#if docContext || (editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
+      {#if contextLayers.length > 0 || (editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
         <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col bg-purple-50/20">
 
           <!-- Context panel -->
-          {#if docContext}
+          {#if contextLayers.length > 0}
             <div class="border-b border-purple-100/60 shrink-0">
               <button
                 class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors"
@@ -610,14 +747,17 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                     class="context-scroll"
                     style="mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%); -webkit-mask-image: linear-gradient(to bottom, {contextAtTop ? 'black' : 'transparent'} 0%, black 22%, black 78%, {contextAtBottom ? 'black' : 'transparent'} 100%);"
                   >
-                    <div class="context-text">
-                      {#if docContext.before}<span class="context-surrounding">{docContext.before}</span>{/if}
-                      <span
-                        bind:this={contextRevisionEl}
-                        class="{docContext.revision ? 'context-revision' : 'context-revision context-revision-empty'}"
-                      >{docContext.revision || "(empty)"}</span>
-                      {#if docContext.after}<span class="context-surrounding">{docContext.after}</span>{/if}
-                    </div>
+                    <!-- Nested context layers: outermost first, each wrapping the next -->
+                    {#snippet renderLayer(depth: number)}
+                      {@const layer = contextLayers[depth]}
+                      {@const isDeepest = depth === contextLayers.length - 1}
+                      <span class="context-text context-depth-{depth}">
+                        {#if layer.before}<span class="context-surrounding">{layer.before}</span>{/if}<!--
+                        -->{#if depth === 0}<span bind:this={contextRevisionEl} class="context-nest context-nest-0">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(1)}{/if}</span>{:else}<span class="context-nest context-nest-{Math.min(depth, 3)}">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(depth + 1)}{/if}</span>{/if}<!--
+                        -->{#if layer.after}<span class="context-surrounding">{layer.after}</span>{/if}
+                      </span>
+                    {/snippet}
+                    {@render renderLayer(0)}
                   </div>
                   {#if revisionDirection}
                     <button
@@ -760,12 +900,11 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   }
 
   .context-scroll {
-    height: 160px;
+    height: 200px;
     overflow-y: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    padding: 10px 16px 10px 16px;
-    /* Carved glass */
+    padding: 10px 14px;
     background: rgba(245, 240, 255, 0.45);
     backdrop-filter: blur(12px) saturate(1.3);
     -webkit-backdrop-filter: blur(12px) saturate(1.3);
@@ -775,34 +914,58 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     display: none;
   }
 
+  /* Base text layer (outermost / depth-0) */
   .context-text {
-    font-size: 11.5px;
+    display: block;
+    font-size: 11px;
     line-height: 1.7;
-    color: rgba(0, 0, 0, 0.55);
+    color: rgba(80, 40, 120, 0.35);
     font-family: var(--doc-font-family, system-ui, sans-serif);
     white-space: pre-wrap;
     word-break: break-word;
   }
 
+  /* Surrounding text inherits parent color */
   .context-surrounding {
-    color: rgba(80, 40, 120, 0.38);
+    /* color inherited from .context-text / .context-nest */
   }
 
-  .context-revision {
-    background: rgba(147, 112, 219, 0.18);
-    color: rgba(88, 28, 135, 0.8);
-    border-radius: 3px;
-    padding: 1px 3px;
+  /* Each nesting level: inset block with deeper purple bg + stronger text */
+  .context-nest {
+    display: inline;
+    border-radius: 4px;
+    padding: 2px 4px;
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
-    box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.2);
   }
 
-  .context-revision-empty {
-    font-style: italic;
-    color: rgba(0, 0, 0, 0.3);
-    background: none;
-    box-shadow: none;
+  /* Depth 0: outermost revision highlight (light purple) */
+  .context-nest-0 {
+    background: rgba(147, 112, 219, 0.10);
+    color: rgba(88, 28, 135, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.18);
+  }
+
+  /* Depth 1: one level in (medium purple) */
+  .context-nest-1 {
+    background: rgba(126, 87, 194, 0.16);
+    color: rgba(88, 28, 135, 0.70);
+    box-shadow: inset 0 0 0 1px rgba(126, 87, 194, 0.25);
+  }
+
+  /* Depth 2: two levels in (deeper purple) */
+  .context-nest-2 {
+    background: rgba(109, 40, 217, 0.20);
+    color: rgba(88, 28, 135, 0.82);
+    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.30);
+  }
+
+  /* Depth 3+: innermost / deepest (richest purple) */
+  .context-nest-3 {
+    background: rgba(88, 28, 135, 0.24);
+    color: rgba(88, 28, 135, 0.92);
+    font-weight: 500;
+    box-shadow: inset 0 0 0 1px rgba(88, 28, 135, 0.35);
   }
 
   .context-jump-btn {
