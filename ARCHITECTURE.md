@@ -647,9 +647,13 @@ On undo:
 
 ## Design Constraints and Intentional Tradeoffs
 
-### Revisions survive empty ranges
+### Revisions can survive empty ranges (undo restores them)
 
-Comments and suggestions are removed when their text is deleted. Revisions are not — they survive collapsed ranges (`from === to`) because a revision is a structural branch point. `collapsedRevisionResolver` automatically restores text from the next available version.
+Comments and suggestions are removed when their text is deleted. Explicitly deleting the revision (select + Delete or delete-from-the-right) removes the annotation and versions immediately; nothing survives unless you undo the deletion. If you delete every character inside a nested version editor, the revision is still intact: its main-document range never collapsed, so the only thing that changes is the version text kept inside the annotation. That version can be empty safely and the revision remains available (and undoable) because the structural branch stays anchored to the original selection.
+
+**How deletion works**: When a revision range collapses to zero length it survives only long enough for the system to record `_restoreAnnotation` effects; `collapsedRevisionResolver` immediately removes the zero-width annotation (in a microtask, tagged with `addToHistory.of(false)` and `_revisionCleanup`) so the field never holds a dangling collapsed revision.
+
+**How undo works**: Undo is what makes it look like the revision “survived”: Cmd+Z reapplies both the deleted text and the original revision (with all versions) using the stored `_restoreAnnotation` effects.
 
 ### Nested editors are full `EditorView` instances
 
