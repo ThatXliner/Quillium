@@ -308,11 +308,16 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
         annotations,
     });
 }
+type UpdateRevisionVersionStateOptions = {
+    addToHistory?: boolean;
+};
+
 export function updateRevisionVersionState(
     state: EditorState,
     annotationId: number,
     versionId: number,
     newVersionState: VersionState,
+    options: UpdateRevisionVersionStateOptions = {},
 ) {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
@@ -326,7 +331,10 @@ export function updateRevisionVersionState(
             versionState: newVersionState,
         }),
     ];
-    const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)];
+    const annotations = [
+        revisionInternalEdit.of(true),
+        Transaction.addToHistory.of(options.addToHistory ?? true),
+    ];
     if (original.currentlySelected !== versionId) {
         return state.update({
             effects,

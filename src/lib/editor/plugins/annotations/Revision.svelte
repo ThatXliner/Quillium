@@ -333,6 +333,9 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
         previousVersionId !== undefined && previousVersionId !== revision.currentlySelected;
     const currentText = recursiveEditor.state.doc.toString();
     const targetText = activeText;
+    const docRange = revision.selection.main;
+    const docText = view.state.doc.slice(docRange.from, docRange.to).toString();
+    const docMismatch = docText !== targetText;
 
     // Detect external mutation: the annotation's version text was
     // changed (by main-doc edit or undo) without the nested editor
@@ -345,6 +348,20 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
 
     // Nothing to do: same version, nested editor already has the right text.
     if (!versionChanged && !externallyMutated && currentText === targetText) return;
+
+    if (docMismatch) {
+        const docVersion: VersionState = { ...activeVersion, doc: docText };
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                revision.id,
+                revision.currentlySelected,
+                docVersion,
+                { addToHistory: false },
+            ),
+        );
+        return;
+    }
 
     // Save the current editor state back to whichever version we're leaving,
     // unless a version was just deleted (the previous index is stale/gone).
