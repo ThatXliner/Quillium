@@ -55,6 +55,7 @@ import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { shouldHandleRevisionModalKeydown } from "./revisionModalKeyguard";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -475,8 +476,7 @@ function navigateVersion(direction: "prev" | "next") {
 }
 
 function onDialogKeydown(e: KeyboardEvent) {
-    // Don't fire when typing in an input
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (!shouldHandleRevisionModalKeydown(e)) return;
     const mod = isMac ? e.metaKey : e.ctrlKey;
     if (mod && e.key === "Enter") {
         e.preventDefault();
