@@ -346,6 +346,19 @@ Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline ed
 
 **Modal editor** (`RevisionModal.svelte`): a full-screen overlay with a full CodeMirror instance. Pushed onto `modalStack` from `Revision.svelte` or triggered by `redirectToNestedEditor`. Supports arbitrary nesting (revisions inside revisions inside modals). Each modal carries a `parentView` — the `EditorView` it dispatches to.
 
+**Why the creation code differs**: the inline `createRecursiveEditor` workflow must restore a `VersionState` blob (doc + annotations), delegate undo/redo to the parent, guard against reactive-sync loops via `lastSyncedText`/`isSyncingFromAnnotation`, and reload whenever the parent version or document text mutates. The modal’s `createEditor` only ever hosts one version at a time, has its own history, and can simply instantiate an `EditorView` with `createVersionState` without the extra bookkeeping. Documenting this distinction explains why one path is more complex than the other.
+
+### Inline vs Modal behavior matrix
+
+| Behavior | Inline card editor (`Revision.svelte`) | Modal editor (`RevisionModal.svelte`) |
+|---|---|---|
+| Undo/redo stack | History disabled inside the nested `EditorView`. `makeParentUndoKeymap` reroutes `Mod-z`/`Mod-y`/`Mod-Shift-z` to `undo(parentView)`/`redo(parentView)`, because every keystroke feeds `updateRevisionVersionState` and only the parent undo stack actually stores the `VersionState` blobs. | Own CodeMirror history and annotations; undo/redo operations run on the modal’s `EditorView` alone while it is open. Changes are still serialised back to the parent on every transaction, but the modal does not need to delegate undo commands. |
+| Version switching | The inline view must detect when `revision.currentlySelected` or `activeText` change, persist the outgoing version via `upsertVersionState`, destroy the current `EditorView`, and recreate it from the new `VersionState`. Reactive guards (`lastSyncedText`, `isSyncingFromAnnotation`) keep the view from reloading unnecessarily. | The modal rebuilds the single `EditorView` when the breadcrumb dropdown selects a different version. The `EditorView` is destroyed and recreated for that version, but there is never more than one concurrent view inside that modal layer. |
+| Sync direction | Every keystroke serialises the nested state and dispatches `_updateRevisionVersionState`/`updateRevisionVersionState`; the parent in turn triggers `$effect` in `Revision.svelte`, so the inline view must listen for parent-origin updates to avoid stale state. | Same serialisation back to the parent occurs on each transaction, but because the modal sits on top of the stack it controls the active version directly and doesn’t need to guard against other components mutating the nested view at the same time. |
+| Nested annotations | Inline editor allows nested annotations but has to track them itself; it uses `nestedEditorHasActiveAnnotation` and exposes a modal button when necessary. | Modal editor already runs a full CodeMirror instance with its own annotation field, so nesting works out of the box via `modalAnnotations` and `Annotations.svelte`. |
+
+The matrix above explains why the inline path needs the longer helper lifecycle in `nestedEditor.ts` while the modal can rely on a single `createVersionState` + `EditorView` setup. Inline undo meaningfully touches both text edits and version slots because it only sees the parent history; the modal, by contrast, keeps those concerns colocated in one `EditorView`.
+
 ### Keeping the inline editor in sync with the parent
 
 The inline editor lifecycle:
