@@ -1,4 +1,4 @@
-import { afterEach, beforeAll } from "vitest";
+import { afterEach, beforeAll, vi } from "vitest";
 import { clearMocks } from "@tauri-apps/api/mocks";
 import { randomFillSync } from "node:crypto";
 
@@ -18,3 +18,16 @@ beforeAll(() => {
 afterEach(() => {
     clearMocks();
 });
+
+const mockAppSettings = {
+    selectTextInNestedEditor: true,
+    showNestedEditor: true,
+    atomicRevisions: true,
+    docFontFamily: "",
+    docFontSize: 18,
+    uiFontFamily: "",
+    customQuickActions: [],
+    titleVisibility: "hover",
+};
+
+vi.mock("$lib/settings.svelte", () => ({ appSettings: mockAppSettings }));
