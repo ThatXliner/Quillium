@@ -2,6 +2,7 @@ import posthog from "posthog-js";
 import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from "$env/static/public";
 
 declare const __APP_VERSION__: string;
+const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 if (PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
     posthog.init(PUBLIC_POSTHOG_KEY, {
@@ -11,16 +12,15 @@ if (PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         capture_exceptions: true,
     });
 
+    posthog.register({ app_version: appVersion });
+
     console.log(
-        "%c 🪶 Quillium %c PostHog analytics active ",
+        `%c 🪶 Quillium (${appVersion}) %c PostHog analytics active`,
         "background:#3b82f6;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
         "background:#1d4ed8;color:#fff;font-weight:400;padding:2px 8px;border-radius:0 4px 4px 0;",
     );
 } else {
     console.warn("[Quillium] PostHog env vars missing — analytics disabled.");
 }
-
-const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
-posthog.register({ app_version: appVersion });
 
 export default posthog;
