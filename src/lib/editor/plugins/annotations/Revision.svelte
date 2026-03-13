@@ -46,7 +46,12 @@ import {
     type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
-import { createVersionState, makeParentUndoKeymap, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import {
+    createVersionState,
+    makeParentUndoKeymap,
+    syncVersionToParent,
+    previewVersionText,
+} from "./nestedEditor";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 import { getActiveAnnotation } from "./utils";
@@ -84,8 +89,7 @@ let userClosedEditor = false; // plain var — not reactive, just a gate
 // Reset the gate when the card loses focus.
 $effect(() => {
     if (isActive) {
-        if (!userClosedEditor && appSettings.showNestedEditor)
-            isEditorOpen = true;
+        if (!userClosedEditor && appSettings.showNestedEditor) isEditorOpen = true;
     } else {
         isEditorOpen = false;
         userClosedEditor = false;
@@ -98,7 +102,7 @@ function openEditor() {
 }
 let recursiveEditorHost = $state<HTMLDivElement>();
 let recursiveEditor = $state<EditorView | undefined>(undefined);
-let nestedEditorHasActiveAnnotation = $state(false);
+let activeAnnotation = $state();
 let isSyncingFromAnnotation = false;
 let previousVersionId = revision.currentlySelected;
 let previousVersionCount = revision.versions.length;
@@ -273,14 +277,18 @@ function upsertVersionState(currentEditor: EditorView, versionId = revision.curr
  */
 function createRecursiveEditor(version: VersionState) {
     if (!recursiveEditorHost || recursiveEditor) return;
-    const state = createVersionState(version, (update: ViewUpdate) => {
-        if (!recursiveEditor || isSyncingFromAnnotation) return;
-        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
-        upsertVersionState(recursiveEditor);
-    }, makeParentUndoKeymap(view));
+    const state = createVersionState(
+        version,
+        (update: ViewUpdate) => {
+            if (!recursiveEditor || isSyncingFromAnnotation) return;
+            activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+            upsertVersionState(recursiveEditor);
+        },
+        makeParentUndoKeymap(view),
+    );
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     lastSyncedText = versionText(version);
-    nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
+    activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 
     // Apply pending selection if this annotation just created one.
     const event = $annotationUiEvent;
@@ -306,7 +314,7 @@ function createRecursiveEditor(version: VersionState) {
 function destroyRecursiveEditor() {
     recursiveEditor?.destroy();
     recursiveEditor = undefined;
-    nestedEditorHasActiveAnnotation = false;
+    activeAnnotation = undefined;
 }
 
 /**
@@ -355,21 +363,24 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
             recursiveEditor.focus();
         }
         isSyncingFromAnnotation = false;
-        nestedEditorHasActiveAnnotation = !!(
-            recursiveEditor && getActiveAnnotation(recursiveEditor.state)
-        );
+        activeAnnotation =
+            recursiveEditor !== undefined ? getActiveAnnotation(recursiveEditor.state) : undefined;
         return;
     }
     // Same version but text drifted (external edit or undo): reload state
     // from the annotation blob so history/cursor are consistent too.
-    const nextState = createVersionState(activeVersion, (update: ViewUpdate) => {
-        if (!recursiveEditor || isSyncingFromAnnotation) return;
-        upsertVersionState(recursiveEditor);
-    }, makeParentUndoKeymap(view));
+    const nextState = createVersionState(
+        activeVersion,
+        (update: ViewUpdate) => {
+            if (!recursiveEditor || isSyncingFromAnnotation) return;
+            upsertVersionState(recursiveEditor);
+        },
+        makeParentUndoKeymap(view),
+    );
     recursiveEditor.setState(nextState);
     lastSyncedText = targetText;
     isSyncingFromAnnotation = false;
-    nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
+    activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 }
 
 // Create or destroy the nested editor when the toggle changes.
@@ -398,7 +409,10 @@ $effect(() => {
     previousVersionId = revision.currentlySelected;
     previousVersionCount = revision.versions.length;
     const versionDeleted = revision.versions.length < prevCount;
-    syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined, versionDeleted);
+    syncRecursiveEditorToActiveVersion(
+        prev !== revision.currentlySelected ? prev : undefined,
+        versionDeleted,
+    );
 });
 
 // ⌘Enter when this revision is active → create a new version
@@ -621,7 +635,7 @@ onDestroy(() => {
                 class="revision-recursive-editor h-[220px] overflow-hidden"
                 class:cursor-arriving={cursorArriving}
             ></div>
-            {#if nestedEditorHasActiveAnnotation}
+            {#if !!activeAnnotation}
                 <div transition:slide={{ duration: 100, easing: cubicOut }}
                     class="border-t border-purple-100/60 px-3 py-2 flex items-center justify-between gap-2">
                     <span class="text-[10px] text-purple-500/70">Annotation selected</span>
