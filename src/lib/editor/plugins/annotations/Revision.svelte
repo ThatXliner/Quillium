@@ -46,12 +46,7 @@ import {
     type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
-import {
-    createVersionState,
-    makeParentUndoKeymap,
-    syncVersionToParent,
-    previewVersionText,
-} from "./nestedEditor";
+import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 import { getActiveAnnotation } from "./utils";
@@ -284,7 +279,7 @@ function createRecursiveEditor(version: VersionState) {
             activeAnnotation = getActiveAnnotation(recursiveEditor.state);
             upsertVersionState(recursiveEditor);
         },
-        makeParentUndoKeymap(view),
+        view,
     );
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     lastSyncedText = versionText(version);
@@ -375,7 +370,7 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
             if (!recursiveEditor || isSyncingFromAnnotation) return;
             upsertVersionState(recursiveEditor);
         },
-        makeParentUndoKeymap(view),
+        view,
     );
     recursiveEditor.setState(nextState);
     lastSyncedText = targetText;

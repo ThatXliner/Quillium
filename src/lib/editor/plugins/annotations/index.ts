@@ -705,9 +705,7 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
         const count = annotation.versions.length;
         if (count <= 1) return true;
         const current = annotation.currentlySelected;
-        const next = direction === "next"
-            ? (current + 1) % count
-            : (current - 1 + count) % count;
+        const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
         dispatch(setActiveRevisionVersion(state, annotation.id, next));
         return true;
     };
