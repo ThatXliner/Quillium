@@ -97,7 +97,7 @@ function openEditor() {
 }
 let recursiveEditorHost = $state<HTMLDivElement>();
 let recursiveEditor = $state<EditorView | undefined>(undefined);
-let activeAnnotation = $state();
+let activeAnnotation = $state<Annotation<any> | undefined>(undefined);
 let isSyncingFromAnnotation = false;
 let previousVersionId = revision.currentlySelected;
 let previousVersionCount = revision.versions.length;
