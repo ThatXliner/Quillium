@@ -336,6 +336,9 @@ Fires a `revision-boundary-nudge` UI event when text is inserted immediately at 
 
 ---
 
+## Stores vs derived
+- Stores in `src/lib/stores.ts` mirror pieces of CodeMirror state because the update listener is the only place aware of doc/annotation changes. Derived stores recalculate automatically from their dependencies, but there is no single upstream store for annotations, active selection, and document text. Attempting to make these derived would mean repeating the imperative update logic inside their calculations, so writable mirrors keep the flow explicit. Components only derive from these mirrors when the dependency chain is direct (e.g., modal breadcrumbs from `modalStack`).
+
 ## Nested Editors
 
 Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline editor inside the revision card, and a full-screen modal. **The inline editor is over-engineered for what it actually needs to do** — see the planned simplification below.
@@ -346,9 +349,7 @@ Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline ed
 
 **Modal editor** (`RevisionModal.svelte`): a full-screen overlay with a full CodeMirror instance. Pushed onto `modalStack` from `Revision.svelte` or triggered by `redirectToNestedEditor`. Supports arbitrary nesting (revisions inside revisions inside modals). Each modal carries a `parentView` — the `EditorView` it dispatches to.
 
-**Why the creation code differs**: the inline `createRecursiveEditor` workflow must restore a `VersionState` blob (doc + annotations), delegate undo/redo to the parent, guard against reactive-sync loops via `lastSyncedText`/`isSyncingFromAnnotation`, and reload whenever the parent version or document text mutates. The modal’s `createEditor` only ever hosts one version at a time, has its own history, and can simply instantiate an `EditorView` with `createVersionState` without the extra bookkeeping. Documenting this distinction explains why one path is more complex than the other.
-
-### Inline vs Modal behavior matrix
+**Why the creation code differs**: The matrix below explains why the inline path needs the longer helper lifecycle in `nestedEditor.ts` while the modal can rely on a single `createVersionState` + `EditorView` setup. Inline undo meaningfully touches both text edits and version slots because it only sees the parent history; the modal, by contrast, keeps those concerns colocated in one `EditorView`.
 
 | Behavior | Inline card editor (`Revision.svelte`) | Modal editor (`RevisionModal.svelte`) |
 |---|---|---|
@@ -357,7 +358,7 @@ Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline ed
 | Sync direction | Every keystroke serialises the nested state and dispatches `_updateRevisionVersionState`/`updateRevisionVersionState`; the parent in turn triggers `$effect` in `Revision.svelte`, so the inline view must listen for parent-origin updates to avoid stale state. | Same serialisation back to the parent occurs on each transaction, but because the modal sits on top of the stack it controls the active version directly and doesn’t need to guard against other components mutating the nested view at the same time. |
 | Nested annotations | Inline editor allows nested annotations but has to track them itself; it uses `nestedEditorHasActiveAnnotation` and exposes a modal button when necessary. | Modal editor already runs a full CodeMirror instance with its own annotation field, so nesting works out of the box via `modalAnnotations` and `Annotations.svelte`. |
 
-The matrix above explains why the inline path needs the longer helper lifecycle in `nestedEditor.ts` while the modal can rely on a single `createVersionState` + `EditorView` setup. Inline undo meaningfully touches both text edits and version slots because it only sees the parent history; the modal, by contrast, keeps those concerns colocated in one `EditorView`.
+Now that we have a birds-eye overview of the usage differences, here is a more detailed view on how the inline editor works (the modal editor is very simple, similar to the main editor, so it doesn't need to be documented here):
 
 ### Keeping the inline editor in sync with the parent
 
