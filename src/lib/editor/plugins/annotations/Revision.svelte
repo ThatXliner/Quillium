@@ -113,6 +113,11 @@ let lastAddVersionToken = 0;
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 
+function shouldSyncNestedEditorUpdate(update: ViewUpdate) {
+    if (update.docChanged) return true;
+    return update.transactions.some((tr) => tr.effects.length > 0);
+}
+
 // Boundary nudge: show a hint when the user presses delete at the edge
 // of this revision's content in the main document.
 let showBoundaryHint = $state(false);
@@ -277,6 +282,7 @@ function createRecursiveEditor(version: VersionState) {
         (update: ViewUpdate) => {
             if (!recursiveEditor || isSyncingFromAnnotation) return;
             activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+            if (!shouldSyncNestedEditorUpdate(update)) return;
             upsertVersionState(recursiveEditor);
         },
         view,
@@ -368,6 +374,8 @@ function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionD
         activeVersion,
         (update: ViewUpdate) => {
             if (!recursiveEditor || isSyncingFromAnnotation) return;
+            activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+            if (!shouldSyncNestedEditorUpdate(update)) return;
             upsertVersionState(recursiveEditor);
         },
         view,

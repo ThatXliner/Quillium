@@ -345,7 +345,7 @@ Each `RevisionAnnotation` supports two editing surfaces: a lightweight inline ed
 
 ### Two surfaces
 
-**Inline editor** (`Revision.svelte`): a 220px `EditorView` mounted inside the revision card. Visible when `isEditorOpen` is true. The nested editor's state is synced back to the parent annotation on every keystroke via `upsertVersionState()`, which calls `updateRevisionVersionState(...)` and dispatches a `_updateRevisionVersionState` effect to the parent.
+**Inline editor** (`Revision.svelte`): a 220px `EditorView` mounted inside the revision card. Visible when `isEditorOpen` is true. The nested editor's state is synced back to the parent annotation on every keystroke via `upsertVersionState()`, which calls `updateRevisionVersionState(...)` and dispatches a `_updateRevisionVersionState` effect to the parent. An `updateListener` guard (`shouldSyncNestedEditorUpdate`) now gates `upsertVersionState()` so only transactions with doc changes or annotation effects touch the parent—selection-only moves stay in the nested view and no longer create extra undo entries.
 
 **Modal editor** (`RevisionModal.svelte`): a full-screen overlay with a full CodeMirror instance. Pushed onto `modalStack` from `Revision.svelte` or triggered by `redirectToNestedEditor`. Supports arbitrary nesting (revisions inside revisions inside modals). Each modal carries a `parentView` — the `EditorView` it dispatches to.
 
@@ -366,6 +366,7 @@ The inline editor lifecycle:
 
 1. `createRecursiveEditor(version)` — mounts a new `EditorView`. If `version` has an `annotationField` key (it's a full blob), restores state via `EditorState.fromJSON`. Otherwise creates fresh from `doc`. Records `lastSyncedText`.
 2. `upsertVersionState(editor, versionId)` — serializes `editor.state.toJSON(nestedSavedFields)` and dispatches `updateRevisionVersionState` to the parent. Updates `lastSyncedText` to prevent false-positive reload detection.
+   - Its `updateListener` now consults `shouldSyncNestedEditorUpdate(update)` and only fires `upsertVersionState` when the nested change touched the document or emitted annotation effects, so cursor-only moves no longer push extra history entries.
 3. `syncRecursiveEditorToActiveVersion(prevId?)` — called whenever `revision.currentlySelected` or `activeText` changes (the `$effect` reads `void activeText` to register it as a reactive dependency):
    - If version changed: save old version's state, destroy+recreate with new version blob.
    - If text drifted externally (undo/redo or main-doc edit): reload state from the annotation blob. Detected via `lastSyncedText !== activeText` rather than comparing editor text directly — because after undo the editor text may coincidentally match the target text, masking the stale state.
@@ -382,6 +383,8 @@ The parent records every nested edit because `syncVersionToParent` dispatches `_
 - The inline editor and parent editor are two `EditorView` instances pointing at the same logical content. Every sync operation (type → push to parent → detect drift → reload nested) is a round-trip through three layers: CodeMirror state → Svelte reactivity → CodeMirror state again.
 - `lastSyncedText`, `isSyncingFromAnnotation`, and the `previousVersionId` variable exist solely to prevent this round-trip from triggering infinite loops or phantom reloads.
 - `HistEvent.fromJSON` silently drops all `effects` — so even before undo delegation was added, annotation undo inside nested editors was broken after a session restart.
+
+The inline listener now filters `ViewUpdate`s through `shouldSyncNestedEditorUpdate`, so only doc mutations and explicit annotation effects ever trigger `upsertVersionState`. Selection-only moves therefore stay out of the parent’s undo stack and clearing a version’s text (select-all + delete) produces a single undo entry instead of the three-step sequence we used to see.
 
 **Known bug (fixed, but symptomatic):** The sync `$effect` previously only tracked `revision.currentlySelected`. A version-content change from undo (same index, different text) would not re-run the effect — nested editor showed stale text. Fixed by adding `void activeText` inside the effect, but this is a workaround for the structural problem above.
 
