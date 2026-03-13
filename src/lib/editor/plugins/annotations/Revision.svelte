@@ -493,7 +493,7 @@ onDestroy(() => {
                     <button
                         class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
                             {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
-                        disabled={!versionActive}
+                        disabled={versionActive}
                         title={versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
                         onclick={() => {
                             if (!versionActive) {
