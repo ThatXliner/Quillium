@@ -753,7 +753,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                       {@const isDeepest = depth === contextLayers.length - 1}
                       <span class="context-text context-depth-{depth}">
                         {#if layer.before}<span class="context-surrounding">{layer.before}</span>{/if}<!--
-                        -->{#if depth === 0}<span bind:this={contextRevisionEl} class="context-nest context-nest-0">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(1)}{/if}</span>{:else}<span class="context-nest context-nest-{depth}">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(depth + 1)}{/if}</span>{/if}<!--
+                        -->{#if depth === 0}<span bind:this={contextRevisionEl} class="context-nest context-nest-0">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(1)}{/if}</span>{:else}<span class="context-nest context-nest-{Math.min(depth, 3)}">{#if isDeepest}{layer.revision || "(empty)"}{:else}{@render renderLayer(depth + 1)}{/if}</span>{/if}<!--
                         -->{#if layer.after}<span class="context-surrounding">{layer.after}</span>{/if}
                       </span>
                     {/snippet}
