@@ -112,6 +112,7 @@ let lastNestedSelectionToken = 0;
 let lastAddVersionToken = 0;
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
+let nestedEditorFocused = $state(false);
 
 function shouldSyncNestedEditorUpdate(update: ViewUpdate) {
     if (update.docChanged) return true;
@@ -579,7 +580,9 @@ onDestroy(() => {
         >
             <PlusIcon size={10} />
             <span>New version</span>
-            <Kbd keys={[modKey, "↵"]} />
+            {#if nestedEditorFocused}
+                <Kbd keys={[modKey, "↵"]} />
+            {/if}
         </button>
         {#if appSettings.showNestedEditor}
         <button
@@ -654,6 +657,8 @@ onDestroy(() => {
                 bind:this={recursiveEditorHost}
                 class="revision-recursive-editor h-[220px] overflow-hidden"
                 class:cursor-arriving={cursorArriving}
+                onfocusin={() => { nestedEditorFocused = true; }}
+                onfocusout={() => { nestedEditorFocused = false; }}
             ></div>
             {#if !!activeAnnotation}
                 <div transition:slide={{ duration: 100, easing: cubicOut }}

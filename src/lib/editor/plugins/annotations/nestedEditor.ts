@@ -8,7 +8,7 @@
  * patterns so each component only contains its own lifecycle logic.
  */
 
-import { EditorState } from "@codemirror/state";
+import { EditorState, Prec } from "@codemirror/state";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
@@ -20,6 +20,7 @@ import { versionText, type VersionState } from "./models";
 import type { Annotation } from "./models";
 import { annotationField } from "./annotationField";
 import { getActiveAnnotation } from "./utils";
+import { publishAnnotationUiEvent } from "$lib/stores";
 
 const VERSION_PREVIEW_MAX = 34;
 
@@ -41,6 +42,7 @@ export function createVersionState(
 ): EditorState {
     const extensions = [
         ...getExtensions({ persist: false, history: false, updateListener }),
+        makeParentAddVersionKeymap(parentView),
         makeParentUndoKeymap(parentView),
         makeParentRevisionNavKeymap(parentView),
     ];
@@ -72,6 +74,29 @@ export function makeParentUndoKeymap(parentView: EditorView) {
             preventDefault: true,
         },
     ]);
+}
+
+/**
+ * Returns a high-priority keymap that intercepts Mod+Enter in the nested
+ * editor and fires the annotation-add-version event for the active revision
+ * in the parent, creating a new version without inserting a newline.
+ */
+export function makeParentAddVersionKeymap(parentView: EditorView) {
+    return Prec.highest(keymap.of([
+        {
+            key: "Mod-Enter",
+            run() {
+                const annotation = getActiveAnnotation(parentView.state, "revision");
+                if (!annotation) return false;
+                publishAnnotationUiEvent({
+                    type: "annotation-add-version",
+                    annotationId: annotation.id,
+                });
+                return true;
+            },
+            preventDefault: true,
+        },
+    ]));
 }
 
 export function makeParentRevisionNavKeymap(parentView: EditorView) {
