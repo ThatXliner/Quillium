@@ -603,7 +603,6 @@ onDestroy(() => {
             {:else}
                 <ChevronDown size={10} />
             {/if}
-            <span>Nested editor</span>
         </button>
         {/if}
         <button
