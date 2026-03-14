@@ -568,6 +568,5 @@ onDestroy(() => {
     }
     .revision-inline-editor :global(.cm-content) {
         padding: 0;
-        font-size: 13px;
     }
 </style>
