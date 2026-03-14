@@ -185,7 +185,7 @@ type RevisionAnnotation   = BaseAnnotation & {
 type Annotations = { [id: number]: GenericAnnotation };
 ```
 
-`VersionState` is intentionally opaque: `{ doc: string; label?: string; cursorPos?: number } & object`. It starts as text-only, but after a version is edited in a nested editor it becomes a full `EditorState.toJSON()` blob (includes nested annotations). `versionText(version)` always reads `.doc` regardless of the blob shape. `cursorPos` is a plain integer stored separately from the CM blob and restored after the nested view is recreated (version switch, undo/redo).
+`VersionState` is intentionally opaque: `{ doc: string; label?: string } & object`. It starts as text-only, but after a version is edited in a nested editor it becomes a full `EditorState.toJSON()` blob (includes history, nested annotations). `versionText(version)` always reads `.doc` regardless of the blob shape.
 
 Use `isAnnotationOfType(annotation, "revision")` everywhere — never compare `_type` directly.
 
@@ -350,7 +350,7 @@ Each `RevisionAnnotation` supports two editing surfaces:
 | Behavior | Inline EditorView (`Revision.svelte`) | Modal editor (`RevisionModal.svelte`) |
 |---|---|---|
 | Undo/redo | `makeParentUndoKeymap` intercepts `Mod-z`/`Mod-y`, flushes via `syncVersionToParent`, then calls `undo(parentView)`/`redo(parentView)`. No second undo stack. | Own CodeMirror history; undo/redo run on the modal’s `EditorView` while it is open. Changes serialised back to parent on every transaction via `syncVersionToParent`. |
-| Version switching | `$effect` detects `currentlySelected` change → destroys old nested view → creates new from blob → restores `cursorPos` if saved. Also detects external blob changes (parent undo/redo) via `isSyncingToParent` guard. | Modal destroys and recreates the `EditorView` from the new `VersionState` blob when the breadcrumb dropdown selects a different version. |
+| Version switching | `$effect` detects `currentlySelected` change → destroys old nested view → creates new from blob. Also detects external blob changes (parent undo/redo) via `isSyncingToParent` guard. | Modal destroys and recreates the `EditorView` from the new `VersionState` blob when the breadcrumb dropdown selects a different version. |
 | Sync direction | Every `docChanged` or annotation-changed transaction calls `syncVersionToParent` (outward-only). External blob changes (undo/redo) trigger recreate; self-syncs are guarded by `isSyncingToParent`. | Every transaction calls `syncVersionToParent`, serialising the modal’s full CM state (including nested `annotationField`) back to the parent. |
 | Nested annotations | `Mod-Alt-K` / `Mod-Alt-M` open the full-screen modal with the pending command (`makeInlineNestedAnnotationKeymap`). The inline editor has no `Annotations.svelte` panel. | Full `annotationField` + `Annotations.svelte` inside the modal. Nested annotations work out of the box. `Mod-Alt-K` / `Mod-Alt-M` open a child modal layer. |
 
@@ -400,7 +400,7 @@ Events carry a monotonically increasing `token` so components can gate on `event
 |---|---|---|
 | `revision-boundary-nudge` | `nudgeBoundary` command, `boundaryInsertNudge` plugin | `Revision.svelte` (shows hint) |
 | `revision-open-nested-editor` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command) |
-| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor, flashes editor background yellow) |
+| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor) |
 | `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
 | `pending-nested-editor-selection` | `createRevisionCommand` | `Revision.svelte` (selects all text in newly mounted nested editor) |
 
@@ -543,7 +543,7 @@ User clicks version pill N
 → annotationField Phase 2: updates currentlySelected, rebuilds selection to new span
 → Phase 3 skipped for this revision (it's in revisionsWithExplicitEffect)
 → Svelte store sync → Revision.svelte re-renders with new active pill
-→ Svelte $effect in Revision.svelte detects currentlySelected change → destroys + recreates nested editor from new blob
+→ syncRecursiveEditorToActiveVersion detects version change → reloads nested editor
 ```
 
 ### Undo of version switch
