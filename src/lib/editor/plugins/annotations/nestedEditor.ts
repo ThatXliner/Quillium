@@ -1,11 +1,13 @@
 /**
- * nestedEditor.ts — Shared utilities for nested CodeMirror editors
- * inside revision cards and modals.
+ * nestedEditor.ts — Shared utilities for the modal CodeMirror editor
+ * inside RevisionModal.svelte.
  *
- * Both Revision.svelte (inline nested editor) and RevisionModal.svelte
- * (full-screen modal editor) bootstrap a secondary CodeMirror instance
- * that edits a single VersionState. This module extracts the shared
- * patterns so each component only contains its own lifecycle logic.
+ * The inline revision card uses a plain <textarea> for quick text
+ * edits (see Revision.svelte and ARCHITECTURE.md §Nested Editors).
+ * This file only contains what the full-screen modal needs:
+ *   - createVersionState  — bootstrap a CodeMirror EditorState from a VersionState blob
+ *   - syncVersionToParent — serialise modal state back to the parent annotation field
+ *   - previewVersionText  — short label string for version pills / breadcrumbs
  */
 
 import { EditorState, Prec } from "@codemirror/state";
@@ -30,10 +32,11 @@ const VERSION_PREVIEW_MAX = 34;
  * the doc text. The provided updateListener is installed so the
  * caller can react to every editor transaction.
  *
- * Nested editors have no history of their own — undo/redo is
- * delegated to the parent via makeParentUndoKeymap(), and version
- * navigation shortcuts (Ctrl-[ / Ctrl-]) are rerouted to the parent
- * so a single undo tree and active version index stay in sync.
+ * Used by RevisionModal.svelte. The modal has its own history and
+ * undo stack; undo/redo keys are NOT delegated to the parent.
+ * Version navigation shortcuts (Ctrl-[ / Ctrl-]) and Mod-Enter
+ * (new version) are wired to the parent view so the modal and
+ * parent stay in sync on structural changes.
  */
 export function createVersionState(
     version: VersionState,
@@ -41,9 +44,8 @@ export function createVersionState(
     parentView: EditorView,
 ): EditorState {
     const extensions = [
-        ...getExtensions({ persist: false, history: false, updateListener }),
+        ...getExtensions({ persist: false, history: true, updateListener }),
         makeParentAddVersionKeymap(parentView),
-        makeParentUndoKeymap(parentView),
         makeParentRevisionNavKeymap(parentView),
     ];
     return "annotationField" in version
@@ -52,32 +54,7 @@ export function createVersionState(
 }
 
 /**
- * Returns a high-priority keymap that intercepts Ctrl+Z / Ctrl+Y
- * (and Mac equivalents) in the nested editor and dispatches them
- * to the parent editor instead, keeping a single undo tree.
- */
-export function makeParentUndoKeymap(parentView: EditorView) {
-    return keymap.of([
-        {
-            key: "Mod-z",
-            run() {
-                return undo(parentView);
-            },
-            preventDefault: true,
-        },
-        {
-            key: "Mod-y",
-            mac: "Mod-Shift-z",
-            run() {
-                return redo(parentView);
-            },
-            preventDefault: true,
-        },
-    ]);
-}
-
-/**
- * Returns a high-priority keymap that intercepts Mod+Enter in the nested
+ * Returns a high-priority keymap that intercepts Mod+Enter in the modal
  * editor and fires the annotation-add-version event for the active revision
  * in the parent, creating a new version without inserting a newline.
  */
@@ -115,23 +92,19 @@ export function makeParentRevisionNavKeymap(parentView: EditorView) {
     return keymap.of([
         {
             key: "Ctrl-[",
-            run() {
-                return runNav("prev");
-            },
+            run() { return runNav("prev"); },
             preventDefault: true,
         },
         {
             key: "Ctrl-]",
-            run() {
-                return runNav("next");
-            },
+            run() { return runNav("next"); },
             preventDefault: true,
         },
     ]);
 }
 
 /**
- * Serialises the nested editor's current state and dispatches
+ * Serialises the modal editor's current state and dispatches
  * an updateRevisionVersionState effect to the parent editor,
  * keeping the annotation's version slot in sync.
  */
