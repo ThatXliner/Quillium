@@ -89,9 +89,6 @@ export function makeParentRevisionNavKeymap(
         const next = direction === "next"
             ? (current + 1) % count
             : (current - 1 + count) % count;
-        // Flush current cursor into the version blob before switching away.
-        const nv = getNestedView?.();
-        if (nv) syncVersionToParent(nv, parentView, annotation.id, current);
         parentView.dispatch(setActiveRevisionVersion(parentView.state, annotation.id, next));
         if (getNestedView) {
             requestAnimationFrame(() => getNestedView()?.focus());
@@ -130,12 +127,9 @@ export function syncVersionToParent(
     if (!rev) return;
     // Preserve the existing label so syncing the editor content doesn't wipe it.
     const existingLabel = rev.versions[versionId]?.label;
-    const cursorPos = nestedEditor.state.selection.main.head;
-    const blobWithLabel: VersionState = {
-        ...blob,
-        cursorPos,
-        ...(existingLabel !== undefined ? { label: existingLabel } : {}),
-    };
+    const blobWithLabel: VersionState = existingLabel !== undefined
+        ? { ...blob, label: existingLabel }
+        : blob;
     parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel));
 }
 
