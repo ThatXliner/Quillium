@@ -93,6 +93,7 @@ import {
     invertedAnnotationFieldEffects,
     suggestionPreviewField,
     _revisionCleanup,
+    _updateRevisionVersionState,
     setActiveRevisionVersion,
 } from "./annotationField";
 import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
@@ -338,6 +339,13 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
+            // Also skip when the doc change is driven by a version-state sync
+            // (e.g. undo/redo inverting _updateRevisionVersionState). Those
+            // transactions don't carry revisionInternalEdit because it's a
+            // Transaction.annotation and invertedEffects can't propagate it.
+            if (update.transactions.some((tr) =>
+                tr.effects.some((e) => e.is(_updateRevisionVersionState)),
+            )) return;
             const annotations = update.startState.field(annotationField);
             for (const tr of update.transactions) {
                 if (!tr.docChanged) continue;
