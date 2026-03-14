@@ -1,21 +1,35 @@
 # Design Notes
 
-## Revision editing experience
-- The inline revision card keeps the alternative text anchored inside the document so users can see their change in context while version pills above the card describe every saved variant.
-- When a user wants to edit a revision, we open a nested editor (inline or modal) so their keystrokes do not accidentally touch the parent document. The modal is the heavier tool: it can store its own undo stack, let people annotate within a version, and keep a breadcrumb trail for nested edits. The inline nested editor is intentionally lightweight so the document never feels disconnected from the surrounding prose.
-- We lean on this split to balance immediacy (edit inline when changes are small) and depth (open the modal when the revision needs independent treatment). Users see the active version in real time, while the UI keeps the underlying versions discoverable via pills and breadcrumbs.
+## Core model
 
-## Version navigation & undo
-- Version pills are the primary navigation control. Tapping a pill swaps the revision text in the main document and instantly highlights the selected pill, so users understand which version is authoritative without leaving the page.
-- Undo and redo respect both the text and the pill state in lockstep: when you step back, the document rewinds to the previous version and the pill selection follows. This preserves the mental model of a single linear revision stack, even though each version is a branching point internally.
-- Keyboard shortcuts like `Ctrl-[`/`Ctrl-]` are mirrored inside nested editors so people can navigate history without leaving the revision surface. We mirror the parent controls here on purpose to avoid surprises when moving between inline and modal editing.
+The document is the single source of truth. Every piece of text the user sees — including text inside revision regions — lives in the main CodeMirror document.
+
+A **revision annotation** marks a span of the document and stores the inactive versions on the side. The active version's text *is* the document text at that span; the annotation just tracks the range and keeps the alternatives. There is no separate "revision document" — only the main one.
+
+## Nested editors
+
+When a user edits a revision, they use a **nested editor** — either the inline card or the full modal. These are two UI surfaces for the same thing: a focused viewport onto the revision's span in the main document. Editing in a nested editor is editing the main document, scoped to the revision range.
+
+The inline card and the modal are functionally identical in terms of history and sync. The only difference is screen real estate: inline is lightweight and in-context; the modal gives more room and shows nested annotations.
+
+## Undo is global and linear
+
+`Mod-z` anywhere — main document, inline editor, modal — walks back through a single shared history. Typing in a nested editor, switching versions, creating versions: all of it is one timeline. Closing the modal does not lose undo history. There is no concept of "this undo only works inside the modal."
+
+From the user's perspective, it just works like normal document undo — except some undo steps happen to affect text inside a revision region.
+
+## Version navigation
+
+Version pills are the primary navigation control. Switching versions replaces the active version's text in the main document and updates the pill selection. This is a normal document edit and goes into the global undo history — `Mod-z` after a version switch returns to the previous version.
+
+`Ctrl-[` / `Ctrl-]` navigate versions from anywhere: main doc, inline editor, or modal.
 
 ## Annotation lifecycle
-- Comments and suggestions vanish as soon as their text is deleted; they are tied to live stretches of content. Revisions behave differently: closing their text down keeps the annotation around so people can reopen the version later without losing the branch point.
-- Pending comments are signaled by the empty-thread placeholder (`thread.length === 0`) so the UI can show “draft” styling until the user submits the first message. Applying or converting suggestions to revisions updates the surrounding card rather than replacing the entire annotation object, keeping transitions smooth.
-- We only allow one pending comment UI at a time to avoid duplicated drafts. When a user tries to flip between threads, the UI nudges them to finish or discard the draft before opening another card.
 
-## Feedback & AI interactions
-- The AI sidebar keeps contextual prompts, feedback, and revision generation grouped together so users can switch modes (Chat / Feedback / Revise) without losing locations in the document.
-- AI responses appear in the same conversation flow that comments and suggestions use, reinforcing the idea that AI suggestions are just another annotation type rather than a separate modal.
-- Quick prompts and model/provider controls live in the sidebar so users can experiment freely, and we surface PostHog events (like `ai_feedback_requested`) in the architecture doc for instrumentation rather than the interface text.
+- **Comments** and **suggestions** are tied to live text; deleting their text removes the annotation.
+- **Revisions** survive text deletion — the annotation persists so the user can reopen the version later without losing the branch point.
+- Only one pending (empty-thread) comment is allowed at a time to avoid duplicated drafts.
+
+## AI interactions
+
+AI suggestions appear in the same annotation flow as comments and revisions — they are another annotation type, not a separate modal. The AI sidebar groups prompts, feedback, and revision generation so users can switch modes without losing their place in the document.
