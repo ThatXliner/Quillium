@@ -566,10 +566,15 @@ function syncRevisionDocsWithDocument(
             // can restore both the text and the version content correctly.
             if (x.selection.main.empty) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
-            x.versions[x.currentlySelected] = {
-                ...x.versions[x.currentlySelected],
+            if (text === versionText(x.versions[x.currentlySelected])) return x;
+            // Return a new annotation object so Svelte's fine-grained reactivity
+            // detects the change and re-derives activeText in Revision.svelte.
+            const newVersions = x.versions.slice();
+            newVersions[x.currentlySelected] = {
+                ...newVersions[x.currentlySelected],
                 doc: text,
             };
+            return { ...x, versions: newVersions };
         }
         return x;
     });
