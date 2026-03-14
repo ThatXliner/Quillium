@@ -154,6 +154,7 @@ export function syncVersionToParent(
     parentView: EditorView,
     revisionId: number,
     versionId: number,
+    addToHistory = true,
 ): void {
     const blob = nestedEditor.state.toJSON(nestedSavedFields) as VersionState;
     const rev = parentView.state.field(annotationField)[revisionId] as
@@ -168,7 +169,7 @@ export function syncVersionToParent(
         cursorPos,
         ...(existingLabel !== undefined ? { label: existingLabel } : {}),
     };
-    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel));
+    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel, { addToHistory }));
 }
 
 /**
@@ -197,7 +198,10 @@ export function makeParentUndoKeymap(
             key: "Mod-z",
             run() {
                 const nv = getNestedView();
-                if (nv) syncVersionToParent(nv, parentView, revisionId, versionIndex);
+                // addToHistory: false — the flush before undo must not create a
+                // history entry of its own, otherwise Mod-z undoes the flush
+                // rather than the actual edit, making undo appear broken.
+                if (nv) syncVersionToParent(nv, parentView, revisionId, versionIndex, false);
                 undo(parentView);
                 return true;
             },
