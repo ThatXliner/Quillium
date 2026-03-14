@@ -51,14 +51,6 @@ import { type ListenerOptions, listeners } from "./listeners";
 export const savedFields = { historyField, annotationField };
 // Nested editors delegate undo/redo to the parent, so they don't own
 // a history stack. Only annotationField is persisted in version blobs.
-//
-// NOTE: We intentionally do NOT recursively serialize the full EditorView
-// state for nested annotation data (e.g. annotations inside a revision
-// version). Doing so would require deep serialization of arbitrarily nested
-// EditorState trees, which is overly complex and unnecessary — the annotation
-// content (doc text + nested annotationField) is all we need to restore a
-// version faithfully. Cursor position is stored separately as a plain integer
-// (VersionState.cursorPos) and restored after the view is recreated.
 export const nestedSavedFields = { annotationField };
 
 const editorKeymap: KeyBinding[] = [
