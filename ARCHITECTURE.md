@@ -343,7 +343,7 @@ Fires a `revision-boundary-nudge` UI event when text is inserted immediately at 
 
 Each `RevisionAnnotation` supports two editing surfaces:
 
-**Inline editor** (`Revision.svelte`): a 220px `<textarea>` inside the revision card. Visible when `isEditorOpen` is true. On every `input` event it calls `updateRevisionVersionState` on the parent. Undo/redo (`Mod-z` / `Mod-y`) are intercepted via `keydown` and forwarded to `undo(view)` / `redo(view)` on the parent `EditorView`. Version switches, undo, and main-doc edits all update `activeText` reactively, and the textarea’s value follows via a `$effect` (only when the textarea is not focused — while focused, the textarea is the source of truth).
+**Inline editor** (`Revision.svelte`): a 220px CodeMirror `EditorView` mounted in a `<div>` inside the revision card. Visible when `isEditorOpen` is true. Has `history: false` — undo/redo are delegated to the parent via `makeParentUndoKeymap` (flushes current state via `syncVersionToParent`, then calls `undo(parentView)`/`redo(parentView)`). Every `docChanged` or annotation-changed transaction calls `syncVersionToParent` (outward-only sync). Version switches and external parent changes (undo/redo) destroy and recreate the nested `EditorView`. `Mod-Alt-K/M` open the full-screen modal with the pending command forwarded.
 
 **Modal editor** (`RevisionModal.svelte`): a full-screen overlay with a full CodeMirror instance. Pushed onto `modalStack` from `Revision.svelte` or triggered by `redirectToNestedEditor`. Has its own history and annotation field. Supports arbitrary nesting (revisions inside revisions inside modals). Each modal carries a `parentView` — the `EditorView` it dispatches to when syncing version state back.
 

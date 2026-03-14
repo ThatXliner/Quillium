@@ -14,16 +14,15 @@
  *     replace the thread array
  *
  * Inline editor surface:
- *   A plain <textarea> bound to the active version's text.
- *   On every input event it dispatches updateRevisionVersionState
- *   to the parent CodeMirror instance — no second EditorView, no
- *   history delegation, no sync guards. Undo/redo in the textarea
- *   context works via the parent's CM history (Mod-z / Mod-y are
- *   forwarded with keydown handlers). Version switches just update
- *   textarea.value reactively via activeText.
+ *   A full CodeMirror EditorView mounted inside a host <div>.
+ *   history: false — undo/redo are delegated to the parent view
+ *   via makeParentUndoKeymap (Mod-z flushes then undoes in parent).
+ *   Version switches destroy and recreate the nested EditorView.
+ *   outward-only sync: every docChanged or annotation-changed transaction
+ *   calls syncVersionToParent; the nested view never reads back from the
+ *   parent annotation field reactively (only reloads on external undo/redo).
  *
- *   See ARCHITECTURE.md §Nested Editors for the full rationale
- *   behind choosing textarea over a second CodeMirror instance.
+ *   See ARCHITECTURE.md §Nested Editors for the full rationale.
  *
  * Modal surface:
  *   Full CodeMirror EditorView pushed onto modalStack. Handles deep
@@ -37,23 +36,26 @@
  * Parent: Annotations.svelte
  * Children: Thread.svelte
  */
-import type { EditorView } from "@codemirror/view";
-import { undo, redo } from "@codemirror/commands";
+import { EditorView } from "@codemirror/view";
 import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
 import {
+    annotationsChanged,
     createNewRevision,
     deleteRevisionVersion,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
-    updateRevisionVersionState,
     type Annotation,
     type Thread as ThreadType,
 } from ".";
 import { versionText } from "./models";
-import { previewVersionText } from "./nestedEditor";
+import {
+    createInlineVersionState,
+    previewVersionText,
+    syncVersionToParent,
+} from "./nestedEditor";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 import { annotationUiEvent, modalStack } from "$lib/stores";
@@ -80,14 +82,21 @@ const {
 
 const thread = $derived(revision.thread);
 const activeVersion = $derived(revision.versions[revision.currentlySelected]);
-const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
 
 let isEditorOpen = $state(false);
 let userClosedEditor = false;
-let textareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
-let textareaFocused = $state(false);
+let nestedEditorHost = $state<HTMLDivElement | undefined>(undefined);
+// Plain (non-reactive) variables — must NOT be $state to avoid feedback loops.
+let nestedView: EditorView | undefined;
+let loadedRevisionId = -1;
+let loadedVersionIndex = -1;
+let loadedVersionText = "";
+// Set to true while we're pushing text outward so the reactive text dep
+// doesn't spuriously recreate the inline editor on our own syncs.
+let isSyncingToParent = false;
+const nestedViewRef: { current: EditorView | undefined } = { current: undefined };
 
-// Auto-open the inline textarea when this revision becomes active,
+// Auto-open the inline editor when this revision becomes active,
 // unless the user explicitly closed it or the setting is disabled.
 $effect(() => {
     if (isActive) {
@@ -98,27 +107,64 @@ $effect(() => {
     }
 });
 
-// Keep textarea value in sync with the active version text.
-// This covers version switches, undo/redo in the parent, and
-// main-doc edits — all without any bridging machinery.
+// Lifecycle effect: create/recreate/destroy the inline CodeMirror EditorView.
+//
+// Reactive deps tracked by Svelte:
+//   - isEditorOpen, nestedEditorHost  — visibility / mount point
+//   - revision.id, revision.currentlySelected  — structural version change
+//   - revision.versions[targetVersion] — content change from external edits
+//     (e.g. parent undo/redo). Self-originated syncs are guarded by the
+//     isSyncingToParent flag so they don't recreate the editor.
 $effect(() => {
-    if (!textareaEl) return;
-    // Only update from outside if the textarea doesn't currently have
-    // focus. While focused, the user is typing and the value is the
-    // source of truth; we push it to the parent on each input event.
-    if (!textareaFocused) {
-        textareaEl.value = activeText;
+    if (!isEditorOpen || !nestedEditorHost) {
+        nestedView?.destroy();
+        nestedView = undefined;
+        nestedViewRef.current = undefined;
+        loadedRevisionId = -1;
+        loadedVersionIndex = -1;
+        loadedVersionText = "";
+        return;
     }
-});
 
-function pushTextToParent(text: string) {
-    const existing = revision.versions[revision.currentlySelected];
-    if (!existing) return;
-    const newVersion = { ...existing, doc: text };
-    view.dispatch(
-        updateRevisionVersionState(view.state, revision.id, revision.currentlySelected, newVersion),
+    const targetVersion = revision.currentlySelected;
+    const targetId = revision.id;
+    const version = revision.versions[targetVersion];
+    const currentText = version ? versionText(version) : "";
+
+    const sameVersion = loadedRevisionId === targetId && loadedVersionIndex === targetVersion;
+    const textChangedExternally = sameVersion && currentText !== loadedVersionText && !isSyncingToParent;
+
+    if (sameVersion && !textChangedExternally) {
+        return; // same version, no external text change — don't recreate
+    }
+
+    nestedView?.destroy();
+    nestedViewRef.current = undefined;
+
+    if (!version) return;
+
+    const editorState = createInlineVersionState(
+        version,
+        (update) => {
+            if (update.docChanged || annotationsChanged(update)) {
+                isSyncingToParent = true;
+                syncVersionToParent(update.view, view, targetId, targetVersion);
+                loadedVersionText = update.view.state.doc.toString();
+                isSyncingToParent = false;
+            }
+        },
+        view,
+        targetId,
+        targetVersion,
+        nestedViewRef,
     );
-}
+
+    nestedView = new EditorView({ state: editorState, parent: nestedEditorHost });
+    nestedViewRef.current = nestedView;
+    loadedRevisionId = targetId;
+    loadedVersionIndex = targetVersion;
+    loadedVersionText = currentText;
+});
 
 // Label editing state
 let editingLabelIndex = $state<number | null>(null);
@@ -213,20 +259,22 @@ $effect(() => {
     )
         return;
     lastFocusRequestToken = event.token;
-    const relPos = Math.min(event.relativePos, activeText.length);
+    const relPos = event.relativePos;
     if (appSettings.showNestedEditor) {
-        const placeCursor = (el: HTMLTextAreaElement) => {
-            el.focus();
-            el.setSelectionRange(relPos, relPos);
+        const focusEditor = () => {
+            if (nestedView) {
+                nestedView.focus();
+                const docLen = nestedView.state.doc.length;
+                const safePos = Math.min(relPos, docLen);
+                nestedView.dispatch({ selection: { anchor: safePos } });
+            }
         };
-        if (isEditorOpen && textareaEl) {
-            placeCursor(textareaEl);
+        if (isEditorOpen && nestedView) {
+            focusEditor();
         } else {
             userClosedEditor = false;
             isEditorOpen = true;
-            tick().then(() => {
-                if (textareaEl) placeCursor(textareaEl);
-            });
+            tick().then(focusEditor);
         }
     } else {
         modalStack.push({
@@ -273,20 +321,23 @@ $effect(() => {
         event.token !== lastNestedSelectionToken ||
         event.type !== "pending-nested-editor-selection" ||
         event.annotationId !== revision.id ||
-        !textareaEl
+        !nestedView
     )
         return;
     lastNestedSelectionToken = event.token;
-    const len = textareaEl.value.length;
-    textareaEl.setSelectionRange(
-        Math.min(event.from, len),
-        Math.min(event.to, len),
-    );
-    textareaEl.focus();
+    const docLen = nestedView.state.doc.length;
+    nestedView.dispatch({
+        selection: {
+            anchor: Math.min(event.from, docLen),
+            head: Math.min(event.to, docLen),
+        },
+    });
+    nestedView.focus();
 });
 
 onDestroy(() => {
     clearTimeout(boundaryHintTimeout);
+    nestedView?.destroy();
 });
 </script>
 
@@ -412,9 +463,6 @@ onDestroy(() => {
         >
             <PlusIcon size={10} />
             <span>New version</span>
-            {#if textareaFocused}
-                <Kbd keys={[modKey, "↵"]} />
-            {/if}
         </button>
         {#if appSettings.showNestedEditor}
         <button
@@ -459,7 +507,7 @@ onDestroy(() => {
                 onclick={() => {
                     userClosedEditor = false;
                     isEditorOpen = true;
-                    tick().then(() => textareaEl?.focus());
+                    tick().then(() => nestedView?.focus());
                 }}
             >
                 <span class="shrink-0 mt-px">↓</span>
@@ -478,77 +526,10 @@ onDestroy(() => {
         {/if}
     {/if}
 
-    <!-- Inline textarea editor (collapsible) -->
+    <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
-            <textarea
-                bind:this={textareaEl}
-                class="revision-textarea"
-                spellcheck="true"
-                autocapitalize="on"
-                {...{"autocorrect": "on"}}
-                value={activeText}
-                oninput={(e) => pushTextToParent(e.currentTarget.value)}
-                onfocusin={() => { textareaFocused = true; }}
-                onfocusout={() => {
-                    textareaFocused = false;
-                    // On blur, ensure the stored version text reflects what's in
-                    // the textarea, in case an external update changed activeText
-                    // while the user was focused.
-                    if (textareaEl) pushTextToParent(textareaEl.value);
-                }}
-                onkeydown={(e) => {
-                    // Forward undo/redo to parent CM so the single undo stack works.
-                    if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
-                        e.preventDefault();
-                        // Flush current textarea value before undo so the history
-                        // entry reflects the latest typed text.
-                        if (textareaEl) pushTextToParent(textareaEl.value);
-                        undo(view);
-                    } else if (
-                        (e.metaKey || e.ctrlKey) &&
-                        (e.key === "y" || (e.shiftKey && e.key === "z"))
-                    ) {
-                        e.preventDefault();
-                        redo(view);
-                    } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                        // Mod-Enter: create a new version.
-                        e.preventDefault();
-                        posthog.capture("revision_version_created", { version_count: revision.versions.length });
-                        view.dispatch(createNewRevision(view.state, revision.id));
-                    } else if (e.ctrlKey && e.key === "[") {
-                        // Ctrl-[: previous version.
-                        e.preventDefault();
-                        const count = revision.versions.length;
-                        if (count > 1) {
-                            const prev = (revision.currentlySelected - 1 + count) % count;
-                            view.dispatch(setActiveRevisionVersion(view.state, revision.id, prev));
-                        }
-                    } else if (e.ctrlKey && e.key === "]") {
-                        // Ctrl-]: next version.
-                        e.preventDefault();
-                        const count = revision.versions.length;
-                        if (count > 1) {
-                            const next = (revision.currentlySelected + 1) % count;
-                            view.dispatch(setActiveRevisionVersion(view.state, revision.id, next));
-                        }
-                    } else if ((e.metaKey || e.ctrlKey) && e.altKey && (e.key === "m" || e.key === "k")) {
-                        // Mod-Alt-m / Mod-Alt-k: open modal and pass the nested annotation command.
-                        e.preventDefault();
-                        modalStack.push({
-                            type: "revision",
-                            revisionId: revision.id,
-                            parentView: view,
-                            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-                            pendingNestedCommand: {
-                                type: e.key === "m" ? "comment" : "revision",
-                                selectionFrom: textareaEl?.selectionStart ?? 0,
-                                selectionTo: textareaEl?.selectionEnd ?? 0,
-                            },
-                        });
-                    }
-                }}
-            ></textarea>
+            <div bind:this={nestedEditorHost} class="revision-inline-editor"></div>
         </div>
     {/if}
 
@@ -570,19 +551,22 @@ onDestroy(() => {
 
 
 <style>
-    .revision-textarea {
-        display: block;
-        width: 100%;
-        height: 220px;
-        resize: none;
-        background: transparent;
-        border: none;
-        outline: none;
-        padding: 8px 10px 12px 10px;
+    .revision-inline-editor {
+        min-height: 220px;
+    }
+    .revision-inline-editor :global(.cm-editor) {
+        height: 100%;
+        min-height: 220px;
         font-size: 13px;
         font-family: inherit;
         line-height: 1.6;
-        color: inherit;
+        background: transparent;
+    }
+    .revision-inline-editor :global(.cm-scroller) {
         overflow-y: auto;
+        padding: 8px 10px 12px 10px;
+    }
+    .revision-inline-editor :global(.cm-content) {
+        padding: 0;
     }
 </style>
