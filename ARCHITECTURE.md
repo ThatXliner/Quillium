@@ -352,20 +352,33 @@ Each `RevisionAnnotation` supports two editing surfaces:
 | Undo/redo | `keydown` intercepts `Mod-z`/`Mod-y` and calls `undo(view)`/`redo(view)` on the parent directly. No second undo stack. | Own CodeMirror history; undo/redo run on the modal’s `EditorView` while it is open. Changes serialised back to parent on every transaction via `syncVersionToParent`. |
 | Version switching | Parent dispatches `setActiveRevisionVersion` → `activeText` re-derives → `$effect` updates `textarea.value`. No lifecycle teardown needed. | Modal destroys and recreates the `EditorView` from the new `VersionState` blob when the breadcrumb dropdown selects a different version. |
 | Sync direction | `oninput` → `updateRevisionVersionState` on parent. While unfocused, `textarea.value` tracks `activeText` reactively. | Every transaction calls `syncVersionToParent`, serialising the modal’s full CM state (including nested `annotationField`) back to the parent. |
-| Nested annotations | Not rendered. If a version’s blob contains nested annotations (written by a previous modal session), they are invisible in the textarea. The user must open the modal to interact with them. | Full `annotationField` + `Annotations.svelte` inside the modal. Nested annotations work out of the box. `Mod-Alt-K` / `Mod-Alt-M` open a child modal layer. |
+| Nested annotations | Not rendered inline. Blobs with nested annotations (from modal sessions) are silently ignored by the textarea. `Mod-Alt-K` / `Mod-Alt-M` open the modal as a workaround. **Planned:** replace with an inline `EditorView` (see below). | Full `annotationField` + `Annotations.svelte` inside the modal. Nested annotations work out of the box. `Mod-Alt-K` / `Mod-Alt-M` open a child modal layer. |
 
 ### Why not a second inline CodeMirror instance?
 
-This was the original design and was removed. The core problem: two `EditorView`s pointing at the same logical content, bridged through Svelte reactivity, produce an inherently fragile sync loop:
+The original design used a second inline `EditorView` and was replaced with a `<textarea>` to eliminate a fragile sync loop. The problems were:
 
-- Every keystroke in the nested view dispatches `updateRevisionVersionState` to the parent → `$annotations` store updates → `activeText` re-derives → `$effect` fires → must reload nested `EditorView` state. That is three state-system hops (CM → Svelte store → CM) on every character.
-- Undo in the nested view had to be delegated to the parent (`makeParentUndoKeymap`). After the parent undo restored the old `VersionState` blob, the only way to reload the nested editor was through the Svelte reactive chain above. If any dependency was missed or batched incorrectly, the nested editor silently showed stale content.
-- Preventing the round-trip from becoming an infinite loop required `lastSyncedText`, `isSyncingFromAnnotation`, and `previousVersionId` — guards that existed solely to contain the feedback loop, not to implement actual features.
-- The original intent was to support nested annotations inside the inline editor (sub-comments, sub-revisions). In practice this was never implemented: the card only showed an "Annotation selected → View in modal" hint, so the extra complexity bought nothing over just opening the modal.
+- Every keystroke dispatched `updateRevisionVersionState` to the parent → `$annotations` store updated → `activeText` re-derived → `$effect` fired → had to reload nested `EditorView` state. Three state-system hops (CM → Svelte store → CM) per character.
+- Undo delegation required `makeParentUndoKeymap`. After parent undo restored the old `VersionState` blob, reloading the nested editor depended on the Svelte reactive chain above firing correctly — which it silently didn't in some cases.
+- Preventing the round-trip from becoming an infinite loop required `lastSyncedText`, `isSyncingFromAnnotation`, and `previousVersionId` — guards that existed solely to contain the feedback loop.
 
 The textarea eliminates all of this. Undo just works (one CM instance, one undo stack). Version switches are a reactive `value` update. No guards, no round-trips.
 
-**Old blobs:** `VersionState` is opaque — `versionText()` always reads `.doc`. Blobs previously written by the inline `EditorView` (which contained a full `annotationField` key) still load correctly: `versionText()` ignores the extra fields, and the modal calls `EditorState.fromJSON` on them when opened. No data migration needed.
+### Known limitation and planned upgrade
+
+The textarea cannot render nested annotations — if a version's blob contains nested annotations (written by a prior modal session), they are invisible inline. `Mod-Alt-K` / `Mod-Alt-M` from the textarea work around this by opening the modal instead of creating inline.
+
+**The correct long-term fix** is to replace the textarea with a second inline `EditorView` that syncs differently from the original attempt:
+
+- The nested editor has `history: false` — it never tries to undo itself.
+- Its `updateListener` calls `syncVersionToParent` on every doc-changing transaction (not just on blur). This writes the full CM state blob into the parent's `annotationField` via `updateRevisionVersionState`.
+- The parent's `invertedEffects` on `_updateRevisionVersionState` already handles Cmd+Z correctly — undoing the parent restores the old blob, and the nested editor reloads from it reactively.
+- Undo/redo from the nested editor is still forwarded to `undo(parentView)` / `redo(parentView)` via a keydown interceptor — same as the textarea today.
+- No `isSyncingFromAnnotation` guard is needed because `syncVersionToParent` always writes the current state outward, never inward. The nested editor reloads only when the active version changes (version switch or undo), detected by comparing `revisionId + versionIndex` in the `$effect`.
+
+This approach keeps one undo stack, eliminates the feedback loop, and restores full CM feature parity (keybindings, selection model, nested annotations inline). The textarea is the current interim solution until this is implemented.
+
+**Old blobs:** `VersionState` is opaque — `versionText()` always reads `.doc`. Blobs previously written by either the old inline `EditorView` or the modal (which contain a full `annotationField` key) still load correctly via `EditorState.fromJSON`. No data migration needed when the inline editor is upgraded.
 
 ---
 
