@@ -85,6 +85,7 @@ const activeVersion = $derived(revision.versions[revision.currentlySelected]);
 
 let isEditorOpen = $state(false);
 let userClosedEditor = false;
+let flashEditor = $state(false);
 let nestedEditorHost = $state<HTMLDivElement | undefined>(undefined);
 // Plain (non-reactive) variables — must NOT be $state to avoid feedback loops.
 let nestedView: EditorView | undefined;
@@ -161,6 +162,11 @@ $effect(() => {
 
     nestedView = new EditorView({ state: editorState, parent: nestedEditorHost });
     nestedViewRef.current = nestedView;
+    // Restore saved cursor position if present (clamped to doc length).
+    if (typeof (version as { cursorPos?: number }).cursorPos === "number") {
+        const pos = Math.min((version as { cursorPos?: number }).cursorPos!, nestedView.state.doc.length);
+        nestedView.dispatch({ selection: { anchor: pos } });
+    }
     loadedRevisionId = targetId;
     loadedVersionIndex = targetVersion;
     loadedVersionText = currentText;
@@ -267,6 +273,8 @@ $effect(() => {
                 const docLen = nestedView.state.doc.length;
                 const safePos = Math.min(relPos, docLen);
                 nestedView.dispatch({ selection: { anchor: safePos } });
+                flashEditor = true;
+                setTimeout(() => { flashEditor = false; }, 400);
             }
         };
         if (isEditorOpen && nestedView) {
@@ -528,7 +536,8 @@ onDestroy(() => {
 
     <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
-        <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+        <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60
+            {flashEditor ? 'editor-focus-flash' : ''}">
             <div bind:this={nestedEditorHost} class="revision-inline-editor"></div>
         </div>
     {/if}
@@ -569,5 +578,13 @@ onDestroy(() => {
     .revision-inline-editor :global(.cm-content) {
         padding: 0;
         font-size: 13px;
+    }
+    @keyframes editor-focus-flash {
+        0%   { background-color: #fef2cd; }
+        60%  { background-color: #fef2cd; }
+        100% { background-color: transparent; }
+    }
+    .editor-focus-flash {
+        animation: editor-focus-flash 400ms ease-out forwards;
     }
 </style>
