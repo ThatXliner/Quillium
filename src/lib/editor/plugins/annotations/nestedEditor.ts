@@ -76,10 +76,7 @@ export function makeParentAddVersionKeymap(parentView: EditorView) {
     ]));
 }
 
-export function makeParentRevisionNavKeymap(
-    parentView: EditorView,
-    getNestedView?: () => EditorView | undefined,
-) {
+export function makeParentRevisionNavKeymap(parentView: EditorView) {
     const runNav = (direction: "prev" | "next") => {
         const annotation = getActiveAnnotation(parentView.state, "revision");
         if (!annotation) return false;
@@ -90,9 +87,6 @@ export function makeParentRevisionNavKeymap(
             ? (current + 1) % count
             : (current - 1 + count) % count;
         parentView.dispatch(setActiveRevisionVersion(parentView.state, annotation.id, next));
-        if (getNestedView) {
-            requestAnimationFrame(() => getNestedView()?.focus());
-        }
         return true;
     };
     return keymap.of([
@@ -234,7 +228,7 @@ export function createInlineVersionState(
         makeParentUndoKeymap(parentView, () => nestedViewRef.current, revisionId, versionIndex),
         makeInlineNestedAnnotationKeymap(revisionId),
         makeParentAddVersionKeymap(parentView),
-        makeParentRevisionNavKeymap(parentView, () => nestedViewRef.current),
+        makeParentRevisionNavKeymap(parentView),
     ];
     return "annotationField" in version
         ? EditorState.fromJSON(version, { extensions }, nestedSavedFields)
