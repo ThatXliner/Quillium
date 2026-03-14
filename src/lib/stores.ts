@@ -1,16 +1,38 @@
 /**
  * stores.ts — Global reactive state hub for Quillium.
  *
- * Because CodeMirror manages its own state internally and the
- * Svelte store for `editorView` is only set once (it holds a
- * mutable reference that never triggers reactive updates), we
- * maintain *manually-synced* mirror stores for editor-derived
- * values that Svelte components need to react to (annotations,
- * active annotation, document content, selected text). The
- * synchronization happens in Editor.svelte's `updateListener`.
+ * ## Why manual sync is necessary
  *
- * Stores defined here are consumed across all three panels of
- * the application layout:
+ * CodeMirror 6 manages its own immutable state tree (EditorState).
+ * On every keystroke or command, CodeMirror creates a *new* EditorState
+ * object and swaps it into EditorView.state — but EditorView itself is a
+ * stable mutable object. Svelte's reactivity system ($derived, $effect)
+ * tracks reads of $state/$props proxies. Because EditorView is a plain
+ * class instance (not wrapped in $state), Svelte never observes the swap
+ * of view.state, so:
+ *
+ *   - $derived(view.state.field(annotationField)) evaluates once at
+ *     component init and is NEVER re-run when CodeMirror processes a
+ *     transaction.
+ *   - $effect blocks that read view.state directly are equally blind
+ *     to CodeMirror transactions.
+ *
+ * The only correct way to bridge CodeMirror → Svelte reactivity is to
+ * hook into CodeMirror's own change notification system (updateListener /
+ * ViewPlugin) and manually write values into Svelte-reactive state
+ * ($state variables or writable stores). Those writes then propagate
+ * normally through $derived and $effect.
+ *
+ * ## Sync points in this codebase
+ *
+ *   1. Editor.svelte updateListener — fires on every transaction in the
+ *      main editor. Writes: annotations, activeAnnotation, documentContent,
+ *      selectedText.
+ *   2. RevisionModal.svelte createEditor updateListener — fires on every
+ *      transaction in a nested revision editor. Writes: modalAnnotations,
+ *      modalActiveAnnotation (local $state in that component).
+ *
+ * Stores defined here are consumed across all three panels:
  *   - Left panel  (AI sidebar)  reads documentContent, selectedText
  *   - Center panel (editor)     writes most stores via updateListener
  *   - Right panel  (annotations) reads annotations, activeAnnotation

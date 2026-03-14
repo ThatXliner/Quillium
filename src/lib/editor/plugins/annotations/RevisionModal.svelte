@@ -276,6 +276,11 @@ $effect(() => {
     }
 });
 
+// NOTE: $derived on view.state.field(...) is NOT reactive to CodeMirror
+// transactions. view is a plain prop (not $state), so Svelte cannot observe
+// mutations to view.state. This only captures the value at the time the
+// expression first runs. Downstream code that needs to react to state
+// changes reads from modalAnnotations instead (see below).
 const revision = $derived(
     view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
 );
@@ -284,6 +289,12 @@ let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
 
+// Manually-synced mirrors of the nested editor's CodeMirror state.
+// Because CodeMirror manages its own state internally (view.state is a plain
+// object, not $state), Svelte has no way to react to transactions automatically.
+// The nested editor's updateListener callback (inside createEditor) writes here
+// on every transaction, making these the reactive entry-point for everything
+// that needs to re-run when the nested editor changes.
 let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 

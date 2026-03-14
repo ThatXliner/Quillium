@@ -152,6 +152,14 @@ function computeWritingStats(doc: string, selText: string) {
     };
 }
 
+// Bridge from CodeMirror → Svelte reactivity.
+//
+// $derived and $effect cannot observe CodeMirror state changes because
+// EditorView is a plain mutable object, not $state — Svelte never sees
+// view.state being swapped on each transaction. This function is called
+// from CodeMirror's updateListener on every transaction, manually pushing
+// the new state into Svelte-reactive stores so the rest of the UI can
+// react normally. $effect is not used here; the hook is CodeMirror's own.
 function syncStoresToEditorState(update: ViewUpdate, doc: string, selText: string) {
     $annotations = update.state.field(annotationField);
     $activeAnnotation = getActiveAnnotation(update.state);

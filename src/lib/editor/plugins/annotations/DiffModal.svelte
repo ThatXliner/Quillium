@@ -38,7 +38,13 @@ const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
 let dialogEl = $state<HTMLDialogElement>();
 
-// Reactively read the suggestion from the parent editor's state
+// NOTE: $derived on parentView.state.field(...) is NOT reactive to CodeMirror
+// transactions — parentView is a plain prop, not $state, so Svelte cannot track
+// mutations to view.state. This expression only runs once at component init.
+// Reactivity for state changes would require either a manually-synced $state
+// mirror (like modalAnnotations in RevisionModal) or reading from the global
+// $annotations store. For DiffModal, the suggestion content is effectively
+// static once the modal opens, so the lack of reactivity is acceptable.
 const suggestion = $derived(
     parentView.state.field(annotationField)[suggestionId] as Annotation<"suggestion"> | undefined,
 );
