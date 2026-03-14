@@ -139,6 +139,11 @@ $effect(() => {
         return; // same version, no external text change — don't recreate
     }
 
+    // Remember if the nested editor had focus before we destroy it so we
+    // can restore focus after recreation (e.g. after undo/redo updates the
+    // version blob and forces a rebuild of the nested EditorView).
+    const hadFocus = textChangedExternally && (nestedView?.hasFocus ?? false);
+
     nestedView?.destroy();
     nestedViewRef.current = undefined;
 
@@ -166,6 +171,12 @@ $effect(() => {
     if (typeof (version as { cursorPos?: number }).cursorPos === "number") {
         const pos = Math.min((version as { cursorPos?: number }).cursorPos!, nestedView.state.doc.length);
         nestedView.dispatch({ selection: { anchor: pos } });
+    }
+    // Re-focus if the editor had focus before the external content change
+    // (undo/redo). Without this, Mod-z leaves the editor defocused and the
+    // user can't immediately press Mod-z again to continue undoing.
+    if (hadFocus) {
+        nestedView.focus();
     }
     loadedRevisionId = targetId;
     loadedVersionIndex = targetVersion;
