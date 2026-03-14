@@ -89,41 +89,9 @@ export function makeParentRevisionNavKeymap(
         const next = direction === "next"
             ? (current + 1) % count
             : (current - 1 + count) % count;
-        // Save cursor position into the current version blob before switching away.
-        // We do NOT do a full content sync here — content is already kept up-to-date
-        // by the updateListener on every docChanged. A full sync here would overwrite
-        // version content with whatever the nested editor happens to have (which can be
-        // stale/wrong when debug scenarios or undo/redo put the editor in a transitional
-        // state), causing the "switching versions overwrites another version" bug.
+        // Flush current cursor into the version blob before switching away.
         const nv = getNestedView?.();
-        if (nv) {
-            const cursorPos = nv.state.selection.main.head;
-            const rev = parentView.state.field(annotationField)[annotation.id] as
-                | Annotation<"revision">
-                | undefined;
-            const docLen = parentView.state.doc.length;
-            if (rev) {
-                const existing = rev.versions[current];
-                const selFrom = rev.selection.main.from;
-                const selTo = rev.selection.main.to;
-                const selValid = selFrom >= 0 && selTo >= selFrom && selTo <= docLen;
-                if (
-                    existing &&
-                    selValid &&
-                    (existing as { cursorPos?: number }).cursorPos !== cursorPos
-                ) {
-                    parentView.dispatch(
-                        updateRevisionVersionState(
-                            parentView.state,
-                            annotation.id,
-                            current,
-                            { ...existing, cursorPos },
-                            { addToHistory: false },
-                        ),
-                    );
-                }
-            }
-        }
+        if (nv) syncVersionToParent(nv, parentView, annotation.id, current);
         parentView.dispatch(setActiveRevisionVersion(parentView.state, annotation.id, next));
         if (getNestedView) {
             requestAnimationFrame(() => getNestedView()?.focus());
