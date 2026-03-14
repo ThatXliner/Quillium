@@ -350,6 +350,10 @@ onDestroy(() => {
                                     setActiveRevisionVersion(view.state, revision.id, i),
                                 );
                             }
+                            if (appSettings.showNestedEditor) {
+                                userClosedEditor = false;
+                                isEditorOpen = true;
+                            }
                         }}
                         ondblclick={() => {
                             if (versionActive) startLabelEdit(i);
@@ -528,6 +532,20 @@ onDestroy(() => {
                             const next = (revision.currentlySelected + 1) % count;
                             view.dispatch(setActiveRevisionVersion(view.state, revision.id, next));
                         }
+                    } else if ((e.metaKey || e.ctrlKey) && e.altKey && (e.key === "m" || e.key === "k")) {
+                        // Mod-Alt-m / Mod-Alt-k: open modal and pass the nested annotation command.
+                        e.preventDefault();
+                        modalStack.push({
+                            type: "revision",
+                            revisionId: revision.id,
+                            parentView: view,
+                            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+                            pendingNestedCommand: {
+                                type: e.key === "m" ? "comment" : "revision",
+                                selectionFrom: textareaEl?.selectionStart ?? 0,
+                                selectionTo: textareaEl?.selectionEnd ?? 0,
+                            },
+                        });
                     }
                 }}
             ></textarea>
