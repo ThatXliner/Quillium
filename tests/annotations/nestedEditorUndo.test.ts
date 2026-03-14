@@ -1,11 +1,16 @@
 /**
- * Tests for nested editor undo delegation.
+ * Tests for revision version undo via syncVersionToParent.
  *
- * Nested revision editors have no independent undo stack — undo/redo
- * is delegated to the parent editor. Every change in the nested editor
- * is synced to the parent via syncVersionToParent, which dispatches an
- * updateRevisionVersionState effect that lands in the parent's history.
- * Pressing Ctrl+Z in the parent restores the previous VersionState blob.
+ * The inline revision card uses a <textarea>; undo/redo is handled
+ * by forwarding Mod-z/Mod-y keydowns to undo(parentView)/redo(parentView)
+ * directly — no second EditorView involved.
+ *
+ * The modal editor (RevisionModal.svelte) does use a second EditorView,
+ * but it has its own history and does NOT delegate undo to the parent.
+ *
+ * What these tests verify: syncVersionToParent correctly writes the
+ * version state into the parent's annotation field, and undo/redo on
+ * the parent restores the previous VersionState blob.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,7 +19,6 @@ import { EditorView } from "@codemirror/view";
 import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import {
-    makeParentUndoKeymap,
     syncVersionToParent,
 } from "$lib/editor/plugins/annotations/nestedEditor";
 import {
@@ -47,20 +51,17 @@ function createParentView(doc = "hello") {
 }
 
 /**
- * Creates a nested EditorView with no history and with the parent undo
- * keymap installed, mirroring createVersionState() but using the same
- * import path as the test so module deduplication works correctly.
+ * Creates a minimal EditorView to simulate a modal editor that syncs
+ * its state to the parent via syncVersionToParent. The modal has its
+ * own history (unlike the old inline nested editor).
  */
 function createNestedView(
     versionDoc: string,
-    parentView: EditorView,
+    _parentView: EditorView,
 ): EditorView {
-    const parentUndoKeymap = makeParentUndoKeymap(parentView);
-    // Mirrors createVersionState: annotations() without history(), plus the
-    // parent undo keymap so Ctrl+Z delegates to the parent.
     const state = EditorState.create({
         doc: versionDoc,
-        extensions: [annotationExtensions(), parentUndoKeymap],
+        extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
     });
     const el = document.createElement("div");
     document.body.appendChild(el);
@@ -115,30 +116,19 @@ afterEach(() => {
     parentView.destroy();
 });
 
-// ── Scenario 1: Nested editor has no independent undo stack ──────────────────
+// ── Scenario 1: syncVersionToParent writes text into parent annotation ───────
 
-describe("Scenario 1: nested editor has no independent undo stack", () => {
-    it("undo returns false on the nested editor after typing", () => {
-        nestedView = createNestedView("hello", parentView);
-
-        // Simulate typing in the nested editor
-        nestedView.dispatch({
-            changes: { from: nestedView.state.doc.length, insert: " world" },
-        });
-
-        // The nested editor has no history, so undo should return false
-        const result = undo(nestedView);
-        expect(result).toBe(false);
-    });
-
-    it("undoDepth is 0 on nested editor after typing", () => {
+describe("Scenario 1: syncVersionToParent stores version text in parent", () => {
+    it("parent annotationField reflects the nested edit after sync", () => {
+        const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
         nestedView = createNestedView("hello", parentView);
 
         nestedView.dispatch({
             changes: { from: nestedView.state.doc.length, insert: " world" },
         });
+        syncVersionToParent(nestedView, parentView, revId, 0);
 
-        expect(undoDepth(nestedView.state)).toBe(0);
+        expect(getRevisionVersionText(parentView, revId)).toBe("hello world");
     });
 });
 
