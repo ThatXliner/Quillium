@@ -895,16 +895,29 @@ const nestedEditorBridge = ViewPlugin.fromClass(
                 }
                 if (!touched) continue;
 
-                // Translate each change to nested-editor coordinates and dispatch
+                // Translate each change to nested-editor coordinates and dispatch.
+                // For changes that cross the revision boundary (fromA < revFrom or
+                // toA > revTo), we cannot clip just the coordinates and keep the full
+                // inserted text — the inserted text would no longer match the clipped
+                // range. Fall back to replacing the entire nested doc with the
+                // post-transaction parent slice for that revision.
                 const nestedChanges: { from: number; to: number; insert: string }[] = [];
+                let needsFullReplace = false;
                 for (const tr of update.transactions) {
+                    if (needsFullReplace) break;
                     tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+                        if (needsFullReplace) return;
                         // Only changes that overlap the revision range (including
                         // pure insertions within the nested doc range)
                         const isPureInsert = fromA === toA;
                         if (isPureInsert
                             ? fromA < revFrom || fromA > revFrom + nestedDocLen
                             : fromA >= revTo || toA <= revFrom) return;
+                        // Change crosses revision boundary — can't clip coords+text safely
+                        if (!isPureInsert && (fromA < revFrom || toA > revTo)) {
+                            needsFullReplace = true;
+                            return;
+                        }
                         const nestedFrom = Math.max(0, fromA - revFrom);
                         const nestedTo = Math.max(0, Math.min(toA, revTo) - revFrom);
                         nestedChanges.push({
@@ -912,6 +925,18 @@ const nestedEditorBridge = ViewPlugin.fromClass(
                             to: nestedTo,
                             insert: inserted.toString(),
                         });
+                    });
+                }
+                if (needsFullReplace) {
+                    // Use post-transaction parent state to get the correct revision text
+                    const postAnnotation = update.state.field(annotationField)[entry.revisionId];
+                    if (!postAnnotation || !isAnnotationOfType(postAnnotation, "revision")) continue;
+                    const { from: postFrom, to: postTo } = postAnnotation.selection.main;
+                    nestedChanges.length = 0;
+                    nestedChanges.push({
+                        from: 0,
+                        to: entry.editor.state.doc.length,
+                        insert: update.state.sliceDoc(postFrom, postTo),
                     });
                 }
 
