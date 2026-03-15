@@ -80,13 +80,17 @@ function serializeAnnotation(annotation: GenericAnnotation): Record<string, unkn
 function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     const { annotationField } = savedFields;
     const events: AnnotationEvent[] = [];
+    const explicitlyHandled = new Set<number>();
+
     for (const effect of tr.effects) {
         if (effect.is(addAnnotation)) {
+            explicitlyHandled.add(effect.value.id);
             events.push({
                 type: "annotation_add",
                 annotation: serializeAnnotation(effect.value),
             });
         } else if (effect.is(removeAnnotation)) {
+            explicitlyHandled.add(effect.value.id);
             events.push({
                 type: "annotation_remove",
                 annotationId: effect.value.id,
@@ -96,6 +100,7 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
             // been remapped through any doc changes in the same transaction.
             const ann = tr.state.field(annotationField)[effect.value.annotationId];
             if (ann) {
+                explicitlyHandled.add(effect.value.annotationId);
                 events.push({
                     type: "annotation_update",
                     annotation: serializeAnnotation(ann),
@@ -103,6 +108,26 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
             }
         }
     }
+
+    // Catch version state changes (updateRevisionVersionState, setActiveRevisionVersion,
+    // addVersionToRevision, deleteVersionFromRevision, updateRevisionVersionLabel) which use
+    // internal effects not visible here. Compare pre/post annotation field and emit
+    // annotation_update for any annotation that changed but wasn't already handled above.
+    if (!tr.docChanged) {
+        const before = tr.startState.field(annotationField);
+        const after = tr.state.field(annotationField);
+        for (const [idStr, ann] of Object.entries(after)) {
+            const id = Number(idStr);
+            if (explicitlyHandled.has(id)) continue;
+            if (before[id] !== ann) {
+                events.push({
+                    type: "annotation_update",
+                    annotation: serializeAnnotation(ann),
+                });
+            }
+        }
+    }
+
     return events;
 }
 
