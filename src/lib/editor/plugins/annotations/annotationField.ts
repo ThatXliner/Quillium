@@ -558,12 +558,14 @@ function syncRevisionDocsWithDocument(
     tr: Transaction,
     skipIds: Set<number> = new Set(),
 ): Annotations {
+    // Nested editor edits that collapse a revision to empty should still
+    // sync version.doc to "" — otherwise the stale doc gets pushed back
+    // into the nested editor by the external-sync effect. Non-nested
+    // deletions skip syncing so undo can restore from _restoreAnnotation.
+    const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
-            // Skip syncing when the revision's range is collapsed — the text was
-            // fully deleted. We keep the stored version doc intact so that undo
-            // can restore both the text and the version content correctly.
-            if (x.selection.main.empty) return x;
+            if (x.selection.main.empty && !isNestedEdit) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
             x.versions[x.currentlySelected] = {
                 ...x.versions[x.currentlySelected],
