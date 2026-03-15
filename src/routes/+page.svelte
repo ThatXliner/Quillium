@@ -30,7 +30,6 @@ import { debugPanelActive } from "$lib/debug/store.svelte";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
-import ErrorBanner from "$lib/ErrorBanner.svelte";
 import type { BackupEntry } from "$lib/errorGuard";
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
@@ -158,8 +157,6 @@ if (import.meta.env.DEV) {
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
-
-<ErrorBanner />
 
 <AiSidebar />
 
