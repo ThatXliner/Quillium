@@ -647,7 +647,6 @@ let revisionThread = $state(
 );
 
 // Keep thread reactive to external changes (e.g. undo of a thread update).
-// Keep thread reactive to external changes (e.g. undo of a thread update).
 // Uses the same per-level store strategy as the external-sync effect.
 $effect(() => {
     let ann: AnnotationsMap | undefined;
