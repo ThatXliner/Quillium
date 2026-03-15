@@ -167,6 +167,12 @@ $effect(() => {
         event.command.revisionId !== revision.id
     )
         return;
+    // If there's already a modal open for this revision, the modal's own
+    // event handler will create the sub-annotation directly in its nested
+    // editor rather than pushing a duplicate modal from the sidebar.
+    const stack = $modalStack;
+    const topModal = stack[stack.length - 1];
+    if (topModal?.type === "revision" && topModal.revisionId === revision.id) return;
     lastOpenNestedEditorToken = event.token;
     const cmd = event.command;
     modalStack.push({

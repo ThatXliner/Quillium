@@ -48,9 +48,15 @@ import {
 } from ".";
 
 import { canCreateNewComment, getActiveAnnotation } from "./utils";
-import { createNewAnnotation, versionText, type VersionState } from "./models";
+import { createNewAnnotation, isAnnotationOfType, versionText, type VersionState } from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
-import { annotations as annotationsStore, modalStack, type ModalEntry } from "$lib/stores";
+import {
+    annotations as annotationsStore,
+    annotationUiEvent,
+    modalStack,
+    modalAnnotationStores,
+    type ModalEntry,
+} from "$lib/stores";
 import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import Annotations from "./Annotations.svelte";
@@ -239,19 +245,8 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
     openDropdown = -1;
 
     if (isCurrent) {
-        if (editor) {
-            // Flush the nested editor's state into the currently active version
-            const nestedState = editor.state.toJSON(nestedSavedFields) as VersionState;
-            view.dispatch(
-                updateRevisionVersionState(
-                    view.state,
-                    revisionId,
-                    previousVersionIndex,
-                    nestedState,
-                    { addToHistory: false },
-                ),
-            );
-        }
+        // destroyEditor already flushes using editorVersionIndex,
+        // which matches previousVersionIndex here.
         destroyEditor();
     }
 
@@ -266,7 +261,7 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
                 | Annotation<"revision">
                 | undefined;
             if (v) {
-                createEditor(v.versions[v.currentlySelected]);
+                createEditor(v.versions[v.currentlySelected], v.currentlySelected);
                 if (editor) moveCursorToEnd(editor);
             }
         });
@@ -290,7 +285,7 @@ $effect(() => {
                 | Annotation<"revision">
                 | undefined;
             if (v) {
-                createEditor(v.versions[v.currentlySelected]);
+                createEditor(v.versions[v.currentlySelected], v.currentlySelected);
                 if (editor) moveCursorToEnd(editor);
             }
         });
@@ -310,6 +305,10 @@ let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
 let lastDispatchedDoc = "";
+// Track which version index the editor was created for, so destroyEditor
+// flushes state into the correct version slot even if currentlySelected
+// has changed (e.g. a parent breadcrumb version switch).
+let editorVersionIndex = 0;
 // Guard: set to true while we are programmatically patching the nested editor
 // from an external parent change, so the updateListener skips translateAndDispatch
 // and doesn't bounce the change back up to the parent.
@@ -332,8 +331,9 @@ let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
  * to parent coordinates via translateAndDispatch. Nested state
  * is flushed back to the parent on destroy via destroyEditor.
  */
-function createEditor(version: VersionState) {
+function createEditor(version: VersionState, versionIndex?: number) {
     if (!editorHost || editor) return;
+    if (versionIndex !== undefined) editorVersionIndex = versionIndex;
     const state = createNestedEditorState(
         version,
         (update: ViewUpdate) => {
@@ -368,14 +368,17 @@ function moveCursorToEnd(activeEditor: EditorView) {
 function destroyEditor() {
     // Flush nested annotation state back into the parent revision's version blob
     // before destroying, so nested annotations survive modal close and version switches.
+    // Use editorVersionIndex (set when the editor was created) rather than
+    // rev.currentlySelected, which may have changed if a parent breadcrumb
+    // version switch happened before this destroy.
     if (editor) {
         const rev = view.state.field(annotationField)[revisionId] as
             | Annotation<"revision">
             | undefined;
-        if (rev) {
+        if (rev && editorVersionIndex < rev.versions.length) {
             const blob = editor.state.toJSON(nestedSavedFields) as VersionState;
             view.dispatch(
-                updateRevisionVersionState(view.state, revisionId, rev.currentlySelected, blob, {
+                updateRevisionVersionState(view.state, revisionId, editorVersionIndex, blob, {
                     addToHistory: false,
                 }),
             );
@@ -392,18 +395,20 @@ function close() {
 }
 
 // When the parent revision's doc changes externally (undo, non-atomic
-// typing), sync the modal editor. We watch $annotationsStore (the
-// Svelte store updated by Editor.svelte on every parent transaction)
-// to detect external changes, and only patch when the doc differs from
-// what the nested editor last dispatched up.
+// typing), sync the modal editor. For root-level modals (stackIndex === 0),
+// we watch $annotationsStore (the Svelte store updated by Editor.svelte).
+// For deeply nested modals, we watch the parent modal's per-level store
+// via modalAnnotationStores, which the parent publishes on every transaction.
 $effect(() => {
-    const ann = $annotationsStore;
+    // Choose the right reactive source based on nesting depth.
+    let ann: AnnotationsMap | undefined;
+    if (stackIndex === 0) {
+        ann = $annotationsStore;
+    } else {
+        const parentLevel = $modalAnnotationStores;
+        ann = parentLevel[stackIndex - 1];
+    }
     if (!editor || !ann) return;
-    // $annotationsStore only reflects the root editor's annotations.
-    // For nested modals (stackIndex > 0), the parent `view` is a
-    // nested editor whose annotations aren't in this store, so the
-    // lookup would find an unrelated annotation or undefined.
-    if (stackIndex > 0) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || rev._type !== "revision" || !rev.versions?.[rev.currentlySelected]) return;
     const externalDoc = versionText(rev.versions[rev.currentlySelected]);
@@ -489,6 +494,45 @@ function executePendingNestedCommand(
     }
 }
 
+// Intercept sub-annotation creation events from the modal's nested editor.
+// When the user presses Mod-Alt-k/m inside the nested editor, the keymap
+// fires a "revision-open-nested-editor" event targeting this modal's
+// revisionId. We handle it here: create the sub-annotation in the nested
+// editor, and for revisions push a new modal for the sub-revision.
+let lastNestedEditorEventToken = 0;
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        !editor ||
+        event.token === lastNestedEditorEventToken ||
+        event.type !== "revision-open-nested-editor" ||
+        event.command.revisionId !== revisionId
+    )
+        return;
+    lastNestedEditorEventToken = event.token;
+    const cmd = event.command;
+
+    // Create the sub-annotation in the nested editor
+    executePendingNestedCommand(editor, cmd);
+
+    // For sub-revisions, find the newly created annotation and push a modal
+    if (cmd.type === "revision") {
+        const nestedAnns = editor.state.field(annotationField);
+        // The newest annotation is the one we just created (highest ID)
+        const newId = Math.max(...Object.keys(nestedAnns).map(Number));
+        const newAnn = nestedAnns[newId];
+        if (newAnn && isAnnotationOfType(newAnn, "revision")) {
+            modalStack.push({
+                type: "revision",
+                revisionId: newId,
+                parentView: editor,
+                label: previewVersionText(newAnn.versions[newAnn.currentlySelected]),
+            });
+        }
+    }
+});
+
 // Open the <dialog> as a modal, bootstrap the nested editor,
 // and run any pending nested annotation command.
 $effect(() => {
@@ -499,7 +543,7 @@ $effect(() => {
             | Annotation<"revision">
             | undefined;
         if (rev && !editor) {
-            createEditor(rev.versions[rev.currentlySelected]);
+            createEditor(rev.versions[rev.currentlySelected], rev.currentlySelected);
         }
         const activeEditor = editor;
         const entry = $modalStack[stackIndex];
@@ -513,6 +557,15 @@ $effect(() => {
 
 onDestroy(() => {
     destroyEditor();
+    modalAnnotationStores.remove(stackIndex);
+});
+
+// Publish this modal's nested editor annotations to the global
+// per-level store so child modals can reactively watch their parent.
+$effect(() => {
+    if (modalAnnotations) {
+        modalAnnotationStores.set(stackIndex, modalAnnotations);
+    }
 });
 
 // Label editing state for the current crumb's version dropdown
@@ -557,7 +610,7 @@ function addVersion() {
             | Annotation<"revision">
             | undefined;
         if (!rev) return;
-        createEditor(rev.versions[rev.currentlySelected]);
+        createEditor(rev.versions[rev.currentlySelected], rev.currentlySelected);
         if (editor) moveCursorToEnd(editor);
     });
 }
@@ -594,10 +647,16 @@ let revisionThread = $state(
 );
 
 // Keep thread reactive to external changes (e.g. undo of a thread update).
-// Only applies to root-level modals; nested modals' parents aren't in this store.
+// Keep thread reactive to external changes (e.g. undo of a thread update).
+// Uses the same per-level store strategy as the external-sync effect.
 $effect(() => {
-    const ann = $annotationsStore;
-    if (!ann || stackIndex > 0) return;
+    let ann: AnnotationsMap | undefined;
+    if (stackIndex === 0) {
+        ann = $annotationsStore;
+    } else {
+        ann = $modalAnnotationStores[stackIndex - 1];
+    }
+    if (!ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (rev) revisionThread = rev.thread;
 });
