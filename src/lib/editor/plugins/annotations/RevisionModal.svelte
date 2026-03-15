@@ -48,13 +48,19 @@ import {
 } from ".";
 
 import { canCreateNewComment, getActiveAnnotation } from "./utils";
-import { createNewAnnotation, versionText, type VersionState } from "./models";
+import {
+    createNewAnnotation,
+    versionText,
+    updateRevisionVersionState,
+    type VersionState,
+} from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { annotations as annotationsStore, modalStack, type ModalEntry } from "$lib/stores";
 import {
     createNestedEditorState,
     translateAndDispatch,
     previewVersionText,
+    nestedSavedFields,
 } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import Annotations from "./Annotations.svelte";
@@ -239,11 +245,28 @@ $effect(() => {
  */
 function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], isCurrent: boolean) {
     if (crumb.type !== "revision") return;
-    crumbSelectedVersions[ci] = vi;
+    const previousVersionIndex = crumbSelectedVersions[ci];
     openDropdown = -1;
+
     if (isCurrent) {
+        if (editor) {
+            // Flush the nested editor's state into the currently active version
+            const nestedState = editor.state.toJSON(nestedSavedFields) as VersionState;
+            view.dispatch(
+                updateRevisionVersionState(
+                    view.state,
+                    revisionId,
+                    previousVersionIndex,
+                    nestedState,
+                    { addToHistory: false },
+                ),
+            );
+        }
         destroyEditor();
     }
+
+    crumbSelectedVersions[ci] = vi;
+
     crumb.parentView.dispatch(
         setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi),
     );
