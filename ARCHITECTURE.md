@@ -365,7 +365,14 @@ Replacing the whole buffer is the tradeoff we accepted for this reactive, bridge
 
 ### Modal editor
 
-The modal editor (`RevisionModal.svelte`) reuses the same helpers and keeps its own `lastDispatchedDoc`. It watches `$annotationsStore` (the parent store that mirrors `annotationField`) and replaces the modal buffer when `versionText(revision.versions[revision.currentlySelected])` diverges from `lastDispatchedDoc`. Version navigation or `addVersion` still destroys the editor before dispatching the parent effect so the new `mountedVersionId` is read correctly.
+The modal editor (`RevisionModal.svelte`) reuses the same helpers and keeps its own `lastDispatchedDoc`. The external-sync `$effect` watches the parent's annotation state for changes:
+
+- **Root-level modals** (`stackIndex === 0`) watch `$annotationsStore` (the global Svelte store mirroring the main editor's `annotationField`).
+- **Deeply nested modals** (`stackIndex > 0`) watch `$modalAnnotationStores[stackIndex - 1]` — a per-level global store that each RevisionModal publishes its nested editor's annotation state into. This chains recursively: undo at the root cascades through each level's external-sync `$effect`.
+
+Annotation IDs are scoped per-editor and can collide across nesting levels, so deeply nested modals must never read from `$annotationsStore` directly.
+
+`destroyEditor` flushes the nested editor's state (including sub-annotations) into the parent revision's version blob. It uses a tracked `editorVersionIndex` (set when the editor was created) rather than `rev.currentlySelected`, which may have changed if a parent breadcrumb version switch happened before the destroy. This prevents flushing old version content into the wrong version slot.
 
 ### Undo
 
@@ -385,7 +392,15 @@ export const nestedSavedFields = { annotationField };
 
 ### Infinite nesting
 
-Modal’s `parentView` can still be another nested `EditorView`. `translateAndDispatch` chains up the stack automatically—each call dispatches to its immediate parent, which may itself be a nested editor whose watcher catches the change. The inline editor still listens for `revision-open-nested-editor` events (via `annotationUiEvent`) so it can open modals for nested annotation creation.
+Modal’s `parentView` can be another nested `EditorView`. `translateAndDispatch` chains up the stack automatically — each call dispatches to its immediate parent, which may itself be a nested editor whose watcher catches the change.
+
+**Upward path** (nested edit → root): each `translateAndDispatch` call maps the change to parent coordinates and dispatches to the parent view. If the parent is itself a nested editor, its own `translateAndDispatch` fires and propagates further up. This continues until the root editor is reached and the change enters the global undo history.
+
+**Downward path** (undo/external change → nested editors): each modal’s external-sync `$effect` detects changes in its parent `view`’s annotation state and patches its nested editor buffer. This cascades: root change → level-0 modal syncs → level-0’s nested editor state changes → level-1 modal syncs, etc.
+
+**Sub-annotation creation from within a modal**: the nested editor’s `makeParentUndoKeymap` binds Mod-Alt-m/k to fire `publishAnnotationUiEvent("revision-open-nested-editor")`. The `Revision.svelte` component in the modal’s sidebar catches this and pushes a new modal for the sub-annotation. The sub-annotation is created directly in the new modal’s nested editor via `executePendingNestedCommand`.
+
+**Annotation ID independence**: each nested editor has its own `annotationField` with IDs starting from 0. The global `$annotationsStore` only contains the root editor’s annotations. Nested modals must not look up their `revisionId` in `$annotationsStore` — it would find an unrelated annotation or `undefined`.
 
 ---
 
@@ -680,6 +695,7 @@ Both carry the complete annotation object (not just an ID). This lets the undo i
 - **No explicit annotation status enum.** `thread.length === 0` means pending comment; there is no FSM. Acknowledged technical debt.
 - **`addSuggestion` inversion uses `Math.max` on IDs.** Assumes IDs are sequential and increasing; works until suggestions are added in bulk.
 - **`queueMicrotask` in `collapsedRevisionResolver`.** Necessary to avoid dispatching inside a `ViewPlugin.update`, but ordering relative to other queued microtasks is not guaranteed under rapid undo.
+- **Deeply nested modal external-sync relies on `modalAnnotationStores`.** Each RevisionModal publishes its nested editor's annotations to a global per-level store (`modalAnnotationStores`). Child modals read from `modalAnnotationStores[stackIndex - 1]` instead of `$annotationsStore`. This chains correctly for undo cascades but adds a global store dependency that could be replaced with a more direct parent-child signal in the future.
 
 ---
 
