@@ -850,7 +850,7 @@ const nestedEditorBridge = ViewPlugin.fromClass(
                 if (id !== undefined) { originRevId = id; break; }
             }
 
-            for (const entry of nestedEditorRegistry) {
+            for (const entry of [...nestedEditorRegistry]) {
                 // Skip: nested editor caused this change itself
                 if (originRevId === entry.revisionId) continue;
                 // Skip: don't dispatch back to the view that received this update
@@ -913,8 +913,11 @@ const nestedEditorBridge = ViewPlugin.fromClass(
                         annotations: [bridgeDispatch.of(true)],
                     });
                 } catch {
-                    // Nested editor may be in an inconsistent state (e.g. during
-                    // version switch). Ignore — the caller will recreate it.
+                    // Nested editor is in an inconsistent/destroyed state.
+                    // Remove it from the registry so it doesn't keep failing
+                    // on every subsequent parent doc change.
+                    const idx = nestedEditorRegistry.indexOf(entry);
+                    if (idx !== -1) nestedEditorRegistry.splice(idx, 1);
                 }
             }
         }
