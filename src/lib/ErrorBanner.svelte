@@ -23,7 +23,9 @@ function downloadBackup() {
     const date = new Date(backup.timestamp).toISOString().slice(0, 19).replace("T", "_").replace(/:/g, "-");
     a.download = `${backup.documentTitle || "document"}_backup_${date}.txt`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+    }, 0);
 }
 
 function restoreBackup() {
