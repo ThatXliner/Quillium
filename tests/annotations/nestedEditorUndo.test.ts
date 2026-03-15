@@ -43,8 +43,8 @@ function createParentView(doc = "hello") {
     return new EditorView({ state, parent });
 }
 
-function createNestedView(versionDoc: string, parentView: EditorView): EditorView {
-    const parentUndoKeymap = makeParentUndoKeymap(parentView, 0);
+function createNestedView(versionDoc: string, parentView: EditorView, revisionId = 0): EditorView {
+    const parentUndoKeymap = makeParentUndoKeymap(parentView, revisionId);
     const state = EditorState.create({
         doc: versionDoc,
         extensions: [annotationExtensions(), parentUndoKeymap],
@@ -158,7 +158,7 @@ describe("Scenario 1: nested editor has no independent undo stack", () => {
 describe("Scenario 2: parent records nested edits", () => {
     it("parent undoDepth > 0 after nested edit dispatched to parent", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
         simulateNestedEdit(nestedView, parentView, revId, " world");
 
@@ -168,7 +168,7 @@ describe("Scenario 2: parent records nested edits", () => {
     it("parent doc reflects nested edit at correct offset", () => {
         // Parent doc: "hello" with revision at [0,5]
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
         simulateNestedEdit(nestedView, parentView, revId, " world");
 
@@ -181,7 +181,7 @@ describe("Scenario 2: parent records nested edits", () => {
 describe("Scenario 3: undo in parent reverts parent doc", () => {
     it("after undo, parent doc reverts to original", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
         simulateNestedEdit(nestedView, parentView, revId, " world");
         expect(parentView.state.doc.toString()).toBe("hello world");
@@ -193,7 +193,7 @@ describe("Scenario 3: undo in parent reverts parent doc", () => {
 
     it("after undo, Phase 3 syncs version.doc back to original", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
         simulateNestedEdit(nestedView, parentView, revId, " world");
         undo(parentView);
@@ -208,7 +208,7 @@ describe("Scenario 3: undo in parent reverts parent doc", () => {
 describe("Scenario 4: parent undoDepth decreases on undo", () => {
     it("undo reduces undoDepth", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
         simulateNestedEdit(nestedView, parentView, revId, " world");
 
@@ -262,7 +262,7 @@ describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current"
 describe("Scenario 6: redo restores the newer doc state", () => {
     it("after undo then redo, parent doc returns to edited state", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
         simulateNestedEdit(nestedView, parentView, revId, " world");
         expect(parentView.state.doc.toString()).toBe("hello world");

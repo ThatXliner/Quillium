@@ -3,8 +3,17 @@ import { EditorView } from "@codemirror/view";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { listeners } from "$lib/editor/listeners";
-import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    addAnnotation,
+    annotationField,
+    setActiveRevisionVersion,
+} from "$lib/editor/plugins/annotations/annotationField";
+import {
+    createNewAnnotation,
+    isAnnotationOfType,
+} from "$lib/editor/plugins/annotations/models";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { history } from "@codemirror/commands";
 import { currentDocumentId, currentDraftId } from "$lib/stores";
 
 function makeView(options: Parameters<typeof listeners>[0] = {}) {
@@ -199,5 +208,56 @@ describe("listeners integration", () => {
         await flushMicrotasks();
 
         expect(invoked.some((call) => call.cmd === "cmd_append_event")).toBe(false);
+    });
+
+    it("persists revision version switch (revisionInternalEdit + docChanged)", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
+            return null;
+        });
+
+        // Need full annotation extensions for version switching
+        const state = EditorState.create({
+            doc: "hello",
+            extensions: [
+                history({ newGroupDelay: 0 }),
+                annotationExtensions(),
+                listeners(),
+            ],
+        });
+        const parent = document.createElement("div");
+        document.body.appendChild(parent);
+        view = new EditorView({ state, parent });
+
+        // Add a revision with two versions
+        const revision = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "revision",
+            ),
+            currentlySelected: 0,
+            versions: [{ doc: "hello" }, { doc: "hi" }],
+        };
+        view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
+        await flushMicrotasks();
+        invoked.length = 0; // clear the addAnnotation event
+
+        // Switch to version 1 — this is a revisionInternalEdit + docChanged transaction
+        view.dispatch(setActiveRevisionVersion(view.state, revision.id, 1));
+        await flushMicrotasks();
+
+        // Should have persisted the event
+        const appendCall = invoked.find((call) => call.cmd === "cmd_append_event");
+        expect(appendCall).toBeDefined();
+        const args = appendCall?.args as { payloadJson?: string };
+        const payload = JSON.parse(args.payloadJson ?? "{}") as Record<string, unknown>;
+        // Should be a compound payload (doc change + annotation update)
+        expect(payload.type).toBe("compound");
+        const annotationEvents = payload.annotationEvents as Array<{ type: string }>;
+        // The annotation_update for the version switch should be present
+        expect(annotationEvents.some((e) => e.type === "annotation_update")).toBe(true);
     });
 });
