@@ -49,7 +49,7 @@ function createView(doc: string, parentView?: EditorView) {
     const extensions = [
         history({ newGroupDelay: 0 }),
         annotationExtensions(),
-        ...(parentView ? [makeParentUndoKeymap(parentView)] : []),
+        ...(parentView ? [makeParentUndoKeymap(parentView, 0)] : []),
     ];
     const state = EditorState.create({ doc, extensions });
     const el = document.createElement("div");

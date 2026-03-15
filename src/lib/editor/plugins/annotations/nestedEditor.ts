@@ -12,7 +12,8 @@
  *     → translateAndDispatch() maps change to [rev.from+delta] in parent
  *     → parent dispatch tagged nestedEditorEdit.of(revisionId)
  *     → parent history records the change (normal undo granularity)
- *     → Phase 3 skips this revision (nestedEditorEdit suppresses it)
+ *     → Phase 3 syncs versions[selected].doc (needed for version switching)
+ *     → selection rebuilt to cover new range (fix for initially-empty versions)
  *     → parent→nested ViewPlugin skips re-notifying nested editor
  *
  *   external change to parent at revision range (undo, non-atomic typing)
@@ -44,6 +45,7 @@ import {
     updateRevisionVersionState,
     setActiveRevisionVersion,
 } from "./annotationField";
+import { publishAnnotationUiEvent } from "$lib/stores";
 import { versionText, type VersionState, isAnnotationOfType } from "./models";
 import type { Annotation } from "./models";
 
@@ -62,7 +64,7 @@ export function createNestedEditorState(
 ): EditorState {
     const extensions = [
         ...getExtensions({ persist: false, history: false, updateListener }),
-        makeParentUndoKeymap(parentView),
+        makeParentUndoKeymap(parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
     return "annotationField" in version
@@ -71,11 +73,15 @@ export function createNestedEditorState(
 }
 
 /**
- * Intercepts Mod-z / Mod-y in the nested editor and delegates
- * to the parent's undo/redo. The parent history is the single
- * undo timeline for all nested edits.
+ * Intercepts Mod-z / Mod-y / Mod-Enter in the nested editor and
+ * delegates to the parent. Mod-z/y delegate undo/redo to the parent
+ * history. Mod-Enter fires "annotation-add-version" so the Revision
+ * card creates a new version (same as the annotationKeymap binding in
+ * the parent, which can't fire from inside the nested editor because
+ * getActiveRevisionAnnotation would not find a revision in the nested
+ * annotationField).
  */
-export function makeParentUndoKeymap(parentView: EditorView) {
+export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
     return keymap.of([
         {
             key: "Mod-z",
@@ -89,6 +95,17 @@ export function makeParentUndoKeymap(parentView: EditorView) {
             mac: "Mod-Shift-z",
             run() {
                 return redo(parentView);
+            },
+            preventDefault: true,
+        },
+        {
+            key: "Mod-Enter",
+            run() {
+                publishAnnotationUiEvent({
+                    type: "annotation-add-version",
+                    annotationId: revisionId,
+                });
+                return true;
             },
             preventDefault: true,
         },
@@ -160,42 +177,37 @@ export function translateAndDispatch(
     // history entry.
     if (update.transactions.some((tr) => tr.annotation(bridgeDispatch))) return false;
 
-    // Dispatch each doc-changing transaction separately so that iterChanges
-    // positions (which are relative to each transaction's own start state)
-    // are always correct. Batching into a single dispatch would misplace
-    // changes from the 2nd+ transaction when their fromA/toA are relative
-    // to their own prior state, not update.startState.
-    //
-    // Re-read the revision's offset from parentView.state before each dispatch
-    // so that previous dispatches (which advance parentView.state) don't make
-    // the offset stale for subsequent transactions.
-    let dispatched = false;
-    for (const tr of update.transactions) {
-        if (!tr.docChanged) continue;
-        const currentRev = parentView.state.field(annotationField)[revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (!currentRev) break;
-        const offset = currentRev.selection.main.from;
-        const parentChanges: { from: number; to: number; insert: string }[] = [];
-        tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-            parentChanges.push({
-                from: offset + fromA,
-                to: offset + toA,
-                insert: inserted.toString(),
-            });
+    const rev = parentView.state.field(annotationField)[revisionId] as
+        | Annotation<"revision">
+        | undefined;
+    if (!rev) return false;
+
+    const offset = rev.selection.main.from;
+
+    // Collect all changes from all transactions in this update,
+    // translated to parent coordinates using update.changes (the
+    // composed change set). iterChanges on the composed ChangeSet
+    // gives positions relative to the pre-update doc, so adding
+    // offset is correct regardless of how many transactions are batched.
+    const parentChanges: { from: number; to: number; insert: string }[] = [];
+    update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        parentChanges.push({
+            from: offset + fromA,
+            to: offset + toA,
+            insert: inserted.toString(),
         });
-        if (parentChanges.length === 0) continue;
-        parentView.dispatch({
-            changes: parentChanges,
-            annotations: [
-                nestedEditorEdit.of(revisionId),
-                Transaction.addToHistory.of(true),
-            ],
-        });
-        dispatched = true;
-    }
-    return dispatched;
+    });
+
+    if (parentChanges.length === 0) return false;
+
+    parentView.dispatch({
+        changes: parentChanges,
+        annotations: [
+            nestedEditorEdit.of(revisionId),
+            Transaction.addToHistory.of(true),
+        ],
+    });
+    return true;
 }
 
 /**

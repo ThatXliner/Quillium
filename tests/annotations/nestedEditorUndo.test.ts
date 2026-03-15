@@ -44,7 +44,7 @@ function createParentView(doc = "hello") {
 }
 
 function createNestedView(versionDoc: string, parentView: EditorView): EditorView {
-    const parentUndoKeymap = makeParentUndoKeymap(parentView);
+    const parentUndoKeymap = makeParentUndoKeymap(parentView, 0);
     const state = EditorState.create({
         doc: versionDoc,
         extensions: [annotationExtensions(), parentUndoKeymap],
