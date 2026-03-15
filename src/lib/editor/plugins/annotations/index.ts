@@ -848,16 +848,29 @@ const nestedEditorBridge = ViewPlugin.fromClass(
                 // Skip: nested editor caused this change itself
                 if (originRevId === entry.revisionId) continue;
 
-                const annotation = update.state.field(annotationField)[entry.revisionId];
+                // Use startState: iterChanges fromA/toA are in pre-transaction
+                // coordinates, so the range lookup must also be pre-transaction.
+                const annotation = update.startState.field(annotationField)[entry.revisionId];
                 if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
 
                 const { from: revFrom, to: revTo } = annotation.selection.main;
 
-                // Check if any of the changes touched this revision's range
+                // Check if any of the changes touched this revision's range.
+                // Pure insertions (fromA === toA) are included if they fall within
+                // [revFrom, nestedDocLength + revFrom] — i.e. they map to a valid
+                // position in the nested editor. Using the nested doc length avoids
+                // mis-triggering for insertions at revTo that are outside the range
+                // (e.g. undo of a deletion that started at revTo, not inside).
+                const nestedDocLen = entry.editor.state.doc.length;
                 let touched = false;
                 for (const tr of update.transactions) {
                     tr.changes.iterChanges((fromA, toA) => {
-                        if (fromA < revTo && toA > revFrom) touched = true;
+                        const isPureInsert = fromA === toA;
+                        if (isPureInsert
+                            ? fromA >= revFrom && fromA <= revFrom + nestedDocLen
+                            : fromA < revTo && toA > revFrom) {
+                            touched = true;
+                        }
                     });
                 }
                 if (!touched) continue;
@@ -866,8 +879,12 @@ const nestedEditorBridge = ViewPlugin.fromClass(
                 const nestedChanges: { from: number; to: number; insert: string }[] = [];
                 for (const tr of update.transactions) {
                     tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-                        // Only changes that overlap the revision range
-                        if (fromA >= revTo || toA <= revFrom) return;
+                        // Only changes that overlap the revision range (including
+                        // pure insertions within the nested doc range)
+                        const isPureInsert = fromA === toA;
+                        if (isPureInsert
+                            ? fromA < revFrom || fromA > revFrom + nestedDocLen
+                            : fromA >= revTo || toA <= revFrom) return;
                         const nestedFrom = Math.max(0, fromA - revFrom);
                         const nestedTo = Math.max(0, Math.min(toA, revTo) - revFrom);
                         nestedChanges.push({
