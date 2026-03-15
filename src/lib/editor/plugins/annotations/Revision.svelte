@@ -205,12 +205,14 @@ $effect(() => {
                 cursorArriving = false;
             }, 650);
         };
-        if (isEditorOpen && nestedView) {
-            focusEditor();
+        if (isEditorOpen && recursiveEditor) {
+            placeCursor(recursiveEditor);
         } else {
             userClosedEditor = false;
             isEditorOpen = true;
-            tick().then(focusEditor);
+            tick().then(() => {
+                if (recursiveEditor) placeCursor(recursiveEditor);
+            });
         }
     } else {
         modalStack.push({
@@ -363,31 +365,6 @@ $effect(() => {
             isEditorOpen = true;
         }
     });
-});
-
-// Pending selection: select-all text in the textarea when a new
-// revision is just created and the inline editor opens.
-let lastNestedSelectionToken = 0;
-
-$effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token !== lastNestedSelectionToken ||
-        event.type !== "pending-nested-editor-selection" ||
-        event.annotationId !== revision.id ||
-        !nestedView
-    )
-        return;
-    lastNestedSelectionToken = event.token;
-    const docLen = nestedView.state.doc.length;
-    nestedView.dispatch({
-        selection: {
-            anchor: Math.min(event.from, docLen),
-            head: Math.min(event.to, docLen),
-        },
-    });
-    nestedView.focus();
 });
 
 onDestroy(() => {
@@ -563,7 +540,7 @@ onDestroy(() => {
                 onclick={() => {
                     userClosedEditor = false;
                     isEditorOpen = true;
-                    tick().then(() => nestedView?.focus());
+                    tick().then(() => recursiveEditor?.focus());
                 }}
             >
                 <span class="shrink-0 mt-px">↓</span>
@@ -585,7 +562,7 @@ onDestroy(() => {
     <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
-            <div bind:this={nestedEditorHost} class="revision-inline-editor"></div>
+            <div bind:this={recursiveEditorHost} class="revision-inline-editor"></div>
         </div>
     {/if}
 
