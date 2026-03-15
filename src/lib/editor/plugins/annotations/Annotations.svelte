@@ -52,10 +52,30 @@ import Suggestion from "./Suggestion.svelte";
 import type { Action } from "svelte/action";
 import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { createResizer } from "$lib/actions/resize";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
 const opt = isMac ? "⌥" : "Alt";
+
+const DEFAULT_PANEL_WIDTH = 256;
+const MIN_PANEL_WIDTH = 180;
+const MAX_PANEL_WIDTH = 480;
+
+let panelWidth = $state(appSettings.annotationPanelWidth ?? DEFAULT_PANEL_WIDTH);
+
+const annotationPanelResizer = createResizer({
+    direction: "left",
+    getSize: () => panelWidth,
+    setSize: (w) => { panelWidth = w; },
+    min: MIN_PANEL_WIDTH,
+    max: MAX_PANEL_WIDTH,
+    onEnd: () => {
+        appSettings.annotationPanelWidth = panelWidth;
+        persistSettings();
+    },
+});
 
 const {
     view = undefined,
@@ -358,8 +378,7 @@ function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     const inner = scrollContainer.firstElementChild as HTMLElement | null;
     if (inner) inner.style.height = `${lastBottom + 24}px`;
     scrollContainer.style.left = `${leftPx}px`;
-    const availableWidth = Math.max(0, window.innerWidth - leftPx - 24);
-    scrollContainer.style.width = `${availableWidth}px`;
+    scrollContainer.style.width = `${panelWidth}px`;
 }
 
 /**
@@ -469,6 +488,18 @@ $effect(() => {
         window.removeEventListener("resize", update);
     };
 });
+
+// Reposition when panel width changes (user resize)
+$effect(() => {
+    if (!isFloating) return;
+    void panelWidth;
+    debouncedUpdatePositions();
+});
+
+// Cleanup resize listeners on unmount
+$effect(() => {
+    return () => annotationPanelResizer.cleanup();
+});
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
@@ -569,6 +600,15 @@ $effect(() => {
                 {/each}
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+            role="separator"
+            aria-label="Resize annotation panel width"
+            aria-orientation="vertical"
+            class="annotation-panel-resize-handle"
+            style="left: {getAnnotationLeft()}px;"
+            onmousedown={(e) => annotationPanelResizer.startResize(e)}
+        ></div>
     {:else}
         <div class="annotation-inline-list">
             {#each sortedAnnotations as c}
@@ -721,5 +761,32 @@ $effect(() => {
         0%   { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85); }
         70%  { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.85); }
         100% { box-shadow: 0 0 0 3px rgba(251, 113, 133, 0); }
+    }
+
+    .annotation-panel-resize-handle {
+        position: fixed;
+        top: 0;
+        width: 6px;
+        height: 100vh;
+        z-index: 60;
+        cursor: ew-resize;
+        transform: translateX(-3px);
+        pointer-events: auto;
+    }
+
+    .annotation-panel-resize-handle::after {
+        content: "";
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        left: 2px;
+        width: 2px;
+        border-radius: 9999px;
+        background-color: transparent;
+        transition: background-color 200ms ease;
+    }
+
+    .annotation-panel-resize-handle:hover::after {
+        background-color: rgba(0, 0, 0, 0.18);
     }
 </style>
