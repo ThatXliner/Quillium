@@ -342,6 +342,7 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
+            if (update.transactions.some((tr) => tr.annotation(nestedEditorEdit) !== undefined)) return;
             const annotations = update.startState.field(annotationField);
             for (const tr of update.transactions) {
                 if (!tr.docChanged) continue;
