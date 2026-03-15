@@ -73,6 +73,7 @@ import {
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
+import { createResizer } from "$lib/actions/resize";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
 let action = $state<Action>(null);
@@ -145,19 +146,31 @@ const MAX_HEIGHT = 800;
 
 let customWidth = $state<number | null>(null);
 let customHeight = $state<number | null>(null);
-let isResizing = $state(false);
-
-// Plain vars — not reactive, only used inside handlers
-let resizeStartX = 0;
-let resizeStartY = 0;
-let resizeStartWidth = 0;
-let resizeStartHeight = 0;
-let activeHandle: "right" | "bottom" | "corner" | null = null;
 let justResized = false;
 
 const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
 const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
 const isCustomSize = $derived(customWidth !== null || customHeight !== null);
+
+const widthResizer = createResizer({
+    direction: "right",
+    getSize: () => effectiveWidth,
+    setSize: (w) => { customWidth = w; },
+    min: MIN_WIDTH,
+    max: MAX_WIDTH,
+    onEnd: () => { justResized = true; },
+});
+
+const heightResizer = createResizer({
+    direction: "bottom",
+    getSize: () => effectiveHeight,
+    setSize: (h) => { customHeight = h; },
+    min: MIN_HEIGHT,
+    max: MAX_HEIGHT,
+    onEnd: () => { justResized = true; },
+});
+
+const isResizing = $derived(widthResizer.isResizing || heightResizer.isResizing);
 
 // Inline style only when expanded AND user has resized (overrides Tailwind)
 const containerSizeStyle = $derived(
@@ -223,41 +236,15 @@ function resetSize() {
 }
 
 function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
-    e.preventDefault();
-    e.stopPropagation();
-    activeHandle = handle;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    resizeStartWidth = effectiveWidth;
-    resizeStartHeight = effectiveHeight;
-    isResizing = true;
-    window.addEventListener("mousemove", onResizeMove);
-    window.addEventListener("mouseup", onResizeEnd);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor =
-        handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
-}
-
-function onResizeMove(e: MouseEvent) {
-    if (!activeHandle) return;
-    const dx = e.clientX - resizeStartX;
-    const dy = e.clientY - resizeStartY;
-    if (activeHandle === "right" || activeHandle === "corner") {
-        customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
+    if (handle === "corner") {
+        // Drag corner: start both width and height resizers simultaneously
+        widthResizer.startResize(e, "nwse-resize");
+        heightResizer.startResize(e, "nwse-resize");
+    } else if (handle === "right") {
+        widthResizer.startResize(e);
+    } else {
+        heightResizer.startResize(e);
     }
-    if (activeHandle === "bottom" || activeHandle === "corner") {
-        customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
-    }
-}
-
-function onResizeEnd() {
-    isResizing = false;
-    activeHandle = null;
-    justResized = true;
-    window.removeEventListener("mousemove", onResizeMove);
-    window.removeEventListener("mouseup", onResizeEnd);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
 }
 
 // Center the active icon whenever the panel opens
@@ -270,10 +257,8 @@ $effect(() => {
 // Cleanup resize listeners on unmount
 $effect(() => {
     return () => {
-        window.removeEventListener("mousemove", onResizeMove);
-        window.removeEventListener("mouseup", onResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
+        widthResizer.cleanup();
+        heightResizer.cleanup();
     };
 });
 

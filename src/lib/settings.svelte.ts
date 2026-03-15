@@ -22,6 +22,7 @@ type AppSettings = {
     uiFontFamily: string;
     customQuickActions: CustomQuickAction[];
     titleVisibility: "hover" | "always" | "never";
+    annotationPanelWidth: number | null;
 };
 
 const DEFAULTS: AppSettings = {
@@ -33,6 +34,7 @@ const DEFAULTS: AppSettings = {
     uiFontFamily: "system-ui, -apple-system, sans-serif",
     customQuickActions: [],
     titleVisibility: "hover",
+    annotationPanelWidth: null,
 };
 
 function loadSettings(): AppSettings {
