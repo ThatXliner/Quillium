@@ -133,7 +133,7 @@ export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: 
         const annotation = state.field(annotationField)[revisionId];
         if (!annotation || !isAnnotationOfType(annotation, "revision")) return false;
         const count = annotation.versions.length;
-        if (count <= 1) return false;
+        if (count <= 1) return true; // consume: user intent was "navigate", no-op is correct
         const current = annotation.currentlySelected;
         const next =
             direction === "next"
