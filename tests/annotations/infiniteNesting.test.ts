@@ -14,7 +14,7 @@
  * coordinates, because iterChanges fromA/toA are also pre-transaction.
  *
  * Infinite nesting: each modal editor is itself a parent. The registry is
- * module-level, so registerNestedEditor(innerRevId, level2View) into level1's
+ * module-level, so registerNestedEditor(innerRevId, level2View, () => {}) into level1's
  * registry slot means level1's bridge fires for level2 on undo at level1.
  *
  * Registry note: nestedEditorRegistry is a module-level singleton. Each test
@@ -145,12 +145,12 @@ describe("Scenario 1: upstream chain — level-2 edit reaches root", () => {
         // Outer revision covers [0, 11] with version text "hello world"
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         // Inner revision inside level-1 covers [6, 11] → "world"
         const innerRevId = addRevision(level1View, 6, 11, "world");
         level2View = createView("world", level1View);
-        unregisterLevel2 = registerNestedEditor(innerRevId, level2View);
+        unregisterLevel2 = registerNestedEditor(innerRevId, level2View, () => {});
 
         // User deletes "world" in level-2 (from=0, to=5)
         // Step 1: level-2 → level-1 (innerRev.from=6, so parent offset=6)
@@ -178,7 +178,7 @@ describe("Scenario 1: upstream chain — level-2 edit reaches root", () => {
     it("nestedEditorEdit on root dispatch runs Phase 3 and updates version.doc", () => {
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         // Dispatch to root with nestedEditorEdit.of(outerRevId)
         rootView.dispatch({
@@ -203,7 +203,7 @@ describe("Scenario 2: downstream bridge — undo at root patches registered nest
         // Root: "hello world", outer revision [0,11]
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         // Simulate a deletion inside the revision range, dispatched to root
         // (could have come from level-1 upstream, or from the main doc edit)
@@ -234,7 +234,7 @@ describe("Scenario 2: downstream bridge — undo at root patches registered nest
         // Outer revision [0, 5] — only "hello". " world" at [5,11] is outside.
         const outerRevId = addRevision(rootView, 0, 5, "hello");
         level1View = createView("hello", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         // Delete " world" — outside revision range [0,5]. Bridge skips level1
         // because the deletion (fromA=5, toA=11) does not satisfy fromA < revTo(5).
@@ -263,12 +263,12 @@ describe("Scenario 3: two-level bridge cascade on undo", () => {
         // Root: "hello world", outer revision [0,11]
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         // Inner revision in level-1: [6,11] → "world"
         const innerRevId = addRevision(level1View, 6, 11, "world");
         level2View = createView("world", level1View);
-        unregisterLevel2 = registerNestedEditor(innerRevId, level2View);
+        unregisterLevel2 = registerNestedEditor(innerRevId, level2View, () => {});
 
         // Simulate deletion of "world" — apply to all three views
         level2View.dispatch({ changes: { from: 0, to: 5, insert: "" } });
@@ -304,7 +304,7 @@ describe("Scenario 4: registry isolation", () => {
     it("unregistering level-1 prevents bridge from dispatching to it", () => {
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         // Unregister before the undo
         unregisterLevel1();
@@ -333,7 +333,7 @@ describe("Scenario 4: registry isolation", () => {
         const rev2Id = addRevision(rootView, 6, 11, "world");
 
         level1View = createView("hello", rootView);
-        unregisterLevel1 = registerNestedEditor(rev1Id, level1View);
+        unregisterLevel1 = registerNestedEditor(rev1Id, level1View, () => {});
 
         // Dispatch a change inside rev2's range tagged with nestedEditorEdit.of(rev2Id)
         // This should NOT suppress the bridge for rev1
@@ -355,7 +355,7 @@ describe("Scenario 5: bridgeDispatch prevents translateAndDispatch echo loop", (
     it("undo at root patches level-1 exactly once (no echo back to parent)", () => {
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         // Apply deletion via level-1 → root chain
         level1View.dispatch({ changes: { from: 6, to: 11, insert: "" } });
@@ -380,7 +380,7 @@ describe("Scenario 5: bridgeDispatch prevents translateAndDispatch echo loop", (
     it("typing in level-1 creates exactly one root history entry per dispatch", () => {
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
-        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View, () => {});
 
         const depthBefore = undoDepth(rootView.state);
 

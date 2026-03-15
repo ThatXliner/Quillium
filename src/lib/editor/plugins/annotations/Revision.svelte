@@ -237,7 +237,11 @@ function createRecursiveEditor(version: VersionState) {
     );
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     mountedVersionId = revision.currentlySelected;
-    unregisterNestedEditor = registerNestedEditor(revision.id, recursiveEditor);
+    unregisterNestedEditor = registerNestedEditor(revision.id, recursiveEditor, () => {
+        if (recursiveEditor && mountedVersionId !== -1) {
+            flushAnnotationsToParent(recursiveEditor, view, revision.id, mountedVersionId);
+        }
+    });
     activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 
     // Apply pending selection if this annotation just created one.

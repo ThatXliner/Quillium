@@ -190,9 +190,10 @@ export const bridgeDispatch = Annotation.define<true>();
 // _restoreAnnotation effects for every collapsed revision).
 export const _revisionCleanup = Annotation.define<boolean>();
 // Marks a flushAnnotationsToParent dispatch (addToHistory: false).
-// invertedAnnotationFieldEffects returns [] for these so the inverse
-// _updateRevisionVersionState effect is not merged into the adjacent
-// undo entry and cannot overwrite the doc back to the pre-undo state.
+// invertedAnnotationFieldEffects skips generating an inverse for any
+// _updateRevisionVersionState effect tagged with this annotation, so
+// the flush's bookkeeping write is not merged into the adjacent undo
+// entry and cannot overwrite the version doc back to the pre-flush state.
 export const _revisionFlush = Annotation.define<boolean>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
@@ -750,12 +751,6 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     // effects for every collapsed revision, so nothing more is needed.
     if (transaction.annotation(_revisionCleanup)) return [];
 
-    // Skip flushAnnotationsToParent dispatches. These are addToHistory:false
-    // bookkeeping writes — if we generate an inverse _updateRevisionVersionState
-    // effect it gets merged into the adjacent undo entry and overwrites the
-    // version doc back to the pre-undo state, fighting Phase 3.
-    if (transaction.annotation(_revisionFlush)) return [];
-
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
     // when text they were anchored to was deleted. These have no explicit effect,
     // so invertedEffects would never see them.
@@ -862,6 +857,11 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 );
             }
         } else if (effect.is(_updateRevisionVersionState)) {
+            // Skip generating an inverse for flush dispatches (addToHistory:false).
+            // Those are bookkeeping-only writes; merging their inverse into the
+            // adjacent undo entry would overwrite the version doc back to the
+            // pre-flush state on undo, fighting Phase 3's doc sync.
+            if (transaction.annotation(_revisionFlush)) continue;
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
             effects.push(

@@ -828,16 +828,34 @@ const revisionClickHandler = EditorView.domEventHandlers({
 // nested coordinates and dispatches it to the nested editor.
 // -------------------------------------------------------
 
-type NestedEditorEntry = { revisionId: number; editor: EditorView };
+type NestedEditorEntry = { revisionId: number; editor: EditorView; flush: () => void };
 const nestedEditorRegistry: NestedEditorEntry[] = [];
 
-export function registerNestedEditor(revisionId: number, editor: EditorView): () => void {
-    const entry: NestedEditorEntry = { revisionId, editor };
+export function registerNestedEditor(
+    revisionId: number,
+    editor: EditorView,
+    flush: () => void,
+): () => void {
+    const entry: NestedEditorEntry = { revisionId, editor, flush };
     nestedEditorRegistry.push(entry);
     return () => {
         const idx = nestedEditorRegistry.indexOf(entry);
         if (idx !== -1) nestedEditorRegistry.splice(idx, 1);
     };
+}
+
+/**
+ * Flush and unregister all registered nested editors synchronously.
+ * Called by the parent undo/redo keymap before history runs, so that
+ * nested editor state is persisted before the undo change fires.
+ * This avoids a timing race where the Svelte $effect that calls
+ * destroyRecursiveEditor hasn't run yet when undo fires.
+ */
+function flushAllNestedEditors() {
+    // Snapshot the registry because flush() may unregister entries
+    for (const entry of [...nestedEditorRegistry]) {
+        entry.flush();
+    }
 }
 
 const nestedEditorBridge = ViewPlugin.fromClass(
@@ -959,7 +977,27 @@ const nestedEditorBridge = ViewPlugin.fromClass(
     },
 );
 
+// Flush all registered nested editors before undo/redo runs in the parent.
+// This prevents a timing race where the Svelte $effect that would call
+// destroyRecursiveEditor (and thus flush) hasn't fired yet when the user
+// presses Cmd+Z in the main editor. Without this, the nested editor is still
+// registered and the bridge patches it — then the late-firing $effect flushes
+// the now-patched (post-undo) state back, corrupting the version doc.
+// Returning false lets the normal undo/redo binding run after the flush.
+const nestedEditorPreFlushKeymap = Prec.highest(keymap.of([
+    {
+        key: "Mod-z",
+        run() { flushAllNestedEditors(); return false; },
+    },
+    {
+        key: "Mod-y",
+        mac: "Mod-Shift-z",
+        run() { flushAllNestedEditors(); return false; },
+    },
+]));
+
 export const annotations = () => [
+    nestedEditorPreFlushKeymap,
     Prec.high(keymap.of(annotationKeymap)),
     annotationField,
     suggestionPreviewField,
