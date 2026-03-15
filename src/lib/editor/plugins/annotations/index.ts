@@ -841,8 +841,14 @@ const nestedEditorBridge = ViewPlugin.fromClass(
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
 
-            // Which revision ID (if any) originated this transaction
-            const originRevId = update.transactions[0]?.annotation(nestedEditorEdit);
+            // Which revision ID (if any) originated this update. Scan all
+            // transactions — a ViewUpdate can batch multiple transactions and
+            // the nestedEditorEdit annotation may be on any one of them.
+            let originRevId: number | undefined;
+            for (const tr of update.transactions) {
+                const id = tr.annotation(nestedEditorEdit);
+                if (id !== undefined) { originRevId = id; break; }
+            }
 
             for (const entry of nestedEditorRegistry) {
                 // Skip: nested editor caused this change itself
