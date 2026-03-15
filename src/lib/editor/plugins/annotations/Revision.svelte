@@ -21,6 +21,7 @@
  * updates/deltas to the existing nested editor instance.
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { Transaction } from "@codemirror/state";
 import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
@@ -341,6 +342,9 @@ $effect(() => {
         syncingFromParent = true;
         recursiveEditor.dispatch({
             changes: { from: 0, to: current.length, insert: externalDoc },
+            // Mark as a downsync/non-history transaction so the nested editor
+            // bridge can ignore it when translating changes back to the parent.
+            annotations: Transaction.addToHistory.of(false),
         });
         syncingFromParent = false;
     }
