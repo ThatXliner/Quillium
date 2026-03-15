@@ -229,7 +229,7 @@ $effect(() => {
         const rev = crumb.parentView.state.field(annotationField)[crumb.revisionId] as
             | Annotation<"revision">
             | undefined;
-        return rev?.currentlySelected ?? 0;
+        return rev?.activeVersionIndex ?? 0;
     });
 });
 
@@ -261,7 +261,7 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
                 | Annotation<"revision">
                 | undefined;
             if (v) {
-                createEditor(v.versions[v.currentlySelected], v.currentlySelected);
+                createEditor(v.versions[v.activeVersionIndex], v.activeVersionIndex);
                 if (editor) moveCursorToEnd(editor);
             }
         });
@@ -285,7 +285,7 @@ $effect(() => {
                 | Annotation<"revision">
                 | undefined;
             if (v) {
-                createEditor(v.versions[v.currentlySelected], v.currentlySelected);
+                createEditor(v.versions[v.activeVersionIndex], v.activeVersionIndex);
                 if (editor) moveCursorToEnd(editor);
             }
         });
@@ -306,13 +306,13 @@ let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
 let lastDispatchedDoc = "";
 // Track which version index the editor was created for, so destroyEditor
-// flushes state into the correct version slot even if currentlySelected
+// flushes state into the correct version slot even if activeVersionIndex
 // has changed (e.g. a parent breadcrumb version switch).
 let editorVersionIndex = 0;
 // Guard: set to true while we are programmatically patching the nested editor
 // from an external parent change, so the updateListener skips translateAndDispatch
 // and doesn't bounce the change back up to the parent.
-let syncingFromParent = false;
+let pullingFromParent = false;
 
 // Manually-synced mirrors of the nested editor's CodeMirror state.
 // Because CodeMirror manages its own state internally (view.state is a plain
@@ -341,7 +341,7 @@ function createEditor(version: VersionState, versionIndex?: number) {
             // Translate doc changes to parent coordinates and dispatch.
             // Skip when we're programmatically syncing from the parent to avoid
             // bouncing the change back up and corrupting the parent document.
-            if (!syncingFromParent && translateAndDispatch(update, view, revisionId)) {
+            if (!pullingFromParent && translateAndDispatch(update, view, revisionId)) {
                 lastDispatchedDoc = editor.state.doc.toString();
             }
             modalAnnotations = editor.state.field(annotationField);
@@ -369,7 +369,7 @@ function destroyEditor() {
     // Flush nested annotation state back into the parent revision's version blob
     // before destroying, so nested annotations survive modal close and version switches.
     // Use editorVersionIndex (set when the editor was created) rather than
-    // rev.currentlySelected, which may have changed if a parent breadcrumb
+    // rev.activeVersionIndex, which may have changed if a parent breadcrumb
     // version switch happened before this destroy.
     if (editor) {
         const rev = view.state.field(annotationField)[revisionId] as
@@ -410,17 +410,17 @@ $effect(() => {
     }
     if (!editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
-    if (!rev || rev._type !== "revision" || !rev.versions?.[rev.currentlySelected]) return;
-    const externalDoc = versionText(rev.versions[rev.currentlySelected]);
+    if (!rev || rev._type !== "revision" || !rev.versions?.[rev.activeVersionIndex]) return;
+    const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
     if (externalDoc === lastDispatchedDoc) return;
     const current = editor.state.doc.toString();
     if (current !== externalDoc) {
-        syncingFromParent = true;
+        pullingFromParent = true;
         editor.dispatch({
             changes: { from: 0, to: current.length, insert: externalDoc },
             annotations: Transaction.addToHistory.of(false),
         });
-        syncingFromParent = false;
+        pullingFromParent = false;
         modalAnnotations = editor.state.field(annotationField);
     }
     lastDispatchedDoc = externalDoc;
@@ -483,7 +483,7 @@ function executePendingNestedCommand(
                                 s2.selection,
                                 "revision",
                             ),
-                            currentlySelected: 0,
+                            activeVersionIndex: 0,
                             versions: [{ doc: selectedText }],
                         }),
                     ],
@@ -527,7 +527,7 @@ $effect(() => {
                 type: "revision",
                 revisionId: newId,
                 parentView: editor,
-                label: previewVersionText(newAnn.versions[newAnn.currentlySelected]),
+                label: previewVersionText(newAnn.versions[newAnn.activeVersionIndex]),
             });
         }
     }
@@ -543,7 +543,7 @@ $effect(() => {
             | Annotation<"revision">
             | undefined;
         if (rev && !editor) {
-            createEditor(rev.versions[rev.currentlySelected], rev.currentlySelected);
+            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
         }
         const activeEditor = editor;
         const entry = $modalStack[stackIndex];
@@ -575,7 +575,7 @@ let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
 
 function startLabelEdit() {
     if (!revision) return;
-    labelInputValue = revision.versions[revision.currentlySelected]?.label ?? "";
+    labelInputValue = revision.versions[revision.activeVersionIndex]?.label ?? "";
     editingVersionLabel = true;
     tick().then(() => labelInputEl?.focus());
 }
@@ -590,7 +590,7 @@ function commitLabelEdit() {
         updateRevisionVersionLabel(
             view.state,
             revisionId,
-            revision.currentlySelected,
+            revision.activeVersionIndex,
             trimmed || undefined,
         ),
     );
@@ -610,7 +610,7 @@ function addVersion() {
             | Annotation<"revision">
             | undefined;
         if (!rev) return;
-        createEditor(rev.versions[rev.currentlySelected], rev.currentlySelected);
+        createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
         if (editor) moveCursorToEnd(editor);
     });
 }
@@ -621,8 +621,8 @@ function navigateVersion(direction: "prev" | "next") {
     if (count <= 1) return;
     const next =
         direction === "next"
-            ? (revision.currentlySelected + 1) % count
-            : (revision.currentlySelected - 1 + count) % count;
+            ? (revision.activeVersionIndex + 1) % count
+            : (revision.activeVersionIndex - 1 + count) % count;
     selectVersion(crumbs.length - 1, next, crumbs[crumbs.length - 1], true);
 }
 

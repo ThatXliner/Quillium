@@ -38,7 +38,7 @@ function addRevision(view: EditorView, from: number, to: number) {
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected: 0,
+        activeVersionIndex: 0,
         versions: [{ doc: view.state.sliceDoc(from, to) } as VersionState],
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));

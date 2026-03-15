@@ -118,7 +118,7 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     // Run when: the transaction is NOT a plain user keystroke. We include both
     // non-doc-changing transactions (e.g. updateRevisionVersionLabel) AND
     // revision-system transactions that change the doc (e.g. setActiveRevisionVersion
-    // replaces doc text AND updates currentlySelected). Without the
+    // replaces doc text AND updates activeVersionIndex). Without the
     // revisionInternalEdit check, version switches and similar operations would
     // not be persisted to the event log.
     if (!tr.docChanged || tr.annotation(revisionInternalEdit)) {

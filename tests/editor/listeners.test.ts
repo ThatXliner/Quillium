@@ -231,7 +231,7 @@ describe("listeners integration", () => {
                 EditorSelection.single(0, 5),
                 "revision",
             ),
-            currentlySelected: 0,
+            activeVersionIndex: 0,
             versions: [{ doc: "hello" }, { doc: "hi" }],
         };
         view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));

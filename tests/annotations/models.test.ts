@@ -30,7 +30,7 @@ function withAnnotations(...types: Array<"comment" | "suggestion" | "revision">)
         } else if (type === "suggestion") {
             annotations[i] = { ...base, _type: "suggestion", replacements: [] };
         } else {
-            annotations[i] = { ...base, _type: "revision", currentlySelected: 0, versions: [] };
+            annotations[i] = { ...base, _type: "revision", activeVersionIndex: 0, versions: [] };
         }
     });
     return annotations;
@@ -90,7 +90,7 @@ describe("isAnnotationOfType", () => {
         _type: "revision",
         selection: sel(0, 5),
         thread: [],
-        currentlySelected: 0,
+        activeVersionIndex: 0,
         versions: [],
     };
     const suggestion: GenericAnnotation = {

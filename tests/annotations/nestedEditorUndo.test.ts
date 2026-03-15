@@ -56,7 +56,7 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected = 0,
+    activeVersionIndex = 0,
 ): number {
     const annotation = {
         ...createNewAnnotation(
@@ -64,7 +64,7 @@ function addRevision(
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected,
+        activeVersionIndex,
         versions,
     };
     parentView.dispatch(parentView.state.update({ effects: [addAnnotation.of(annotation)] }));
@@ -77,7 +77,7 @@ function getRevisionVersionText(parentView: EditorView, revisionId: number): str
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision annotation with id ${revisionId}`);
     }
-    return versionText(rev.versions[rev.currentlySelected]);
+    return versionText(rev.versions[rev.activeVersionIndex]);
 }
 
 /**
@@ -218,7 +218,7 @@ describe("Scenario 4: parent undoDepth decreases on undo", () => {
 describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current", () => {
     it("nestedEditorEdit transactions update version.doc via Phase 3", () => {
         // Phase 3 intentionally runs for nestedEditorEdit transactions. It syncs
-        // versions[currentlySelected].doc from the parent doc slice so that
+        // versions[activeVersionIndex].doc from the parent doc slice so that
         // version switching always shows up-to-date text. The nested editor's own
         // state is already correct; Phase 3 keeps the stored snapshot in sync.
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);

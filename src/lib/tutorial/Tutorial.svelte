@@ -141,7 +141,7 @@ function getRevisionById(id: number): Annotation<"revision"> | undefined {
 
 function getNestedRevisionIds(revision: Annotation<"revision"> | undefined): number[] {
     if (!revision) return [];
-    const activeVersion = revision.versions[revision.currentlySelected] as
+    const activeVersion = revision.versions[revision.activeVersionIndex] as
         | Record<string, unknown>
         | undefined;
     if (!activeVersion || !("annotationField" in activeVersion)) return [];

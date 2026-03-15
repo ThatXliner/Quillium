@@ -26,7 +26,7 @@ function makeRevision(from: number, to: number): GenericAnnotation {
         _type: "revision",
         selection: EditorSelection.create([EditorSelection.range(from, to)]),
         thread: [],
-        currentlySelected: 0,
+        activeVersionIndex: 0,
         versions: [{ doc: "text" }],
     };
 }

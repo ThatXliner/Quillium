@@ -107,7 +107,7 @@ describe("annotation workflows integration", () => {
         expect(view.state.doc.toString()).toBe("Alpha Delta Gamma");
         if (!isAnnotationOfType(after[0], "revision")) return;
 
-        expect(after[0].currentlySelected).toBe(1);
+        expect(after[0].activeVersionIndex).toBe(1);
         expect(after[0].versions[0]?.doc).toBe("Beta");
         expect(after[0].versions[1]?.doc).toBe("Delta");
     });
@@ -121,7 +121,7 @@ describe("annotation workflows integration", () => {
                 EditorSelection.single(6, 10),
                 "revision",
             ),
-            currentlySelected: 0,
+            activeVersionIndex: 0,
             versions: [{ doc: "Beta", label: "Original" }],
         };
 
@@ -148,7 +148,7 @@ describe("annotation workflows integration", () => {
                 EditorSelection.single(6, 11),
                 "revision",
             ),
-            currentlySelected: 1,
+            activeVersionIndex: 1,
             versions: [
                 { doc: "Beta", label: "Original" },
                 { doc: "Delta", label: "Edited" },

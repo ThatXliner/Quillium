@@ -615,7 +615,7 @@ export function createRevision({
             effects: [
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "revision"),
-                    currentlySelected: 0,
+                    activeVersionIndex: 0,
                     versions: [
                         originalVersion,
                         ...versions.map(
@@ -665,7 +665,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
             effects: [
                 addAnnotation.of({
                     ...newAnnotation,
-                    currentlySelected: 0,
+                    activeVersionIndex: 0,
                     versions: [
                         {
                             doc: state.sliceDoc(sel.from, sel.to),
@@ -711,7 +711,7 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
         if (!annotation) return false;
         const count = annotation.versions.length;
         if (count <= 1) return true;
-        const current = annotation.currentlySelected;
+        const current = annotation.activeVersionIndex;
         const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
         dispatch(setActiveRevisionVersion(state, annotation.id, next));
         return true;

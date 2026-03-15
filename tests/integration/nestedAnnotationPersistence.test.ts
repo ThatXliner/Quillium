@@ -82,7 +82,7 @@ function addRevision(view: EditorView, from: number, to: number, doc: string): n
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected: 0,
+        activeVersionIndex: 0,
         versions: [{ doc }],
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
@@ -175,7 +175,7 @@ describe("nested annotation persistence through modal flush", () => {
         const nestedAnnotations = nestedEditor.state.field(annotationField);
         const subRevision = {
             ...createNewAnnotation(nestedAnnotations, EditorSelection.single(0, 5), "revision"),
-            currentlySelected: 0,
+            activeVersionIndex: 0,
             versions: [{ doc: "hello" }, { doc: "hi" }],
         };
         nestedEditor.dispatch(
@@ -198,7 +198,7 @@ describe("nested annotation persistence through modal flush", () => {
             expect(restoredRev.versions.length).toBe(2);
             expect(versionText(restoredRev.versions[0])).toBe("hello");
             expect(versionText(restoredRev.versions[1])).toBe("hi");
-            expect(restoredRev.currentlySelected).toBe(0);
+            expect(restoredRev.activeVersionIndex).toBe(0);
         }
 
         restoredEditor.destroy();
@@ -231,7 +231,7 @@ describe("nested annotation persistence through modal flush", () => {
         const rev = parentView.state.field(annotationField)[revId];
         if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error();
         parentView.dispatch(
-            updateRevisionVersionState(parentView.state, revId, rev.currentlySelected, blob, {
+            updateRevisionVersionState(parentView.state, revId, rev.activeVersionIndex, blob, {
                 addToHistory: false,
             }),
         );
@@ -240,14 +240,14 @@ describe("nested annotation persistence through modal flush", () => {
         // Parent's version blob should contain the annotationField data
         const parentRev = parentView.state.field(annotationField)[revId];
         if (!parentRev || !isAnnotationOfType(parentRev, "revision")) throw new Error();
-        const storedBlob = parentRev.versions[parentRev.currentlySelected] as Record<
+        const storedBlob = parentRev.versions[parentRev.activeVersionIndex] as Record<
             string,
             unknown
         >;
         expect(storedBlob.annotationField).toBeDefined();
 
         // Recreate nested editor from stored blob — annotations should be there
-        const restoredEditor = restoreNestedView(parentRev.versions[parentRev.currentlySelected]);
+        const restoredEditor = restoreNestedView(parentRev.versions[parentRev.activeVersionIndex]);
         const restoredAnnotations = restoredEditor.state.field(annotationField);
         expect(Object.keys(restoredAnnotations).length).toBe(1);
         expect(restoredAnnotations[nestedComment.id].thread[0].message).toBe("nested!");
