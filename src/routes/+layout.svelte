@@ -9,6 +9,10 @@
 <script>
 import "../app.css";
 import { onNavigate } from "$app/navigation";
+import posthog from "$lib/posthog";
+import { saveEmergencyBackup, readBackup } from "$lib/errorGuard";
+import { errorBanner } from "$lib/stores";
+import ErrorBanner from "$lib/ErrorBanner.svelte";
 
 const { children } = $props();
 
@@ -24,7 +28,25 @@ onNavigate((navigation) => {
 });
 </script>
 
-{@render children()}
+<!-- Banner lives outside the boundary so it survives component tree errors -->
+<ErrorBanner />
+
+<svelte:boundary
+    onerror={(error) => {
+        saveEmergencyBackup(`Svelte component error: ${error instanceof Error ? error.message : String(error)}`);
+        const hasCrashBackup = Boolean(readBackup("crash"));
+        errorBanner.set({
+            message: hasCrashBackup
+                ? "Something went wrong. Your work has been backed up."
+                : "Something went wrong.",
+            hasBackup: hasCrashBackup,
+            backupType: "crash",
+        });
+        posthog.captureException(error instanceof Error ? error : new Error(String(error)));
+    }}
+>
+    {@render children()}
+</svelte:boundary>
 
 <style>
     @keyframes slide-from-right {
