@@ -69,7 +69,7 @@ import {
 import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
-import { filter, mapValues } from "lodash-es";
+import { mapValues } from "lodash-es";
 // -------------------------------------------------------
 // StateEffect declarations
 //
@@ -83,7 +83,6 @@ import { filter, mapValues } from "lodash-es";
 // through the undo history.
 // -------------------------------------------------------
 
-// lowk I might change this to our own state machine so we can have that sweet sweet typesafety
 // === For all annotations ===
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
     map: mapRange,
@@ -114,19 +113,14 @@ const _restoreAnnotation = StateEffect.define<GenericAnnotation>({
         }
     },
 });
-// The reason why we store the whole annotation here instead
-// of just the ID? I haven't tested getting the previous
-// state ala .startState yet...
+// Carries the full annotation object (not just an ID) so that undo inversion
+// can restore exact prior state without a startState lookup.
 export const removeAnnotation = StateEffect.define<GenericAnnotation>({
     map: mapRange,
 });
-// Mutations on annotations
-// Why we separate actions instead of having a single updateAnnotation or
-// mutateAnnotation? This makes the logic to implement undo/redo easier.
-// significantly easier (instead of needing to sniff/track the old state)
-// To be fair though, it is a little repetitive... I can't think of
-// a better way to do it for now. I guess it's good to have your states explicit...
-// Lowk what if we just had our own FSM and states instead of using StateEffect...
+// Each mutation gets its own effect type so undo/redo inversion is explicit
+// and local — each effect's inverse is declared adjacent to it in
+// invertedAnnotationFieldEffects.
 
 // updateThread carries the full annotation ID + new thread; using only an ID
 // would require reading startState inside effects, which is more complex.
@@ -155,6 +149,32 @@ export const updateThread = StateEffect.define<{
 // stored in history and never inverted. The inverted StateEffects on each
 // transaction already carry the full semantic meaning of "undo this op."
 export const revisionInternalEdit = Annotation.define<boolean>();
+
+// Marks a parent-editor transaction that was originated by a nested editor
+// acting as a direct viewport. Set to the revision ID whose nested editor
+// dispatched the change.
+// Consumers (non-exhaustive):
+//   - annotationField Phase 3: uses this to sync versions[selected].doc from
+//     the parent doc slice so version switching shows current content.
+//   - Plugins / integrations that gate behavior on whether a change
+//     originated from a nested editor (e.g. to avoid feedback loops or to
+//     skip nested-only logic when replaying parent-originated transactions).
+// Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
+// not stored in history.
+export const nestedEditorEdit = Annotation.define<number>();
+// Persists the revision ID for a nested-editor doc change through undo/redo.
+// Unlike the nestedEditorEdit Transaction.Annotation (which is ephemeral),
+// this StateEffect is stored in CodeMirror's history and replayed on redo.
+// Phase 3 reads it to apply the same boundary-expansion logic that runs
+// on the forward pass (via nestedEditorEdit), ensuring redo correctly
+// expands the revision range when text is re-inserted at its trailing edge.
+// invertedAnnotationFieldEffects produces a matching inverse so undo does
+// not need to do anything special (Phase 1 shrinks the range correctly).
+export const _nestedEditRevision = StateEffect.define<number>({
+    // Map the stored revision ID through doc changes — for this effect the
+    // payload is just an integer ID, not a position, so no mapping needed.
+    map: (value) => value,
+});
 // Marks a transaction dispatched by collapsedRevisionResolver to remove
 // collapsed revisions after a deletion. addToHistory.of(false) ensures no
 // new undo entry is created, and this annotation prevents invertedEffects from
@@ -162,19 +182,6 @@ export const revisionInternalEdit = Annotation.define<boolean>();
 // undo entry (since the deletion's undo already carries the correct
 // _restoreAnnotation effects for every collapsed revision).
 export const _revisionCleanup = Annotation.define<boolean>();
-// export const addThreadToAnnotation = StateEffect.define<{
-// 	annotationId: number;
-// 	threadMessage: ThreadMessage;
-// }>();
-// export const deleteThreadFromAnnotation = StateEffect.define<{
-// 	annotationId: number;
-// 	threadMessageId: number;
-// }>();
-// export const updateThreadMessage = StateEffect.define<{
-// 	annotationId: number;
-// 	threadMessageId: number;
-// 	newThreadMessage: ThreadMessage;
-// }>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 // There is no "updateRevisionVersion" since we sniff that from document changes
@@ -362,9 +369,7 @@ export function updateRevisionVersionLabel(
         throw new Error("Annotation is not a revision");
     }
     return state.update({
-        effects: [
-            _updateRevisionVersionLabel.of({ annotationId, versionId, label }),
-        ],
+        effects: [_updateRevisionVersionLabel.of({ annotationId, versionId, label })],
         annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
     });
 }
@@ -480,24 +485,18 @@ export function applySuggestion(
  * except revisions which are kept alive via allowEmpty.
  */
 function remapAnnotationSelections(annotations: Annotations, tr: Transaction): Annotations {
-    return Object.fromEntries(
-        filter(
-            Object.entries(
-                mapValues(annotations, (x) => {
-                    const isRevision = isAnnotationOfType(x, "revision");
-                    const newSelection = cleanRangesOf(
-                        x.selection.map(tr.changes, isRevision ? 1 : 0),
-                        isRevision,
-                    );
-                    if (newSelection) {
-                        return { ...x, selection: newSelection };
-                    }
-                    return null;
-                }),
-            ),
-            ([k, v]) => v !== null,
-        ),
-    ) as Annotations;
+    const result: Annotations = {};
+    for (const [id, x] of Object.entries(annotations)) {
+        const isRevision = isAnnotationOfType(x, "revision");
+        const newSelection = cleanRangesOf(
+            x.selection.map(tr.changes, isRevision ? 1 : 0),
+            isRevision,
+        );
+        if (newSelection) {
+            result[id as unknown as number] = { ...x, selection: newSelection };
+        }
+    }
+    return result;
 }
 
 /**
@@ -559,12 +558,14 @@ function syncRevisionDocsWithDocument(
     tr: Transaction,
     skipIds: Set<number> = new Set(),
 ): Annotations {
+    // Nested editor edits that collapse a revision to empty should still
+    // sync version.doc to "" — otherwise the stale doc gets pushed back
+    // into the nested editor by the external-sync effect. Non-nested
+    // deletions skip syncing so undo can restore from _restoreAnnotation.
+    const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
-            // Skip syncing when the revision's range is collapsed — the text was
-            // fully deleted. We keep the stored version doc intact so that undo
-            // can restore both the text and the version content correctly.
-            if (x.selection.main.empty) return x;
+            if (x.selection.main.empty && !isNestedEdit) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
             if (text === versionText(x.versions[x.currentlySelected])) return x;
             // Return a new annotation object so Svelte's fine-grained reactivity
@@ -589,33 +590,18 @@ export const annotationField = StateField.define<Annotations>({
         let annotations = remapAnnotationSelections(oldAnnotations, tr);
 
         // Phase 2: apply effects
-        // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
         // Track which revision IDs had an explicit effect so Phase 3
         // can skip syncing only those revisions (not all of them).
         const revisionsWithExplicitEffect = new Set<number>();
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
-                console.log("Adding annotation!", e.value);
                 annotations[e.value.id] = e.value;
             } else if (e.is(_restoreAnnotation)) {
-                console.log("Restoring annotation!", e.value);
                 annotations[e.value.id] = e.value;
             } else if (e.is(removeAnnotation)) {
-                console.log("Removing annotation internally");
                 delete annotations[e.value.id];
-                console.log(annotations);
             } else if (e.is(updateThread)) {
                 annotations[e.value.annotationId].thread = e.value.newThread;
-                // } else if (e.is(addThreadToAnnotation)) {
-                //   annotations[e.value.annotationId].thread.push(e.value.threadMessage);
-                // } else if (e.is(deleteThreadFromAnnotation)) {
-                //   annotations[e.value.annotationId].thread.splice(
-                //     e.value.threadMessageId,
-                //     1,
-                //   );
-                // } else if (e.is(updateThreadMessage)) {
-                //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
-                //     e.value.newThreadMessage;
             } else if (
                 e.is(_addVersionToRevision) ||
                 e.is(_deleteVersionFromRevision) ||
@@ -626,9 +612,6 @@ export const annotationField = StateField.define<Annotations>({
                 revisionsWithExplicitEffect.add(e.value.annotationId);
                 applyRevisionVersionEffect(e, annotation, oldAnnotations, tr);
 
-                // well uh i think this is unnecessary since
-                // JavaScript would give annotation a reference to the annotation object
-                // but just in case, you know.
                 annotations[e.value.annotationId] = annotation;
             } else if (e.is(_updateRevisionVersionLabel)) {
                 const annotation = annotations[e.value.annotationId];
@@ -677,6 +660,45 @@ export const annotationField = StateField.define<Annotations>({
         // document, but only for revisions that had no explicit effect
         // this transaction and only when the document actually changed.
         if (tr.docChanged) {
+            // Collect all revision IDs that need boundary expansion.
+            // This covers both the forward pass (nestedEditorEdit annotation)
+            // and redo replays (_nestedEditRevision StateEffect stored in history).
+            const nestedEditRevIds = new Set<number>();
+            const nestedEditAnnotationId = tr.annotation(nestedEditorEdit);
+            if (nestedEditAnnotationId !== undefined) {
+                nestedEditRevIds.add(nestedEditAnnotationId);
+            }
+            for (const e of tr.effects) {
+                if (e.is(_nestedEditRevision)) {
+                    nestedEditRevIds.add(e.value);
+                }
+            }
+
+            // Fix revision selection boundaries for nested editor edits (both
+            // forward and redo). Phase 1 uses EditorSelection.map() which does
+            // not expand non-collapsed ranges when text is inserted exactly at
+            // their trailing boundary. We use mapPos(from,-1) / mapPos(to,+1)
+            // to ensure the revision range absorbs content added at its edges.
+            for (const revId of nestedEditRevIds) {
+                const ann = annotations[revId];
+                if (ann && isAnnotationOfType(ann, "revision")) {
+                    const oldAnn = oldAnnotations[revId];
+                    if (oldAnn) {
+                        const from = tr.changes.mapPos(oldAnn.selection.main.from, -1);
+                        const to = tr.changes.mapPos(oldAnn.selection.main.to, 1);
+                        if (from !== ann.selection.main.from || to !== ann.selection.main.to) {
+                            annotations[revId] = {
+                                ...ann,
+                                selection: EditorSelection.single(from, to),
+                            };
+                        }
+                    }
+                }
+            }
+
+            // NOTE: we intentionally do NOT skip Phase 3 for nestedEditorEdit.
+            // Phase 3 syncs versions[selected].doc from the parent doc slice,
+            // which is needed so that version switching shows current content.
             annotations = syncRevisionDocsWithDocument(
                 annotations,
                 tr,
@@ -736,7 +758,11 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     // own annotation state via explicit effects.
     const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
     const isRevisionEdit = transaction.annotation(revisionInternalEdit);
-    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit) {
+    // nestedEditorEdit transactions are plain doc changes originated by a nested
+    // editor viewport — they manage positions via the normal doc-change path, so
+    // implicit annotation restoration is not needed (and would double-restore).
+    const isNestedEdit = transaction.annotation(nestedEditorEdit) !== undefined;
+    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit && !isNestedEdit) {
         for (const annotation of Object.values(oldAnnotations)) {
             const isRevision = isAnnotationOfType(annotation, "revision");
             const remapped = cleanRangesOf(
@@ -841,29 +867,16 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                     label: oldAnnotation.versions[effect.value.versionId]?.label,
                 }),
             );
-        } else if (effect.is(addSuggestion)) {
-            const annotations = transaction.startState.field(annotationField);
-            effects.push(removeAnnotation.of(annotations[getLastId(annotations)]));
         } else if (effect.is(_applySuggestion)) {
             const annotations = transaction.startState.field(annotationField);
             effects.push(addAnnotation.of(annotations[effect.value.annotationId]));
+        } else if (effect.is(_nestedEditRevision)) {
+            // _nestedEditRevision is its own inverse: on undo the stored effect
+            // would be the forward one, but undo doesn't need range expansion
+            // (Phase 1 shrinks correctly). We still emit the inverse so that
+            // if the undo itself is redone, redo sees the effect and expands.
+            effects.push(_nestedEditRevision.of(effect.value));
         }
     }
-    // transaction.changes.iterChangedRanges((chFrom, chTo) => {
-    //   oldAnnotations.forEach((oldAnnotation) => {
-    //     // TODO: support multiple selections???
-    //     // what about partial comment deletion... is that ok?
-    //     let { from: rFrom, to: rTo } = oldAnnotation.selection.main;
-    //     let from = Math.max(chFrom, rFrom),
-    //       to = Math.min(chTo, rTo);
-    //     if (from < to) {
-    //       effects.push(
-    //         addAnnotation.of(
-    //           oldAnnotation.selection.replaceRange({ from, to }),
-    //         ),
-    //       );
-    //     }
-    //   });
-    // });
     return effects;
 });

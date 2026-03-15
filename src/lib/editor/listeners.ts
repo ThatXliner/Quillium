@@ -24,6 +24,7 @@ import {
     addAnnotation,
     removeAnnotation,
     updateThread,
+    revisionInternalEdit,
     annotationsChanged,
     type GenericAnnotation,
 } from "./plugins/annotations";
@@ -110,10 +111,17 @@ function extractAnnotationEvents(tr: Transaction): AnnotationEvent[] {
     }
 
     // Catch version state changes (updateRevisionVersionState, setActiveRevisionVersion,
-    // addVersionToRevision, deleteRevisionVersion, updateRevisionVersionLabel) which use
+    // addVersionToRevision, deleteVersionFromRevision, updateRevisionVersionLabel) which use
     // internal effects not visible here. Compare pre/post annotation field and emit
     // annotation_update for any annotation that changed but wasn't already handled above.
-    if (!tr.docChanged) {
+    //
+    // Run when: the transaction is NOT a plain user keystroke. We include both
+    // non-doc-changing transactions (e.g. updateRevisionVersionLabel) AND
+    // revision-system transactions that change the doc (e.g. setActiveRevisionVersion
+    // replaces doc text AND updates currentlySelected). Without the
+    // revisionInternalEdit check, version switches and similar operations would
+    // not be persisted to the event log.
+    if (!tr.docChanged || tr.annotation(revisionInternalEdit)) {
         const before = tr.startState.field(annotationField);
         const after = tr.state.field(annotationField);
         for (const [idStr, ann] of Object.entries(after)) {

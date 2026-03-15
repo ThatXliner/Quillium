@@ -97,6 +97,7 @@ import {
 } from "./annotationField";
 import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
+import { nestedEditorEdit } from "./annotationField";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -277,6 +278,9 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
             if (!appSettings.atomicRevisions) return;
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
+            // Don't remove revisions whose text was cleared by the nested editor —
+            // empty content is a valid state when the nested editor is active.
+            if (update.transactions.some((tr) => tr.annotation(nestedEditorEdit) !== undefined)) return;
             const annotations = update.state.field(annotationField);
             const collapsed = Object.values(annotations).filter(
                 (a) => isAnnotationOfType(a, "revision") && a.selection.main.empty,
@@ -338,6 +342,7 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
+            if (update.transactions.some((tr) => tr.annotation(nestedEditorEdit) !== undefined)) return;
             const annotations = update.startState.field(annotationField);
             for (const tr of update.transactions) {
                 if (!tr.docChanged) continue;

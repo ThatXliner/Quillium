@@ -523,8 +523,8 @@ async function scenarioRevisionModal(ctx: BrowserContext): Promise<void> {
         const revCard = document.querySelector("[data-tutorial-role='revision-card']");
         const revisionIdStr = revCard?.getAttribute("data-revision-id");
         if (!revisionIdStr) return;
-        const revisionId = parseInt(revisionIdStr, 10);
-        if (isNaN(revisionId)) return;
+        const revisionId = Number.parseInt(revisionIdStr, 10);
+        if (Number.isNaN(revisionId)) return;
         stack.push({ type: "revision", revisionId, parentView: view, label: "Revision" });
     });
     await page.waitForTimeout(600);
@@ -583,7 +583,7 @@ async function main(): Promise<void> {
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {
-            console.log(`\nDone. No significant visual changes detected — no files updated.`);
+            console.log("\nDone. No significant visual changes detected — no files updated.");
         }
     } finally {
         await context.close();

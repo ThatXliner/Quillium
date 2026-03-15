@@ -230,7 +230,7 @@ function updateAnnotationPositions() {
 
     // Find the active card index in the sorted list
     const activeIdx = resolvedActiveAnnotation
-        ? sortedByPos.findIndex((p) => p.annotation.id === resolvedActiveAnnotation!.id)
+        ? sortedByPos.findIndex((p) => p.annotation.id === resolvedActiveAnnotation?.id)
         : -1;
 
     if (activeIdx === -1) {

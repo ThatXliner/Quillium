@@ -1,130 +1,239 @@
 /**
- * nestedEditor.ts — Shared utilities for the modal CodeMirror editor
- * inside RevisionModal.svelte.
+ * nestedEditor.ts — Shared utilities for nested CodeMirror editors
+ * inside revision cards (inline) and modals.
  *
- * The inline revision card uses a plain <textarea> for quick text
- * edits (see Revision.svelte and ARCHITECTURE.md §Nested Editors).
- * This file only contains what the full-screen modal needs:
- *   - createVersionState  — bootstrap a CodeMirror EditorState from a VersionState blob
- *   - syncVersionToParent — serialise modal state back to the parent annotation field
- *   - previewVersionText  — short label string for version pills / breadcrumbs
+ * Architecture: the nested editor is a direct viewport onto the parent
+ * document's revision range [rev.from, rev.to]. Edits in the nested
+ * editor are translated to parent coordinates and dispatched to the
+ * parent EditorView. The parent document is the single source of truth.
+ *
+ * Data flow:
+ *   nested editor types
+ *     → translateAndDispatch() maps change to [rev.from+delta] in parent
+ *     → parent dispatch tagged nestedEditorEdit.of(revisionId)
+ *     → parent history records the change (normal undo granularity)
+ *     → Phase 3 syncs versions[selected].doc (needed for version switching)
+ *     → selection rebuilt to cover new range (fix for initially-empty versions)
+ *
+ *   external change to parent at revision range (undo, non-atomic typing)
+ *     → Phase 3 updates versions[selected].doc from parent slice
+ *     → Svelte reactivity propagates updated activeVersion.doc to Revision.svelte
+ *     → $effect in Revision.svelte patches the nested editor content
+ *
+ *   version switch
+ *     → nested editor destroyed, recreated from new VersionState blob
+ *     → only case where nested editor is fully rebuilt
+ *
+ * Undo: Mod-z in nested editor delegates to undo(parentView) via
+ * makeParentUndoKeymap. Parent undoes the doc change. Phase 3 updates
+ * versions[selected].doc. Svelte $effect patches the nested editor.
  */
 
-import { EditorState, Prec } from "@codemirror/state";
-import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
-import { redo, undo } from "@codemirror/commands";
+import { EditorState, Prec, Transaction } from "@codemirror/state";
+import { undo, redo } from "@codemirror/commands";
+import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import {
+    annotationField,
+    nestedEditorEdit,
+    _nestedEditRevision,
     setActiveRevisionVersion,
-    updateRevisionVersionState,
 } from "./annotationField";
-import { versionText, type VersionState } from "./models";
-import type { Annotation } from "./models";
-import { annotationField } from "./annotationField";
-import { getActiveAnnotation } from "./utils";
 import { publishAnnotationUiEvent } from "$lib/stores";
+import { versionText, type VersionState, isAnnotationOfType } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
 
 /**
- * Returns a configured EditorState for a version, restoring from
- * a serialised blob when available or creating a fresh state from
- * the doc text. The provided updateListener is installed so the
- * caller can react to every editor transaction.
- *
- * Used by RevisionModal.svelte. The modal has its own history and
- * undo stack; undo/redo keys are NOT delegated to the parent.
- * Version navigation shortcuts (Ctrl-[ / Ctrl-]) and Mod-Enter
- * (new version) are wired to the parent view so the modal and
- * parent stay in sync on structural changes.
+ * Creates a nested EditorState for a revision version.
+ * No local history — undo/redo delegates to the parent via makeParentUndoKeymap.
  */
-export function createVersionState(
+export function createNestedEditorState(
     version: VersionState,
     updateListener: (update: ViewUpdate) => void,
     parentView: EditorView,
+    revisionId: number,
 ): EditorState {
     const extensions = [
-        ...getExtensions({ persist: false, history: true, updateListener }),
-        makeParentAddVersionKeymap(parentView),
-        makeParentRevisionNavKeymap(parentView),
+        ...getExtensions({ persist: false, history: false, updateListener }),
+        makeParentUndoKeymap(parentView, revisionId),
+        makeParentRevisionNavKeymap(parentView, revisionId),
     ];
-    return "annotationField" in version
-        ? EditorState.fromJSON(version, { extensions }, nestedSavedFields)
-        : EditorState.create({ doc: versionText(version), extensions });
+    if (hasSerializedNestedState(version)) {
+        try {
+            return EditorState.fromJSON(version, { extensions }, nestedSavedFields);
+        } catch (error) {
+            console.warn("[nestedEditor] failed to restore serialized state, falling back to doc text", error);
+        }
+    }
+    return EditorState.create({ doc: versionText(version), extensions });
+}
+
+function hasSerializedNestedState(version: VersionState): version is Parameters<typeof EditorState.fromJSON>[0] {
+    if (typeof version !== "object" || version === null) return false;
+    if (typeof (version as { doc?: unknown }).doc !== "string") return false;
+    const serialized =
+        (version as { annotationField?: unknown }).annotationField !== undefined ||
+        (version as { selection?: unknown }).selection !== undefined;
+    return serialized;
 }
 
 /**
- * Returns a high-priority keymap that intercepts Mod+Enter in the modal
- * editor and fires the annotation-add-version event for the active revision
- * in the parent, creating a new version without inserting a newline.
+ * Intercepts Mod-z / Mod-y / Mod-Enter in the nested editor and
+ * delegates to the parent. Mod-z/y delegate undo/redo to the parent
+ * history. Mod-Enter fires "annotation-add-version" so the Revision
+ * card creates a new version (same as the annotationKeymap binding in
+ * the parent, which can't fire from inside the nested editor because
+ * getActiveRevisionAnnotation would not find a revision in the nested
+ * annotationField).
  */
-export function makeParentAddVersionKeymap(parentView: EditorView) {
+export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
+    function openNestedAnnotation(type: "comment" | "revision") {
+        return (view: EditorView) => {
+            const sel = view.state.selection.main;
+            if (sel.empty) return false;
+            publishAnnotationUiEvent({
+                type: "revision-open-nested-editor",
+                command: {
+                    revisionId,
+                    type,
+                    selectionFrom: sel.from,
+                    selectionTo: sel.to,
+                },
+            });
+            return true;
+        };
+    }
+
     return Prec.highest(keymap.of([
+        {
+            key: "Mod-z",
+            run() {
+                return undo(parentView);
+            },
+            preventDefault: true,
+        },
+        {
+            key: "Mod-y",
+            mac: "Mod-Shift-z",
+            run() {
+                return redo(parentView);
+            },
+            preventDefault: true,
+        },
         {
             key: "Mod-Enter",
             run() {
-                const annotation = getActiveAnnotation(parentView.state, "revision");
-                if (!annotation) return false;
                 publishAnnotationUiEvent({
                     type: "annotation-add-version",
-                    annotationId: annotation.id,
+                    annotationId: revisionId,
                 });
                 return true;
             },
             preventDefault: true,
         },
+        {
+            key: "Mod-Alt-m",
+            run: openNestedAnnotation("comment"),
+            preventDefault: true,
+        },
+        {
+            key: "Mod-Alt-k",
+            run: openNestedAnnotation("revision"),
+            preventDefault: true,
+        },
     ]));
 }
 
-export function makeParentRevisionNavKeymap(parentView: EditorView) {
-    const runNav = (direction: "prev" | "next") => {
-        const annotation = getActiveAnnotation(parentView.state, "revision");
-        if (!annotation) return false;
+/**
+ * Intercepts Ctrl-[ / Ctrl-] in the nested editor and routes
+ * them to the parent for version navigation.
+ *
+ * We dispatch directly to parentView rather than returning false and
+ * relying on bubbling, because shouldHandleRevisionModalKeydown blocks
+ * events originating from .cm-editor — so bubbling won't reach the
+ * modal-level handler.
+ */
+export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: number) {
+    function navigate(direction: "prev" | "next") {
+        const state = parentView.state;
+        const annotation = state.field(annotationField)[revisionId];
+        if (!annotation || !isAnnotationOfType(annotation, "revision")) return false;
         const count = annotation.versions.length;
-        if (count <= 1) return true;
+        if (count <= 1) return true; // consume: user intent was "navigate", no-op is correct
         const current = annotation.currentlySelected;
-        const next = direction === "next"
-            ? (current + 1) % count
-            : (current - 1 + count) % count;
-        parentView.dispatch(setActiveRevisionVersion(parentView.state, annotation.id, next));
+        const next =
+            direction === "next"
+                ? (current + 1) % count
+                : (current - 1 + count) % count;
+        parentView.dispatch(setActiveRevisionVersion(state, annotation.id, next));
         return true;
-    };
+    }
+
     return keymap.of([
         {
             key: "Ctrl-[",
-            run() { return runNav("prev"); },
+            run() {
+                return navigate("prev");
+            },
             preventDefault: true,
         },
         {
             key: "Ctrl-]",
-            run() { return runNav("next"); },
+            run() {
+                return navigate("next");
+            },
             preventDefault: true,
         },
     ]);
 }
 
 /**
- * Serialises the modal editor's current state and dispatches
- * an updateRevisionVersionState effect to the parent editor,
- * keeping the annotation's version slot in sync.
+ * Translates a doc-changing transaction from the nested editor into
+ * an equivalent change on the parent document at the revision's range,
+ * then dispatches it to the parent tagged with nestedEditorEdit.
+ *
+ * Returns true if a dispatch was made.
  */
-export function syncVersionToParent(
-    nestedEditor: EditorView,
+export function translateAndDispatch(
+    update: ViewUpdate,
     parentView: EditorView,
     revisionId: number,
-    versionId: number,
-): void {
-    const blob = nestedEditor.state.toJSON(nestedSavedFields) as VersionState;
+): boolean {
+    if (!update.docChanged) return false;
+
     const rev = parentView.state.field(annotationField)[revisionId] as
-        | Annotation<"revision">
+        | import("./models").Annotation<"revision">
         | undefined;
-    if (!rev) return;
-    // Preserve the existing label so syncing the editor content doesn't wipe it.
-    const existingLabel = rev.versions[versionId]?.label;
-    const blobWithLabel: VersionState = existingLabel !== undefined
-        ? { ...blob, label: existingLabel }
-        : blob;
-    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel));
+    if (!rev) return false;
+
+    const offset = rev.selection.main.from;
+
+    // Collect all changes from all transactions in this update,
+    // translated to parent coordinates using update.changes (the
+    // composed change set). iterChanges on the composed ChangeSet
+    // gives positions relative to the pre-update doc, so adding
+    // offset is correct regardless of how many transactions are batched.
+    const parentChanges: { from: number; to: number; insert: string }[] = [];
+    update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        parentChanges.push({
+            from: offset + fromA,
+            to: offset + toA,
+            insert: inserted.toString(),
+        });
+    });
+
+    if (parentChanges.length === 0) return false;
+
+    parentView.dispatch({
+        changes: parentChanges,
+        effects: [_nestedEditRevision.of(revisionId)],
+        annotations: [
+            nestedEditorEdit.of(revisionId),
+            Transaction.addToHistory.of(true),
+        ],
+    });
+    return true;
 }
 
 /**
@@ -135,102 +244,4 @@ export function previewVersionText(version: VersionState, maxLen = VERSION_PREVI
     const flattened = versionText(version).replace(/\s+/g, " ").trim();
     if (!flattened) return "(empty)";
     return flattened.length > maxLen ? `${flattened.slice(0, maxLen)}…` : flattened;
-}
-
-/**
- * Returns a high-priority keymap that intercepts Mod-z/y in the inline
- * nested editor, flushes its state to the parent, then delegates undo/redo
- * to the parent EditorView. No second undo stack.
- */
-export function makeParentUndoKeymap(
-    parentView: EditorView,
-    getNestedView: () => EditorView | undefined,
-    revisionId: number,
-    versionIndex: number,
-) {
-    return Prec.highest(keymap.of([
-        {
-            key: "Mod-z",
-            run() {
-                const nv = getNestedView();
-                if (nv) syncVersionToParent(nv, parentView, revisionId, versionIndex);
-                undo(parentView);
-                return true;
-            },
-            preventDefault: true,
-        },
-        {
-            key: "Mod-y",
-            mac: "Mod-Shift-z",
-            run() {
-                redo(parentView);
-                return true;
-            },
-            preventDefault: true,
-        },
-    ]));
-}
-
-/**
- * Returns a high-priority keymap that intercepts Mod-Alt-m/k in the inline
- * nested editor and fires a revision-open-nested-editor event, which
- * Revision.svelte catches to open the full-screen modal with the pending
- * annotation command forwarded to the right position.
- *
- * This is needed because the inline editor's annotationField has no
- * Annotations.svelte panel watching it, so nested annotation creation must
- * be redirected to the modal where the full UI is available.
- */
-export function makeInlineNestedAnnotationKeymap(revisionId: number) {
-    const fire = (type: "comment" | "revision", view: EditorView) => {
-        const sel = view.state.selection.main;
-        publishAnnotationUiEvent({
-            type: "revision-open-nested-editor",
-            command: {
-                revisionId,
-                type,
-                selectionFrom: sel.from,
-                selectionTo: sel.to,
-            },
-        });
-        return true;
-    };
-    return Prec.highest(keymap.of([
-        {
-            key: "Mod-Alt-m",
-            run(view) { return fire("comment", view); },
-            preventDefault: true,
-        },
-        {
-            key: "Mod-Alt-k",
-            run(view) { return fire("revision", view); },
-            preventDefault: true,
-        },
-    ]));
-}
-
-/**
- * Returns a configured EditorState for use in the inline revision card editor.
- * history: false — undo/redo are delegated to the parent via makeParentUndoKeymap.
- * annotationField is included via getExtensions so nested annotations work inline.
- * Mod-Alt-k/m open the parent's full-screen modal with the pending command.
- */
-export function createInlineVersionState(
-    version: VersionState,
-    updateListener: (update: ViewUpdate) => void,
-    parentView: EditorView,
-    revisionId: number,
-    versionIndex: number,
-    nestedViewRef: { current: EditorView | undefined },
-): EditorState {
-    const extensions = [
-        ...getExtensions({ persist: false, history: false, updateListener }),
-        makeParentUndoKeymap(parentView, () => nestedViewRef.current, revisionId, versionIndex),
-        makeInlineNestedAnnotationKeymap(revisionId),
-        makeParentAddVersionKeymap(parentView),
-        makeParentRevisionNavKeymap(parentView),
-    ];
-    return "annotationField" in version
-        ? EditorState.fromJSON(version, { extensions }, nestedSavedFields)
-        : EditorState.create({ doc: versionText(version), extensions });
 }

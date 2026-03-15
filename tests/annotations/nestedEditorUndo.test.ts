@@ -1,29 +1,28 @@
 /**
- * Tests for revision version undo via syncVersionToParent.
+ * Tests for nested editor direct-dispatch architecture.
  *
- * The inline revision card uses a <textarea>; undo/redo is handled
- * by forwarding Mod-z/Mod-y keydowns to undo(parentView)/redo(parentView)
- * directly — no second EditorView involved.
+ * Nested revision editors are direct viewports onto the parent document's
+ * revision range. Edits in the nested editor are translated to parent
+ * coordinates and dispatched to the parent via translateAndDispatch(),
+ * tagged with nestedEditorEdit; Phase 3 still runs to keep version.doc in sync.
  *
- * The modal editor (RevisionModal.svelte) does use a second EditorView,
- * but it has its own history and does NOT delegate undo to the parent.
- *
- * What these tests verify: syncVersionToParent correctly writes the
- * version state into the parent's annotation field, and undo/redo on
- * the parent restores the previous VersionState blob.
+ * Undo/redo: the parent history records nested edits as plain doc changes.
+ * Mod-z in the nested editor delegates to undo(parentView).
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import {
-    syncVersionToParent,
+    makeParentUndoKeymap,
 } from "$lib/editor/plugins/annotations/nestedEditor";
 import {
     annotationField,
     addAnnotation,
+    nestedEditorEdit,
+    _nestedEditRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
@@ -34,12 +33,6 @@ import { annotations as annotationExtensions } from "$lib/editor/plugins/annotat
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Creates a parent EditorView using the same extension pattern as other
- * integration tests (history + annotations), avoiding getExtensions()
- * which pulls in listeners.ts and can trigger duplicate @codemirror/state
- * module issues via the $lib path aliasing.
- */
 function createParentView(doc = "hello") {
     const state = EditorState.create({
         doc,
@@ -50,18 +43,10 @@ function createParentView(doc = "hello") {
     return new EditorView({ state, parent });
 }
 
-/**
- * Creates a minimal EditorView to simulate a modal editor that syncs
- * its state to the parent via syncVersionToParent. The modal has its
- * own history (unlike the old inline nested editor).
- */
-function createNestedView(
-    versionDoc: string,
-    _parentView: EditorView,
-): EditorView {
+function createNestedView(versionDoc: string, parentView: EditorView, revisionId = 0): EditorView {
     const state = EditorState.create({
         doc: versionDoc,
-        extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
+        extensions: [makeParentUndoKeymap(parentView, revisionId), annotationExtensions()],
     });
     const el = document.createElement("div");
     document.body.appendChild(el);
@@ -90,16 +75,42 @@ function addRevision(
     return annotation.id;
 }
 
-function getRevisionVersionText(
-    parentView: EditorView,
-    revisionId: number,
-): string {
+function getRevisionVersionText(parentView: EditorView, revisionId: number): string {
     const annotations = parentView.state.field(annotationField);
     const rev = annotations[revisionId];
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision annotation with id ${revisionId}`);
     }
     return versionText(rev.versions[rev.currentlySelected]);
+}
+
+/**
+ * Simulates translateAndDispatch by manually dispatching to the parent
+ * at the correct offset, mirroring what the nested editor's updateListener does.
+ */
+function simulateNestedEdit(
+    nestedView: EditorView,
+    parentView: EditorView,
+    revisionId: number,
+    insert: string,
+    at?: number,
+) {
+    const pos = at ?? nestedView.state.doc.length;
+    // Dispatch to nested editor first (what the user types)
+    nestedView.dispatch({ changes: { from: pos, insert } });
+
+    // Now translate to parent coordinates and dispatch
+    const rev = parentView.state.field(annotationField)[revisionId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+    const offset = rev.selection.main.from;
+    parentView.dispatch({
+        changes: { from: offset + pos, insert },
+        effects: [_nestedEditRevision.of(revisionId)],
+        annotations: [
+            nestedEditorEdit.of(revisionId),
+            Transaction.addToHistory.of(true),
+        ],
+    });
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -116,107 +127,127 @@ afterEach(() => {
     parentView.destroy();
 });
 
-// ── Scenario 1: syncVersionToParent writes text into parent annotation ───────
+// ── Scenario 1: nested editor has no independent undo stack ──────────────────
 
-describe("Scenario 1: syncVersionToParent stores version text in parent", () => {
-    it("parent annotationField reflects the nested edit after sync", () => {
-        const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
+describe("Scenario 1: nested editor has no independent undo stack", () => {
+    it("undo returns false on the nested editor after typing", () => {
         nestedView = createNestedView("hello", parentView);
 
         nestedView.dispatch({
             changes: { from: nestedView.state.doc.length, insert: " world" },
         });
-        syncVersionToParent(nestedView, parentView, revId, 0);
 
-        expect(getRevisionVersionText(parentView, revId)).toBe("hello world");
+        const result = undo(nestedView);
+        expect(result).toBe(false);
+    });
+
+    it("undoDepth is 0 on nested editor after typing", () => {
+        nestedView = createNestedView("hello", parentView);
+
+        nestedView.dispatch({
+            changes: { from: nestedView.state.doc.length, insert: " world" },
+        });
+
+        expect(undoDepth(nestedView.state)).toBe(0);
     });
 });
 
-// ── Scenario 2: Parent records nested edits ──────────────────────────────────
+// ── Scenario 2: Parent records nested edits via direct dispatch ──────────────
 
 describe("Scenario 2: parent records nested edits", () => {
-    it("parent undoDepth > 0 after syncVersionToParent", () => {
+    it("parent undoDepth > 0 after nested edit dispatched to parent", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
-        // Simulate a nested edit
-        nestedView.dispatch({
-            changes: { from: nestedView.state.doc.length, insert: " world" },
-        });
-        syncVersionToParent(nestedView, parentView, revId, 0);
+        simulateNestedEdit(nestedView, parentView, revId, " world");
 
         expect(undoDepth(parentView.state)).toBeGreaterThan(0);
     });
+
+    it("parent doc reflects nested edit at correct offset", () => {
+        // Parent doc: "hello" with revision at [0,5]
+        const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
+        nestedView = createNestedView("hello", parentView, revId);
+
+        simulateNestedEdit(nestedView, parentView, revId, " world");
+
+        expect(parentView.state.doc.toString()).toBe("hello world");
+    });
 });
 
-// ── Scenario 3: Undo in parent restores previous version text ────────────────
+// ── Scenario 3: Undo in parent reverts the parent doc ───────────────────────
 
-describe("Scenario 3: undo in parent restores previous version text", () => {
-    it("after undo, revision version text reverts to original", () => {
+describe("Scenario 3: undo in parent reverts parent doc", () => {
+    it("after undo, parent doc reverts to original", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
-        // Simulate a nested edit: "hello" -> "hello world"
-        nestedView.dispatch({
-            changes: { from: nestedView.state.doc.length, insert: " world" },
-        });
-        syncVersionToParent(nestedView, parentView, revId, 0);
+        simulateNestedEdit(nestedView, parentView, revId, " world");
+        expect(parentView.state.doc.toString()).toBe("hello world");
 
-        // Verify the updated text is stored
-        expect(getRevisionVersionText(parentView, revId)).toBe("hello world");
-
-        // Undo in parent
         undo(parentView);
 
-        // Version text should be restored to "hello"
+        expect(parentView.state.doc.toString()).toBe("hello");
+    });
+
+    it("after undo, Phase 3 syncs version.doc back to original", () => {
+        const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
+        nestedView = createNestedView("hello", parentView, revId);
+
+        simulateNestedEdit(nestedView, parentView, revId, " world");
+        undo(parentView);
+
+        // Phase 3 should have updated version.doc to match the reverted doc slice
         expect(getRevisionVersionText(parentView, revId)).toBe("hello");
     });
 });
 
-// ── Scenario 4: Undo reduces parent depth, never increases it ───────────────
+// ── Scenario 4: Undo reduces parent depth ───────────────────────────────────
 
 describe("Scenario 4: parent undoDepth decreases on undo", () => {
-    it("undo reduces undoDepth rather than increasing it", () => {
+    it("undo reduces undoDepth", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
-        nestedView.dispatch({
-            changes: { from: nestedView.state.doc.length, insert: " world" },
-        });
-        syncVersionToParent(nestedView, parentView, revId, 0);
+        simulateNestedEdit(nestedView, parentView, revId, " world");
 
         const depthBefore = undoDepth(parentView.state);
         expect(depthBefore).toBeGreaterThan(0);
 
         undo(parentView);
 
-        const depthAfter = undoDepth(parentView.state);
-        expect(depthAfter).toBeLessThan(depthBefore);
+        expect(undoDepth(parentView.state)).toBeLessThan(depthBefore);
     });
 });
 
-// ── Scenario 5: VersionState blobs do not contain historyField ──────────────
+// ── Scenario 5: nestedEditorEdit and Phase 3 ─────────────────────────────────
 
-describe("Scenario 5: VersionState blobs have no historyField", () => {
-    it("stored VersionState in parent annotationField has no historyField key", () => {
+describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current", () => {
+    it("nestedEditorEdit transactions update version.doc via Phase 3", () => {
+        // Phase 3 intentionally runs for nestedEditorEdit transactions. It syncs
+        // versions[currentlySelected].doc from the parent doc slice so that
+        // version switching always shows up-to-date text. The nested editor's own
+        // state is already correct; Phase 3 keeps the stored snapshot in sync.
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
 
-        nestedView.dispatch({
-            changes: { from: nestedView.state.doc.length, insert: " world" },
+        const rev = parentView.state.field(annotationField)[revId];
+        if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+        const offset = rev.selection.main.from;
+
+        // Dispatch to parent with nestedEditorEdit tag
+        parentView.dispatch({
+            changes: { from: offset + 5, insert: " world" },
+            effects: [_nestedEditRevision.of(revId)],
+            annotations: [
+                nestedEditorEdit.of(revId),
+                Transaction.addToHistory.of(true),
+            ],
         });
-        syncVersionToParent(nestedView, parentView, revId, 0);
 
-        const annotations = parentView.state.field(annotationField);
-        const rev = annotations[revId];
-        if (!rev || !isAnnotationOfType(rev, "revision")) {
-            throw new Error("Expected revision annotation");
-        }
-        const versionBlob = rev.versions[rev.currentlySelected] as Record<
-            string,
-            unknown
-        >;
-        expect(versionBlob).not.toHaveProperty("historyField");
+        // Phase 3 ran and updated version.doc to match the new parent doc slice
+        const updatedRev = parentView.state.field(annotationField)[revId];
+        if (!updatedRev || !isAnnotationOfType(updatedRev, "revision")) throw new Error();
+        expect(versionText(updatedRev.versions[0])).toBe("hello world");
     });
 
     it("nestedSavedFields does not include historyField", () => {
@@ -225,27 +256,20 @@ describe("Scenario 5: VersionState blobs have no historyField", () => {
     });
 });
 
-// ── Scenario 6: Redo restores the newer version text ────────────────────────
+// ── Scenario 6: Redo restores the newer parent doc ──────────────────────────
 
-describe("Scenario 6: redo restores the newer version text", () => {
-    it("after undo then redo, version text returns to 'hello world'", () => {
+describe("Scenario 6: redo restores the newer doc state", () => {
+    it("after undo then redo, parent doc returns to edited state", () => {
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
-        nestedView = createNestedView("hello", parentView);
+        nestedView = createNestedView("hello", parentView, revId);
 
-        // Nested edit: "hello" -> "hello world"
-        nestedView.dispatch({
-            changes: { from: nestedView.state.doc.length, insert: " world" },
-        });
-        syncVersionToParent(nestedView, parentView, revId, 0);
+        simulateNestedEdit(nestedView, parentView, revId, " world");
+        expect(parentView.state.doc.toString()).toBe("hello world");
 
-        expect(getRevisionVersionText(parentView, revId)).toBe("hello world");
-
-        // Undo
         undo(parentView);
-        expect(getRevisionVersionText(parentView, revId)).toBe("hello");
+        expect(parentView.state.doc.toString()).toBe("hello");
 
-        // Redo
         redo(parentView);
-        expect(getRevisionVersionText(parentView, revId)).toBe("hello world");
+        expect(parentView.state.doc.toString()).toBe("hello world");
     });
 });

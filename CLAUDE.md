@@ -29,6 +29,10 @@ bun run format    # Format code
 bun run lint      # Lint code
 bun run biome     # Run both format and lint
 
+# Testing (uses Vitest — must use `bun run test`, NOT `bun test`)
+bun run test          # Watch mode
+bun run test:run      # Single run
+
 # Tauri commands
 bun run tauri dev        # Run Tauri development mode
 bun run tauri build      # Build Tauri application

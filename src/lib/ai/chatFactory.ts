@@ -57,7 +57,7 @@ type ToolCall =
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall({ toolCall }: { toolCall: ToolCall }) {
+function handleToolCall(toolCall: ToolCall) {
     const view = get(editorView);
     if (!view) return;
 
@@ -161,10 +161,7 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" })
 
     const chat = new Chat({
         transport: makeTransport(transportWithTracking),
-        // Cast needed: SDK types toolCall.input as `unknown`; our discriminated
-        // union provides proper narrowing inside handleToolCall.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onToolCall: handleToolCall as any,
+        onToolCall: ({ toolCall }) => handleToolCall(toolCall as ToolCall),
     });
 
     function clearChat() {

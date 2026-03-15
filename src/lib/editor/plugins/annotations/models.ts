@@ -138,7 +138,7 @@ export const SuggestionReplacementSchema = z.object({
 export const VersionStateSchema = z.object({
     doc: z.string(),
     label: z.string().optional(),
-});
+}).passthrough();
 const RawBaseSchema = z.object({
     id: z.number(),
     thread: z.array(ThreadMessageSchema),

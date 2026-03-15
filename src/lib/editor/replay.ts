@@ -105,7 +105,8 @@ function applyEventPayload(state: EditorState, payload: EventPayload): EditorSta
         default: {
             // Unknown or unsupported event type — treat as malformed so
             // the caller's try/catch can skip this record safely.
-            throw new Error(`Unknown event payload type: ${String((payload as any).type)}`);
+            const unknownType = (payload as { type?: string }).type ?? "unknown";
+            throw new Error(`Unknown event payload type: ${unknownType}`);
         }
     }
 }
