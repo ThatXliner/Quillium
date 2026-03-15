@@ -8,7 +8,9 @@ test.describe("annotation undo state safety", () => {
         await expect(page.locator("#editor-document .cm-content")).toBeVisible();
     });
 
-    test("deleting annotated text and undoing does not trigger state_unsafe_mutation", async ({ page }) => {
+    test("deleting annotated text and undoing does not trigger state_unsafe_mutation", async ({
+        page,
+    }) => {
         const errors: string[] = [];
         page.on("pageerror", (error) => {
             errors.push(error.message ?? String(error));

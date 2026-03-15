@@ -133,7 +133,8 @@ function handleTabChange(newTab: "library" | "trash") {
 
 function handleKeydown(e: KeyboardEvent) {
     const target = e.target as HTMLElement;
-    const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+    const inInput =
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 
     // Esc — back to editor (when a document is open)
     if (e.key === "Escape" && hasContinue && !inInput) {
@@ -204,8 +205,14 @@ function handleKeydown(e: KeyboardEvent) {
     }
 
     // G — grid view, L — list view
-    if (e.key === "g" && !inInput) { viewMode = "grid"; return; }
-    if (e.key === "l" && !inInput) { viewMode = "list"; return; }
+    if (e.key === "g" && !inInput) {
+        viewMode = "grid";
+        return;
+    }
+    if (e.key === "l" && !inInput) {
+        viewMode = "list";
+        return;
+    }
 }
 
 onMount(load);

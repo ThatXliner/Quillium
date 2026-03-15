@@ -54,9 +54,7 @@ function addRevision(
         currentlySelected,
         versions,
     };
-    view.dispatch(
-        view.state.update({ effects: [addAnnotation.of(annotation)] }),
-    );
+    view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
 }
 
@@ -68,30 +66,24 @@ function simulateNestedEdit(
     insert: string,
 ) {
     const rev = view.state.field(annotationField)[revisionId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error(`No revision ${revisionId}`);
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error(`No revision ${revisionId}`);
     const offset = rev.selection.main.from;
     view.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
         effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
 }
 
 function getVersionDoc(view: EditorView, revisionId: number): string {
     const rev = view.state.field(annotationField)[revisionId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error(`No revision ${revisionId}`);
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error(`No revision ${revisionId}`);
     return versionText(rev.versions[rev.currentlySelected]);
 }
 
 function getRevisionRange(view: EditorView, revisionId: number) {
     const rev = view.state.field(annotationField)[revisionId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error(`No revision ${revisionId}`);
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error(`No revision ${revisionId}`);
     return rev.selection.main;
 }
 
@@ -143,9 +135,7 @@ describe("nested editor empty version persistence", () => {
         // skip guard keeps the original doc as a safety measure)
         const rev = view.state.field(annotationField)[revId];
         if (rev && isAnnotationOfType(rev, "revision")) {
-            expect(versionText(rev.versions[rev.currentlySelected])).toBe(
-                "Beta",
-            );
+            expect(versionText(rev.versions[rev.currentlySelected])).toBe("Beta");
         }
     });
 

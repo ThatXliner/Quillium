@@ -15,9 +15,7 @@ import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { nestedSavedFields } from "$lib/editor/extensions";
-import {
-    makeParentUndoKeymap,
-} from "$lib/editor/plugins/annotations/nestedEditor";
+import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
 import {
     annotationField,
     addAnnotation,
@@ -69,9 +67,7 @@ function addRevision(
         currentlySelected,
         versions,
     };
-    parentView.dispatch(
-        parentView.state.update({ effects: [addAnnotation.of(annotation)] }),
-    );
+    parentView.dispatch(parentView.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
 }
 
@@ -106,10 +102,7 @@ function simulateNestedEdit(
     parentView.dispatch({
         changes: { from: offset + pos, insert },
         effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
 }
 
@@ -238,10 +231,7 @@ describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current"
         parentView.dispatch({
             changes: { from: offset + 5, insert: " world" },
             effects: [_nestedEditRevision.of(revId)],
-            annotations: [
-                nestedEditorEdit.of(revId),
-                Transaction.addToHistory.of(true),
-            ],
+            annotations: [nestedEditorEdit.of(revId), Transaction.addToHistory.of(true)],
         });
 
         // Phase 3 ran and updated version.doc to match the new parent doc slice

@@ -20,10 +20,17 @@ interface Props {
     onRenameTitle: (id: string, newTitle: string) => void;
 }
 
-const { doc, trashMode, onOpen, onTrash, onRestore, onDeletePermanent, onRenameTitle }: Props = $props();
+const { doc, trashMode, onOpen, onTrash, onRestore, onDeletePermanent, onRenameTitle }: Props =
+    $props();
 
-let confirmingDelete = $derived.by(() => { void doc; return false; });
-let titleEditing = $derived.by(() => { void doc; return false; });
+let confirmingDelete = $derived.by(() => {
+    void doc;
+    return false;
+});
+let titleEditing = $derived.by(() => {
+    void doc;
+    return false;
+});
 let titleDraft = $state("");
 let titleInputEl = $state<HTMLInputElement | undefined>();
 

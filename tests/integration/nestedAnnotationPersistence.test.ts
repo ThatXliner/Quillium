@@ -48,10 +48,7 @@ function createParentView(doc: string) {
 }
 
 /** Create a nested editor view with annotations but no local history. */
-function createNestedView(
-    doc: string,
-    updateListener?: (update: ViewUpdate) => void,
-) {
+function createNestedView(doc: string, updateListener?: (update: ViewUpdate) => void) {
     const state = EditorState.create({
         doc,
         extensions: [
@@ -66,9 +63,13 @@ function createNestedView(
 
 /** Restore a nested editor from a serialized blob (as fromJSON does). */
 function restoreNestedView(blob: VersionState) {
-    const state = EditorState.fromJSON(blob, {
-        extensions: [annotationExtensions()],
-    }, nestedSavedFields);
+    const state = EditorState.fromJSON(
+        blob,
+        {
+            extensions: [annotationExtensions()],
+        },
+        nestedSavedFields,
+    );
     const el = document.createElement("div");
     document.body.appendChild(el);
     return new EditorView({ state, parent: el });
@@ -133,10 +134,12 @@ describe("nested annotation persistence through modal flush", () => {
         );
         nestedEditor.dispatch(
             nestedEditor.state.update({
-                effects: [addAnnotation.of({
-                    ...nestedComment,
-                    thread: [{ message: "test comment", author: "user", time: 1 }],
-                })],
+                effects: [
+                    addAnnotation.of({
+                        ...nestedComment,
+                        thread: [{ message: "test comment", author: "user", time: 1 }],
+                    }),
+                ],
             }),
         );
 
@@ -171,11 +174,7 @@ describe("nested annotation persistence through modal flush", () => {
         // Add a sub-revision inside the nested editor
         const nestedAnnotations = nestedEditor.state.field(annotationField);
         const subRevision = {
-            ...createNewAnnotation(
-                nestedAnnotations,
-                EditorSelection.single(0, 5),
-                "revision",
-            ),
+            ...createNewAnnotation(nestedAnnotations, EditorSelection.single(0, 5), "revision"),
             currentlySelected: 0,
             versions: [{ doc: "hello" }, { doc: "hi" }],
         };
@@ -218,10 +217,12 @@ describe("nested annotation persistence through modal flush", () => {
         );
         nestedEditor.dispatch(
             nestedEditor.state.update({
-                effects: [addAnnotation.of({
-                    ...nestedComment,
-                    thread: [{ message: "nested!", author: "user", time: 1 }],
-                })],
+                effects: [
+                    addAnnotation.of({
+                        ...nestedComment,
+                        thread: [{ message: "nested!", author: "user", time: 1 }],
+                    }),
+                ],
             }),
         );
 
@@ -239,7 +240,10 @@ describe("nested annotation persistence through modal flush", () => {
         // Parent's version blob should contain the annotationField data
         const parentRev = parentView.state.field(annotationField)[revId];
         if (!parentRev || !isAnnotationOfType(parentRev, "revision")) throw new Error();
-        const storedBlob = parentRev.versions[parentRev.currentlySelected] as Record<string, unknown>;
+        const storedBlob = parentRev.versions[parentRev.currentlySelected] as Record<
+            string,
+            unknown
+        >;
         expect(storedBlob.annotationField).toBeDefined();
 
         // Recreate nested editor from stored blob — annotations should be there

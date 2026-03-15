@@ -246,7 +246,9 @@ async function activateAnnotation(page: Page, targetText: string): Promise<void>
             | undefined;
         if (!editorViewStore) return;
         let view: unknown;
-        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
         unsub();
         if (!view) return;
         const v = view as {
@@ -307,14 +309,9 @@ function diffFraction(a: Buffer, b: Buffer): number {
     const imgB = PNG.sync.read(b);
     if (imgA.width !== imgB.width || imgA.height !== imgB.height) return 1;
     const total = imgA.width * imgA.height;
-    const changed = pixelmatch(
-        imgA.data,
-        imgB.data,
-        null,
-        imgA.width,
-        imgA.height,
-        { threshold: 0.1 },
-    );
+    const changed = pixelmatch(imgA.data, imgB.data, null, imgA.width, imgA.height, {
+        threshold: 0.1,
+    });
     return changed / total;
 }
 
@@ -376,17 +373,17 @@ async function scenarioFeedback(ctx: BrowserContext): Promise<void> {
     // Wait for the async loadApiKeyForProvider() call to resolve — without
     // this, hasApiKey() returns false and the click redirects to "settings".
     // The aria-label changes from "…add API key…" to "…⌘⇧2…" once resolved.
+    await page.locator("#ai-tab-feedback").waitFor({ state: "visible" });
     await page
-        .locator("#ai-tab-feedback")
-        .waitFor({ state: "visible" });
-    await page.waitForFunction(
-        () =>
-            document
-                .querySelector("#ai-tab-feedback")
-                ?.getAttribute("aria-label")
-                ?.includes("⌘") ?? false,
-        { timeout: 5000 },
-    ).catch(() => {});
+        .waitForFunction(
+            () =>
+                document
+                    .querySelector("#ai-tab-feedback")
+                    ?.getAttribute("aria-label")
+                    ?.includes("⌘") ?? false,
+            { timeout: 5000 },
+        )
+        .catch(() => {});
     await page.locator("#ai-tab-feedback").click({ force: true });
     await page.locator("#ai-sidebar").waitFor({ state: "visible" });
     await page.waitForTimeout(500);
@@ -516,7 +513,9 @@ async function scenarioRevisionModal(ctx: BrowserContext): Promise<void> {
         if (!stack || !editorViewStore) return;
         // Synchronously read the current EditorView from the Svelte store
         let view: unknown;
-        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
         unsub();
         if (!view) return;
         // Find the revision annotation id from the DOM

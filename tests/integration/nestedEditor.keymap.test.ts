@@ -13,14 +13,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { get } from "svelte/store";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import {
-    annotationField,
-    addAnnotation,
-} from "$lib/editor/plugins/annotations/annotationField";
-import {
-    createNewAnnotation,
-    type VersionState,
-} from "$lib/editor/plugins/annotations/models";
+import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
+import { createNewAnnotation, type VersionState } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
 import { annotationUiEvent } from "$lib/stores";
@@ -56,17 +50,10 @@ function addRevision(view: EditorView, from: number, to: number) {
  * (so annotationField exists) and makeParentUndoKeymap (which includes
  * the Mod-Alt-k/m interceptors).
  */
-function createNestedView(
-    parentView: EditorView,
-    revisionId: number,
-    doc: string,
-) {
+function createNestedView(parentView: EditorView, revisionId: number, doc: string) {
     const state = EditorState.create({
         doc,
-        extensions: [
-            annotationExtensions(),
-            makeParentUndoKeymap(parentView, revisionId),
-        ],
+        extensions: [annotationExtensions(), makeParentUndoKeymap(parentView, revisionId)],
     });
     const el = document.createElement("div");
     document.body.appendChild(el);
@@ -104,7 +91,9 @@ function runNestedKey(
 /**
  * Recursively extract KeyBinding objects from a Prec-wrapped keymap extension.
  */
-function extractBindings(ext: unknown): Array<{ key?: string; run?: (view: EditorView) => boolean }> {
+function extractBindings(
+    ext: unknown,
+): Array<{ key?: string; run?: (view: EditorView) => boolean }> {
     if (!ext || typeof ext !== "object") return [];
     // Prec.highest returns { inner: Extension }
     if ("inner" in (ext as Record<string, unknown>)) {

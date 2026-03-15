@@ -80,10 +80,7 @@ function simulateNestedEdit(
     view.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
         effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
 }
 
@@ -102,9 +99,7 @@ function getRevisionSlice(view: EditorView, revisionId: number): string {
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision ${revisionId}`);
     }
-    return view.state.doc
-        .slice(rev.selection.main.from, rev.selection.main.to)
-        .toString();
+    return view.state.doc.slice(rev.selection.main.from, rev.selection.main.to).toString();
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────

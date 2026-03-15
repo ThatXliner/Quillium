@@ -135,10 +135,12 @@ export const SuggestionReplacementSchema = z.object({
     text: z.string(),
     rationale: z.string().optional(),
 });
-export const VersionStateSchema = z.object({
-    doc: z.string(),
-    label: z.string().optional(),
-}).passthrough();
+export const VersionStateSchema = z
+    .object({
+        doc: z.string(),
+        label: z.string().optional(),
+    })
+    .passthrough();
 const RawBaseSchema = z.object({
     id: z.number(),
     thread: z.array(ThreadMessageSchema),
