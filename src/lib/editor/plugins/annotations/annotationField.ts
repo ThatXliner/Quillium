@@ -155,36 +155,6 @@ export const updateThread = StateEffect.define<{
 // transaction already carry the full semantic meaning of "undo this op."
 export const revisionInternalEdit = Annotation.define<boolean>();
 
-// Marks a parent-editor transaction that was originated by a nested editor
-// acting as a direct viewport. Set to the revision ID whose nested editor
-// dispatched the change. Consumers:
-//   - Parent→nested ViewPlugin (nestedEditorBridge): skips re-dispatching
-//     this change back to the nested editor (it caused it, doesn't need it).
-//   - annotationField Phase 3: still runs (intentionally) to sync
-//     versions[selected].doc from the parent doc slice so version switching
-//     shows current content.
-// Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
-// not stored in history.
-export const nestedEditorEdit = Annotation.define<number>();
-// Persists the revision ID for a nested-editor doc change through undo/redo.
-// Unlike the nestedEditorEdit Transaction.Annotation (which is ephemeral),
-// this StateEffect is stored in CodeMirror's history and replayed on redo.
-// Phase 3 reads it to apply the same boundary-expansion logic that runs
-// on the forward pass (via nestedEditorEdit), ensuring redo correctly
-// expands the revision range when text is re-inserted at its trailing edge.
-// invertedAnnotationFieldEffects produces a matching inverse so undo does
-// not need to do anything special (Phase 1 shrinks the range correctly).
-export const _nestedEditRevision = StateEffect.define<number>({
-    // Map the stored revision ID through doc changes — for this effect the
-    // payload is just an integer ID, not a position, so no mapping needed.
-    map: (value) => value,
-});
-// Marks a transaction dispatched by nestedEditorBridge to a nested editor.
-// translateAndDispatch checks for this and returns early — the change came
-// from the parent pushing a delta, not from the user typing, so it must not
-// be forwarded back up to the parent (that would create an infinite loop and
-// a duplicate history entry).
-export const bridgeDispatch = Annotation.define<true>();
 // Marks a transaction dispatched by collapsedRevisionResolver to remove
 // collapsed revisions after a deletion. addToHistory.of(false) ensures no
 // new undo entry is created, and this annotation prevents invertedEffects from
@@ -192,12 +162,6 @@ export const bridgeDispatch = Annotation.define<true>();
 // undo entry (since the deletion's undo already carries the correct
 // _restoreAnnotation effects for every collapsed revision).
 export const _revisionCleanup = Annotation.define<boolean>();
-// Marks a flushAnnotationsToParent dispatch (addToHistory: false).
-// invertedAnnotationFieldEffects skips generating an inverse for any
-// _updateRevisionVersionState effect tagged with this annotation, so
-// the flush's bookkeeping write is not merged into the adjacent undo
-// entry and cannot overwrite the version doc back to the pre-flush state.
-export const _revisionFlush = Annotation.define<boolean>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 // There is no "updateRevisionVersion" since we sniff that from document changes
@@ -672,45 +636,6 @@ export const annotationField = StateField.define<Annotations>({
         // document, but only for revisions that had no explicit effect
         // this transaction and only when the document actually changed.
         if (tr.docChanged) {
-            // Collect all revision IDs that need boundary expansion.
-            // This covers both the forward pass (nestedEditorEdit annotation)
-            // and redo replays (_nestedEditRevision StateEffect stored in history).
-            const nestedEditRevIds = new Set<number>();
-            const nestedEditAnnotationId = tr.annotation(nestedEditorEdit);
-            if (nestedEditAnnotationId !== undefined) {
-                nestedEditRevIds.add(nestedEditAnnotationId);
-            }
-            for (const e of tr.effects) {
-                if (e.is(_nestedEditRevision)) {
-                    nestedEditRevIds.add(e.value);
-                }
-            }
-
-            // Fix revision selection boundaries for nested editor edits (both
-            // forward and redo). Phase 1 uses EditorSelection.map() which does
-            // not expand non-collapsed ranges when text is inserted exactly at
-            // their trailing boundary. We use mapPos(from,-1) / mapPos(to,+1)
-            // to ensure the revision range absorbs content added at its edges.
-            for (const revId of nestedEditRevIds) {
-                const ann = annotations[revId];
-                if (ann && isAnnotationOfType(ann, "revision")) {
-                    const oldAnn = oldAnnotations[revId];
-                    if (oldAnn) {
-                        const from = tr.changes.mapPos(oldAnn.selection.main.from, -1);
-                        const to = tr.changes.mapPos(oldAnn.selection.main.to, 1);
-                        if (from !== ann.selection.main.from || to !== ann.selection.main.to) {
-                            annotations[revId] = {
-                                ...ann,
-                                selection: EditorSelection.single(from, to),
-                            };
-                        }
-                    }
-                }
-            }
-
-            // NOTE: we intentionally do NOT skip Phase 3 for nestedEditorEdit.
-            // Phase 3 syncs versions[selected].doc from the parent doc slice,
-            // which is needed so that version switching shows current content.
             annotations = syncRevisionDocsWithDocument(
                 annotations,
                 tr,
@@ -770,11 +695,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     // own annotation state via explicit effects.
     const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
     const isRevisionEdit = transaction.annotation(revisionInternalEdit);
-    // nestedEditorEdit transactions are plain doc changes originated by a nested
-    // editor viewport — they manage positions via the normal doc-change path, so
-    // implicit annotation restoration is not needed (and would double-restore).
-    const isNestedEdit = transaction.annotation(nestedEditorEdit) !== undefined;
-    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit && !isNestedEdit) {
+    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit) {
         for (const annotation of Object.values(oldAnnotations)) {
             const isRevision = isAnnotationOfType(annotation, "revision");
             const remapped = cleanRangesOf(
@@ -860,11 +781,12 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 );
             }
         } else if (effect.is(_updateRevisionVersionState)) {
-            // Skip generating an inverse for flush dispatches (addToHistory:false).
-            // Those are bookkeeping-only writes; merging their inverse into the
-            // adjacent undo entry would overwrite the version doc back to the
-            // pre-flush state on undo, fighting Phase 3's doc sync.
-            if (transaction.annotation(_revisionFlush)) continue;
+            // Skip generating an inverse for sub-annotation flush dispatches.
+            // Those are tagged revisionInternalEdit + addToHistory:false;
+            // merging their inverse into the adjacent undo entry would
+            // overwrite the version doc back to the pre-flush state on undo,
+            // fighting Phase 3's doc sync.
+            if (transaction.annotation(revisionInternalEdit) && !transaction.isUserEvent("undo") && !transaction.isUserEvent("redo")) continue;
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
             effects.push(
@@ -890,12 +812,6 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
         } else if (effect.is(_applySuggestion)) {
             const annotations = transaction.startState.field(annotationField);
             effects.push(addAnnotation.of(annotations[effect.value.annotationId]));
-        } else if (effect.is(_nestedEditRevision)) {
-            // _nestedEditRevision is its own inverse: on undo the stored effect
-            // would be the forward one, but undo doesn't need range expansion
-            // (Phase 1 shrinks correctly). We still emit the inverse so that
-            // if the undo itself is redone, redo sees the effect and expands.
-            effects.push(_nestedEditRevision.of(effect.value));
         }
     }
     return effects;

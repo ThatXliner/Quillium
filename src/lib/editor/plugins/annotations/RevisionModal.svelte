@@ -51,12 +51,10 @@ import { createNewAnnotation, versionText, type VersionState } from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { modalStack, type ModalEntry } from "$lib/stores";
 import {
-    createNestedEditorState,
-    translateAndDispatch,
-    flushAnnotationsToParent,
+    createSliceEditor,
+    destroySliceEditor,
     previewVersionText,
 } from "./nestedEditor";
-import { registerNestedEditor } from ".";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
@@ -299,9 +297,6 @@ const revision = $derived(
 let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
-let mountedVersionId = -1;
-let unregisterNestedEditor: (() => void) | undefined;
-
 // Manually-synced mirrors of the nested editor's CodeMirror state.
 // Because CodeMirror manages its own state internally (view.state is a plain
 // object, not $state), Svelte has no way to react to transactions automatically.
@@ -312,28 +307,24 @@ let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
 /**
- * Bootstrap a nested CodeMirror editor from a VersionState.
- * Restores from JSON if the version already contains serialised
- * editor state, otherwise creates a fresh state from the doc
- * text. Attaches an updateListener that persists every change
- * back into the parent revision via updateRevisionVersionState.
+ * Bootstrap a slice editor for a revision version. The nested editor
+ * owns no state — all doc changes are forwarded to the parent view,
+ * and the nested doc is kept in sync with the parent slice by
+ * parentSyncPlugin inside createSliceEditor.
  */
 function createEditor(version: VersionState) {
     if (!editorHost || editor) return;
-    const state = createNestedEditorState(version, (update: ViewUpdate) => {
-        if (!editor) return;
-        // Translate doc changes to parent coordinates and dispatch.
-        translateAndDispatch(update, view, revisionId);
-        modalAnnotations = editor.state.field(annotationField);
-        modalActiveAnnotation = getActiveAnnotation(editor.state);
-    }, view, revisionId);
-    editor = new EditorView({ state, parent: editorHost });
-    mountedVersionId = (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.currentlySelected ?? -1;
-    unregisterNestedEditor = registerNestedEditor(revisionId, editor, () => {
-        if (editor && mountedVersionId !== -1) {
-            flushAnnotationsToParent(editor, view, revisionId, mountedVersionId);
-        }
-    });
+    editor = createSliceEditor(
+        revisionId,
+        view,
+        version,
+        editorHost,
+        (_update: ViewUpdate) => {
+            if (!editor) return;
+            modalAnnotations = editor.state.field(annotationField);
+            modalActiveAnnotation = getActiveAnnotation(editor.state);
+        },
+    );
     modalAnnotations = editor.state.field(annotationField);
     modalActiveAnnotation = getActiveAnnotation(editor.state);
 }
@@ -348,17 +339,12 @@ function moveCursorToEnd(activeEditor: EditorView) {
 }
 
 function destroyEditor() {
-    unregisterNestedEditor?.();
-    unregisterNestedEditor = undefined;
-    // Flush nested annotation state to parent before destroying.
-    if (editor && mountedVersionId !== -1) {
-        flushAnnotationsToParent(editor, view, revisionId, mountedVersionId);
+    if (editor) {
+        destroySliceEditor(editor, view, revisionId);
     }
-    editor?.destroy();
     editor = undefined;
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
-    mountedVersionId = -1;
 }
 
 function close() {

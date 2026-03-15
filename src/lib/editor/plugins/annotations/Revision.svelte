@@ -5,16 +5,12 @@
  * editing version content, and actions to create/delete versions
  * or expand into a full-screen modal.
  *
- * Architecture: the nested editor is a direct viewport onto the
- * parent document's revision range. Edits in the nested editor
- * are translated to parent coordinates via translateAndDispatch()
- * and dispatched to the parent EditorView. External changes to
- * the revision range (undo, non-atomic typing) are pushed back
- * to the nested editor by the nestedEditorBridge ViewPlugin via
- * the registerNestedEditor registry.
- *
- * The nested editor is only destroyed/recreated on version switch.
- * All other changes (typing, undo) are applied as deltas.
+ * Architecture: the nested editor is a stateless slice viewport
+ * onto the parent document's revision range. Doc changes are
+ * forwarded to the parent via dispatchTransactions; the nested
+ * doc is kept in sync with the parent slice by parentSyncPlugin
+ * inside createSliceEditor. The nested editor is only
+ * destroyed/recreated on version switch.
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
@@ -29,12 +25,10 @@ import {
     type Annotation,
     type Thread as ThreadType,
 } from ".";
-import { registerNestedEditor } from ".";
 import { versionText, type VersionState } from "./models";
 import {
-    createNestedEditorState,
-    translateAndDispatch,
-    flushAnnotationsToParent,
+    createSliceEditor,
+    destroySliceEditor,
     previewVersionText,
 } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
@@ -86,11 +80,8 @@ let recursiveEditorHost = $state<HTMLDivElement>();
 let recursiveEditor = $state<EditorView | undefined>(undefined);
 let activeAnnotation = $state<Annotation<any> | undefined>(undefined);
 
-// Track which version the nested editor was built for, so we know
-// when to destroy/recreate (version switch) vs. when the bridge
-// will handle it (undo/external edit).
+// Track which version the nested editor was built for to detect version switches.
 let mountedVersionId = -1;
-let unregisterNestedEditor: (() => void) | undefined;
 
 let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
@@ -218,30 +209,21 @@ $effect(() => {
 });
 
 /**
- * Mount a nested CodeMirror editor for the given version.
- * Registers it with the nestedEditorBridge so the parent can
- * push external changes (undo, non-atomic typing) directly.
+ * Mount a slice editor for the given version.
  */
 function createRecursiveEditor(version: VersionState) {
     if (!recursiveEditorHost || recursiveEditor) return;
-    const state = createNestedEditorState(
+    recursiveEditor = createSliceEditor(
+        revision.id,
+        view,
         version,
-        (update: ViewUpdate) => {
+        recursiveEditorHost,
+        (_update: ViewUpdate) => {
             if (!recursiveEditor) return;
             activeAnnotation = getActiveAnnotation(recursiveEditor.state);
-            // Translate doc changes to parent coordinates and dispatch.
-            translateAndDispatch(update, view, revision.id);
         },
-        view,
-        revision.id,
     );
-    recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     mountedVersionId = revision.currentlySelected;
-    unregisterNestedEditor = registerNestedEditor(revision.id, recursiveEditor, () => {
-        if (recursiveEditor && mountedVersionId !== -1) {
-            flushAnnotationsToParent(recursiveEditor, view, revision.id, mountedVersionId);
-        }
-    });
     activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 
     // Apply pending selection if this annotation just created one.
@@ -265,13 +247,9 @@ function createRecursiveEditor(version: VersionState) {
 }
 
 function destroyRecursiveEditor() {
-    unregisterNestedEditor?.();
-    unregisterNestedEditor = undefined;
-    // Flush nested annotation state to parent before destroying.
     if (recursiveEditor) {
-        flushAnnotationsToParent(recursiveEditor, view, revision.id, mountedVersionId);
+        destroySliceEditor(recursiveEditor, view, revision.id);
     }
-    recursiveEditor?.destroy();
     recursiveEditor = undefined;
     activeAnnotation = undefined;
     mountedVersionId = -1;
@@ -292,7 +270,7 @@ $effect(() => {
 // When the selected version changes, destroy and recreate.
 // This is the ONLY case where we fully rebuild the nested editor.
 // External text changes (undo, non-atomic typing) are handled by
-// the nestedEditorBridge ViewPlugin pushing deltas directly.
+// parentSyncPlugin inside the slice editor.
 $effect(() => {
     if (!recursiveEditor || !isEditorOpen) return;
     const currentVersionId = revision.currentlySelected;

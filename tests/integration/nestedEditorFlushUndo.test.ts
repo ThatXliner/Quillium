@@ -14,8 +14,6 @@ import { history, undo } from "@codemirror/commands";
 import {
     annotationField,
     addAnnotation,
-    nestedEditorEdit,
-    _nestedEditRevision,
     updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -24,7 +22,7 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { nestedSavedFields } from "$lib/editor/extensions";
+
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +58,7 @@ function getRevisionSlice(view: EditorView, revId: number): string {
     return view.state.doc.slice(rev.selection.main.from, rev.selection.main.to).toString();
 }
 
-/** Simulate a nested editor edit dispatched to the parent with proper tags. */
+/** Simulate a nested editor edit dispatched to the parent as a plain change. */
 function simulateNestedEdit(
     view: EditorView,
     revId: number,
@@ -73,8 +71,7 @@ function simulateNestedEdit(
     const offset = rev.selection.main.from;
     view.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
-        effects: [_nestedEditRevision.of(revId)],
-        annotations: [nestedEditorEdit.of(revId), Transaction.addToHistory.of(true)],
+        annotations: [Transaction.addToHistory.of(true)],
     });
 }
 

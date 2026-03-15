@@ -16,8 +16,6 @@ import { history, undo, redo, undoDepth, redoDepth } from "@codemirror/commands"
 import {
     annotationField,
     addAnnotation,
-    nestedEditorEdit,
-    _nestedEditRevision,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -61,9 +59,12 @@ function addRevision(
 }
 
 /**
- * Simulate a nested editor edit: dispatch to parent with nestedEditorEdit tag
+ * Simulate a nested editor edit: dispatch a plain doc change to the parent
  * at the correct absolute offset. `from`/`to` are positions within the
  * revision's content (relative to rev.selection.main.from).
+ *
+ * Under the slice editor architecture, nested edits are plain parent
+ * dispatches with no special annotations.
  */
 function simulateNestedEdit(
     view: EditorView,
@@ -79,11 +80,7 @@ function simulateNestedEdit(
     const offset = rev.selection.main.from;
     view.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
-        effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [Transaction.addToHistory.of(true)],
     });
 }
 

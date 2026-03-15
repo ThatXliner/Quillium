@@ -14,15 +14,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo, redo, undoDepth } from "@codemirror/commands";
-import { nestedSavedFields } from "$lib/editor/extensions";
 import {
     makeParentUndoKeymap,
 } from "$lib/editor/plugins/annotations/nestedEditor";
 import {
     annotationField,
     addAnnotation,
-    nestedEditorEdit,
-    _nestedEditRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
@@ -86,8 +83,9 @@ function getRevisionVersionText(parentView: EditorView, revisionId: number): str
 }
 
 /**
- * Simulates translateAndDispatch by manually dispatching to the parent
- * at the correct offset, mirroring what the nested editor's updateListener does.
+ * Simulates a nested editor edit by dispatching a plain change to the parent
+ * at the correct offset. Under the slice editor architecture, nested edits are
+ * plain parent dispatches with no special annotations.
  */
 function simulateNestedEdit(
     nestedView: EditorView,
@@ -97,20 +95,12 @@ function simulateNestedEdit(
     at?: number,
 ) {
     const pos = at ?? nestedView.state.doc.length;
-    // Dispatch to nested editor first (what the user types)
-    nestedView.dispatch({ changes: { from: pos, insert } });
-
-    // Now translate to parent coordinates and dispatch
     const rev = parentView.state.field(annotationField)[revisionId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
     const offset = rev.selection.main.from;
     parentView.dispatch({
         changes: { from: offset + pos, insert },
-        effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [Transaction.addToHistory.of(true)],
     });
 }
 
@@ -221,39 +211,29 @@ describe("Scenario 4: parent undoDepth decreases on undo", () => {
     });
 });
 
-// ── Scenario 5: nestedEditorEdit and Phase 3 ─────────────────────────────────
+// ── Scenario 5: Phase 3 keeps version.doc current ────────────────────────────
 
-describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current", () => {
-    it("nestedEditorEdit transactions update version.doc via Phase 3", () => {
-        // Phase 3 intentionally runs for nestedEditorEdit transactions. It syncs
+describe("Scenario 5: Phase 3 keeps version.doc current after plain nested edit", () => {
+    it("plain nested edit dispatched to parent updates version.doc via Phase 3", () => {
+        // Phase 3 runs for all doc-changing transactions. It syncs
         // versions[currentlySelected].doc from the parent doc slice so that
-        // version switching always shows up-to-date text. The nested editor's own
-        // state is already correct; Phase 3 keeps the stored snapshot in sync.
+        // version switching always shows up-to-date text.
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
 
         const rev = parentView.state.field(annotationField)[revId];
         if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
         const offset = rev.selection.main.from;
 
-        // Dispatch to parent with nestedEditorEdit tag
+        // Plain dispatch to parent (slice editor architecture — no special tags)
         parentView.dispatch({
             changes: { from: offset + 5, insert: " world" },
-            effects: [_nestedEditRevision.of(revId)],
-            annotations: [
-                nestedEditorEdit.of(revId),
-                Transaction.addToHistory.of(true),
-            ],
+            annotations: [Transaction.addToHistory.of(true)],
         });
 
         // Phase 3 ran and updated version.doc to match the new parent doc slice
         const updatedRev = parentView.state.field(annotationField)[revId];
         if (!updatedRev || !isAnnotationOfType(updatedRev, "revision")) throw new Error();
         expect(versionText(updatedRev.versions[0])).toBe("hello world");
-    });
-
-    it("nestedSavedFields does not include historyField", () => {
-        expect(nestedSavedFields).not.toHaveProperty("historyField");
-        expect(nestedSavedFields).toHaveProperty("annotationField");
     });
 });
 
