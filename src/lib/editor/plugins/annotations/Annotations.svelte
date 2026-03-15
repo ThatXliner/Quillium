@@ -52,7 +52,7 @@ import Suggestion from "./Suggestion.svelte";
 import type { Action } from "svelte/action";
 import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { createResizer } from "$lib/actions/resize";
+import { createResizer } from "$lib/actions/resize.svelte";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import { Minimize2Icon } from "lucide-svelte";
 

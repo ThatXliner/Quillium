@@ -73,7 +73,7 @@ import {
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
-import { createResizer } from "$lib/actions/resize";
+import { createResizer } from "$lib/actions/resize.svelte";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
 let action = $state<Action>(null);
