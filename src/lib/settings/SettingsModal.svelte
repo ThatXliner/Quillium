@@ -258,6 +258,31 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="w-28 accent-blue-500 cursor-pointer"
                     />
                     <span class="text-[12px] text-black/50 w-7 text-right tabular-nums">{draft.docFontSize}px</span>
+                    {#if draft.docFontSize !== 18}
+                        <button
+                            type="button"
+                            onclick={() => { draft.docFontSize = 18; handleChange(); }}
+                            class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                        >Reset</button>
+                    {/if}
+                </div>
+            </div>
+
+            <!-- UI zoom row -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Zoom</div>
+                    <div class="setting-desc">Scale the entire interface (Cmd+= / Cmd+-)</div>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                    <span class="text-[12px] text-black/50 tabular-nums">{Math.round(draft.uiZoom * 100)}%</span>
+                    {#if draft.uiZoom !== 1}
+                        <button
+                            type="button"
+                            onclick={() => { draft.uiZoom = 1; handleChange(); }}
+                            class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                        >Reset to 100%</button>
+                    {/if}
                 </div>
             </div>
 

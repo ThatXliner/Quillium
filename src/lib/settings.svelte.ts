@@ -23,6 +23,7 @@ type AppSettings = {
     customQuickActions: CustomQuickAction[];
     titleVisibility: "hover" | "always" | "never";
     annotationPanelWidth: number | null;
+    uiZoom: number;
 };
 
 const DEFAULTS: AppSettings = {
@@ -35,6 +36,7 @@ const DEFAULTS: AppSettings = {
     customQuickActions: [],
     titleVisibility: "hover",
     annotationPanelWidth: null,
+    uiZoom: 1,
 };
 
 function loadSettings(): AppSettings {
@@ -64,6 +66,7 @@ export function applySettings(s: AppSettings) {
     root.style.setProperty("--doc-font-family", s.docFontFamily);
     root.style.setProperty("--doc-font-size", `${s.docFontSize}px`);
     root.style.setProperty("--ui-font-family", s.uiFontFamily);
+    root.style.zoom = String(s.uiZoom);
 }
 
 export const appSettings = $state<AppSettings>(loadSettings());

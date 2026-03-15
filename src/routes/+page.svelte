@@ -31,6 +31,7 @@ import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
 import type { BackupEntry } from "$lib/errorGuard";
+import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -49,6 +50,24 @@ function handleKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === "l") {
         e.preventDefault();
         editorComponent?.startEditingTitle();
+    }
+    if (e.metaKey || e.ctrlKey) {
+        if (e.key === "=" || e.key === "+") {
+            e.preventDefault();
+            appSettings.uiZoom = Math.round(Math.min(2, appSettings.uiZoom + 0.1) * 10) / 10;
+            applySettings(appSettings);
+            persistSettings();
+        } else if (e.key === "-") {
+            e.preventDefault();
+            appSettings.uiZoom = Math.round(Math.max(0.5, appSettings.uiZoom - 0.1) * 10) / 10;
+            applySettings(appSettings);
+            persistSettings();
+        } else if (e.key === "0") {
+            e.preventDefault();
+            appSettings.uiZoom = 1;
+            applySettings(appSettings);
+            persistSettings();
+        }
     }
 }
 
