@@ -88,6 +88,23 @@ function hasSerializedNestedState(version: VersionState): version is Parameters<
  * annotationField).
  */
 export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
+    function openNestedAnnotation(type: "comment" | "revision") {
+        return (view: EditorView) => {
+            const sel = view.state.selection.main;
+            if (sel.empty) return false;
+            publishAnnotationUiEvent({
+                type: "revision-open-nested-editor",
+                command: {
+                    revisionId,
+                    type,
+                    selectionFrom: sel.from,
+                    selectionTo: sel.to,
+                },
+            });
+            return true;
+        };
+    }
+
     return Prec.highest(keymap.of([
         {
             key: "Mod-z",
@@ -113,6 +130,16 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 });
                 return true;
             },
+            preventDefault: true,
+        },
+        {
+            key: "Mod-Alt-m",
+            run: openNestedAnnotation("comment"),
+            preventDefault: true,
+        },
+        {
+            key: "Mod-Alt-k",
+            run: openNestedAnnotation("revision"),
             preventDefault: true,
         },
     ]));
