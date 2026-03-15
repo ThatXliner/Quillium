@@ -191,19 +191,6 @@ export const bridgeDispatch = Annotation.define<true>();
 // undo entry (since the deletion's undo already carries the correct
 // _restoreAnnotation effects for every collapsed revision).
 export const _revisionCleanup = Annotation.define<boolean>();
-// export const addThreadToAnnotation = StateEffect.define<{
-// 	annotationId: number;
-// 	threadMessage: ThreadMessage;
-// }>();
-// export const deleteThreadFromAnnotation = StateEffect.define<{
-// 	annotationId: number;
-// 	threadMessageId: number;
-// }>();
-// export const updateThreadMessage = StateEffect.define<{
-// 	annotationId: number;
-// 	threadMessageId: number;
-// 	newThreadMessage: ThreadMessage;
-// }>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 // There is no "updateRevisionVersion" since we sniff that from document changes
@@ -620,16 +607,6 @@ export const annotationField = StateField.define<Annotations>({
                 delete annotations[e.value.id];
             } else if (e.is(updateThread)) {
                 annotations[e.value.annotationId].thread = e.value.newThread;
-                // } else if (e.is(addThreadToAnnotation)) {
-                //   annotations[e.value.annotationId].thread.push(e.value.threadMessage);
-                // } else if (e.is(deleteThreadFromAnnotation)) {
-                //   annotations[e.value.annotationId].thread.splice(
-                //     e.value.threadMessageId,
-                //     1,
-                //   );
-                // } else if (e.is(updateThreadMessage)) {
-                //   annotations[e.value.annotationId].thread[e.value.threadMessageId] =
-                //     e.value.newThreadMessage;
             } else if (
                 e.is(_addVersionToRevision) ||
                 e.is(_deleteVersionFromRevision) ||
@@ -909,21 +886,5 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             effects.push(_nestedEditRevision.of(effect.value));
         }
     }
-    // transaction.changes.iterChangedRanges((chFrom, chTo) => {
-    //   oldAnnotations.forEach((oldAnnotation) => {
-    //     // TODO: support multiple selections???
-    //     // what about partial comment deletion... is that ok?
-    //     let { from: rFrom, to: rTo } = oldAnnotation.selection.main;
-    //     let from = Math.max(chFrom, rFrom),
-    //       to = Math.min(chTo, rTo);
-    //     if (from < to) {
-    //       effects.push(
-    //         addAnnotation.of(
-    //           oldAnnotation.selection.replaceRange({ from, to }),
-    //         ),
-    //       );
-    //     }
-    //   });
-    // });
     return effects;
 });
