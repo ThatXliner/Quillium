@@ -688,13 +688,31 @@ export const annotationField = StateField.define<Annotations>({
         // Phase 3: keep active revision version text in sync with the
         // document, but only for revisions that had no explicit effect
         // this transaction and only when the document actually changed.
-        // Also skip the revision whose nested editor originated this change
-        // (nestedEditorEdit carries the revision ID).
         if (tr.docChanged) {
             const nestedEditRevId = tr.annotation(nestedEditorEdit);
+            // Fix collapsed revision selection when nested editor types into it.
+            // Phase 1 maps both endpoints with +1 bias, so an initially-empty
+            // revision stays zero-width after the first insertion. Rebuild the
+            // selection to cover the actual content range in the parent doc.
             if (nestedEditRevId !== undefined) {
-                revisionsWithExplicitEffect.add(nestedEditRevId);
+                const ann = annotations[nestedEditRevId];
+                if (ann && isAnnotationOfType(ann, "revision")) {
+                    const oldAnn = oldAnnotations[nestedEditRevId];
+                    if (oldAnn) {
+                        const from = tr.changes.mapPos(oldAnn.selection.main.from, -1);
+                        const to = tr.changes.mapPos(oldAnn.selection.main.to, 1);
+                        if (from !== ann.selection.main.from || to !== ann.selection.main.to) {
+                            annotations[nestedEditRevId] = {
+                                ...ann,
+                                selection: EditorSelection.single(from, to),
+                            };
+                        }
+                    }
+                }
             }
+            // NOTE: we intentionally do NOT skip Phase 3 for nestedEditorEdit.
+            // Phase 3 syncs versions[selected].doc from the parent doc slice,
+            // which is needed so that version switching shows current content.
             annotations = syncRevisionDocsWithDocument(
                 annotations,
                 tr,
