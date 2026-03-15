@@ -42,7 +42,7 @@ import {
     previewVersionText,
 } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
-import { annotationUiEvent, modalStack } from "$lib/stores";
+import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -258,16 +258,19 @@ function createRecursiveEditor(version: VersionState) {
 
     // Apply pending selection if this annotation just created one.
     const event = $annotationUiEvent;
-    if (
-        event &&
+    const selectionEvent =
+        consumePendingNestedEditorSelection(revision.id, lastNestedSelectionToken) ??
+        (event &&
         event.token !== lastNestedSelectionToken &&
         event.type === "pending-nested-editor-selection" &&
         event.annotationId === revision.id
-    ) {
-        lastNestedSelectionToken = event.token;
+            ? event
+            : undefined);
+    if (selectionEvent) {
+        lastNestedSelectionToken = selectionEvent.token;
         const docLen = recursiveEditor.state.doc.length;
-        const from = Math.min(event.from, docLen);
-        const to = Math.min(event.to, docLen);
+        const from = Math.min(selectionEvent.from, docLen);
+        const to = Math.min(selectionEvent.to, docLen);
         recursiveEditor.dispatch({
             selection: { anchor: from, head: to },
             scrollIntoView: true,

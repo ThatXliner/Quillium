@@ -217,11 +217,32 @@ export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
 
 let nextAnnotationUiEventToken = 1;
 
+type PendingNestedEditorSelectionEvent = Extract<AnnotationUiEvent, { type: "pending-nested-editor-selection" }>;
+const pendingNestedEditorSelections = new Map<number, PendingNestedEditorSelectionEvent>();
+
+function storePendingNestedEditorSelection(event: PendingNestedEditorSelectionEvent) {
+    pendingNestedEditorSelections.set(event.annotationId, event);
+}
+
+export function consumePendingNestedEditorSelection(
+    annotationId: number,
+    lastToken: number,
+) {
+    const selection = pendingNestedEditorSelections.get(annotationId);
+    if (!selection || selection.token === lastToken) return undefined;
+    pendingNestedEditorSelections.delete(annotationId);
+    return selection;
+}
+
 export function publishAnnotationUiEvent(event: AnnotationUiEventInput) {
-    annotationUiEvent.set({
+    const payload = {
         ...event,
         token: nextAnnotationUiEventToken++,
-    } as AnnotationUiEvent);
+    } as AnnotationUiEvent;
+    annotationUiEvent.set(payload);
+    if (payload.type === "pending-nested-editor-selection") {
+        storePendingNestedEditorSelection(payload);
+    }
 }
 
 // ── Modal stack types ────────────────────────────────────────
