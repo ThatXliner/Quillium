@@ -97,6 +97,7 @@ import {
 } from "./annotationField";
 import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
+import { nestedEditorEdit } from "./annotationField";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -808,6 +809,88 @@ const revisionClickHandler = EditorView.domEventHandlers({
     },
 });
 
+// -------------------------------------------------------
+// Nested editor registry + parent→nested bridge ViewPlugin
+//
+// When a nested editor is mounted (inline or modal), it
+// registers itself here so the parent can push external
+// changes (undo, non-atomic typing) directly to it without
+// a full destroy/recreate cycle.
+//
+// The bridge ViewPlugin watches every parent transaction. If
+// the transaction changed the doc at a revision's range AND
+// was NOT originated by that nested editor (no nestedEditorEdit
+// tag for that revision ID), it translates the delta back to
+// nested coordinates and dispatches it to the nested editor.
+// -------------------------------------------------------
+
+type NestedEditorEntry = { revisionId: number; editor: EditorView };
+const nestedEditorRegistry: NestedEditorEntry[] = [];
+
+export function registerNestedEditor(revisionId: number, editor: EditorView): () => void {
+    const entry: NestedEditorEntry = { revisionId, editor };
+    nestedEditorRegistry.push(entry);
+    return () => {
+        const idx = nestedEditorRegistry.indexOf(entry);
+        if (idx !== -1) nestedEditorRegistry.splice(idx, 1);
+    };
+}
+
+const nestedEditorBridge = ViewPlugin.fromClass(
+    class {
+        update(update: ViewUpdate) {
+            if (!update.docChanged) return;
+
+            // Which revision ID (if any) originated this transaction
+            const originRevId = update.transactions[0]?.annotation(nestedEditorEdit);
+
+            for (const entry of nestedEditorRegistry) {
+                // Skip: nested editor caused this change itself
+                if (originRevId === entry.revisionId) continue;
+
+                const annotation = update.state.field(annotationField)[entry.revisionId];
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
+
+                const { from: revFrom, to: revTo } = annotation.selection.main;
+
+                // Check if any of the changes touched this revision's range
+                let touched = false;
+                for (const tr of update.transactions) {
+                    tr.changes.iterChanges((fromA, toA) => {
+                        if (fromA < revTo && toA > revFrom) touched = true;
+                    });
+                }
+                if (!touched) continue;
+
+                // Translate each change to nested-editor coordinates and dispatch
+                const nestedChanges: { from: number; to: number; insert: string }[] = [];
+                for (const tr of update.transactions) {
+                    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+                        // Only changes that overlap the revision range
+                        if (fromA >= revTo || toA <= revFrom) return;
+                        const nestedFrom = Math.max(0, fromA - revFrom);
+                        const nestedTo = Math.max(0, Math.min(toA, revTo) - revFrom);
+                        nestedChanges.push({
+                            from: nestedFrom,
+                            to: nestedTo,
+                            insert: inserted.toString(),
+                        });
+                    });
+                }
+
+                if (nestedChanges.length === 0) continue;
+
+                try {
+                    entry.editor.dispatch({ changes: nestedChanges });
+                } catch {
+                    // Nested editor may be in an inconsistent state (e.g. during
+                    // version switch). Ignore — the caller will recreate it.
+                }
+            }
+        }
+    },
+);
+
 export const annotations = () => [
     Prec.high(keymap.of(annotationKeymap)),
     annotationField,
@@ -818,5 +901,6 @@ export const annotations = () => [
     collapsedRevisionResolver,
     boundaryInsertNudge,
     invertedAnnotationFieldEffects,
+    nestedEditorBridge,
 ];
 export * from "./models";
