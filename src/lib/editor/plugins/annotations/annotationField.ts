@@ -113,19 +113,14 @@ const _restoreAnnotation = StateEffect.define<GenericAnnotation>({
         }
     },
 });
-// The reason why we store the whole annotation here instead
-// of just the ID? I haven't tested getting the previous
-// state ala .startState yet...
+// Carries the full annotation object (not just an ID) so that undo inversion
+// can restore exact prior state without a startState lookup.
 export const removeAnnotation = StateEffect.define<GenericAnnotation>({
     map: mapRange,
 });
-// Mutations on annotations
-// Why we separate actions instead of having a single updateAnnotation or
-// mutateAnnotation? This makes the logic to implement undo/redo easier.
-// significantly easier (instead of needing to sniff/track the old state)
-// To be fair though, it is a little repetitive... I can't think of
-// a better way to do it for now. I guess it's good to have your states explicit...
-// Lowk what if we just had our own FSM and states instead of using StateEffect...
+// Each mutation gets its own effect type so undo/redo inversion is explicit
+// and local — each effect's inverse is declared adjacent to it in
+// invertedAnnotationFieldEffects.
 
 // updateThread carries the full annotation ID + new thread; using only an ID
 // would require reading startState inside effects, which is more complex.
@@ -374,9 +369,7 @@ export function updateRevisionVersionLabel(
         throw new Error("Annotation is not a revision");
     }
     return state.update({
-        effects: [
-            _updateRevisionVersionLabel.of({ annotationId, versionId, label }),
-        ],
+        effects: [_updateRevisionVersionLabel.of({ annotationId, versionId, label })],
         annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
     });
 }
@@ -590,7 +583,6 @@ export const annotationField = StateField.define<Annotations>({
         let annotations = remapAnnotationSelections(oldAnnotations, tr);
 
         // Phase 2: apply effects
-        // todo: check if deletion is killing an annotation as well as .is(removeAnnotation)
         // Track which revision IDs had an explicit effect so Phase 3
         // can skip syncing only those revisions (not all of them).
         const revisionsWithExplicitEffect = new Set<number>();
@@ -868,9 +860,6 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                     label: oldAnnotation.versions[effect.value.versionId]?.label,
                 }),
             );
-        } else if (effect.is(addSuggestion)) {
-            const annotations = transaction.startState.field(annotationField);
-            effects.push(removeAnnotation.of(annotations[getLastId(annotations)]));
         } else if (effect.is(_applySuggestion)) {
             const annotations = transaction.startState.field(annotationField);
             effects.push(addAnnotation.of(annotations[effect.value.annotationId]));
