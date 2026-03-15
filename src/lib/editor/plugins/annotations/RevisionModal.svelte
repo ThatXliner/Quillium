@@ -399,8 +399,13 @@ function close() {
 $effect(() => {
     const ann = $annotationsStore;
     if (!editor || !ann) return;
+    // $annotationsStore only reflects the root editor's annotations.
+    // For nested modals (stackIndex > 0), the parent `view` is a
+    // nested editor whose annotations aren't in this store, so the
+    // lookup would find an unrelated annotation or undefined.
+    if (stackIndex > 0) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
-    if (!rev) return;
+    if (!rev || rev._type !== "revision" || !rev.versions?.[rev.currentlySelected]) return;
     const externalDoc = versionText(rev.versions[rev.currentlySelected]);
     if (externalDoc === lastDispatchedDoc) return;
     const current = editor.state.doc.toString();
@@ -589,9 +594,10 @@ let revisionThread = $state(
 );
 
 // Keep thread reactive to external changes (e.g. undo of a thread update).
+// Only applies to root-level modals; nested modals' parents aren't in this store.
 $effect(() => {
     const ann = $annotationsStore;
-    if (!ann) return;
+    if (!ann || stackIndex > 0) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (rev) revisionThread = rev.thread;
 });
