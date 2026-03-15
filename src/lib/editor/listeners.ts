@@ -224,11 +224,13 @@ async function doAppend(update: ViewUpdate) {
             const newText = update.state.doc.toString();
             const suspicious = checkForSuspiciousChange(oldText, newText);
             if (suspicious) {
-                errorBanner.set({
-                    message: "A large deletion was detected. A backup was saved in case this was unintentional.",
-                    hasBackup: true,
-                    backupType: "auto",
-                });
+                setTimeout(() => {
+                    errorBanner.set({
+                        message: "A large deletion was detected. A backup was saved in case this was unintentional.",
+                        hasBackup: true,
+                        backupType: "auto",
+                    });
+                }, 0);
             }
         }
     }
