@@ -196,9 +196,11 @@ test("AI sidebar can open chat and feedback panels", async ({ page }) => {
     await page.locator("#ai-tab-chat").click({ force: true });
     await expect(page.locator("#ai-sidebar")).toContainText("Chat with AI");
 
-    await page
-        .locator("#ai-sidebar .overflow-x-auto button[aria-label='Feedback']")
-        .click({ force: true });
+    const feedbackButton = page.locator(
+        "#ai-sidebar .overflow-x-auto button[aria-label*='Feedback']",
+    );
+    await expect(feedbackButton).toBeVisible({ timeout: 10000 });
+    await feedbackButton.click({ force: true });
 
     await expect(page.locator("#ai-sidebar")).toContainText("Get Feedback");
 });

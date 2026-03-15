@@ -562,7 +562,11 @@ onDestroy(() => {
     <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
-            <div bind:this={recursiveEditorHost} class="revision-inline-editor"></div>
+            <div
+                bind:this={recursiveEditorHost}
+                class="revision-inline-editor"
+                class:cursor-arriving={cursorArriving}
+            ></div>
         </div>
     {/if}
 
@@ -601,6 +605,10 @@ onDestroy(() => {
     }
     .revision-inline-editor :global(.cm-content) {
         padding: 0;
+        text-indent: 0;
+        font-size: 13px;
+        line-height: 1.6;
+        font-family: inherit;
     }
 
     @keyframes focus-flash {
@@ -609,7 +617,7 @@ onDestroy(() => {
         100% { background-color: rgba(254, 242, 205, 0); }
     }
 
-    .revision-recursive-editor.cursor-arriving {
+    .revision-inline-editor.cursor-arriving {
         animation: focus-flash 0.6s ease-out both;
     }
 </style>

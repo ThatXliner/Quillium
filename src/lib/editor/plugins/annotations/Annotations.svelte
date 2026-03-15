@@ -42,6 +42,7 @@ import { activeAnnotation, annotations, editorView, annotationUiEvent, selectedT
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
+import type { Action } from "svelte";
 import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
@@ -135,7 +136,7 @@ function getAnnotationLeft(): number {
     return rect.left + rect.width / 2 + 408 + 16;
 }
 
-let scrollContainer = $state<HTMLDivElement | undefined>();
+let scrollContainer: HTMLDivElement | undefined;
 
 // Sort annotations by document position for stable rendering
 const sortedAnnotations = $derived(
@@ -174,7 +175,30 @@ const positionedAnnotations = $derived(() => {
     }));
 });
 
-let annotationElements: { [id: number]: HTMLDivElement } = $state({});
+const annotationElements: { [id: number]: HTMLDivElement | undefined } = {};
+
+const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
+    let currentId = id;
+    if (currentId !== undefined) {
+        annotationElements[currentId] = node;
+    }
+    return {
+        update(nextId) {
+            if (currentId !== undefined && annotationElements[currentId] === node) {
+                delete annotationElements[currentId];
+            }
+            currentId = nextId;
+            if (currentId !== undefined) {
+                annotationElements[currentId] = node;
+            }
+        },
+        destroy() {
+            if (currentId !== undefined && annotationElements[currentId] === node) {
+                delete annotationElements[currentId];
+            }
+        },
+    };
+};
 let resizeObserver: ResizeObserver | undefined;
 
 // Reposition cards when the active annotation or list changes
@@ -343,7 +367,7 @@ function applyCardPositions(
 }
 
 // Track which pending card is currently showing the alert animation
-let alertingPendingId = $state<number | undefined>(undefined);
+let alertingPendingId: number | undefined;
 let lastPendingAlertToken = 0;
 
 // React to pending-comment events: scroll the pending card
@@ -451,7 +475,7 @@ $effect(() => {
                     {@const isActive = resolvedActiveAnnotation?.id === c.id}
                     {@const isPendingComment = pendingComment?.id === c.id}
                     <div
-                        bind:this={annotationElements[i]}
+                        use:annotationElement={i}
                         class="annotation-card"
                         class:is-active={isActive}
                         style="z-index: {isActive ? 120 : isPendingComment ? 110 : 50};"
@@ -527,7 +551,7 @@ $effect(() => {
                 {@const isActive = resolvedActiveAnnotation?.id === c.id}
                 {@const isPendingComment = pendingComment?.id === c.id}
                 <div
-                    bind:this={annotationElements[i]}
+                    use:annotationElement={i}
                     class="annotation-card-inline"
                     class:is-active={isActive}
                     onclick={(e) => {
