@@ -8,13 +8,17 @@
  * Architecture: the nested editor is a direct viewport onto the
  * parent document's revision range. Edits in the nested editor
  * are translated to parent coordinates via translateAndDispatch()
- * and dispatched to the parent EditorView. External changes to
- * the revision range (undo, non-atomic typing) are pushed back
- * to the nested editor by the nestedEditorBridge ViewPlugin via
- * the registerNestedEditor registry.
+ * and dispatched to the parent EditorView.
+ *
+ * External changes to the revision range (e.g. undo or non-atomic
+ * typing in the parent editor) are reflected back into the nested
+ * editor via Svelte reactivity: when the active revision/version
+ * changes, reactive effects update the nested editor's state and
+ * document buffer directly to keep it in sync.
  *
  * The nested editor is only destroyed/recreated on version switch.
- * All other changes (typing, undo) are applied as deltas.
+ * All other changes (typing, undo) are applied as incremental
+ * updates/deltas to the existing nested editor instance.
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
