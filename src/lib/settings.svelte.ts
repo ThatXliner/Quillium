@@ -22,6 +22,7 @@ type AppSettings = {
     uiFontFamily: string;
     customQuickActions: CustomQuickAction[];
     titleVisibility: "hover" | "always" | "never";
+    uiZoom: number;
 };
 
 const DEFAULTS: AppSettings = {
@@ -33,6 +34,7 @@ const DEFAULTS: AppSettings = {
     uiFontFamily: "system-ui, -apple-system, sans-serif",
     customQuickActions: [],
     titleVisibility: "hover",
+    uiZoom: 1,
 };
 
 function loadSettings(): AppSettings {
@@ -62,6 +64,7 @@ export function applySettings(s: AppSettings) {
     root.style.setProperty("--doc-font-family", s.docFontFamily);
     root.style.setProperty("--doc-font-size", `${s.docFontSize}px`);
     root.style.setProperty("--ui-font-family", s.uiFontFamily);
+    root.style.zoom = String(s.uiZoom);
 }
 
 export const appSettings = $state<AppSettings>(loadSettings());
