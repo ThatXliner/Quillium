@@ -336,3 +336,54 @@ describe("Scenario 4: registry isolation", () => {
         expect(rootView.state.doc.toString()).toBe("hello earth");
     });
 });
+
+// ── Scenario 5: bridge→nested does not echo back to parent ───────────────────
+
+describe("Scenario 5: bridgeDispatch prevents translateAndDispatch echo loop", () => {
+    it("undo at root patches level-1 exactly once (no echo back to parent)", () => {
+        const outerRevId = addRevision(rootView, 0, 11, "hello world");
+        level1View = createView("hello world", rootView);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+
+        // Apply deletion via level-1 → root chain
+        level1View.dispatch({ changes: { from: 6, to: 11, insert: "" } });
+        rootView.dispatch({
+            changes: { from: 6, to: 11, insert: "" },
+            annotations: [nestedEditorEdit.of(outerRevId), Transaction.addToHistory.of(true)],
+        });
+
+        const depthBeforeUndo = undoDepth(rootView.state);
+
+        // Undo: root bridge patches level-1. If there were an echo loop,
+        // level-1's bridge dispatch would echo back and create an extra entry.
+        undo(rootView);
+
+        // Depth must decrease by exactly 1 — no extra entries from echo loop
+        expect(undoDepth(rootView.state)).toBe(depthBeforeUndo - 1);
+        expect(rootView.state.doc.toString()).toBe("hello world");
+        expect(level1View.state.doc.toString()).toBe("hello world");
+    });
+
+    it("typing in level-1 creates exactly one root history entry per dispatch", () => {
+        const outerRevId = addRevision(rootView, 0, 11, "hello world");
+        level1View = createView("hello world", rootView);
+        unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
+
+        const depthBefore = undoDepth(rootView.state);
+
+        // Simulate three keystrokes (each: level-1 dispatch + root dispatch)
+        for (const ch of ["!", "?", "."]) {
+            const pos = level1View.state.doc.length;
+            level1View.dispatch({ changes: { from: pos, insert: ch } });
+            const rev = rootView.state.field(annotationField)[outerRevId];
+            if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error();
+            rootView.dispatch({
+                changes: { from: rev.selection.main.to, insert: ch },
+                annotations: [nestedEditorEdit.of(outerRevId), Transaction.addToHistory.of(true)],
+            });
+        }
+
+        // Should be exactly 3 new entries — one per keystroke, not 6
+        expect(undoDepth(rootView.state)).toBe(depthBefore + 3);
+    });
+});

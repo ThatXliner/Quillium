@@ -39,6 +39,7 @@ import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import {
     annotationField,
+    bridgeDispatch,
     nestedEditorEdit,
     updateRevisionVersionState,
 } from "./annotationField";
@@ -132,6 +133,10 @@ export function translateAndDispatch(
     revisionId: number,
 ): boolean {
     if (!update.docChanged) return false;
+    // If the change was pushed down by the parent→nested bridge, don't
+    // forward it back up — that would double-apply it and create a duplicate
+    // history entry.
+    if (update.transactions.some((tr) => tr.annotation(bridgeDispatch))) return false;
 
     const rev = parentView.state.field(annotationField)[revisionId] as
         | Annotation<"revision">

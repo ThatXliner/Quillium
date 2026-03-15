@@ -97,7 +97,7 @@ import {
 } from "./annotationField";
 import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
-import { nestedEditorEdit } from "./annotationField";
+import { nestedEditorEdit, bridgeDispatch } from "./annotationField";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -847,6 +847,10 @@ const nestedEditorBridge = ViewPlugin.fromClass(
             for (const entry of nestedEditorRegistry) {
                 // Skip: nested editor caused this change itself
                 if (originRevId === entry.revisionId) continue;
+                // Skip: don't dispatch back to the view that received this update
+                // (prevents infinite loop when a nested view is in the registry
+                // and its own bridge fires after receiving a bridge dispatch).
+                if (entry.editor === update.view) continue;
 
                 // Use startState: iterChanges fromA/toA are in pre-transaction
                 // coordinates, so the range lookup must also be pre-transaction.
@@ -898,7 +902,10 @@ const nestedEditorBridge = ViewPlugin.fromClass(
                 if (nestedChanges.length === 0) continue;
 
                 try {
-                    entry.editor.dispatch({ changes: nestedChanges });
+                    entry.editor.dispatch({
+                        changes: nestedChanges,
+                        annotations: [bridgeDispatch.of(true)],
+                    });
                 } catch {
                     // Nested editor may be in an inconsistent state (e.g. during
                     // version switch). Ignore — the caller will recreate it.

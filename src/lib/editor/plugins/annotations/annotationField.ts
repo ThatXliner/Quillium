@@ -166,6 +166,12 @@ export const revisionInternalEdit = Annotation.define<boolean>();
 // Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
 // not stored in history.
 export const nestedEditorEdit = Annotation.define<number>();
+// Marks a transaction dispatched by nestedEditorBridge to a nested editor.
+// translateAndDispatch checks for this and returns early — the change came
+// from the parent pushing a delta, not from the user typing, so it must not
+// be forwarded back up to the parent (that would create an infinite loop and
+// a duplicate history entry).
+export const bridgeDispatch = Annotation.define<true>();
 // Marks a transaction dispatched by collapsedRevisionResolver to remove
 // collapsed revisions after a deletion. addToHistory.of(false) ensures no
 // new undo entry is created, and this annotation prevents invertedEffects from
