@@ -81,6 +81,23 @@ export function clearBackup(key: "auto" | "crash"): void {
 }
 
 /**
+ * Fast pre-check using document lengths only. Returns false when a suspicious
+ * deletion is impossible given the lengths, avoiding the cost of `toString()`
+ * on large documents. When this returns true, call `checkForSuspiciousChange`
+ * with the actual text to confirm and save a backup.
+ *
+ * @param oldLength - character length of the document before the transaction
+ * @param newLength - character length of the document after the transaction
+ */
+export function couldBeSuspicious(oldLength: number, newLength: number): boolean {
+    const deleted = oldLength - newLength;
+    if (deleted <= 0) return false;
+    if (deleted < SUSPICIOUS_DELETION_MIN_CHARS) return false;
+    if (deleted / oldLength < SUSPICIOUS_DELETION_RATIO) return false;
+    return true;
+}
+
+/**
  * Called from the listeners updateListener *before* a transaction is
  * persisted. Compares old and new document length to detect suspiciously
  * large deletions.
