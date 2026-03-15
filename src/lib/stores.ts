@@ -315,6 +315,8 @@ const _modalStack = writable<ModalEntry[]>([]);
  */
 export type ErrorBannerState = {
     message: string;
+    /** Full error stack trace, if available */
+    stack?: string;
     /** Whether there is a backup available for the user to restore */
     hasBackup: boolean;
     /** "auto" = suspicious-change backup, "crash" = crash backup */

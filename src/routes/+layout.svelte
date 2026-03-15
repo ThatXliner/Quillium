@@ -33,16 +33,19 @@ onNavigate((navigation) => {
 
 <svelte:boundary
     onerror={(error) => {
-        saveEmergencyBackup(`Svelte component error: ${error instanceof Error ? error.message : String(error)}`);
+        const err = error instanceof Error ? error : new Error(String(error));
+        console.error("[Quillium] Svelte component error:", err);
+        saveEmergencyBackup(`Svelte component error: ${err.message}`);
         const hasCrashBackup = Boolean(readBackup("crash"));
         errorBanner.set({
             message: hasCrashBackup
-                ? "Something went wrong. Your work has been backed up."
-                : "Something went wrong.",
+                ? `Something went wrong: ${err.message}. Your work has been backed up.`
+                : `Something went wrong: ${err.message}`,
+            stack: err.stack,
             hasBackup: hasCrashBackup,
             backupType: "crash",
         });
-        posthog.captureException(error instanceof Error ? error : new Error(String(error)));
+        posthog.captureException(err);
     }}
 >
     {@render children()}

@@ -1,13 +1,27 @@
 <script lang="ts">
-import { X, AlertTriangle, Download, RotateCcw } from "lucide-svelte";
+import { X, AlertTriangle, Download, RotateCcw, ChevronDown, ChevronUp, Copy, Check } from "lucide-svelte";
 import { errorBanner } from "./stores";
 import { readBackup, clearBackup } from "./errorGuard";
 import type { BackupEntry } from "./errorGuard";
+
+let expanded = $state(false);
+let copied = $state(false);
+
+function copyStack() {
+    const stack = $errorBanner?.stack;
+    if (!stack) return;
+    navigator.clipboard.writeText(stack).then(() => {
+        copied = true;
+        setTimeout(() => { copied = false; }, 2000);
+    });
+}
+
 
 const FEEDBACK_FORM_URL = "https://forms.gle/aYJkMnhiYrr688ug7";
 
 function dismiss() {
     $errorBanner = null;
+    expanded = false;
 }
 
 function downloadBackup() {
@@ -57,18 +71,38 @@ function reportIssue() {
             <p class="text-sm font-medium text-amber-900">
                 {$errorBanner.message}
             </p>
-            <p class="text-xs text-amber-700 mt-0.5">
-                {#if $errorBanner.hasBackup}
-                    Your writing has been backed up.
-                {/if}
+            <div class="flex items-center gap-2 flex-wrap mt-0.5">
+                <span class="text-xs text-amber-700">
+                    {#if $errorBanner.hasBackup}Your writing has been backed up.{/if}
+                </span>
                 <button
                     onclick={reportIssue}
-                    class="underline hover:text-amber-900 transition-colors"
+                    class="text-xs text-amber-700 underline hover:text-amber-900 transition-colors"
                 >
                     Report this issue
                 </button>
-                to help us fix it.
-            </p>
+                {#if $errorBanner.stack}
+                    <button
+                        onclick={() => expanded = !expanded}
+                        class="inline-flex items-center gap-0.5 text-xs text-amber-700 underline hover:text-amber-900 transition-colors"
+                    >
+                        {#if expanded}<ChevronUp size={11} />{:else}<ChevronDown size={11} />{/if}
+                        {expanded ? "Hide" : "Show"} traceback
+                    </button>
+                {/if}
+            </div>
+            {#if expanded && $errorBanner.stack}
+                <div class="relative mt-2">
+                    <pre class="p-2 pr-8 text-xs text-amber-900 bg-amber-100 border border-amber-200 rounded h-28 overflow-y-auto whitespace-pre font-mono">{$errorBanner.stack}</pre>
+                    <button
+                        onclick={copyStack}
+                        title="Copy full traceback"
+                        class="absolute top-1.5 right-1.5 p-1 text-amber-600 hover:text-amber-900 hover:bg-amber-200 rounded transition-colors"
+                    >
+                        {#if copied}<Check size={12} />{:else}<Copy size={12} />{/if}
+                    </button>
+                </div>
+            {/if}
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
