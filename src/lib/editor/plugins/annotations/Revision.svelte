@@ -29,12 +29,10 @@ import {
     type Annotation,
     type Thread as ThreadType,
 } from ".";
-import { registerNestedEditor } from ".";
 import { versionText, type VersionState } from "./models";
 import {
     createNestedEditorState,
     translateAndDispatch,
-    flushAnnotationsToParent,
     previewVersionText,
 } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
@@ -87,10 +85,14 @@ let recursiveEditor = $state<EditorView | undefined>(undefined);
 let activeAnnotation = $state<Annotation<any> | undefined>(undefined);
 
 // Track which version the nested editor was built for, so we know
-// when to destroy/recreate (version switch) vs. when the bridge
-// will handle it (undo/external edit).
+// when to destroy/recreate (version switch).
 let mountedVersionId = -1;
-let unregisterNestedEditor: (() => void) | undefined;
+
+// Track the last doc the nested editor dispatched up to the parent.
+// Used to distinguish "doc changed externally (undo/typing)" from
+// "doc changed because the nested editor typed it" so we don't
+// unnecessarily patch the nested editor with its own content.
+let lastDispatchedDoc = "";
 
 let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
@@ -219,8 +221,6 @@ $effect(() => {
 
 /**
  * Mount a nested CodeMirror editor for the given version.
- * Registers it with the nestedEditorBridge so the parent can
- * push external changes (undo, non-atomic typing) directly.
  */
 function createRecursiveEditor(version: VersionState) {
     if (!recursiveEditorHost || recursiveEditor) return;
@@ -230,18 +230,18 @@ function createRecursiveEditor(version: VersionState) {
             if (!recursiveEditor) return;
             activeAnnotation = getActiveAnnotation(recursiveEditor.state);
             // Translate doc changes to parent coordinates and dispatch.
-            translateAndDispatch(update, view, revision.id);
+            if (translateAndDispatch(update, view, revision.id)) {
+                // Track what we dispatched so the external-sync $effect
+                // doesn't re-patch the nested editor with its own content.
+                lastDispatchedDoc = recursiveEditor.state.doc.toString();
+            }
         },
         view,
         revision.id,
     );
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     mountedVersionId = revision.currentlySelected;
-    unregisterNestedEditor = registerNestedEditor(revision.id, recursiveEditor, () => {
-        if (recursiveEditor && mountedVersionId !== -1) {
-            flushAnnotationsToParent(recursiveEditor, view, revision.id, mountedVersionId);
-        }
-    });
+    lastDispatchedDoc = recursiveEditor.state.doc.toString();
     activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 
     // Apply pending selection if this annotation just created one.
@@ -265,12 +265,6 @@ function createRecursiveEditor(version: VersionState) {
 }
 
 function destroyRecursiveEditor() {
-    unregisterNestedEditor?.();
-    unregisterNestedEditor = undefined;
-    // Flush nested annotation state to parent before destroying.
-    if (recursiveEditor) {
-        flushAnnotationsToParent(recursiveEditor, view, revision.id, mountedVersionId);
-    }
     recursiveEditor?.destroy();
     recursiveEditor = undefined;
     activeAnnotation = undefined;
@@ -291,14 +285,12 @@ $effect(() => {
 
 // When the selected version changes, destroy and recreate.
 // This is the ONLY case where we fully rebuild the nested editor.
-// External text changes (undo, non-atomic typing) are handled by
-// the nestedEditorBridge ViewPlugin pushing deltas directly.
 $effect(() => {
     if (!recursiveEditor || !isEditorOpen) return;
     const currentVersionId = revision.currentlySelected;
     if (currentVersionId === mountedVersionId) return;
 
-    // Version switched — flush outgoing, recreate for new version.
+    // Version switched — recreate for new version.
     destroyRecursiveEditor();
     tick().then(() => {
         if (!isEditorOpen || !activeVersion) return;
@@ -312,6 +304,23 @@ $effect(() => {
             recursiveEditor.focus();
         }
     });
+});
+
+// When the version doc changes externally (undo, non-atomic typing from
+// the parent editor), patch the nested editor to match. Phase 3 keeps
+// activeVersion.doc current, so we just watch it and apply the diff.
+// We skip patching when the doc change originated from the nested editor
+// itself (tracked via lastDispatchedDoc) to avoid a feedback loop.
+$effect(() => {
+    const externalDoc = activeVersion?.doc ?? "";
+    if (!recursiveEditor || externalDoc === lastDispatchedDoc) return;
+    const current = recursiveEditor.state.doc.toString();
+    if (current !== externalDoc) {
+        recursiveEditor.dispatch({
+            changes: { from: 0, to: current.length, insert: externalDoc },
+        });
+    }
+    lastDispatchedDoc = externalDoc;
 });
 
 // ⌘Enter when this revision is active → create a new version

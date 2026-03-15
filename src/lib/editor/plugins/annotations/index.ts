@@ -97,7 +97,7 @@ import {
 } from "./annotationField";
 import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
-import { nestedEditorEdit, bridgeDispatch } from "./annotationField";
+import { nestedEditorEdit } from "./annotationField";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -813,191 +813,7 @@ const revisionClickHandler = EditorView.domEventHandlers({
     },
 });
 
-// -------------------------------------------------------
-// Nested editor registry + parent→nested bridge ViewPlugin
-//
-// When a nested editor is mounted (inline or modal), it
-// registers itself here so the parent can push external
-// changes (undo, non-atomic typing) directly to it without
-// a full destroy/recreate cycle.
-//
-// The bridge ViewPlugin watches every parent transaction. If
-// the transaction changed the doc at a revision's range AND
-// was NOT originated by that nested editor (no nestedEditorEdit
-// tag for that revision ID), it translates the delta back to
-// nested coordinates and dispatches it to the nested editor.
-// -------------------------------------------------------
-
-type NestedEditorEntry = { revisionId: number; editor: EditorView; flush: () => void };
-const nestedEditorRegistry: NestedEditorEntry[] = [];
-
-export function registerNestedEditor(
-    revisionId: number,
-    editor: EditorView,
-    flush: () => void,
-): () => void {
-    const entry: NestedEditorEntry = { revisionId, editor, flush };
-    nestedEditorRegistry.push(entry);
-    return () => {
-        const idx = nestedEditorRegistry.indexOf(entry);
-        if (idx !== -1) nestedEditorRegistry.splice(idx, 1);
-    };
-}
-
-/**
- * Flush and unregister all registered nested editors synchronously.
- * Called by the parent undo/redo keymap before history runs, so that
- * nested editor state is persisted before the undo change fires.
- * This avoids a timing race where the Svelte $effect that calls
- * destroyRecursiveEditor hasn't run yet when undo fires.
- */
-function flushAllNestedEditors() {
-    // Snapshot the registry because flush() may unregister entries
-    for (const entry of [...nestedEditorRegistry]) {
-        entry.flush();
-    }
-}
-
-const nestedEditorBridge = ViewPlugin.fromClass(
-    class {
-        update(update: ViewUpdate) {
-            if (!update.docChanged) return;
-            // Skip version-switch and other revision-internal operations.
-            // Those transactions destroy and recreate the nested editor; pushing
-            // the delta in first corrupts the flush that happens just before
-            // destroy (the nested editor ends up with the NEW version's text,
-            // which then gets written back into the OLD version's slot).
-            if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
-
-            // Which revision ID (if any) originated this update. Scan all
-            // transactions — a ViewUpdate can batch multiple transactions and
-            // the nestedEditorEdit annotation may be on any one of them.
-            let originRevId: number | undefined;
-            for (const tr of update.transactions) {
-                const id = tr.annotation(nestedEditorEdit);
-                if (id !== undefined) { originRevId = id; break; }
-            }
-
-            for (const entry of [...nestedEditorRegistry]) {
-                // Skip: nested editor caused this change itself
-                if (originRevId === entry.revisionId) continue;
-                // Skip: don't dispatch back to the view that received this update
-                // (prevents infinite loop when a nested view is in the registry
-                // and its own bridge fires after receiving a bridge dispatch).
-                if (entry.editor === update.view) continue;
-
-                // Use startState: iterChanges fromA/toA are in pre-transaction
-                // coordinates, so the range lookup must also be pre-transaction.
-                const annotation = update.startState.field(annotationField)[entry.revisionId];
-                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
-
-                const { from: revFrom, to: revTo } = annotation.selection.main;
-
-                // Check if any of the changes touched this revision's range.
-                // Pure insertions (fromA === toA) are included if they fall within
-                // [revFrom, nestedDocLength + revFrom] — i.e. they map to a valid
-                // position in the nested editor. Using the nested doc length avoids
-                // mis-triggering for insertions at revTo that are outside the range
-                // (e.g. undo of a deletion that started at revTo, not inside).
-                const nestedDocLen = entry.editor.state.doc.length;
-                let touched = false;
-                for (const tr of update.transactions) {
-                    tr.changes.iterChanges((fromA, toA) => {
-                        const isPureInsert = fromA === toA;
-                        if (isPureInsert
-                            ? fromA >= revFrom && fromA <= revFrom + nestedDocLen
-                            : fromA < revTo && toA > revFrom) {
-                            touched = true;
-                        }
-                    });
-                }
-                if (!touched) continue;
-
-                // Translate each change to nested-editor coordinates and dispatch.
-                // For changes that cross the revision boundary (fromA < revFrom or
-                // toA > revTo), we cannot clip just the coordinates and keep the full
-                // inserted text — the inserted text would no longer match the clipped
-                // range. Fall back to replacing the entire nested doc with the
-                // post-transaction parent slice for that revision.
-                const nestedChanges: { from: number; to: number; insert: string }[] = [];
-                let needsFullReplace = false;
-                for (const tr of update.transactions) {
-                    if (needsFullReplace) break;
-                    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-                        if (needsFullReplace) return;
-                        // Only changes that overlap the revision range (including
-                        // pure insertions within the nested doc range)
-                        const isPureInsert = fromA === toA;
-                        if (isPureInsert
-                            ? fromA < revFrom || fromA > revFrom + nestedDocLen
-                            : fromA >= revTo || toA <= revFrom) return;
-                        // Change crosses revision boundary — can't clip coords+text safely
-                        if (!isPureInsert && (fromA < revFrom || toA > revTo)) {
-                            needsFullReplace = true;
-                            return;
-                        }
-                        const nestedFrom = Math.max(0, fromA - revFrom);
-                        const nestedTo = Math.max(0, Math.min(toA, revTo) - revFrom);
-                        nestedChanges.push({
-                            from: nestedFrom,
-                            to: nestedTo,
-                            insert: inserted.toString(),
-                        });
-                    });
-                }
-                if (needsFullReplace) {
-                    // Use post-transaction parent state to get the correct revision text
-                    const postAnnotation = update.state.field(annotationField)[entry.revisionId];
-                    if (!postAnnotation || !isAnnotationOfType(postAnnotation, "revision")) continue;
-                    const { from: postFrom, to: postTo } = postAnnotation.selection.main;
-                    nestedChanges.length = 0;
-                    nestedChanges.push({
-                        from: 0,
-                        to: entry.editor.state.doc.length,
-                        insert: update.state.sliceDoc(postFrom, postTo),
-                    });
-                }
-
-                if (nestedChanges.length === 0) continue;
-
-                try {
-                    entry.editor.dispatch({
-                        changes: nestedChanges,
-                        annotations: [bridgeDispatch.of(true)],
-                    });
-                } catch {
-                    // Nested editor is in an inconsistent/destroyed state.
-                    // Remove it from the registry so it doesn't keep failing
-                    // on every subsequent parent doc change.
-                    const idx = nestedEditorRegistry.indexOf(entry);
-                    if (idx !== -1) nestedEditorRegistry.splice(idx, 1);
-                }
-            }
-        }
-    },
-);
-
-// Flush all registered nested editors before undo/redo runs in the parent.
-// This prevents a timing race where the Svelte $effect that would call
-// destroyRecursiveEditor (and thus flush) hasn't fired yet when the user
-// presses Cmd+Z in the main editor. Without this, the nested editor is still
-// registered and the bridge patches it — then the late-firing $effect flushes
-// the now-patched (post-undo) state back, corrupting the version doc.
-// Returning false lets the normal undo/redo binding run after the flush.
-const nestedEditorPreFlushKeymap = Prec.highest(keymap.of([
-    {
-        key: "Mod-z",
-        run() { flushAllNestedEditors(); return false; },
-    },
-    {
-        key: "Mod-y",
-        mac: "Mod-Shift-z",
-        run() { flushAllNestedEditors(); return false; },
-    },
-]));
-
 export const annotations = () => [
-    nestedEditorPreFlushKeymap,
     Prec.high(keymap.of(annotationKeymap)),
     annotationField,
     suggestionPreviewField,
@@ -1007,6 +823,5 @@ export const annotations = () => [
     collapsedRevisionResolver,
     boundaryInsertNudge,
     invertedAnnotationFieldEffects,
-    nestedEditorBridge,
 ];
 export * from "./models";

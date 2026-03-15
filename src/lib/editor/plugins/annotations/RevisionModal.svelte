@@ -49,14 +49,12 @@ import {
 import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import { createNewAnnotation, versionText, type VersionState } from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
-import { modalStack, type ModalEntry } from "$lib/stores";
+import { annotations as annotationsStore, modalStack, type ModalEntry } from "$lib/stores";
 import {
     createNestedEditorState,
     translateAndDispatch,
-    flushAnnotationsToParent,
     previewVersionText,
 } from "./nestedEditor";
-import { registerNestedEditor } from ".";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
@@ -242,8 +240,6 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
     crumbSelectedVersions[ci] = vi;
     openDropdown = -1;
     if (isCurrent) {
-        // Flush + destroy BEFORE the parent dispatch so destroyEditor reads
-        // the correct currentlySelected (the outgoing version, not the new one).
         destroyEditor();
     }
     crumb.parentView.dispatch(
@@ -300,7 +296,7 @@ let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
 let mountedVersionId = -1;
-let unregisterNestedEditor: (() => void) | undefined;
+let lastDispatchedDoc = "";
 
 // Manually-synced mirrors of the nested editor's CodeMirror state.
 // Because CodeMirror manages its own state internally (view.state is a plain
@@ -323,17 +319,15 @@ function createEditor(version: VersionState) {
     const state = createNestedEditorState(version, (update: ViewUpdate) => {
         if (!editor) return;
         // Translate doc changes to parent coordinates and dispatch.
-        translateAndDispatch(update, view, revisionId);
+        if (translateAndDispatch(update, view, revisionId)) {
+            lastDispatchedDoc = editor.state.doc.toString();
+        }
         modalAnnotations = editor.state.field(annotationField);
         modalActiveAnnotation = getActiveAnnotation(editor.state);
     }, view, revisionId);
     editor = new EditorView({ state, parent: editorHost });
     mountedVersionId = (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.currentlySelected ?? -1;
-    unregisterNestedEditor = registerNestedEditor(revisionId, editor, () => {
-        if (editor && mountedVersionId !== -1) {
-            flushAnnotationsToParent(editor, view, revisionId, mountedVersionId);
-        }
-    });
+    lastDispatchedDoc = editor.state.doc.toString();
     modalAnnotations = editor.state.field(annotationField);
     modalActiveAnnotation = getActiveAnnotation(editor.state);
 }
@@ -348,12 +342,6 @@ function moveCursorToEnd(activeEditor: EditorView) {
 }
 
 function destroyEditor() {
-    unregisterNestedEditor?.();
-    unregisterNestedEditor = undefined;
-    // Flush nested annotation state to parent before destroying.
-    if (editor && mountedVersionId !== -1) {
-        flushAnnotationsToParent(editor, view, revisionId, mountedVersionId);
-    }
     editor?.destroy();
     editor = undefined;
     modalAnnotations = undefined;
@@ -364,6 +352,28 @@ function destroyEditor() {
 function close() {
     modalStack.pop();
 }
+
+// When the parent revision's doc changes externally (undo, non-atomic
+// typing), sync the modal editor. We watch $annotationsStore (the
+// Svelte store updated by Editor.svelte on every parent transaction)
+// to detect external changes, and only patch when the doc differs from
+// what the nested editor last dispatched up.
+$effect(() => {
+    const ann = $annotationsStore;
+    if (!editor || !ann) return;
+    const rev = ann[revisionId] as Annotation<"revision"> | undefined;
+    if (!rev) return;
+    const externalDoc = versionText(rev.versions[rev.currentlySelected]);
+    if (externalDoc === lastDispatchedDoc) return;
+    const current = editor.state.doc.toString();
+    if (current !== externalDoc) {
+        editor.dispatch({
+            changes: { from: 0, to: current.length, insert: externalDoc },
+        });
+        modalAnnotations = editor.state.field(annotationField);
+    }
+    lastDispatchedDoc = externalDoc;
+});
 
 // Close the version dropdown when clicking outside of it.
 $effect(() => {
@@ -486,7 +496,6 @@ function cancelLabelEdit() {
 
 function addVersion() {
     if (!revision) return;
-    // Flush + destroy before the dispatch so the outgoing version is saved correctly.
     destroyEditor();
     view.dispatch(createNewRevision(view.state, revisionId));
     tick().then(() => {

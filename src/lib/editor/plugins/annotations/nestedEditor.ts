@@ -14,49 +14,39 @@
  *     → parent history records the change (normal undo granularity)
  *     → Phase 3 syncs versions[selected].doc (needed for version switching)
  *     → selection rebuilt to cover new range (fix for initially-empty versions)
- *     → parent→nested ViewPlugin skips re-notifying nested editor
  *
  *   external change to parent at revision range (undo, non-atomic typing)
- *     → parent→nested ViewPlugin detects it (no nestedEditorEdit tag)
- *     → translates delta back to nested coordinates
- *     → dispatches directly to nested editor (no destroy/recreate)
+ *     → Phase 3 updates versions[selected].doc from parent slice
+ *     → Svelte reactivity propagates updated activeVersion.doc to Revision.svelte
+ *     → $effect in Revision.svelte patches the nested editor content
  *
  *   version switch
  *     → nested editor destroyed, recreated from new VersionState blob
  *     → only case where nested editor is fully rebuilt
  *
  * Undo: Mod-z in nested editor delegates to undo(parentView) via
- * makeParentUndoKeymap. Parent undoes the doc change. Parent→nested
- * ViewPlugin patches the nested editor with the inverted delta.
- *
- * Modal close / version switch: one final updateRevisionVersionState
- * dispatch serializes the nested annotationField blob into the parent.
- * This is the only time updateRevisionVersionState is called.
+ * makeParentUndoKeymap. Parent undoes the doc change. Phase 3 updates
+ * versions[selected].doc. Svelte $effect patches the nested editor.
  */
 
 import { EditorState, Prec, Transaction } from "@codemirror/state";
 import { undo, redo } from "@codemirror/commands";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
-import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
+import { getExtensions } from "$lib/editor/extensions";
 import {
     annotationField,
-    bridgeDispatch,
     nestedEditorEdit,
     _nestedEditRevision,
-    updateRevisionVersionState,
     setActiveRevisionVersion,
-    _revisionFlush,
 } from "./annotationField";
 import { publishAnnotationUiEvent } from "$lib/stores";
 import { versionText, type VersionState, isAnnotationOfType } from "./models";
-import type { Annotation } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
 
 /**
  * Creates a nested EditorState for a revision version.
  * No local history — undo/redo delegates to the parent via makeParentUndoKeymap.
- * Restores nested annotationField from the VersionState blob if present.
  */
 export function createNestedEditorState(
     version: VersionState,
@@ -69,9 +59,7 @@ export function createNestedEditorState(
         makeParentUndoKeymap(parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
-    return "annotationField" in version
-        ? EditorState.fromJSON(version, { extensions }, nestedSavedFields)
-        : EditorState.create({ doc: versionText(version), extensions });
+    return EditorState.create({ doc: versionText(version), extensions });
 }
 
 /**
@@ -162,10 +150,6 @@ export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: 
  * an equivalent change on the parent document at the revision's range,
  * then dispatches it to the parent tagged with nestedEditorEdit.
  *
- * The nested editor's own document is NOT updated here — the nested
- * editor retains its own state. The parent→nested ViewPlugin will
- * apply the inverse when needed (e.g. on undo).
- *
  * Returns true if a dispatch was made.
  */
 export function translateAndDispatch(
@@ -174,13 +158,9 @@ export function translateAndDispatch(
     revisionId: number,
 ): boolean {
     if (!update.docChanged) return false;
-    // If the change was pushed down by the parent→nested bridge, don't
-    // forward it back up — that would double-apply it and create a duplicate
-    // history entry.
-    if (update.transactions.some((tr) => tr.annotation(bridgeDispatch))) return false;
 
     const rev = parentView.state.field(annotationField)[revisionId] as
-        | Annotation<"revision">
+        | import("./models").Annotation<"revision">
         | undefined;
     if (!rev) return false;
 
@@ -211,37 +191,6 @@ export function translateAndDispatch(
         ],
     });
     return true;
-}
-
-/**
- * Serialises the nested editor's annotationField state (nested annotations
- * only — no historyField) and writes it back to the parent annotation's
- * version slot. Called once on modal close or version switch to persist
- * nested annotation structure. Uses addToHistory:false since this is
- * bookkeeping, not a user action.
- */
-export function flushAnnotationsToParent(
-    nestedEditor: EditorView,
-    parentView: EditorView,
-    revisionId: number,
-    versionId: number,
-): void {
-    const blob = nestedEditor.state.toJSON(nestedSavedFields) as VersionState;
-    const rev = parentView.state.field(annotationField)[revisionId] as
-        | Annotation<"revision">
-        | undefined;
-    if (!rev) return;
-    const existingLabel = rev.versions[versionId]?.label;
-    const blobWithLabel: VersionState = existingLabel !== undefined
-        ? { ...blob, label: existingLabel }
-        : blob;
-    const spec = updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel, {
-        addToHistory: false,
-    });
-    parentView.dispatch({
-        ...spec,
-        annotations: [...(spec.annotations ?? []), _revisionFlush.of(true)],
-    });
 }
 
 /**
