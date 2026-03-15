@@ -47,7 +47,10 @@ import {
 
 function createView(doc: string, parentView?: EditorView) {
     const extensions = [
-        history({ newGroupDelay: 0 }),
+        // history() only on root — nested editors delegate undo to their parent
+        // (makeParentUndoKeymap) and must not maintain a local history stack,
+        // mirroring createNestedEditorState() in production.
+        ...(parentView ? [] : [history({ newGroupDelay: 0 })]),
         annotationExtensions(),
         ...(parentView ? [makeParentUndoKeymap(parentView, 0)] : []),
     ];
