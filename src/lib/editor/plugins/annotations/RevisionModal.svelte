@@ -408,7 +408,7 @@ $effect(() => {
         syncingFromParent = true;
         editor.dispatch({
             changes: { from: 0, to: current.length, insert: externalDoc },
-            annotations: Transaction.remote.of(true),
+            annotations: Transaction.addToHistory.of(false),
         });
         syncingFromParent = false;
         modalAnnotations = editor.state.field(annotationField);
@@ -586,8 +586,15 @@ function onDialogKeydown(e: KeyboardEvent) {
 let revisionThread = $state(
     (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ??
         [],
-    // modalAnnotations !== undefined ? (modalAnnotations[revisionId] as Annotation<"revision"> | undefined)?.thread ?? [] : [],
 );
+
+// Keep thread reactive to external changes (e.g. undo of a thread update).
+$effect(() => {
+    const ann = $annotationsStore;
+    if (!ann) return;
+    const rev = ann[revisionId] as Annotation<"revision"> | undefined;
+    if (rev) revisionThread = rev.thread;
+});
 
 function dispatchUpdateThread(newThreadValue: ThreadType) {
     view.dispatch(
@@ -1018,10 +1025,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     word-break: break-word;
   }
 
-  /* Surrounding text inherits parent color */
-  .context-surrounding {
-    /* color inherited from .context-text / .context-nest */
-  }
 
   /* Each nesting level: inset block with deeper purple bg + stronger text */
   .context-nest {
