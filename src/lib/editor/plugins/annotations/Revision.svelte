@@ -5,32 +5,16 @@
  * editing version content, and actions to create/delete versions
  * or expand into a full-screen modal.
  *
- * Props:
- *   - revision: Annotation<"revision"> — the annotation data
- *   - isActive: boolean — whether this card is currently selected
- *   - view: EditorView — the parent CodeMirror editor
- *   - remove: () => void — callback to delete this annotation
- *   - updateThread: (thread: ThreadType) => void — callback to
- *     replace the thread array
+ * Architecture: the nested editor is a direct viewport onto the
+ * parent document's revision range. Edits in the nested editor
+ * are translated to parent coordinates via translateAndDispatch()
+ * and dispatched to the parent EditorView. External changes to
+ * the revision range (undo, non-atomic typing) are pushed back
+ * to the nested editor by the nestedEditorBridge ViewPlugin via
+ * the registerNestedEditor registry.
  *
- * Events emitted: none (delegates via callbacks and CodeMirror
- *   dispatch for version state updates)
- * Stores:
- *   - annotationUiEvent (read): receives one-shot events
- *     (boundary nudge, nested-open command, focus request,
- *     pending selection) emitted by annotation commands/plugins
- *   - modalStack (write): pushes a revision modal entry
- *
- * Parent: Annotations.svelte
- * Children: Thread.svelte (for user replies below the revision)
- *
- * Local state:
- *   - isEditorOpen: whether the inline nested editor is visible
- *   - recursiveEditor: a secondary CodeMirror instance editing
- *     the active version's content; syncs back to the annotation
- *     state on every keystroke via upsertVersionState()
- *   - showBoundaryHint: transient hint shown when the user tries
- *     to delete at the revision boundary in the main editor
+ * The nested editor is only destroyed/recreated on version switch.
+ * All other changes (typing, undo) are applied as deltas.
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
@@ -45,14 +29,19 @@ import {
     type Annotation,
     type Thread as ThreadType,
 } from ".";
+import { registerNestedEditor } from ".";
 import { versionText, type VersionState } from "./models";
-import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
-import Kbd from "$lib/ui/Kbd.svelte";
-
+import {
+    createNestedEditorState,
+    translateAndDispatch,
+    flushAnnotationsToParent,
+    previewVersionText,
+} from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 import posthog from "$lib/posthog";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -72,16 +61,13 @@ const {
     updateThread: (thread: ThreadType) => void;
 } = $props();
 
-// Derive thread, active version object, and its text content
 const thread = $derived(revision.thread);
 const activeVersion = $derived(revision.versions[revision.currentlySelected]);
 const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
-let isEditorOpen = $state(false);
-let userClosedEditor = false; // plain var — not reactive, just a gate
 
-// Auto-open the nested editor when this revision becomes active,
-// unless the user explicitly closed it or the setting is disabled.
-// Reset the gate when the card loses focus.
+let isEditorOpen = $state(false);
+let userClosedEditor = false;
+
 $effect(() => {
     if (isActive) {
         if (!userClosedEditor && appSettings.showNestedEditor) isEditorOpen = true;
@@ -95,16 +81,17 @@ function openEditor() {
     userClosedEditor = false;
     isEditorOpen = true;
 }
+
 let recursiveEditorHost = $state<HTMLDivElement>();
 let recursiveEditor = $state<EditorView | undefined>(undefined);
 let activeAnnotation = $state<Annotation<any> | undefined>(undefined);
-let isSyncingFromAnnotation = false;
-let previousVersionId = revision.currentlySelected;
-let previousVersionCount = revision.versions.length;
-// Track the last text we pushed INTO the nested editor so we can
-// detect when the parent annotation was changed externally (e.g.
-// via undo) even when the new text equals what was there before.
-let lastSyncedText: string | undefined = undefined;
+
+// Track which version the nested editor was built for, so we know
+// when to destroy/recreate (version switch) vs. when the bridge
+// will handle it (undo/external edit).
+let mountedVersionId = -1;
+let unregisterNestedEditor: (() => void) | undefined;
+
 let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
 let lastFocusRequestToken = 0;
@@ -113,13 +100,6 @@ let lastAddVersionToken = 0;
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 
-function shouldSyncNestedEditorUpdate(update: ViewUpdate) {
-    if (update.docChanged) return true;
-    return update.transactions.some((tr) => tr.effects.length > 0);
-}
-
-// Boundary nudge: show a hint when the user presses delete at the edge
-// of this revision's content in the main document.
 let showBoundaryHint = $state(false);
 let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -152,8 +132,6 @@ function cancelLabelEdit() {
     editingLabelIndex = null;
 }
 
-// Show a temporary hint when the boundary-nudge store fires
-// for this revision (user pressed delete at the edge).
 $effect(() => {
     const event = $annotationUiEvent;
     if (
@@ -171,10 +149,6 @@ $effect(() => {
     }, 4000);
 });
 
-// When the user triggers a nested annotation command from inside
-// this revision in the main document, open the modal (instead of
-// the inline editor) and pass the command along so the modal
-// runs it once the editor is ready.
 $effect(() => {
     const event = $annotationUiEvent;
     if (
@@ -199,10 +173,6 @@ $effect(() => {
     });
 });
 
-// When the main doc is clicked inside this revision's atomic range,
-// focus the nested editor (opening it if needed), placing the cursor
-// at the relative position within the version text.
-// Falls back to opening the modal if the nested editor is disabled.
 $effect(() => {
     const event = $annotationUiEvent;
     if (
@@ -221,8 +191,6 @@ $effect(() => {
             editor.focus();
             clearTimeout(cursorArrivingTimeout);
             cursorArriving = false;
-            // Force reflow so removing the class takes effect before re-adding it,
-            // ensuring the animation retriggers on every click.
             void recursiveEditorHost?.offsetWidth;
             cursorArriving = true;
             cursorArrivingTimeout = setTimeout(() => {
@@ -244,51 +212,31 @@ $effect(() => {
             revisionId: revision.id,
             parentView: view,
             label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-            // relative pos will be used by modal to place cursor
             pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
         });
     }
 });
 
-onDestroy(() => {
-    clearTimeout(boundaryHintTimeout);
-    clearTimeout(cursorArrivingTimeout);
-});
-
 /**
- * Serialize the current nested editor state and write it back
- * to the revision's version slot in the CodeMirror annotation
- * field, keeping the annotation and editor in sync.
- */
-function upsertVersionState(currentEditor: EditorView, versionId = revision.currentlySelected) {
-    // Track what we just pushed so syncRecursiveEditorToActiveVersion
-    // doesn't mistake our own update for an external mutation.
-    if (versionId === revision.currentlySelected) {
-        lastSyncedText = currentEditor.state.doc.toString();
-    }
-    syncVersionToParent(currentEditor, view, revision.id, versionId);
-}
-
-/**
- * Mount a new nested CodeMirror editor inside this card,
- * restoring full state (doc + annotations + history) from the
- * version blob when available, or creating a fresh editor with
- * just the text content.
+ * Mount a nested CodeMirror editor for the given version.
+ * Registers it with the nestedEditorBridge so the parent can
+ * push external changes (undo, non-atomic typing) directly.
  */
 function createRecursiveEditor(version: VersionState) {
     if (!recursiveEditorHost || recursiveEditor) return;
-    const state = createVersionState(
+    const state = createNestedEditorState(
         version,
         (update: ViewUpdate) => {
-            if (!recursiveEditor || isSyncingFromAnnotation) return;
+            if (!recursiveEditor) return;
             activeAnnotation = getActiveAnnotation(recursiveEditor.state);
-            if (!shouldSyncNestedEditorUpdate(update)) return;
-            upsertVersionState(recursiveEditor);
+            // Translate doc changes to parent coordinates and dispatch.
+            translateAndDispatch(update, view, revision.id);
         },
         view,
     );
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
-    lastSyncedText = versionText(version);
+    mountedVersionId = revision.currentlySelected;
+    unregisterNestedEditor = registerNestedEditor(revision.id, recursiveEditor);
     activeAnnotation = getActiveAnnotation(recursiveEditor.state);
 
     // Apply pending selection if this annotation just created one.
@@ -311,96 +259,17 @@ function createRecursiveEditor(version: VersionState) {
     }
 }
 
-/** Tear down the nested CodeMirror editor and reset state. */
 function destroyRecursiveEditor() {
+    unregisterNestedEditor?.();
+    unregisterNestedEditor = undefined;
+    // Flush nested annotation state to parent before destroying.
+    if (recursiveEditor) {
+        flushAnnotationsToParent(recursiveEditor, view, revision.id, mountedVersionId);
+    }
     recursiveEditor?.destroy();
     recursiveEditor = undefined;
     activeAnnotation = undefined;
-}
-
-/**
- * Swap the nested editor's content to match the currently
- * selected version. Saves the outgoing version's state first
- * if switching between versions.
- *
- * Also handles the case where the parent annotation was mutated
- * externally (e.g. the user edited the main doc or pressed undo)
- * so the nested editor's text is out of sync with activeText.
- */
-function syncRecursiveEditorToActiveVersion(previousVersionId?: number, versionDeleted = false) {
-    if (!recursiveEditor || !activeVersion) return;
-    const versionChanged =
-        previousVersionId !== undefined && previousVersionId !== revision.currentlySelected;
-    const currentText = recursiveEditor.state.doc.toString();
-    const targetText = activeText;
-    const docRange = revision.selection.main;
-    const docText = view.state.doc.slice(docRange.from, docRange.to).toString();
-    const docMismatch = docText !== targetText;
-
-    // Detect external mutation: the annotation's version text was
-    // changed (by main-doc edit or undo) without the nested editor
-    // being the source. We compare against lastSyncedText rather
-    // than the nested editor's current text, because after an undo
-    // the two may coincidentally match even though the annotation
-    // state changed underneath us.
-    const externallyMutated =
-        !versionChanged && lastSyncedText !== undefined && lastSyncedText !== targetText;
-
-    // Nothing to do: same version, nested editor already has the right text.
-    if (!versionChanged && !externallyMutated && currentText === targetText) return;
-
-    if (docMismatch) {
-        const docVersion: VersionState = { ...activeVersion, doc: docText };
-        view.dispatch(
-            updateRevisionVersionState(
-                view.state,
-                revision.id,
-                revision.currentlySelected,
-                docVersion,
-                { addToHistory: false },
-            ),
-        );
-        return;
-    }
-
-    // Save the current editor state back to whichever version we're leaving,
-    // unless a version was just deleted (the previous index is stale/gone).
-    if (versionChanged && !versionDeleted) {
-        upsertVersionState(recursiveEditor, previousVersionId);
-    }
-    isSyncingFromAnnotation = true;
-    if (versionChanged && recursiveEditorHost) {
-        destroyRecursiveEditor();
-        createRecursiveEditor(activeVersion);
-        if (recursiveEditor) {
-            const end = recursiveEditor.state.doc.length;
-            recursiveEditor.dispatch({
-                selection: { anchor: end },
-                scrollIntoView: true,
-            });
-            recursiveEditor.focus();
-        }
-        isSyncingFromAnnotation = false;
-        activeAnnotation =
-            recursiveEditor !== undefined ? getActiveAnnotation(recursiveEditor.state) : undefined;
-        return;
-    }
-    // Same version but text drifted (external edit or undo): reload state
-    // from the annotation blob so history/cursor are consistent too.
-    const nextState = createVersionState(
-        activeVersion,
-        (update: ViewUpdate) => {
-            if (!recursiveEditor || isSyncingFromAnnotation) return;
-            activeAnnotation = getActiveAnnotation(recursiveEditor.state);
-            if (!shouldSyncNestedEditorUpdate(update)) return;
-            upsertVersionState(recursiveEditor);
-        },
-        view,
-    );
-    recursiveEditor.setState(nextState);
-    lastSyncedText = targetText;
-    isSyncingFromAnnotation = false;
-    activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+    mountedVersionId = -1;
 }
 
 // Create or destroy the nested editor when the toggle changes.
@@ -412,27 +281,32 @@ $effect(() => {
     tick().then(() => {
         if (!isEditorOpen || !activeVersion) return;
         createRecursiveEditor(activeVersion);
-        syncRecursiveEditorToActiveVersion();
     });
 });
 
-// When the selected version or its text content changes while the editor
-// is open, sync the nested editor. This covers both version switches and
-// external mutations (undo/redo in the parent, main-doc edits).
+// When the selected version changes, destroy and recreate.
+// This is the ONLY case where we fully rebuild the nested editor.
+// External text changes (undo, non-atomic typing) are handled by
+// the nestedEditorBridge ViewPlugin pushing deltas directly.
 $effect(() => {
     if (!recursiveEditor || !isEditorOpen) return;
-    // Track activeText so undo/redo in the parent (which changes version
-    // content without changing currentlySelected) triggers a reload.
-    void activeText;
-    const prev = previousVersionId;
-    const prevCount = previousVersionCount;
-    previousVersionId = revision.currentlySelected;
-    previousVersionCount = revision.versions.length;
-    const versionDeleted = revision.versions.length < prevCount;
-    syncRecursiveEditorToActiveVersion(
-        prev !== revision.currentlySelected ? prev : undefined,
-        versionDeleted,
-    );
+    const currentVersionId = revision.currentlySelected;
+    if (currentVersionId === mountedVersionId) return;
+
+    // Version switched — flush outgoing, recreate for new version.
+    destroyRecursiveEditor();
+    tick().then(() => {
+        if (!isEditorOpen || !activeVersion) return;
+        createRecursiveEditor(activeVersion);
+        if (recursiveEditor) {
+            const end = recursiveEditor.state.doc.length;
+            recursiveEditor.dispatch({
+                selection: { anchor: end },
+                scrollIntoView: true,
+            });
+            recursiveEditor.focus();
+        }
+    });
 });
 
 // ⌘Enter when this revision is active → create a new version
@@ -457,6 +331,8 @@ $effect(() => {
 });
 
 onDestroy(() => {
+    clearTimeout(boundaryHintTimeout);
+    clearTimeout(cursorArrivingTimeout);
     destroyRecursiveEditor();
 });
 </script>
@@ -721,5 +597,4 @@ onDestroy(() => {
     .revision-recursive-editor.cursor-arriving {
         animation: focus-flash 0.6s ease-out both;
     }
-
 </style>

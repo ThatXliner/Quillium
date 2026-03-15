@@ -50,7 +50,13 @@ import { canCreateNewComment, getActiveAnnotation } from "./utils";
 import { createNewAnnotation, versionText, type VersionState } from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { modalStack, type ModalEntry } from "$lib/stores";
-import { createVersionState, syncVersionToParent, previewVersionText } from "./nestedEditor";
+import {
+    createNestedEditorState,
+    translateAndDispatch,
+    flushAnnotationsToParent,
+    previewVersionText,
+} from "./nestedEditor";
+import { registerNestedEditor } from ".";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
@@ -235,11 +241,15 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
     if (crumb.type !== "revision") return;
     crumbSelectedVersions[ci] = vi;
     openDropdown = -1;
+    if (isCurrent) {
+        // Flush + destroy BEFORE the parent dispatch so destroyEditor reads
+        // the correct currentlySelected (the outgoing version, not the new one).
+        destroyEditor();
+    }
     crumb.parentView.dispatch(
         setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi),
     );
     if (isCurrent) {
-        destroyEditor();
         tick().then(() => {
             const v = view.state.field(annotationField)[revisionId] as
                 | Annotation<"revision">
@@ -256,7 +266,8 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
 }
 
 // Rebuild editor when our own stack entry gets a fresh rebuildToken
-// (set by popToAndRebuild when a child level switches our version)
+// (set by popToAndRebuild when a child level switches our version).
+// destroyEditor() flushes annotations before rebuilding.
 let lastRebuildToken = 0;
 $effect(() => {
     const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
@@ -288,6 +299,8 @@ const revision = $derived(
 let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
+let mountedVersionId = -1;
+let unregisterNestedEditor: (() => void) | undefined;
 
 // Manually-synced mirrors of the nested editor's CodeMirror state.
 // Because CodeMirror manages its own state internally (view.state is a plain
@@ -307,17 +320,16 @@ let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
  */
 function createEditor(version: VersionState) {
     if (!editorHost || editor) return;
-    const state = createVersionState(version, (_update: ViewUpdate) => {
+    const state = createNestedEditorState(version, (update: ViewUpdate) => {
         if (!editor) return;
-        const rev = view.state.field(annotationField)[revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (!rev) return;
-        syncVersionToParent(editor, view, revisionId, rev.currentlySelected);
+        // Translate doc changes to parent coordinates and dispatch.
+        translateAndDispatch(update, view, revisionId);
         modalAnnotations = editor.state.field(annotationField);
         modalActiveAnnotation = getActiveAnnotation(editor.state);
     }, view);
     editor = new EditorView({ state, parent: editorHost });
+    mountedVersionId = (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.currentlySelected ?? -1;
+    unregisterNestedEditor = registerNestedEditor(revisionId, editor);
     modalAnnotations = editor.state.field(annotationField);
     modalActiveAnnotation = getActiveAnnotation(editor.state);
 }
@@ -332,10 +344,17 @@ function moveCursorToEnd(activeEditor: EditorView) {
 }
 
 function destroyEditor() {
+    unregisterNestedEditor?.();
+    unregisterNestedEditor = undefined;
+    // Flush nested annotation state to parent before destroying.
+    if (editor && mountedVersionId !== -1) {
+        flushAnnotationsToParent(editor, view, revisionId, mountedVersionId);
+    }
     editor?.destroy();
     editor = undefined;
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
+    mountedVersionId = -1;
 }
 
 function close() {
@@ -463,16 +482,14 @@ function cancelLabelEdit() {
 
 function addVersion() {
     if (!revision) return;
+    // Flush + destroy before the dispatch so the outgoing version is saved correctly.
+    destroyEditor();
     view.dispatch(createNewRevision(view.state, revisionId));
-    // Rebuild the editor for the new (blank) version
     tick().then(() => {
         const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
         if (!rev) return;
-        destroyEditor();
-        tick().then(() => {
-            createEditor(rev.versions[rev.currentlySelected]);
-            if (editor) moveCursorToEnd(editor);
-        });
+        createEditor(rev.versions[rev.currentlySelected]);
+        if (editor) moveCursorToEnd(editor);
     });
 }
 
