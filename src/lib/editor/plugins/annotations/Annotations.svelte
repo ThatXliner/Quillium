@@ -49,7 +49,7 @@ import {
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
-import type { Action } from "svelte";
+import type { Action } from "svelte/action";
 import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
