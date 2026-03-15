@@ -165,6 +165,19 @@ export const revisionInternalEdit = Annotation.define<boolean>();
 // Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
 // not stored in history.
 export const nestedEditorEdit = Annotation.define<number>();
+// Persists the revision ID for a nested-editor doc change through undo/redo.
+// Unlike the nestedEditorEdit Transaction.Annotation (which is ephemeral),
+// this StateEffect is stored in CodeMirror's history and replayed on redo.
+// Phase 3 reads it to apply the same boundary-expansion logic that runs
+// on the forward pass (via nestedEditorEdit), ensuring redo correctly
+// expands the revision range when text is re-inserted at its trailing edge.
+// invertedAnnotationFieldEffects produces a matching inverse so undo does
+// not need to do anything special (Phase 1 shrinks the range correctly).
+export const _nestedEditRevision = StateEffect.define<number>({
+    // Map the stored revision ID through doc changes — for this effect the
+    // payload is just an integer ID, not a position, so no mapping needed.
+    map: (value) => value,
+});
 // Marks a transaction dispatched by nestedEditorBridge to a nested editor.
 // translateAndDispatch checks for this and returns early — the change came
 // from the parent pushing a delta, not from the user typing, so it must not
@@ -675,20 +688,34 @@ export const annotationField = StateField.define<Annotations>({
         // document, but only for revisions that had no explicit effect
         // this transaction and only when the document actually changed.
         if (tr.docChanged) {
-            const nestedEditRevId = tr.annotation(nestedEditorEdit);
-            // Fix collapsed revision selection when nested editor types into it.
-            // Phase 1 maps both endpoints with +1 bias, so an initially-empty
-            // revision stays zero-width after the first insertion. Rebuild the
-            // selection to cover the actual content range in the parent doc.
-            if (nestedEditRevId !== undefined) {
-                const ann = annotations[nestedEditRevId];
+            // Collect all revision IDs that need boundary expansion.
+            // This covers both the forward pass (nestedEditorEdit annotation)
+            // and redo replays (_nestedEditRevision StateEffect stored in history).
+            const nestedEditRevIds = new Set<number>();
+            const nestedEditAnnotationId = tr.annotation(nestedEditorEdit);
+            if (nestedEditAnnotationId !== undefined) {
+                nestedEditRevIds.add(nestedEditAnnotationId);
+            }
+            for (const e of tr.effects) {
+                if (e.is(_nestedEditRevision)) {
+                    nestedEditRevIds.add(e.value);
+                }
+            }
+
+            // Fix revision selection boundaries for nested editor edits (both
+            // forward and redo). Phase 1 uses EditorSelection.map() which does
+            // not expand non-collapsed ranges when text is inserted exactly at
+            // their trailing boundary. We use mapPos(from,-1) / mapPos(to,+1)
+            // to ensure the revision range absorbs content added at its edges.
+            for (const revId of nestedEditRevIds) {
+                const ann = annotations[revId];
                 if (ann && isAnnotationOfType(ann, "revision")) {
-                    const oldAnn = oldAnnotations[nestedEditRevId];
+                    const oldAnn = oldAnnotations[revId];
                     if (oldAnn) {
                         const from = tr.changes.mapPos(oldAnn.selection.main.from, -1);
                         const to = tr.changes.mapPos(oldAnn.selection.main.to, 1);
                         if (from !== ann.selection.main.from || to !== ann.selection.main.to) {
-                            annotations[nestedEditRevId] = {
+                            annotations[revId] = {
                                 ...ann,
                                 selection: EditorSelection.single(from, to),
                             };
@@ -696,6 +723,7 @@ export const annotationField = StateField.define<Annotations>({
                     }
                 }
             }
+
             // NOTE: we intentionally do NOT skip Phase 3 for nestedEditorEdit.
             // Phase 3 syncs versions[selected].doc from the parent doc slice,
             // which is needed so that version switching shows current content.
@@ -873,6 +901,12 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
         } else if (effect.is(_applySuggestion)) {
             const annotations = transaction.startState.field(annotationField);
             effects.push(addAnnotation.of(annotations[effect.value.annotationId]));
+        } else if (effect.is(_nestedEditRevision)) {
+            // _nestedEditRevision is its own inverse: on undo the stored effect
+            // would be the forward one, but undo doesn't need range expansion
+            // (Phase 1 shrinks correctly). We still emit the inverse so that
+            // if the undo itself is redone, redo sees the effect and expands.
+            effects.push(_nestedEditRevision.of(effect.value));
         }
     }
     // transaction.changes.iterChangedRanges((chFrom, chTo) => {

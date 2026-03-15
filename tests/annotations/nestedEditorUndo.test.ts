@@ -22,6 +22,7 @@ import {
     annotationField,
     addAnnotation,
     nestedEditorEdit,
+    _nestedEditRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
@@ -105,6 +106,7 @@ function simulateNestedEdit(
     const offset = rev.selection.main.from;
     parentView.dispatch({
         changes: { from: offset + pos, insert },
+        effects: [_nestedEditRevision.of(revisionId)],
         annotations: [
             nestedEditorEdit.of(revisionId),
             Transaction.addToHistory.of(true),
@@ -236,6 +238,7 @@ describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current"
         // Dispatch to parent with nestedEditorEdit tag
         parentView.dispatch({
             changes: { from: offset + 5, insert: " world" },
+            effects: [_nestedEditRevision.of(revId)],
             annotations: [
                 nestedEditorEdit.of(revId),
                 Transaction.addToHistory.of(true),

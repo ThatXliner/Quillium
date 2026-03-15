@@ -32,6 +32,7 @@ import {
     annotationField,
     addAnnotation,
     nestedEditorEdit,
+    _nestedEditRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
@@ -106,6 +107,7 @@ function simulateUpstream(
     const offset = rev.selection.main.from;
     parentView.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
+        effects: [_nestedEditRevision.of(revisionId)],
         annotations: [
             nestedEditorEdit.of(revisionId),
             Transaction.addToHistory.of(true),
@@ -162,6 +164,7 @@ describe("Scenario 1: upstream chain — level-2 edit reaches root", () => {
         if (!outerRev || !isAnnotationOfType(outerRev, "revision")) throw new Error();
         rootView.dispatch({
             changes: { from: outerRev.selection.main.from + 6, to: outerRev.selection.main.from + 11, insert: "" },
+            effects: [_nestedEditRevision.of(outerRevId)],
             annotations: [
                 nestedEditorEdit.of(outerRevId),
                 Transaction.addToHistory.of(true),
@@ -180,6 +183,7 @@ describe("Scenario 1: upstream chain — level-2 edit reaches root", () => {
         // Dispatch to root with nestedEditorEdit.of(outerRevId)
         rootView.dispatch({
             changes: { from: 6, to: 11, insert: "" },
+            effects: [_nestedEditRevision.of(outerRevId)],
             annotations: [
                 nestedEditorEdit.of(outerRevId),
                 Transaction.addToHistory.of(true),
@@ -208,6 +212,7 @@ describe("Scenario 2: downstream bridge — undo at root patches registered nest
         level1View.dispatch({ changes: { from: 6, to: 11, insert: "" } });
         rootView.dispatch({
             changes: { from: 6, to: 11, insert: "" },
+            effects: [_nestedEditRevision.of(outerRevId)],
             annotations: [
                 nestedEditorEdit.of(outerRevId),
                 Transaction.addToHistory.of(true),
@@ -269,10 +274,12 @@ describe("Scenario 3: two-level bridge cascade on undo", () => {
         level2View.dispatch({ changes: { from: 0, to: 5, insert: "" } });
         level1View.dispatch({
             changes: { from: 6, to: 11, insert: "" },
+            effects: [_nestedEditRevision.of(innerRevId)],
             annotations: [nestedEditorEdit.of(innerRevId), Transaction.addToHistory.of(true)],
         });
         rootView.dispatch({
             changes: { from: 6, to: 11, insert: "" },
+            effects: [_nestedEditRevision.of(outerRevId)],
             annotations: [nestedEditorEdit.of(outerRevId), Transaction.addToHistory.of(true)],
         });
 
@@ -306,6 +313,7 @@ describe("Scenario 4: registry isolation", () => {
         level1View.dispatch({ changes: { from: 6, to: 11, insert: "" } });
         rootView.dispatch({
             changes: { from: 6, to: 11, insert: "" },
+            effects: [_nestedEditRevision.of(outerRevId)],
             annotations: [nestedEditorEdit.of(outerRevId), Transaction.addToHistory.of(true)],
         });
 
@@ -331,6 +339,7 @@ describe("Scenario 4: registry isolation", () => {
         // This should NOT suppress the bridge for rev1
         rootView.dispatch({
             changes: { from: 6, to: 11, insert: "earth" },
+            effects: [_nestedEditRevision.of(rev2Id)],
             annotations: [nestedEditorEdit.of(rev2Id), Transaction.addToHistory.of(true)],
         });
 
@@ -352,6 +361,7 @@ describe("Scenario 5: bridgeDispatch prevents translateAndDispatch echo loop", (
         level1View.dispatch({ changes: { from: 6, to: 11, insert: "" } });
         rootView.dispatch({
             changes: { from: 6, to: 11, insert: "" },
+            effects: [_nestedEditRevision.of(outerRevId)],
             annotations: [nestedEditorEdit.of(outerRevId), Transaction.addToHistory.of(true)],
         });
 
@@ -382,6 +392,7 @@ describe("Scenario 5: bridgeDispatch prevents translateAndDispatch echo loop", (
             if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error();
             rootView.dispatch({
                 changes: { from: rev.selection.main.to, insert: ch },
+                effects: [_nestedEditRevision.of(outerRevId)],
                 annotations: [nestedEditorEdit.of(outerRevId), Transaction.addToHistory.of(true)],
             });
         }

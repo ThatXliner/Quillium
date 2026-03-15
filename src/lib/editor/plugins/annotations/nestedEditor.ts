@@ -42,6 +42,7 @@ import {
     annotationField,
     bridgeDispatch,
     nestedEditorEdit,
+    _nestedEditRevision,
     updateRevisionVersionState,
     setActiveRevisionVersion,
 } from "./annotationField";
@@ -202,6 +203,7 @@ export function translateAndDispatch(
 
     parentView.dispatch({
         changes: parentChanges,
+        effects: [_nestedEditRevision.of(revisionId)],
         annotations: [
             nestedEditorEdit.of(revisionId),
             Transaction.addToHistory.of(true),
