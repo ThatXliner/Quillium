@@ -1,40 +1,58 @@
 /**
  * nestedEditor.ts — Shared utilities for nested CodeMirror editors
- * inside revision cards and modals.
+ * inside revision cards (inline) and modals.
  *
- * Both Revision.svelte (inline nested editor) and RevisionModal.svelte
- * (full-screen modal editor) bootstrap a secondary CodeMirror instance
- * that edits a single VersionState. This module extracts the shared
- * patterns so each component only contains its own lifecycle logic.
+ * Architecture: the nested editor is a direct viewport onto the parent
+ * document's revision range [rev.from, rev.to]. Edits in the nested
+ * editor are translated to parent coordinates and dispatched to the
+ * parent EditorView. The parent document is the single source of truth.
+ *
+ * Data flow:
+ *   nested editor types
+ *     → translateAndDispatch() maps change to [rev.from+delta] in parent
+ *     → parent dispatch tagged nestedEditorEdit.of(revisionId)
+ *     → parent history records the change (normal undo granularity)
+ *     → Phase 3 skips this revision (nestedEditorEdit suppresses it)
+ *     → parent→nested ViewPlugin skips re-notifying nested editor
+ *
+ *   external change to parent at revision range (undo, non-atomic typing)
+ *     → parent→nested ViewPlugin detects it (no nestedEditorEdit tag)
+ *     → translates delta back to nested coordinates
+ *     → dispatches directly to nested editor (no destroy/recreate)
+ *
+ *   version switch
+ *     → nested editor destroyed, recreated from new VersionState blob
+ *     → only case where nested editor is fully rebuilt
+ *
+ * Undo: Mod-z in nested editor delegates to undo(parentView) via
+ * makeParentUndoKeymap. Parent undoes the doc change. Parent→nested
+ * ViewPlugin patches the nested editor with the inverted delta.
+ *
+ * Modal close / version switch: one final updateRevisionVersionState
+ * dispatch serializes the nested annotationField blob into the parent.
+ * This is the only time updateRevisionVersionState is called.
  */
 
-import { EditorState } from "@codemirror/state";
+import { EditorState, Transaction } from "@codemirror/state";
+import { undo, redo } from "@codemirror/commands";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
-import { redo, undo } from "@codemirror/commands";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import {
-    setActiveRevisionVersion,
+    annotationField,
+    nestedEditorEdit,
     updateRevisionVersionState,
 } from "./annotationField";
 import { versionText, type VersionState } from "./models";
 import type { Annotation } from "./models";
-import { annotationField } from "./annotationField";
-import { getActiveAnnotation } from "./utils";
 
 const VERSION_PREVIEW_MAX = 34;
 
 /**
- * Returns a configured EditorState for a version, restoring from
- * a serialised blob when available or creating a fresh state from
- * the doc text. The provided updateListener is installed so the
- * caller can react to every editor transaction.
- *
- * Nested editors have no history of their own — undo/redo is
- * delegated to the parent via makeParentUndoKeymap(), and version
- * navigation shortcuts (Ctrl-[ / Ctrl-]) are rerouted to the parent
- * so a single undo tree and active version index stay in sync.
+ * Creates a nested EditorState for a revision version.
+ * No local history — undo/redo delegates to the parent via makeParentUndoKeymap.
+ * Restores nested annotationField from the VersionState blob if present.
  */
-export function createVersionState(
+export function createNestedEditorState(
     version: VersionState,
     updateListener: (update: ViewUpdate) => void,
     parentView: EditorView,
@@ -50,9 +68,9 @@ export function createVersionState(
 }
 
 /**
- * Returns a high-priority keymap that intercepts Ctrl+Z / Ctrl+Y
- * (and Mac equivalents) in the nested editor and dispatches them
- * to the parent editor instead, keeping a single undo tree.
+ * Intercepts Mod-z / Mod-y in the nested editor and delegates
+ * to the parent's undo/redo. The parent history is the single
+ * undo timeline for all nested edits.
  */
 export function makeParentUndoKeymap(parentView: EditorView) {
     return keymap.of([
@@ -74,43 +92,88 @@ export function makeParentUndoKeymap(parentView: EditorView) {
     ]);
 }
 
+/**
+ * Intercepts Ctrl-[ / Ctrl-] in the nested editor and routes
+ * them to the parent for version navigation.
+ */
 export function makeParentRevisionNavKeymap(parentView: EditorView) {
-    const runNav = (direction: "prev" | "next") => {
-        const annotation = getActiveAnnotation(parentView.state, "revision");
-        if (!annotation) return false;
-        const count = annotation.versions.length;
-        if (count <= 1) return true;
-        const current = annotation.currentlySelected;
-        const next = direction === "next"
-            ? (current + 1) % count
-            : (current - 1 + count) % count;
-        parentView.dispatch(setActiveRevisionVersion(parentView.state, annotation.id, next));
-        return true;
-    };
     return keymap.of([
         {
             key: "Ctrl-[",
             run() {
-                return runNav("prev");
+                // Dispatch a user event so the parent keymap handles it.
+                // We just let the event bubble to the dialog/parent keydown handler.
+                return false;
             },
-            preventDefault: true,
         },
         {
             key: "Ctrl-]",
             run() {
-                return runNav("next");
+                return false;
             },
-            preventDefault: true,
         },
     ]);
 }
 
 /**
- * Serialises the nested editor's current state and dispatches
- * an updateRevisionVersionState effect to the parent editor,
- * keeping the annotation's version slot in sync.
+ * Translates a doc-changing transaction from the nested editor into
+ * an equivalent change on the parent document at the revision's range,
+ * then dispatches it to the parent tagged with nestedEditorEdit.
+ *
+ * The nested editor's own document is NOT updated here — the nested
+ * editor retains its own state. The parent→nested ViewPlugin will
+ * apply the inverse when needed (e.g. on undo).
+ *
+ * Returns true if a dispatch was made.
  */
-export function syncVersionToParent(
+export function translateAndDispatch(
+    update: ViewUpdate,
+    parentView: EditorView,
+    revisionId: number,
+): boolean {
+    if (!update.docChanged) return false;
+
+    const rev = parentView.state.field(annotationField)[revisionId] as
+        | Annotation<"revision">
+        | undefined;
+    if (!rev) return false;
+
+    const offset = rev.selection.main.from;
+
+    // Collect all changes from all transactions in this update,
+    // translated to parent coordinates.
+    const parentChanges: { from: number; to: number; insert: string }[] = [];
+    for (const tr of update.transactions) {
+        if (!tr.docChanged) continue;
+        tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+            parentChanges.push({
+                from: offset + fromA,
+                to: offset + toA,
+                insert: inserted.toString(),
+            });
+        });
+    }
+
+    if (parentChanges.length === 0) return false;
+
+    parentView.dispatch({
+        changes: parentChanges,
+        annotations: [
+            nestedEditorEdit.of(revisionId),
+            Transaction.addToHistory.of(true),
+        ],
+    });
+    return true;
+}
+
+/**
+ * Serialises the nested editor's annotationField state (nested annotations
+ * only — no historyField) and writes it back to the parent annotation's
+ * version slot. Called once on modal close or version switch to persist
+ * nested annotation structure. Uses addToHistory:false since this is
+ * bookkeeping, not a user action.
+ */
+export function flushAnnotationsToParent(
     nestedEditor: EditorView,
     parentView: EditorView,
     revisionId: number,
@@ -121,12 +184,15 @@ export function syncVersionToParent(
         | Annotation<"revision">
         | undefined;
     if (!rev) return;
-    // Preserve the existing label so syncing the editor content doesn't wipe it.
     const existingLabel = rev.versions[versionId]?.label;
     const blobWithLabel: VersionState = existingLabel !== undefined
         ? { ...blob, label: existingLabel }
         : blob;
-    parentView.dispatch(updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel));
+    parentView.dispatch(
+        updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel, {
+            addToHistory: false,
+        }),
+    );
 }
 
 /**
