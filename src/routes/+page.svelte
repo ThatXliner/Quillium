@@ -30,6 +30,8 @@ import { debugPanelActive } from "$lib/debug/store.svelte";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
+import ErrorBanner from "$lib/ErrorBanner.svelte";
+import type { BackupEntry } from "$lib/errorGuard";
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -51,7 +53,23 @@ function handleKeydown(e: KeyboardEvent) {
     }
 }
 
-onMount(showTutorialOnFirstVisit);
+onMount(() => {
+    showTutorialOnFirstVisit();
+
+    // Handle restore-backup events dispatched by ErrorBanner.svelte.
+    function handleRestoreBackup(e: Event) {
+        const view = $editorView;
+        if (!view) return;
+        const { documentText } = (e as CustomEvent<BackupEntry>).detail;
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: documentText },
+            userEvent: "input",
+        });
+    }
+
+    window.addEventListener("quillium:restore-backup", handleRestoreBackup);
+    return () => window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
+});
 
 // DEV only: expose window.__runScenario__(id) for the screenshot script.
 // Runs the same save+reload cycle as DebugPanel without opening the panel UI.
@@ -140,6 +158,8 @@ if (import.meta.env.DEV) {
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
+
+<ErrorBanner />
 
 <AiSidebar />
 

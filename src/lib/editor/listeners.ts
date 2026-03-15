@@ -18,8 +18,9 @@
 import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { get } from "svelte/store";
-import { currentDocumentId, currentDraftId, currentDocumentTitle, saveStatus } from "$lib/stores";
+import { currentDocumentId, currentDraftId, currentDocumentTitle, saveStatus, errorBanner } from "$lib/stores";
 import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
+import { checkForSuspiciousChange } from "$lib/errorGuard";
 import {
     addAnnotation,
     removeAnnotation,
@@ -209,6 +210,21 @@ async function doAppend(update: ViewUpdate) {
 
     const payload = buildEventPayload(update);
     if (!payload) return;
+
+    // Guard: check for suspiciously large deletions before writing to DB.
+    // The backup is saved *before* the write so the user can always recover.
+    if (update.docChanged) {
+        const oldText = update.startState.doc.toString();
+        const newText = update.state.doc.toString();
+        const suspicious = checkForSuspiciousChange(oldText, newText);
+        if (suspicious) {
+            errorBanner.set({
+                message: "A large deletion was detected. A backup was saved in case this was unintentional.",
+                hasBackup: true,
+                backupType: "auto",
+            });
+        }
+    }
 
     // Only flip to "Saving…" if the write hasn't resolved within 150 ms.
     // Fast writes (the common case) stay on "Saved" the whole time.

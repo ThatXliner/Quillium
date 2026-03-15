@@ -306,6 +306,23 @@ const _modalStack = writable<ModalEntry[]>([]);
  *                          target modal recreates its editor
  *   clear()             — close all modals
  */
+// ── Error banner store ────────────────────────────────────────
+
+/**
+ * When set, an error banner is shown at the top of the app.
+ * null = no banner. Set by hooks.client.ts on crash or by
+ * listeners.ts when a suspicious change is detected.
+ */
+export type ErrorBannerState = {
+    message: string;
+    /** Whether there is a backup available for the user to restore */
+    hasBackup: boolean;
+    /** "auto" = suspicious-change backup, "crash" = crash backup */
+    backupType: "auto" | "crash";
+};
+
+export const errorBanner = writable<ErrorBannerState | null>(null);
+
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) => _modalStack.update((s) => [...s, entry]),
