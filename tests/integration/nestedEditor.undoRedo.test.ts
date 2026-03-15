@@ -450,6 +450,87 @@ describe("undo depth stays consistent across nested edits", () => {
     });
 });
 
+// ── Scenario I: type then partially delete in nested editor, then undo ────────
+
+describe("type then delete in nested editor, undo from parent", () => {
+    it("undo of deletion restores deleted text in doc and version.doc", () => {
+        // revision at [0,5] = "hello"
+        const revId = addRevision(view, 0, 5, [{ doc: "hello" }]);
+
+        // Type " world" at end → "hello world"
+        simulateNestedEdit(view, revId, 5, 5, " world");
+        expect(view.state.doc.toString()).toBe("hello world");
+        expect(getVersionDoc(view, revId)).toBe("hello world");
+
+        // Delete "orld" (nested delete: positions 7-11 in nested = parent 7-11)
+        simulateNestedEdit(view, revId, 7, 11, "");
+        expect(view.state.doc.toString()).toBe("hello w");
+        expect(getVersionDoc(view, revId)).toBe("hello w");
+        expect(getRevisionSlice(view, revId)).toBe("hello w");
+
+        // Undo the deletion — should restore "hello world"
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello world");
+        expect(getVersionDoc(view, revId)).toBe("hello world");
+        expect(getRevisionSlice(view, revId)).toBe("hello world");
+    });
+
+    it("two undos after type-then-delete in nested editor restore original doc", () => {
+        const revId = addRevision(view, 0, 5, [{ doc: "hello" }]);
+
+        // Type " world" then delete "orld"
+        simulateNestedEdit(view, revId, 5, 5, " world");
+        simulateNestedEdit(view, revId, 7, 11, "");
+        expect(view.state.doc.toString()).toBe("hello w");
+
+        // Undo deletion
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello world");
+        expect(getVersionDoc(view, revId)).toBe("hello world");
+
+        // Undo the original typing
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello");
+        expect(getVersionDoc(view, revId)).toBe("hello");
+        expect(getRevisionSlice(view, revId)).toBe("hello");
+    });
+
+    it("full delete of nested editor text then undo restores the text", () => {
+        const revId = addRevision(view, 0, 5, [{ doc: "hello" }]);
+
+        // Type " world" → "hello world"
+        simulateNestedEdit(view, revId, 5, 5, " world");
+        // Delete all nested content (0 to 11)
+        simulateNestedEdit(view, revId, 0, 11, "");
+        expect(view.state.doc.toString()).toBe("");
+        // revision survives collapsed
+        const revAfterDelete = view.state.field(annotationField)[revId];
+        expect(revAfterDelete).toBeDefined();
+
+        // Undo deletion — "hello world" restored
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello world");
+        expect(getVersionDoc(view, revId)).toBe("hello world");
+        expect(getRevisionSlice(view, revId)).toBe("hello world");
+    });
+
+    it("redo after undo of nested deletion works correctly", () => {
+        const revId = addRevision(view, 0, 5, [{ doc: "hello" }]);
+
+        simulateNestedEdit(view, revId, 5, 5, " world");
+        simulateNestedEdit(view, revId, 7, 11, "");
+        expect(view.state.doc.toString()).toBe("hello w");
+
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello world");
+
+        redo(view);
+        expect(view.state.doc.toString()).toBe("hello w");
+        expect(getVersionDoc(view, revId)).toBe("hello w");
+        expect(getRevisionSlice(view, revId)).toBe("hello w");
+    });
+});
+
 // ── Scenario H: replace operation in nested editor (from > to) ───────────────
 
 describe("nested editor replace (delete + insert at same position)", () => {
