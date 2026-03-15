@@ -160,6 +160,9 @@ export const revisionInternalEdit = Annotation.define<boolean>();
 // dispatched the change. Consumers:
 //   - Parent→nested ViewPlugin (nestedEditorBridge): skips re-dispatching
 //     this change back to the nested editor (it caused it, doesn't need it).
+//   - annotationField Phase 3: still runs (intentionally) to sync
+//     versions[selected].doc from the parent doc slice so version switching
+//     shows current content.
 // Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
 // not stored in history.
 export const nestedEditorEdit = Annotation.define<number>();
