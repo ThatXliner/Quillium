@@ -69,7 +69,7 @@ import {
 import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
-import { filter, mapValues } from "lodash-es";
+import { mapValues } from "lodash-es";
 // -------------------------------------------------------
 // StateEffect declarations
 //
@@ -83,7 +83,6 @@ import { filter, mapValues } from "lodash-es";
 // through the undo history.
 // -------------------------------------------------------
 
-// lowk I might change this to our own state machine so we can have that sweet sweet typesafety
 // === For all annotations ===
 export const addAnnotation = StateEffect.define<GenericAnnotation>({
     map: mapRange,
@@ -497,24 +496,18 @@ export function applySuggestion(
  * except revisions which are kept alive via allowEmpty.
  */
 function remapAnnotationSelections(annotations: Annotations, tr: Transaction): Annotations {
-    return Object.fromEntries(
-        filter(
-            Object.entries(
-                mapValues(annotations, (x) => {
-                    const isRevision = isAnnotationOfType(x, "revision");
-                    const newSelection = cleanRangesOf(
-                        x.selection.map(tr.changes, isRevision ? 1 : 0),
-                        isRevision,
-                    );
-                    if (newSelection) {
-                        return { ...x, selection: newSelection };
-                    }
-                    return null;
-                }),
-            ),
-            ([k, v]) => v !== null,
-        ),
-    ) as Annotations;
+    const result: Annotations = {};
+    for (const [id, x] of Object.entries(annotations)) {
+        const isRevision = isAnnotationOfType(x, "revision");
+        const newSelection = cleanRangesOf(
+            x.selection.map(tr.changes, isRevision ? 1 : 0),
+            isRevision,
+        );
+        if (newSelection) {
+            result[id as unknown as number] = { ...x, selection: newSelection };
+        }
+    }
+    return result;
 }
 
 /**
@@ -607,15 +600,11 @@ export const annotationField = StateField.define<Annotations>({
         const revisionsWithExplicitEffect = new Set<number>();
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
-                console.log("Adding annotation!", e.value);
                 annotations[e.value.id] = e.value;
             } else if (e.is(_restoreAnnotation)) {
-                console.log("Restoring annotation!", e.value);
                 annotations[e.value.id] = e.value;
             } else if (e.is(removeAnnotation)) {
-                console.log("Removing annotation internally");
                 delete annotations[e.value.id];
-                console.log(annotations);
             } else if (e.is(updateThread)) {
                 annotations[e.value.annotationId].thread = e.value.newThread;
                 // } else if (e.is(addThreadToAnnotation)) {
@@ -638,9 +627,6 @@ export const annotationField = StateField.define<Annotations>({
                 revisionsWithExplicitEffect.add(e.value.annotationId);
                 applyRevisionVersionEffect(e, annotation, oldAnnotations, tr);
 
-                // well uh i think this is unnecessary since
-                // JavaScript would give annotation a reference to the annotation object
-                // but just in case, you know.
                 annotations[e.value.annotationId] = annotation;
             } else if (e.is(_updateRevisionVersionLabel)) {
                 const annotation = annotations[e.value.annotationId];
