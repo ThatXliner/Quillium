@@ -42,8 +42,9 @@ import {
     bridgeDispatch,
     nestedEditorEdit,
     updateRevisionVersionState,
+    setActiveRevisionVersion,
 } from "./annotationField";
-import { versionText, type VersionState } from "./models";
+import { versionText, type VersionState, isAnnotationOfType } from "./models";
 import type { Annotation } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
@@ -57,11 +58,12 @@ export function createNestedEditorState(
     version: VersionState,
     updateListener: (update: ViewUpdate) => void,
     parentView: EditorView,
+    revisionId: number,
 ): EditorState {
     const extensions = [
         ...getExtensions({ persist: false, history: false, updateListener }),
         makeParentUndoKeymap(parentView),
-        makeParentRevisionNavKeymap(parentView),
+        makeParentRevisionNavKeymap(parentView, revisionId),
     ];
     return "annotationField" in version
         ? EditorState.fromJSON(version, { extensions }, nestedSavedFields)
@@ -96,22 +98,42 @@ export function makeParentUndoKeymap(parentView: EditorView) {
 /**
  * Intercepts Ctrl-[ / Ctrl-] in the nested editor and routes
  * them to the parent for version navigation.
+ *
+ * We dispatch directly to parentView rather than returning false and
+ * relying on bubbling, because shouldHandleRevisionModalKeydown blocks
+ * events originating from .cm-editor — so bubbling won't reach the
+ * modal-level handler.
  */
-export function makeParentRevisionNavKeymap(parentView: EditorView) {
+export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: number) {
+    function navigate(direction: "prev" | "next") {
+        const state = parentView.state;
+        const annotation = state.field(annotationField)[revisionId];
+        if (!annotation || !isAnnotationOfType(annotation, "revision")) return false;
+        const count = annotation.versions.length;
+        if (count <= 1) return false;
+        const current = annotation.currentlySelected;
+        const next =
+            direction === "next"
+                ? (current + 1) % count
+                : (current - 1 + count) % count;
+        parentView.dispatch(setActiveRevisionVersion(state, annotation.id, next));
+        return true;
+    }
+
     return keymap.of([
         {
             key: "Ctrl-[",
             run() {
-                // Dispatch a user event so the parent keymap handles it.
-                // We just let the event bubble to the dialog/parent keydown handler.
-                return false;
+                return navigate("prev");
             },
+            preventDefault: true,
         },
         {
             key: "Ctrl-]",
             run() {
-                return false;
+                return navigate("next");
             },
+            preventDefault: true,
         },
     ]);
 }
@@ -138,18 +160,24 @@ export function translateAndDispatch(
     // history entry.
     if (update.transactions.some((tr) => tr.annotation(bridgeDispatch))) return false;
 
-    const rev = parentView.state.field(annotationField)[revisionId] as
-        | Annotation<"revision">
-        | undefined;
-    if (!rev) return false;
-
-    const offset = rev.selection.main.from;
-
-    // Collect all changes from all transactions in this update,
-    // translated to parent coordinates.
-    const parentChanges: { from: number; to: number; insert: string }[] = [];
+    // Dispatch each doc-changing transaction separately so that iterChanges
+    // positions (which are relative to each transaction's own start state)
+    // are always correct. Batching into a single dispatch would misplace
+    // changes from the 2nd+ transaction when their fromA/toA are relative
+    // to their own prior state, not update.startState.
+    //
+    // Re-read the revision's offset from parentView.state before each dispatch
+    // so that previous dispatches (which advance parentView.state) don't make
+    // the offset stale for subsequent transactions.
+    let dispatched = false;
     for (const tr of update.transactions) {
         if (!tr.docChanged) continue;
+        const currentRev = parentView.state.field(annotationField)[revisionId] as
+            | Annotation<"revision">
+            | undefined;
+        if (!currentRev) break;
+        const offset = currentRev.selection.main.from;
+        const parentChanges: { from: number; to: number; insert: string }[] = [];
         tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
             parentChanges.push({
                 from: offset + fromA,
@@ -157,18 +185,17 @@ export function translateAndDispatch(
                 insert: inserted.toString(),
             });
         });
+        if (parentChanges.length === 0) continue;
+        parentView.dispatch({
+            changes: parentChanges,
+            annotations: [
+                nestedEditorEdit.of(revisionId),
+                Transaction.addToHistory.of(true),
+            ],
+        });
+        dispatched = true;
     }
-
-    if (parentChanges.length === 0) return false;
-
-    parentView.dispatch({
-        changes: parentChanges,
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
-    });
-    return true;
+    return dispatched;
 }
 
 /**

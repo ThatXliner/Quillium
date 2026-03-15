@@ -233,6 +233,7 @@ function createRecursiveEditor(version: VersionState) {
             translateAndDispatch(update, view, revision.id);
         },
         view,
+        revision.id,
     );
     recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
     mountedVersionId = revision.currentlySelected;

@@ -326,7 +326,7 @@ function createEditor(version: VersionState) {
         translateAndDispatch(update, view, revisionId);
         modalAnnotations = editor.state.field(annotationField);
         modalActiveAnnotation = getActiveAnnotation(editor.state);
-    }, view);
+    }, view, revisionId);
     editor = new EditorView({ state, parent: editorHost });
     mountedVersionId = (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.currentlySelected ?? -1;
     unregisterNestedEditor = registerNestedEditor(revisionId, editor);
