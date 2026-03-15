@@ -278,6 +278,9 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
             if (!appSettings.atomicRevisions) return;
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
+            // Don't remove revisions whose text was cleared by the nested editor —
+            // empty content is a valid state when the nested editor is active.
+            if (update.transactions.some((tr) => tr.annotation(nestedEditorEdit) !== undefined)) return;
             const annotations = update.state.field(annotationField);
             const collapsed = Object.values(annotations).filter(
                 (a) => isAnnotationOfType(a, "revision") && a.selection.main.empty,
