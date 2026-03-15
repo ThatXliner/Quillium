@@ -90,7 +90,7 @@ async function createRevisionAndOpenNestedEditor(page: Page, text: string) {
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.press("ControlOrMeta+Alt+k");
 
-    const nestedEditor = page.locator(".revision-recursive-editor .cm-content").first();
+    const nestedEditor = page.locator(".revision-inline-editor .cm-content").first();
     await expect(nestedEditor).toBeVisible({ timeout: 8000 });
     return nestedEditor;
 }
@@ -218,7 +218,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await page.keyboard.press("ControlOrMeta+Alt+k");
 
         // Nested editor opens for "world"
-        const nestedEditor = page.locator(".revision-recursive-editor .cm-content").first();
+        const nestedEditor = page.locator(".revision-inline-editor .cm-content").first();
         await expect(nestedEditor).toBeVisible({ timeout: 8000 });
         await expect.poll(() => getCmText(nestedEditor)).toBe("world");
 
@@ -243,7 +243,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         }
 
         // Verify nested editor closed (revision deactivated)
-        await expect(page.locator(".revision-recursive-editor .cm-content")).toBeHidden({
+        await expect(page.locator(".revision-inline-editor .cm-content")).toBeHidden({
             timeout: 3000,
         });
 
@@ -251,7 +251,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await page.keyboard.press("ControlOrMeta+z");
 
         // Nested editor reopens with "EXTRA world" restored
-        const reopenedNestedEditor = page.locator(".revision-recursive-editor .cm-content").first();
+        const reopenedNestedEditor = page.locator(".revision-inline-editor .cm-content").first();
         await expect(reopenedNestedEditor).toBeVisible({ timeout: 5000 });
         await expect.poll(() => getCmText(reopenedNestedEditor)).toBe("EXTRA world");
     });
