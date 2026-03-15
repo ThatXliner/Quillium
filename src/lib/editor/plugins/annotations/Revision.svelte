@@ -41,6 +41,7 @@ import {
     translateAndDispatch,
     previewVersionText,
 } from "./nestedEditor";
+import { nestedSavedFields } from "$lib/editor/extensions";
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -283,12 +284,15 @@ function destroyRecursiveEditor() {
     // Before tearing down the nested editor, persist its annotation state
     // back into the active revision version so nested annotations are not lost.
     if (recursiveEditor && revision && revision.currentlySelected !== -1) {
-        const serializedState = recursiveEditor.state.toJSON();
-        updateRevisionVersionState(
-            revision.id,
-            revision.currentlySelected,
-            { annotationField: serializedState },
-            { addToHistory: false },
+        const blob = recursiveEditor.state.toJSON(nestedSavedFields) as VersionState;
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                revision.id,
+                revision.currentlySelected,
+                blob,
+                { addToHistory: false },
+            ),
         );
     }
     recursiveEditor?.destroy();
