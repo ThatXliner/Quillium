@@ -234,6 +234,13 @@ export function consumePendingNestedEditorSelection(
     return selection;
 }
 
+/** Clear all pending nested editor selections. Called on document switch
+ *  to prevent stale entries from being consumed by a new document whose
+ *  annotations happen to share the same IDs. */
+export function clearPendingNestedEditorSelections() {
+    pendingNestedEditorSelections.clear();
+}
+
 export function publishAnnotationUiEvent(event: AnnotationUiEventInput) {
     const payload = {
         ...event,

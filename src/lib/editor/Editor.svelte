@@ -36,6 +36,7 @@ import {
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
+    clearPendingNestedEditorSelections,
 } from "$lib/stores";
 import {
     initDb,
@@ -292,6 +293,10 @@ export async function reload() {
  */
 export async function loadDocument(id: string) {
     if (!$editorView) return;
+
+    // Clear stale pending selections from the previous document so they
+    // can't be consumed by a new document whose annotations share the same IDs.
+    clearPendingNestedEditorSelections();
 
     const draftId = await resolveActiveDraft(id);
     currentDraftId.set(draftId);
