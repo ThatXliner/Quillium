@@ -843,6 +843,12 @@ const nestedEditorBridge = ViewPlugin.fromClass(
     class {
         update(update: ViewUpdate) {
             if (!update.docChanged) return;
+            // Skip version-switch and other revision-internal operations.
+            // Those transactions destroy and recreate the nested editor; pushing
+            // the delta in first corrupts the flush that happens just before
+            // destroy (the nested editor ends up with the NEW version's text,
+            // which then gets written back into the OLD version's slot).
+            if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
 
             // Which revision ID (if any) originated this update. Scan all
             // transactions — a ViewUpdate can batch multiple transactions and
