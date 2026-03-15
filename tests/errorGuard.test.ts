@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { checkForSuspiciousChange, saveEmergencyBackup, readBackup, clearBackup } from "$lib/errorGuard";
+import { currentDocumentTitle, documentContent } from "$lib/stores";
 
 // ── localStorage mock ─────────────────────────────────────────────
 const store: Record<string, string> = {};
@@ -77,8 +78,21 @@ describe("checkForSuspiciousChange", () => {
 describe("saveEmergencyBackup", () => {
     it("does nothing when documentContent store is empty", () => {
         // Default store value is "" so backup should not be written
-        saveEmergencyBackup("test crash");
+        const result = saveEmergencyBackup("test crash");
+        expect(result).toBe(false);
         expect(readBackup("crash")).toBeNull();
+    });
+
+    it("writes a backup when documentContent store has text", () => {
+        documentContent.set("something important");
+        currentDocumentTitle.set("My doc");
+        const result = saveEmergencyBackup("test crash");
+        expect(result).toBe(true);
+        const backup = readBackup("crash");
+        expect(backup).not.toBeNull();
+        expect(backup!.documentText).toBe("something important");
+        expect(backup!.documentTitle).toBe("My doc");
+        expect(backup!.reason).toBe("test crash");
     });
 });
 

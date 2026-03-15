@@ -52,11 +52,12 @@ const SUSPICIOUS_DELETION_RATIO = 0.2;
  */
 const SUSPICIOUS_DELETION_MIN_CHARS = 100;
 
-function writeBackup(key: string, entry: BackupEntry): void {
+function writeBackup(key: string, entry: BackupEntry): boolean {
     try {
         localStorage.setItem(key, JSON.stringify(entry));
+        return true;
     } catch {
-        // localStorage full or not available — silently ignore
+        return false; // localStorage full or not available
     }
 }
 
@@ -95,13 +96,12 @@ export function checkForSuspiciousChange(oldText: string, newText: string): bool
     if (deleted / oldText.length < SUSPICIOUS_DELETION_RATIO) return false;
 
     const title = get(currentDocumentTitle);
-    writeBackup(AUTO_BACKUP_KEY, {
+    return writeBackup(AUTO_BACKUP_KEY, {
         timestamp: Date.now(),
         documentTitle: title,
         documentText: oldText,
         reason: `Large deletion detected: ${deleted} characters removed (${Math.round((deleted / oldText.length) * 100)}% of document)`,
     });
-    return true;
 }
 
 /**
@@ -109,13 +109,14 @@ export function checkForSuspiciousChange(oldText: string, newText: string): bool
  * Call this from crash handlers (global error, unhandledrejection, etc.).
  *
  * @param reason - short description of why the backup was triggered
+ * @returns true if the backup was written successfully
  */
-export function saveEmergencyBackup(reason: string): void {
+export function saveEmergencyBackup(reason: string): boolean {
     const text = get(documentContent);
     const title = get(currentDocumentTitle);
-    if (!text) return; // nothing to back up
+    if (!text) return false; // nothing to back up
 
-    writeBackup(CRASH_BACKUP_KEY, {
+    return writeBackup(CRASH_BACKUP_KEY, {
         timestamp: Date.now(),
         documentTitle: title,
         documentText: text,

@@ -20,7 +20,7 @@ import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { get } from "svelte/store";
 import { currentDocumentId, currentDraftId, currentDocumentTitle, saveStatus, errorBanner } from "$lib/stores";
 import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
-import { checkForSuspiciousChange } from "$lib/errorGuard";
+import { checkForSuspiciousChange, readBackup } from "$lib/errorGuard";
 import {
     addAnnotation,
     removeAnnotation,
@@ -224,13 +224,16 @@ async function doAppend(update: ViewUpdate) {
             const newText = update.state.doc.toString();
             const suspicious = checkForSuspiciousChange(oldText, newText);
             if (suspicious) {
-                setTimeout(() => {
-                    errorBanner.set({
-                        message: "A large deletion was detected. A backup was saved in case this was unintentional.",
-                        hasBackup: true,
-                        backupType: "auto",
-                    });
-                }, 0);
+                const backup = readBackup("auto");
+                if (backup) {
+                    setTimeout(() => {
+                        errorBanner.set({
+                            message: "A large deletion was detected. A backup was saved in case this was unintentional.",
+                            hasBackup: true,
+                            backupType: "auto",
+                        });
+                    }, 0);
+                }
             }
         }
     }

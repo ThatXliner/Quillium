@@ -10,7 +10,7 @@
 import "../app.css";
 import { onNavigate } from "$app/navigation";
 import posthog from "$lib/posthog";
-import { saveEmergencyBackup } from "$lib/errorGuard";
+import { saveEmergencyBackup, readBackup } from "$lib/errorGuard";
 import { errorBanner } from "$lib/stores";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
 
@@ -34,9 +34,12 @@ onNavigate((navigation) => {
 <svelte:boundary
     onerror={(error) => {
         saveEmergencyBackup(`Svelte component error: ${error instanceof Error ? error.message : String(error)}`);
+        const hasCrashBackup = Boolean(readBackup("crash"));
         errorBanner.set({
-            message: "Something went wrong. Your work has been backed up.",
-            hasBackup: true,
+            message: hasCrashBackup
+                ? "Something went wrong. Your work has been backed up."
+                : "Something went wrong.",
+            hasBackup: hasCrashBackup,
             backupType: "crash",
         });
         posthog.captureException(error instanceof Error ? error : new Error(String(error)));
