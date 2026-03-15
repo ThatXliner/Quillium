@@ -4,7 +4,7 @@
  * Nested revision editors are direct viewports onto the parent document's
  * revision range. Edits in the nested editor are translated to parent
  * coordinates and dispatched to the parent via translateAndDispatch(),
- * tagged with nestedEditorEdit so Phase 3 skips re-syncing the version.
+ * tagged with nestedEditorEdit; Phase 3 still runs to keep version.doc in sync.
  *
  * Undo/redo: the parent history records nested edits as plain doc changes.
  * Mod-z in the nested editor delegates to undo(parentView).

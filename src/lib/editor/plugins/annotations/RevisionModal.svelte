@@ -263,7 +263,6 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
 
 // Rebuild editor when our own stack entry gets a fresh rebuildToken
 // (set by popToAndRebuild when a child level switches our version).
-// destroyEditor() flushes annotations before rebuilding.
 let lastRebuildToken = 0;
 $effect(() => {
     const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
@@ -295,7 +294,6 @@ const revision = $derived(
 let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
-let mountedVersionId = -1;
 let lastDispatchedDoc = "";
 
 // Manually-synced mirrors of the nested editor's CodeMirror state.
@@ -326,7 +324,6 @@ function createEditor(version: VersionState) {
         modalActiveAnnotation = getActiveAnnotation(editor.state);
     }, view, revisionId);
     editor = new EditorView({ state, parent: editorHost });
-    mountedVersionId = (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.currentlySelected ?? -1;
     lastDispatchedDoc = editor.state.doc.toString();
     modalAnnotations = editor.state.field(annotationField);
     modalActiveAnnotation = getActiveAnnotation(editor.state);
@@ -346,7 +343,6 @@ function destroyEditor() {
     editor = undefined;
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
-    mountedVersionId = -1;
 }
 
 function close() {

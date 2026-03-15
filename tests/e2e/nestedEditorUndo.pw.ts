@@ -55,51 +55,6 @@ async function installTauriMock(page: Page) {
 }
 
 /**
- * Set up the editor with text before the revision, the revision text, and text after.
- * Creates a revision over `revisionText` and waits for the nested editor to auto-open.
- *
- * Layout: `prefix<TAB>revisionText<TAB>suffix`
- * The prefix/suffix give us text outside the revision to click on.
- *
- * Returns the nested editor's .cm-content locator.
- */
-async function setupWithRevision(
-    page: Page,
-    revisionText: string,
-    { prefix = "PREFIX ", suffix = " SUFFIX" }: { prefix?: string; suffix?: string } = {},
-) {
-    const editor = page.locator("#editor-document .cm-content");
-    await editor.click();
-    await page.keyboard.press("ControlOrMeta+a");
-    // Type prefix, then revision text (will be selected), then suffix
-    await page.keyboard.type(prefix + revisionText);
-
-    // Select just the revisionText portion (from end, go back suffix+revisionText length, then select revisionText)
-    await page.keyboard.press("End");
-    // Select revisionText characters (going backward from after revision text)
-    // We need to select exactly revisionText.length chars
-    for (let i = 0; i < revisionText.length; i++) await page.keyboard.press("Shift+ArrowLeft");
-
-    // Create revision over selected text
-    await page.keyboard.press("ControlOrMeta+Alt+k");
-
-    // Type suffix after revision (cursor should be at end of revision after creation)
-    await page.keyboard.press("End");
-    await page.keyboard.type(suffix);
-
-    // Click back on the revision text to make it active and open nested editor
-    // The revision card shows in the annotation panel; click somewhere to position cursor in revision
-    // For simplicity, press Home then move right past prefix to land in revision
-    await editor.click();
-    await page.keyboard.press("Home");
-    for (let i = 0; i < prefix.length; i++) await page.keyboard.press("ArrowRight");
-
-    const nestedEditor = page.locator(".revision-recursive-editor .cm-content").first();
-    await expect(nestedEditor).toBeVisible({ timeout: 8000 });
-    return nestedEditor;
-}
-
-/**
  * Simple version: create revision over all text (no prefix/suffix).
  * Used for tests that don't need to click outside the revision.
  */
