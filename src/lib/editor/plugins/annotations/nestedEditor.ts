@@ -34,7 +34,7 @@
  * This is the only time updateRevisionVersionState is called.
  */
 
-import { EditorState, Transaction } from "@codemirror/state";
+import { EditorState, Prec, Transaction } from "@codemirror/state";
 import { undo, redo } from "@codemirror/commands";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
@@ -82,7 +82,7 @@ export function createNestedEditorState(
  * annotationField).
  */
 export function makeParentUndoKeymap(parentView: EditorView, revisionId: number) {
-    return keymap.of([
+    return Prec.highest(keymap.of([
         {
             key: "Mod-z",
             run() {
@@ -109,7 +109,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
             },
             preventDefault: true,
         },
-    ]);
+    ]));
 }
 
 /**
