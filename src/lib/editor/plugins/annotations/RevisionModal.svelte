@@ -410,7 +410,7 @@ $effect(() => {
     }
     if (!editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
-    if (!rev || rev._type !== "revision" || !rev.versions?.[rev.activeVersionIndex]) return;
+    if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex]) return;
     const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
     if (externalDoc === lastDispatchedDoc) return;
     const current = editor.state.doc.toString();
