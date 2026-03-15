@@ -30,6 +30,7 @@ import {
     deleteRevisionVersion,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
+    updateRevisionVersionState,
     type Annotation,
     type Thread as ThreadType,
 } from ".";
@@ -275,6 +276,17 @@ function createRecursiveEditor(version: VersionState) {
 }
 
 function destroyRecursiveEditor() {
+    // Before tearing down the nested editor, persist its annotation state
+    // back into the active revision version so nested annotations are not lost.
+    if (recursiveEditor && revision && revision.currentlySelected !== -1) {
+        const serializedState = recursiveEditor.state.toJSON();
+        updateRevisionVersionState(
+            revision.id,
+            revision.currentlySelected,
+            { annotationField: serializedState },
+            { addToHistory: false },
+        );
+    }
     recursiveEditor?.destroy();
     recursiveEditor = undefined;
     activeAnnotation = undefined;
