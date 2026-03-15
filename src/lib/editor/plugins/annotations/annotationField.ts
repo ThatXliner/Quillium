@@ -158,8 +158,6 @@ export const revisionInternalEdit = Annotation.define<boolean>();
 // Marks a parent-editor transaction that was originated by a nested editor
 // acting as a direct viewport. Set to the revision ID whose nested editor
 // dispatched the change. Consumers:
-//   - Phase 3 (syncRevisionDocsWithDocument): skips syncing this revision,
-//     since the nested editor's text is already correct.
 //   - Parent→nested ViewPlugin (nestedEditorBridge): skips re-dispatching
 //     this change back to the nested editor (it caused it, doesn't need it).
 // Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
