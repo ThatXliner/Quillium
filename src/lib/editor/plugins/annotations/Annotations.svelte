@@ -183,11 +183,13 @@ const positionedAnnotations = $derived(() => {
 });
 
 const annotationElements: { [id: number]: HTMLDivElement | undefined } = {};
+let annotationElementsVersion = $state(0);
 
 const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
     let currentId = id;
     if (currentId !== undefined) {
         annotationElements[currentId] = node;
+        annotationElementsVersion++;
     }
     return {
         update(nextId) {
@@ -198,10 +200,12 @@ const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
             if (currentId !== undefined) {
                 annotationElements[currentId] = node;
             }
+            annotationElementsVersion++;
         },
         destroy() {
             if (currentId !== undefined && annotationElements[currentId] === node) {
                 delete annotationElements[currentId];
+                annotationElementsVersion++;
             }
         },
     };
@@ -222,6 +226,7 @@ $effect(() => {
 $effect(() => {
     if (!isFloating) return;
     void sortedAnnotations; // track additions/removals
+    void annotationElementsVersion; // re-observe when elements register
     resizeObserver?.disconnect();
     resizeObserver = new ResizeObserver(() => debouncedUpdatePositions());
     tick().then(() => {
@@ -379,8 +384,11 @@ let lastPendingAlertToken = 0;
 
 // React to pending-comment events: scroll the pending card
 // into view, then play a shake + red-outline-fade animation on it.
+// Subscribes to annotationElementsVersion so it retries if the
+// element hasn't been registered yet when the event first fires.
 $effect(() => {
     if (!isFloating) return;
+    void annotationElementsVersion; // retry when elements register
     const event = $annotationUiEvent;
     if (
         !event ||
@@ -389,10 +397,10 @@ $effect(() => {
         !pendingComment
     )
         return;
-    lastPendingAlertToken = event.token;
 
     const el = annotationElements[pendingComment.id];
     if (!el) return;
+    lastPendingAlertToken = event.token;
 
     // Scroll the editor to show the pending comment's highlighted text
     if (resolvedView) {
