@@ -43,7 +43,7 @@ function loadSettings(): AppSettings {
         // Migrate legacy alwaysShowTitle boolean
         if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
             parsed.titleVisibility = parsed.alwaysShowTitle ? "always" : "hover";
-            delete parsed.alwaysShowTitle;
+            parsed.alwaysShowTitle = undefined;
         }
         return { ...DEFAULTS, ...parsed };
     } catch {
