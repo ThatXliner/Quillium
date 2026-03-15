@@ -157,12 +157,13 @@ export const revisionInternalEdit = Annotation.define<boolean>();
 
 // Marks a parent-editor transaction that was originated by a nested editor
 // acting as a direct viewport. Set to the revision ID whose nested editor
-// dispatched the change. Consumers:
-//   - Parent→nested ViewPlugin (nestedEditorBridge): skips re-dispatching
-//     this change back to the nested editor (it caused it, doesn't need it).
-//   - annotationField Phase 3: still runs (intentionally) to sync
-//     versions[selected].doc from the parent doc slice so version switching
-//     shows current content.
+// dispatched the change.
+// Consumers (non-exhaustive):
+//   - annotationField Phase 3: uses this to sync versions[selected].doc from
+//     the parent doc slice so version switching shows current content.
+//   - Plugins / integrations that gate behavior on whether a change
+//     originated from a nested editor (e.g. to avoid feedback loops or to
+//     skip nested-only logic when replaying parent-originated transactions).
 // Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
 // not stored in history.
 export const nestedEditorEdit = Annotation.define<number>();
