@@ -25,7 +25,6 @@ import {
     type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { nestedSavedFields } from "$lib/editor/extensions";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
