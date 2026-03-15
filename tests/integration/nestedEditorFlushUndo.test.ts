@@ -113,6 +113,62 @@ afterEach(() => {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe("no-flush destroy then undo (inline editor behavior)", () => {
+    it("undo restores deletion at correct position without flush", () => {
+        // Simulates: user deletes inside nested editor, clicks away
+        // (editor destroyed without flush), then presses Cmd+Z.
+        const revId = addRevision(view, 0, 5, "world");
+
+        // Delete "wor" at [0,3] → "ld"
+        simulateNestedEdit(view, revId, 0, 3, "");
+        expect(view.state.doc.toString()).toBe("ld");
+        expect(getVersionDoc(view, revId)).toBe("ld");
+
+        // Destroy nested editor without flushing (inline editor behavior)
+        // — no simulateFlush call —
+
+        // Undo — "wor" should be restored at position 0, not appended
+        undo(view);
+        expect(view.state.doc.toString()).toBe("world");
+        expect(getRevisionSlice(view, revId)).toBe("world");
+    });
+
+    it("undo restores mid-word deletion at correct offset", () => {
+        // "hello world" with revision over full text
+        view.destroy();
+        view = createParentView("hello world");
+        const revId = addRevision(view, 0, 11, "hello world");
+
+        // Delete " world" at [5,11] → "hello"
+        simulateNestedEdit(view, revId, 5, 11, "");
+        expect(view.state.doc.toString()).toBe("hello");
+
+        // No flush (inline editor closes)
+
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello world");
+        expect(getRevisionSlice(view, revId)).toBe("hello world");
+    });
+
+    it("undo after insertion then deletion without flush", () => {
+        const revId = addRevision(view, 0, 5, "world");
+
+        // Insert "EXTRA " at start → "EXTRA world"
+        simulateNestedEdit(view, revId, 0, 0, "EXTRA ");
+        expect(view.state.doc.toString()).toBe("EXTRA world");
+
+        // Delete "EXTRA " → "world"
+        simulateNestedEdit(view, revId, 0, 6, "");
+        expect(view.state.doc.toString()).toBe("world");
+
+        // No flush — just undo
+        undo(view);
+        expect(view.state.doc.toString()).toBe("EXTRA world");
+        expect(getVersionDoc(view, revId)).toBe("EXTRA world");
+        expect(getRevisionSlice(view, revId)).toBe("EXTRA world");
+    });
+});
+
 describe("flush then undo", () => {
     it("undo of nested deletion after flush restores correct text", () => {
         // Revision over "world" at [0,5]

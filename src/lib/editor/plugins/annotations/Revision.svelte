@@ -31,7 +31,6 @@ import {
     deleteRevisionVersion,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
-    updateRevisionVersionState,
     type Annotation,
     type Thread as ThreadType,
 } from ".";
@@ -41,7 +40,6 @@ import {
     translateAndDispatch,
     previewVersionText,
 } from "./nestedEditor";
-import { nestedSavedFields } from "$lib/editor/extensions";
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -281,20 +279,13 @@ function createRecursiveEditor(version: VersionState) {
 }
 
 function destroyRecursiveEditor() {
-    // Before tearing down the nested editor, persist its annotation state
-    // back into the active revision version so nested annotations are not lost.
-    if (recursiveEditor && revision && revision.currentlySelected !== -1) {
-        const blob = recursiveEditor.state.toJSON(nestedSavedFields) as VersionState;
-        view.dispatch(
-            updateRevisionVersionState(
-                view.state,
-                revision.id,
-                revision.currentlySelected,
-                blob,
-                { addToHistory: false },
-            ),
-        );
-    }
+    // NOTE: we intentionally do NOT flush nested annotation state here.
+    // updateRevisionVersionState replaces the doc range, which creates a
+    // revisionInternalEdit transaction that corrupts undo positions when
+    // the user immediately presses Cmd+Z after clicking away from the
+    // revision. The parent doc is the source of truth (Phase 3 keeps
+    // version.doc in sync), so the doc content is already correct.
+    // Nested annotation persistence is handled by the modal editor.
     recursiveEditor?.destroy();
     recursiveEditor = undefined;
     activeAnnotation = undefined;
