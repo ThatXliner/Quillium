@@ -353,11 +353,11 @@ Nested editors remain intentional viewports that never own their document. When 
 
 ### Reactive downsync for inline/modal editors
 
-For the inline and modal editors specifically, we avoid relying on the module-level registry and `nestedEditorBridge` ViewPlugin and instead watch the parent-provided version text directly. Inline editors observe `activeVersion?.doc` and the modal watches `$annotationsStore`; both skip re-patching when the nested editor itself authored the change (`lastDispatchedDoc`). When a truly external update occurs (undo, redo, or another cursored write), the watcher replaces the nested editor’s entire buffer with the new text via a single `EditorView.dispatch({ changes: { from: 0, to: current.length, insert: externalDoc } })`. That keeps the editor up to date without destroying the view or rebuilding the extension stack—only the contents are rewritten. The only time we tear down and recreate the nested editor is on version switches or when the modal closes.
+For the inline and modal editors, we watch the parent-provided version text directly via Svelte reactivity. Inline editors observe `activeVersion?.doc` and the modal watches `$annotationsStore`; both skip re-patching when the nested editor itself authored the change (`lastDispatchedDoc`). When a truly external update occurs (undo, redo, or another cursored write), the watcher replaces the nested editor’s entire buffer with the new text via a single `EditorView.dispatch({ changes: { from: 0, to: current.length, insert: externalDoc } })`. That keeps the editor up to date without destroying the view or rebuilding the extension stack—only the contents are rewritten. The only time we tear down and recreate the nested editor is on version switches or when the modal closes.
 
 Replacing the whole buffer is the tradeoff we accepted for this reactive, bridge-less path: the cursor/selection and scroll position do not survive the rewrite, so the nested editor appears to jump back to the top. There is no dedicated cursor-persistence mechanism yet, and documenting that limitation in this section keeps intentions clear for future follow-ups.
 
-`lastDispatchedDoc` is the guard that prevents a feedback loop. Translate-and-dispatch updates set it to the nested editor’s current text, so the reactive watcher ignores the transaction that originated from the nested editor itself. Everything else is treated as an external edit that needs a full replace, which is why the watcher also lives outside CodeMirror (in Svelte `$effect`s) rather than relying on an in-editor bridge in these inline/modal flows. The legacy module-level registry and `nestedEditorBridge` still exist for other nested-editor integrations described later in this document.
+`lastDispatchedDoc` is the guard that prevents a feedback loop. Translate-and-dispatch updates set it to the nested editor’s current text, so the reactive watcher ignores the transaction that originated from the nested editor itself. Everything else is treated as an external edit that needs a full replace, which is why the watcher lives outside CodeMirror (in Svelte `$effect`s) rather than inside a CodeMirror ViewPlugin.
 
 ### Inline editor
 
@@ -624,13 +624,12 @@ User types in nested editor
     Phase 1: revision selection remapped (no-op for inserts inside range)
     Phase 2: no revision effects
     Phase 3: nestedEditorEdit is not added to revisionsWithExplicitEffect → annotationField runs and updates versions[currentlySelected].doc
-→ nestedEditorBridge fires: originRevId === entry.revisionId → skipped for this editor
 
 On undo (Mod-z in nested editor delegates to undo(parentView)):
 → Parent undoes doc change → revision range text reverts
 → Phase 3 runs on inverted transaction → version.doc syncs to reverted text
-→ nestedEditorBridge detects change at revision range (no nestedEditorEdit tag)
-    → translates delta to nested coords → dispatches to nested editor directly
+→ Svelte $effect in Revision.svelte / RevisionModal.svelte detects activeVersion.doc changed
+    → patches nested editor buffer (full replace, guarded by syncingFromParent)
     → nested editor shows reverted text (no destroy/recreate)
 ```
 
@@ -644,12 +643,12 @@ User types inside an active revision range (atomicRevisions off)
 → Phase 3: syncRevisionDocsWithDocument runs for this revision
     - reads doc.slice(revision.from, revision.to)
     - writes into versions[currentlySelected].doc
-→ nestedEditorBridge fires: no nestedEditorEdit tag → bridge dispatches delta to nested editor
+→ Svelte $effect detects activeVersion.doc changed → patches nested editor buffer
 
 On undo:
 → Doc change inverted → text reverts
 → Phase 3 runs again on inverted transaction → version.doc syncs back to reverted text
-→ nestedEditorBridge dispatches inverted delta to nested editor
+→ Svelte $effect patches nested editor with reverted text
 ```
 
 ---
