@@ -189,6 +189,11 @@ export const bridgeDispatch = Annotation.define<true>();
 // undo entry (since the deletion's undo already carries the correct
 // _restoreAnnotation effects for every collapsed revision).
 export const _revisionCleanup = Annotation.define<boolean>();
+// Marks a flushAnnotationsToParent dispatch (addToHistory: false).
+// invertedAnnotationFieldEffects returns [] for these so the inverse
+// _updateRevisionVersionState effect is not merged into the adjacent
+// undo entry and cannot overwrite the doc back to the pre-undo state.
+export const _revisionFlush = Annotation.define<boolean>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 // There is no "updateRevisionVersion" since we sniff that from document changes
@@ -744,6 +749,12 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     // annotations on Cmd+Z. The deletion already stores _restoreAnnotation
     // effects for every collapsed revision, so nothing more is needed.
     if (transaction.annotation(_revisionCleanup)) return [];
+
+    // Skip flushAnnotationsToParent dispatches. These are addToHistory:false
+    // bookkeeping writes — if we generate an inverse _updateRevisionVersionState
+    // effect it gets merged into the adjacent undo entry and overwrites the
+    // version doc back to the pre-undo state, fighting Phase 3.
+    if (transaction.annotation(_revisionFlush)) return [];
 
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
     // when text they were anchored to was deleted. These have no explicit effect,

@@ -45,6 +45,7 @@ import {
     _nestedEditRevision,
     updateRevisionVersionState,
     setActiveRevisionVersion,
+    _revisionFlush,
 } from "./annotationField";
 import { publishAnnotationUiEvent } from "$lib/stores";
 import { versionText, type VersionState, isAnnotationOfType } from "./models";
@@ -231,20 +232,16 @@ export function flushAnnotationsToParent(
         | undefined;
     if (!rev) return;
     const existingLabel = rev.versions[versionId]?.label;
-    // Include the current doc text so that createNestedEditorState can restore it
-    // via EditorState.fromJSON. Without this, fromJSON would produce an empty document
-    // because EditorState.toJSON(nestedSavedFields) only serialises the annotationField
-    // state field, not the document itself.
-    const blobWithLabel: VersionState = {
-        ...blob,
-        doc: nestedEditor.state.doc.toString(),
-        ...(existingLabel !== undefined ? { label: existingLabel } : {}),
-    };
-    parentView.dispatch(
-        updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel, {
-            addToHistory: false,
-        }),
-    );
+    const blobWithLabel: VersionState = existingLabel !== undefined
+        ? { ...blob, label: existingLabel }
+        : blob;
+    const spec = updateRevisionVersionState(parentView.state, revisionId, versionId, blobWithLabel, {
+        addToHistory: false,
+    });
+    parentView.dispatch({
+        ...spec,
+        annotations: [...(spec.annotations ?? []), _revisionFlush.of(true)],
+    });
 }
 
 /**
