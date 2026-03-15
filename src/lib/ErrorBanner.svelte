@@ -58,7 +58,9 @@ function reportIssue() {
                 {$errorBanner.message}
             </p>
             <p class="text-xs text-amber-700 mt-0.5">
-                Your writing has been backed up.
+                {#if $errorBanner.hasBackup}
+                    Your writing has been backed up.
+                {/if}
                 <button
                     onclick={reportIssue}
                     class="underline hover:text-amber-900 transition-colors"
