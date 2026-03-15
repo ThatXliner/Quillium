@@ -670,7 +670,7 @@ User types in nested editor
 → Parent transaction:
     Phase 1: revision selection remapped (no-op for inserts inside range)
     Phase 2: no revision effects
-    Phase 3: nestedEditorEdit adds revisionId to revisionsWithExplicitEffect → skipped
+    Phase 3: nestedEditorEdit is not added to revisionsWithExplicitEffect → annotationField runs and updates versions[currentlySelected].doc
 → nestedEditorBridge fires: originRevId === entry.revisionId → skipped for this editor
 
 On undo (Mod-z in nested editor delegates to undo(parentView)):
