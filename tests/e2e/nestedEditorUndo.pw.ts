@@ -25,12 +25,34 @@ async function installTauriMock(page: Page) {
         (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
             invoke: async (cmd: string, args: unknown) => {
                 invokeCalls.push({ cmd, args });
-                if (cmd === "cmd_migrate_from_state_json") return { migrated: false, documentId: null };
-                if (cmd === "cmd_list_documents") return [{ id: "doc-1", title: "Untitled", createdAt: 0, updatedAt: 0, wordCount: 0, previewText: "", tags: "[]" }];
+                if (cmd === "cmd_migrate_from_state_json")
+                    return { migrated: false, documentId: null };
+                if (cmd === "cmd_list_documents")
+                    return [
+                        {
+                            id: "doc-1",
+                            title: "Untitled",
+                            createdAt: 0,
+                            updatedAt: 0,
+                            wordCount: 0,
+                            previewText: "",
+                            tags: "[]",
+                        },
+                    ];
                 if (cmd === "cmd_create_document") return "doc-1";
                 if (cmd === "cmd_create_draft") return "draft-1";
-                if (cmd === "cmd_list_drafts") return [{ id: "draft-1", documentId: "doc-1", label: "Draft", createdAt: 0, isActive: true }];
-                if (cmd === "cmd_load_document_state") return { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
+                if (cmd === "cmd_list_drafts")
+                    return [
+                        {
+                            id: "draft-1",
+                            documentId: "doc-1",
+                            label: "Draft",
+                            createdAt: 0,
+                            isActive: true,
+                        },
+                    ];
+                if (cmd === "cmd_load_document_state")
+                    return { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
                 if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
                 if (cmd === "cmd_create_snapshot") return null;
                 if (cmd === "cmd_update_document_meta") return null;
@@ -44,7 +66,9 @@ async function installTauriMock(page: Page) {
                 callbacks.set(id, callback);
                 return id;
             },
-            unregisterCallback: (id: number) => { callbacks.delete(id); },
+            unregisterCallback: (id: number) => {
+                callbacks.delete(id);
+            },
             convertFileSrc: (filePath: string) => filePath,
         };
 
@@ -76,7 +100,9 @@ async function getCmText(locator: ReturnType<Page["locator"]>): Promise<string> 
     return locator.evaluate((el) => {
         const lines = el.querySelectorAll(".cm-line");
         if (lines.length > 0) {
-            return Array.from(lines).map((l) => l.textContent ?? "").join("\n");
+            return Array.from(lines)
+                .map((l) => l.textContent ?? "")
+                .join("\n");
         }
         return el.textContent ?? "";
     });
@@ -172,10 +198,12 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
     });
 
-    test("undo works when cursor moves OUT of revision (nested editor closes) then Cmd+Z", async ({ page }) => {
+    test("undo works when cursor moves OUT of revision (nested editor closes) then Cmd+Z", async ({
+        page,
+    }) => {
         // This is the exact reported bug scenario:
         // After editing in nested editor, user clicks OUTSIDE the revision in the main editor
-        // (isActive becomes false → nested editor closes/destroys → flushAnnotationsToParent fires)
+        // (isActive becomes false → nested editor closes/destroys)
         // Then presses Cmd+Z from the main editor.
         //
         // We create "hello world" in the editor then make only "world" a revision,
@@ -215,7 +243,9 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         }
 
         // Verify nested editor closed (revision deactivated)
-        await expect(page.locator(".revision-recursive-editor .cm-content")).toBeHidden({ timeout: 3000 });
+        await expect(page.locator(".revision-recursive-editor .cm-content")).toBeHidden({
+            timeout: 3000,
+        });
 
         // Press Cmd+Z — should undo the deletion of "EXTRA "
         await page.keyboard.press("ControlOrMeta+z");
@@ -226,7 +256,9 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await expect.poll(() => getCmText(reopenedNestedEditor)).toBe("EXTRA world");
     });
 
-    test("undo works correctly when nested editor has focus (delegates to parent)", async ({ page }) => {
+    test("undo works correctly when nested editor has focus (delegates to parent)", async ({
+        page,
+    }) => {
         // Revision over "hello world"
         const nestedEditor = await createRevisionAndOpenNestedEditor(page, "hello world");
 

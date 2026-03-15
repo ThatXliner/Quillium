@@ -40,7 +40,11 @@ function createParentView(doc: string) {
 
 function addRevision(view: EditorView, from: number, to: number, doc: string): number {
     const annotation = {
-        ...createNewAnnotation(view.state.field(annotationField), EditorSelection.single(from, to), "revision"),
+        ...createNewAnnotation(
+            view.state.field(annotationField),
+            EditorSelection.single(from, to),
+            "revision",
+        ),
         currentlySelected: 0,
         versions: [{ doc }],
     };
@@ -79,8 +83,8 @@ function simulateNestedEdit(
 }
 
 /**
- * Simulate flushAnnotationsToParent: serialize the nested editor state
- * and write it back. We replicate what flushAnnotationsToParent does.
+ * Simulate the modal editor's destroyEditor flush: serialize the nested
+ * editor state and write it back via updateRevisionVersionState.
  * The nested editor doc text is passed explicitly (since we don't have a
  * real EditorView for the nested editor in this test).
  */
@@ -184,7 +188,7 @@ describe("flush then undo", () => {
         expect(view.state.doc.toString()).toBe("world");
         expect(getVersionDoc(view, revId)).toBe("world");
 
-        // Simulate flushAnnotationsToParent (cursor leaving revision)
+        // Simulate modal destroyEditor flush (cursor leaving revision)
         simulateFlush(view, revId, "world");
         // After flush, version.doc should still be "world"
         expect(getVersionDoc(view, revId)).toBe("world");

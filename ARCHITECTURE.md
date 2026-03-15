@@ -523,22 +523,13 @@ Each event has a `type` field that determines its shape:
 | Version labels | **Snapshot-only** |
 | Thread messages | Per-action — captured as `annotation_update` events |
 
-### Known gap: non-active revision version state is snapshot-only
+### Revision version state persistence
 
 **Relevant files:**
 - `src/lib/editor/listeners.ts` — `extractAnnotationEvents()`
 - `src-tauri/src/db/events.rs` — `SNAPSHOT_EVENT_THRESHOLD = 50`, `SNAPSHOT_TIME_THRESHOLD_SECS = 120`
 
-`extractAnnotationEvents` only writes three effect types into the event log: `addAnnotation`, `removeAnnotation`, and `updateThread`. The revision-specific effects — `_updateRevisionVersionState`, `_addVersionToRevision`, `_deleteVersionFromRevision`, `_updateActiveRevisionVersion`, `_updateRevisionVersionLabel` — are **not recorded as events**.
-
-This means that between snapshots (up to 50 keystrokes or 2 minutes), a crash can lose:
-
-- Text of any revision version that was **not** `currentlySelected` when the crash occurred (the active version's text is safe via the parent `doc_change` event log).
-- Which version is `currentlySelected`.
-- Custom version labels.
-- Newly created or deleted versions (structural changes go through the revision-specific effects path, not `addAnnotation`/`removeAnnotation`).
-
-**Fix direction (future PR):** Extend `extractAnnotationEvents` to emit the revision-specific effects as event log entries. On replay, these would be re-applied to the `annotationField` before the remaining `doc_change` events are processed. Alternatively, lower `SNAPSHOT_EVENT_THRESHOLD` to shrink the crash window at the cost of more frequent snapshot writes.
+`extractAnnotationEvents` writes `addAnnotation`, `removeAnnotation`, and `updateThread` as explicit event log entries. Revision-specific internal effects (`_updateRevisionVersionState`, `_addVersionToRevision`, etc.) are captured by a pre/post diff on `annotationField`: any annotation whose identity changed between `tr.startState` and `tr.state` (and wasn't already handled by an explicit effect) gets an `annotation_update` event emitted. This ensures version switches, label edits, and structural changes are persisted per-action without needing to export internal effects.
 
 ---
 
@@ -665,7 +656,7 @@ Comments and suggestions are removed when their text is deleted. Explicitly dele
 
 ### Nested editors are full `EditorView` instances
 
-Each nested editor has its own annotations and keybindings, but **no local history** — undo/redo delegates to the parent via `makeParentUndoKeymap`. Writers can annotate within a revision version (infinite nesting), and nested annotation state (sub-annotations) is preserved across sessions in `VersionState` blobs via `flushAnnotationsToParent`.
+Each nested editor has its own annotations and keybindings, but **no local history** — undo/redo delegates to the parent via `makeParentUndoKeymap`. Writers can annotate within a revision version (infinite nesting), and nested annotation state (sub-annotations) is preserved across sessions in `VersionState` blobs via `editor.state.toJSON(nestedSavedFields)` + `updateRevisionVersionState` (called by the modal editor's `destroyEditor`).
 
 ### Direct editing of active revisions is blocked
 
