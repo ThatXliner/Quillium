@@ -54,6 +54,7 @@ import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { createResizer } from "$lib/actions/resize";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { Minimize2Icon } from "lucide-svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -76,6 +77,14 @@ const annotationPanelResizer = createResizer({
         persistSettings();
     },
 });
+
+const isCustomPanelWidth = $derived(appSettings.annotationPanelWidth !== null);
+
+function resetPanelWidth() {
+    panelWidth = DEFAULT_PANEL_WIDTH;
+    appSettings.annotationPanelWidth = null;
+    persistSettings();
+}
 
 const {
     view = undefined,
@@ -609,6 +618,16 @@ $effect(() => {
             style="left: {getAnnotationLeft()}px;"
             onmousedown={(e) => annotationPanelResizer.startResize(e)}
         ></div>
+        <button
+            onclick={resetPanelWidth}
+            aria-label="Reset annotation panel to default width"
+            title="Reset panel width"
+            class="annotation-panel-reset-btn"
+            style="left: {getAnnotationLeft() + 8}px;"
+            class:is-custom={isCustomPanelWidth}
+        >
+            <Minimize2Icon size={12} />
+        </button>
     {:else}
         <div class="annotation-inline-list">
             {#each sortedAnnotations as c}
@@ -788,5 +807,36 @@ $effect(() => {
 
     .annotation-panel-resize-handle:hover::after {
         background-color: rgba(0, 0, 0, 0.18);
+    }
+
+    .annotation-panel-reset-btn {
+        position: fixed;
+        top: 12px;
+        z-index: 61;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 9999px;
+        border: none;
+        background: transparent;
+        color: rgba(0, 0, 0, 0.2);
+        cursor: pointer;
+        transition: color 200ms ease, background-color 200ms ease;
+        pointer-events: auto;
+    }
+
+    .annotation-panel-reset-btn:hover {
+        color: rgba(0, 0, 0, 0.5);
+        background-color: rgba(0, 0, 0, 0.06);
+    }
+
+    .annotation-panel-reset-btn.is-custom {
+        color: rgba(0, 0, 0, 0.4);
+    }
+
+    .annotation-panel-reset-btn.is-custom:hover {
+        color: rgba(0, 0, 0, 0.65);
     }
 </style>

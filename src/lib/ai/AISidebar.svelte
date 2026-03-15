@@ -389,16 +389,17 @@ function handleKeydown(e: KeyboardEvent) {
             <span class="flex-1 text-xs font-semibold text-black/50 truncate">
                 {action ? panelTitles[action] : ""}
             </span>
-            {#if isCustomSize}
-                <button
-                    onclick={resetSize}
-                    aria-label="Reset to default size"
-                    title="Reset size"
-                    class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
-                >
-                    <Minimize2Icon size={14} />
-                </button>
-            {/if}
+            <button
+                onclick={resetSize}
+                aria-label="Reset to default size"
+                title="Reset size"
+                class="p-1.5 rounded-full transition-colors shrink-0
+                    {isCustomSize
+                        ? 'text-black/50 hover:text-black/70 hover:bg-white/40'
+                        : 'text-black/20 hover:text-black/40 hover:bg-white/40'}"
+            >
+                <Minimize2Icon size={14} />
+            </button>
             <button
                 onclick={() => (action = action === "settings" ? null : "settings")}
                 aria-label="AI Settings"
