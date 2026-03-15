@@ -82,7 +82,7 @@ function openEditor() {
 
 let recursiveEditorHost = $state<HTMLDivElement>();
 let recursiveEditor = $state<EditorView | undefined>(undefined);
-let activeAnnotation = $state<Annotation<any> | undefined>(undefined);
+let activeAnnotation = $state<Annotation<"revision"> | undefined>(undefined);
 
 // Track which version the nested editor was built for, so we know
 // when to destroy/recreate (version switch).

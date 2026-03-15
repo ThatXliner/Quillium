@@ -22,6 +22,7 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
     versionText,
+    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { nestedSavedFields } from "$lib/editor/extensions";
@@ -85,22 +86,15 @@ function simulateNestedEdit(
  * real EditorView for the nested editor in this test).
  */
 function simulateFlush(view: EditorView, revId: number, nestedDocText: string) {
-    // Replicate what flushAnnotationsToParent does:
-    // blob = nestedEditor.state.toJSON(nestedSavedFields)
-    // Since nestedSavedFields = { annotationField }, the blob is { doc, selection, annotationField }
-    // We simulate the blob — key question: does it have `doc`?
-    const nestedAnnotationFieldJson = {}; // empty nested annotations
-    const blob = {
-        doc: nestedDocText,
-        selection: EditorSelection.single(nestedDocText.length).toJSON(),
-        annotationField: nestedAnnotationFieldJson,
-    };
     const rev = view.state.field(annotationField)[revId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
     const existingLabel = rev.versions[0]?.label;
-    const blobWithLabel = existingLabel !== undefined ? { ...blob, label: existingLabel } : blob;
+    const newVersionState: VersionState = {
+        doc: nestedDocText,
+        ...(existingLabel !== undefined ? { label: existingLabel } : {}),
+    };
     view.dispatch(
-        updateRevisionVersionState(view.state, revId, 0, blobWithLabel as any, {
+        updateRevisionVersionState(view.state, revId, 0, newVersionState, {
             addToHistory: false,
         }),
     );
