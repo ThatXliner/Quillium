@@ -379,7 +379,7 @@ function applyCardPositions(
 }
 
 // Track which pending card is currently showing the alert animation
-let alertingPendingId: number | undefined;
+let alertingPendingId: number | undefined = $state();
 let lastPendingAlertToken = 0;
 
 // React to pending-comment events: scroll the pending card
