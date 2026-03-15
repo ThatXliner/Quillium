@@ -559,6 +559,34 @@ Each event has a `type` field that determines its shape:
 
 `VersionState` blobs (nested editor state) are also serialized inside `annotationField.toJSON()` — they're stored as opaque objects within the `versions` array and round-trip correctly because they're already JSON-safe.
 
+### Crash-safety matrix
+
+| Data | Durability on crash |
+|---|---|
+| Main doc text | Per-keystroke — every `doc_change` event is written to SQLite before the next keystroke |
+| Active revision version text | Per-keystroke — `translateAndDispatch` forwards nested editor changes to the parent as `doc_change` events; Phase 3 (`syncRevisionDocsWithDocument`) keeps `versions[currentlySelected].doc` in sync |
+| Non-active revision version text | **Snapshot-only** — see known gap below |
+| `currentlySelected` version index | **Snapshot-only** |
+| Version labels | **Snapshot-only** |
+| Thread messages | Per-action — captured as `annotation_update` events |
+
+### Known gap: non-active revision version state is snapshot-only
+
+**Relevant files:**
+- `src/lib/editor/listeners.ts` — `extractAnnotationEvents()`
+- `src-tauri/src/db/events.rs` — `SNAPSHOT_EVENT_THRESHOLD = 50`, `SNAPSHOT_TIME_THRESHOLD_SECS = 120`
+
+`extractAnnotationEvents` only writes three effect types into the event log: `addAnnotation`, `removeAnnotation`, and `updateThread`. The revision-specific effects — `_updateRevisionVersionState`, `_addVersionToRevision`, `_deleteVersionFromRevision`, `_updateActiveRevisionVersion`, `_updateRevisionVersionLabel` — are **not recorded as events**.
+
+This means that between snapshots (up to 50 keystrokes or 2 minutes), a crash can lose:
+
+- Text of any revision version that was **not** `currentlySelected` when the crash occurred (the active version's text is safe via the parent `doc_change` event log).
+- Which version is `currentlySelected`.
+- Custom version labels.
+- Newly created or deleted versions (structural changes go through the revision-specific effects path, not `addAnnotation`/`removeAnnotation`).
+
+**Fix direction (future PR):** Extend `extractAnnotationEvents` to emit the revision-specific effects as event log entries. On replay, these would be re-applied to the `annotationField` before the remaining `doc_change` events are processed. Alternatively, lower `SNAPSHOT_EVENT_THRESHOLD` to shrink the crash window at the cost of more frequent snapshot writes.
+
 ---
 
 ## Keybindings
