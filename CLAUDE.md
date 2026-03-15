@@ -110,7 +110,7 @@ Due to CodeMirror's architecture, manual state synchronization is required betwe
 The application uses OpenAI's API through the `@ai-sdk/openai` package. API configuration is handled in `src/lib/ai/index.ts`.
 
 ### Testing
-No specific testing framework is currently configured. When adding tests, check the codebase for any existing test setup before assuming a framework.
+We have Vitest for unit tests and Playwright for end-to-end.
 
 ### Build Process
 The application uses a static build process via `@sveltejs/adapter-static` to be compatible with Tauri's requirements. The Tauri configuration handles the build orchestration between frontend and backend.

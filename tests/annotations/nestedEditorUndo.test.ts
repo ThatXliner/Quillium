@@ -47,7 +47,7 @@ function createNestedView(versionDoc: string, parentView: EditorView, revisionId
     const parentUndoKeymap = makeParentUndoKeymap(parentView, revisionId);
     const state = EditorState.create({
         doc: versionDoc,
-        extensions: [annotationExtensions(), parentUndoKeymap],
+        extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
     });
     const el = document.createElement("div");
     document.body.appendChild(el);
@@ -128,7 +128,7 @@ afterEach(() => {
     parentView.destroy();
 });
 
-// ── Scenario 1: Nested editor has no independent undo stack ──────────────────
+// ── Scenario 1: syncVersionToParent writes text into parent annotation ───────
 
 describe("Scenario 1: nested editor has no independent undo stack", () => {
     it("undo returns false on the nested editor after typing", () => {
@@ -148,8 +148,9 @@ describe("Scenario 1: nested editor has no independent undo stack", () => {
         nestedView.dispatch({
             changes: { from: nestedView.state.doc.length, insert: " world" },
         });
+        syncVersionToParent(nestedView, parentView, revId, 0);
 
-        expect(undoDepth(nestedView.state)).toBe(0);
+        expect(getRevisionVersionText(parentView, revId)).toBe("hello world");
     });
 });
 

@@ -22,8 +22,8 @@ interface Props {
 
 const { doc, trashMode, onOpen, onTrash, onRestore, onDeletePermanent, onRenameTitle }: Props = $props();
 
-let confirmingDelete = $state(false);
-let titleEditing = $state(false);
+let confirmingDelete = $derived.by(() => { void doc; return false; });
+let titleEditing = $derived.by(() => { void doc; return false; });
 let titleDraft = $state("");
 let titleInputEl = $state<HTMLInputElement | undefined>();
 
@@ -40,11 +40,6 @@ function commitTitle() {
     const newTitle = titleDraft.trim() || "Untitled";
     if (newTitle !== doc.title) onRenameTitle(doc.id, newTitle);
 }
-
-$effect(() => {
-    doc;
-    titleEditing = false;
-});
 
 function formatDate(ms: number): string {
     return new Date(ms).toLocaleDateString("en-US", {
@@ -63,12 +58,6 @@ function handleDeletePermanent() {
         confirmingDelete = true;
     }
 }
-
-$effect(() => {
-    // Reset confirmation whenever the selected doc changes (including to null)
-    doc;
-    confirmingDelete = false;
-});
 </script>
 
 <div class="h-full flex flex-col bg-white/50 border-l border-black/8">

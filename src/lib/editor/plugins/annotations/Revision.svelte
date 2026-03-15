@@ -1,9 +1,9 @@
 <script lang="ts">
 /**
  * Revision.svelte — Displays a single revision annotation card
- * with multiple named versions, a nested CodeMirror editor for
- * editing version content, and actions to create/delete versions
- * or expand into a full-screen modal.
+ * with multiple named versions, a textarea for quick inline editing,
+ * and actions to create/delete versions or expand into a full-screen
+ * modal for deep editing (nested annotations, rich undo history).
  *
  * Architecture: the nested editor is a direct viewport onto the
  * parent document's revision range. Edits in the nested editor
@@ -27,6 +27,7 @@ import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
 import {
+    annotationsChanged,
     createNewRevision,
     deleteRevisionVersion,
     setActiveRevisionVersion,
@@ -191,8 +192,7 @@ $effect(() => {
     )
         return;
     lastFocusRequestToken = event.token;
-    const req = event;
-    const relPos = Math.min(req.relativePos, activeText.length);
+    const relPos = event.relativePos;
     if (appSettings.showNestedEditor) {
         const placeCursor = (editor: EditorView) => {
             editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
@@ -205,14 +205,12 @@ $effect(() => {
                 cursorArriving = false;
             }, 650);
         };
-        if (isEditorOpen && recursiveEditor) {
-            placeCursor(recursiveEditor);
+        if (isEditorOpen && nestedView) {
+            focusEditor();
         } else {
             userClosedEditor = false;
             isEditorOpen = true;
-            tick().then(() => {
-                if (recursiveEditor) placeCursor(recursiveEditor);
-            });
+            tick().then(focusEditor);
         }
     } else {
         modalStack.push({
@@ -367,6 +365,31 @@ $effect(() => {
     });
 });
 
+// Pending selection: select-all text in the textarea when a new
+// revision is just created and the inline editor opens.
+let lastNestedSelectionToken = 0;
+
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token !== lastNestedSelectionToken ||
+        event.type !== "pending-nested-editor-selection" ||
+        event.annotationId !== revision.id ||
+        !nestedView
+    )
+        return;
+    lastNestedSelectionToken = event.token;
+    const docLen = nestedView.state.doc.length;
+    nestedView.dispatch({
+        selection: {
+            anchor: Math.min(event.from, docLen),
+            head: Math.min(event.to, docLen),
+        },
+    });
+    nestedView.focus();
+});
+
 onDestroy(() => {
     clearTimeout(boundaryHintTimeout);
     clearTimeout(cursorArrivingTimeout);
@@ -434,6 +457,10 @@ onDestroy(() => {
                                     setActiveRevisionVersion(view.state, revision.id, i),
                                 );
                             }
+                            if (appSettings.showNestedEditor) {
+                                userClosedEditor = false;
+                                isEditorOpen = true;
+                            }
                         }}
                         ondblclick={() => {
                             if (versionActive) startLabelEdit(i);
@@ -492,7 +519,6 @@ onDestroy(() => {
         >
             <PlusIcon size={10} />
             <span>New version</span>
-            <Kbd keys={[modKey, "↵"]} />
         </button>
         {#if appSettings.showNestedEditor}
         <button
@@ -506,14 +532,13 @@ onDestroy(() => {
                 userClosedEditor = isEditorOpen;
                 isEditorOpen = !isEditorOpen;
             }}
-            title={isEditorOpen ? "Hide nested editor" : "Open nested editor"}
+            title={isEditorOpen ? "Hide editor" : "Open editor"}
         >
             {#if isEditorOpen}
                 <ChevronUp size={10} />
             {:else}
                 <ChevronDown size={10} />
             {/if}
-            <span>Nested editor</span>
         </button>
         {/if}
         <button
@@ -536,16 +561,13 @@ onDestroy(() => {
                     bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
                     hover:bg-purple-100/60 transition-colors text-left"
                 onclick={() => {
-                    if (isEditorOpen && recursiveEditor) {
-                        recursiveEditor.focus();
-                    } else {
-                        userClosedEditor = false;
-                        isEditorOpen = true;
-                    }
+                    userClosedEditor = false;
+                    isEditorOpen = true;
+                    tick().then(() => nestedView?.focus());
                 }}
             >
                 <span class="shrink-0 mt-px">↓</span>
-                <span>Edit in the nested editor below.</span>
+                <span>Edit in the inline editor below.</span>
             </button>
         {:else}
             <button
@@ -560,28 +582,10 @@ onDestroy(() => {
         {/if}
     {/if}
 
-    <!-- Nested editor (collapsible) -->
+    <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
-            <div
-                bind:this={recursiveEditorHost}
-                class="revision-recursive-editor h-[220px] overflow-hidden"
-                class:cursor-arriving={cursorArriving}
-            ></div>
-            {#if !!activeAnnotation}
-                <div transition:slide={{ duration: 100, easing: cubicOut }}
-                    class="border-t border-purple-100/60 px-3 py-2 flex items-center justify-between gap-2">
-                    <span class="text-[10px] text-purple-500/70">Annotation selected</span>
-                    <button
-                        class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-purple-600/80
-                            bg-purple-50 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
-                        onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
-                    >
-                        <Maximize2 size={9} />
-                        <span>View in modal</span>
-                    </button>
-                </div>
-            {/if}
+            <div bind:this={nestedEditorHost} class="revision-inline-editor"></div>
         </div>
     {/if}
 
@@ -603,26 +607,23 @@ onDestroy(() => {
 
 
 <style>
-    .revision-recursive-editor :global(.cm-editor) {
-        height: 220px;
-        width: 100%;
+    .revision-inline-editor {
+        min-height: 220px;
+    }
+    .revision-inline-editor :global(.cm-editor) {
+        height: 100%;
+        min-height: 220px;
+        font-size: 13px;
+        font-family: inherit;
+        line-height: 1.6;
         background: transparent;
     }
-
-    .revision-recursive-editor :global(.cm-scroller) {
-        overflow: auto;
-        line-height: 1.6;
-    }
-
-    .revision-recursive-editor :global(.cm-content) {
-        text-indent: 0;
-        min-height: 100%;
+    .revision-inline-editor :global(.cm-scroller) {
+        overflow-y: auto;
         padding: 8px 10px 12px 10px;
-        font-size: 13px;
     }
-
-    .revision-recursive-editor :global(.cm-focused) {
-        outline: none;
+    .revision-inline-editor :global(.cm-content) {
+        padding: 0;
     }
 
     @keyframes focus-flash {

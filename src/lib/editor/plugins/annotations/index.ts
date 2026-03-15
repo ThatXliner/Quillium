@@ -239,9 +239,9 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand
 function buildAtomicRanges(state: EditorState): DecorationSet {
     if (!appSettings.atomicRevisions) return Decoration.none;
     const builder = new RangeSetBuilder<Decoration>();
-    const revisions = Object.values(state.field(annotationField)).filter((annotation) =>
-        isAnnotationOfType(annotation, "revision"),
-    );
+    const revisions = Object.values(state.field(annotationField))
+        .filter((annotation) => isAnnotationOfType(annotation, "revision"))
+        .sort((a, b) => a.selection.main.from - b.selection.main.from);
     for (const revision of revisions) {
         const { from, to } = revision.selection.main;
         if (from === to) continue;
