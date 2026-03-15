@@ -32,14 +32,11 @@ import {
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
     type Annotation,
+    type GenericAnnotation,
     type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
-import {
-    createNestedEditorState,
-    translateAndDispatch,
-    previewVersionText,
-} from "./nestedEditor";
+import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
 import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
@@ -87,7 +84,7 @@ function openEditor() {
 
 let recursiveEditorHost = $state<HTMLDivElement>();
 let recursiveEditor = $state<EditorView | undefined>(undefined);
-let activeAnnotation = $state<Annotation<"revision"> | undefined>(undefined);
+let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
 // Track which version the nested editor was built for, so we know
 // when to destroy/recreate (version switch).
