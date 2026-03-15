@@ -155,6 +155,17 @@ export const updateThread = StateEffect.define<{
 // stored in history and never inverted. The inverted StateEffects on each
 // transaction already carry the full semantic meaning of "undo this op."
 export const revisionInternalEdit = Annotation.define<boolean>();
+
+// Marks a parent-editor transaction that was originated by a nested editor
+// acting as a direct viewport. Set to the revision ID whose nested editor
+// dispatched the change. Consumers:
+//   - Phase 3 (syncRevisionDocsWithDocument): skips syncing this revision,
+//     since the nested editor's text is already correct.
+//   - Parent→nested ViewPlugin (nestedEditorBridge): skips re-dispatching
+//     this change back to the nested editor (it caused it, doesn't need it).
+// Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
+// not stored in history.
+export const nestedEditorEdit = Annotation.define<number>();
 // Marks a transaction dispatched by collapsedRevisionResolver to remove
 // collapsed revisions after a deletion. addToHistory.of(false) ensures no
 // new undo entry is created, and this annotation prevents invertedEffects from
@@ -671,7 +682,13 @@ export const annotationField = StateField.define<Annotations>({
         // Phase 3: keep active revision version text in sync with the
         // document, but only for revisions that had no explicit effect
         // this transaction and only when the document actually changed.
+        // Also skip the revision whose nested editor originated this change
+        // (nestedEditorEdit carries the revision ID).
         if (tr.docChanged) {
+            const nestedEditRevId = tr.annotation(nestedEditorEdit);
+            if (nestedEditRevId !== undefined) {
+                revisionsWithExplicitEffect.add(nestedEditRevId);
+            }
             annotations = syncRevisionDocsWithDocument(
                 annotations,
                 tr,
@@ -731,7 +748,11 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     // own annotation state via explicit effects.
     const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
     const isRevisionEdit = transaction.annotation(revisionInternalEdit);
-    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit) {
+    // nestedEditorEdit transactions are plain doc changes originated by a nested
+    // editor viewport — they manage positions via the normal doc-change path, so
+    // implicit annotation restoration is not needed (and would double-restore).
+    const isNestedEdit = transaction.annotation(nestedEditorEdit) !== undefined;
+    if (transaction.docChanged && !isUndoRedo && !isRevisionEdit && !isNestedEdit) {
         for (const annotation of Object.values(oldAnnotations)) {
             const isRevision = isAnnotationOfType(annotation, "revision");
             const remapped = cleanRangesOf(
