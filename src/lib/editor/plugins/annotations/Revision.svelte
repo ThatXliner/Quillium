@@ -93,6 +93,10 @@ let mountedVersionId = -1;
 // "doc changed because the nested editor typed it" so we don't
 // unnecessarily patch the nested editor with its own content.
 let lastDispatchedDoc = "";
+// Guard: set to true while we are programmatically patching the nested editor
+// from an external parent change, so the updateListener skips translateAndDispatch
+// and doesn't bounce the change back up to the parent.
+let syncingFromParent = false;
 
 let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
@@ -230,7 +234,9 @@ function createRecursiveEditor(version: VersionState) {
             if (!recursiveEditor) return;
             activeAnnotation = getActiveAnnotation(recursiveEditor.state);
             // Translate doc changes to parent coordinates and dispatch.
-            if (translateAndDispatch(update, view, revision.id)) {
+            // Skip when we're programmatically syncing from the parent to avoid
+            // bouncing the change back up and corrupting the parent document.
+            if (!syncingFromParent && translateAndDispatch(update, view, revision.id)) {
                 // Track what we dispatched so the external-sync $effect
                 // doesn't re-patch the nested editor with its own content.
                 lastDispatchedDoc = recursiveEditor.state.doc.toString();
@@ -316,9 +322,11 @@ $effect(() => {
     if (!recursiveEditor || externalDoc === lastDispatchedDoc) return;
     const current = recursiveEditor.state.doc.toString();
     if (current !== externalDoc) {
+        syncingFromParent = true;
         recursiveEditor.dispatch({
             changes: { from: 0, to: current.length, insert: externalDoc },
         });
+        syncingFromParent = false;
     }
     lastDispatchedDoc = externalDoc;
 });
