@@ -32,7 +32,7 @@
 import { EditorState, Prec, Transaction } from "@codemirror/state";
 import { undo, redo } from "@codemirror/commands";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
-import { getExtensions } from "$lib/editor/extensions";
+import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import {
     annotationField,
     nestedEditorEdit,
@@ -59,7 +59,23 @@ export function createNestedEditorState(
         makeParentUndoKeymap(parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
+    if (hasSerializedNestedState(version)) {
+        try {
+            return EditorState.fromJSON(version, { extensions }, nestedSavedFields);
+        } catch (error) {
+            console.warn("[nestedEditor] failed to restore serialized state, falling back to doc text", error);
+        }
+    }
     return EditorState.create({ doc: versionText(version), extensions });
+}
+
+function hasSerializedNestedState(version: VersionState): version is Parameters<typeof EditorState.fromJSON>[0] {
+    if (typeof version !== "object" || version === null) return false;
+    if (typeof (version as { doc?: unknown }).doc !== "string") return false;
+    const serialized =
+        (version as { annotationField?: unknown }).annotationField !== undefined ||
+        (version as { selection?: unknown }).selection !== undefined;
+    return serialized;
 }
 
 /**
