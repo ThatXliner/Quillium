@@ -133,7 +133,9 @@ function clearUndoHistory() {
     view.setState(EditorState.fromJSON(json, { extensions }, savedFields));
     historyCleared = true;
     clearTimeout(historyClearTimer);
-    historyClearTimer = setTimeout(() => { historyCleared = false; }, 2000);
+    historyClearTimer = setTimeout(() => {
+        historyCleared = false;
+    }, 2000);
 }
 
 function handleKeydown(e: KeyboardEvent) {

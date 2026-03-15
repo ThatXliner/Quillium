@@ -38,10 +38,18 @@ import {
     type GenericAnnotation,
     type Thread,
 } from "$lib/editor/plugins/annotations";
-import { activeAnnotation, annotations, editorView, annotationUiEvent, selectedText, publishAnnotationUiEvent } from "$lib/stores";
+import {
+    activeAnnotation,
+    annotations,
+    editorView,
+    annotationUiEvent,
+    selectedText,
+    publishAnnotationUiEvent,
+} from "$lib/stores";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
+import type { Action } from "svelte/action";
 import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
@@ -135,7 +143,7 @@ function getAnnotationLeft(): number {
     return rect.left + rect.width / 2 + 408 + 16;
 }
 
-let scrollContainer = $state<HTMLDivElement | undefined>();
+let scrollContainer: HTMLDivElement | undefined;
 
 // Sort annotations by document position for stable rendering
 const sortedAnnotations = $derived(
@@ -174,7 +182,34 @@ const positionedAnnotations = $derived(() => {
     }));
 });
 
-let annotationElements: { [id: number]: HTMLDivElement } = $state({});
+const annotationElements: { [id: number]: HTMLDivElement | undefined } = {};
+let annotationElementsVersion = $state(0);
+
+const annotationElement: Action<HTMLDivElement, number> = (node, id) => {
+    let currentId = id;
+    if (currentId !== undefined) {
+        annotationElements[currentId] = node;
+        annotationElementsVersion++;
+    }
+    return {
+        update(nextId) {
+            if (currentId !== undefined && annotationElements[currentId] === node) {
+                delete annotationElements[currentId];
+            }
+            currentId = nextId;
+            if (currentId !== undefined) {
+                annotationElements[currentId] = node;
+            }
+            annotationElementsVersion++;
+        },
+        destroy() {
+            if (currentId !== undefined && annotationElements[currentId] === node) {
+                delete annotationElements[currentId];
+                annotationElementsVersion++;
+            }
+        },
+    };
+};
 let resizeObserver: ResizeObserver | undefined;
 
 // Reposition cards when the active annotation or list changes
@@ -191,6 +226,7 @@ $effect(() => {
 $effect(() => {
     if (!isFloating) return;
     void sortedAnnotations; // track additions/removals
+    void annotationElementsVersion; // re-observe when elements register
     resizeObserver?.disconnect();
     resizeObserver = new ResizeObserver(() => debouncedUpdatePositions());
     tick().then(() => {
@@ -343,13 +379,16 @@ function applyCardPositions(
 }
 
 // Track which pending card is currently showing the alert animation
-let alertingPendingId = $state<number | undefined>(undefined);
+let alertingPendingId: number | undefined = $state();
 let lastPendingAlertToken = 0;
 
 // React to pending-comment events: scroll the pending card
 // into view, then play a shake + red-outline-fade animation on it.
+// Subscribes to annotationElementsVersion so it retries if the
+// element hasn't been registered yet when the event first fires.
 $effect(() => {
     if (!isFloating) return;
+    void annotationElementsVersion; // retry when elements register
     const event = $annotationUiEvent;
     if (
         !event ||
@@ -358,10 +397,10 @@ $effect(() => {
         !pendingComment
     )
         return;
-    lastPendingAlertToken = event.token;
 
     const el = annotationElements[pendingComment.id];
     if (!el) return;
+    lastPendingAlertToken = event.token;
 
     // Scroll the editor to show the pending comment's highlighted text
     if (resolvedView) {
@@ -388,19 +427,29 @@ $effect(() => {
 //   ⌘⇧V         — add new version (revision)
 $effect(() => {
     function onKeydown(e: KeyboardEvent) {
-if (!(e.metaKey || e.ctrlKey)) return;
+        if (!(e.metaKey || e.ctrlKey)) return;
         const active = resolvedActiveAnnotation;
         if (!active) return;
 
         if (e.key === "/" && !e.shiftKey) {
-            if (active._type === "comment" || active._type === "suggestion" || active._type === "revision") {
+            if (
+                active._type === "comment" ||
+                active._type === "suggestion" ||
+                active._type === "revision"
+            ) {
                 e.preventDefault();
-                publishAnnotationUiEvent({ type: "annotation-focus-reply", annotationId: active.id });
+                publishAnnotationUiEvent({
+                    type: "annotation-focus-reply",
+                    annotationId: active.id,
+                });
             }
         } else if ((e.key === "v" || e.key === "V") && e.shiftKey) {
             if (active._type === "revision") {
                 e.preventDefault();
-                publishAnnotationUiEvent({ type: "annotation-add-version", annotationId: active.id });
+                publishAnnotationUiEvent({
+                    type: "annotation-add-version",
+                    annotationId: active.id,
+                });
             }
         }
     }
@@ -451,7 +500,7 @@ $effect(() => {
                     {@const isActive = resolvedActiveAnnotation?.id === c.id}
                     {@const isPendingComment = pendingComment?.id === c.id}
                     <div
-                        bind:this={annotationElements[i]}
+                        use:annotationElement={i}
                         class="annotation-card"
                         class:is-active={isActive}
                         style="z-index: {isActive ? 120 : isPendingComment ? 110 : 50};"
@@ -527,7 +576,7 @@ $effect(() => {
                 {@const isActive = resolvedActiveAnnotation?.id === c.id}
                 {@const isPendingComment = pendingComment?.id === c.id}
                 <div
-                    bind:this={annotationElements[i]}
+                    use:annotationElement={i}
                     class="annotation-card-inline"
                     class:is-active={isActive}
                     onclick={(e) => {

@@ -104,7 +104,7 @@ export function versionText(version: VersionState): string {
 type RevisionAnnotation = BaseAnnotation & {
     _type: "revision";
     // this will now refer to an ID
-    currentlySelected: number;
+    activeVersionIndex: number;
     versions: VersionState[];
 };
 export type GenericAnnotation = CommentAnnotation | SuggestionAnnotation | RevisionAnnotation;
@@ -135,10 +135,12 @@ export const SuggestionReplacementSchema = z.object({
     text: z.string(),
     rationale: z.string().optional(),
 });
-export const VersionStateSchema = z.object({
-    doc: z.string(),
-    label: z.string().optional(),
-}).passthrough();
+export const VersionStateSchema = z
+    .object({
+        doc: z.string(),
+        label: z.string().optional(),
+    })
+    .passthrough();
 const RawBaseSchema = z.object({
     id: z.number(),
     thread: z.array(ThreadMessageSchema),
@@ -152,7 +154,7 @@ export const RawAnnotationSchema = z.discriminatedUnion("_type", [
     }),
     RawBaseSchema.extend({
         _type: z.literal("revision"),
-        currentlySelected: z.number(),
+        activeVersionIndex: z.number(),
         versions: z.array(VersionStateSchema).min(1),
     }),
 ]);

@@ -178,14 +178,14 @@ type CommentAnnotation    = BaseAnnotation & { _type: "comment" };
 type SuggestionAnnotation = BaseAnnotation & { _type: "suggestion"; replacements: SuggestionReplacement[] };
 type RevisionAnnotation   = BaseAnnotation & {
     _type: "revision";
-    currentlySelected: number; // index into versions[]
+    activeVersionIndex: number; // index into versions[]
     versions: VersionState[];  // all version texts (or full EditorState blobs)
 };
 
 type Annotations = { [id: number]: GenericAnnotation };
 ```
 
-`VersionState` is intentionally opaque: `{ doc: string; label?: string } & object`. Each entry always reflects the most recent text that lived under a revision range in the parent document; Phase 3 (`syncRevisionDocsWithDocument`) keeps `versions[currentlySelected].doc` in sync whenever the parent edits that slice. Nested editor state isn't serialized as a standalone snapshot anymore — we rebuild from whatever `doc` is stored in the revision slot when the editor reopens, so `versionText(version)` continues to just read `.doc`. `VersionStateSchema` still uses `.passthrough()` so extra keys survive if they are added elsewhere.
+`VersionState` is intentionally opaque: `{ doc: string; label?: string } & object`. Each entry always reflects the most recent text that lived under a revision range in the parent document; Phase 3 (`pushDocToVersionState`) pushes the parent document slice into `versions[activeVersionIndex].doc` whenever the parent edits that slice. Nested editor state isn't serialized as a standalone snapshot anymore — we rebuild from whatever `doc` is stored in the revision slot when the editor reopens, so `versionText(version)` continues to just read `.doc`. `VersionStateSchema` still uses `.passthrough()` so extra keys survive if they are added elsewhere.
 
 Use `isAnnotationOfType(annotation, "revision")` everywhere — never compare `_type` directly.
 
@@ -215,26 +215,26 @@ Processes each `StateEffect` in the transaction. Each effect type has a correspo
 | `updateThread` | Replace `annotation.thread` |
 | `_addVersionToRevision` | Splice new version into `annotation.versions` |
 | `_deleteVersionFromRevision` | Splice version out |
-| `_updateActiveRevisionVersion` | Update `currentlySelected`, rebuild selection to span new text |
+| `_updateActiveRevisionVersion` | Update `activeVersionIndex`, rebuild selection to span new text |
 | `_updateRevisionVersionState` | Replace a version's blob with the nested editor's serialized state |
 | `addSuggestion` | Text search + add suggestion annotation |
 | `_applySuggestion` | Delete suggestion from map |
 
 Effects touching a specific revision ID are tracked in `revisionsWithExplicitEffect` (a `Set<number>`). This set is used in Phase 3.
 
-#### Phase 3: Sync revision version text
+#### Phase 3: Push document text into version state
 
 ```
 if (tr.docChanged) {
-    annotations = syncRevisionDocsWithDocument(annotations, tr, revisionsWithExplicitEffect);
+    annotations = pushDocToVersionState(annotations, tr, revisionsWithExplicitEffect);
 }
 ```
 
-For each revision **not** in `revisionsWithExplicitEffect`, reads the document slice under the revision's range and writes it back into `versions[currentlySelected].doc`. This keeps the version text current when the user types inside an active revision in the main document.
+For each revision **not** in `revisionsWithExplicitEffect`, reads the document slice under the revision's range and writes it back into `versions[activeVersionIndex].doc`. This keeps the version text current when the user types inside an active revision in the main document.
 
 **Critical invariant:** Phase 3 only runs when `tr.docChanged`. It skips revisions that had an explicit effect this transaction (their text was already set correctly by the effect handler). The `revisionsWithExplicitEffect` set is per-revision, not a single boolean — this matters when multiple revisions exist.
 
-**Undo interaction:** Phase 3 mutations are not directly invertible by the history system (they're inline state updates, not `StateEffect`s). However, because CodeMirror's undo also inverts the document change that caused the sync, the revision range collapses back to its pre-edit position, and the next Phase 3 sync on the inverted transaction re-reads the correct (pre-edit) text. The net result is correct as long as you don't switch versions mid-undo (which is handled by explicit effects + their inversions).
+**Undo interaction:** Phase 3 mutations are not directly invertible by the history system (they're inline state updates, not `StateEffect`s). However, because CodeMirror's undo also inverts the document change that caused the push, the revision range collapses back to its pre-edit position, and the next Phase 3 push on the inverted transaction re-reads the correct (pre-edit) text. The net result is correct as long as you don't switch versions mid-undo (which is handled by explicit effects + their inversions).
 
 ### Undo/redo: `invertedAnnotationFieldEffects`
 
@@ -349,9 +349,9 @@ Nested editors remain intentional viewports that never own their document. When 
 
 1. The `updateListener` calls `translateAndDispatch(update, parentView, revisionId)` as before.
 2. `translateAndDispatch` translates each change into parent coordinates (`rev.selection.main.from + delta`) and dispatches it with `nestedEditorEdit.of(revisionId)` plus `Transaction.addToHistory.of(true)`.
-3. The parent doc is the single source of truth, so Phase 3 (`syncRevisionDocsWithDocument`) still re-reads the post-transaction slice and keeps `versions[currentlySelected].doc` current for version switching (the revision is not added to `revisionsWithExplicitEffect`, so it syncs normally).
+3. The parent doc is the single source of truth, so Phase 3 (`pushDocToVersionState`) still re-reads the post-transaction slice and keeps `versions[activeVersionIndex].doc` current for version switching (the revision is not added to `revisionsWithExplicitEffect`, so it pushes normally).
 
-### Reactive downsync for inline/modal editors
+### Reactive pull for inline/modal editors
 
 For the inline and modal editors, we watch the parent-provided version text directly via Svelte reactivity. Inline editors observe `activeVersion?.doc` and the modal watches `$annotationsStore`; both skip re-patching when the nested editor itself authored the change (`lastDispatchedDoc`). When a truly external update occurs (undo, redo, or another cursored write), the watcher replaces the nested editor’s entire buffer with the new text via a single `EditorView.dispatch({ changes: { from: 0, to: current.length, insert: externalDoc } })`. That keeps the editor up to date without destroying the view or rebuilding the extension stack—only the contents are rewritten. The only time we tear down and recreate the nested editor is on version switches or when the modal closes.
 
@@ -365,7 +365,14 @@ Replacing the whole buffer is the tradeoff we accepted for this reactive, bridge
 
 ### Modal editor
 
-The modal editor (`RevisionModal.svelte`) reuses the same helpers and keeps its own `lastDispatchedDoc`. It watches `$annotationsStore` (the parent store that mirrors `annotationField`) and replaces the modal buffer when `versionText(revision.versions[revision.currentlySelected])` diverges from `lastDispatchedDoc`. Version navigation or `addVersion` still destroys the editor before dispatching the parent effect so the new `mountedVersionId` is read correctly.
+The modal editor (`RevisionModal.svelte`) reuses the same helpers and keeps its own `lastDispatchedDoc`. The external-sync `$effect` watches the parent's annotation state for changes:
+
+- **Root-level modals** (`stackIndex === 0`) watch `$annotationsStore` (the global Svelte store mirroring the main editor's `annotationField`).
+- **Deeply nested modals** (`stackIndex > 0`) watch `$modalAnnotationStores[stackIndex - 1]` — a per-level global store that each RevisionModal publishes its nested editor's annotation state into. This chains recursively: undo at the root cascades through each level's external-sync `$effect`.
+
+Annotation IDs are scoped per-editor and can collide across nesting levels, so deeply nested modals must never read from `$annotationsStore` directly.
+
+`destroyEditor` flushes the nested editor's state (including sub-annotations) into the parent revision's version blob. It uses a tracked `editorVersionIndex` (set when the editor was created) rather than `rev.activeVersionIndex`, which may have changed if a parent breadcrumb version switch happened before the destroy. This prevents flushing old version content into the wrong version slot.
 
 ### Undo
 
@@ -385,7 +392,15 @@ export const nestedSavedFields = { annotationField };
 
 ### Infinite nesting
 
-Modal’s `parentView` can still be another nested `EditorView`. `translateAndDispatch` chains up the stack automatically—each call dispatches to its immediate parent, which may itself be a nested editor whose watcher catches the change. The inline editor still listens for `revision-open-nested-editor` events (via `annotationUiEvent`) so it can open modals for nested annotation creation.
+Modal’s `parentView` can be another nested `EditorView`. `translateAndDispatch` chains up the stack automatically — each call dispatches to its immediate parent, which may itself be a nested editor whose watcher catches the change.
+
+**Upward path** (nested edit → root): each `translateAndDispatch` call maps the change to parent coordinates and dispatches to the parent view. If the parent is itself a nested editor, its own `translateAndDispatch` fires and propagates further up. This continues until the root editor is reached and the change enters the global undo history.
+
+**Downward path** (undo/external change → nested editors): each modal’s external-sync `$effect` detects changes in its parent `view`’s annotation state and patches its nested editor buffer. This cascades: root change → level-0 modal pulls → level-0’s nested editor state changes → level-1 modal pulls, etc.
+
+**Sub-annotation creation from within a modal**: the nested editor’s `makeParentUndoKeymap` binds Mod-Alt-m/k to fire `publishAnnotationUiEvent("revision-open-nested-editor")`. The `Revision.svelte` component in the modal’s sidebar catches this and pushes a new modal for the sub-annotation. The sub-annotation is created directly in the new modal’s nested editor via `executePendingNestedCommand`.
+
+**Annotation ID independence**: each nested editor has its own `annotationField` with IDs starting from 0. The global `$annotationsStore` only contains the root editor’s annotations. Nested modals must not look up their `revisionId` in `$annotationsStore` — it would find an unrelated annotation or `undefined`.
 
 ---
 
@@ -517,9 +532,9 @@ Each event has a `type` field that determines its shape:
 | Data | Durability on crash |
 |---|---|
 | Main doc text | Per-keystroke — every `doc_change` event is written to SQLite before the next keystroke |
-| Active revision version text | Per-keystroke — `translateAndDispatch` forwards nested editor changes to the parent as `doc_change` events; Phase 3 (`syncRevisionDocsWithDocument`) keeps `versions[currentlySelected].doc` in sync |
+| Active revision version text | Per-keystroke — `translateAndDispatch` forwards nested editor changes to the parent as `doc_change` events; Phase 3 (`pushDocToVersionState`) keeps `versions[activeVersionIndex].doc` current |
 | Non-active revision version text | **Snapshot-only** — see known gap below |
-| `currentlySelected` version index | **Snapshot-only** |
+| `activeVersionIndex` version index | **Snapshot-only** |
 | Version labels | **Snapshot-only** |
 | Thread messages | Per-action — captured as `annotation_update` events |
 
@@ -568,7 +583,7 @@ User selects text
 ```
 User selects text
 → Mod-Alt-K
-→ addAnnotation dispatched { _type: "revision", versions: [{ doc: selected }], currentlySelected: 0 }
+→ addAnnotation dispatched { _type: "revision", versions: [{ doc: selected }], activeVersionIndex: 0 }
 → Text becomes atomic in main doc (cannot edit directly)
 → Revision.svelte renders with one version pill
 → isActive → nested editor auto-opens (if setting enabled)
@@ -584,7 +599,7 @@ User clicks version pill N
     - doc change: replace revision range with versions[N].doc
     - revisionInternalEdit.of(true)  ← prevents collapsedRevisionResolver from firing
     - Transaction.addToHistory.of(true)
-→ annotationField Phase 2: updates currentlySelected, rebuilds selection to new span
+→ annotationField Phase 2: updates activeVersionIndex, rebuilds selection to new span
 → Phase 3 skipped for this revision (it's in revisionsWithExplicitEffect)
 → Svelte store sync → Revision.svelte re-renders with new active pill
 → syncRecursiveEditorToActiveVersion detects version change → reloads nested editor
@@ -599,7 +614,7 @@ User presses Cmd+Z
     - sees _updateActiveRevisionVersion { to: N }
     - emits _updateActiveRevisionVersion { to: oldCurrentlySelected }
 → Inverted doc change restores old text
-→ Inverted effect restores currentlySelected
+→ Inverted effect restores activeVersionIndex
 → Full undo: document text AND annotation state revert together
 ```
 
@@ -614,13 +629,13 @@ User types in nested editor
 → Parent transaction:
     Phase 1: revision selection remapped (no-op for inserts inside range)
     Phase 2: no revision effects
-    Phase 3: nestedEditorEdit is not added to revisionsWithExplicitEffect → annotationField runs and updates versions[currentlySelected].doc
+    Phase 3: nestedEditorEdit is not added to revisionsWithExplicitEffect → annotationField runs and updates versions[activeVersionIndex].doc
 
 On undo (Mod-z in nested editor delegates to undo(parentView)):
 → Parent undoes doc change → revision range text reverts
-→ Phase 3 runs on inverted transaction → version.doc syncs to reverted text
+→ Phase 3 runs on inverted transaction → version.doc pushed to reverted text
 → Svelte $effect in Revision.svelte / RevisionModal.svelte detects activeVersion.doc changed
-    → patches nested editor buffer (full replace, guarded by syncingFromParent)
+    → patches nested editor buffer (full replace, guarded by pullingFromParent)
     → nested editor shows reverted text (no destroy/recreate)
 ```
 
@@ -631,14 +646,14 @@ User types inside an active revision range (atomicRevisions off)
 → Normal doc change transaction (no explicit revision effects, no nestedEditorEdit)
 → Phase 1: revision selection remapped through change
 → Phase 2: no revision effects
-→ Phase 3: syncRevisionDocsWithDocument runs for this revision
+→ Phase 3: pushDocToVersionState runs for this revision
     - reads doc.slice(revision.from, revision.to)
-    - writes into versions[currentlySelected].doc
+    - writes into versions[activeVersionIndex].doc
 → Svelte $effect detects activeVersion.doc changed → patches nested editor buffer
 
 On undo:
 → Doc change inverted → text reverts
-→ Phase 3 runs again on inverted transaction → version.doc syncs back to reverted text
+→ Phase 3 runs again on inverted transaction → version.doc pushed back to reverted text
 → Svelte $effect patches nested editor with reverted text
 ```
 
@@ -680,6 +695,7 @@ Both carry the complete annotation object (not just an ID). This lets the undo i
 - **No explicit annotation status enum.** `thread.length === 0` means pending comment; there is no FSM. Acknowledged technical debt.
 - **`addSuggestion` inversion uses `Math.max` on IDs.** Assumes IDs are sequential and increasing; works until suggestions are added in bulk.
 - **`queueMicrotask` in `collapsedRevisionResolver`.** Necessary to avoid dispatching inside a `ViewPlugin.update`, but ordering relative to other queued microtasks is not guaranteed under rapid undo.
+- **Deeply nested modal external-sync relies on `modalAnnotationStores`.** Each RevisionModal publishes its nested editor's annotations to a global per-level store (`modalAnnotationStores`). Child modals read from `modalAnnotationStores[stackIndex - 1]` instead of `$annotationsStore`. This chains correctly for undo cascades but adds a global store dependency that could be replaced with a more direct parent-child signal in the future.
 
 ---
 

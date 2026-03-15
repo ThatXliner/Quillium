@@ -8,10 +8,7 @@ import {
     annotationField,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
-import {
-    createNewAnnotation,
-    isAnnotationOfType,
-} from "$lib/editor/plugins/annotations/models";
+import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { history } from "@codemirror/commands";
 import { currentDocumentId, currentDraftId } from "$lib/stores";
@@ -221,11 +218,7 @@ describe("listeners integration", () => {
         // Need full annotation extensions for version switching
         const state = EditorState.create({
             doc: "hello",
-            extensions: [
-                history({ newGroupDelay: 0 }),
-                annotationExtensions(),
-                listeners(),
-            ],
+            extensions: [history({ newGroupDelay: 0 }), annotationExtensions(), listeners()],
         });
         const parent = document.createElement("div");
         document.body.appendChild(parent);
@@ -238,7 +231,7 @@ describe("listeners integration", () => {
                 EditorSelection.single(0, 5),
                 "revision",
             ),
-            currentlySelected: 0,
+            activeVersionIndex: 0,
             versions: [{ doc: "hello" }, { doc: "hi" }],
         };
         view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));

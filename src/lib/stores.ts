@@ -217,17 +217,17 @@ export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
 
 let nextAnnotationUiEventToken = 1;
 
-type PendingNestedEditorSelectionEvent = Extract<AnnotationUiEvent, { type: "pending-nested-editor-selection" }>;
+type PendingNestedEditorSelectionEvent = Extract<
+    AnnotationUiEvent,
+    { type: "pending-nested-editor-selection" }
+>;
 const pendingNestedEditorSelections = new Map<number, PendingNestedEditorSelectionEvent>();
 
 function storePendingNestedEditorSelection(event: PendingNestedEditorSelectionEvent) {
     pendingNestedEditorSelections.set(event.annotationId, event);
 }
 
-export function consumePendingNestedEditorSelection(
-    annotationId: number,
-    lastToken: number,
-) {
+export function consumePendingNestedEditorSelection(annotationId: number, lastToken: number) {
     const selection = pendingNestedEditorSelections.get(annotationId);
     if (!selection || selection.token === lastToken) return undefined;
     pendingNestedEditorSelections.delete(annotationId);
@@ -338,5 +338,32 @@ export const modalStack = {
             };
             return trimmed;
         }),
-    clear: () => _modalStack.set([]),
+    clear: () => {
+        _modalStack.set([]);
+        _modalAnnotationStores.set({});
+    },
+};
+
+// ── Per-modal annotation state ───────────────────────────────
+//
+// Each RevisionModal publishes its nested editor's annotation state
+// into this map (keyed by stackIndex). Child modals at stackIndex N
+// read from entry N-1 to find their parent's annotations — this is
+// the reactive trigger that replaces $annotationsStore for deeply
+// nested modals.
+
+const _modalAnnotationStores = writable<Record<number, Annotations>>({});
+
+export const modalAnnotationStores = {
+    subscribe: _modalAnnotationStores.subscribe,
+    set(index: number, annotations: Annotations) {
+        _modalAnnotationStores.update((m) => ({ ...m, [index]: annotations }));
+    },
+    remove(index: number) {
+        _modalAnnotationStores.update((m) => {
+            const copy = { ...m };
+            delete copy[index];
+            return copy;
+        });
+    },
 };

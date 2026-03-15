@@ -48,7 +48,7 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected = 0,
+    activeVersionIndex = 0,
 ) {
     const annotation = {
         ...createNewAnnotation(
@@ -56,7 +56,7 @@ function addRevision(
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected,
+        activeVersionIndex,
         versions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));

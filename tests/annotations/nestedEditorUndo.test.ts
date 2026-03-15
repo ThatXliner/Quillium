@@ -15,9 +15,7 @@ import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { nestedSavedFields } from "$lib/editor/extensions";
-import {
-    makeParentUndoKeymap,
-} from "$lib/editor/plugins/annotations/nestedEditor";
+import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
 import {
     annotationField,
     addAnnotation,
@@ -58,7 +56,7 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected = 0,
+    activeVersionIndex = 0,
 ): number {
     const annotation = {
         ...createNewAnnotation(
@@ -66,12 +64,10 @@ function addRevision(
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected,
+        activeVersionIndex,
         versions,
     };
-    parentView.dispatch(
-        parentView.state.update({ effects: [addAnnotation.of(annotation)] }),
-    );
+    parentView.dispatch(parentView.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
 }
 
@@ -81,7 +77,7 @@ function getRevisionVersionText(parentView: EditorView, revisionId: number): str
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision annotation with id ${revisionId}`);
     }
-    return versionText(rev.versions[rev.currentlySelected]);
+    return versionText(rev.versions[rev.activeVersionIndex]);
 }
 
 /**
@@ -106,10 +102,7 @@ function simulateNestedEdit(
     parentView.dispatch({
         changes: { from: offset + pos, insert },
         effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
 }
 
@@ -225,7 +218,7 @@ describe("Scenario 4: parent undoDepth decreases on undo", () => {
 describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current", () => {
     it("nestedEditorEdit transactions update version.doc via Phase 3", () => {
         // Phase 3 intentionally runs for nestedEditorEdit transactions. It syncs
-        // versions[currentlySelected].doc from the parent doc slice so that
+        // versions[activeVersionIndex].doc from the parent doc slice so that
         // version switching always shows up-to-date text. The nested editor's own
         // state is already correct; Phase 3 keeps the stored snapshot in sync.
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
@@ -238,10 +231,7 @@ describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current"
         parentView.dispatch({
             changes: { from: offset + 5, insert: " world" },
             effects: [_nestedEditRevision.of(revId)],
-            annotations: [
-                nestedEditorEdit.of(revId),
-                Transaction.addToHistory.of(true),
-            ],
+            annotations: [nestedEditorEdit.of(revId), Transaction.addToHistory.of(true)],
         });
 
         // Phase 3 ran and updated version.doc to match the new parent doc slice

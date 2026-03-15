@@ -63,13 +63,18 @@ export function createNestedEditorState(
         try {
             return EditorState.fromJSON(version, { extensions }, nestedSavedFields);
         } catch (error) {
-            console.warn("[nestedEditor] failed to restore serialized state, falling back to doc text", error);
+            console.warn(
+                "[nestedEditor] failed to restore serialized state, falling back to doc text",
+                error,
+            );
         }
     }
     return EditorState.create({ doc: versionText(version), extensions });
 }
 
-function hasSerializedNestedState(version: VersionState): version is Parameters<typeof EditorState.fromJSON>[0] {
+function hasSerializedNestedState(
+    version: VersionState,
+): version is Parameters<typeof EditorState.fromJSON>[0] {
     if (typeof version !== "object" || version === null) return false;
     if (typeof (version as { doc?: unknown }).doc !== "string") return false;
     const serialized =
@@ -105,44 +110,46 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
         };
     }
 
-    return Prec.highest(keymap.of([
-        {
-            key: "Mod-z",
-            run() {
-                return undo(parentView);
+    return Prec.highest(
+        keymap.of([
+            {
+                key: "Mod-z",
+                run() {
+                    return undo(parentView);
+                },
+                preventDefault: true,
             },
-            preventDefault: true,
-        },
-        {
-            key: "Mod-y",
-            mac: "Mod-Shift-z",
-            run() {
-                return redo(parentView);
+            {
+                key: "Mod-y",
+                mac: "Mod-Shift-z",
+                run() {
+                    return redo(parentView);
+                },
+                preventDefault: true,
             },
-            preventDefault: true,
-        },
-        {
-            key: "Mod-Enter",
-            run() {
-                publishAnnotationUiEvent({
-                    type: "annotation-add-version",
-                    annotationId: revisionId,
-                });
-                return true;
+            {
+                key: "Mod-Enter",
+                run() {
+                    publishAnnotationUiEvent({
+                        type: "annotation-add-version",
+                        annotationId: revisionId,
+                    });
+                    return true;
+                },
+                preventDefault: true,
             },
-            preventDefault: true,
-        },
-        {
-            key: "Mod-Alt-m",
-            run: openNestedAnnotation("comment"),
-            preventDefault: true,
-        },
-        {
-            key: "Mod-Alt-k",
-            run: openNestedAnnotation("revision"),
-            preventDefault: true,
-        },
-    ]));
+            {
+                key: "Mod-Alt-m",
+                run: openNestedAnnotation("comment"),
+                preventDefault: true,
+            },
+            {
+                key: "Mod-Alt-k",
+                run: openNestedAnnotation("revision"),
+                preventDefault: true,
+            },
+        ]),
+    );
 }
 
 /**
@@ -161,11 +168,8 @@ export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: 
         if (!annotation || !isAnnotationOfType(annotation, "revision")) return false;
         const count = annotation.versions.length;
         if (count <= 1) return true; // consume: user intent was "navigate", no-op is correct
-        const current = annotation.currentlySelected;
-        const next =
-            direction === "next"
-                ? (current + 1) % count
-                : (current - 1 + count) % count;
+        const current = annotation.activeVersionIndex;
+        const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
         parentView.dispatch(setActiveRevisionVersion(state, annotation.id, next));
         return true;
     }
@@ -228,10 +232,7 @@ export function translateAndDispatch(
     parentView.dispatch({
         changes: parentChanges,
         effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
     return true;
 }

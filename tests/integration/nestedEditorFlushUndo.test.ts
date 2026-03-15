@@ -45,7 +45,7 @@ function addRevision(view: EditorView, from: number, to: number, doc: string): n
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected: 0,
+        activeVersionIndex: 0,
         versions: [{ doc }],
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
@@ -55,7 +55,7 @@ function addRevision(view: EditorView, from: number, to: number, doc: string): n
 function getVersionDoc(view: EditorView, revId: number): string {
     const rev = view.state.field(annotationField)[revId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
-    return versionText(rev.versions[rev.currentlySelected]);
+    return versionText(rev.versions[rev.activeVersionIndex]);
 }
 
 function getRevisionSlice(view: EditorView, revId: number): string {

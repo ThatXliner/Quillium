@@ -45,7 +45,7 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected = 0,
+    activeVersionIndex = 0,
 ): number {
     const annotation = {
         ...createNewAnnotation(
@@ -53,7 +53,7 @@ function addRevision(
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected,
+        activeVersionIndex,
         versions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
@@ -80,10 +80,7 @@ function simulateNestedEdit(
     view.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
         effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
 }
 
@@ -93,7 +90,7 @@ function getVersionDoc(view: EditorView, revisionId: number): string {
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision ${revisionId}`);
     }
-    return versionText(rev.versions[rev.currentlySelected]);
+    return versionText(rev.versions[rev.activeVersionIndex]);
 }
 
 /** Get the text under the revision range in the parent doc. */
@@ -102,9 +99,7 @@ function getRevisionSlice(view: EditorView, revisionId: number): string {
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision ${revisionId}`);
     }
-    return view.state.doc
-        .slice(rev.selection.main.from, rev.selection.main.to)
-        .toString();
+    return view.state.doc.slice(rev.selection.main.from, rev.selection.main.to).toString();
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────

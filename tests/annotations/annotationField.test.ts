@@ -45,14 +45,14 @@ function makeRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected = 0,
+    activeVersionIndex = 0,
 ): GenericAnnotation {
     return {
         id,
         _type: "revision",
         selection: sel(from, to),
         thread: [],
-        currentlySelected,
+        activeVersionIndex,
         versions,
     };
 }
@@ -288,7 +288,7 @@ describe("setActiveRevisionVersion", () => {
         );
     });
 
-    it("changes doc content and updates currentlySelected", () => {
+    it("changes doc content and updates activeVersionIndex", () => {
         const doc = "Hello, world!";
         const state = makeState(doc);
         const revision = makeRevision(0, 0, 5, [{ doc: "Hello" }, { doc: "Howdy" }], 0);
@@ -301,7 +301,7 @@ describe("setActiveRevisionVersion", () => {
         const ann = newState.field(annotationField)[0];
         expect(ann._type).toBe("revision");
         if (ann._type === "revision") {
-            expect(ann.currentlySelected).toBe(1);
+            expect(ann.activeVersionIndex).toBe(1);
         }
     });
 });
@@ -330,7 +330,7 @@ describe("createNewRevision", () => {
         const ann = newState.field(annotationField)[0];
         if (ann._type === "revision") {
             expect(ann.versions).toHaveLength(2);
-            expect(ann.currentlySelected).toBe(1);
+            expect(ann.activeVersionIndex).toBe(1);
         }
     });
 });
@@ -370,11 +370,11 @@ describe("deleteRevisionVersion", () => {
         if (ann._type === "revision") {
             expect(ann.versions).toHaveLength(2);
             // Should switch to the next available version
-            expect(ann.currentlySelected).toBeLessThan(2);
+            expect(ann.activeVersionIndex).toBeLessThan(2);
         }
     });
 
-    it("deleting a version before current adjusts currentlySelected index", () => {
+    it("deleting a version before current adjusts activeVersionIndex index", () => {
         const state = makeState("Hello, world!");
         const revision = makeRevision(
             0,
@@ -392,7 +392,7 @@ describe("deleteRevisionVersion", () => {
         if (ann._type === "revision") {
             expect(ann.versions).toHaveLength(2);
             // Was 2, deleted index 0, so should shift down to 1
-            expect(ann.currentlySelected).toBe(1);
+            expect(ann.activeVersionIndex).toBe(1);
         }
     });
 });

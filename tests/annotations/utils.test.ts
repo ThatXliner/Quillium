@@ -33,7 +33,7 @@ function makeRevision(id: number, from: number, to: number): GenericAnnotation {
         _type: "revision",
         selection: sel([from, to]),
         thread: [],
-        currentlySelected: 0,
+        activeVersionIndex: 0,
         versions: [],
     };
 }

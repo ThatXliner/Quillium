@@ -3,7 +3,7 @@
  * correctly syncs the version.doc to empty, rather than leaving stale
  * content that gets pushed back by the external-sync effect.
  *
- * Bug: Phase 3 (syncRevisionDocsWithDocument) skipped syncing when a
+ * Bug: Phase 3 (pushDocToVersionState) skipped syncing when a
  * revision's range collapsed to empty, preserving the old version.doc.
  * The external-sync effect then read the stale doc and overwrote the
  * nested editor's empty content with the old text.
@@ -43,7 +43,7 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected = 0,
+    activeVersionIndex = 0,
 ): number {
     const annotation = {
         ...createNewAnnotation(
@@ -51,12 +51,10 @@ function addRevision(
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected,
+        activeVersionIndex,
         versions,
     };
-    view.dispatch(
-        view.state.update({ effects: [addAnnotation.of(annotation)] }),
-    );
+    view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
 }
 
@@ -68,30 +66,24 @@ function simulateNestedEdit(
     insert: string,
 ) {
     const rev = view.state.field(annotationField)[revisionId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error(`No revision ${revisionId}`);
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error(`No revision ${revisionId}`);
     const offset = rev.selection.main.from;
     view.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
         effects: [_nestedEditRevision.of(revisionId)],
-        annotations: [
-            nestedEditorEdit.of(revisionId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });
 }
 
 function getVersionDoc(view: EditorView, revisionId: number): string {
     const rev = view.state.field(annotationField)[revisionId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error(`No revision ${revisionId}`);
-    return versionText(rev.versions[rev.currentlySelected]);
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error(`No revision ${revisionId}`);
+    return versionText(rev.versions[rev.activeVersionIndex]);
 }
 
 function getRevisionRange(view: EditorView, revisionId: number) {
     const rev = view.state.field(annotationField)[revisionId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error(`No revision ${revisionId}`);
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error(`No revision ${revisionId}`);
     return rev.selection.main;
 }
 
@@ -143,9 +135,7 @@ describe("nested editor empty version persistence", () => {
         // skip guard keeps the original doc as a safety measure)
         const rev = view.state.field(annotationField)[revId];
         if (rev && isAnnotationOfType(rev, "revision")) {
-            expect(versionText(rev.versions[rev.currentlySelected])).toBe(
-                "Beta",
-            );
+            expect(versionText(rev.versions[rev.activeVersionIndex])).toBe("Beta");
         }
     });
 

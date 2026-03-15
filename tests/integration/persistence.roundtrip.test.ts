@@ -38,7 +38,7 @@ describe("persistence round-trip integration", () => {
                 EditorSelection.single(6, 11),
                 "revision",
             ),
-            currentlySelected: 0,
+            activeVersionIndex: 0,
             versions: [{ doc: "world", label: "Original" }],
         };
 

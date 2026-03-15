@@ -63,7 +63,7 @@ const {
 } = $props();
 
 const thread = $derived(revision.thread);
-const activeVersion = $derived(revision.versions[revision.currentlySelected]);
+const activeVersion = $derived(revision.versions[revision.activeVersionIndex]);
 const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
 
 let isEditorOpen = $state(false);
@@ -83,8 +83,8 @@ function openEditor() {
     isEditorOpen = true;
 }
 
-let recursiveEditorHost = $state<HTMLDivElement>();
-let recursiveEditor = $state<EditorView | undefined>(undefined);
+let nestedEditorHost = $state<HTMLDivElement>();
+let nestedEditor = $state<EditorView | undefined>(undefined);
 let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
 // Track which version the nested editor was built for, so we know
@@ -99,7 +99,7 @@ let lastDispatchedDoc = "";
 // Guard: set to true while we are programmatically patching the nested editor
 // from an external parent change, so the updateListener skips translateAndDispatch
 // and doesn't bounce the change back up to the parent.
-let syncingFromParent = false;
+let pullingFromParent = false;
 
 let lastBoundaryNudgeToken = 0;
 let lastOpenNestedEditorToken = 0;
@@ -167,6 +167,12 @@ $effect(() => {
         event.command.revisionId !== revision.id
     )
         return;
+    // If there's already a modal open for this revision, the modal's own
+    // event handler will create the sub-annotation directly in its nested
+    // editor rather than pushing a duplicate modal from the sidebar.
+    const stack = $modalStack;
+    const topModal = stack[stack.length - 1];
+    if (topModal?.type === "revision" && topModal.revisionId === revision.id) return;
     lastOpenNestedEditorToken = event.token;
     const cmd = event.command;
     modalStack.push({
@@ -199,19 +205,19 @@ $effect(() => {
             editor.focus();
             clearTimeout(cursorArrivingTimeout);
             cursorArriving = false;
-            void recursiveEditorHost?.offsetWidth;
+            void nestedEditorHost?.offsetWidth;
             cursorArriving = true;
             cursorArrivingTimeout = setTimeout(() => {
                 cursorArriving = false;
             }, 650);
         };
-        if (isEditorOpen && recursiveEditor) {
-            placeCursor(recursiveEditor);
+        if (isEditorOpen && nestedEditor) {
+            placeCursor(nestedEditor);
         } else {
             userClosedEditor = false;
             isEditorOpen = true;
             tick().then(() => {
-                if (recursiveEditor) placeCursor(recursiveEditor);
+                if (nestedEditor) placeCursor(nestedEditor);
             });
         }
     } else {
@@ -228,29 +234,29 @@ $effect(() => {
 /**
  * Mount a nested CodeMirror editor for the given version.
  */
-function createRecursiveEditor(version: VersionState) {
-    if (!recursiveEditorHost || recursiveEditor) return;
+function createNestedEditor(version: VersionState) {
+    if (!nestedEditorHost || nestedEditor) return;
     const state = createNestedEditorState(
         version,
         (update: ViewUpdate) => {
-            if (!recursiveEditor) return;
-            activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+            if (!nestedEditor) return;
+            activeAnnotation = getActiveAnnotation(nestedEditor.state);
             // Translate doc changes to parent coordinates and dispatch.
             // Skip when we're programmatically syncing from the parent to avoid
             // bouncing the change back up and corrupting the parent document.
-            if (!syncingFromParent && translateAndDispatch(update, view, revision.id)) {
+            if (!pullingFromParent && translateAndDispatch(update, view, revision.id)) {
                 // Track what we dispatched so the external-sync $effect
                 // doesn't re-patch the nested editor with its own content.
-                lastDispatchedDoc = recursiveEditor.state.doc.toString();
+                lastDispatchedDoc = nestedEditor.state.doc.toString();
             }
         },
         view,
         revision.id,
     );
-    recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
-    mountedVersionId = revision.currentlySelected;
-    lastDispatchedDoc = recursiveEditor.state.doc.toString();
-    activeAnnotation = getActiveAnnotation(recursiveEditor.state);
+    nestedEditor = new EditorView({ state, parent: nestedEditorHost });
+    mountedVersionId = revision.activeVersionIndex;
+    lastDispatchedDoc = nestedEditor.state.doc.toString();
+    activeAnnotation = getActiveAnnotation(nestedEditor.state);
 
     // Apply pending selection if this annotation just created one.
     const event = $annotationUiEvent;
@@ -264,18 +270,18 @@ function createRecursiveEditor(version: VersionState) {
             : undefined);
     if (selectionEvent) {
         lastNestedSelectionToken = selectionEvent.token;
-        const docLen = recursiveEditor.state.doc.length;
+        const docLen = nestedEditor.state.doc.length;
         const from = Math.min(selectionEvent.from, docLen);
         const to = Math.min(selectionEvent.to, docLen);
-        recursiveEditor.dispatch({
+        nestedEditor.dispatch({
             selection: { anchor: from, head: to },
             scrollIntoView: true,
         });
-        recursiveEditor.focus();
+        nestedEditor.focus();
     }
 }
 
-function destroyRecursiveEditor() {
+function destroyNestedEditor() {
     // NOTE: we intentionally do NOT flush nested annotation state here.
     // updateRevisionVersionState replaces the doc range, which creates a
     // revisionInternalEdit transaction that corrupts undo positions when
@@ -283,8 +289,8 @@ function destroyRecursiveEditor() {
     // revision. The parent doc is the source of truth (Phase 3 keeps
     // version.doc in sync), so the doc content is already correct.
     // Nested annotation persistence is handled by the modal editor.
-    recursiveEditor?.destroy();
-    recursiveEditor = undefined;
+    nestedEditor?.destroy();
+    nestedEditor = undefined;
     activeAnnotation = undefined;
     mountedVersionId = -1;
 }
@@ -292,34 +298,34 @@ function destroyRecursiveEditor() {
 // Create or destroy the nested editor when the toggle changes.
 $effect(() => {
     if (!isEditorOpen) {
-        destroyRecursiveEditor();
+        destroyNestedEditor();
         return;
     }
     tick().then(() => {
         if (!isEditorOpen || !activeVersion) return;
-        createRecursiveEditor(activeVersion);
+        createNestedEditor(activeVersion);
     });
 });
 
 // When the selected version changes, destroy and recreate.
 // This is the ONLY case where we fully rebuild the nested editor.
 $effect(() => {
-    if (!recursiveEditor || !isEditorOpen) return;
-    const currentVersionId = revision.currentlySelected;
+    if (!nestedEditor || !isEditorOpen) return;
+    const currentVersionId = revision.activeVersionIndex;
     if (currentVersionId === mountedVersionId) return;
 
     // Version switched — recreate for new version.
-    destroyRecursiveEditor();
+    destroyNestedEditor();
     tick().then(() => {
         if (!isEditorOpen || !activeVersion) return;
-        createRecursiveEditor(activeVersion);
-        if (recursiveEditor) {
-            const end = recursiveEditor.state.doc.length;
-            recursiveEditor.dispatch({
+        createNestedEditor(activeVersion);
+        if (nestedEditor) {
+            const end = nestedEditor.state.doc.length;
+            nestedEditor.dispatch({
                 selection: { anchor: end },
                 scrollIntoView: true,
             });
-            recursiveEditor.focus();
+            nestedEditor.focus();
         }
     });
 });
@@ -331,17 +337,17 @@ $effect(() => {
 // itself (tracked via lastDispatchedDoc) to avoid a feedback loop.
 $effect(() => {
     const externalDoc = activeVersion?.doc ?? "";
-    if (!recursiveEditor || externalDoc === lastDispatchedDoc) return;
-    const current = recursiveEditor.state.doc.toString();
+    if (!nestedEditor || externalDoc === lastDispatchedDoc) return;
+    const current = nestedEditor.state.doc.toString();
     if (current !== externalDoc) {
-        syncingFromParent = true;
-        recursiveEditor.dispatch({
+        pullingFromParent = true;
+        nestedEditor.dispatch({
             changes: { from: 0, to: current.length, insert: externalDoc },
-            // Mark as a downsync/non-history transaction so the nested editor
+            // Mark as a pull/non-history transaction so the nested editor
             // bridge can ignore it when translating changes back to the parent.
             annotations: Transaction.addToHistory.of(false),
         });
-        syncingFromParent = false;
+        pullingFromParent = false;
     }
     lastDispatchedDoc = externalDoc;
 });
@@ -370,7 +376,7 @@ $effect(() => {
 onDestroy(() => {
     clearTimeout(boundaryHintTimeout);
     clearTimeout(cursorArrivingTimeout);
-    destroyRecursiveEditor();
+    destroyNestedEditor();
 });
 </script>
 
@@ -404,7 +410,7 @@ onDestroy(() => {
     <!-- Version pills -->
     <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
         {#each revision.versions as version, i}
-            {@const versionActive = i === revision.currentlySelected}
+            {@const versionActive = i === revision.activeVersionIndex}
             {@const isEditingThis = editingLabelIndex === i}
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
@@ -540,7 +546,7 @@ onDestroy(() => {
                 onclick={() => {
                     userClosedEditor = false;
                     isEditorOpen = true;
-                    tick().then(() => recursiveEditor?.focus());
+                    tick().then(() => nestedEditor?.focus());
                 }}
             >
                 <span class="shrink-0 mt-px">↓</span>
@@ -562,7 +568,11 @@ onDestroy(() => {
     <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
-            <div bind:this={recursiveEditorHost} class="revision-inline-editor"></div>
+            <div
+                bind:this={nestedEditorHost}
+                class="revision-inline-editor"
+                class:cursor-arriving={cursorArriving}
+            ></div>
         </div>
     {/if}
 
@@ -601,6 +611,10 @@ onDestroy(() => {
     }
     .revision-inline-editor :global(.cm-content) {
         padding: 0;
+        text-indent: 0;
+        font-size: 13px;
+        line-height: 1.6;
+        font-family: inherit;
     }
 
     @keyframes focus-flash {
@@ -609,7 +623,7 @@ onDestroy(() => {
         100% { background-color: rgba(254, 242, 205, 0); }
     }
 
-    .revision-recursive-editor.cursor-arriving {
+    .revision-inline-editor.cursor-arriving {
         animation: focus-flash 0.6s ease-out both;
     }
 </style>

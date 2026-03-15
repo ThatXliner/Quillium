@@ -24,7 +24,7 @@
  *   - On every transaction, the reducer:
  *     1. Remaps all annotation selections through doc changes.
  *     2. Processes effects (add/remove/update).
- *     3. Syncs active revision version text with the document.
+ *     3. Pulls active revision version text from the document.
  *   - Serialized/deserialized via toJSON/fromJSON for
  *     persistence.
  *
@@ -154,7 +154,7 @@ export const revisionInternalEdit = Annotation.define<boolean>();
 // acting as a direct viewport. Set to the revision ID whose nested editor
 // dispatched the change.
 // Consumers (non-exhaustive):
-//   - annotationField Phase 3: uses this to sync versions[selected].doc from
+//   - annotationField Phase 3: uses this to pull versions[selected].doc from
 //     the parent doc slice so version switching shows current content.
 //   - Plugins / integrations that gate behavior on whether a change
 //     originated from a nested editor (e.g. to avoid feedback loops or to
@@ -276,10 +276,10 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
     }
 
     const nextVersions = original.versions.filter((_, i) => i !== versionId);
-    let nextSelected = original.currentlySelected;
-    if (versionId < original.currentlySelected) {
-        nextSelected = original.currentlySelected - 1;
-    } else if (versionId === original.currentlySelected) {
+    let nextSelected = original.activeVersionIndex;
+    if (versionId < original.activeVersionIndex) {
+        nextSelected = original.activeVersionIndex - 1;
+    } else if (versionId === original.activeVersionIndex) {
         nextSelected = Math.min(versionId, nextVersions.length - 1);
     }
 
@@ -289,7 +289,7 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
             versionId,
         }),
     ];
-    if (nextSelected !== original.currentlySelected) {
+    if (nextSelected !== original.activeVersionIndex) {
         effects.push(
             _updateActiveRevisionVersion.of({
                 annotationId,
@@ -299,7 +299,7 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
     }
 
     const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)];
-    if (versionId === original.currentlySelected) {
+    if (versionId === original.activeVersionIndex) {
         return state.update({
             effects,
             annotations,
@@ -342,7 +342,7 @@ export function updateRevisionVersionState(
         revisionInternalEdit.of(true),
         Transaction.addToHistory.of(options.addToHistory ?? true),
     ];
-    if (original.currentlySelected !== versionId) {
+    if (original.activeVersionIndex !== versionId) {
         return state.update({
             effects,
             annotations,
@@ -394,7 +394,7 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
             EditorSelection.single(from, from + firstReplacement.length),
             "revision",
         ),
-        currentlySelected: 1,
+        activeVersionIndex: 1,
         versions,
         thread: annotation.thread,
     };
@@ -464,7 +464,7 @@ export function applySuggestion(
 //      to allow version switching).
 //   2. applyAnnotationEffects — process each StateEffect
 //      in the transaction to add/remove/mutate annotations.
-//   3. syncRevisionDocsWithDocument — when no explicit
+//   3. pushDocToVersionState — when no explicit
 //      revision effect fired, copy the document slice
 //      under each active revision back into its version
 //      state so the stored text stays current.
@@ -519,16 +519,16 @@ function applyRevisionVersionEffect(
             Math.min(e.value.at ?? annotation.versions.length, annotation.versions.length),
         );
         annotation.versions.splice(insertionIndex, 0, e.value.newVersion);
-        annotation.currentlySelected = insertionIndex;
+        annotation.activeVersionIndex = insertionIndex;
     } else if (e.is(_deleteVersionFromRevision)) {
         annotation.versions.splice(e.value.versionId, 1);
-        if (e.value.versionId < annotation.currentlySelected) {
-            annotation.currentlySelected -= 1;
-        } else if (annotation.currentlySelected >= annotation.versions.length) {
-            annotation.currentlySelected = Math.max(0, annotation.versions.length - 1);
+        if (e.value.versionId < annotation.activeVersionIndex) {
+            annotation.activeVersionIndex -= 1;
+        } else if (annotation.activeVersionIndex >= annotation.versions.length) {
+            annotation.activeVersionIndex = Math.max(0, annotation.versions.length - 1);
         }
     } else if (e.is(_updateActiveRevisionVersion)) {
-        annotation.currentlySelected = e.value.to;
+        annotation.activeVersionIndex = e.value.to;
         // When switching versions, reconstruct the selection
         // to cover the inserted text. This is critical for
         // collapsed ranges (all text was deleted) where
@@ -547,32 +547,32 @@ function applyRevisionVersionEffect(
 
 /**
  * Phase 3: For revisions not touched by an explicit effect,
- * sync the active version's doc text with the actual document
+ * pull the active version's doc text from the actual document
  * content under the revision's range.
  *
  * @param skipIds - revision IDs that had an explicit effect this
- *   transaction and should not be synced here.
+ *   transaction and should not be pulled here.
  */
-function syncRevisionDocsWithDocument(
+function pushDocToVersionState(
     annotations: Annotations,
     tr: Transaction,
     skipIds: Set<number> = new Set(),
 ): Annotations {
     // Nested editor edits that collapse a revision to empty should still
-    // sync version.doc to "" — otherwise the stale doc gets pushed back
+    // pull version.doc to "" — otherwise the stale doc gets pushed back
     // into the nested editor by the external-sync effect. Non-nested
-    // deletions skip syncing so undo can restore from _restoreAnnotation.
+    // deletions skip pulling so undo can restore from _restoreAnnotation.
     const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
             if (x.selection.main.empty && !isNestedEdit) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
-            if (text === versionText(x.versions[x.currentlySelected])) return x;
+            if (text === versionText(x.versions[x.activeVersionIndex])) return x;
             // Return a new annotation object so Svelte's fine-grained reactivity
             // detects the change and re-derives activeText in Revision.svelte.
             const newVersions = x.versions.slice();
-            newVersions[x.currentlySelected] = {
-                ...newVersions[x.currentlySelected],
+            newVersions[x.activeVersionIndex] = {
+                ...newVersions[x.activeVersionIndex],
                 doc: text,
             };
             return { ...x, versions: newVersions };
@@ -591,7 +591,7 @@ export const annotationField = StateField.define<Annotations>({
 
         // Phase 2: apply effects
         // Track which revision IDs had an explicit effect so Phase 3
-        // can skip syncing only those revisions (not all of them).
+        // can skip pulling only those revisions (not all of them).
         const revisionsWithExplicitEffect = new Set<number>();
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
@@ -629,7 +629,7 @@ export const annotationField = StateField.define<Annotations>({
                 if (!isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
                 annotation.versions[e.value.versionId] = e.value.versionState;
-                if (annotation.currentlySelected === e.value.versionId && tr.docChanged) {
+                if (annotation.activeVersionIndex === e.value.versionId && tr.docChanged) {
                     const oldAnnotation = oldAnnotations[e.value.annotationId];
                     if (oldAnnotation) {
                         const from = tr.changes.mapPos(oldAnnotation.selection.main.from, -1);
@@ -656,7 +656,7 @@ export const annotationField = StateField.define<Annotations>({
                 delete annotations[e.value.annotationId];
             }
         }
-        // Phase 3: keep active revision version text in sync with the
+        // Phase 3: pull active revision version text from the
         // document, but only for revisions that had no explicit effect
         // this transaction and only when the document actually changed.
         if (tr.docChanged) {
@@ -697,13 +697,9 @@ export const annotationField = StateField.define<Annotations>({
             }
 
             // NOTE: we intentionally do NOT skip Phase 3 for nestedEditorEdit.
-            // Phase 3 syncs versions[selected].doc from the parent doc slice,
+            // Phase 3 pulls versions[selected].doc from the parent doc slice,
             // which is needed so that version switching shows current content.
-            annotations = syncRevisionDocsWithDocument(
-                annotations,
-                tr,
-                revisionsWithExplicitEffect,
-            );
+            annotations = pushDocToVersionState(annotations, tr, revisionsWithExplicitEffect);
         }
         return annotations;
     },
@@ -843,7 +839,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 effects.push(
                     _updateActiveRevisionVersion.of({
                         annotationId: oldAnnotation.id,
-                        to: oldAnnotation.currentlySelected,
+                        to: oldAnnotation.activeVersionIndex,
                     }),
                 );
             }

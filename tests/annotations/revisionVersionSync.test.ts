@@ -5,12 +5,12 @@
  * updateRevisionVersionState on the parent EditorView. These tests verify:
  *
  *   1. updateRevisionVersionState writes doc text into the annotation field.
- *   2. Phase 3 (syncRevisionDocsWithDocument) keeps the active version text
+ *   2. Phase 3 (pushDocToVersionState) keeps the active version text
  *      in sync when the user types inside the revision range in the main doc.
  *   3. Undo of updateRevisionVersionState restores the previous version text.
  *   4. Undo of a main-doc edit inside a revision range restores the version text.
  *   5. Version switching works and is undoable.
- *   6. syncRevisionDocsWithDocument returns a new annotation object (not a
+ *   6. pushDocToVersionState returns a new annotation object (not a
  *      mutation) so Svelte reactivity fires correctly.
  */
 
@@ -48,7 +48,7 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    currentlySelected = 0,
+    activeVersionIndex = 0,
 ): number {
     const annotation = {
         ...createNewAnnotation(
@@ -56,7 +56,7 @@ function addRevision(
             EditorSelection.single(from, to),
             "revision",
         ),
-        currentlySelected,
+        activeVersionIndex,
         versions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
@@ -72,7 +72,7 @@ function getRevision(view: EditorView, id: number) {
 function activeVersionText(view: EditorView, id: number): string {
     const rev = getRevision(view, id);
     if (!rev) return "";
-    return versionText(rev.versions[rev.currentlySelected] ?? { doc: "" });
+    return versionText(rev.versions[rev.activeVersionIndex] ?? { doc: "" });
 }
 
 let view: EditorView | undefined;
@@ -89,9 +89,7 @@ describe("updateRevisionVersionState writes version text", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
 
-        view.dispatch(
-            updateRevisionVersionState(view.state, id, 0, { doc: "Hi" }),
-        );
+        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi" }));
 
         expect(activeVersionText(view, id)).toBe("Hi");
     });
@@ -100,9 +98,7 @@ describe("updateRevisionVersionState writes version text", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }, { doc: "Hi" }], 0);
 
-        view.dispatch(
-            updateRevisionVersionState(view.state, id, 1, { doc: "Hey" }),
-        );
+        view.dispatch(updateRevisionVersionState(view.state, id, 1, { doc: "Hey" }));
 
         // Main doc and active version unchanged
         expect(view.state.doc.toString()).toBe("Hello world");
@@ -117,9 +113,7 @@ describe("updateRevisionVersionState writes version text", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello", label: "Draft" }]);
 
-        view.dispatch(
-            updateRevisionVersionState(view.state, id, 0, { doc: "Hi", label: "Draft" }),
-        );
+        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi", label: "Draft" }));
 
         const rev = getRevision(view, id)!;
         expect(rev.versions[0]?.label).toBe("Draft");
@@ -128,7 +122,7 @@ describe("updateRevisionVersionState writes version text", () => {
 
 // ── 2. Phase 3 syncs version text with main doc ───────────────────────────────
 
-describe("Phase 3: syncRevisionDocsWithDocument keeps version text current", () => {
+describe("Phase 3: pushDocToVersionState keeps version text current", () => {
     it("version text updates when user types inside revision range in main doc", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
@@ -243,7 +237,13 @@ describe("undo of updateRevisionVersionState restores previous version text", ()
 
         // Simulate drift-correction dispatch (addToHistory: false)
         view.dispatch(
-            updateRevisionVersionState(view.state, id, 0, { doc: "Corrected" }, { addToHistory: false }),
+            updateRevisionVersionState(
+                view.state,
+                id,
+                0,
+                { doc: "Corrected" },
+                { addToHistory: false },
+            ),
         );
         expect(activeVersionText(view, id)).toBe("Corrected");
 
@@ -272,7 +272,7 @@ describe("setActiveRevisionVersion switches active version", () => {
         view.dispatch(setActiveRevisionVersion(view.state, id, 1));
 
         const rev = getRevision(view, id)!;
-        expect(rev.currentlySelected).toBe(1);
+        expect(rev.activeVersionIndex).toBe(1);
         expect(view.state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("Hi");
     });
 
@@ -286,7 +286,7 @@ describe("setActiveRevisionVersion switches active version", () => {
         undo(view);
         expect(activeVersionText(view, id)).toBe("Hello");
         const rev = getRevision(view, id)!;
-        expect(rev.currentlySelected).toBe(0);
+        expect(rev.activeVersionIndex).toBe(0);
         expect(view.state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("Hello");
     });
 
@@ -299,7 +299,7 @@ describe("setActiveRevisionVersion switches active version", () => {
         redo(view);
 
         const rev = getRevision(view, id)!;
-        expect(rev.currentlySelected).toBe(1);
+        expect(rev.activeVersionIndex).toBe(1);
         expect(activeVersionText(view, id)).toBe("Hi");
     });
 });
@@ -316,7 +316,12 @@ describe("undo of version state update interleaved with main-doc edits", () => {
         // Simulate textarea typing
         view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi" }));
         // User also types " there" after the revision range
-        view.dispatch({ changes: { from: view.state.field(annotationField)[id]!.selection.main.to, insert: " there" } });
+        view.dispatch({
+            changes: {
+                from: view.state.field(annotationField)[id]!.selection.main.to,
+                insert: " there",
+            },
+        });
 
         // Undo the main-doc edit
         undo(view);
