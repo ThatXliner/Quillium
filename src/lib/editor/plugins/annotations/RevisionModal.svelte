@@ -411,6 +411,7 @@ $effect(() => {
         syncingFromParent = true;
         editor.dispatch({
             changes: { from: 0, to: current.length, insert: externalDoc },
+            annotations: Transaction.remote.of(true),
         });
         syncingFromParent = false;
         modalAnnotations = editor.state.field(annotationField);
