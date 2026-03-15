@@ -219,13 +219,14 @@ describe("Scenario 4: parent undoDepth decreases on undo", () => {
     });
 });
 
-// ── Scenario 5: nestedEditorEdit suppresses Phase 3 ─────────────────────────
+// ── Scenario 5: nestedEditorEdit and Phase 3 ─────────────────────────────────
 
-describe("Scenario 5: nestedEditorEdit suppresses Phase 3 sync", () => {
-    it("nestedEditorEdit transactions do not double-update version.doc via Phase 3", () => {
-        // When a nested editor dispatches to the parent with nestedEditorEdit,
-        // Phase 3 should skip that revision so it doesn't redundantly re-read
-        // the doc slice (the nested editor already knows the correct text).
+describe("Scenario 5: nestedEditorEdit runs Phase 3 to keep version.doc current", () => {
+    it("nestedEditorEdit transactions update version.doc via Phase 3", () => {
+        // Phase 3 intentionally runs for nestedEditorEdit transactions. It syncs
+        // versions[currentlySelected].doc from the parent doc slice so that
+        // version switching always shows up-to-date text. The nested editor's own
+        // state is already correct; Phase 3 keeps the stored snapshot in sync.
         const revId = addRevision(parentView, 0, 5, [{ doc: "hello" }]);
 
         const rev = parentView.state.field(annotationField)[revId];
@@ -241,15 +242,10 @@ describe("Scenario 5: nestedEditorEdit suppresses Phase 3 sync", () => {
             ],
         });
 
-        // Phase 3 ran but skipped this revision — version.doc should NOT
-        // be updated by Phase 3 (it would be updated by translateAndDispatch
-        // only if we called it, but here we're testing suppression)
-        // The doc itself changed, so if Phase 3 ran it would update to "hello world"
-        // If Phase 3 is suppressed, version.doc stays as "hello"
+        // Phase 3 ran and updated version.doc to match the new parent doc slice
         const updatedRev = parentView.state.field(annotationField)[revId];
         if (!updatedRev || !isAnnotationOfType(updatedRev, "revision")) throw new Error();
-        // Phase 3 suppressed → version.doc unchanged from original
-        expect(versionText(updatedRev.versions[0])).toBe("hello");
+        expect(versionText(updatedRev.versions[0])).toBe("hello world");
     });
 
     it("nestedSavedFields does not include historyField", () => {

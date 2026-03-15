@@ -172,7 +172,7 @@ describe("Scenario 1: upstream chain — level-2 edit reaches root", () => {
         expect(undoDepth(rootView.state)).toBeGreaterThan(0);
     });
 
-    it("nestedEditorEdit on root dispatch suppresses Phase 3 for outerRevId", () => {
+    it("nestedEditorEdit on root dispatch runs Phase 3 and updates version.doc", () => {
         const outerRevId = addRevision(rootView, 0, 11, "hello world");
         level1View = createView("hello world", rootView);
         unregisterLevel1 = registerNestedEditor(outerRevId, level1View);
@@ -186,9 +186,9 @@ describe("Scenario 1: upstream chain — level-2 edit reaches root", () => {
             ],
         });
 
-        // Phase 3 suppressed for outerRevId — version.doc stays "hello world",
-        // not updated to reflect the doc change
-        expect(getVersionText(rootView, outerRevId)).toBe("hello world");
+        // Phase 3 runs for nestedEditorEdit — version.doc is synced from the
+        // post-transaction parent doc slice to keep it current for version switching
+        expect(getVersionText(rootView, outerRevId)).toBe("hello ");
     });
 });
 
