@@ -17,7 +17,6 @@ import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import {
     makeParentUndoKeymap,
-    translateAndDispatch,
 } from "$lib/editor/plugins/annotations/nestedEditor";
 import {
     annotationField,
