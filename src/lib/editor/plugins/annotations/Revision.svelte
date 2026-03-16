@@ -27,9 +27,11 @@ import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
 import {
+    annotationField,
     annotationsChanged,
     createNewRevision,
     deleteRevisionVersion,
+    isAnnotationOfType,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
     type Annotation,
@@ -370,6 +372,38 @@ $effect(() => {
             userClosedEditor = false;
             isEditorOpen = true;
         }
+    });
+});
+
+// When a nested revision decoration inside our inline editor is clicked,
+// the revisionClickHandler fires revision-focus-request with that nested
+// revision's ID. No other component matches it, so we handle it here by
+// opening a modal for the nested revision.
+let lastNestedRevFocusToken = 0;
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastNestedRevFocusToken ||
+        event.type !== "revision-focus-request" ||
+        !nestedEditor
+    )
+        return;
+    // Only handle if the target revision exists in our inline nested editor
+    const nestedAnns = nestedEditor.state.field(annotationField);
+    const nestedRev = nestedAnns[event.revisionId];
+    if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
+    lastNestedRevFocusToken = event.token;
+    modalStack.push({
+        type: "revision",
+        revisionId: event.revisionId,
+        parentView: nestedEditor,
+        label: previewVersionText(nestedRev.versions[nestedRev.activeVersionIndex]),
+        pendingNestedCommand: {
+            type: "cursor",
+            selectionFrom: event.relativePos,
+            selectionTo: event.relativePos,
+        },
     });
 });
 

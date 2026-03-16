@@ -482,7 +482,7 @@ Events carry a monotonically increasing `token` so components can gate on `event
 |---|---|---|
 | `revision-boundary-nudge` | `nudgeBoundary` command, `boundaryInsertNudge` plugin | `Revision.svelte` (shows hint) |
 | `revision-open-nested-editor` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command) |
-| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor), `RevisionModal.svelte` Sensor Effect D (opens modal for clicked nested revision) |
+| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor; opens modal for clicked nested revision in inline editor), `RevisionModal.svelte` Sensor Effect D (opens modal for clicked nested revision in modal editor) |
 | `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
 | `pending-nested-editor-selection` | `createRevisionCommand` | `Revision.svelte` (selects all text in newly mounted nested editor) |
 

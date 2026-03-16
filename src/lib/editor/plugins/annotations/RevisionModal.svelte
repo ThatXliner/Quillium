@@ -623,6 +623,11 @@ $effect(() => {
         revisionId: event.revisionId,
         parentView: editor,
         label: previewVersionText(nestedRev.versions[nestedRev.activeVersionIndex]),
+        pendingNestedCommand: {
+            type: "cursor",
+            selectionFrom: event.relativePos,
+            selectionTo: event.relativePos,
+        },
     });
 });
 
