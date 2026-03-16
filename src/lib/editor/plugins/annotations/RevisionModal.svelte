@@ -74,6 +74,12 @@ const {
     stackIndex,
 }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
+// Capture the pending command eagerly at mount time so we don't
+// re-read it reactively from the (mutable) modal stack later.
+const initialEntry = $modalStack[stackIndex];
+const initialPendingCommand =
+    initialEntry?.type === "revision" ? initialEntry.pendingNestedCommand : undefined;
+
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
 // Context snippet: lazy-loaded chunks around the outermost revision range
@@ -255,7 +261,15 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
     crumb.parentView.dispatch(
         setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi),
     );
+
+    // Always pop child modals above the target level — switching a
+    // version invalidates any sub-annotations that lived in the old
+    // version, so child modals must be torn down.  For the current
+    // level we also rebuild in-place; for ancestor levels
+    // popToAndRebuild handles both the pop and the rebuild signal.
     if (isCurrent) {
+        // Pop any child modals that sit above us in the stack.
+        modalStack.popTo(stackIndex);
         tick().then(() => {
             const v = view.state.field(annotationField)[revisionId] as
                 | Annotation<"revision">
@@ -399,6 +413,13 @@ function close() {
 // we watch $annotationsStore (the Svelte store updated by Editor.svelte).
 // For deeply nested modals, we watch the parent modal's per-level store
 // via modalAnnotationStores, which the parent publishes on every transaction.
+//
+// Also detects version *switches* (activeVersionIndex changed externally,
+// e.g. via Ctrl-[/] delegated from a child's nested editor keymap). When
+// the version index changes, the entire editor must be rebuilt from the
+// new VersionState so sub-annotations are restored correctly, and child
+// modals must be popped since they reference the old version's state.
+let lastSyncedVersionIndex = -1;
 $effect(() => {
     // Choose the right reactive source based on nesting depth.
     let ann: AnnotationsMap | undefined;
@@ -411,6 +432,25 @@ $effect(() => {
     if (!editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex]) return;
+
+    // Detect version switch — rebuild the editor entirely.
+    if (lastSyncedVersionIndex >= 0 && rev.activeVersionIndex !== lastSyncedVersionIndex) {
+        lastSyncedVersionIndex = rev.activeVersionIndex;
+        modalStack.popTo(stackIndex); // tear down child modals
+        destroyEditor();
+        tick().then(() => {
+            const v = view.state.field(annotationField)[revisionId] as
+                | Annotation<"revision">
+                | undefined;
+            if (v) {
+                createEditor(v.versions[v.activeVersionIndex], v.activeVersionIndex);
+                if (editor) moveCursorToEnd(editor);
+            }
+        });
+        return;
+    }
+    lastSyncedVersionIndex = rev.activeVersionIndex;
+
     const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
     if (externalDoc === lastDispatchedDoc) return;
     const current = editor.state.doc.toString();
@@ -499,7 +539,9 @@ function executePendingNestedCommand(
 // fires a "revision-open-nested-editor" event targeting this modal's
 // revisionId. We handle it here: create the sub-annotation in the nested
 // editor, and for revisions push a new modal for the sub-revision.
-let lastNestedEditorEventToken = 0;
+// Seed the token so we skip the event that triggered *this* modal's creation
+// via pendingNestedCommand (handled by the init $effect below instead).
+let lastNestedEditorEventToken = $annotationUiEvent?.token ?? 0;
 $effect(() => {
     const event = $annotationUiEvent;
     if (
@@ -535,6 +577,10 @@ $effect(() => {
 
 // Open the <dialog> as a modal, bootstrap the nested editor,
 // and run any pending nested annotation command.
+// Uses initialPendingCommand (captured once at mount) instead of reading
+// $modalStack reactively, so stack mutations from child modals can't
+// re-trigger this effect.
+let pendingCommandExecuted = false;
 $effect(() => {
     if (!dialogEl) return;
     if (!dialogEl.open) dialogEl.showModal();
@@ -546,10 +592,11 @@ $effect(() => {
             createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
         }
         const activeEditor = editor;
-        const entry = $modalStack[stackIndex];
-        if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
-            executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
-        } else if (activeEditor) {
+        if (!activeEditor || pendingCommandExecuted) return;
+        pendingCommandExecuted = true;
+        if (initialPendingCommand) {
+            executePendingNestedCommand(activeEditor, initialPendingCommand);
+        } else {
             moveCursorToEnd(activeEditor);
         }
     });
