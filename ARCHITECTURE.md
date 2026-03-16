@@ -422,7 +422,7 @@ Sensor Effect D handles the case where the user clicks on a nested revision deco
 
 ### Version switch
 
-Version switching is the **only** time the nested editor is ripped down and recreated from a `VersionState` blob. Other parent-driven updates mutate the existing view via `dispatch`ed buffer replacements, so there is no rebuilding on every keystroke—just a new text payload that overwrites the current document when something external touched the revision range.
+The inline nested editor is torn down and recreated in three cases: version switches, modal flushes (new `annotationField` blob), and open/close toggles (see "Inline editor" above). Other parent-driven updates mutate the existing view via `dispatch`ed buffer replacements, so there is no rebuilding on every keystroke—just a new text payload that overwrites the current document when something external touched the revision range.
 
 ### `nestedSavedFields`
 
