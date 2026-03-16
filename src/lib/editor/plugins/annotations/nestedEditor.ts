@@ -61,7 +61,50 @@ export function createNestedEditorState(
     ];
     if (hasSerializedNestedState(version)) {
         try {
-            return EditorState.fromJSON(version, { extensions }, nestedSavedFields);
+            const docLen = version.doc.length;
+            const raw = version as {
+                selection?: { ranges?: { anchor: number; head: number }[]; main?: number };
+                annotationField?: unknown;
+            };
+
+            // EditorState.fromJSON unconditionally calls EditorSelection.fromJSON,
+            // so a missing/malformed/out-of-range selection throws. Substitute a
+            // safe cursor when needed.
+            const sel = raw.selection;
+            const selectionValid =
+                sel != null &&
+                Array.isArray(sel.ranges) &&
+                sel.ranges.length > 0 &&
+                typeof sel.main === "number" &&
+                sel.main < sel.ranges.length &&
+                sel.ranges.every((r) => r.anchor <= docLen && r.head <= docLen);
+
+            // The annotationField blob contains nested annotation positions
+            // relative to the doc at save time. If the doc was subsequently
+            // updated by Phase 3 (shorter/longer), those positions may be out of
+            // range and cause the decoration layer to crash at render time. Drop
+            // annotationField from the blob in that case — nested annotations are
+            // a nice-to-have and the doc content is still restored correctly.
+            const annotationsValid = nestedAnnotationsInRange(raw.annotationField, docLen);
+
+            if (!selectionValid) {
+                console.warn(
+                    "[nestedEditor] serialized selection is out of range or malformed" +
+                        ` (docLen=${docLen}, sel=${JSON.stringify(sel)}); resetting to cursor at 0`,
+                );
+            }
+            if (!annotationsValid) {
+                console.warn(
+                    "[nestedEditor] serialized annotationField contains out-of-range positions" +
+                        ` (docLen=${docLen}); dropping nested annotations`,
+                );
+            }
+            const blob = {
+                ...version,
+                selection: selectionValid ? sel : { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+                ...(annotationsValid ? {} : { annotationField: undefined }),
+            };
+            return EditorState.fromJSON(blob, { extensions }, nestedSavedFields);
         } catch (error) {
             console.warn(
                 "[nestedEditor] failed to restore serialized state, falling back to doc text",
@@ -70,6 +113,24 @@ export function createNestedEditorState(
         }
     }
     return EditorState.create({ doc: versionText(version), extensions });
+}
+
+/**
+ * Returns true if all annotation selections in a serialized annotationField
+ * blob are within [0, docLen]. Used to detect stale positions before passing
+ * the blob to EditorState.fromJSON, which would otherwise crash the decoration
+ * layer at render time.
+ */
+function nestedAnnotationsInRange(annotationField: unknown, docLen: number): boolean {
+    if (annotationField == null || typeof annotationField !== "object") return true;
+    for (const ann of Object.values(annotationField as Record<string, unknown>)) {
+        if (ann == null || typeof ann !== "object") continue;
+        const sel = (ann as { selection?: { ranges?: { anchor: number; head: number }[] } })
+            .selection;
+        if (!sel?.ranges) continue;
+        if (sel.ranges.some((r) => r.anchor > docLen || r.head > docLen)) return false;
+    }
+    return true;
 }
 
 function hasSerializedNestedState(

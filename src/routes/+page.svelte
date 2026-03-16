@@ -31,6 +31,7 @@ import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
 import type { BackupEntry } from "$lib/errorGuard";
+import { restoreBackup } from "$lib/editor/restore";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
@@ -79,10 +80,7 @@ onMount(() => {
         const view = $editorView;
         if (!view) return;
         const { documentText } = (e as CustomEvent<BackupEntry>).detail;
-        view.dispatch({
-            changes: { from: 0, to: view.state.doc.length, insert: documentText },
-            userEvent: "input",
-        });
+        restoreBackup(view, documentText);
     }
 
     window.addEventListener("quillium:restore-backup", handleRestoreBackup);
