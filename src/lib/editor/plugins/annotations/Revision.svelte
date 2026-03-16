@@ -396,15 +396,20 @@ $effect(() => {
     const nestedRev = nestedAnns[event.revisionId];
     if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
     lastNestedRevFocusToken = event.token;
+    // Expand this parent revision as a modal first, then place the cursor
+    // on the nested revision so it activates inline within that modal.
+    // This ensures the full editing context (parent modal) is always
+    // present before the nested revision is opened — never skipping levels.
+    const nestedRevPos = nestedRev.selection.main.from;
     modalStack.push({
         type: "revision",
-        revisionId: event.revisionId,
-        parentView: nestedEditor,
-        label: previewVersionText(nestedRev.versions[nestedRev.activeVersionIndex]),
+        revisionId: revision.id,
+        parentView: view,
+        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
         pendingNestedCommand: {
             type: "cursor",
-            selectionFrom: event.relativePos,
-            selectionTo: event.relativePos,
+            selectionFrom: nestedRevPos,
+            selectionTo: nestedRevPos,
         },
     });
 });
