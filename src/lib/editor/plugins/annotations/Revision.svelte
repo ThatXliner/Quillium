@@ -92,6 +92,10 @@ let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
 // Track which version the nested editor was built for, so we know
 // when to destroy/recreate (version switch).
 let mountedVersionId = -1;
+// Track the annotationField blob the inline editor was built with, so
+// we can detect when a modal flush writes new nested annotations into
+// the version and trigger a rebuild.
+let mountedAnnotationFieldBlob: unknown = undefined;
 
 // Track the last doc the nested editor dispatched up to the parent.
 // Used to distinguish "doc changed externally (undo/typing)" from
@@ -258,6 +262,7 @@ function createNestedEditor(version: VersionState) {
     );
     nestedEditor = new EditorView({ state, parent: nestedEditorHost });
     mountedVersionId = revision.activeVersionIndex;
+    mountedAnnotationFieldBlob = (version as { annotationField?: unknown }).annotationField;
     lastDispatchedDoc = nestedEditor.state.doc.toString();
     activeAnnotation = getActiveAnnotation(nestedEditor.state);
 
@@ -296,6 +301,7 @@ function destroyNestedEditor() {
     nestedEditor = undefined;
     activeAnnotation = undefined;
     mountedVersionId = -1;
+    mountedAnnotationFieldBlob = undefined;
 }
 
 // Create or destroy the nested editor when the toggle changes.
@@ -311,7 +317,6 @@ $effect(() => {
 });
 
 // When the selected version changes, destroy and recreate.
-// This is the ONLY case where we fully rebuild the nested editor.
 $effect(() => {
     if (!nestedEditor || !isEditorOpen) return;
     const currentVersionId = revision.activeVersionIndex;
@@ -331,6 +336,23 @@ $effect(() => {
             nestedEditor.focus();
         }
     });
+});
+
+// When the modal closes, it flushes nested annotations back into the
+// version blob via _updateRevisionVersionState. The version index
+// stays the same, so the version-switch effect above doesn't fire.
+// But the inline nested editor was built from the old blob and still
+// has the stale annotationField — decorations for nested annotations
+// are missing. Detect the flush by watching for a new annotationField
+// blob on activeVersion and rebuild the inline editor from it.
+$effect(() => {
+    if (!nestedEditor || !isEditorOpen || !activeVersion) return;
+    const incomingBlob = (activeVersion as { annotationField?: unknown }).annotationField;
+    if (incomingBlob === mountedAnnotationFieldBlob) return;
+    // The version blob's annotationField changed — rebuild so the inline
+    // editor picks up the updated nested annotation decorations.
+    destroyNestedEditor();
+    createNestedEditor(activeVersion);
 });
 
 // When the version doc changes externally (undo, non-atomic typing from
