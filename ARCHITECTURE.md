@@ -353,7 +353,7 @@ Nested editors remain intentional viewports that never own their document. When 
 
 ### Reactive pull for inline/modal editors
 
-For the inline and modal editors, we watch the parent-provided version text directly via Svelte reactivity. Inline editors observe `activeVersion?.doc` and the modal watches `$annotationsStore`; both skip re-patching when the nested editor itself authored the change (`lastDispatchedDoc`). When a truly external update occurs (undo, redo, or another cursored write), the watcher replaces the nested editor’s entire buffer with the new text via a single `EditorView.dispatch({ changes: { from: 0, to: current.length, insert: externalDoc } })`. That keeps the editor up to date without destroying the view or rebuilding the extension stack—only the contents are rewritten. The only time we tear down and recreate the nested editor is on version switches or when the modal closes.
+For the inline and modal editors, we watch the parent-provided version text directly via Svelte reactivity. Inline editors observe `activeVersion?.doc` and the modal watches `$annotationsStore`; both skip re-patching when the nested editor itself authored the change (`lastDispatchedDoc`). When a truly external update occurs (undo, redo, or another cursored write), the watcher replaces the nested editor’s entire buffer with the new text via a single `EditorView.dispatch({ changes: { from: 0, to: current.length, insert: externalDoc } })`. That keeps the editor up to date without destroying the view or rebuilding the extension stack—only the contents are rewritten. The inline editor is torn down and recreated in three cases: version switches (`currentVersionId !== mountedVersionId`), when the modal closes and flushes a new `annotationField` blob into the version (`mountedAnnotationFieldBlob` changed), and when the editor is first opened (open/close toggle).
 
 Replacing the whole buffer is the tradeoff we accepted for this reactive, bridge-less path: the cursor/selection and scroll position do not survive the rewrite, so the nested editor appears to jump back to the top. There is no dedicated cursor-persistence mechanism yet, and documenting that limitation in this section keeps intentions clear for future follow-ups.
 
@@ -361,7 +361,7 @@ Replacing the whole buffer is the tradeoff we accepted for this reactive, bridge
 
 ### Inline editor
 
-`Revision.svelte` still uses `createNestedEditorState` to bootstrap the inline editor and installs `translateAndDispatch` in the nested update listener. When the inline editor toggles open, it creates the view and sets `lastDispatchedDoc`. Closing destroys the view like before, and version switches still trigger `currentVersionId !== mountedVersionId` to rebuild from the new `VersionState` (the only rebuild path now).
+`Revision.svelte` still uses `createNestedEditorState` to bootstrap the inline editor and installs `translateAndDispatch` in the nested update listener. When the inline editor toggles open, it creates the view and sets `lastDispatchedDoc`. Closing destroys the view like before. Version switches trigger `currentVersionId !== mountedVersionId` to rebuild from the new `VersionState`. A third rebuild path handles modal flushes: when the modal closes and writes a new `annotationField` blob into the version via `_updateRevisionVersionState`, `mountedAnnotationFieldBlob` changes and triggers a rebuild so the inline editor picks up nested annotation decorations.
 
 ### Modal editor
 

@@ -126,6 +126,10 @@ let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
 function startLabelEdit(i: number) {
     editingLabelIndex = i;
     labelInputValue = revision.versions[i]?.label ?? "";
+    // tick() is required here: the <input> is conditionally rendered via
+    // {#if isEditingThis}, so it doesn't exist in the DOM until Svelte
+    // flushes the `editingLabelIndex` state change. We must wait one
+    // microtask for the DOM update before we can focus the element.
     tick().then(() => labelInputEl?.focus());
 }
 
@@ -223,6 +227,11 @@ $effect(() => {
         } else {
             userClosedEditor = false;
             isEditorOpen = true;
+            // tick() is required here: we just set isEditorOpen = true,
+            // but the editor host div is inside {#if isEditorOpen} so it
+            // won't exist in the DOM until Svelte flushes. The toggle
+            // effect (below) will create the editor after tick, so we
+            // wait the same microtask before placing the cursor.
             tick().then(() => {
                 if (nestedEditor) placeCursor(nestedEditor);
             });
@@ -310,6 +319,11 @@ $effect(() => {
         destroyNestedEditor();
         return;
     }
+    // tick() is required here: the nestedEditorHost div is inside
+    // {#if isEditorOpen && appSettings.showNestedEditor}, so when
+    // isEditorOpen just became true the DOM element doesn't exist yet.
+    // We must wait one microtask for Svelte to flush the conditional
+    // block before mounting the CodeMirror view into the host div.
     tick().then(() => {
         if (!isEditorOpen || !activeVersion) return;
         createNestedEditor(activeVersion);
@@ -324,18 +338,16 @@ $effect(() => {
 
     // Version switched — recreate for new version.
     destroyNestedEditor();
-    tick().then(() => {
-        if (!isEditorOpen || !activeVersion) return;
-        createNestedEditor(activeVersion);
-        if (nestedEditor) {
-            const end = nestedEditor.state.doc.length;
-            nestedEditor.dispatch({
-                selection: { anchor: end },
-                scrollIntoView: true,
-            });
-            nestedEditor.focus();
-        }
-    });
+    if (!activeVersion) return;
+    createNestedEditor(activeVersion);
+    if (nestedEditor) {
+        const end = nestedEditor.state.doc.length;
+        nestedEditor.dispatch({
+            selection: { anchor: end },
+            scrollIntoView: true,
+        });
+        nestedEditor.focus();
+    }
 });
 
 // When the modal closes, it flushes nested annotations back into the
@@ -390,12 +402,10 @@ $effect(() => {
     lastAddVersionToken = event.token;
     posthog.capture("revision_version_created", { version_count: revision.versions.length });
     view.dispatch(createNewRevision(view.state, revision.id));
-    tick().then(() => {
-        if (appSettings.showNestedEditor) {
-            userClosedEditor = false;
-            isEditorOpen = true;
-        }
-    });
+    if (appSettings.showNestedEditor) {
+        userClosedEditor = false;
+        isEditorOpen = true;
+    }
 });
 
 // When a nested revision decoration inside our inline editor is clicked,
@@ -543,12 +553,11 @@ onDestroy(() => {
         <button
             class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
-            onclick={async () => {
+            onclick={() => {
                 posthog.capture("revision_version_created", {
                     version_count: revision.versions.length,
                 });
                 view.dispatch(createNewRevision(view.state, revision.id));
-                await tick();
                 if (appSettings.showNestedEditor) {
                     userClosedEditor = false;
                     isEditorOpen = true;
@@ -609,6 +618,9 @@ onDestroy(() => {
                 onclick={() => {
                     userClosedEditor = false;
                     isEditorOpen = true;
+                    // tick() required: isEditorOpen was just set to true,
+                    // so the editor host + CodeMirror view won't exist
+                    // until Svelte flushes the {#if} block.
                     tick().then(() => nestedEditor?.focus());
                 }}
             >
