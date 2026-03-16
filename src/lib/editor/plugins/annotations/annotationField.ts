@@ -674,12 +674,17 @@ export const annotationField = StateField.define<Annotations>({
                 }
             }
 
-            // Fix revision selection boundaries for nested editor edits (both
-            // forward and redo). Phase 1 uses EditorSelection.map() which does
+            // Fix revision selection boundaries for nested editor edits (forward
+            // pass and redo only). Phase 1 uses EditorSelection.map() which does
             // not expand non-collapsed ranges when text is inserted exactly at
             // their trailing boundary. We use mapPos(from,-1) / mapPos(to,+1)
             // to ensure the revision range absorbs content added at its edges.
-            for (const revId of nestedEditRevIds) {
+            // Skip on undo: the undo is a deletion, so the revision range should
+            // shrink normally (Phase 1 handles it), and applying the expansion
+            // bias here would pin the trailing boundary at the wrong position,
+            // causing Phase 3 to pull the wrong doc slice and append text.
+            const isUndo = tr.isUserEvent("undo");
+            for (const revId of isUndo ? [] : nestedEditRevIds) {
                 const ann = annotations[revId];
                 if (ann && isAnnotationOfType(ann, "revision")) {
                     const oldAnn = oldAnnotations[revId];
