@@ -598,6 +598,34 @@ $effect(() => {
     send({ type: "NESTED_ANNOTATION_EVENT", cmd: event.command });
 });
 
+// ─── Sensor Effect D: Nested revision click (focus-request) ─────────
+// When the user clicks a revision decoration inside this modal's nested
+// editor, the revisionClickHandler fires a revision-focus-request with the
+// nested revision's ID. Push a new modal so the user can view/edit it.
+let lastNestedFocusRequestToken = $annotationUiEvent?.token ?? 0;
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        fsmState !== "ready" ||
+        !editor ||
+        event.token === lastNestedFocusRequestToken ||
+        event.type !== "revision-focus-request"
+    )
+        return;
+    // Only handle if the target revision exists in THIS modal's nested editor
+    const nestedAnns = editor.state.field(annotationField);
+    const nestedRev = nestedAnns[event.revisionId];
+    if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
+    lastNestedFocusRequestToken = event.token;
+    modalStack.push({
+        type: "revision",
+        revisionId: event.revisionId,
+        parentView: editor,
+        label: previewVersionText(nestedRev.versions[nestedRev.activeVersionIndex]),
+    });
+});
+
 // Init is handled by FSM: unmounted → mounting → ready
 // (See Sensor Effect A above which sends DIALOG_BOUND when dialogEl binds)
 
@@ -861,6 +889,12 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           </div>
         {/each}
       </nav>
+
+      {#if stackIndex > 0}
+        <span class="text-[10px] text-purple-400/60 italic shrink-0">
+          Click outside or press <Kbd keys={["Esc"]} /> to go back to parent
+        </span>
+      {/if}
 
       <!-- Right actions -->
       <div class="flex items-center gap-2 shrink-0">
