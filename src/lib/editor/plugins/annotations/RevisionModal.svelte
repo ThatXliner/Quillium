@@ -31,7 +31,7 @@
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon } from "lucide-svelte";
-import { onDestroy, tick } from "svelte";
+import { onDestroy } from "svelte";
 import { scale, slide } from "svelte/transition";
 import {
     addAnnotation,
@@ -270,7 +270,6 @@ let fsmState = $state<"unmounted" | "mounting" | "ready" | "rebuilding">("unmoun
 
 type FsmEvent =
     | { type: "DIALOG_BOUND" }
-    | { type: "TICK_RESOLVED" }
     | { type: "REBUILD_REQUESTED" }
     | { type: "VERSION_SWITCHED" }
     | { type: "EXTERNAL_DOC_CHANGED"; doc: string }
@@ -290,25 +289,9 @@ function send(event: FsmEvent) {
             if (event.type === "DIALOG_BOUND") {
                 fsmState = "mounting";
                 if (dialogEl && !dialogEl.open) dialogEl.showModal();
-                tick().then(() => send({ type: "TICK_RESOLVED" }));
-            }
-            break;
-        }
-        case "mounting": {
-            if (event.type === "TICK_RESOLVED") {
-                const rev = readRevision();
-                if (rev && !editor) {
-                    createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
-                }
-                const activeEditor = editor;
-                if (activeEditor) {
-                    if (initialPendingCommand) {
-                        executePendingNestedCommand(activeEditor, initialPendingCommand);
-                    } else {
-                        moveCursorToEnd(activeEditor);
-                    }
-                }
-                fsmState = "ready";
+                // The "mounting" → "ready" transition is handled by
+                // the $effect below, which fires once the DOM updates
+                // and editorHost is available.
             }
             break;
         }
@@ -319,7 +302,9 @@ function send(event: FsmEvent) {
                 if (event.type === "VERSION_SWITCHED") {
                     modalStack.popTo(stackIndex);
                 }
-                tick().then(() => send({ type: "TICK_RESOLVED" }));
+                // The "rebuilding" → "ready" transition is handled by
+                // the $effect below, which fires on the next render
+                // after destroyEditor clears the old editor.
             } else if (event.type === "EXTERNAL_DOC_CHANGED") {
                 if (!editor) break;
                 if (event.doc === lastDispatchedDoc) break;
@@ -353,19 +338,39 @@ function send(event: FsmEvent) {
             }
             break;
         }
-        case "rebuilding": {
-            if (event.type === "TICK_RESOLVED") {
-                const rev = readRevision();
-                if (rev) {
-                    createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
-                    if (editor) moveCursorToEnd(editor);
-                }
-                fsmState = "ready";
-            }
+        default:
             break;
-        }
     }
 }
+
+// Reactive FSM continuation: handles "mounting" and "rebuilding" states
+// once the DOM has updated (editorHost is available). Because this is an
+// $effect, Svelte automatically tears it down on component destruction —
+// no risk of creating editors on detached DOM nodes.
+$effect(() => {
+    if (fsmState === "mounting" && editorHost) {
+        const rev = readRevision();
+        if (rev && !editor) {
+            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
+        }
+        const activeEditor = editor;
+        if (activeEditor) {
+            if (initialPendingCommand) {
+                executePendingNestedCommand(activeEditor, initialPendingCommand);
+            } else {
+                moveCursorToEnd(activeEditor);
+            }
+        }
+        fsmState = "ready";
+    } else if (fsmState === "rebuilding" && editorHost) {
+        const rev = readRevision();
+        if (rev) {
+            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
+            if (editor) moveCursorToEnd(editor);
+        }
+        fsmState = "ready";
+    }
+});
 
 // ─── Sensor Effect A: Dialog bind + rebuild token ───────────────────
 let lastRebuildToken = 0;
@@ -629,8 +634,14 @@ function startLabelEdit() {
     if (!revision) return;
     labelInputValue = revision.versions[revision.activeVersionIndex]?.label ?? "";
     editingVersionLabel = true;
-    tick().then(() => labelInputEl?.focus());
 }
+
+// Focus the label input once it appears in the DOM after editingVersionLabel becomes true.
+$effect(() => {
+    if (editingVersionLabel && labelInputEl) {
+        labelInputEl.focus();
+    }
+});
 
 function commitLabelEdit() {
     if (!revision) {
