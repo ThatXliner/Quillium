@@ -187,6 +187,7 @@ export type AnnotationUiEvent =
           type: "revision-focus-request";
           revisionId: number;
           relativePos: number;
+          sourceView: import("@codemirror/view").EditorView;
       }
     | {
           token: number;

@@ -196,7 +196,8 @@ $effect(() => {
         !event ||
         event.token === lastFocusRequestToken ||
         event.type !== "revision-focus-request" ||
-        event.revisionId !== revision.id
+        event.revisionId !== revision.id ||
+        event.sourceView !== view
     )
         return;
     lastFocusRequestToken = event.token;
@@ -386,7 +387,8 @@ $effect(() => {
         !event ||
         event.token === lastNestedRevFocusToken ||
         event.type !== "revision-focus-request" ||
-        !nestedEditor
+        !nestedEditor ||
+        event.sourceView !== nestedEditor
     )
         return;
     // Only handle if the target revision exists in our inline nested editor

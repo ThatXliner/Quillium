@@ -598,38 +598,11 @@ $effect(() => {
     send({ type: "NESTED_ANNOTATION_EVENT", cmd: event.command });
 });
 
-// ─── Sensor Effect D: Nested revision click (focus-request) ─────────
-// When the user clicks a revision decoration inside this modal's nested
-// editor, the revisionClickHandler fires a revision-focus-request with the
-// nested revision's ID. Push a new modal so the user can view/edit it.
-let lastNestedFocusRequestToken = $annotationUiEvent?.token ?? 0;
-$effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        fsmState !== "ready" ||
-        !editor ||
-        event.token === lastNestedFocusRequestToken ||
-        event.type !== "revision-focus-request"
-    )
-        return;
-    // Only handle if the target revision exists in THIS modal's nested editor
-    const nestedAnns = editor.state.field(annotationField);
-    const nestedRev = nestedAnns[event.revisionId];
-    if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
-    lastNestedFocusRequestToken = event.token;
-    modalStack.push({
-        type: "revision",
-        revisionId: event.revisionId,
-        parentView: editor,
-        label: previewVersionText(nestedRev.versions[nestedRev.activeVersionIndex]),
-        pendingNestedCommand: {
-            type: "cursor",
-            selectionFrom: event.relativePos,
-            selectionTo: event.relativePos,
-        },
-    });
-});
+// NOTE: No Sensor Effect D for nested revision clicks here.
+// Revision focus requests from this modal's editor are handled by the
+// Revision.svelte cards rendered in the modal's Annotations sidebar
+// (which receive view={editor}). Those cards open inline editors or
+// push modals as appropriate via their own focus-request handlers.
 
 // Init is handled by FSM: unmounted → mounting → ready
 // (See Sensor Effect A above which sends DIALOG_BOUND when dialogEl binds)
