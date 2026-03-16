@@ -75,6 +75,7 @@ $effect(() => {
     bind:this={dialogEl}
     class="diff-modal"
     onclick={(e) => { if (e.target === dialogEl) close(); }}
+    oncancel={(e) => { e.preventDefault(); close(); }}
 >
     <div class="diff-modal-inner">
         <!-- Header -->

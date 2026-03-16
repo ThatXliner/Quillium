@@ -740,6 +740,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   onclick={(e) => {
     if (e.target === dialogEl) close();
   }}
+  oncancel={(e) => {
+    e.preventDefault();
+    close();
+  }}
   onkeydown={onDialogKeydown}
 >
   <div class="revision-modal-inner">
