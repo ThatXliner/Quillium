@@ -807,6 +807,7 @@ const revisionClickHandler = EditorView.domEventHandlers({
                     type: "revision-focus-request",
                     revisionId: annotation.id,
                     relativePos: pos - from,
+                    sourceView: view,
                 });
                 return false;
             }

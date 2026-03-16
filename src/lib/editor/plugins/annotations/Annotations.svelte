@@ -380,6 +380,7 @@ function applyCardPositions(
 
 // Track which pending card is currently showing the alert animation
 let alertingPendingId: number | undefined = $state();
+let alertingTimeout: ReturnType<typeof setTimeout> | undefined;
 let lastPendingAlertToken = 0;
 
 // React to pending-comment events: scroll the pending card
@@ -416,7 +417,8 @@ $effect(() => {
     // Trigger shake + ring by setting alertingPendingId.
     alertingPendingId = pendingComment.id;
     el.classList.add("pending-shake");
-    setTimeout(() => {
+    clearTimeout(alertingTimeout);
+    alertingTimeout = setTimeout(() => {
         el.classList.remove("pending-shake");
         alertingPendingId = undefined;
     }, 1400);

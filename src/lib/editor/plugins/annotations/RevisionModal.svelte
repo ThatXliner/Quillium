@@ -31,7 +31,7 @@
  */
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon } from "lucide-svelte";
-import { onDestroy, tick } from "svelte";
+import { onDestroy } from "svelte";
 import { scale, slide } from "svelte/transition";
 import {
     addAnnotation,
@@ -73,6 +73,12 @@ const {
     view,
     stackIndex,
 }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
+
+// Capture the pending command eagerly at mount time so we don't
+// re-read it reactively from the (mutable) modal stack later.
+const initialEntry = $modalStack[stackIndex];
+const initialPendingCommand =
+    initialEntry?.type === "revision" ? initialEntry.pendingNestedCommand : undefined;
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
@@ -241,54 +247,146 @@ $effect(() => {
  */
 function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], isCurrent: boolean) {
     if (crumb.type !== "revision") return;
-    const previousVersionIndex = crumbSelectedVersions[ci];
     openDropdown = -1;
-
-    if (isCurrent) {
-        // destroyEditor already flushes using editorVersionIndex,
-        // which matches previousVersionIndex here.
-        destroyEditor();
-    }
 
     crumbSelectedVersions[ci] = vi;
 
     crumb.parentView.dispatch(
         setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi),
     );
+
     if (isCurrent) {
-        tick().then(() => {
-            const v = view.state.field(annotationField)[revisionId] as
-                | Annotation<"revision">
-                | undefined;
-            if (v) {
-                createEditor(v.versions[v.activeVersionIndex], v.activeVersionIndex);
-                if (editor) moveCursorToEnd(editor);
-            }
-        });
+        // FSM handles destroyEditor + popTo + tick + createEditor
+        send({ type: "VERSION_SWITCHED" });
     } else {
-        // Pop back to that level and signal it to rebuild its editor
         modalStack.popToAndRebuild(ci);
     }
 }
 
-// Rebuild editor when our own stack entry gets a fresh rebuildToken
-// (set by popToAndRebuild when a child level switches our version).
+// ─── FSM ────────────────────────────────────────────────────────────
+// States: unmounted → mounting → ready ⇄ rebuilding
+// All lifecycle transitions go through `send()`.
+let fsmState = $state<"unmounted" | "mounting" | "ready" | "rebuilding">("unmounted");
+
+type FsmEvent =
+    | { type: "DIALOG_BOUND" }
+    | { type: "REBUILD_REQUESTED" }
+    | { type: "VERSION_SWITCHED" }
+    | { type: "EXTERNAL_DOC_CHANGED"; doc: string }
+    | {
+          type: "NESTED_ANNOTATION_EVENT";
+          cmd: { type: string; selectionFrom: number; selectionTo: number; revisionId?: number };
+      };
+
+/** Read fresh revision state from the parent view. */
+function readRevision() {
+    return view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+}
+
+function send(event: FsmEvent) {
+    switch (fsmState) {
+        case "unmounted": {
+            if (event.type === "DIALOG_BOUND") {
+                fsmState = "mounting";
+                if (dialogEl && !dialogEl.open) dialogEl.showModal();
+                // The "mounting" → "ready" transition is handled by
+                // the $effect below, which fires once the DOM updates
+                // and editorHost is available.
+            }
+            break;
+        }
+        case "ready": {
+            if (event.type === "REBUILD_REQUESTED" || event.type === "VERSION_SWITCHED") {
+                fsmState = "rebuilding";
+                destroyEditor();
+                if (event.type === "VERSION_SWITCHED") {
+                    modalStack.popTo(stackIndex);
+                }
+                // The "rebuilding" → "ready" transition is handled by
+                // the $effect below, which fires on the next render
+                // after destroyEditor clears the old editor.
+            } else if (event.type === "EXTERNAL_DOC_CHANGED") {
+                if (!editor) break;
+                if (event.doc === lastDispatchedDoc) break;
+                const current = editor.state.doc.toString();
+                if (current !== event.doc) {
+                    pullingFromParent = true;
+                    editor.dispatch({
+                        changes: { from: 0, to: current.length, insert: event.doc },
+                        annotations: Transaction.addToHistory.of(false),
+                    });
+                    pullingFromParent = false;
+                    modalAnnotations = editor.state.field(annotationField);
+                }
+                lastDispatchedDoc = event.doc;
+            } else if (event.type === "NESTED_ANNOTATION_EVENT") {
+                if (!editor) break;
+                executePendingNestedCommand(editor, event.cmd);
+                if (event.cmd.type === "revision") {
+                    const nestedAnns = editor.state.field(annotationField);
+                    const newId = Math.max(...Object.keys(nestedAnns).map(Number));
+                    const newAnn = nestedAnns[newId];
+                    if (newAnn && isAnnotationOfType(newAnn, "revision")) {
+                        modalStack.push({
+                            type: "revision",
+                            revisionId: newId,
+                            parentView: editor,
+                            label: previewVersionText(newAnn.versions[newAnn.activeVersionIndex]),
+                        });
+                    }
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+// Reactive FSM continuation: handles "mounting" and "rebuilding" states
+// once the DOM has updated (editorHost is available). Because this is an
+// $effect, Svelte automatically tears it down on component destruction —
+// no risk of creating editors on detached DOM nodes.
+$effect(() => {
+    if (fsmState === "mounting" && editorHost) {
+        const rev = readRevision();
+        if (rev && !editor) {
+            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
+        }
+        const activeEditor = editor;
+        if (activeEditor) {
+            if (initialPendingCommand) {
+                executePendingNestedCommand(activeEditor, initialPendingCommand);
+            } else {
+                moveCursorToEnd(activeEditor);
+            }
+        }
+        fsmState = "ready";
+    } else if (fsmState === "rebuilding" && editorHost) {
+        const rev = readRevision();
+        if (rev) {
+            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
+            if (editor) moveCursorToEnd(editor);
+        }
+        fsmState = "ready";
+    }
+});
+
+// ─── Sensor Effect A: Dialog bind + rebuild token ───────────────────
 let lastRebuildToken = 0;
 $effect(() => {
+    const el = dialogEl;
     const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
     const token = entry?.rebuildToken ?? 0;
-    if (token && token !== lastRebuildToken) {
+
+    if (fsmState === "unmounted" && el) {
+        send({ type: "DIALOG_BOUND" });
+    } else if (fsmState === "ready" && token && token !== lastRebuildToken) {
         lastRebuildToken = token;
-        destroyEditor();
-        tick().then(() => {
-            const v = view.state.field(annotationField)[revisionId] as
-                | Annotation<"revision">
-                | undefined;
-            if (v) {
-                createEditor(v.versions[v.activeVersionIndex], v.activeVersionIndex);
-                if (editor) moveCursorToEnd(editor);
-            }
-        });
+        send({ type: "REBUILD_REQUESTED" });
+    } else if (token) {
+        // Keep the token in sync even if we're not in a state to act on it
+        lastRebuildToken = token;
     }
 });
 
@@ -394,13 +492,9 @@ function close() {
     modalStack.pop();
 }
 
-// When the parent revision's doc changes externally (undo, non-atomic
-// typing), sync the modal editor. For root-level modals (stackIndex === 0),
-// we watch $annotationsStore (the Svelte store updated by Editor.svelte).
-// For deeply nested modals, we watch the parent modal's per-level store
-// via modalAnnotationStores, which the parent publishes on every transaction.
+// ─── Sensor Effect B: External sync (version switch + doc changes) ──
+let lastSyncedVersionIndex = -1;
 $effect(() => {
-    // Choose the right reactive source based on nesting depth.
     let ann: AnnotationsMap | undefined;
     if (stackIndex === 0) {
         ann = $annotationsStore;
@@ -408,22 +502,20 @@ $effect(() => {
         const parentLevel = $modalAnnotationStores;
         ann = parentLevel[stackIndex - 1];
     }
-    if (!editor || !ann) return;
+    if (fsmState !== "ready" || !editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
-    if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex]) return;
-    const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
-    if (externalDoc === lastDispatchedDoc) return;
-    const current = editor.state.doc.toString();
-    if (current !== externalDoc) {
-        pullingFromParent = true;
-        editor.dispatch({
-            changes: { from: 0, to: current.length, insert: externalDoc },
-            annotations: Transaction.addToHistory.of(false),
-        });
-        pullingFromParent = false;
-        modalAnnotations = editor.state.field(annotationField);
+    if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex])
+        return;
+
+    if (lastSyncedVersionIndex >= 0 && rev.activeVersionIndex !== lastSyncedVersionIndex) {
+        lastSyncedVersionIndex = rev.activeVersionIndex;
+        send({ type: "VERSION_SWITCHED" });
+        return;
     }
-    lastDispatchedDoc = externalDoc;
+    lastSyncedVersionIndex = rev.activeVersionIndex;
+
+    const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
+    send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
 });
 
 // Close the version dropdown when clicking outside of it.
@@ -494,16 +586,13 @@ function executePendingNestedCommand(
     }
 }
 
-// Intercept sub-annotation creation events from the modal's nested editor.
-// When the user presses Mod-Alt-k/m inside the nested editor, the keymap
-// fires a "revision-open-nested-editor" event targeting this modal's
-// revisionId. We handle it here: create the sub-annotation in the nested
-// editor, and for revisions push a new modal for the sub-revision.
-let lastNestedEditorEventToken = 0;
+// ─── Sensor Effect C: Nested annotation event ──────────────────────
+let lastNestedEditorEventToken = $annotationUiEvent?.token ?? 0;
 $effect(() => {
     const event = $annotationUiEvent;
     if (
         !event ||
+        fsmState !== "ready" ||
         !editor ||
         event.token === lastNestedEditorEventToken ||
         event.type !== "revision-open-nested-editor" ||
@@ -511,49 +600,17 @@ $effect(() => {
     )
         return;
     lastNestedEditorEventToken = event.token;
-    const cmd = event.command;
-
-    // Create the sub-annotation in the nested editor
-    executePendingNestedCommand(editor, cmd);
-
-    // For sub-revisions, find the newly created annotation and push a modal
-    if (cmd.type === "revision") {
-        const nestedAnns = editor.state.field(annotationField);
-        // The newest annotation is the one we just created (highest ID)
-        const newId = Math.max(...Object.keys(nestedAnns).map(Number));
-        const newAnn = nestedAnns[newId];
-        if (newAnn && isAnnotationOfType(newAnn, "revision")) {
-            modalStack.push({
-                type: "revision",
-                revisionId: newId,
-                parentView: editor,
-                label: previewVersionText(newAnn.versions[newAnn.activeVersionIndex]),
-            });
-        }
-    }
+    send({ type: "NESTED_ANNOTATION_EVENT", cmd: event.command });
 });
 
-// Open the <dialog> as a modal, bootstrap the nested editor,
-// and run any pending nested annotation command.
-$effect(() => {
-    if (!dialogEl) return;
-    if (!dialogEl.open) dialogEl.showModal();
-    tick().then(() => {
-        const rev = view.state.field(annotationField)[revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (rev && !editor) {
-            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
-        }
-        const activeEditor = editor;
-        const entry = $modalStack[stackIndex];
-        if (activeEditor && entry?.type === "revision" && entry.pendingNestedCommand) {
-            executePendingNestedCommand(activeEditor, entry.pendingNestedCommand);
-        } else if (activeEditor) {
-            moveCursorToEnd(activeEditor);
-        }
-    });
-});
+// NOTE: No Sensor Effect D for nested revision clicks here.
+// Revision focus requests from this modal's editor are handled by the
+// Revision.svelte cards rendered in the modal's Annotations sidebar
+// (which receive view={editor}). Those cards open inline editors or
+// push modals as appropriate via their own focus-request handlers.
+
+// Init is handled by FSM: unmounted → mounting → ready
+// (See Sensor Effect A above which sends DIALOG_BOUND when dialogEl binds)
 
 onDestroy(() => {
     destroyEditor();
@@ -577,8 +634,14 @@ function startLabelEdit() {
     if (!revision) return;
     labelInputValue = revision.versions[revision.activeVersionIndex]?.label ?? "";
     editingVersionLabel = true;
-    tick().then(() => labelInputEl?.focus());
 }
+
+// Focus the label input once it appears in the DOM after editingVersionLabel becomes true.
+$effect(() => {
+    if (editingVersionLabel && labelInputEl) {
+        labelInputEl.focus();
+    }
+});
 
 function commitLabelEdit() {
     if (!revision) {
@@ -603,16 +666,9 @@ function cancelLabelEdit() {
 
 function addVersion() {
     if (!revision) return;
-    destroyEditor();
     view.dispatch(createNewRevision(view.state, revisionId));
-    tick().then(() => {
-        const rev = view.state.field(annotationField)[revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (!rev) return;
-        createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
-        if (editor) moveCursorToEnd(editor);
-    });
+    // FSM handles destroyEditor + popTo + tick + createEditor
+    send({ type: "VERSION_SWITCHED" });
 }
 
 function navigateVersion(direction: "prev" | "next") {
@@ -683,6 +739,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   class="revision-modal"
   onclick={(e) => {
     if (e.target === dialogEl) close();
+  }}
+  oncancel={(e) => {
+    e.preventDefault();
+    close();
   }}
   onkeydown={onDialogKeydown}
 >
@@ -822,6 +882,12 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           </div>
         {/each}
       </nav>
+
+      {#if stackIndex > 0}
+        <span class="text-[10px] text-purple-400/60 italic shrink-0">
+          Click outside or press <Kbd keys={["Esc"]} /> to go back to parent
+        </span>
+      {/if}
 
       <!-- Right actions -->
       <div class="flex items-center gap-2 shrink-0">

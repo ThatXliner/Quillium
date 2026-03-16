@@ -29,7 +29,7 @@
  * versions[selected].doc. Svelte $effect patches the nested editor.
  */
 
-import { EditorState, Prec, Transaction } from "@codemirror/state";
+import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
 import { undo, redo } from "@codemirror/commands";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
@@ -290,8 +290,14 @@ export function translateAndDispatch(
 
     if (parentChanges.length === 0) return false;
 
+    // Set the parent selection inside the revision so CodeMirror's history
+    // stores a cursor position within the revision range. On undo, this
+    // ensures the cursor is restored inside the revision, which triggers
+    // reactivation of the inline nested editor. The nested editor has focus
+    // during these dispatches, so the parent cursor move is invisible.
     parentView.dispatch({
         changes: parentChanges,
+        selection: EditorSelection.cursor(offset),
         effects: [_nestedEditRevision.of(revisionId)],
         annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
     });

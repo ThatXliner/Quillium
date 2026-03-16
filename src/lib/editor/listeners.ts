@@ -18,7 +18,13 @@
 import { savedFields } from "./extensions";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { get } from "svelte/store";
-import { currentDocumentId, currentDraftId, currentDocumentTitle, saveStatus, errorBanner } from "$lib/stores";
+import {
+    currentDocumentId,
+    currentDraftId,
+    currentDocumentTitle,
+    saveStatus,
+    errorBanner,
+} from "$lib/stores";
 import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
 import { checkForSuspiciousChange, readBackup } from "$lib/errorGuard";
 import {
@@ -228,7 +234,8 @@ async function doAppend(update: ViewUpdate) {
                 if (backup) {
                     setTimeout(() => {
                         errorBanner.set({
-                            message: "A large deletion was detected. A backup was saved in case this was unintentional.",
+                            message:
+                                "A large deletion was detected. A backup was saved in case this was unintentional.",
                             hasBackup: true,
                             backupType: "auto",
                         });

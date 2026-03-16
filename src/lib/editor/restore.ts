@@ -165,10 +165,7 @@ export function restoreBackup(view: EditorView, documentText: string): void {
         if (isAnnotationOfType(ann, "revision")) {
             anchorText = versionText(ann.versions[ann.activeVersionIndex]);
         } else {
-            anchorText = view.state.doc.sliceString(
-                ann.selection.main.from,
-                ann.selection.main.to,
-            );
+            anchorText = view.state.doc.sliceString(ann.selection.main.from, ann.selection.main.to);
         }
         return { annotation: ann, anchorText };
     });

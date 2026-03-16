@@ -187,6 +187,7 @@ export type AnnotationUiEvent =
           type: "revision-focus-request";
           revisionId: number;
           relativePos: number;
+          sourceView: import("@codemirror/view").EditorView;
       }
     | {
           token: number;
@@ -325,7 +326,25 @@ export const errorBanner = writable<ErrorBannerState | null>(null);
 
 export const modalStack = {
     subscribe: _modalStack.subscribe,
-    push: (entry: ModalEntry) => _modalStack.update((s) => [...s, entry]),
+    push: (entry: ModalEntry) =>
+        _modalStack.update((s) => {
+            const top = s[s.length - 1];
+            // Prevent duplicate modals for the same annotation + parent view.
+            if (
+                top &&
+                top.type === entry.type &&
+                top.parentView === entry.parentView &&
+                ((top.type === "revision" &&
+                    entry.type === "revision" &&
+                    top.revisionId === entry.revisionId) ||
+                    (top.type === "diff" &&
+                        entry.type === "diff" &&
+                        top.suggestionId === entry.suggestionId))
+            ) {
+                return s;
+            }
+            return [...s, entry];
+        }),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
     popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),
     popToAndRebuild: (index: number) =>
