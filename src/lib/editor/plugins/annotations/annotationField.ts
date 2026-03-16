@@ -679,12 +679,19 @@ export const annotationField = StateField.define<Annotations>({
             // not expand non-collapsed ranges when text is inserted exactly at
             // their trailing boundary. We use mapPos(from,-1) / mapPos(to,+1)
             // to ensure the revision range absorbs content added at its edges.
-            // Skip on undo: the undo is a deletion, so the revision range should
-            // shrink normally (Phase 1 handles it), and applying the expansion
-            // bias here would pin the trailing boundary at the wrong position,
-            // causing Phase 3 to pull the wrong doc slice and append text.
+            // Skip on undo when the undo is purely a deletion (undoing an
+            // insertion): Phase 1 shrinks the range correctly, and expansion
+            // bias would pin the boundary at the wrong position. But allow
+            // expansion when the undo re-inserts text (undoing a deletion),
+            // because Phase 1's selection.map() won't expand at boundaries.
             const isUndo = tr.isUserEvent("undo");
-            for (const revId of isUndo ? [] : nestedEditRevIds) {
+            let undoInsertsText = false;
+            if (isUndo) {
+                tr.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
+                    if (inserted.length > 0) undoInsertsText = true;
+                });
+            }
+            for (const revId of isUndo && !undoInsertsText ? [] : nestedEditRevIds) {
                 const ann = annotations[revId];
                 if (ann && isAnnotationOfType(ann, "revision")) {
                     const oldAnn = oldAnnotations[revId];
