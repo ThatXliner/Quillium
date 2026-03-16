@@ -19,7 +19,11 @@ import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import { SearchCursor } from "@codemirror/search";
 import { annotationField, addAnnotation, removeAnnotation } from "./plugins/annotations";
-import { isAnnotationOfType, versionText, type GenericAnnotation } from "./plugins/annotations/models";
+import {
+    isAnnotationOfType,
+    versionText,
+    type GenericAnnotation,
+} from "./plugins/annotations/models";
 
 export function restoreBackup(view: EditorView, documentText: string): void {
     const annotations = view.state.field(annotationField);
@@ -32,10 +36,7 @@ export function restoreBackup(view: EditorView, documentText: string): void {
         if (isAnnotationOfType(ann, "revision")) {
             anchorText = versionText(ann.versions[ann.activeVersionIndex]);
         } else {
-            anchorText = view.state.doc.sliceString(
-                ann.selection.main.from,
-                ann.selection.main.to,
-            );
+            anchorText = view.state.doc.sliceString(ann.selection.main.from, ann.selection.main.to);
         }
         return { annotation: ann, anchorText };
     });

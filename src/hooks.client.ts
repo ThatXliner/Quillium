@@ -24,9 +24,7 @@ if (typeof window !== "undefined") {
     });
 
     window.addEventListener("unhandledrejection", (event) => {
-        const err = event.reason instanceof Error
-            ? event.reason
-            : new Error(String(event.reason));
+        const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
         saveEmergencyBackup(`Unhandled promise rejection: ${err.message}`);
         showCrashBanner("Something went wrong. Your work has been backed up.");
         posthog.captureException(err);
