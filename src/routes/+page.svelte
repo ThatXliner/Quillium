@@ -9,8 +9,8 @@
 
     It also hosts two overlay layers:
       - The tutorial overlay (shown on first visit or via "?" button)
-      - The modal stack (nested revision/diff modals, rendered from
-        the global `modalStack` store)
+      - The modal stack (revision/diff modals from the global
+        `modalStack` store — all mounted, only topmost visible)
 
     State interactions:
       - Reads `tutorialActive` to conditionally show <Tutorial>.
@@ -192,16 +192,16 @@ if (import.meta.env.DEV) {
 {/if}
 
 <!--
-    Modal stack — renders nested revision/diff overlays.
-    Each entry in the modalStack store becomes a DiffModal or
-    RevisionModal. The stack supports arbitrary nesting depth
-    (revisions inside revisions).
+    Modal stack — renders all entries to keep their editor state
+    alive, but only the topmost entry's dialog is visible. Lower
+    entries stay mounted (preserving their CodeMirror editors) with
+    their dialog hidden.
 -->
 {#each $modalStack as entry, i (entry)}
     {#if entry.type === "diff"}
-        <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />
+        <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} isTop={i === $modalStack.length - 1} />
     {:else if entry.type === "revision"}
-        <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
+        <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} isTop={i === $modalStack.length - 1} />
     {/if}
 {/each}
 

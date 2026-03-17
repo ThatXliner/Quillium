@@ -72,7 +72,8 @@ const {
     revisionId,
     view,
     stackIndex,
-}: { revisionId: number; view: EditorView; stackIndex: number } = $props();
+    isTop,
+}: { revisionId: number; view: EditorView; stackIndex: number; isTop: boolean } = $props();
 
 // Capture the pending command eagerly at mount time so we don't
 // re-read it reactively from the (mutable) modal stack later.
@@ -288,7 +289,7 @@ function send(event: FsmEvent) {
         case "unmounted": {
             if (event.type === "DIALOG_BOUND") {
                 fsmState = "mounting";
-                if (dialogEl && !dialogEl.open) dialogEl.showModal();
+                if (dialogEl && !dialogEl.open && isTop) dialogEl.showModal();
                 // The "mounting" → "ready" transition is handled by
                 // the $effect below, which fires once the DOM updates
                 // and editorHost is available.
@@ -387,6 +388,18 @@ $effect(() => {
     } else if (token) {
         // Keep the token in sync even if we're not in a state to act on it
         lastRebuildToken = token;
+    }
+});
+
+// Show/hide the dialog when this modal moves to/from the top of the stack.
+// All modals stay mounted (preserving their editor state), but only the
+// topmost one is visible.
+$effect(() => {
+    if (!dialogEl) return;
+    if (isTop && !dialogEl.open) {
+        dialogEl.showModal();
+    } else if (!isTop && dialogEl.open) {
+        dialogEl.close();
     }
 });
 

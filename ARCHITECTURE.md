@@ -32,7 +32,7 @@ The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 └──────────────┴──────────────────────┴──────────────────┘
 ```
 
-Modal overlays (revision editors, diff views) are rendered on top via `modalStack` — a stack of `<RevisionModal>` and `<DiffModal>` instances managed by `src/lib/stores.ts`.
+Modal overlays (revision editors, diff views) are rendered via `modalStack` — a stack managed by `src/lib/stores.ts`. All entries stay mounted (preserving their CodeMirror editors), but only the **topmost** entry's `<dialog>` is visible. Lower entries hide their dialog via an `isTop` prop, so pushing/popping never destroys a parent modal's editor state.
 
 ---
 
@@ -456,7 +456,7 @@ type ModalEntry =
     | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
 ```
 
-`+page.svelte` renders `{#each $modalStack as entry}` — every entry produces a live overlay simultaneously. Modals stack visually, not replace each other.
+`+page.svelte` renders `{#each $modalStack as entry}` — every entry stays mounted to preserve its CodeMirror editor state. Each modal receives an `isTop` prop; only the topmost entry's `<dialog>` is shown (`showModal()`), while lower entries close their dialog. This avoids the infinite-recursion problem that would occur if pushing a child modal unmounted the parent (triggering `onDestroy` → state flush → parent effects → re-push).
 
 | Method | Effect |
 |---|---|

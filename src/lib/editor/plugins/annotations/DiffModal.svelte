@@ -30,7 +30,8 @@ const {
     suggestionId,
     parentView,
     stackIndex,
-}: { suggestionId: number; parentView: EditorView; stackIndex: number } = $props();
+    isTop,
+}: { suggestionId: number; parentView: EditorView; stackIndex: number; isTop: boolean } = $props();
 
 // Breadcrumb trail sliced up to and including this modal level
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
@@ -64,9 +65,14 @@ function close() {
     modalStack.pop();
 }
 
-// Open the <dialog> element as a modal once it is bound.
+// Show/hide the dialog based on whether this is the topmost stack entry.
 $effect(() => {
-    if (dialogEl && !dialogEl.open) dialogEl.showModal();
+    if (!dialogEl) return;
+    if (isTop && !dialogEl.open) {
+        dialogEl.showModal();
+    } else if (!isTop && dialogEl.open) {
+        dialogEl.close();
+    }
 });
 </script>
 
