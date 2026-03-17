@@ -9,7 +9,21 @@ import { X } from "lucide-svelte";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { FONTS } from "./fonts";
 
-const { onclose }: { onclose: () => void } = $props();
+const { onclose, tab = "doc" }: { onclose: () => void; tab?: "doc" | "ui" } = $props();
+
+let activeTab = $state<"doc" | "ui">(tab);
+
+let trackEl = $state<HTMLElement | undefined>(undefined);
+let pillStyle = $state("");
+
+$effect(() => {
+    if (!trackEl) return;
+    const buttons = trackEl.querySelectorAll<HTMLButtonElement>(".tab-btn");
+    const idx = activeTab === "doc" ? 0 : 1;
+    const btn = buttons[idx];
+    if (!btn) return;
+    pillStyle = `--pill-width: ${btn.offsetWidth}px; --pill-x: ${btn.offsetLeft - 3}px;`;
+});
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 
@@ -31,12 +45,19 @@ function handleKeydown(e: KeyboardEvent) {
 const SAMPLE = "The quick brown fox jumps over the lazy dog.";
 
 const CATEGORY_ORDER = ["Serif", "Sans-Serif", "Typewriter", "Handwriting", "Misc", "Accessibility"];
-const sortedFonts = [...FONTS].sort((a, b) => {
-    const ai = CATEGORY_ORDER.indexOf(a.category);
-    const bi = CATEGORY_ORDER.indexOf(b.category);
-    if (ai !== bi) return ai - bi;
-    return a.name.localeCompare(b.name);
-});
+
+function sortedFonts(fonts: typeof FONTS, pickKey: "docFeatured" | "uiFeatured") {
+    return [...fonts].sort((a, b) => {
+        if (a[pickKey] !== b[pickKey]) return a[pickKey] ? -1 : 1;
+        const ai = CATEGORY_ORDER.indexOf(a.category);
+        const bi = CATEGORY_ORDER.indexOf(b.category);
+        if (ai !== bi) return ai - bi;
+        return a.name.localeCompare(b.name);
+    });
+}
+
+const docFonts = sortedFonts(FONTS, "docFeatured");
+const uiFonts = sortedFonts(FONTS.filter((f) => f.uiFont), "uiFeatured");
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -50,14 +71,30 @@ const sortedFonts = [...FONTS].sort((a, b) => {
     <div class="font-guide-inner">
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
-            <h2 class="text-[13px] font-semibold text-black/60">Font Guide</h2>
-            <button
-                onclick={onclose}
-                aria-label="Close font guide"
-                class="p-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <X size={15} />
-            </button>
+            <div class="flex items-baseline gap-4">
+                <h2 class="text-[13px] font-semibold text-black/60">Font Guide</h2>
+                <div class="tab-track" bind:this={trackEl} style={pillStyle}>
+                    <div class="tab-pill"></div>
+                    <button
+                        onclick={() => activeTab = "doc"}
+                        class="tab-btn outline-none {activeTab === 'doc' ? 'tab-btn-active' : ''}"
+                    >Document</button>
+                    <button
+                        onclick={() => activeTab = "ui"}
+                        class="tab-btn outline-none {activeTab === 'ui' ? 'tab-btn-active' : ''}"
+                    >UI</button>
+                </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <kbd class="text-[10px] text-black/20 font-sans px-1 py-0.5 rounded border border-black/[0.08] bg-black/[0.03] leading-none select-none">ESC</kbd>
+                <button
+                    onclick={onclose}
+                    aria-label="Close font guide"
+                    class="p-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <!-- Body -->
@@ -77,15 +114,16 @@ const sortedFonts = [...FONTS].sort((a, b) => {
             </div>
 
             <!-- Font entries -->
-            {#each sortedFonts as font}
-                <div class="font-entry {font.docFeatured ? 'font-entry-pick' : ''}">
+            {#each (activeTab === "doc" ? docFonts : uiFonts) as font}
+                {@const isPick = activeTab === "doc" ? font.docFeatured : font.uiFeatured}
+                <div class="font-entry {isPick ? 'font-entry-pick' : ''}">
                     <div class="flex items-baseline gap-2 mb-1">
                         <span
                             class="font-name"
                             style="font-family: {font.cssFamily};"
                         >{font.name}</span>
                         <span class="category-badge">{font.category}</span>
-                        {#if font.docFeatured}
+                        {#if isPick}
                             <span class="pick-badge">Our Pick</span>
                         {/if}
                     </div>
@@ -131,6 +169,54 @@ const sortedFonts = [...FONTS].sort((a, b) => {
         overflow: hidden;
         display: flex;
         flex-direction: column;
+    }
+
+    /* Tabs */
+    .tab-track {
+        position: relative;
+        display: flex;
+        gap: 2px;
+        background: rgba(180, 180, 180, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 999px;
+        padding: 3px;
+        backdrop-filter: blur(8px);
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .tab-pill {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        height: calc(100% - 6px);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+        transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+        /* width/transform set dynamically via JS — fallback width */
+        width: var(--pill-width, 72px);
+        transform: translateX(var(--pill-x, 0px));
+    }
+
+    .tab-btn {
+        position: relative;
+        font-size: 11px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.4);
+        padding: 2px 10px;
+        border-radius: 999px;
+        transition: color 0.2s;
+        cursor: pointer;
+        z-index: 1;
+    }
+
+    .tab-btn:hover {
+        color: rgba(0, 0, 0, 0.55);
+    }
+
+    .tab-btn-active {
+        color: rgba(0, 0, 0, 0.7);
     }
 
     /* Font entry */

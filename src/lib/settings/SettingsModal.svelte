@@ -139,7 +139,7 @@ let alerting = $state(false);
 
 // Which custom dropdown is open: "doc" | "ui" | null
 let openDropdown = $state<"doc" | "ui" | null>(null);
-let showFontGuide = $state(false);
+let showFontGuide = $state<"doc" | "ui" | null>(null);
 
 $effect(() => {
     if (dialogEl && !dialogEl.open) {
@@ -224,13 +224,16 @@ function fontLabel(fonts: FontOption[], value: string) {
                 <Settings2 size={14} class="text-black/35" />
                 <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
             </div>
-            <button
-                onclick={tryClose}
-                aria-label="Close settings"
-                class="p-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1.5">
+                <kbd class="text-[10px] text-black/20 font-sans px-1 py-0.5 rounded border border-black/[0.08] bg-black/[0.03] leading-none select-none">ESC</kbd>
+                <button
+                    onclick={tryClose}
+                    aria-label="Close settings"
+                    class="p-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <!-- Body -->
@@ -245,7 +248,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="flex items-center gap-1.5">
                         <div class="setting-title">Font family</div>
                         <button
-                            onclick={() => showFontGuide = true}
+                            onclick={() => showFontGuide = "doc"}
                             aria-label="Font guide"
                             class="text-black/25 hover:text-black/50 transition-colors"
                         >
@@ -364,7 +367,16 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- UI font row -->
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">UI font family</div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="setting-title">UI font family</div>
+                        <button
+                            onclick={() => showFontGuide = "ui"}
+                            aria-label="Font guide"
+                            class="text-black/25 hover:text-black/50 transition-colors"
+                        >
+                            <HelpCircle size={13} />
+                        </button>
+                    </div>
                     <div class="setting-desc">UI font</div>
                 </div>
                 <div class="font-dropdown relative" role="none">
@@ -620,7 +632,7 @@ function fontLabel(fonts: FontOption[], value: string) {
 </dialog>
 
 {#if showFontGuide}
-    <FontGuideModal onclose={() => showFontGuide = false} />
+    <FontGuideModal tab={showFontGuide} onclose={() => showFontGuide = null} />
 {/if}
 
 <style>
