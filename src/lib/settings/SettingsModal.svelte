@@ -256,6 +256,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-desc">Editor font</div>
                 </div>
                 <!-- Custom dropdown -->
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.docFontFamily !== "Georgia, serif"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.docFontFamily = "Georgia, serif"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <div class="font-dropdown relative" role="none">
                     <button
                         onclick={() => openDropdown = openDropdown === "doc" ? null : "doc"}
@@ -309,6 +317,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {/each}
                         </div>
                     {/if}
+                </div>
                 </div>
             </div>
 
@@ -377,6 +386,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     </div>
                     <div class="setting-desc">UI font</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.uiFontFamily !== "system-ui, -apple-system, sans-serif"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.uiFontFamily = "system-ui, -apple-system, sans-serif"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <div class="font-dropdown relative" role="none">
                     <button
                         onclick={() => openDropdown = openDropdown === "ui" ? null : "ui"}
@@ -431,6 +448,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         </div>
                     {/if}
                 </div>
+                </div>
             </div>
 
             <!-- Title visibility -->
@@ -439,7 +457,15 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Document title</div>
                     <div class="setting-desc">When to show the title in the status bar</div>
                 </div>
-                <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.titleVisibility !== "hover"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.titleVisibility = "hover"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
                     {#each ([["hover", "On hover"], ["always", "Always"], ["never", "Never"]] as const) as [val, label]}
                         <button
                             onclick={() => { draft.titleVisibility = val; handleChange(); }}
@@ -449,6 +475,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
                         >{label}</button>
                     {/each}
+                </div>
                 </div>
             </div>
 
@@ -463,6 +490,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Nested editor in revisions</div>
                     <div class="setting-desc">Inline editor inside revision cards</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showNestedEditor}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showNestedEditor = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <button
                     role="switch"
                     aria-checked={draft.showNestedEditor}
@@ -480,6 +515,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.showNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
             </div>
 
             <!-- Atomic revisions toggle -->
@@ -488,6 +524,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Atomic revisions</div>
                     <div class="setting-desc">Edit revision text only in the revision editor</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.atomicRevisions}
+                    <button
+                        type="button"
+                        onclick={() => { draft.atomicRevisions = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <button
                     role="switch"
                     aria-checked={draft.atomicRevisions}
@@ -505,6 +549,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.atomicRevisions ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
             </div>
 
             <!-- Select text toggle -->
@@ -513,6 +558,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Select text in nested editor</div>
                     <div class="setting-desc">Highlight selected text when a revision opens</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.selectTextInNestedEditor}
+                    <button
+                        type="button"
+                        onclick={() => { draft.selectTextInNestedEditor = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <button
                     role="switch"
                     aria-checked={draft.selectTextInNestedEditor}
@@ -530,6 +583,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.selectTextInNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
             </div>
 
             <div class="section-divider"></div>
