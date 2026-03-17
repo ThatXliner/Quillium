@@ -23,10 +23,6 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
                 invoke: async (cmd: string, args: unknown) => {
                     invokeCalls.push({ cmd, args });
 
-                    // Migration: no legacy state.json — return not-migrated
-                    if (cmd === "cmd_migrate_from_state_json")
-                        return { migrated: false, documentId: null };
-
                     // One document exists so the editor loads with a draft ID
                     if (cmd === "cmd_list_documents")
                         return [
@@ -106,32 +102,7 @@ test("renders a blank editor when an existing blank document is loaded", async (
             window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
         ).__TAURI_MOCK__.invokeCalls.map((x) => x.cmd),
     );
-    expect(commands).toContain("cmd_migrate_from_state_json");
     expect(commands).toContain("cmd_list_documents");
-});
-
-test("calls migration and list exactly once during startup", async ({ page }) => {
-    await installTauriMock(page);
-    await page.goto("/");
-
-    await expect(page.locator("#editor-document .cm-content")).toBeVisible();
-
-    const migrateCalls = await page.evaluate(
-        () =>
-            (
-                window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
-            ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "cmd_migrate_from_state_json")
-                .length,
-    );
-    expect(migrateCalls).toBe(1);
-
-    const listCalls = await page.evaluate(
-        () =>
-            (
-                window as unknown as { __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> } }
-            ).__TAURI_MOCK__.invokeCalls.filter((x) => x.cmd === "cmd_list_documents").length,
-    );
-    expect(listCalls).toBe(1);
 });
 
 test("typing updates stats and triggers cmd_append_event", async ({ page }) => {

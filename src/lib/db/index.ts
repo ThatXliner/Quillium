@@ -12,19 +12,11 @@ import type {
     DocumentMeta,
     DraftMeta,
     LoadResult,
-    MigrationResult,
 } from "./types";
 
 // ── Initialisation ────────────────────────────────────────────────
 
-/**
- * Runs the one-time migration from the legacy state.json file.
- * Schema initialisation happens in Rust setup() before any
- * commands are invoked, so this only needs to handle migration.
- */
-export async function initDb(): Promise<MigrationResult> {
-    return invoke<MigrationResult>("cmd_migrate_from_state_json");
-}
+export async function initDb(): Promise<void> {}
 
 // ── Reset ─────────────────────────────────────────────────────────
 
