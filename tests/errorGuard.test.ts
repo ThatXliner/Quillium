@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { checkForSuspiciousChange, saveEmergencyBackup, readBackup, clearBackup } from "$lib/errorGuard";
+import {
+    checkForSuspiciousChange,
+    saveEmergencyBackup,
+    readBackup,
+    clearBackup,
+} from "$lib/errorGuard";
 import { currentDocumentTitle, documentContent } from "$lib/stores";
 
 // ── localStorage mock ─────────────────────────────────────────────
@@ -11,8 +16,12 @@ beforeEach(() => {
 
     vi.stubGlobal("localStorage", {
         getItem: (k: string) => store[k] ?? null,
-        setItem: (k: string, v: string) => { store[k] = v; },
-        removeItem: (k: string) => { delete store[k]; },
+        setItem: (k: string, v: string) => {
+            store[k] = v;
+        },
+        removeItem: (k: string) => {
+            delete store[k];
+        },
     });
 
     // Reset svelte stores so documentContent and currentDocumentTitle start clean

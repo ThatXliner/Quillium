@@ -34,7 +34,11 @@ function downloadBackup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const date = new Date(backup.timestamp).toISOString().slice(0, 19).replace("T", "_").replace(/:/g, "-");
+    const date = new Date(backup.timestamp)
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", "_")
+        .replace(/:/g, "-");
     a.download = `${backup.documentTitle || "document"}_backup_${date}.txt`;
     a.click();
     setTimeout(() => {

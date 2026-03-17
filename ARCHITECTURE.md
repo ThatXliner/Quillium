@@ -374,6 +374,48 @@ Annotation IDs are scoped per-editor and can collide across nesting levels, so d
 
 `destroyEditor` flushes the nested editor's state (including sub-annotations) into the parent revision's version blob. It uses a tracked `editorVersionIndex` (set when the editor was created) rather than `rev.activeVersionIndex`, which may have changed if a parent breadcrumb version switch happened before the destroy. This prevents flushing old version content into the wrong version slot.
 
+#### RevisionModal FSM
+
+The modal editor's lifecycle is governed by a finite state machine rather than ad-hoc `$effect` chains. All transitions go through a single `send(event)` function.
+
+```
+         DIALOG_BOUND           TICK_RESOLVED
+unmounted ──────────► mounting ──────────────► ready
+                                                │ ▲
+                          REBUILD_REQUESTED /   │ │  TICK_RESOLVED
+                          VERSION_SWITCHED      ▼ │
+                                              rebuilding
+```
+
+| State | Description |
+|---|---|
+| `unmounted` | Initial. Waiting for `dialogEl` to bind in the DOM. |
+| `mounting` | Dialog is open, waiting for `tick()` so the editor host div is rendered. On `TICK_RESOLVED`: creates the nested editor, executes any `pendingNestedCommand`, transitions to `ready`. |
+| `ready` | Normal operating state. Processes external doc changes (`EXTERNAL_DOC_CHANGED`), nested annotation events (`NESTED_ANNOTATION_EVENT`), and rebuild/version-switch requests. |
+| `rebuilding` | Editor destroyed, waiting for `tick()` before recreating from the (possibly new) active version. Transitions back to `ready` on `TICK_RESOLVED`. |
+
+| Event | Trigger |
+|---|---|
+| `DIALOG_BOUND` | Sensor Effect A detects `dialogEl` is bound |
+| `TICK_RESOLVED` | `tick().then(...)` resolves after a state transition |
+| `REBUILD_REQUESTED` | Sensor Effect A detects a new `rebuildToken` on the modal stack entry (set by `popToAndRebuild` when a child modal switches the parent's active version) |
+| `VERSION_SWITCHED` | User picks a different version from the breadcrumb dropdown, or Sensor Effect B detects the parent's `activeVersionIndex` changed |
+| `EXTERNAL_DOC_CHANGED` | Sensor Effect B detects the parent's version doc text changed (undo, typing in parent) |
+| `NESTED_ANNOTATION_EVENT` | Sensor Effect C receives a `revision-open-nested-editor` UI event targeting this modal's revision |
+
+#### Sensor effects
+
+The FSM is driven by four reactive sensor effects that translate external signals into FSM events:
+
+| Effect | Watches | Sends |
+|---|---|---|
+| **A: Dialog bind + rebuild token** | `dialogEl`, `$modalStack[stackIndex].rebuildToken` | `DIALOG_BOUND`, `REBUILD_REQUESTED` |
+| **B: External sync** | `$annotationsStore` (root) or `$modalAnnotationStores[stackIndex-1]` (nested) | `VERSION_SWITCHED`, `EXTERNAL_DOC_CHANGED` |
+| **C: Nested annotation event** | `$annotationUiEvent` where `type === "revision-open-nested-editor"` and `command.revisionId === revisionId` | `NESTED_ANNOTATION_EVENT` |
+| **D: Nested revision click** | `$annotationUiEvent` where `type === "revision-focus-request"` and `revisionId` exists in `editor.state.field(annotationField)` | Pushes a new modal onto `modalStack` directly (no FSM event needed) |
+
+Sensor Effect D handles the case where the user clicks on a nested revision decoration inside the modal's CodeMirror editor. The `revisionClickHandler` extension (included in every nested editor via `getExtensions`) fires a `revision-focus-request` with the nested annotation's ID. Effect D checks whether that ID belongs to a revision in *this* modal's nested editor — if so, it pushes a new modal with `parentView: editor`, enabling click-to-open at any nesting depth.
+
 ### Undo
 
 `makeParentUndoKeymap` still delegates `Mod-z`/`Mod-y` to `undo(parentView)`/`redo(parentView)` because nested editors continue to have no local history (`getExtensions({ history: false })`). The parent history records nested edits as plain doc changes (via `translateAndDispatch` + `addToHistory:true`), and the reactive watcher eventually catches the inverted transaction and replaces the nested buffer, so the editor always reflects the current undo/redo state.
@@ -440,7 +482,7 @@ Events carry a monotonically increasing `token` so components can gate on `event
 |---|---|---|
 | `revision-boundary-nudge` | `nudgeBoundary` command, `boundaryInsertNudge` plugin | `Revision.svelte` (shows hint) |
 | `revision-open-nested-editor` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command) |
-| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor) |
+| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor; opens modal for clicked nested revision in inline editor), `RevisionModal.svelte` Sensor Effect D (opens modal for clicked nested revision in modal editor) |
 | `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
 | `pending-nested-editor-selection` | `createRevisionCommand` | `Revision.svelte` (selects all text in newly mounted nested editor) |
 

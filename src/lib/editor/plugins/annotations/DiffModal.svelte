@@ -22,7 +22,6 @@
  * list with optional rationale text.
  */
 import { ChevronRight, SparklesIcon, X } from "lucide-svelte";
-import { tick } from "svelte";
 import type { EditorView } from "@codemirror/view";
 import { modalStack } from "$lib/stores";
 import { annotationField, diffTokens, tokenize, type Annotation } from ".";
@@ -65,11 +64,9 @@ function close() {
     modalStack.pop();
 }
 
-// Open the <dialog> element as a modal once it is mounted
+// Open the <dialog> element as a modal once it is bound.
 $effect(() => {
-    tick().then(() => {
-        if (dialogEl && !dialogEl.open) dialogEl.showModal();
-    });
+    if (dialogEl && !dialogEl.open) dialogEl.showModal();
 });
 </script>
 
@@ -78,6 +75,7 @@ $effect(() => {
     bind:this={dialogEl}
     class="diff-modal"
     onclick={(e) => { if (e.target === dialogEl) close(); }}
+    oncancel={(e) => { e.preventDefault(); close(); }}
 >
     <div class="diff-modal-inner">
         <!-- Header -->

@@ -193,14 +193,13 @@ test("AI sidebar can open chat and feedback panels", async ({ page }) => {
     await installTauriMock(page, { apiKey: "test-api-key" });
     await page.goto("/");
 
-    await page.locator("#ai-tab-chat").click({ force: true });
+    await page.locator("#ai-tab-chat").click();
     await expect(page.locator("#ai-sidebar")).toContainText("Chat with AI");
 
     const feedbackButton = page.locator(
         "#ai-sidebar .overflow-x-auto button[aria-label*='Feedback']",
     );
-    await expect(feedbackButton).toBeVisible({ timeout: 10000 });
-    await feedbackButton.click({ force: true });
+    await feedbackButton.click();
 
     await expect(page.locator("#ai-sidebar")).toContainText("Get Feedback");
 });
