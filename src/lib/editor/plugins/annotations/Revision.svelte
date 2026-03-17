@@ -664,7 +664,7 @@ onDestroy(() => {
         height: 100%;
         min-height: 220px;
         font-size: 13px;
-        font-family: inherit;
+        font-family: var(--doc-font-family);
         line-height: 1.6;
         background: transparent;
     }
@@ -677,7 +677,7 @@ onDestroy(() => {
         text-indent: 0;
         font-size: 13px;
         line-height: 1.6;
-        font-family: inherit;
+        font-family: var(--doc-font-family);
     }
 
     @keyframes focus-flash {

@@ -1068,6 +1068,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     height: 100%;
     width: 100%;
     background: transparent;
+    font-family: var(--doc-font-family);
   }
 
   .revision-modal-editor :global(.cm-scroller) {
@@ -1081,6 +1082,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     min-height: 100%;
     padding: 20px 32px 32px 32px;
     font-size: 15px;
+    font-family: var(--doc-font-family);
   }
 
   .revision-modal-editor :global(.cm-focused) {

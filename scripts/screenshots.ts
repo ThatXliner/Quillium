@@ -28,6 +28,7 @@ import { PNG } from "pngjs";
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const noServer = process.argv.includes("--no-server");
+const force = process.argv.includes("--force");
 const BASE_URL = noServer ? "http://localhost:1420" : "http://localhost:4173";
 const OUT_DIR = "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
@@ -35,7 +36,8 @@ const DEVICE_SCALE_FACTOR = 2;
 
 // Minimum fraction of pixels that must differ for a screenshot to be considered
 // "significantly changed" and worth committing. 0.01 = 1% of total pixels.
-const DIFF_THRESHOLD = 0.01;
+// If --force is set, all screenshots are updated (threshold = 0).
+const DIFF_THRESHOLD = force ? 0 : 0.01;
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -118,6 +120,15 @@ async function installTauriMock(
             libraryDocs: typeof LIBRARY_DOCUMENTS;
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            // Ensure a consistent font for all screenshots regardless of any
+            // persisted user settings that may be present in the browser profile.
+            localStorage.setItem(
+                "quillium-app-settings",
+                JSON.stringify({
+                    docFontFamily: "Georgia, serif",
+                    docFontSize: 18,
+                }),
+            );
 
             let nextCallbackId = 1;
             const callbacks = new Map<number, (...args: unknown[]) => unknown>();
