@@ -300,7 +300,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                 >
                                     <div class="flex-1 min-w-0">
                                         <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
-                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
                                         <Check size={11} class="text-blue-500 shrink-0" />
@@ -421,7 +421,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                 >
                                     <div class="flex-1 min-w-0">
                                         <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
-                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
                                         <Check size={11} class="text-blue-500 shrink-0" />
