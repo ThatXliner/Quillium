@@ -1,5 +1,5 @@
 /**
- * resize.ts — Reusable resize action for panel components.
+ * resize.svelte.ts — Reusable resize action for panel components.
  *
  * Provides `createResizer` which returns a `startResize` function and
  * reactive `isResizing` state. Handles mousemove/mouseup cleanup and
@@ -66,6 +66,7 @@ export function createResizer(options: ResizerOptions) {
     }
 
     function startResize(e: MouseEvent, cursorOverride?: string) {
+        if (isResizing) return;
         e.preventDefault();
         e.stopPropagation();
         startCoord = options.direction === "bottom" ? e.clientY : e.clientX;
@@ -82,6 +83,7 @@ export function createResizer(options: ResizerOptions) {
         window.removeEventListener("mouseup", onEnd);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
+        isResizing = false;
     }
 
     return {
