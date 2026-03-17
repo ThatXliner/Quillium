@@ -511,7 +511,7 @@ Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodi
 | `drafts` | Named drafts per document (default one per document) |
 | `events` | Append-only log of CM transactions, one row per update |
 | `snapshots` | Full `EditorState.toJSON()` blobs, kept at most 3 per draft |
-| `_meta` | Key/value flags (migration guard, active draft pointers) |
+| `_meta` | Key/value flags (active draft pointers) |
 
 The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
 

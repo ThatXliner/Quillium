@@ -254,7 +254,7 @@ const fromSave = (async () => {
         }
     }
 
-    // Blank editor (new installation or empty DB after migration).
+    // Blank editor (new installation).
     // Create an initial document + draft so the event log can record
     // edits immediately without waiting for the user to visit the library.
     const newDocId = await createDocument("Untitled");
