@@ -64,7 +64,12 @@ const DEFAULT_PANEL_WIDTH = 256;
 const MIN_PANEL_WIDTH = 180;
 const MAX_PANEL_WIDTH = 480;
 
-let panelWidth = $state(appSettings.annotationPanelWidth ?? DEFAULT_PANEL_WIDTH);
+let panelWidth = $state(
+    Math.min(
+        MAX_PANEL_WIDTH,
+        Math.max(MIN_PANEL_WIDTH, appSettings.annotationPanelWidth ?? DEFAULT_PANEL_WIDTH),
+    ),
+);
 
 const annotationPanelResizer = createResizer({
     direction: "left",
