@@ -531,6 +531,77 @@ async function scenarioRevisionModal(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
+/**
+ * 08. full-ui — Hero marketing screenshot: all three annotation types visible
+ *    beside an original short prose passage, the AI Chat sidebar open with
+ *    a context snippet, and the last comment card active (showing thread +
+ *    reply input + Suggest button).
+ */
+async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+
+    const applied = await applyDebugScenario(page, "screenshot-full-ui");
+    if (!applied) {
+        // Fallback: no scenario bridge in this build — skip
+        await page.close();
+        return;
+    }
+
+    // Open the AI Chat sidebar so it appears in the screenshot
+    await page.locator("#ai-tab-chat").waitFor({ state: "visible" });
+    await page
+        .waitForFunction(
+            () =>
+                document
+                    .querySelector("#ai-tab-chat")
+                    ?.getAttribute("aria-label")
+                    ?.includes("⌘") ?? false,
+            { timeout: 5000 },
+        )
+        .catch(() => {});
+    await page.locator("#ai-tab-chat").click({ force: true });
+    await page.locator("#ai-sidebar").waitFor({ state: "visible" });
+
+    // Select the rain passage so the "Context:" box appears in the AI sidebar
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const editorViewStore = w.__editorView__ as
+            | { subscribe(fn: (v: unknown) => void): () => void }
+            | undefined;
+        if (!editorViewStore) return;
+        let view: unknown;
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
+        unsub();
+        if (!view) return;
+        const v = view as {
+            state: { doc: { toString(): string } };
+            dispatch(tr: object): void;
+            focus(): void;
+        };
+        const doc = v.state.doc.toString();
+        const target = "the rain began";
+        const from = doc.indexOf(target);
+        if (from === -1) return;
+        const to = from + "the rain began — gently at first, then all at once, the way grief arrives without warning or ceremony".length;
+        v.focus();
+        v.dispatch({ selection: { anchor: from, head: to } });
+    });
+    await page.waitForTimeout(300);
+
+    // Activate the last comment ("The letter stayed where it was.") so its
+    // thread, reply input, and Suggest button are all visible
+    await activateAnnotation(page, "The letter stayed where it was.");
+
+    await shot(page, "08-full-ui");
+    await page.close();
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -579,6 +650,7 @@ async function main(): Promise<void> {
         await scenarioRevisionActive(context);
         await scenarioLibrary(context);
         await scenarioRevisionModal(context);
+        await scenarioFullUi(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {
