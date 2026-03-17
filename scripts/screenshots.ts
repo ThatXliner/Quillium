@@ -120,6 +120,13 @@ async function installTauriMock(
             libraryDocs: typeof LIBRARY_DOCUMENTS;
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            // Hide the debug button so it never appears in screenshots.
+            document.addEventListener("DOMContentLoaded", () => {
+                const style = document.createElement("style");
+                style.textContent =
+                    "[aria-label='Open debug panel'] { display: none !important; }";
+                document.head.appendChild(style);
+            });
             // Ensure a consistent font for all screenshots regardless of any
             // persisted user settings that may be present in the browser profile.
             localStorage.setItem(
