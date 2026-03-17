@@ -173,12 +173,19 @@ $effect(() => {
         event.command.revisionId !== revision.id
     )
         return;
-    // If there's already a modal open for this revision, the modal's own
-    // event handler will create the sub-annotation directly in its nested
-    // editor rather than pushing a duplicate modal from the sidebar.
+    // If there's already a modal open for this revision *anywhere* in the
+    // stack, the modal's own Sensor Effect C will create the sub-annotation
+    // directly in its nested editor. Consume the token and bail to prevent
+    // a duplicate modal push.
     const stack = $modalStack;
-    const topModal = stack[stack.length - 1];
-    if (topModal?.type === "revision" && topModal.revisionId === revision.id) return;
+    if (
+        stack.some(
+            (entry) => entry.type === "revision" && entry.revisionId === revision.id,
+        )
+    ) {
+        lastOpenNestedEditorToken = event.token;
+        return;
+    }
     lastOpenNestedEditorToken = event.token;
     const cmd = event.command;
     modalStack.push({

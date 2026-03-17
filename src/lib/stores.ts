@@ -328,21 +328,20 @@ export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>
         _modalStack.update((s) => {
-            const top = s[s.length - 1];
-            // Prevent duplicate modals for the same annotation + parent view.
-            if (
-                top &&
-                top.type === entry.type &&
-                top.parentView === entry.parentView &&
-                ((top.type === "revision" &&
-                    entry.type === "revision" &&
-                    top.revisionId === entry.revisionId) ||
-                    (top.type === "diff" &&
-                        entry.type === "diff" &&
-                        top.suggestionId === entry.suggestionId))
-            ) {
-                return s;
-            }
+            // Prevent duplicate modals for the same annotation + parent view
+            // anywhere in the stack, not just the top.
+            const isDuplicate = s.some(
+                (existing) =>
+                    existing.type === entry.type &&
+                    existing.parentView === entry.parentView &&
+                    ((existing.type === "revision" &&
+                        entry.type === "revision" &&
+                        existing.revisionId === entry.revisionId) ||
+                        (existing.type === "diff" &&
+                            entry.type === "diff" &&
+                            existing.suggestionId === entry.suggestionId)),
+            );
+            if (isDuplicate) return s;
             return [...s, entry];
         }),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
