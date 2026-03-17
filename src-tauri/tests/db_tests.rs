@@ -2,12 +2,9 @@ use quillium_lib::db::{
     documents::{create_document, create_draft, list_documents},
     events::{append_event, create_snapshot},
     load::load_document_state,
-    migration::migrate_from_state_json,
     schema::init_schema,
 };
 use rusqlite::Connection;
-use std::path::Path;
-use tempfile::tempdir;
 
 fn in_memory_db() -> Connection {
     let conn = Connection::open_in_memory().expect("in-memory DB");
@@ -125,73 +122,4 @@ fn test_load_with_events_since_snapshot() {
     // IDs must be strictly increasing
     assert!(result.events_since[0].id < result.events_since[1].id);
     assert!(result.events_since[1].id < result.events_since[2].id);
-}
-
-#[test]
-fn test_migration_idempotent() {
-    let dir = tempdir().expect("tempdir");
-    let state_json_path = dir.path().join("state.json");
-    std::fs::write(&state_json_path, r#"{"doc":"hello world"}"#).expect("write");
-
-    let conn = in_memory_db();
-
-    let r1 = migrate_from_state_json(&conn, &state_json_path).expect("migrate 1");
-    assert!(r1.migrated);
-    assert!(r1.document_id.is_some());
-
-    // Second call should be a no-op
-    let r2 = migrate_from_state_json(&conn, &state_json_path).expect("migrate 2");
-    assert!(!r2.migrated);
-    assert!(r2.document_id.is_none());
-
-    // Only one document should exist
-    let docs = list_documents(&conn).expect("list docs");
-    assert_eq!(docs.len(), 1);
-}
-
-#[test]
-fn test_migration_missing_state_json() {
-    let conn = in_memory_db();
-    let nonexistent = Path::new("/tmp/quillium_test_nonexistent_state.json");
-
-    let r = migrate_from_state_json(&conn, nonexistent).expect("migrate");
-    assert!(!r.migrated);
-    assert!(r.document_id.is_none());
-
-    // Should still set the meta flag
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM _meta WHERE key = 'migrated_from_state_json'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("query meta");
-    assert_eq!(count, 1, "meta flag should be set even on missing file");
-}
-
-#[test]
-fn test_migration_malformed_json() {
-    let dir = tempdir().expect("tempdir");
-    let state_json_path = dir.path().join("state.json");
-    std::fs::write(&state_json_path, "NOT VALID JSON!!!").expect("write");
-
-    let conn = in_memory_db();
-
-    let r = migrate_from_state_json(&conn, &state_json_path).expect("migrate");
-    assert!(!r.migrated);
-    assert!(r.document_id.is_none());
-
-    // Meta flag should still be set
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM _meta WHERE key = 'migrated_from_state_json'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("query meta");
-    assert_eq!(count, 1, "meta flag should be set even on malformed JSON");
-
-    // No documents should have been created
-    let docs = list_documents(&conn).expect("list docs");
-    assert_eq!(docs.len(), 0);
 }

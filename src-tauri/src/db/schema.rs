@@ -3,7 +3,9 @@ use std::path::Path;
 
 pub fn open_db(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;")?;
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;",
+    )?;
     init_schema(&conn)?;
     Ok(conn)
 }
@@ -18,7 +20,8 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             updated_at   INTEGER NOT NULL,
             word_count   INTEGER NOT NULL DEFAULT 0,
             preview_text TEXT NOT NULL DEFAULT '',
-            tags         TEXT NOT NULL DEFAULT '[]'
+            tags         TEXT NOT NULL DEFAULT '[]',
+            deleted_at   INTEGER DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS drafts (
@@ -54,9 +57,5 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_snapshots_draft ON snapshots(draft_id, up_to_event_id DESC);
         ",
     )?;
-    // Additive migration: add deleted_at if it doesn't exist yet.
-    let _ = conn.execute_batch(
-        "ALTER TABLE documents ADD COLUMN deleted_at INTEGER DEFAULT NULL;",
-    );
     Ok(())
 }

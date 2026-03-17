@@ -511,7 +511,7 @@ Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodi
 | `drafts` | Named drafts per document (default one per document) |
 | `events` | Append-only log of CM transactions, one row per update |
 | `snapshots` | Full `EditorState.toJSON()` blobs, kept at most 3 per draft |
-| `_meta` | Key/value flags (migration guard, active draft pointers) |
+| `_meta` | Key/value flags (active draft pointers) |
 
 The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
 
@@ -541,19 +541,6 @@ const loaded = await loadDocumentState(docId, draftId);
 ```
 
 `loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `event_id > snapshot.up_to_event_id`. The snapshot is restored first, then any `eventsSince` are replayed in order via `replayEvents()` to reconstruct the full editor state.
-
-### Migration from state.json
-
-On first launch after upgrading, `migrate_from_state_json` (Rust) runs automatically. It reads the legacy `state.json`, creates a document + draft + seed snapshot (with `up_to_event_id = -1`), and sets a `_meta` flag so it never runs again. The operation is idempotent.
-
-> **TODO: remove when safe.** Once all users are on a build that includes the SQLite persistence layer, this migration path can be deleted. Files to remove/change:
->
-> - `src-tauri/src/db/migration.rs` — delete entirely
-> - `src-tauri/src/db/mod.rs` — remove `pub mod migration;` and the `MigrationResult` struct
-> - `src-tauri/src/lib.rs` — remove `migration::migrate_from_state_json` import, `MigrationResult` import, and `cmd_migrate_from_state_json` command + its registration in `invoke_handler!`
-> - `src/lib/db/index.ts` — replace `initDb()` body with a no-op (or just `return`); the function can stay as a call-site no-op while callers are cleaned up
-> - `src/lib/db/types.ts` — remove the `MigrationResult` type
-> - `tests/e2e/app.smoke.pw.ts` — remove the `cmd_migrate_from_state_json` mock and the assertion that it is called once
 
 ### Event payload format
 

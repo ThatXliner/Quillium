@@ -12,9 +12,8 @@ use db::{
     },
     events::{append_event, create_snapshot},
     load::load_document_state,
-    migration::migrate_from_state_json,
     schema::open_db,
-    AppendEventResult, DocumentMeta, DraftMeta, LoadResult, MigrationResult,
+    AppendEventResult, DocumentMeta, DraftMeta, LoadResult,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 
@@ -135,20 +134,6 @@ fn cmd_load_document_state(
     load_document_state(&conn, &doc_id, draft_id.as_deref()).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn cmd_migrate_from_state_json(
-    app_handle: tauri::AppHandle,
-    state: tauri::State<DbState>,
-) -> Result<MigrationResult, String> {
-    let state_json_path = app_handle
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("state.json");
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    migrate_from_state_json(&conn, &state_json_path).map_err(|e| e.to_string())
-}
-
 // ── Trash retention commands ──────────────────────────────────────
 
 /// Returns the trash auto-empty setting in days, or null if "never".
@@ -260,7 +245,6 @@ pub fn run() {
             cmd_append_event,
             cmd_create_snapshot,
             cmd_load_document_state,
-            cmd_migrate_from_state_json,
             set_api_key,
             get_api_key,
             delete_api_key,
