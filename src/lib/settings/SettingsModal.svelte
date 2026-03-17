@@ -19,7 +19,13 @@ import type { CustomQuickAction } from "$lib/settings.svelte";
 
 const { onclose }: { onclose: () => void } = $props();
 
-type FontOption = { label: string; value: string; sample: string };
+type FontOption = {
+    label: string;
+    value: string;
+    sample?: string;
+    group?: string;
+    featured?: boolean;
+};
 
 function firstInstalled(...names: string[]): { label: string; cssName: string } {
     for (const name of names) {
@@ -29,7 +35,10 @@ function firstInstalled(...names: string[]): { label: string; cssName: string } 
     const last = names[names.length - 1];
     return { label: last, cssName: `"${last}"` };
 }
-
+const PLACEHOLDER =
+    Math.random() < 0.2
+        ? "Sphinx of black quartz, judge my vow"
+        : "The quick brown fox jumps over the lazy dog";
 const mono = firstInstalled(
     "SF Mono",
     "JetBrains Mono",
@@ -44,15 +53,133 @@ const monoStack = `${mono.cssName}, ui-monospace, monospace`;
 const sansStack = `${sans.cssName}, system-ui, sans-serif`;
 
 const DOC_FONTS: FontOption[] = [
-    { label: sans.label, value: sansStack, sample: "The quick brown fox jumps" },
-    { label: "Georgia", value: "Georgia, serif", sample: "The quick brown fox jumps" },
-    { label: mono.label, value: monoStack, sample: "The quick brown fox jumps" },
+    // Our picks — one per category
+    {
+        featured: true,
+        group: "Serif",
+        label: "Lora",
+        value: '"Lora", Georgia, serif',
+        sample: "Warm, literary serif",
+    },
+    {
+        featured: true,
+        group: "Sans",
+        label: "Raleway",
+        value: '"Raleway", system-ui, sans-serif',
+        sample: "Elegant geometric sans",
+    },
+    {
+        featured: true,
+        group: "Typewriter",
+        label: "Courier Prime",
+        value: '"Courier Prime", "Courier New", Courier, monospace',
+        sample: "Classic typewriter feel",
+    },
+    {
+        featured: true,
+        group: "Handwriting",
+        label: "Caveat",
+        value: '"Caveat", cursive',
+        sample: "Casual, expressive script",
+    },
+    // All fonts
+    { group: "Sans", label: sans.label, value: sansStack },
+    {
+        group: "Serif",
+        label: "New York",
+        value: '"New York", ui-serif, Georgia, serif',
+    },
+    {
+        group: "Serif",
+        label: "Libre Baskerville",
+        value: '"Libre Baskerville", Georgia, serif',
+    },
+    {
+        group: "Serif",
+        label: "Baskerville",
+        value: '"Baskerville", "Baskerville Old Face", serif',
+    },
+    {
+        group: "Serif",
+        label: "Palatino",
+        value: '"Palatino Linotype", Palatino, "Book Antiqua", serif',
+    },
+    {
+        group: "Serif",
+        label: "Georgia",
+        value: "Georgia, serif",
+    },
+    {
+        group: "Serif",
+        label: "Charter",
+        value: '"Charter", "Bitstream Charter", "Sitka Text", serif',
+    },
+    {
+        group: "Serif",
+        label: "IM Fell English",
+        value: '"IM Fell English", Georgia, serif',
+    },
+    {
+        group: "Typewriter",
+        label: "Special Elite",
+        value: '"Special Elite", "Courier New", monospace',
+    },
+    {
+        group: "Typewriter",
+        label: mono.label,
+        value: monoStack,
+    },
+    {
+        group: "Handwriting",
+        label: "Kalam",
+        value: '"Kalam", cursive',
+    },
 ];
 
 const UI_FONTS: FontOption[] = [
-    { label: sans.label, value: sansStack, sample: "App interface" },
-    { label: "Georgia", value: "Georgia, serif", sample: "App interface" },
-    { label: mono.label, value: monoStack, sample: "App interface" },
+    // Our picks — one per category
+    {
+        featured: true,
+        group: "Sans",
+        label: sans.label,
+        value: sansStack,
+        sample: "Crisp system default",
+    },
+    {
+        featured: true,
+        group: "Serif",
+        label: "Lora",
+        value: '"Lora", Georgia, serif',
+        sample: "Warm, literary serif",
+    },
+    {
+        featured: true,
+        group: "Mono",
+        label: mono.label,
+        value: monoStack,
+        sample: "Crisp monospace precision",
+    },
+    // All fonts
+    {
+        group: "Sans",
+        label: "Raleway",
+        value: '"Raleway", system-ui, sans-serif',
+    },
+    {
+        group: "Serif",
+        label: "New York",
+        value: '"New York", ui-serif, Georgia, serif',
+    },
+    {
+        group: "Serif",
+        label: "Baskerville",
+        value: '"Baskerville", "Baskerville Old Face", serif',
+    },
+    {
+        group: "Serif",
+        label: "Georgia",
+        value: "Georgia, serif",
+    },
 ];
 
 // Local draft — a shallow copy of persisted settings
@@ -217,7 +344,8 @@ function fontLabel(fonts: FontOption[], value: string) {
                     </button>
                     {#if openDropdown === "doc"}
                         <div class="dropdown-popover">
-                            {#each DOC_FONTS as font}
+                            <div class="dropdown-section-label">Our Picks</div>
+                            {#each DOC_FONTS.filter(f => f.featured) as font}
                                 {@const selected = draft.docFontFamily === font.value}
                                 <button
                                     class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
@@ -229,7 +357,28 @@ function fontLabel(fonts: FontOption[], value: string) {
                                 >
                                     <div class="flex-1 min-w-0">
                                         <div class="dropdown-option-label">{font.label}</div>
-                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font.sample}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
+                                    </div>
+                                    {#if selected}
+                                        <Check size={11} class="text-blue-500 shrink-0" />
+                                    {/if}
+                                </button>
+                            {/each}
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">All Fonts</div>
+                            {#each DOC_FONTS.filter(f => !f.featured) as font}
+                                {@const selected = draft.docFontFamily === font.value}
+                                <button
+                                    class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
+                                    onclick={() => {
+                                        draft.docFontFamily = font.value;
+                                        openDropdown = null;
+                                        handleChange();
+                                    }}
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <div class="dropdown-option-label">{font.label}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
                                         <Check size={11} class="text-blue-500 shrink-0" />
@@ -307,7 +456,8 @@ function fontLabel(fonts: FontOption[], value: string) {
                     </button>
                     {#if openDropdown === "ui"}
                         <div class="dropdown-popover">
-                            {#each UI_FONTS as font}
+                            <div class="dropdown-section-label">Our Picks</div>
+                            {#each UI_FONTS.filter(f => f.featured) as font}
                                 {@const selected = draft.uiFontFamily === font.value}
                                 <button
                                     class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
@@ -319,7 +469,28 @@ function fontLabel(fonts: FontOption[], value: string) {
                                 >
                                     <div class="flex-1 min-w-0">
                                         <div class="dropdown-option-label">{font.label}</div>
-                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font.sample}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
+                                    </div>
+                                    {#if selected}
+                                        <Check size={11} class="text-blue-500 shrink-0" />
+                                    {/if}
+                                </button>
+                            {/each}
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">All Fonts</div>
+                            {#each UI_FONTS.filter(f => !f.featured) as font}
+                                {@const selected = draft.uiFontFamily === font.value}
+                                <button
+                                    class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
+                                    onclick={() => {
+                                        draft.uiFontFamily = font.value;
+                                        openDropdown = null;
+                                        handleChange();
+                                    }}
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <div class="dropdown-option-label">{font.label}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
                                         <Check size={11} class="text-blue-500 shrink-0" />
@@ -672,6 +843,8 @@ function fontLabel(fonts: FontOption[], value: string) {
         top: calc(100% + 4px);
         right: 0;
         min-width: 200px;
+        max-height: 280px;
+        overflow-y: auto;
         background: white;
         border: 1px solid rgba(0, 0, 0, 0.09);
         border-radius: 10px;
@@ -680,7 +853,6 @@ function fontLabel(fonts: FontOption[], value: string) {
             0 2px 8px -2px rgba(0, 0, 0, 0.07);
         padding: 4px;
         z-index: 50;
-        overflow: hidden;
     }
 
     .dropdown-option {
@@ -719,5 +891,20 @@ function fontLabel(fonts: FontOption[], value: string) {
         color: rgba(0, 0, 0, 0.38);
         margin-top: 2px;
         line-height: 1.3;
+    }
+
+    .dropdown-section-label {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.3);
+        padding: 4px 9px 2px;
+    }
+
+    .dropdown-divider {
+        height: 1px;
+        background: rgba(0, 0, 0, 0.06);
+        margin: 4px 0;
     }
 </style>
