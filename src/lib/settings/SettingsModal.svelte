@@ -57,7 +57,7 @@ const sansStack = `${sans.cssName}, system-ui, sans-serif`;
 // Map static font data into picker FontOption shape, then inject the two
 // runtime-resolved system entries (system sans + system mono).
 const DOC_FONTS: FontOption[] = [
-    ...FONTS.map((f) => ({
+    ...FONTS.filter((f) => f.docFont).map((f) => ({
         label: f.name,
         value: f.cssFamily,
         sample: f.sample,
