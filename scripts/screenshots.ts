@@ -566,7 +566,8 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
     await page.locator("#ai-tab-chat").click({ force: true });
     await page.locator("#ai-sidebar").waitFor({ state: "visible" });
 
-    // Select the rain passage so the "Context:" box appears in the AI sidebar
+    // Select "The letter stayed where it was." as a range — this both activates
+    // the comment card AND populates $selectedText so the Context box appears.
     await page.evaluate(() => {
         const w = window as unknown as Record<string, unknown>;
         const editorViewStore = w.__editorView__ as
@@ -574,9 +575,7 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
             | undefined;
         if (!editorViewStore) return;
         let view: unknown;
-        const unsub = editorViewStore.subscribe((v) => {
-            view = v;
-        });
+        const unsub = editorViewStore.subscribe((v) => { view = v; });
         unsub();
         if (!view) return;
         const v = view as {
@@ -585,18 +584,14 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
             focus(): void;
         };
         const doc = v.state.doc.toString();
-        const target = "the rain began";
+        const target = "The letter stayed where it was.";
         const from = doc.indexOf(target);
         if (from === -1) return;
-        const to = from + "the rain began — gently at first, then all at once, the way grief arrives without warning or ceremony".length;
+        const to = from + target.length;
         v.focus();
         v.dispatch({ selection: { anchor: from, head: to } });
     });
-    await page.waitForTimeout(300);
-
-    // Activate the last comment ("The letter stayed where it was.") so its
-    // thread, reply input, and Suggest button are all visible
-    await activateAnnotation(page, "The letter stayed where it was.");
+    await page.waitForTimeout(400);
 
     await shot(page, "08-full-ui");
     await page.close();
