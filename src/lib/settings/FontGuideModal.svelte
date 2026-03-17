@@ -29,6 +29,14 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 const SAMPLE = "The quick brown fox jumps over the lazy dog.";
+
+const CATEGORY_ORDER = ["Serif", "Sans-Serif", "Typewriter", "Handwriting", "Misc", "Accessibility"];
+const sortedFonts = [...FONTS].sort((a, b) => {
+    const ai = CATEGORY_ORDER.indexOf(a.category);
+    const bi = CATEGORY_ORDER.indexOf(b.category);
+    if (ai !== bi) return ai - bi;
+    return a.name.localeCompare(b.name);
+});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -69,7 +77,7 @@ const SAMPLE = "The quick brown fox jumps over the lazy dog.";
             </div>
 
             <!-- Font entries -->
-            {#each FONTS as font}
+            {#each sortedFonts as font}
                 <div class="font-entry {font.docFeatured ? 'font-entry-pick' : ''}">
                     <div class="flex items-baseline gap-2 mb-1">
                         <span
