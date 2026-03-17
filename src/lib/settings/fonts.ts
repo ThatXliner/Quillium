@@ -84,7 +84,7 @@ export const FONTS: FontEntry[] = [
         uiFeatured: false,
         docFont: true,
         uiFont: false,
-        sample: "Switch fonts to catch mistakes",
+        sample: "heheheha",
         desc: "Yes, on purpose. Vincent Connare designed it in 1994 to feel like comic book lettering—informal, asymmetric, impossible to take too seriously. Reading your draft in a font you'd never publish in is like reading it aloud: it breaks the spell and you hear what's actually there. We include it for the same reason.",
     },
     // ── Serif ─────────────────────────────────────────────────────────────────
