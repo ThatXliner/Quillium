@@ -20,7 +20,7 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             updated_at   INTEGER NOT NULL,
             word_count   INTEGER NOT NULL DEFAULT 0,
             preview_text TEXT NOT NULL DEFAULT '',
-            tags         TEXT NOT NULL DEFAULT '[]'
+            tags         TEXT NOT NULL DEFAULT '[]',
             deleted_at   INTEGER DEFAULT NULL
         );
 
