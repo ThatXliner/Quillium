@@ -29,6 +29,7 @@ import type { Provider } from "./provider";
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
+const HAS_API_KEY_KEY = "quillium-has-api-key";
 
 export type DocumentContext = {
     freeform: string;
@@ -81,6 +82,8 @@ export function hasApiKey(): boolean {
     return aiSettings.apiKey.trim().length > 0;
 }
 
+export const HAS_API_KEY = HAS_API_KEY_KEY;
+
 export async function loadApiKeyForProvider(provider: Provider) {
     try {
         const key = await invoke<string | null>("get_api_key", { provider });
@@ -91,8 +94,8 @@ export async function loadApiKeyForProvider(provider: Provider) {
 }
 
 // Load key for the current provider on startup, but only if the user has
-// previously configured a provider (avoids triggering the keychain prompt
-// on first launch before the user has set up AI).
-if (typeof window !== "undefined" && localStorage.getItem(PROVIDER_KEY)) {
+// previously saved an API key (avoids triggering the keychain prompt
+// when AI features have never been configured).
+if (typeof window !== "undefined" && localStorage.getItem(HAS_API_KEY_KEY)) {
     loadApiKeyForProvider(aiSettings.provider);
 }
