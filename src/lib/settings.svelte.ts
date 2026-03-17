@@ -29,7 +29,7 @@ const DEFAULTS: AppSettings = {
     selectTextInNestedEditor: true,
     showNestedEditor: true,
     atomicRevisions: true,
-    docFontFamily: '"SF Pro Text", system-ui, sans-serif',
+    docFontFamily: "Georgia, serif",
     docFontSize: 18,
     uiFontFamily: "system-ui, -apple-system, sans-serif",
     customQuickActions: [],

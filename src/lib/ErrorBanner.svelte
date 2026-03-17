@@ -3,8 +3,7 @@ import { X, AlertTriangle, Download, RotateCcw } from "lucide-svelte";
 import { errorBanner } from "./stores";
 import { readBackup, clearBackup } from "./errorGuard";
 import type { BackupEntry } from "./errorGuard";
-
-const FEEDBACK_FORM_URL = "https://forms.gle/aYJkMnhiYrr688ug7";
+import { FEEDBACK_FORM_URL } from "./constants";
 
 function dismiss() {
     $errorBanner = null;

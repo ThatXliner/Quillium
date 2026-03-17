@@ -13,9 +13,10 @@
       - onclose: () => void — called when the modal is fully dismissed.
 -->
 <script lang="ts">
-import { X, Settings2, Check, ChevronDown, Plus, Trash2 } from "lucide-svelte";
+import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle } from "lucide-svelte";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
+import FontGuideModal from "./FontGuideModal.svelte";
 
 const { onclose }: { onclose: () => void } = $props();
 
@@ -53,20 +54,19 @@ const monoStack = `${mono.cssName}, ui-monospace, monospace`;
 const sansStack = `${sans.cssName}, system-ui, sans-serif`;
 
 const DOC_FONTS: FontOption[] = [
-    // Our picks — one per category
+    // Our picks — five across categories
     {
-        featured: true,
         group: "Serif",
-        label: "Lora",
-        value: '"Lora", Georgia, serif',
-        sample: "Warm, literary serif",
+        label: "EB Garamond",
+        value: '"EB Garamond", Garamond, Georgia, serif',
+        sample: "Classic Renaissance serif",
     },
     {
         featured: true,
-        group: "Sans",
-        label: "Raleway",
-        value: '"Raleway", system-ui, sans-serif',
-        sample: "Elegant geometric sans",
+        group: "Serif",
+        label: "Georgia",
+        value: "Georgia, serif",
+        sample: "Warm, readable default",
     },
     {
         featured: true,
@@ -77,13 +77,50 @@ const DOC_FONTS: FontOption[] = [
     },
     {
         featured: true,
-        group: "Handwriting",
-        label: "Caveat",
-        value: '"Caveat", cursive',
-        sample: "Casual, expressive script",
+        group: "Sans",
+        label: "Raleway",
+        value: '"Raleway", system-ui, sans-serif',
+        sample: "Elegant geometric sans",
+    },
+    {
+        featured: true,
+        group: "Misc",
+        label: "Comic Sans MS",
+        value: '"Comic Sans MS", "Comic Sans", cursive',
+        sample: "Switch fonts to catch mistakes",
     },
     // All fonts
     { group: "Sans", label: sans.label, value: sansStack },
+    {
+        group: "Sans",
+        label: "Arial",
+        value: "Arial, Helvetica, sans-serif",
+    },
+    {
+        group: "Sans",
+        label: "Calibri",
+        value: '"Calibri", "Gill Sans", sans-serif',
+    },
+    {
+        group: "Sans",
+        label: "Verdana",
+        value: "Verdana, Geneva, sans-serif",
+    },
+    {
+        group: "Serif",
+        label: "Times New Roman",
+        value: '"Times New Roman", Times, serif',
+    },
+    {
+        group: "Serif",
+        label: "Roboto Serif",
+        value: '"Roboto Serif", Georgia, serif',
+    },
+    {
+        group: "Serif",
+        label: "Lora",
+        value: '"Lora", Georgia, serif',
+    },
     {
         group: "Serif",
         label: "New York",
@@ -103,11 +140,6 @@ const DOC_FONTS: FontOption[] = [
         group: "Serif",
         label: "Palatino",
         value: '"Palatino Linotype", Palatino, "Book Antiqua", serif',
-    },
-    {
-        group: "Serif",
-        label: "Georgia",
-        value: "Georgia, serif",
     },
     {
         group: "Serif",
@@ -131,8 +163,19 @@ const DOC_FONTS: FontOption[] = [
     },
     {
         group: "Handwriting",
+        label: "Caveat",
+        value: '"Caveat", cursive',
+    },
+    {
+        group: "Handwriting",
         label: "Kalam",
         value: '"Kalam", cursive',
+    },
+    {
+        group: "Accessibility",
+        label: "OpenDyslexic",
+        value: '"OpenDyslexic", sans-serif',
+        sample: "Designed for dyslexic readers",
     },
 ];
 
@@ -228,6 +271,7 @@ let alerting = $state(false);
 
 // Which custom dropdown is open: "doc" | "ui" | null
 let openDropdown = $state<"doc" | "ui" | null>(null);
+let showFontGuide = $state(false);
 
 $effect(() => {
     if (dialogEl && !dialogEl.open) {
@@ -330,7 +374,16 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- Font family row -->
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">Font family</div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="setting-title">Font family</div>
+                        <button
+                            onclick={() => showFontGuide = true}
+                            aria-label="Font guide"
+                            class="text-black/25 hover:text-black/50 transition-colors"
+                        >
+                            <HelpCircle size={13} />
+                        </button>
+                    </div>
                     <div class="setting-desc">Editor font</div>
                 </div>
                 <!-- Custom dropdown -->
@@ -356,7 +409,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     }}
                                 >
                                     <div class="flex-1 min-w-0">
-                                        <div class="dropdown-option-label">{font.label}</div>
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
                                         <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
@@ -366,7 +419,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {/each}
                             <div class="dropdown-divider"></div>
                             <div class="dropdown-section-label">All Fonts</div>
-                            {#each DOC_FONTS.filter(f => !f.featured) as font}
+                            {#each DOC_FONTS.filter(f => !f.featured).sort((a, b) => a.label.localeCompare(b.label)) as font}
                                 {@const selected = draft.docFontFamily === font.value}
                                 <button
                                     class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
@@ -377,7 +430,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     }}
                                 >
                                     <div class="flex-1 min-w-0">
-                                        <div class="dropdown-option-label">{font.label}</div>
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
                                         <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
@@ -468,7 +521,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     }}
                                 >
                                     <div class="flex-1 min-w-0">
-                                        <div class="dropdown-option-label">{font.label}</div>
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
                                         <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
@@ -478,7 +531,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {/each}
                             <div class="dropdown-divider"></div>
                             <div class="dropdown-section-label">All Fonts</div>
-                            {#each UI_FONTS.filter(f => !f.featured) as font}
+                            {#each UI_FONTS.filter(f => !f.featured).sort((a, b) => a.label.localeCompare(b.label)) as font}
                                 {@const selected = draft.uiFontFamily === font.value}
                                 <button
                                     class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
@@ -489,7 +542,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     }}
                                 >
                                     <div class="flex-1 min-w-0">
-                                        <div class="dropdown-option-label">{font.label}</div>
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
                                         <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
@@ -697,6 +750,10 @@ function fontLabel(fonts: FontOption[], value: string) {
         </div><!-- end shake wrapper -->
     </div>
 </dialog>
+
+{#if showFontGuide}
+    <FontGuideModal onclose={() => showFontGuide = false} />
+{/if}
 
 <style>
     .settings-modal {

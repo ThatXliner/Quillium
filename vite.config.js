@@ -14,9 +14,11 @@ export default defineConfig(async () => ({
         tailwindcss(),
         webfontDownload([
             // Serifs — literary / classic writing
+            "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap",
             "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,700;1,400&display=swap",
             "https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap",
             "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap",
+            "https://fonts.googleapis.com/css2?family=Roboto+Serif:ital,wght@0,400;0,500;1,400&display=swap",
             // Sans
             "https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,400;0,700;1,400&display=swap",
             // Typewriter
@@ -25,6 +27,8 @@ export default defineConfig(async () => ({
             // Handwriting
             "https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap",
             "https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap",
+            // Accessibility
+            "https://cdn.jsdelivr.net/npm/@fontsource/opendyslexic/latin.css",
         ]),
     ],
     define: {
