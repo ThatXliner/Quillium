@@ -224,7 +224,11 @@ async function doAppend(update: ViewUpdate) {
     if (update.docChanged) {
         const allUserInitiated = update.transactions
             .filter((tr) => tr.docChanged)
-            .every((tr) => tr.isUserEvent("delete"));
+            .every(
+                (tr) =>
+                    tr.isUserEvent("delete") ||
+                    tr.isUserEvent("input.restore"),
+            );
         if (!allUserInitiated) {
             const oldText = update.startState.doc.toString();
             const newText = update.state.doc.toString();
