@@ -51,4 +51,3 @@ pub struct LoadResult {
     pub snapshot_event_id: i64,
     pub events_since: Vec<EventRecord>,
 }
-
