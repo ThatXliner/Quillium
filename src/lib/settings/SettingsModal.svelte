@@ -387,7 +387,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-desc">UI font</div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
-                {#if draft.uiFontFamily !== sansStack && draft.uiFontFamily !== "system-ui, -apple-system, sans-serif"}
+                {#if draft.uiFontFamily !== sansStack}
                     <button
                         type="button"
                         onclick={() => { draft.uiFontFamily = sansStack; handleChange(); }}
