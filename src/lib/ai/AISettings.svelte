@@ -108,10 +108,15 @@ let saveTimer: ReturnType<typeof setTimeout>;
 
 $effect(() => {
     const provider = selectedProvider;
+    // Only query the keychain if the user has previously saved a provider
+    // (avoids the keychain prompt on first launch / before AI is configured).
+    if (!localStorage.getItem(PROVIDER_KEY)) {
+        keyLoading = false;
+        return;
+    }
     keyLoading = true;
     invoke<string | null>("get_api_key", { provider })
         .then((key) => {
-            console.log("get_api_key", provider, "->", key);
             apiKey = key ?? "";
             aiSettings.apiKey = apiKey;
         })

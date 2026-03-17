@@ -90,7 +90,9 @@ export async function loadApiKeyForProvider(provider: Provider) {
     }
 }
 
-// Load key for the current provider on startup
-if (typeof window !== "undefined") {
+// Load key for the current provider on startup, but only if the user has
+// previously configured a provider (avoids triggering the keychain prompt
+// on first launch before the user has set up AI).
+if (typeof window !== "undefined" && localStorage.getItem(PROVIDER_KEY)) {
     loadApiKeyForProvider(aiSettings.provider);
 }
