@@ -85,16 +85,14 @@ const uiFonts = sortedFonts(FONTS.filter((f) => f.uiFont), "uiFeatured");
                     >UI</button>
                 </div>
             </div>
-            <div class="flex items-center gap-1.5">
-                <kbd class="text-[10px] text-black/20 font-sans px-1 py-0.5 rounded border border-black/[0.08] bg-black/[0.03] leading-none select-none">ESC</kbd>
-                <button
-                    onclick={onclose}
-                    aria-label="Close font guide"
-                    class="p-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-                >
-                    <X size={15} />
-                </button>
-            </div>
+            <button
+                onclick={onclose}
+                aria-label="Close font guide"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+            >
+                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <X size={15} />
+            </button>
         </div>
 
         <!-- Body -->

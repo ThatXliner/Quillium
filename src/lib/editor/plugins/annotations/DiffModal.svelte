@@ -97,9 +97,10 @@ $effect(() => {
                 </nav>
             </div>
             <button
-                class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
                 onclick={close}
             >
+                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
                 <X size={16} />
             </button>
         </div>
