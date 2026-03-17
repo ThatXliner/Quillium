@@ -7,13 +7,24 @@ import type { BackupEntry } from "./errorGuard";
 let expanded = $state(false);
 let copied = $state(false);
 
+// Reset per-banner UI state whenever the banner content changes
+$effect(() => {
+    void $errorBanner;
+    expanded = false;
+    copied = false;
+});
+
 function copyStack() {
     const stack = $errorBanner?.stack;
     if (!stack) return;
-    navigator.clipboard.writeText(stack).then(() => {
-        copied = true;
-        setTimeout(() => { copied = false; }, 2000);
-    });
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(stack).then(
+        () => {
+            copied = true;
+            setTimeout(() => { copied = false; }, 2000);
+        },
+        () => { copied = false; },
+    );
 }
 
 
