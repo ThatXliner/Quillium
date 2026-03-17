@@ -1,30 +1,138 @@
+<!--
+    Feedback.svelte — Editorial feedback AI panel (green theme).
+
+    Provides high-level editorial feedback on the writer's document.
+    Uses the "feedback" mode stream which includes two tools:
+      - createComment: flags a specific passage with editorial notes.
+      - createRevision: proposes 2-3 alternative versions of a passage.
+
+    These tool calls are routed through chatFactory.handleToolCall to
+    the annotation system, which attaches comments/revisions directly
+    to the CodeMirror editor.
+
+    Features a "Get feedback" quick-action button that auto-generates
+    a prompt based on whether text is selected or not.
+
+    State machine (driven by `chat.status`):
+      ready     — user can submit or click quick action.
+      submitted — waiting for first token.
+      streaming — tokens arriving, "Analyzing..." indicator shown.
+      error     — implicit (chat.error set).
+
+    Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
+-->
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+/*
+ * Feedback.svelte
+ *
+ * Editorial feedback AI panel (green theme).
+ *
+ * Renders:
+ *   A "Get feedback" quick-action button, scrollable message list
+ *   with user/assistant bubbles, streaming indicator, and a bottom
+ *   input form with selection-context chip.
+ *
+ * Props: none.
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - $selectedText — toggles quick-action label between
+ *     "Get feedback on selection" / "Get general feedback"; shown
+ *     as a context chip above the input.
+ *   - $documentContent — gates the quick-action button (disabled
+ *     when empty) and displayed as character count.
+ *
+ * Stores written:
+ *   - aiProcessing.active (via setAiProcessing) — true while
+ *     streaming so the sidebar glow activates.
+ *
+ * AI streaming layer:
+ *   Uses createAiChat({ mode: "feedback" }) which provides two
+ *   tool definitions: createComment and createRevision. Tool calls
+ *   are routed through chatFactory.handleToolCall to the annotation
+ *   system, attaching comments/revisions to the CodeMirror editor.
+ *
+ * State machine (chat.status):
+ *   ready -> submitted -> streaming -> ready
+ *                                   \-> error (chat.error set)
+ */
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { appSettings } from "$lib/settings.svelte";
+import posthog from "$lib/posthog";
 
-    let input = $state("");
+let input = $state("");
 
-    const { chat, clearChat } = createAiChat({ mode: "feedback" });
+const { chat, clearChat } = createAiChat({ mode: "feedback" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+// Sync streaming state to the global AI processing indicator.
+// States: ready -> submitted -> streaming -> ready (or error).
+$effect(() => {
+    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
 
-    function handleSubmit(event: SubmitEvent) {
-        event.preventDefault();
-        if (!input.trim() || chat.status !== "ready") return;
+function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+    if (!input.trim() || chat.status !== "ready") return;
 
-        chat.sendMessage({ text: input });
-        input = "";
-    }
+    posthog.capture("ai_feedback_requested", {
+        has_selection: !!$selectedText,
+        trigger: "manual",
+    });
+    chat.sendMessage({ text: input });
+    input = "";
+}
 
-    function askForFeedback() {
-        const context = $selectedText
-            ? `Please provide feedback on this selected text: "${$selectedText}"`
-            : "Please provide feedback on my document.";
+/**
+ * Build a selection-aware feedback prompt and send it as a chat
+ * message. If text is selected, asks for feedback on the selection;
+ * otherwise requests general document feedback.
+ */
+function askForFeedback() {
+    const context = $selectedText
+        ? `Please provide feedback on this selected text: "${$selectedText}"`
+        : "Please provide feedback on my document.";
 
-        input = context;
-        chat.sendMessage({ text: context });
-    }
+    posthog.capture("ai_feedback_requested", {
+        has_selection: !!$selectedText,
+        trigger: "quick_action",
+    });
+    input = context;
+    chat.sendMessage({ text: context });
+}
+
+const feedbackQuickPrompts = [
+    {
+        label: "Pacing",
+        prompt: "Focus on pacing — does the story/argument move at the right speed?",
+    },
+    { label: "Voice & tone", prompt: "Focus on voice and tone — is the writing voice consistent?" },
+    { label: "Clarity", prompt: "Focus on clarity — are there confusing or unclear passages?" },
+    { label: "Structure", prompt: "Focus on structure — is the piece well-organized?" },
+    {
+        label: "Opening / closing",
+        prompt: "Focus on the opening and closing — is the hook effective? Does it land?",
+    },
+];
+
+let allFeedbackPrompts = $derived([
+    ...feedbackQuickPrompts,
+    ...appSettings.customQuickActions
+        .filter((a) => a.panel === "feedback")
+        .map((a) => ({ label: a.label, prompt: a.prompt })),
+]);
+
+function useQuickPrompt(prompt: string) {
+    const target = $selectedText ? "this selected text" : "my document";
+    const message = `${prompt} In ${target}.`;
+    posthog.capture("ai_feedback_quick_prompt_used", {
+        prompt,
+        has_selection: !!$selectedText,
+    });
+    input = message;
+    chat.sendMessage({ text: message });
+}
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
@@ -46,17 +154,34 @@
                     : "Add content to get feedback"}
             </div>
         </button>
+
+        <!-- Quick prompts -->
+        <div class="mt-2 grid grid-cols-2 gap-1.5">
+            {#each allFeedbackPrompts as { label, prompt }}
+                <button
+                    onclick={() => useQuickPrompt(prompt)}
+                    disabled={chat.status !== "ready" || !$documentContent}
+                    class="px-2 py-1.5 text-xs bg-white hover:bg-green-50 rounded border border-green-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                >
+                    {label}
+                </button>
+            {/each}
+        </div>
     </div>
 
-    <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 relative">
-        {#if chat.messages.length > 0}
+    <!-- Clear chat row -->
+    {#if chat.messages.length > 0}
+        <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
                 onclick={clearChat}
-                title="Clear chat"
-                class="absolute top-2 right-2 text-[10px] text-black/25 hover:text-black/50 transition-colors"
-            >Clear</button>
-        {/if}
+                title="Start a fresh conversation (clears all messages)"
+                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
+            >New chat</button>
+        </div>
+    {/if}
+
+    <!-- Chat messages -->
+    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message, messageIndex (messageIndex)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}

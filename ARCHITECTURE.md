@@ -1,384 +1,759 @@
 # Architecture Overview
 
-Quillium is built as a modern web application using SvelteKit, packaged as a cross-platform desktop app via Tauri. The architecture emphasizes state management, editor extensibility, and seamless AI integration.
+Quillium is built as a modern web application using SvelteKit, packaged as a cross-platform desktop app via Tauri. The architecture is dominated by the complexity of the annotation and revision system — understanding how CodeMirror state, Svelte stores, and nested editors interact is the main onboarding challenge for new contributors.
+
+---
 
 ## Core Technologies
 
-- **Frontend Framework**: SvelteKit with TypeScript
-- **Editor Engine**: CodeMirror 6 for robust text editing
-- **Desktop Runtime**: Tauri (Rust-based)
-- **Styling**: Tailwind CSS v4
-- **State Management**: Hybrid approach using CodeMirror StateFields + Svelte stores
-- **AI Integration**: Universal AI SDK with multiple provider support
-- **Build Tools**: Vite + Biome (formatting/linting)
+| Layer | Technology | Why |
+|---|---|---|
+| Frontend framework | SvelteKit + TypeScript | Reactivity, SSG mode for Tauri |
+| Editor engine | CodeMirror 6 | Full state management, extensible plugins |
+| Desktop runtime | Tauri (Rust) | Cross-platform packaging, native file I/O |
+| Styling | Tailwind CSS v4 | Utility-first, co-located styles |
+| State management | CodeMirror StateFields + Svelte stores | Hybrid: editor state lives in CM, UI state in Svelte |
+| AI integration | Universal AI SDK | Provider-agnostic, streaming |
+| Linting/formatting | Biome | 4-space indent, 80-char line width |
 
-## Application Architecture
+---
 
-### Three-Panel Layout
+## Application Layout
 
-The main application follows a three-panel design:
-
-```
-┌─────────────┬─────────────────┬─────────────────┐
-│             │                 │                 │
-│ AI Sidebar  │     Editor      │  Annotations    │
-│             │                 │                 │
-├─────────────┼─────────────────┼─────────────────┤
-│ - Chat      │ - CodeMirror 6  │ - Comments      │
-│ - Context   │ - Status Bar    │ - Revisions     │
-│ - Prompts   │ - Extensions    │ - Side Panel    │
-└─────────────┴─────────────────┴─────────────────┘
-```
-
-### File Structure
+The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 
 ```
-# Some insignificant/self-explanatory files have been omitted for brevity.
+┌──────────────┬──────────────────────┬──────────────────┐
+│  AI Sidebar  │       Editor         │   Annotations    │
+│              │                      │                  │
+│  Chat        │  CodeMirror 6        │  Comment cards   │
+│  Feedback    │  (816px fixed width) │  Revision cards  │
+│  Revise      │  Status bar          │  Suggestion cards│
+└──────────────┴──────────────────────┴──────────────────┘
+```
+
+Modal overlays (revision editors, diff views) are rendered on top via `modalStack` — a stack of `<RevisionModal>` and `<DiffModal>` instances managed by `src/lib/stores.ts`.
+
+---
+
+## File Structure
+
+```
 src/
 ├── lib/
-│   ├── ai/
-│   │   ├── AISidebar.svelte  # AI chat picker interface
-│   │   ├── Chat.svelte  # The AI chat
-│   │   ├── Feedback.svelte  # The AI chat but for feedback
-│   │   └── Revise.svelte  # The AI chat but for revisions
-│   ├── editor/
-│   │   ├── Editor.svelte  # Main CodeMirror-Svelte wrapper
-│   │   ├── extensions.ts  # CodeMirror configuration
-│   │   ├── listeners.ts  # Event listeners for CodeMirror (used by extensions.ts)
-│   │   ├── plugins/
-│   │   │   ├── annotations/  # Annotation plugin
-│   │   │   └── dont-use-for-now-history/  # A currently non-functional history reimplementation
-│   │   └── StatusBar.svelte  # Writing statistics
-│   ├── save/
-│   │   └── Save.svelte  # Save icon. Separated into its own component for future extension
-│   └── stores.ts  # Global Svelte stores
+│   ├── ai/
+│   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise)
+│   │   ├── AISettings.svelte  # Provider/model configuration
+│   │   ├── Chat.svelte        # General AI chat
+│   │   ├── DocumentContext.svelte # Context reference display
+│   │   ├── Feedback.svelte    # AI feedback on document or selection
+│   │   ├── Revise.svelte      # AI-powered revision generation
+│   │   ├── chatFactory.ts     # Shared AI request/streaming helpers
+│   │   ├── clientStreams.ts   # Streaming response handling
+│   │   ├── provider.ts        # Provider-agnostic client setup
+│   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
+│   │   └── utils.ts           # Shared AI utilities
+│   ├── debug/
+│   │   └── DebugPanel.svelte  # Development-only debug overlay
+│   ├── editor/
+│   │   ├── Editor.svelte      # CodeMirror mount point + state sync
+│   │   ├── extensions.ts      # Full CodeMirror extension stack
+│   │   ├── listeners.ts       # Persistence + change listeners
+│   │   ├── replay.ts          # Event log replay for state reconstruction
+│   │   ├── StatusBar.svelte   # Word count, WPM, character count
+│   │   └── plugins/
+│   │       └── annotations/
+│   │           ├── models.ts          # Type defs, factory helpers, type guards
+│   │           ├── annotationField.ts # StateField + all StateEffects + undo support
+│   │           ├── utils.ts           # Range mapping, active annotation queries
+│   │           ├── diff.ts            # Diff computation for suggestions
+│   │           ├── nestedEditor.ts    # Nested editor lifecycle helpers
+│   │           ├── index.ts           # Keybindings, ViewPlugins, public API
+│   │           ├── Annotations.svelte # Right panel container + card positioning
+│   │           ├── Comment.svelte     # Comment card
+│   │           ├── DiffModal.svelte   # Full-screen diff view overlay
+│   │           ├── PreComment.svelte  # Draft form for empty-thread comment
+│   │           ├── Revision.svelte    # Revision card + inline nested editor
+│   │           ├── RevisionModal.svelte # Full-screen nested editor overlay
+│   │           ├── Suggestion.svelte  # Suggestion card with diff view
+│   │           ├── Thread.svelte      # Message list inside a card
+│   │           ├── ThreadMessage.svelte # Single message (with inline edit)
+│   │           ├── TutorialGuide.svelte # In-editor tutorial callouts
+│   │           └── default.css        # Highlight CSS classes for all annotation types
+│   ├── library/
+│   │   ├── ContinuePill.svelte  # "Continue writing" shortcut on library page
+│   │   ├── DocumentCard.svelte  # Single document card in the grid
+│   │   ├── DocumentGrid.svelte  # Grid layout for document list
+│   │   ├── EmptyState.svelte    # Empty library placeholder
+│   │   ├── LibraryTopBar.svelte # Library page header + actions
+│   │   └── PreviewPanel.svelte  # Document preview sidebar
+│   ├── save/
+│   │   └── Save.svelte        # Save indicator (separated for future extension)
+│   ├── settings/
+│   │   └── SettingsModal.svelte # App-level settings overlay
+│   ├── tutorial/
+│   │   ├── Tutorial.svelte    # Onboarding tutorial overlay
+│   │   └── steps.ts           # Tutorial step definitions
+│   ├── stores.ts              # Global Svelte stores
+│   └── settings.svelte.ts     # App settings (reactive, persisted)
 └── routes/
-    └── api/  # AI API endpoints
+    ├── +page.svelte           # Root layout: three panels + modal stack renderer
+    └── library/               # Library page (document list, trash/restore)
 ```
 
-## State Management
+---
 
-Quillium uses a hybrid state management approach to handle the complexity of editor state synchronization:
+## State Management Mental Model
 
-### 1. CodeMirror StateFields
+This is the most important section to understand before touching any annotation or editor code.
 
-Used for editor-specific state that needs to be part of the undo/redo history:
+### Two separate state worlds
 
-```typescript
-// Annotation state field (excerpt from src/lib/editor/plugins/annotations/annotationField.ts)
-export const annotationField = StateField.define<Annotations>({
-  create(): Annotations {
-    return [];
-  },
-  update(oldAnnotations: Annotations, tr: Transaction): Annotations {
-    // ...
-  }
-}
+Quillium runs two parallel state systems that must be kept in sync:
+
+**1. CodeMirror state** — lives inside `EditorView`. Immutable, transaction-based. Every change produces a new state object. Extensions (`StateField`, `ViewPlugin`, etc.) live here. Supports undo/redo via `historyField`.
+
+**2. Svelte stores** — reactive signals consumed by components. Do not update automatically when CodeMirror state changes. Must be manually pushed by `Editor.svelte`'s `updateListener`.
+
+```
+User types / dispatches transaction
+           │
+           ▼
+    CodeMirror processes transaction
+    ┌────────────────────────────┐
+    │  historyField  (undo log)  │
+    │  annotationField (our data)│
+    │  document (text)           │
+    └────────────┬───────────────┘
+                 │ updateListener fires (Editor.svelte)
+                 ▼
+    Manually push to Svelte stores:
+    ┌──────────────────────────────┐
+    │  $annotations                │ ← read by Annotations.svelte
+    │  $activeAnnotation           │ ← read by Comment/Revision cards
+    │  $documentContent            │ ← read by AI sidebar
+    │  $selectedText               │ ← read by AI sidebar
+    │  $saveStatus                 │ ← read by StatusBar
+    │  $currentDocumentTitle       │ ← read by StatusBar, library
+    └──────────────────────────────┘
 ```
 
-**Manages:**
-- Document content and editing history
-- Annotations (comments, revisions)
-- Editor selections and decorations
-- Extension state
+### Why `$editorView` doesn't trigger reactivity
 
-### 2. Svelte Stores
+`editorView` is a `writable<EditorView>`. It's set once at mount and never updated again — the `EditorView` object is mutated in place by CodeMirror on each transaction. Svelte's reactivity won't fire. This is intentional: the store is only for *imperative access* (e.g., dispatching a transaction from the AI sidebar). For *reactive data*, use the manually-synced mirror stores.
 
-Used for UI state that needs to be reactive across components:
+### Transaction annotation vs. StateEffect
 
-```typescript
-// Global stores in src/lib/stores.ts
-export const editorView = writable<EditorView | null>(null);
-export const annotations = writable<Annotation[]>([]);
-export const activeComment = writable<string | null>(null);
+CodeMirror has two mechanisms for attaching metadata to a transaction:
+
+- **`StateEffect`** — persistent. Stored in history, can be inverted for undo. Used for all annotation mutations.
+- **`Transaction.annotation()`** — ephemeral metadata on the transaction itself. Not stored in history, not invertible. Used for flags like `revisionInternalEdit` (signals to `ViewPlugin`s that a transaction is revision-system-driven) and `nestedEditorEdit` (identifies the revision whose nested editor originated a parent dispatch).
+
+---
+
+## The Annotation System
+
+The annotation system is the core of Quillium's non-linear editing model. It is layered:
+
+```
+models.ts           — Plain types, factory helpers, type guards (no CM imports)
+annotationField.ts  — StateField + StateEffects + undo/redo (CM state layer)
+utils.ts            — Pure query helpers: range mapping, active annotation
+index.ts            — ViewPlugins + keybindings + public factory functions
+Svelte components   — UI rendering, nested editor lifecycle
 ```
 
-**Manages:**
-- Editor view instance reference
-- UI panel visibility and state
-- Cross-component communication
-- AI chat history and context
+### Data model
 
-### State Synchronization
-
-The challenge is keeping CodeMirror state and Svelte stores in sync. This is handled through:
-
-1. **Update Listeners**: CodeMirror dispatches updates to Svelte stores
-2. **Manual Sync**: Critical state changes trigger explicit synchronization
-3. **Event System**: Custom events for complex state changes
-
-See `src/lib/editor/listeners.ts` and `src/lib/editor/Editor.svelte`.
-
-## Editor System
-
-We use [CodeMirror 6](https://codemirror.net/) for the core editing library.
-
-### Annotation System
-
-The annotation system is a CodeMirror extension that layers comments, revisions, and suggestions onto the document. It is multi-layered: a `StateField` holds the data, `StateEffect`s mutate it, `ViewPlugin`s render decorations and enforce editing rules, and Svelte components display the side panel.
-
-#### File Map
-
-| File | Role |
-|------|------|
-| `models.ts` | Type definitions, factory functions, type guards |
-| `annotationField.ts` | `StateField`, all `StateEffect`s, undo/redo support |
-| `utils.ts` | Range mapping, active annotation detection, `canCreateNewComment` |
-| `index.ts` | Keybindings, `ViewPlugin`s, `annotations()` extension export |
-| `Annotations.svelte` | Floating panel container, card positioning logic |
-| `Comment.svelte` | Comment card with thread + AI suggestion |
-| `Revision.svelte` | Revision card with version pills + nested editor |
-| `Suggestion.svelte` | Suggestion card with replacement buttons |
-| `Thread.svelte` / `ThreadMessage.svelte` | Message list + inline edit |
-| `PreComment.svelte` | Draft form for pending (unfilled) comments |
-| `default.css` | Highlight classes for all annotation types |
-
-#### Data Models
-
-Three annotation types share a common base:
+All annotation types share a `BaseAnnotation`:
 
 ```typescript
 type BaseAnnotation = {
-    selection: EditorSelection; // what text is annotated
-    id: number;
-    thread: Thread;             // discussion messages
+    selection: EditorSelection; // what text is annotated (document positions)
+    id: number;                 // unique within the annotation map
+    thread: Thread;             // array of { message, author, time }
 };
 
 type CommentAnnotation    = BaseAnnotation & { _type: "comment" };
-type SuggestionAnnotation = BaseAnnotation & { _type: "suggestion"; replacements: string[] };
+type SuggestionAnnotation = BaseAnnotation & { _type: "suggestion"; replacements: SuggestionReplacement[] };
 type RevisionAnnotation   = BaseAnnotation & {
     _type: "revision";
-    currentlySelected: number; // active version index
-    versions: string[];        // all version texts
+    activeVersionIndex: number; // index into versions[]
+    versions: VersionState[];  // all version texts (or full EditorState blobs)
 };
 
-type GenericAnnotation = CommentAnnotation | SuggestionAnnotation | RevisionAnnotation;
 type Annotations = { [id: number]: GenericAnnotation };
 ```
 
-`isAnnotationOfType<T>(annotation, type)` is the type guard used throughout the codebase for safe narrowing.
+`VersionState` is intentionally opaque: `{ doc: string; label?: string } & object`. Each entry always reflects the most recent text that lived under a revision range in the parent document; Phase 3 (`pushDocToVersionState`) pushes the parent document slice into `versions[activeVersionIndex].doc` whenever the parent edits that slice. Nested editor state isn't serialized as a standalone snapshot anymore — we rebuild from whatever `doc` is stored in the revision slot when the editor reopens, so `versionText(version)` continues to just read `.doc`. `VersionStateSchema` still uses `.passthrough()` so extra keys survive if they are added elsewhere.
 
-#### `annotationField` — The State Field
+Use `isAnnotationOfType(annotation, "revision")` everywhere — never compare `_type` directly.
 
-`annotationField` is a `StateField<Annotations>` and is the single source of truth. Its `update()` method does three things on every transaction:
+### `annotationField` — the StateField
 
-1. **Map positions** — `selection.map(change)` repositions annotations when the document changes. If annotated text is fully deleted, the annotation is removed. Revisions are the exception — they survive empty ranges.
-2. **Process effects** — `StateEffect` dispatches mutate the annotation objects.
-3. **Version text sync** — when text inside an active revision changes in the main document, `versions[currentlySelected]` is updated to match automatically.
+`annotationField` is the single source of truth for all annotation data. Its `update()` function runs on **every** CodeMirror transaction and proceeds in three phases:
 
-The field is fully JSON-serializable (`toJSON`/`fromJSON`) via `EditorSelection.toJSON()`, enabling persistence through Tauri's save system.
-
-#### State Effects
-
-| Effect | Payload | Use |
-|--------|---------|-----|
-| `addAnnotation` | `GenericAnnotation` | Create any annotation |
-| `removeAnnotation` | `GenericAnnotation` | Delete any annotation |
-| `updateThread` | `{ annotationId, newThread }` | Update messages |
-| `addSuggestion` | `{ targetText, replacements }` | Create suggestion |
-| `_addVersionToRevision` | `{ annotationId, newVersion, at? }` | Add revision version |
-| `_deleteVersionFromRevision` | `{ annotationId, versionId }` | Remove a version |
-| `_updateActiveRevisionVersion` | `{ annotationId, to }` | Switch active version |
-| `_updateRevisionVersionText` | `{ annotationId, versionId, text }` | Sync nested editor text |
-
-`_`-prefixed effects are private to `annotationField.ts` and only exposed through public functions (`setActiveRevisionVersion`, `createNewRevision`, etc.). Undo/redo is handled by `invertedAnnotationFieldEffects`, which registers inverse effects so CodeMirror's history can reverse all mutations.
-
-#### Keybindings
-
-| Key | Command |
-|-----|---------|
-| `Ctrl+Alt+M` | Create comment (redirects to nested editor if cursor is inside an active revision) |
-| `Ctrl+Alt+K` | Create revision (same redirect logic) |
-| `Backspace` / `Delete` | Show boundary nudge hint; block deleting into an inactive revision |
-
-Commands use a priority chain: `redirectToNestedEditor` runs first and returns `false` if no active revision is under the cursor, falling through to the real command.
-
-#### ViewPlugins
-
-Four plugins run on every relevant update:
-
-- **`annotationDecorations`** — applies CSS classes (`cm-comment`, `cm-revision`, `cm-suggestion`, with `-active` variants) to annotated text. Active state is determined by `getActiveAnnotation()`, which finds the smallest annotation whose range contains the cursor.
-- **`revisionAtomicRanges`** — marks inactive revision ranges as atomic via `EditorView.atomicRanges`. The cursor skips over them and partial selection is prevented.
-- **`collapsedRevisionResolver`** — when a revision's range collapses to empty (its text was deleted), automatically switches to the next available version or removes the annotation if only one version remained.
-- **`blockDirectRevisionEdits`** — a `transactionFilter` that drops any document change touching an inactive revision range. Transactions annotated with `allowRevisionDocEdit` bypass this guard (used when switching versions programmatically).
-
-#### Floating Panel Layout
-
-Annotation cards float in the right panel. Their Y positions are computed:
-
-1. Each annotation's document position is converted to a viewport Y via `view.coordsAtPos()`
-2. Cards are stacked top-to-bottom with `MIN_SPACING = 8px` and `TOP_CLAMP = 64px`
-3. A `ResizeObserver` watches each card for height changes
-4. All recalculations are debounced at 16ms
-
-Clicking a card dispatches `{ anchor: c.selection.main.from }` to the editor, which moves the cursor and triggers the active annotation to update.
-
-#### Comment Flow
+#### Phase 1: Remap positions
 
 ```
-User selects text
-  → Ctrl+Alt+M
-  → canCreateNewComment() check (only one pending comment at a time)
-  → addAnnotation dispatched { thread: [] }
-  → PreComment.svelte renders (pending state: no messages yet)
-  → User types + clicks "Comment"
-  → updateThread dispatched with first message
-  → Comment.svelte renders (thread non-empty)
+remapAnnotationSelections(annotations, tr)
 ```
 
-#### Revision Flow
+Maps every annotation's `selection` through `tr.changes` so positions stay accurate as text is inserted or deleted.
+
+- Comments and suggestions are **removed** if their range collapses to zero width (text was fully deleted).
+- Revisions **temporarily survive** empty ranges via `allowEmpty: true` in `cleanRangesOf()`. This keeps the annotation alive (with its version list) long enough for `collapsedRevisionResolver` to dispatch a clean removal. The revision is then removed without creating a history entry, and undo fully restores both text and annotation via `_restoreAnnotation` effects stored by `invertedAnnotationFieldEffects`.
+
+#### Phase 2: Apply effects
+
+Processes each `StateEffect` in the transaction. Each effect type has a corresponding branch:
+
+| Effect | Action |
+|---|---|
+| `addAnnotation` | Insert into the map at `e.value.id` |
+| `removeAnnotation` | Delete from the map |
+| `updateThread` | Replace `annotation.thread` |
+| `_addVersionToRevision` | Splice new version into `annotation.versions` |
+| `_deleteVersionFromRevision` | Splice version out |
+| `_updateActiveRevisionVersion` | Update `activeVersionIndex`, rebuild selection to span new text |
+| `_updateRevisionVersionState` | Replace a version's blob with the nested editor's serialized state |
+| `addSuggestion` | Text search + add suggestion annotation |
+| `_applySuggestion` | Delete suggestion from map |
+
+Effects touching a specific revision ID are tracked in `revisionsWithExplicitEffect` (a `Set<number>`). This set is used in Phase 3.
+
+#### Phase 3: Push document text into version state
 
 ```
-User selects text
-  → Ctrl+Alt+K
-  → addAnnotation dispatched { versions: ["original text"], currentlySelected: 0 }
-  → Text becomes atomic (cannot be edited directly)
-  → Revision.svelte renders with one version pill
-
-User creates new version:
-  → _addVersionToRevision: copies current version text
-  → Two version pills shown
-
-User clicks version 2:
-  → setActiveRevisionVersion(state, id, 1)
-  → document change: replaces selection with versions[1]
-  → currentlySelected = 1
-  → Selection remapped to span of new text
-
-User opens nested editor (Ctrl+Alt+K inside revision):
-  → redirectToNestedEditor fires first
-  → revisionOpenNestedEditor store set
-  → Revision.svelte opens nested CodeMirror instance
-  → Full annotation support in nested editor
-  → Text changes sync back via _updateRevisionVersionText
+if (tr.docChanged) {
+    annotations = pushDocToVersionState(annotations, tr, revisionsWithExplicitEffect);
+}
 ```
 
-#### Persistence
+For each revision **not** in `revisionsWithExplicitEffect`, reads the document slice under the revision's range and writes it back into `versions[activeVersionIndex].doc`. This keeps the version text current when the user types inside an active revision in the main document.
 
-The annotation field participates in full state serialization alongside the history field:
+**Critical invariant:** Phase 3 only runs when `tr.docChanged`. It skips revisions that had an explicit effect this transaction (their text was already set correctly by the effect handler). The `revisionsWithExplicitEffect` set is per-revision, not a single boolean — this matters when multiple revisions exist.
+
+**Undo interaction:** Phase 3 mutations are not directly invertible by the history system (they're inline state updates, not `StateEffect`s). However, because CodeMirror's undo also inverts the document change that caused the push, the revision range collapses back to its pre-edit position, and the next Phase 3 push on the inverted transaction re-reads the correct (pre-edit) text. The net result is correct as long as you don't switch versions mid-undo (which is handled by explicit effects + their inversions).
+
+### Undo/redo: `invertedAnnotationFieldEffects`
+
+Registered via `invertedEffects.of(...)` from `@codemirror/commands`. When CodeMirror undoes or redoes a transaction, it calls this function on the original transaction and expects back the effects that should be applied in the *inverse* transaction.
+
+| Original effect | Inverted effect |
+|---|---|
+| `addAnnotation` | `removeAnnotation` (same object) |
+| `removeAnnotation` | `addAnnotation` (same object) |
+| `updateThread` | `updateThread` with old thread |
+| `_addVersionToRevision` | `_deleteVersionFromRevision` at same index |
+| `_deleteVersionFromRevision` | `_addVersionToRevision` at same index, with old version |
+| `_updateActiveRevisionVersion` | `_updateActiveRevisionVersion` with old index |
+| `_updateRevisionVersionState` | `_updateRevisionVersionState` with old blob |
+| `_applySuggestion` | `addAnnotation` (restores the suggestion) |
+| *(implicit)* collapsed revision in doc-change | `removeAnnotation(collapsed)` + `_restoreAnnotation(original)` |
+
+The last row is generated **implicitly** (no explicit `StateEffect` needed): when a doc-changing transaction collapses a revision's range to zero width, `invertedAnnotationFieldEffects` stores both a `removeAnnotation` for the collapsed state and a `_restoreAnnotation` for the original pre-deletion annotation. On undo (which re-inserts the deleted text), `_restoreAnnotation` re-adds the annotation with its original selection. `_restoreAnnotation` is also used for comments/suggestions that were silently dropped by a deletion.
+
+**`_revisionCleanup` guard:** The cleanup transaction dispatched by `collapsedRevisionResolver` (tagged `_revisionCleanup.of(true)` and `addToHistory.of(false)`) is skipped entirely by `invertedAnnotationFieldEffects`. Without this guard, the `removeAnnotation` effects in the cleanup would generate spurious `addAnnotation(collapsed)` effects that would be merged into the deletion's undo entry alongside the correct `_restoreAnnotation` effects, causing orphaned collapsed annotations to re-appear on undo.
+
+`addAnnotation`/`removeAnnotation` carry the full annotation object (not just an ID) precisely to make inversion cheap — no `startState` lookup needed.
+
+### State effects are private; transaction builders are public
+
+Effects prefixed with `_` are not exported from `annotationField.ts`. All external code uses named builder functions:
 
 ```typescript
-// Save
-const json = editorView.state.toJSON({ historyField, annotationField });
-invoke("save", { state: JSON.stringify(json) });
-
-// Load
-const state = EditorState.fromJSON(
-    JSON.parse(saved),
-    { extensions: getExtensions(...) },
-    { historyField, annotationField },
-);
+// Public API — these bundle effects + doc changes atomically
+setActiveRevisionVersion(state, annotationId, to)
+createNewRevision(state, annotationId)
+deleteRevisionVersion(state, annotationId, versionId)
+updateRevisionVersionState(state, annotationId, versionId, newVersionState)
+branchSuggestion(state, annotationId)
+applySuggestion(state, annotationId, replacementIndex)
 ```
 
-`EditorSelection` objects serialize to plain JSON and reconstruct on load, preserving annotation positions across sessions.
+Each builder returns a `TransactionSpec` (not dispatched yet). The caller is responsible for `view.dispatch(builder(...))`.
 
-### Non-linear Editing
-
-The revision system enables non-linear editing (similar to takes in Final Cut Pro). The plan is to eventually explore alternative interfaces such as a tree view.
-
-## AI Integration
-
-### Architecture
-
-TODO. This may be subject to change and is currently under ongoing development.
-
-<!--
-AI integration follows a provider-agnostic approach using the Universal AI SDK:
+### `revisionInternalEdit` — the revision-system-driven flag
 
 ```typescript
-// AI client configuration
-import { createOpenAI } from '@ai-sdk/openai';
-import { streamText } from 'ai';
+export const revisionInternalEdit = Annotation.define<boolean>();
+```
 
-const openai = createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY
+A `Transaction.annotation` (not a `StateEffect`) set to `true` on every transaction dispatched by the public revision API builders (`setActiveRevisionVersion`, `createNewRevision`, `deleteRevisionVersion`, `updateRevisionVersionState`, `branchSuggestion`). It marks the transaction as revision-system-driven — the doc change is part of the revision system's own operation, not user typing.
+
+Three consumers check for this flag:
+
+1. **`collapsedRevisionResolver`** (`ViewPlugin`) — skips auto-removal of collapsed revisions, because the collapse is intentional (the builder is replacing the text with the correct version content).
+2. **`boundaryInsertNudge`** (`ViewPlugin`) — skips emitting nudge UI events for programmatic insertions.
+3. **`invertedAnnotationFieldEffects`** — skips implicit annotation remapping detection, because these transactions manage their own annotation state via explicit `StateEffect`s.
+
+Because it is a `Transaction.annotation` and not a `StateEffect`, it is **not** stored in history and **not** inverted. The inverted `StateEffect`s on each transaction already carry the full semantic meaning of "undo this op."
+
+### `_revisionCleanup` — the cleanup-transaction flag
+
+```typescript
+export const _revisionCleanup = Annotation.define<boolean>();
+```
+
+Set to `true` on the transaction dispatched by `collapsedRevisionResolver` when it removes collapsed revisions. Always paired with `Transaction.addToHistory.of(false)`. Its sole consumer is `invertedAnnotationFieldEffects`, which returns an empty effects array immediately when it sees this annotation — preventing the cleanup's `removeAnnotation` effects from generating spurious `addAnnotation(collapsed)` effects in the undo entry for the deletion.
+
+---
+
+## ViewPlugins and Extensions
+
+`index.ts` registers three `ViewPlugin`s and one facet extension that react to editor updates:
+
+### `annotationDecorations`
+
+Builds `DecorationSet`s for all annotation types on every `selectionSet`, `docChanged`, or annotation state change. Applies CSS classes:
+
+- `cm-comment` / `cm-comment-active`
+- `cm-revision` / `cm-revision-active`
+- `cm-suggestion` / `cm-suggestion-active`
+
+Active state is determined by `getActiveAnnotation()` — the annotation whose range contains the cursor. If multiple ranges overlap, the narrowest one wins.
+
+### `revisionAtomicRanges`
+
+Registered via `EditorView.atomicRanges.of(...)` (a facet provider, not a `ViewPlugin`). Marks all **inactive** revision ranges as atomic. The cursor jumps over the entire span instead of entering it. This does *not* block edits — `atomicRanges` only governs cursor placement.
+
+### `collapsedRevisionResolver`
+
+Monitors for revision ranges that collapsed to `from === to` in a `docChanged` transaction (that is not annotated `revisionInternalEdit`). Collects **all** such collapsed revisions and, in a single `queueMicrotask`-deferred dispatch:
+
+- Removes all collapsed revisions via `removeAnnotation` effects.
+- Tags the transaction `Transaction.addToHistory.of(false)` so no new undo history entry is created.
+- Tags the transaction `_revisionCleanup.of(true)` so `invertedAnnotationFieldEffects` skips it entirely (no spurious `addAnnotation(collapsed)` effects are generated).
+
+Undo is handled entirely by the `_restoreAnnotation` effects that `invertedAnnotationFieldEffects` stored on the *deletion* transaction — a single Cmd+Z re-inserts the deleted text and restores all revision annotations (with all versions intact) in one step.
+
+The `queueMicrotask` defers the dispatch past the current update cycle (required to avoid "dispatch inside update"). The stale-state guard (`update.view.state !== update.state`) prevents a double-dispatch if the user presses Cmd+Z synchronously before the microtask fires.
+
+### `boundaryInsertNudge`
+
+Fires a `revision-boundary-nudge` UI event when text is inserted immediately at a revision's `from` or `to` boundary. This signals the revision card to show a brief hint pointing the user to the nested editor.
+
+---
+
+## Stores vs derived
+- Stores in `src/lib/stores.ts` mirror pieces of CodeMirror state because the update listener is the only place aware of doc/annotation changes. Derived stores recalculate automatically from their dependencies, but there is no single upstream store for annotations, active selection, and document text. Attempting to make these derived would mean repeating the imperative update logic inside their calculations, so writable mirrors keep the flow explicit. Components only derive from these mirrors when the dependency chain is direct (e.g., modal breadcrumbs from `modalStack`).
+
+## Nested Editors
+
+Each `RevisionAnnotation` still supports two editing surfaces: a lightweight inline editor inside the revision card and a full-screen modal. Both are full `CodeMirror EditorView` instances. The parent document remains the **single source of truth** — nested editors are direct viewports onto the parent document’s revision range `[rev.from, rev.to]`.
+
+### Architecture: direct parent dispatch (still)
+
+Nested editors remain intentional viewports that never own their document. When the user types inside a nested editor:
+
+1. The `updateListener` calls `translateAndDispatch(update, parentView, revisionId)` as before.
+2. `translateAndDispatch` translates each change into parent coordinates (`rev.selection.main.from + delta`) and dispatches it with `nestedEditorEdit.of(revisionId)` plus `Transaction.addToHistory.of(true)`.
+3. The parent doc is the single source of truth, so Phase 3 (`pushDocToVersionState`) still re-reads the post-transaction slice and keeps `versions[activeVersionIndex].doc` current for version switching (the revision is not added to `revisionsWithExplicitEffect`, so it pushes normally).
+
+### Reactive pull for inline/modal editors
+
+For the inline and modal editors, we watch the parent-provided version text directly via Svelte reactivity. Inline editors observe `activeVersion?.doc` and the modal watches `$annotationsStore`; both skip re-patching when the nested editor itself authored the change (`lastDispatchedDoc`). When a truly external update occurs (undo, redo, or another cursored write), the watcher replaces the nested editor’s entire buffer with the new text via a single `EditorView.dispatch({ changes: { from: 0, to: current.length, insert: externalDoc } })`. That keeps the editor up to date without destroying the view or rebuilding the extension stack—only the contents are rewritten. The only time we tear down and recreate the nested editor is on version switches or when the modal closes.
+
+Replacing the whole buffer is the tradeoff we accepted for this reactive, bridge-less path: the cursor/selection and scroll position do not survive the rewrite, so the nested editor appears to jump back to the top. There is no dedicated cursor-persistence mechanism yet, and documenting that limitation in this section keeps intentions clear for future follow-ups.
+
+`lastDispatchedDoc` is the guard that prevents a feedback loop. Translate-and-dispatch updates set it to the nested editor’s current text, so the reactive watcher ignores the transaction that originated from the nested editor itself. Everything else is treated as an external edit that needs a full replace, which is why the watcher lives outside CodeMirror (in Svelte `$effect`s) rather than inside a CodeMirror ViewPlugin.
+
+### Inline editor
+
+`Revision.svelte` still uses `createNestedEditorState` to bootstrap the inline editor and installs `translateAndDispatch` in the nested update listener. When the inline editor toggles open, it creates the view and sets `lastDispatchedDoc`. Closing destroys the view like before, and version switches still trigger `currentVersionId !== mountedVersionId` to rebuild from the new `VersionState` (the only rebuild path now).
+
+### Modal editor
+
+The modal editor (`RevisionModal.svelte`) reuses the same helpers and keeps its own `lastDispatchedDoc`. The external-sync `$effect` watches the parent's annotation state for changes:
+
+- **Root-level modals** (`stackIndex === 0`) watch `$annotationsStore` (the global Svelte store mirroring the main editor's `annotationField`).
+- **Deeply nested modals** (`stackIndex > 0`) watch `$modalAnnotationStores[stackIndex - 1]` — a per-level global store that each RevisionModal publishes its nested editor's annotation state into. This chains recursively: undo at the root cascades through each level's external-sync `$effect`.
+
+Annotation IDs are scoped per-editor and can collide across nesting levels, so deeply nested modals must never read from `$annotationsStore` directly.
+
+`destroyEditor` flushes the nested editor's state (including sub-annotations) into the parent revision's version blob. It uses a tracked `editorVersionIndex` (set when the editor was created) rather than `rev.activeVersionIndex`, which may have changed if a parent breadcrumb version switch happened before the destroy. This prevents flushing old version content into the wrong version slot.
+
+#### RevisionModal FSM
+
+The modal editor's lifecycle is governed by a finite state machine rather than ad-hoc `$effect` chains. All transitions go through a single `send(event)` function.
+
+```
+         DIALOG_BOUND           TICK_RESOLVED
+unmounted ──────────► mounting ──────────────► ready
+                                                │ ▲
+                          REBUILD_REQUESTED /   │ │  TICK_RESOLVED
+                          VERSION_SWITCHED      ▼ │
+                                              rebuilding
+```
+
+| State | Description |
+|---|---|
+| `unmounted` | Initial. Waiting for `dialogEl` to bind in the DOM. |
+| `mounting` | Dialog is open, waiting for `tick()` so the editor host div is rendered. On `TICK_RESOLVED`: creates the nested editor, executes any `pendingNestedCommand`, transitions to `ready`. |
+| `ready` | Normal operating state. Processes external doc changes (`EXTERNAL_DOC_CHANGED`), nested annotation events (`NESTED_ANNOTATION_EVENT`), and rebuild/version-switch requests. |
+| `rebuilding` | Editor destroyed, waiting for `tick()` before recreating from the (possibly new) active version. Transitions back to `ready` on `TICK_RESOLVED`. |
+
+| Event | Trigger |
+|---|---|
+| `DIALOG_BOUND` | Sensor Effect A detects `dialogEl` is bound |
+| `TICK_RESOLVED` | `tick().then(...)` resolves after a state transition |
+| `REBUILD_REQUESTED` | Sensor Effect A detects a new `rebuildToken` on the modal stack entry (set by `popToAndRebuild` when a child modal switches the parent's active version) |
+| `VERSION_SWITCHED` | User picks a different version from the breadcrumb dropdown, or Sensor Effect B detects the parent's `activeVersionIndex` changed |
+| `EXTERNAL_DOC_CHANGED` | Sensor Effect B detects the parent's version doc text changed (undo, typing in parent) |
+| `NESTED_ANNOTATION_EVENT` | Sensor Effect C receives a `revision-open-nested-editor` UI event targeting this modal's revision |
+
+#### Sensor effects
+
+The FSM is driven by four reactive sensor effects that translate external signals into FSM events:
+
+| Effect | Watches | Sends |
+|---|---|---|
+| **A: Dialog bind + rebuild token** | `dialogEl`, `$modalStack[stackIndex].rebuildToken` | `DIALOG_BOUND`, `REBUILD_REQUESTED` |
+| **B: External sync** | `$annotationsStore` (root) or `$modalAnnotationStores[stackIndex-1]` (nested) | `VERSION_SWITCHED`, `EXTERNAL_DOC_CHANGED` |
+| **C: Nested annotation event** | `$annotationUiEvent` where `type === "revision-open-nested-editor"` and `command.revisionId === revisionId` | `NESTED_ANNOTATION_EVENT` |
+| **D: Nested revision click** | `$annotationUiEvent` where `type === "revision-focus-request"` and `revisionId` exists in `editor.state.field(annotationField)` | Pushes a new modal onto `modalStack` directly (no FSM event needed) |
+
+Sensor Effect D handles the case where the user clicks on a nested revision decoration inside the modal's CodeMirror editor. The `revisionClickHandler` extension (included in every nested editor via `getExtensions`) fires a `revision-focus-request` with the nested annotation's ID. Effect D checks whether that ID belongs to a revision in *this* modal's nested editor — if so, it pushes a new modal with `parentView: editor`, enabling click-to-open at any nesting depth.
+
+### Undo
+
+`makeParentUndoKeymap` still delegates `Mod-z`/`Mod-y` to `undo(parentView)`/`redo(parentView)` because nested editors continue to have no local history (`getExtensions({ history: false })`). The parent history records nested edits as plain doc changes (via `translateAndDispatch` + `addToHistory:true`), and the reactive watcher eventually catches the inverted transaction and replaces the nested buffer, so the editor always reflects the current undo/redo state.
+
+### Version switch
+
+Version switching is the **only** time the nested editor is ripped down and recreated from a `VersionState` blob. Other parent-driven updates mutate the existing view via `dispatch`ed buffer replacements, so there is no rebuilding on every keystroke—just a new text payload that overwrites the current document when something external touched the revision range.
+
+### `nestedSavedFields`
+
+```typescript
+export const nestedSavedFields = { annotationField };
+```
+
+`nestedSavedFields` is still exported mainly for tooling/tests. No `historyField` is present because nested editors continue to have no local history. `VersionStateSchema` uses `.passthrough()` so any extra keys survive round-trips through `RawAnnotationsSchema.safeParse()`, but the production path now only relies on simple `{ doc, label? }` blobs.
+
+### Infinite nesting
+
+Modal’s `parentView` can be another nested `EditorView`. `translateAndDispatch` chains up the stack automatically — each call dispatches to its immediate parent, which may itself be a nested editor whose watcher catches the change.
+
+**Upward path** (nested edit → root): each `translateAndDispatch` call maps the change to parent coordinates and dispatches to the parent view. If the parent is itself a nested editor, its own `translateAndDispatch` fires and propagates further up. This continues until the root editor is reached and the change enters the global undo history.
+
+**Downward path** (undo/external change → nested editors): each modal’s external-sync `$effect` detects changes in its parent `view`’s annotation state and patches its nested editor buffer. This cascades: root change → level-0 modal pulls → level-0’s nested editor state changes → level-1 modal pulls, etc.
+
+**Sub-annotation creation from within a modal**: the nested editor’s `makeParentUndoKeymap` binds Mod-Alt-m/k to fire `publishAnnotationUiEvent("revision-open-nested-editor")`. The `Revision.svelte` component in the modal’s sidebar catches this and pushes a new modal for the sub-annotation. The sub-annotation is created directly in the new modal’s nested editor via `executePendingNestedCommand`.
+
+**Annotation ID independence**: each nested editor has its own `annotationField` with IDs starting from 0. The global `$annotationsStore` only contains the root editor’s annotations. Nested modals must not look up their `revisionId` in `$annotationsStore` — it would find an unrelated annotation or `undefined`.
+
+---
+
+## The `modalStack`
+
+`modalStack` in `stores.ts` is the mechanism for opening nested revision/diff overlays.
+
+```typescript
+type ModalEntry =
+    | { type: "diff"; suggestionId: number; parentView: EditorView; label: string }
+    | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
+```
+
+`+page.svelte` renders `{#each $modalStack as entry}` — every entry produces a live overlay simultaneously. Modals stack visually, not replace each other.
+
+| Method | Effect |
+|---|---|
+| `push(entry)` | Open new modal on top |
+| `pop()` | Close topmost modal |
+| `popTo(i)` | Close all modals above index `i` |
+| `popToAndRebuild(i)` | `popTo(i)` + stamp `rebuildToken` on entry `i` so it recreates its editor |
+| `clear()` | Close all modals |
+
+**`popToAndRebuild`**: when a child modal switches the active version on a parent-level revision, the parent modal's editor was built from the old version and must be recreated. Stamping `rebuildToken: Date.now()` on the entry signals the parent modal's `$effect` to destroy and recreate its editor with the new version's content.
+
+**Breadcrumbs**: each `RevisionModal` receives its `stackIndex` and derives `crumbs = $modalStack.slice(0, stackIndex + 1)`. Every open modal renders the full breadcrumb trail, so the deepest nesting level always shows the complete path.
+
+---
+
+## The `annotationUiEvent` Channel
+
+`annotationUiEvent` is a one-shot event store (a `writable<AnnotationUiEvent | null>`) for decoupling `ViewPlugin` / command logic from component-specific reactions.
+
+Events carry a monotonically increasing `token` so components can gate on `event.token !== lastSeenToken`, preventing double-handling.
+
+| Event type | Emitted by | Consumed by |
+|---|---|---|
+| `revision-boundary-nudge` | `nudgeBoundary` command, `boundaryInsertNudge` plugin | `Revision.svelte` (shows hint) |
+| `revision-open-nested-editor` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command) |
+| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor; opens modal for clicked nested revision in inline editor), `RevisionModal.svelte` Sensor Effect D (opens modal for clicked nested revision in modal editor) |
+| `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
+| `pending-nested-editor-selection` | `createRevisionCommand` | `Revision.svelte` (selects all text in newly mounted nested editor) |
+
+**Pattern for consuming events in Svelte:**
+```typescript
+let lastToken = 0;
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (!event || event.token === lastToken || event.type !== "my-event") return;
+    lastToken = event.token;
+    // handle event
 });
 ```
 
-### Components
+---
 
-- **AISidebar.svelte**: Main AI interface with chat and context panels
-- **Chat.svelte**: Conversation UI with streaming responses
-- **Reference.svelte**: Document context display for AI prompts
-- **API Route**: Server-side AI integration (`/api/chat/+server.ts`)
+## Persistence
 
-### Context Integration
+Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodic snapshots. All database operations run in Rust via Tauri commands — the TypeScript layer calls `invoke()` wrappers in `src/lib/db/index.ts`.
 
-The AI system maintains awareness of document context:
+### Schema overview
+
+| Table | Purpose |
+|---|---|
+| `documents` | Document metadata (title, word count, preview, tags) |
+| `drafts` | Named drafts per document (default one per document) |
+| `events` | Append-only log of CM transactions, one row per update |
+| `snapshots` | Full `EditorState.toJSON()` blobs, kept at most 3 per draft |
+| `_meta` | Key/value flags (active draft pointers) |
+
+The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
+
+### Event log flow
 
 ```typescript
-function injectDocumentContext(message: string, document: string): string {
-    return `Document context:\n${document}\n\nUser message: ${message}`;
+// extensions.ts
+export const savedFields = { historyField, annotationField };
+
+// On every docChanged || annotationsChanged (listeners.ts):
+const result = await appendEvent(draftId, JSON.stringify(payload));
+if (result.needsSnapshot) {
+    createSnapshot(draftId, JSON.stringify(state.toJSON(savedFields)), result.eventId);
 }
-```-->
+```
 
-## Data Flow
+`appendEvent` (Rust) atomically inserts the event row, bumps `documents.updated_at`, and returns `{ eventId, needsSnapshot }`. A snapshot is triggered when ≥50 events have accumulated since the last snapshot, or ≥120 seconds have elapsed.
 
-TK. There's currently really bad AI generated docs that are commented out. Beware it may be misleading.
+### Load flow
 
-<!--### Editing Flow
+```typescript
+// Editor.svelte
+const loaded = await loadDocumentState(docId, draftId);
+// loaded.snapshotStateJson  → latest snapshot blob
+// loaded.snapshotEventId    → id of that snapshot (-1 for seed)
+// loaded.eventsSince        → events after the snapshot
+```
 
-1. User types in CodeMirror editor
-2. CodeMirror dispatches document change
+`loadDocumentState` (Rust) fetches the most-recent snapshot for the draft and all events with `event_id > snapshot.up_to_event_id`. The snapshot is restored first, then any `eventsSince` are replayed in order via `replayEvents()` to reconstruct the full editor state.
 
-### AI Interaction Flow
+### Event payload format
 
-1. User sends message in AI sidebar
-2. Current document context is extracted
-3. Message + context sent to AI API route
-4. Streaming response displayed in chat
-5. AI suggestions can be applied to editor
+Each event has a `type` field that determines its shape:
 
-### Annotation Flow
+- `doc_change` — pure text edit `{ changes: [{from, to, insert}], selection }`
+- `annotation_add` / `annotation_remove` / `annotation_update` — annotation mutations
+- `compound` — doc change + annotation effects in the same CM transaction
 
-1. User creates annotation (comment/revision)
-2. Annotation updated in CodeMirror StateField
-3. UI components subscribe to annotation changes
-4. Side panel updates to show new annotation
-5. Editor decorations render visual indicators-->
+### Snapshot pruning
 
-## Performance Considerations
+`create_snapshot` (Rust) keeps only the latest 3 snapshots per draft. After inserting, it deletes all older snapshots for that draft.
 
-TK. Performance is the least of our priorities right now (especially considering that this is a JavaScript application).
+`VersionState` blobs (nested editor state) are also serialized inside `annotationField.toJSON()` — they're stored as opaque objects within the `versions` array and round-trip correctly because they're already JSON-safe.
 
-<!--### Editor Performance
+### Crash-safety matrix
 
-- **Lazy Loading**: Extensions loaded only when needed
-- **Efficient Updates**: Minimal re-renders via targeted state updates
-- **Virtual Scrolling**: Large documents handled efficiently by CodeMirror
+| Data | Durability on crash |
+|---|---|
+| Main doc text | Per-keystroke — every `doc_change` event is written to SQLite before the next keystroke |
+| Active revision version text | Per-keystroke — `translateAndDispatch` forwards nested editor changes to the parent as `doc_change` events; Phase 3 (`pushDocToVersionState`) keeps `versions[activeVersionIndex].doc` current |
+| Non-active revision version text | **Snapshot-only** — see known gap below |
+| `activeVersionIndex` version index | **Snapshot-only** |
+| Version labels | **Snapshot-only** |
+| Thread messages | Per-action — captured as `annotation_update` events |
 
-### State Synchronization
+### Revision version state persistence
 
-- **Debounced Updates**: Prevent excessive sync operations
-- **Selective Updates**: Only sync changed state portions
-- **Memory Management**: Clean up unused annotation references-->
+**Relevant files:**
+- `src/lib/editor/listeners.ts` — `extractAnnotationEvents()`
+- `src-tauri/src/db/events.rs` — `SNAPSHOT_EVENT_THRESHOLD = 50`, `SNAPSHOT_TIME_THRESHOLD_SECS = 120`
 
-## Development Workflow
+`extractAnnotationEvents` writes `addAnnotation`, `removeAnnotation`, and `updateThread` as explicit event log entries. Revision-specific internal effects (`_updateRevisionVersionState`, `_addVersionToRevision`, etc.) are captured by a pre/post diff on `annotationField`: any annotation whose identity changed between `tr.startState` and `tr.state` (and wasn't already handled by an explicit effect) gets an `annotation_update` event emitted. This ensures version switches, label edits, and structural changes are persisted per-action without needing to export internal effects.
 
-### Build System
+---
 
-- **Vite**: Fast development server and optimized builds
-- **SvelteKit**: SSG mode for Tauri compatibility
-- **Biome**: Fast formatting and linting
-- **TypeScript**: Strict type checking across the codebase
+## Keybindings
 
-### Code Quality
+The annotation keymap (installed at `Prec.high`) intercepts before default CodeMirror bindings:
 
-- **4-space indentation** (configured in biome.json)
-- **80-character line width**
-- **Strict TypeScript** configuration
-- **Svelte-specific** linting rules
+| Key | Command chain |
+|---|---|
+| `Backspace` | `nudgeBoundary("backward")` → `deleteAdjacentRevision("backward")` → default |
+| `Delete` | `nudgeBoundary("forward")` → `deleteAdjacentRevision("forward")` → default |
+| `Mod-Alt-M` | `redirectToNestedEditor("comment")` → `createCommentCommand` |
+| `Mod-Alt-K` | `redirectToNestedEditor("revision")` → `createRevisionCommand` |
 
-## Future Architecture Plans
+Each handler returns `false` to fall through to the next binding if it doesn't apply. `redirectToNestedEditor` returns `true` (swallowing the keypress) only when the cursor is inside an active revision — otherwise it returns `false` and the real create command runs.
 
-<!--### Plugin Architecture
+---
 
-- **Extension API**: Public API for third-party extensions
-- **Plugin Manager**: Runtime plugin loading and management
-- **Sandboxing**: Safe execution environment for community plugins-->
+## Common Flows
 
-### Collaboration
+### Creating a comment
 
-- **Real-time Sync**: Operational transform for collaborative editing
-- **Conflict Resolution**: Merge strategies for simultaneous edits
-- **Presence Awareness**: Show other users' cursors and selections
+```
+User selects text
+→ Mod-Alt-M
+→ canCreateNewComment() check (enforces single-pending mutex)
+→ addAnnotation dispatched { _type: "comment", thread: [] }
+→ PreComment.svelte renders (thread.length === 0 = pending state)
+→ User fills in text + submits
+→ updateThread dispatched with first message
+→ Comment.svelte renders (thread.length > 0)
+```
+
+### Creating a revision
+
+```
+User selects text
+→ Mod-Alt-K
+→ addAnnotation dispatched { _type: "revision", versions: [{ doc: selected }], activeVersionIndex: 0 }
+→ Text becomes atomic in main doc (cannot edit directly)
+→ Revision.svelte renders with one version pill
+→ isActive → nested editor auto-opens (if setting enabled)
+```
+
+### Switching revision versions
+
+```
+User clicks version pill N
+→ view.dispatch(setActiveRevisionVersion(state, id, N))
+  Transaction contains:
+    - _updateActiveRevisionVersion effect (N)
+    - doc change: replace revision range with versions[N].doc
+    - revisionInternalEdit.of(true)  ← prevents collapsedRevisionResolver from firing
+    - Transaction.addToHistory.of(true)
+→ annotationField Phase 2: updates activeVersionIndex, rebuilds selection to new span
+→ Phase 3 skipped for this revision (it's in revisionsWithExplicitEffect)
+→ Svelte store sync → Revision.svelte re-renders with new active pill
+→ syncRecursiveEditorToActiveVersion detects version change → reloads nested editor
+```
+
+### Undo of version switch
+
+```
+User presses Cmd+Z
+→ historyField inverts the transaction
+→ invertedAnnotationFieldEffects called on original transaction:
+    - sees _updateActiveRevisionVersion { to: N }
+    - emits _updateActiveRevisionVersion { to: oldCurrentlySelected }
+→ Inverted doc change restores old text
+→ Inverted effect restores activeVersionIndex
+→ Full undo: document text AND annotation state revert together
+```
+
+### Editing in nested editor (inline or modal)
+
+```
+User types in nested editor
+→ nested editor updateListener fires
+→ translateAndDispatch(update, parentView, revisionId):
+    - maps changes to parent coordinates (+ rev.selection.main.from offset)
+    - dispatches to parent with nestedEditorEdit.of(revisionId) + addToHistory:true
+→ Parent transaction:
+    Phase 1: revision selection remapped (no-op for inserts inside range)
+    Phase 2: no revision effects
+    Phase 3: nestedEditorEdit is not added to revisionsWithExplicitEffect → annotationField runs and updates versions[activeVersionIndex].doc
+
+On undo (Mod-z in nested editor delegates to undo(parentView)):
+→ Parent undoes doc change → revision range text reverts
+→ Phase 3 runs on inverted transaction → version.doc pushed to reverted text
+→ Svelte $effect in Revision.svelte / RevisionModal.svelte detects activeVersion.doc changed
+    → patches nested editor buffer (full replace, guarded by pullingFromParent)
+    → nested editor shows reverted text (no destroy/recreate)
+```
+
+### Editing in main doc while revision is active (non-atomic mode)
+
+```
+User types inside an active revision range (atomicRevisions off)
+→ Normal doc change transaction (no explicit revision effects, no nestedEditorEdit)
+→ Phase 1: revision selection remapped through change
+→ Phase 2: no revision effects
+→ Phase 3: pushDocToVersionState runs for this revision
+    - reads doc.slice(revision.from, revision.to)
+    - writes into versions[activeVersionIndex].doc
+→ Svelte $effect detects activeVersion.doc changed → patches nested editor buffer
+
+On undo:
+→ Doc change inverted → text reverts
+→ Phase 3 runs again on inverted transaction → version.doc pushed back to reverted text
+→ Svelte $effect patches nested editor with reverted text
+```
+
+---
+
+## Design Constraints and Intentional Tradeoffs
+
+### Revisions can survive empty ranges (undo restores them)
+
+Comments and suggestions are removed when their text is deleted. Explicitly deleting the revision (select + Delete or delete-from-the-right) removes the annotation and versions immediately; nothing survives unless you undo the deletion. If you delete every character inside a nested version editor, the revision is still intact: its main-document range never collapsed, so the only thing that changes is the version text kept inside the annotation. That version can be empty safely and the revision remains available (and undoable) because the structural branch stays anchored to the original selection.
+
+**How deletion works**: When a revision range collapses to zero length it survives only long enough for the system to record `_restoreAnnotation` effects; `collapsedRevisionResolver` immediately removes the zero-width annotation (in a microtask, tagged with `addToHistory.of(false)` and `_revisionCleanup`) so the field never holds a dangling collapsed revision.
+
+**How undo works**: Undo is what makes it look like the revision “survived”: Cmd+Z reapplies both the deleted text and the original revision (with all versions) using the stored `_restoreAnnotation` effects.
+
+### Nested editors are full `EditorView` instances
+
+Each nested editor has its own annotations and keybindings, but **no local history** — undo/redo delegates to the parent via `makeParentUndoKeymap`. Writers can annotate within a revision version (infinite nesting), and nested annotation state (sub-annotations) is preserved across sessions in `VersionState` blobs via `editor.state.toJSON(nestedSavedFields)` + `updateRevisionVersionState` (called by the modal editor's `destroyEditor`).
+
+### Direct editing of active revisions is blocked
+
+Direct editing of revision ranges from the main document is not explicitly blocked by a transaction filter. Inactive revision ranges use `atomicRanges` to govern cursor placement only. All intentional revision editing goes through the nested editor.
+
+### Separate `StateEffect` per mutation, not a generic update
+
+Rather than a single `mutateAnnotation` effect, there is one effect per operation. This keeps undo/redo inversion explicit and local — each effect's inverse is declared adjacent to it in `invertedAnnotationFieldEffects`. The cost is some verbosity in effect declarations.
+
+### Full annotation stored in `addAnnotation`/`removeAnnotation`
+
+Both carry the complete annotation object (not just an ID). This lets the undo inversion restore exact prior state without a `startState` lookup.
+
+---
+
+## Known Limitations
+
+- **Multi-selection not supported.** The system assumes one selection range per annotation (`selection.main`). Multi-cursor is not handled.
+- **Thread updates are coarse-grained.** `updateThread` replaces the entire thread array. Undo of a single message edit reverts the entire thread.
+- **One pending comment at a time.** `canCreateNewComment()` enforces a single draft (empty-thread) comment. Finer-grained locking is unresolved.
+- **No explicit annotation status enum.** `thread.length === 0` means pending comment; there is no FSM. Acknowledged technical debt.
+- **`addSuggestion` inversion uses `Math.max` on IDs.** Assumes IDs are sequential and increasing; works until suggestions are added in bulk.
+- **`queueMicrotask` in `collapsedRevisionResolver`.** Necessary to avoid dispatching inside a `ViewPlugin.update`, but ordering relative to other queued microtasks is not guaranteed under rapid undo.
+- **Deeply nested modal external-sync relies on `modalAnnotationStores`.** Each RevisionModal publishes its nested editor's annotations to a global per-level store (`modalAnnotationStores`). Child modals read from `modalAnnotationStores[stackIndex - 1]` instead of `$annotationsStore`. This chains correctly for undo cascades but adds a global store dependency that could be replaced with a more direct parent-child signal in the future.
+
+---
+
+## PostHog Events
+
+| Event | When | File |
+|---|---|---|
+| `app_session_started` | Editor mounts with a document | `Editor.svelte` |
+| `ai_sidebar_opened` | User opens AI sidebar to a mode | `AISidebar.svelte` |
+| `ai_message_sent` | Any AI request is dispatched | `chatFactory.ts` |
+| `ai_chat_message_sent` | User sends AI chat message | `Chat.svelte` |
+| `ai_chat_quick_prompt_used` | User uses a chat quick prompt | `Chat.svelte` |
+| `ai_feedback_requested` | User requests AI feedback | `Feedback.svelte` |
+| `ai_feedback_quick_prompt_used` | User uses a feedback quick prompt | `Feedback.svelte` |
+| `ai_revise_requested` | User triggers AI revision | `Revise.svelte` |
+| `ai_revise_quick_prompt_used` | User uses a revise quick prompt | `Revise.svelte` |
+| `context_generated` | AI context is generated for a document | `clientStreams.ts` |
+| `context_cleared` | User clears document context | `DocumentContext.svelte` |
+| `annotation_created` | AI creates a comment, suggestion, or revision | `chatFactory.ts` |
+| `comment_created` | User submits a new comment | `PreComment.svelte` |
+| `comment_ai_suggestion_requested` | User requests AI suggestion in thread | `Comment.svelte` |
+| `suggestion_applied` | User applies an AI suggestion | `Suggestion.svelte` |
+| `suggestion_branched` | User converts suggestion to revision | `Suggestion.svelte` |
+| `suggestion_diff_viewed` | User views a suggestion diff inline | `Suggestion.svelte` |
+| `suggestion_diff_modal_opened` | User opens the full-screen diff modal | `Suggestion.svelte` |
+| `revision_version_created` | User creates a new revision version | `Revision.svelte` |
+| `annotation_deleted` | User deletes a comment, suggestion, or revision | `Comment.svelte`, `Suggestion.svelte`, `Revision.svelte` |
+| `tutorial_completed` | User completes onboarding | `Tutorial.svelte` |
+| `tutorial_skipped` | User skips onboarding | `Tutorial.svelte` |
+| `ai_settings_provider_changed` | User changes AI provider | `AISettings.svelte` |
+| `ai_settings_model_changed` | User changes AI model | `AISettings.svelte` |
+| `draft_scrapped` | User scraps current draft | `Save.svelte` |

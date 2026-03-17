@@ -26,12 +26,17 @@ Before you begin, ensure you have the following installed:
 
 3. **Environment Setup**
 
-   For AI features, create a `.env` file in the project root:
+   Create a `.env.local` file in the project root:
    ```bash
+   # AI features (optional — app works without these)
    OPENAI_API_KEY=your_openai_api_key_here
+
+   # Analytics (optional — app works without these)
+   PUBLIC_POSTHOG_KEY=your_posthog_project_api_key
+   PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
    ```
 
-   > **Note**: AI features are optional for most development work. The app will function without API keys.
+   > **Note**: Both AI and analytics features are optional for most development work.
 
 4. **Start Development Server**
    ```bash
@@ -193,6 +198,142 @@ docs(contributing): update development setup instructions
 - **Accessibility**: Ensure features work with screen readers and keyboards
 - **Responsiveness**: Test across different screen sizes
 - **Performance**: Consider impact on editor performance
+
+## Analytics (PostHog)
+
+Quillium uses [PostHog](https://posthog.com) for product analytics. Events are captured with `posthog.capture()` directly in components — no wrapper or store abstraction is used.
+
+### Setup
+
+PostHog is initialized once in `src/hooks.client.ts` at app boot. It also registers `app_version` as a super property (sent with every event automatically) and forwards unhandled client exceptions to PostHog.
+
+Add these to your `.env.local` for analytics to work locally:
+
+```bash
+PUBLIC_POSTHOG_KEY=your_project_api_key
+PUBLIC_POSTHOG_HOST=https://us.i.posthog.com  # or your self-hosted URL
+```
+
+Both variables must be prefixed with `PUBLIC_` to be exposed to the client by SvelteKit. Analytics are non-critical — the app works fine without them.
+
+### Adding a New Event
+
+1. **Import PostHog** at the top of the component (if not already imported):
+   ```typescript
+   import posthog from "posthog-js";
+   ```
+
+2. **Call `posthog.capture()`** at the point of the user action:
+   ```typescript
+   posthog.capture("event_name", {
+       property_one: value,
+       property_two: value,
+   });
+   ```
+
+3. **Add a row** to the event inventory table below.
+
+### Event Naming Convention
+
+Use `snake_case` with the pattern `noun_verb` or `noun_verb_qualifier`:
+
+| Pattern | Example |
+|---------|---------|
+| `noun_verb` | `comment_created`, `draft_scrapped` |
+| `noun_verb_qualifier` | `ai_feedback_requested`, `revision_version_created` |
+| `noun_noun_verb` | `comment_ai_suggestion_requested` |
+
+Group related events under the same noun prefix (e.g., `ai_*`, `annotation_*`, `comment_*`, `revision_*`, `suggestion_*`).
+
+### Property Conventions
+
+Include contextual properties that make events useful for analysis:
+
+- **`type`** — discriminate among annotation types: `"comment"`, `"revision"`, `"suggestion"`
+- **`has_selection`** — boolean, whether text was selected at the time of the action
+- **`trigger`** — how the action was initiated: `"manual"` or `"quick_action"`
+- **`mode`** — AI sidebar tab that was open: `"chat"`, `"feedback"`, `"revise"`, etc.
+- **Word/length counts** — `word_count`, `message_length`, `comment_length`, `prompt_length`, `output_length`
+- **Counts** — `thread_length`, `version_count`, `replacement_count`, `total_steps`
+
+### Current Event Inventory
+
+#### App
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `app_session_started` | `word_count` | `editor/Editor.svelte` |
+
+#### AI
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `ai_sidebar_opened` | `mode` | `ai/AISidebar.svelte` |
+| `ai_chat_message_sent` | `has_selection`, `message_length` | `ai/Chat.svelte` |
+| `ai_feedback_requested` | `has_selection`, `trigger` | `ai/Feedback.svelte` |
+| `ai_revise_requested` | `has_selection`, `trigger` | `ai/Revise.svelte` |
+| `ai_revise_quick_prompt_used` | `prompt`, `has_selection` | `ai/Revise.svelte` |
+| `ai_settings_provider_changed` | `provider` | `ai/AISettings.svelte` |
+| `ai_settings_model_changed` | `provider`, `model` | `ai/AISettings.svelte` |
+| `ai_message_sent` | `mode`, `has_document_context`, `has_selected_text`, `document_length` | `ai/chatFactory.ts` |
+
+#### Document Context
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `context_generated` | `variant`, `prompt_length`, `output_length` | `ai/clientStreams.ts` |
+| `context_cleared` | — | `ai/DocumentContext.svelte` |
+
+#### Annotations (shared)
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `annotation_created` | `type` (`"comment"`/`"suggestion"`/`"revision"`), plus `replacement_count` or `version_count` | `ai/chatFactory.ts` |
+| `annotation_deleted` | `type`, `thread_length`/`version_count`/`replacement_count` | `Comment/Revision/Suggestion.svelte` |
+
+#### Comments
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `comment_created` | `has_selection`, `comment_length` | `annotations/PreComment.svelte` |
+| `comment_ai_suggestion_requested` | `thread_length`, `has_selection` | `annotations/Comment.svelte` |
+
+#### Revisions
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `revision_version_created` | `version_count` | `annotations/Revision.svelte` |
+
+#### Suggestions
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `suggestion_diff_viewed` | `replacement_index`, `replacement_count` | `annotations/Suggestion.svelte` |
+| `suggestion_diff_modal_opened` | `replacement_count` | `annotations/Suggestion.svelte` |
+| `suggestion_branched` | `replacement_count` | `annotations/Suggestion.svelte` |
+| `suggestion_applied` | `replacement_index`, `replacement_count` | `annotations/Suggestion.svelte` |
+
+#### Tutorial & Lifecycle
+
+| Event | Properties | Source |
+|-------|-----------|--------|
+| `tutorial_skipped` | `step_reached`, `total_steps` | `tutorial/Tutorial.svelte` |
+| `tutorial_completed` | `total_steps` | `tutorial/Tutorial.svelte` |
+| `draft_scrapped` | — | `save/Save.svelte` |
+
+### Feature Flags
+
+Feature flags are evaluated with `posthog.getFeatureFlag(flagName)` at the call site — no reactive store is used.
+
+| Flag | Variants | Purpose | Source |
+|------|----------|---------|--------|
+| `context-generation-format` | `"control"` (default), `"structured"` | A/B test for how document context is formatted when sent to AI | `ai/clientStreams.ts` |
+
+### Error Tracking
+
+Unhandled client errors are automatically forwarded to PostHog via `posthog.captureException()` in `src/hooks.client.ts`. No manual instrumentation is needed for routine error tracking.
+
+---
 
 ## Testing
 

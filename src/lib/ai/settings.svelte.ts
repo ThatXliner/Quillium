@@ -1,26 +1,47 @@
+/**
+ * Reactive AI settings store (Svelte 5 runes).
+ *
+ * This file is the single source of truth for all user-configurable AI
+ * state. It owns three reactive objects:
+ *
+ * - `aiSettings` — provider, model ID, and API key (key loaded from
+ *   the system keychain via Tauri at startup).
+ * - `documentContext` — structured writing-context fields (goal, tone,
+ *   audience, etc.) persisted to localStorage.
+ * - `aiProcessing` — boolean flag consumed by the sidebar glow
+ *   animation; toggled by each chat component via `setAiProcessing`.
+ *
+ * Persistence strategy:
+ *   provider/model  -> localStorage
+ *   API key         -> system keychain (via Tauri `get_api_key` /
+ *                      `set_api_key` commands)
+ *   documentContext -> localStorage
+ *
+ * Data flow:
+ *   AISettings.svelte  -->  aiSettings / documentContext (writes)
+ *   chatFactory.ts     <--  aiSettings (reads provider/model/key)
+ *   clientStreams.ts    <--  documentContext (reads context fields)
+ *   AISidebar.svelte    <--  aiProcessing (reads glow flag)
+ */
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider } from "./provider";
 
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
+const HAS_API_KEY_KEY = "quillium-has-api-key";
 
 export type DocumentContext = {
-    goal: string;
-    tone: string;
-    audience: string;
-    emphasize: string;
-    avoid: string;
-    notes: string;
+    freeform: string;
 };
 
 function loadDocumentContext(): DocumentContext {
-    if (typeof localStorage === "undefined") return { goal: "", tone: "", audience: "", emphasize: "", avoid: "", notes: "" };
+    if (typeof localStorage === "undefined") return { freeform: "" };
     try {
         const stored = localStorage.getItem(DOCUMENT_CONTEXT_KEY);
         if (stored) return JSON.parse(stored);
     } catch {}
-    return { goal: "", tone: "", audience: "", emphasize: "", avoid: "", notes: "" };
+    return { freeform: "" };
 }
 
 export function saveDocumentContext() {
@@ -29,6 +50,10 @@ export function saveDocumentContext() {
 }
 
 export const documentContext = $state<DocumentContext>(loadDocumentContext());
+
+export function hasDocumentContext(): boolean {
+    return documentContext.freeform.trim().length > 0;
+}
 
 // ---------------------------------------------------------------------------
 // AI processing indicator — purely for UI feedback (e.g. sidebar glow).
@@ -42,21 +67,22 @@ export function setAiProcessing(value: boolean) {
     aiProcessing.active = value;
 }
 
-function loadProvider(): Provider {
-    if (typeof localStorage === "undefined") return "openai";
-    return (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";
-}
-
-function loadModel(): string {
-    if (typeof localStorage === "undefined") return "gpt-4o-mini";
-    return localStorage.getItem(MODEL_KEY) ?? "gpt-4o-mini";
+function loadString(key: string, defaultValue: string): string {
+    if (typeof localStorage === "undefined") return defaultValue;
+    return localStorage.getItem(key) ?? defaultValue;
 }
 
 export const aiSettings = $state({
-    provider: loadProvider() as Provider,
-    model: loadModel(),
+    provider: loadString(PROVIDER_KEY, "openai") as Provider,
+    model: loadString(MODEL_KEY, "gpt-4o-mini"),
     apiKey: "",
 });
+
+export function hasApiKey(): boolean {
+    return aiSettings.apiKey.trim().length > 0;
+}
+
+export const HAS_API_KEY = HAS_API_KEY_KEY;
 
 export async function loadApiKeyForProvider(provider: Provider) {
     try {
@@ -67,7 +93,9 @@ export async function loadApiKeyForProvider(provider: Provider) {
     }
 }
 
-// Load key for the current provider on startup
-if (typeof window !== "undefined") {
+// Load key for the current provider on startup, but only if the user has
+// previously saved an API key (avoids triggering the keychain prompt
+// when AI features have never been configured).
+if (typeof window !== "undefined" && localStorage.getItem(HAS_API_KEY_KEY)) {
     loadApiKeyForProvider(aiSettings.provider);
 }

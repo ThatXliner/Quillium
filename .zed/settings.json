@@ -1,0 +1,52 @@
+{
+  "lsp": {
+    "biome": {
+      "binary": {
+        "path": "./node_modules/.bin/biome",
+        "arguments": ["lsp-proxy"]
+      }
+    }
+  },
+  "languages": {
+    "JavaScript": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        }
+      ]
+    },
+    "TypeScript": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        }
+      ]
+    },
+    "TSX": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        }
+      ]
+    },
+    "Svelte": {
+      "format_on_save": "on",
+      "formatter": [
+        {
+          "language_server": {
+            "name": "biome"
+          }
+        }
+      ]
+    }
+  }
+}

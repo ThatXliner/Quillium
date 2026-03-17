@@ -1,6 +1,6 @@
 {
   "name": "quillium",
-  "version": "0.2.0",
+  "version": "0.6.2",
   "description": "",
   "type": "module",
   "scripts": {
@@ -10,9 +10,19 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:coverage": "vitest run --coverage",
     "format": "biome format --write",
     "lint": "biome lint --write",
-    "biome": "bun run format && bun run lint"
+    "biome": "bun run format && bun run lint",
+    "bump": "bash scripts/bump.sh",
+    "bump:minor": "bash scripts/bump.sh minor",
+    "bump:major": "bash scripts/bump.sh major",
+    "screenshots": "bun scripts/screenshots.ts",
+    "screenshots:no-server": "bun scripts/screenshots.ts --no-server"
   },
   "license": "MIT",
   "dependencies": {
@@ -25,6 +35,15 @@
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.5.4",
     "@codemirror/view": "^6.39.14",
+    "@fontsource/caveat": "^5.2.8",
+    "@fontsource/courier-prime": "^5.2.8",
+    "@fontsource/eb-garamond": "^5.2.7",
+    "@fontsource/ia-writer-quattro": "^5.2.5",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/lora": "^5.2.8",
+    "@fontsource/nunito": "^5.2.7",
+    "@fontsource/opendyslexic": "^5.2.5",
+    "@fontsource/raleway": "^5.2.8",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-opener": "^2.5.3",
     "ai": "^5.0.136",
@@ -34,6 +53,7 @@
     "lodash-es": "^4.17.23",
     "lucide-svelte": "^0.475.0",
     "paneforge": "^1.0.2",
+    "posthog-js": "^1.358.1",
     "rehype-remark": "^10.0.1",
     "rehype-stringify": "^10.0.1",
     "remark-gfm": "^4.0.1",
@@ -44,16 +64,23 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@playwright/test": "^1.58.2",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.52.2",
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
     "@tailwindcss/vite": "^4.2.0",
     "@tauri-apps/cli": "^2.10.0",
     "@types/lodash-es": "^4.17.12",
+    "@vitest/coverage-v8": "^4.0.18",
+    "fast-check": "^4.6.0",
+    "jsdom": "^28.1.0",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
     "svelte": "^5.53.0",
     "svelte-check": "^4.4.1",
     "tailwindcss": "^4.2.0",
     "typescript": "~5.6.3",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^4.0.18"
   }
 }

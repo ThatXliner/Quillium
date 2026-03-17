@@ -29,6 +29,10 @@ bun run format    # Format code
 bun run lint      # Lint code
 bun run biome     # Run both format and lint
 
+# Testing (uses Vitest — must use `bun run test`, NOT `bun test`)
+bun run test          # Watch mode
+bun run test:run      # Single run
+
 # Tauri commands
 bun run tauri dev        # Run Tauri development mode
 bun run tauri build      # Build Tauri application
@@ -55,8 +59,8 @@ Two primary state management approaches are used:
 
 Key global stores in `src/lib/stores.ts`:
 - `editorView`: Main CodeMirror editor instance
-- `annotations`: Manually synced annotation state 
-- `activeComment`: Currently selected comment annotation
+- `annotations`: Manually synced annotation state
+- `activeAnnotation`: Currently focused annotation (comment, revision, or suggestion)
 
 ### Core Components
 
@@ -106,7 +110,7 @@ Due to CodeMirror's architecture, manual state synchronization is required betwe
 The application uses OpenAI's API through the `@ai-sdk/openai` package. API configuration is handled in `src/lib/ai/index.ts`.
 
 ### Testing
-No specific testing framework is currently configured. When adding tests, check the codebase for any existing test setup before assuming a framework.
+We have Vitest for unit tests and Playwright for end-to-end.
 
 ### Build Process
 The application uses a static build process via `@sveltejs/adapter-static` to be compatible with Tauri's requirements. The Tauri configuration handles the build orchestration between frontend and backend.

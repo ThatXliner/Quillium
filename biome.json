@@ -3,18 +3,27 @@
   "vcs": {
     "enabled": false,
     "clientKind": "git",
-    "useIgnoreFile": false
+    "useIgnoreFile": true
   },
   "files": {
     "ignoreUnknown": false,
-    "ignore": []
+    "ignore": [
+      ".svelte-kit/**",
+      "build/**",
+      "package/**",
+      "playwright-report/**",
+      "test-results/**",
+      "src-tauri/target/**",
+      "src/lib/editor/plugins/dont-use-for-now-history/**"
+    ]
   },
   "formatter": {
     "enabled": true,
     "formatWithErrors": false,
+    "indentStyle": "space",
     "indentWidth": 4,
     "lineEnding": "lf",
-    "lineWidth": 80,
+    "lineWidth": 100,
     "attributePosition": "auto"
   },
   "organizeImports": {
@@ -47,6 +56,16 @@
           "style": {
             "useConst": "off",
             "useImportType": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
           }
         }
       }

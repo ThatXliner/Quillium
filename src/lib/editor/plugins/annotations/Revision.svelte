@@ -1,201 +1,458 @@
 <script lang="ts">
-    import { EditorState } from "@codemirror/state";
-    import { EditorView, type ViewUpdate } from "@codemirror/view";
-    import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
-    import { onDestroy, tick } from "svelte";
-    import { slide } from "svelte/transition";
-    import { getExtensions, savedFields } from "$lib/editor/extensions";
-    import {
-        annotationField,
-        createNewRevision,
-        deleteRevisionVersion,
-        setActiveRevisionVersion,
-        updateRevisionVersionState,
-        type Annotation,
-        type Thread as ThreadType,
-    } from ".";
-    import { versionText, type VersionState } from "./models";
-    import { getActiveAnnotation } from "./utils";
-    import { revisionBoundaryNudge, revisionOpenNestedEditor, modalStack } from "$lib/stores";
-    import Thread from "./Thread.svelte";
+/**
+ * Revision.svelte — Displays a single revision annotation card
+ * with multiple named versions, a textarea for quick inline editing,
+ * and actions to create/delete versions or expand into a full-screen
+ * modal for deep editing (nested annotations, rich undo history).
+ *
+ * Architecture: the nested editor is a direct viewport onto the
+ * parent document's revision range. Edits in the nested editor
+ * are translated to parent coordinates via translateAndDispatch()
+ * and dispatched to the parent EditorView.
+ *
+ * External changes to the revision range (e.g. undo or non-atomic
+ * typing in the parent editor) are reflected back into the nested
+ * editor via Svelte reactivity: when the active revision/version
+ * changes, reactive effects update the nested editor's state and
+ * document buffer directly to keep it in sync.
+ *
+ * The nested editor is only destroyed/recreated on version switch.
+ * All other changes (typing, undo) are applied as incremental
+ * updates/deltas to the existing nested editor instance.
+ */
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { Transaction } from "@codemirror/state";
+import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
+import { onDestroy, tick } from "svelte";
+import { slide } from "svelte/transition";
+import { cubicOut } from "svelte/easing";
+import {
+    annotationField,
+    annotationsChanged,
+    createNewRevision,
+    deleteRevisionVersion,
+    isAnnotationOfType,
+    setActiveRevisionVersion,
+    updateRevisionVersionLabel,
+    type Annotation,
+    type GenericAnnotation,
+    type Thread as ThreadType,
+} from ".";
+import { versionText, type VersionState } from "./models";
+import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
+import { getActiveAnnotation } from "./utils";
+import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
+import { appSettings } from "$lib/settings.svelte";
+import Thread from "./Thread.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
+import posthog from "$lib/posthog";
 
-    const {
-        revision,
-        isActive,
-        view,
-        remove,
-        updateThread,
-    }: {
-        revision: Annotation<"revision">;
-        isActive: boolean;
-        view: EditorView;
-        remove: () => void;
-        updateThread: (thread: ThreadType) => void;
-    } = $props();
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
 
-    const thread = $derived(revision.thread);
-    const activeVersion = $derived(revision.versions[revision.currentlySelected]);
-    const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
-    const VERSION_PREVIEW_MAX = 34;
+const {
+    revision,
+    isActive,
+    view,
+    remove,
+    updateThread,
+}: {
+    revision: Annotation<"revision">;
+    isActive: boolean;
+    view: EditorView;
+    remove: () => void;
+    updateThread: (thread: ThreadType) => void;
+} = $props();
 
-    let isEditorOpen = $state(false);
-    let userClosedEditor = false; // plain var — not reactive, just a gate
+const thread = $derived(revision.thread);
+const activeVersion = $derived(revision.versions[revision.activeVersionIndex]);
+const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
 
-    $effect(() => {
-        if (isActive) {
-            if (!userClosedEditor) isEditorOpen = true;
-        } else {
-            isEditorOpen = false;
-            userClosedEditor = false;
-        }
-    });
+let isEditorOpen = $state(false);
+let userClosedEditor = false;
 
-    function openEditor() {
+$effect(() => {
+    if (isActive) {
+        if (!userClosedEditor && appSettings.showNestedEditor) isEditorOpen = true;
+    } else {
+        isEditorOpen = false;
         userClosedEditor = false;
-        isEditorOpen = true;
     }
-    let recursiveEditorHost = $state<HTMLDivElement>();
-    let recursiveEditor = $state<EditorView | undefined>(undefined);
-    let nestedEditorHasActiveAnnotation = $state(false);
-    let isSyncingFromAnnotation = false;
-    let previousVersionId = revision.currentlySelected;
+});
 
+function openEditor() {
+    userClosedEditor = false;
+    isEditorOpen = true;
+}
 
-    // Boundary nudge: show a hint when the user presses delete at the edge
-    // of this revision's content in the main document.
-    let showBoundaryHint = $state(false);
-    let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
+let nestedEditorHost = $state<HTMLDivElement>();
+let nestedEditor = $state<EditorView | undefined>(undefined);
+let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-    $effect(() => {
-        if ($revisionBoundaryNudge === revision.id) {
-            showBoundaryHint = true;
-            clearTimeout(boundaryHintTimeout);
-            boundaryHintTimeout = setTimeout(() => {
-                showBoundaryHint = false;
-                revisionBoundaryNudge.set(null);
-            }, 4000);
-        }
+// Track which version the nested editor was built for, so we know
+// when to destroy/recreate (version switch).
+let mountedVersionId = -1;
+// Track the annotationField blob the inline editor was built with, so
+// we can detect when a modal flush writes new nested annotations into
+// the version and trigger a rebuild.
+let mountedAnnotationFieldBlob: unknown = undefined;
+
+// Track the last doc the nested editor dispatched up to the parent.
+// Used to distinguish "doc changed externally (undo/typing)" from
+// "doc changed because the nested editor typed it" so we don't
+// unnecessarily patch the nested editor with its own content.
+let lastDispatchedDoc = "";
+// Guard: set to true while we are programmatically patching the nested editor
+// from an external parent change, so the updateListener skips translateAndDispatch
+// and doesn't bounce the change back up to the parent.
+let pullingFromParent = false;
+
+let lastBoundaryNudgeToken = 0;
+let lastOpenNestedEditorToken = 0;
+let lastFocusRequestToken = 0;
+let lastNestedSelectionToken = 0;
+let lastAddVersionToken = 0;
+let cursorArriving = $state(false);
+let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
+
+let showBoundaryHint = $state(false);
+let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
+
+// Label editing state
+let editingLabelIndex = $state<number | null>(null);
+let labelInputValue = $state("");
+let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
+
+function startLabelEdit(i: number) {
+    editingLabelIndex = i;
+    labelInputValue = revision.versions[i]?.label ?? "";
+    tick().then(() => labelInputEl?.focus());
+}
+
+function commitLabelEdit() {
+    if (editingLabelIndex === null) return;
+    const trimmed = labelInputValue.trim();
+    view.dispatch(
+        updateRevisionVersionLabel(
+            view.state,
+            revision.id,
+            editingLabelIndex,
+            trimmed || undefined,
+        ),
+    );
+    editingLabelIndex = null;
+}
+
+function cancelLabelEdit() {
+    editingLabelIndex = null;
+}
+
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastBoundaryNudgeToken ||
+        event.type !== "revision-boundary-nudge" ||
+        event.revisionId !== revision.id
+    )
+        return;
+    lastBoundaryNudgeToken = event.token;
+    showBoundaryHint = true;
+    clearTimeout(boundaryHintTimeout);
+    boundaryHintTimeout = setTimeout(() => {
+        showBoundaryHint = false;
+    }, 4000);
+});
+
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastOpenNestedEditorToken ||
+        event.type !== "revision-open-nested-editor" ||
+        event.command.revisionId !== revision.id
+    )
+        return;
+    // If there's already a modal open for this revision *anywhere* in the
+    // stack, the modal's own Sensor Effect C will create the sub-annotation
+    // directly in its nested editor. Consume the token and bail to prevent
+    // a duplicate modal push.
+    const stack = $modalStack;
+    if (
+        stack.some(
+            (entry) => entry.type === "revision" && entry.revisionId === revision.id,
+        )
+    ) {
+        lastOpenNestedEditorToken = event.token;
+        return;
+    }
+    lastOpenNestedEditorToken = event.token;
+    const cmd = event.command;
+    modalStack.push({
+        type: "revision",
+        revisionId: revision.id,
+        parentView: view,
+        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+        pendingNestedCommand: {
+            type: cmd.type,
+            selectionFrom: cmd.selectionFrom,
+            selectionTo: cmd.selectionTo,
+        },
     });
+});
 
-    // When the user triggers a nested annotation command from inside this revision
-    // in the main document, open the modal (instead of the inline editor) and
-    // pass the command along so the modal runs it once the editor is ready.
-    $effect(() => {
-        const cmd = $revisionOpenNestedEditor;
-        if (!cmd || cmd.revisionId !== revision.id) return;
-        revisionOpenNestedEditor.set(null);
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastFocusRequestToken ||
+        event.type !== "revision-focus-request" ||
+        event.revisionId !== revision.id ||
+        event.sourceView !== view
+    )
+        return;
+    lastFocusRequestToken = event.token;
+    const relPos = event.relativePos;
+    if (appSettings.showNestedEditor) {
+        const placeCursor = (editor: EditorView) => {
+            editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
+            editor.focus();
+            clearTimeout(cursorArrivingTimeout);
+            cursorArriving = false;
+            void nestedEditorHost?.offsetWidth;
+            cursorArriving = true;
+            cursorArrivingTimeout = setTimeout(() => {
+                cursorArriving = false;
+            }, 650);
+        };
+        if (isEditorOpen && nestedEditor) {
+            placeCursor(nestedEditor);
+        } else {
+            userClosedEditor = false;
+            isEditorOpen = true;
+            tick().then(() => {
+                if (nestedEditor) placeCursor(nestedEditor);
+            });
+        }
+    } else {
         modalStack.push({
             type: "revision",
             revisionId: revision.id,
             parentView: view,
             label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-            pendingNestedCommand: {
-                type: cmd.type,
-                selectionFrom: cmd.selectionFrom,
-                selectionTo: cmd.selectionTo,
-            },
+            pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
         });
-    });
-
-    onDestroy(() => {
-        clearTimeout(boundaryHintTimeout);
-    });
-
-    function upsertVersionState(currentEditor: EditorView, versionId = revision.currentlySelected) {
-        const blob = currentEditor.state.toJSON(savedFields) as VersionState;
-        view.dispatch(
-            updateRevisionVersionState(
-                view.state,
-                revision.id,
-                versionId,
-                blob,
-            ),
-        );
     }
+});
 
-    function previewVersionText(version: VersionState) {
-        const flattened = versionText(version).replace(/\s+/g, " ").trim();
-        if (!flattened) return "(empty)";
-        return flattened.length > VERSION_PREVIEW_MAX
-            ? `${flattened.slice(0, VERSION_PREVIEW_MAX)}…`
-            : flattened;
-    }
+/**
+ * Mount a nested CodeMirror editor for the given version.
+ */
+function createNestedEditor(version: VersionState) {
+    if (!nestedEditorHost || nestedEditor) return;
+    const state = createNestedEditorState(
+        version,
+        (update: ViewUpdate) => {
+            if (!nestedEditor) return;
+            activeAnnotation = getActiveAnnotation(nestedEditor.state);
+            // Translate doc changes to parent coordinates and dispatch.
+            // Skip when we're programmatically syncing from the parent to avoid
+            // bouncing the change back up and corrupting the parent document.
+            if (!pullingFromParent && translateAndDispatch(update, view, revision.id)) {
+                // Track what we dispatched so the external-sync $effect
+                // doesn't re-patch the nested editor with its own content.
+                lastDispatchedDoc = nestedEditor.state.doc.toString();
+            }
+        },
+        view,
+        revision.id,
+    );
+    nestedEditor = new EditorView({ state, parent: nestedEditorHost });
+    mountedVersionId = revision.activeVersionIndex;
+    mountedAnnotationFieldBlob = (version as { annotationField?: unknown }).annotationField;
+    lastDispatchedDoc = nestedEditor.state.doc.toString();
+    activeAnnotation = getActiveAnnotation(nestedEditor.state);
 
-    function createRecursiveEditor(version: VersionState) {
-        if (!recursiveEditorHost || recursiveEditor) return;
-        const extensions = getExtensions({
-            persist: false,
-            updateListener(update: ViewUpdate) {
-                if (!recursiveEditor || isSyncingFromAnnotation) return;
-                nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
-                upsertVersionState(recursiveEditor);
-            },
+    // Apply pending selection if this annotation just created one.
+    const event = $annotationUiEvent;
+    const selectionEvent =
+        consumePendingNestedEditorSelection(revision.id, lastNestedSelectionToken) ??
+        (event &&
+        event.token !== lastNestedSelectionToken &&
+        event.type === "pending-nested-editor-selection" &&
+        event.annotationId === revision.id
+            ? event
+            : undefined);
+    if (selectionEvent) {
+        lastNestedSelectionToken = selectionEvent.token;
+        const docLen = nestedEditor.state.doc.length;
+        const from = Math.min(selectionEvent.from, docLen);
+        const to = Math.min(selectionEvent.to, docLen);
+        nestedEditor.dispatch({
+            selection: { anchor: from, head: to },
+            scrollIntoView: true,
         });
-        // Restore full state (doc + annotations + history) if available,
-        // otherwise create a fresh editor with just the text.
-        const state = "annotationField" in version
-            ? EditorState.fromJSON(version, { extensions }, savedFields)
-            : EditorState.create({ doc: versionText(version), extensions });
-        recursiveEditor = new EditorView({ state, parent: recursiveEditorHost });
-        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
+        nestedEditor.focus();
     }
+}
 
-    function destroyRecursiveEditor() {
-        recursiveEditor?.destroy();
-        recursiveEditor = undefined;
-        nestedEditorHasActiveAnnotation = false;
+function destroyNestedEditor() {
+    // NOTE: we intentionally do NOT flush nested annotation state here.
+    // updateRevisionVersionState replaces the doc range, which creates a
+    // revisionInternalEdit transaction that corrupts undo positions when
+    // the user immediately presses Cmd+Z after clicking away from the
+    // revision. The parent doc is the source of truth (Phase 3 keeps
+    // version.doc in sync), so the doc content is already correct.
+    // Nested annotation persistence is handled by the modal editor.
+    nestedEditor?.destroy();
+    nestedEditor = undefined;
+    activeAnnotation = undefined;
+    mountedVersionId = -1;
+    mountedAnnotationFieldBlob = undefined;
+}
+
+// Create or destroy the nested editor when the toggle changes.
+$effect(() => {
+    if (!isEditorOpen) {
+        destroyNestedEditor();
+        return;
     }
+    tick().then(() => {
+        if (!isEditorOpen || !activeVersion) return;
+        createNestedEditor(activeVersion);
+    });
+});
 
-    function syncRecursiveEditorToActiveVersion(previousVersionId?: number) {
-        if (!recursiveEditor || !activeVersion) return;
-        const currentText = recursiveEditor.state.doc.toString();
-        const targetText = activeText;
-        if (currentText === targetText) return;
-        // Save the current editor state back to whichever version we're leaving
-        if (previousVersionId !== undefined) {
-            upsertVersionState(recursiveEditor, previousVersionId);
+// When the selected version changes, destroy and recreate.
+$effect(() => {
+    if (!nestedEditor || !isEditorOpen) return;
+    const currentVersionId = revision.activeVersionIndex;
+    if (currentVersionId === mountedVersionId) return;
+
+    // Version switched — recreate for new version.
+    destroyNestedEditor();
+    tick().then(() => {
+        if (!isEditorOpen || !activeVersion) return;
+        createNestedEditor(activeVersion);
+        if (nestedEditor) {
+            const end = nestedEditor.state.doc.length;
+            nestedEditor.dispatch({
+                selection: { anchor: end },
+                scrollIntoView: true,
+            });
+            nestedEditor.focus();
         }
-        isSyncingFromAnnotation = true;
-        const extensions = getExtensions({
-            persist: false,
-            updateListener(update: ViewUpdate) {
-                if (!recursiveEditor || isSyncingFromAnnotation) return;
-                upsertVersionState(recursiveEditor);
-            },
+    });
+});
+
+// When the modal closes, it flushes nested annotations back into the
+// version blob via _updateRevisionVersionState. The version index
+// stays the same, so the version-switch effect above doesn't fire.
+// But the inline nested editor was built from the old blob and still
+// has the stale annotationField — decorations for nested annotations
+// are missing. Detect the flush by watching for a new annotationField
+// blob on activeVersion and rebuild the inline editor from it.
+$effect(() => {
+    if (!nestedEditor || !isEditorOpen || !activeVersion) return;
+    const incomingBlob = (activeVersion as { annotationField?: unknown }).annotationField;
+    if (incomingBlob === mountedAnnotationFieldBlob) return;
+    // The version blob's annotationField changed — rebuild so the inline
+    // editor picks up the updated nested annotation decorations.
+    destroyNestedEditor();
+    createNestedEditor(activeVersion);
+});
+
+// When the version doc changes externally (undo, non-atomic typing from
+// the parent editor), patch the nested editor to match. Phase 3 keeps
+// activeVersion.doc current, so we just watch it and apply the diff.
+// We skip patching when the doc change originated from the nested editor
+// itself (tracked via lastDispatchedDoc) to avoid a feedback loop.
+$effect(() => {
+    const externalDoc = activeVersion?.doc ?? "";
+    if (!nestedEditor || externalDoc === lastDispatchedDoc) return;
+    const current = nestedEditor.state.doc.toString();
+    if (current !== externalDoc) {
+        pullingFromParent = true;
+        nestedEditor.dispatch({
+            changes: { from: 0, to: current.length, insert: externalDoc },
+            // Mark as a pull/non-history transaction so the nested editor
+            // bridge can ignore it when translating changes back to the parent.
+            annotations: Transaction.addToHistory.of(false),
         });
-        const nextState = "annotationField" in activeVersion
-            ? EditorState.fromJSON(activeVersion, { extensions }, savedFields)
-            : EditorState.create({ doc: targetText, extensions });
-        recursiveEditor.setState(nextState);
-        isSyncingFromAnnotation = false;
-        nestedEditorHasActiveAnnotation = !!getActiveAnnotation(recursiveEditor.state);
+        pullingFromParent = false;
     }
+    lastDispatchedDoc = externalDoc;
+});
 
-    $effect(() => {
-        if (!isEditorOpen) {
-            destroyRecursiveEditor();
-            return;
+// ⌘Enter when this revision is active → create a new version
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastAddVersionToken ||
+        event.type !== "annotation-add-version" ||
+        event.annotationId !== revision.id
+    )
+        return;
+    lastAddVersionToken = event.token;
+    posthog.capture("revision_version_created", { version_count: revision.versions.length });
+    view.dispatch(createNewRevision(view.state, revision.id));
+    tick().then(() => {
+        if (appSettings.showNestedEditor) {
+            userClosedEditor = false;
+            isEditorOpen = true;
         }
-        tick().then(() => {
-            if (!isEditorOpen || !activeVersion) return;
-            createRecursiveEditor(activeVersion);
-            syncRecursiveEditorToActiveVersion();
-        });
     });
+});
 
-    $effect(() => {
-        if (!recursiveEditor || !isEditorOpen) return;
-        const prev = previousVersionId;
-        previousVersionId = revision.currentlySelected;
-        syncRecursiveEditorToActiveVersion(prev !== revision.currentlySelected ? prev : undefined);
+// When a nested revision decoration inside our inline editor is clicked,
+// the revisionClickHandler fires revision-focus-request with that nested
+// revision's ID. No other component matches it, so we handle it here by
+// opening a modal for the nested revision.
+let lastNestedRevFocusToken = 0;
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastNestedRevFocusToken ||
+        event.type !== "revision-focus-request" ||
+        !nestedEditor ||
+        event.sourceView !== nestedEditor
+    )
+        return;
+    // Only handle if the target revision exists in our inline nested editor
+    const nestedAnns = nestedEditor.state.field(annotationField);
+    const nestedRev = nestedAnns[event.revisionId];
+    if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
+    lastNestedRevFocusToken = event.token;
+    // Expand this parent revision as a modal first, then place the cursor
+    // on the nested revision so it activates inline within that modal.
+    // This ensures the full editing context (parent modal) is always
+    // present before the nested revision is opened — never skipping levels.
+    const nestedRevPos = nestedRev.selection.main.from;
+    modalStack.push({
+        type: "revision",
+        revisionId: revision.id,
+        parentView: view,
+        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+        pendingNestedCommand: {
+            type: "cursor",
+            selectionFrom: nestedRevPos,
+            selectionTo: nestedRevPos,
+        },
     });
+});
 
-    onDestroy(() => {
-        destroyRecursiveEditor();
-    });
+onDestroy(() => {
+    clearTimeout(boundaryHintTimeout);
+    clearTimeout(cursorArrivingTimeout);
+    destroyNestedEditor();
+});
 </script>
 
 <div
+    data-tutorial-role="revision-card"
+    data-revision-id={revision.id}
     class="border rounded-[14px] transition-all duration-200
         {isActive
             ? 'bg-purple-50/90 border-purple-200/60 shadow-xl'
@@ -207,7 +464,13 @@
         <h3 class="text-[10px] font-semibold text-purple-600/70 uppercase tracking-wider">Revision</h3>
         <button
             class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-            onclick={() => remove()}
+            onclick={() => {
+                posthog.capture("annotation_deleted", {
+                    type: "revision",
+                    version_count: revision.versions.length,
+                });
+                remove();
+            }}
             title="Delete entire revision"
         >
             <Trash2 size={16} />
@@ -215,30 +478,55 @@
     </div>
 
     <!-- Version pills -->
-    <div class="px-3 pb-2 flex flex-wrap gap-1">
+    <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
         {#each revision.versions as version, i}
-            {@const versionActive = i === revision.currentlySelected}
+            {@const versionActive = i === revision.activeVersionIndex}
+            {@const isEditingThis = editingLabelIndex === i}
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
                     : 'bg-white/60 ring-1 ring-purple-200/40'}">
-                <button
-                    class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
-                        {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
-                    disabled={versionActive}
-                    title={versionText(version) || "(empty)"}
-                    onclick={() => {
-                        view.dispatch(
-                            setActiveRevisionVersion(view.state, revision.id, i),
-                        );
-                    }}
-                >
-                    {version.label ?? previewVersionText(version)}
-                </button>
+                {#if isEditingThis}
+                    <input
+                        bind:this={labelInputEl}
+                        bind:value={labelInputValue}
+                        class="px-2 py-1 text-[11px] font-medium w-[100px] bg-transparent text-white outline-none placeholder-white/50"
+                        placeholder="Version name…"
+                        onblur={commitLabelEdit}
+                        onkeydown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); commitLabelEdit(); }
+                            else if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
+                        }}
+                    />
+                {:else}
+                    <button
+                        class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
+                            {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
+                        disabled={versionActive}
+                        title={versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
+                        onclick={() => {
+                            if (!versionActive) {
+                                view.dispatch(
+                                    setActiveRevisionVersion(view.state, revision.id, i),
+                                );
+                            }
+                            if (appSettings.showNestedEditor) {
+                                userClosedEditor = false;
+                                isEditorOpen = true;
+                            }
+                        }}
+                        ondblclick={() => {
+                            if (versionActive) startLabelEdit(i);
+                        }}
+                    >
+                        {version.label ?? previewVersionText(version)}
+                    </button>
+                {/if}
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
                         {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
                     onclick={() => {
+                        if (editingLabelIndex === i) cancelLabelEdit();
                         view.dispatch(
                             deleteRevisionVersion(view.state, revision.id, i),
                         );
@@ -249,23 +537,46 @@
                 </button>
             </div>
         {/each}
+        {#if isActive && revision.versions.length > 1}
+            <div class="ml-auto flex items-center gap-0.5 opacity-50">
+                <Kbd keys={["Ctrl", "["]} />
+                <Kbd keys={["Ctrl", "]"]} />
+            </div>
+        {/if}
     </div>
 
     <!-- Actions row -->
     <div class="px-3 pb-3 flex gap-1.5">
         <button
-            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/80
+            class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
-            onclick={() => {
+            onclick={async () => {
+                posthog.capture("revision_version_created", {
+                    version_count: revision.versions.length,
+                });
                 view.dispatch(createNewRevision(view.state, revision.id));
-                view.focus();
+                await tick();
+                if (appSettings.showNestedEditor) {
+                    userClosedEditor = false;
+                    isEditorOpen = true;
+                } else {
+                    modalStack.push({
+                        type: "revision",
+                        revisionId: revision.id,
+                        parentView: view,
+                        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+                    });
+                }
             }}
-            title="Create a new version"
+            title="Create a new version ({modKey}↵)"
         >
             <PlusIcon size={10} />
             <span>New version</span>
         </button>
+        {#if appSettings.showNestedEditor}
         <button
+            data-tutorial-action="toggle-nested-editor"
+            data-revision-id={revision.id}
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
                 {isEditorOpen
                     ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
@@ -274,16 +585,18 @@
                 userClosedEditor = isEditorOpen;
                 isEditorOpen = !isEditorOpen;
             }}
-            title={isEditorOpen ? "Hide nested editor" : "Open nested editor"}
+            title={isEditorOpen ? "Hide editor" : "Open editor"}
         >
             {#if isEditorOpen}
                 <ChevronUp size={10} />
             {:else}
                 <ChevronDown size={10} />
             {/if}
-            <span>Nested editor</span>
         </button>
+        {/if}
         <button
+            data-tutorial-action="expand-revision-modal"
+            data-revision-id={revision.id}
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/60
                 bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors ml-auto"
             onclick={() => { modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" }); }}
@@ -295,67 +608,92 @@
 
     <!-- Boundary hint -->
     {#if showBoundaryHint}
-        <div class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md
-            bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug">
-            <span class="shrink-0 mt-px">↓</span>
-            <span>Use the nested editor to edit at revision boundaries.</span>
-        </div>
+        {#if appSettings.showNestedEditor}
+            <button
+                class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
+                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
+                    hover:bg-purple-100/60 transition-colors text-left"
+                onclick={() => {
+                    userClosedEditor = false;
+                    isEditorOpen = true;
+                    tick().then(() => nestedEditor?.focus());
+                }}
+            >
+                <span class="shrink-0 mt-px">↓</span>
+                <span>Edit in the inline editor below.</span>
+            </button>
+        {:else}
+            <button
+                class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
+                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
+                    hover:bg-purple-100/60 transition-colors text-left"
+                onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
+            >
+                <span class="shrink-0 mt-px">↗</span>
+                <span>Open in the revision editor to edit at boundaries.</span>
+            </button>
+        {/if}
     {/if}
 
-    <!-- Nested editor (collapsible) -->
-    {#if isEditorOpen}
-        <div transition:slide={{ duration: 200 }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+    <!-- Inline CodeMirror editor (collapsible) -->
+    {#if isEditorOpen && appSettings.showNestedEditor}
+        <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
             <div
-                bind:this={recursiveEditorHost}
-                class="revision-recursive-editor h-[220px] overflow-hidden"
+                bind:this={nestedEditorHost}
+                class="revision-inline-editor"
+                class:cursor-arriving={cursorArriving}
             ></div>
-            {#if nestedEditorHasActiveAnnotation}
-                <div transition:slide={{ duration: 150 }}
-                    class="border-t border-purple-100/60 px-3 py-2 flex items-center justify-between gap-2">
-                    <span class="text-[10px] text-purple-500/70">Annotation selected</span>
-                    <button
-                        class="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-purple-600/80
-                            bg-purple-50 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
-                        onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
-                    >
-                        <Maximize2 size={9} />
-                        <span>View in modal</span>
-                    </button>
-                </div>
-            {/if}
         </div>
     {/if}
 
     <!-- Thread -->
     {#if thread.length > 0 || isActive}
         <div class="border-t border-black/[0.07] px-3 py-2.5">
-            <Thread {thread} {updateThread} />
+            <Thread
+                {thread}
+                {updateThread}
+                {view}
+                annotationId={revision.id}
+                previewOnly={!isActive}
+                accentClass="text-purple-600/80 hover:text-purple-700"
+                sendPillClass="bg-purple-500 text-white hover:bg-purple-600"
+            />
         </div>
     {/if}
 </div>
 
 
 <style>
-    .revision-recursive-editor :global(.cm-editor) {
-        height: 220px;
-        width: 100%;
+    .revision-inline-editor {
+        min-height: 220px;
+    }
+    .revision-inline-editor :global(.cm-editor) {
+        height: 100%;
+        min-height: 220px;
+        font-size: 13px;
+        font-family: var(--doc-font-family);
+        line-height: 1.6;
         background: transparent;
     }
-
-    .revision-recursive-editor :global(.cm-scroller) {
-        overflow: auto;
-        line-height: 1.6;
-    }
-
-    .revision-recursive-editor :global(.cm-content) {
-        text-indent: 0;
-        min-height: 100%;
+    .revision-inline-editor :global(.cm-scroller) {
+        overflow-y: auto;
         padding: 8px 10px 12px 10px;
+    }
+    .revision-inline-editor :global(.cm-content) {
+        padding: 0;
+        text-indent: 0;
         font-size: 13px;
+        line-height: 1.6;
+        font-family: var(--doc-font-family);
     }
 
-    .revision-recursive-editor :global(.cm-focused) {
-        outline: none;
+    @keyframes focus-flash {
+        0%   { background-color: rgba(254, 242, 205, 0.9); }
+        70%  { background-color: rgba(254, 242, 205, 0.9); }
+        100% { background-color: rgba(254, 242, 205, 0); }
     }
 
+    .revision-inline-editor.cursor-arriving {
+        animation: focus-flash 0.6s ease-out both;
+    }
 </style>

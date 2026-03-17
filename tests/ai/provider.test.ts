@@ -1,0 +1,78 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocked = vi.hoisted(() => {
+    const openaiModelBuilder = vi.fn((modelId: string) => ({
+        modelId,
+        provider: "openai",
+        specificationVersion: "v1",
+    }));
+    const anthropicModelBuilder = vi.fn((modelId: string) => ({
+        modelId,
+        provider: "anthropic",
+        specificationVersion: "v1",
+    }));
+    const googleModelBuilder = vi.fn((modelId: string) => ({
+        modelId,
+        provider: "google",
+        specificationVersion: "v1",
+    }));
+
+    return {
+        createOpenAI: vi.fn(() => openaiModelBuilder),
+        createAnthropic: vi.fn(() => anthropicModelBuilder),
+        createGoogleGenerativeAI: vi.fn(() => googleModelBuilder),
+        openaiModelBuilder,
+        anthropicModelBuilder,
+        googleModelBuilder,
+    };
+});
+
+vi.mock("@ai-sdk/openai", () => ({
+    createOpenAI: mocked.createOpenAI,
+}));
+
+vi.mock("@ai-sdk/anthropic", () => ({
+    createAnthropic: mocked.createAnthropic,
+}));
+
+vi.mock("@ai-sdk/google", () => ({
+    createGoogleGenerativeAI: mocked.createGoogleGenerativeAI,
+}));
+
+import { createModel } from "$lib/ai/provider";
+
+beforeEach(() => {
+    vi.clearAllMocks();
+});
+
+describe("createModel", () => {
+    it("routes openai provider through createOpenAI", () => {
+        const model = createModel("openai", "openai-key", "gpt-4o-mini");
+
+        expect(mocked.createOpenAI).toHaveBeenCalledWith({ apiKey: "openai-key" });
+        expect(mocked.openaiModelBuilder).toHaveBeenCalledWith("gpt-4o-mini");
+        expect(mocked.createAnthropic).not.toHaveBeenCalled();
+        expect(mocked.createGoogleGenerativeAI).not.toHaveBeenCalled();
+        expect(model).toMatchObject({ provider: "openai", modelId: "gpt-4o-mini" });
+    });
+
+    it("routes anthropic provider through createAnthropic", () => {
+        const model = createModel("anthropic", "anthropic-key", "claude-3-7-sonnet");
+
+        expect(mocked.createAnthropic).toHaveBeenCalledWith({ apiKey: "anthropic-key" });
+        expect(mocked.anthropicModelBuilder).toHaveBeenCalledWith("claude-3-7-sonnet");
+        expect(mocked.createOpenAI).not.toHaveBeenCalled();
+        expect(mocked.createGoogleGenerativeAI).not.toHaveBeenCalled();
+        expect(model).toMatchObject({ provider: "anthropic", modelId: "claude-3-7-sonnet" });
+    });
+
+    it("routes google provider through createGoogleGenerativeAI", () => {
+        const model = createModel("google", "google-key", "gemini-2.0-flash");
+
+        expect(mocked.createGoogleGenerativeAI).toHaveBeenCalledWith({ apiKey: "google-key" });
+        expect(mocked.googleModelBuilder).toHaveBeenCalledWith("gemini-2.0-flash");
+        expect(mocked.createOpenAI).not.toHaveBeenCalled();
+        expect(mocked.createAnthropic).not.toHaveBeenCalled();
+        expect(model).toMatchObject({ provider: "google", modelId: "gemini-2.0-flash" });
+    });
+});

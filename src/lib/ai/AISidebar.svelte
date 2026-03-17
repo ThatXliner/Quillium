@@ -1,202 +1,314 @@
+<!--
+    AISidebar.svelte — Top-level container for all AI features.
+
+    This component renders a floating, resizable sidebar anchored to the
+    left edge of the viewport. It acts as a shell/router for the five AI
+    panels: Chat, Feedback, Revise, DocumentContext, and AISettings.
+
+    UI states:
+      - Collapsed (pill): a narrow vertical strip of icon buttons.
+      - Expanded: a resizable panel showing the active sub-panel with a
+        header row of icon tabs, title bar, and close/settings controls.
+
+    State variables:
+      `action`         — which panel is active (null = collapsed).
+      `customWidth/Height` — user-resized dimensions (null = defaults).
+      `isResizing`     — true during a drag-resize (disables CSS
+                         transitions so the panel tracks the cursor).
+
+    The sidebar reads `aiProcessing.active` from settings.svelte.ts to
+    show a rainbow glow animation while any AI request is in flight.
+
+    All five sub-panels are mounted eagerly (visibility toggled via CSS)
+    to avoid re-mount jank when switching tabs.
+
+    Dependencies: Chat, Feedback, Revise, DocumentContext, AISettings
+    components; aiProcessing from settings.svelte.ts; posthog analytics.
+-->
 <script lang="ts">
-    import { tick } from "svelte";
-    import Chat from "./Chat.svelte";
-    import Feedback from "./Feedback.svelte";
-    import Revise from "./Revise.svelte";
-    import AISettings from "./AISettings.svelte";
-    import DocumentContext from "./DocumentContext.svelte";
-    import { MessageCircleIcon, ZapIcon, PenLineIcon, XIcon, Settings2Icon, CompassIcon, Minimize2Icon } from "lucide-svelte";
-    import { aiProcessing } from "$lib/ai/settings.svelte";
+/*
+ * AISidebar.svelte
+ *
+ * Top-level container and tab router for all AI feature panels.
+ *
+ * Renders:
+ *   A fixed, resizable sidebar anchored to the left viewport edge.
+ *   Two visual states: collapsed pill (icon buttons) and expanded
+ *   panel (icon tabs + active sub-panel).
+ *
+ * Props: none (standalone root component).
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - aiProcessing.active (settings.svelte.ts) — drives the rainbow
+ *     glow animation while any AI request is in flight.
+ *
+ * Stores written: none.
+ *
+ * Children: Chat, Feedback, Revise, DocumentContext, AISettings.
+ *   All five sub-panels are mounted eagerly and toggled via CSS
+ *   visibility to avoid re-mount jank on tab switches.
+ *
+ * Resize system:
+ *   - `startResize` attaches window-level mousemove/mouseup listeners.
+ *   - `onResizeMove` clamps deltas to [MIN, MAX] width/height.
+ *   - `onResizeEnd` cleans up listeners and resets cursor overrides.
+ *   - `isResizing` disables CSS transitions so the panel tracks the
+ *     cursor without animation lag.
+ */
+import { tick } from "svelte";
+import Chat from "./Chat.svelte";
+import Feedback from "./Feedback.svelte";
+import Revise from "./Revise.svelte";
+import AISettings from "./AISettings.svelte";
+import DocumentContext from "./DocumentContext.svelte";
+import {
+    MessageCircleIcon,
+    ZapIcon,
+    PenLineIcon,
+    XIcon,
+    Settings2Icon,
+    CompassIcon,
+    Minimize2Icon,
+} from "lucide-svelte";
+import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
+import posthog from "$lib/posthog";
 
-    type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
-    let action = $state<Action>(null);
+type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
+let action = $state<Action>(null);
 
-    const actions: {
-        id: NonNullable<Action>;
-        icon: any;
-        label: string;
-        activeClass: string;
-        hoverClass: string;
-    }[] = [
-        {
-            id: "chat",
-            icon: MessageCircleIcon,
-            label: "Chat",
-            activeClass: "text-blue-600 bg-white/60",
-            hoverClass: "hover:text-blue-600",
-        },
-        {
-            id: "feedback",
-            icon: ZapIcon,
-            label: "Feedback",
-            activeClass: "text-green-600 bg-white/60",
-            hoverClass: "hover:text-green-600",
-        },
-        {
-            id: "revise",
-            icon: PenLineIcon,
-            label: "Revise",
-            activeClass: "text-purple-600 bg-white/60",
-            hoverClass: "hover:text-purple-600",
-        },
-        {
-            id: "context",
-            icon: CompassIcon,
-            label: "Document Context",
-            activeClass: "text-amber-600 bg-white/60",
-            hoverClass: "hover:text-amber-600",
-        },
-    ];
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-    const panelTitles: Record<NonNullable<Action>, string> = {
-        chat: "Chat with AI",
-        feedback: "Get Feedback",
-        revise: "Revise & Rewrite",
-        context: "Document Context",
-        settings: "AI Settings",
-    };
+const actions: {
+    id: NonNullable<Action>;
+    icon: typeof MessageCircleIcon;
+    label: string;
+    shortcut: string;
+    activeClass: string;
+    hoverClass: string;
+    requiresApiKey: boolean;
+}[] = [
+    {
+        id: "chat",
+        icon: MessageCircleIcon,
+        label: "Chat",
+        shortcut: isMac ? "⌘⇧1" : "Ctrl+Shift+1",
+        activeClass: "text-blue-600 bg-white/60",
+        hoverClass: "hover:text-blue-600",
+        requiresApiKey: true,
+    },
+    {
+        id: "feedback",
+        icon: ZapIcon,
+        label: "Feedback",
+        shortcut: isMac ? "⌘⇧2" : "Ctrl+Shift+2",
+        activeClass: "text-green-600 bg-white/60",
+        hoverClass: "hover:text-green-600",
+        requiresApiKey: true,
+    },
+    {
+        id: "revise",
+        icon: PenLineIcon,
+        label: "Revise",
+        shortcut: isMac ? "⌘⇧3" : "Ctrl+Shift+3",
+        activeClass: "text-purple-600 bg-white/60",
+        hoverClass: "hover:text-purple-600",
+        requiresApiKey: true,
+    },
+    {
+        id: "context",
+        icon: CompassIcon,
+        label: "Document Context",
+        shortcut: isMac ? "⌘⇧4" : "Ctrl+Shift+4",
+        activeClass: "text-amber-600 bg-white/60",
+        hoverClass: "hover:text-amber-600",
+        requiresApiKey: true,
+    },
+];
 
-    const expanded = $derived(action !== null);
-    // Remember to also update the CSS style on line 212
-    const DEFAULT_WIDTH = 320;
-    const DEFAULT_HEIGHT = 520;
-    const MIN_WIDTH = 240;
-    const MAX_WIDTH = 600;
-    const MIN_HEIGHT = 400;
-    const MAX_HEIGHT = 800;
+const panelTitles: Record<NonNullable<Action>, string> = {
+    chat: "Chat with AI",
+    feedback: "Get Feedback",
+    revise: "Revise & Rewrite",
+    context: "Document Context",
+    settings: "AI Settings",
+};
 
-    let customWidth = $state<number | null>(null);
-    let customHeight = $state<number | null>(null);
-    let isResizing = $state(false);
+const expanded = $derived(action !== null);
+// Remember to also update the CSS style on line 212
+const DEFAULT_WIDTH = 320;
+const DEFAULT_HEIGHT = 520;
+const MIN_WIDTH = 240;
+const MAX_WIDTH = 600;
+const MIN_HEIGHT = 400;
+const MAX_HEIGHT = 800;
 
-    // Plain vars — not reactive, only used inside handlers
-    let resizeStartX = 0;
-    let resizeStartY = 0;
-    let resizeStartWidth = 0;
-    let resizeStartHeight = 0;
-    let activeHandle: "right" | "bottom" | "corner" | null = null;
-    let justResized = false;
+let customWidth = $state<number | null>(null);
+let customHeight = $state<number | null>(null);
+let isResizing = $state(false);
 
-    const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
-    const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
-    const isCustomSize = $derived(customWidth !== null || customHeight !== null);
+// Plain vars — not reactive, only used inside handlers
+let resizeStartX = 0;
+let resizeStartY = 0;
+let resizeStartWidth = 0;
+let resizeStartHeight = 0;
+let activeHandle: "right" | "bottom" | "corner" | null = null;
+let justResized = false;
 
-    // Inline style only when expanded AND user has resized (overrides Tailwind)
-    const containerSizeStyle = $derived(
-        expanded && (customWidth !== null || customHeight !== null)
-            ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
-            : ""
-    );
+const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
+const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
+const isCustomSize = $derived(customWidth !== null || customHeight !== null);
 
-    // Disable transition during active drag; keep it for expand/collapse
-    const transitionClass = $derived(
-        isResizing
-            ? ""
-            : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]"
-    );
+// Inline style only when expanded AND user has resized (overrides Tailwind)
+const containerSizeStyle = $derived(
+    expanded && (customWidth !== null || customHeight !== null)
+        ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
+        : "",
+);
 
-    let container: HTMLDivElement;
-    let iconStrip = $state<HTMLDivElement>();
-    let iconEls = $state<HTMLButtonElement[]>([]);
+// Disable transition during active drag; keep it for expand/collapse
+const transitionClass = $derived(
+    isResizing
+        ? ""
+        : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
+);
 
-    function handleClickOutside(e: MouseEvent) {
-        if (justResized) {
-            justResized = false;
-            return;
-        }
-        const target = e.target as Node;
-        if (
-            expanded &&
-            container &&
-            !container.contains(target) &&
-            !(target as Element).closest?.(".cm-editor")
-        ) {
-            action = null;
-        }
+let container: HTMLDivElement;
+let iconStrip = $state<HTMLDivElement>();
+let iconEls = $state<HTMLButtonElement[]>([]);
+
+function handleClickOutside(e: MouseEvent) {
+    if (justResized) {
+        justResized = false;
+        return;
     }
-
-    function selectAction(id: NonNullable<Action>) {
-        action = id;
-        scrollActiveIntoCenter(id);
+    const target = e.target as Node;
+    if (
+        expanded &&
+        container &&
+        !container.contains(target) &&
+        !(target as Element).closest?.(".cm-editor")
+    ) {
+        action = null;
     }
+}
 
-    function scrollActiveIntoCenter(id: NonNullable<Action>) {
-        tick().then(() => {
-            if (!iconStrip) return;
-            const idx = actions.findIndex((a) => a.id === id);
-            const el = iconEls[idx];
-            if (!el) return;
-            const stripRect = iconStrip.getBoundingClientRect();
-            const elRect = el.getBoundingClientRect();
-            const offset = elRect.left - stripRect.left + elRect.width / 2 - stripRect.width / 2;
-            iconStrip.scrollBy({ left: offset, behavior: "smooth" });
-        });
+function selectAction(id: NonNullable<Action>) {
+    const def = actions.find((a) => a.id === id);
+    if (def?.requiresApiKey && !hasApiKey()) {
+        action = "settings";
+        return;
     }
+    action = id;
+    posthog.capture("ai_sidebar_opened", { mode: id });
+    scrollActiveIntoCenter(id);
+}
 
-    function resetSize() {
-        customWidth = null;
-        customHeight = null;
+function scrollActiveIntoCenter(id: NonNullable<Action>) {
+    tick().then(() => {
+        if (!iconStrip) return;
+        const idx = actions.findIndex((a) => a.id === id);
+        const el = iconEls[idx];
+        if (!el) return;
+        const stripRect = iconStrip.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const offset = elRect.left - stripRect.left + elRect.width / 2 - stripRect.width / 2;
+        iconStrip.scrollBy({ left: offset, behavior: "smooth" });
+    });
+}
+
+function resetSize() {
+    customWidth = null;
+    customHeight = null;
+}
+
+function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
+    e.preventDefault();
+    e.stopPropagation();
+    activeHandle = handle;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartWidth = effectiveWidth;
+    resizeStartHeight = effectiveHeight;
+    isResizing = true;
+    window.addEventListener("mousemove", onResizeMove);
+    window.addEventListener("mouseup", onResizeEnd);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor =
+        handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
+}
+
+function onResizeMove(e: MouseEvent) {
+    if (!activeHandle) return;
+    const dx = e.clientX - resizeStartX;
+    const dy = e.clientY - resizeStartY;
+    if (activeHandle === "right" || activeHandle === "corner") {
+        customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
     }
-
-    function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
-        e.preventDefault();
-        e.stopPropagation();
-        activeHandle = handle;
-        resizeStartX = e.clientX;
-        resizeStartY = e.clientY;
-        resizeStartWidth = effectiveWidth;
-        resizeStartHeight = effectiveHeight;
-        isResizing = true;
-        window.addEventListener("mousemove", onResizeMove);
-        window.addEventListener("mouseup", onResizeEnd);
-        document.body.style.userSelect = "none";
-        document.body.style.cursor =
-            handle === "right" ? "ew-resize"
-            : handle === "bottom" ? "ns-resize"
-            : "nwse-resize";
+    if (activeHandle === "bottom" || activeHandle === "corner") {
+        customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
     }
+}
 
-    function onResizeMove(e: MouseEvent) {
-        if (!activeHandle) return;
-        const dx = e.clientX - resizeStartX;
-        const dy = e.clientY - resizeStartY;
-        if (activeHandle === "right" || activeHandle === "corner") {
-            customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
-        }
-        if (activeHandle === "bottom" || activeHandle === "corner") {
-            customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
-        }
+function onResizeEnd() {
+    isResizing = false;
+    activeHandle = null;
+    justResized = true;
+    window.removeEventListener("mousemove", onResizeMove);
+    window.removeEventListener("mouseup", onResizeEnd);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+}
+
+// Center the active icon whenever the panel opens
+$effect(() => {
+    if (expanded && action && action !== "settings") {
+        scrollActiveIntoCenter(action);
     }
+});
 
-    function onResizeEnd() {
-        isResizing = false;
-        activeHandle = null;
-        justResized = true;
+// Cleanup resize listeners on unmount
+$effect(() => {
+    return () => {
         window.removeEventListener("mousemove", onResizeMove);
         window.removeEventListener("mouseup", onResizeEnd);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
-    }
+    };
+});
 
-    // Center the active icon whenever the panel opens
-    $effect(() => {
-        if (expanded && action && action !== "settings") {
-            scrollActiveIntoCenter(action);
+// Keyboard shortcuts for the sidebar
+const actionKeys: Record<string, NonNullable<Action>> = {
+    "1": "chat",
+    "2": "feedback",
+    "3": "revise",
+    "4": "context",
+};
+
+function handleKeydown(e: KeyboardEvent) {
+    // Escape closes the sidebar
+    if (e.key === "Escape" && expanded) {
+        // Only close if focus is not inside an input/textarea in the sidebar
+        const target = e.target as HTMLElement;
+        const isInInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+        if (!isInInput) {
+            action = null;
         }
-    });
-
-    // Cleanup resize listeners on unmount
-    $effect(() => {
-        return () => {
-            window.removeEventListener("mousemove", onResizeMove);
-            window.removeEventListener("mouseup", onResizeEnd);
-            document.body.style.userSelect = "";
-            document.body.style.cursor = "";
-        };
-    });
+        return;
+    }
+    // Cmd/Ctrl+Shift+1-4 to open specific panels
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && actionKeys[e.key]) {
+        e.preventDefault();
+        selectAction(actionKeys[e.key]);
+    }
+}
 </script>
 
-<svelte:window onclick={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} onkeydown={handleKeydown} />
+
+{#snippet kbdHint(key: string)}
+    <span class="ml-auto text-[9px] font-mono opacity-50 bg-black/10 px-1 py-0.5 rounded">{key}</span>
+{/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -220,12 +332,16 @@
     >
         <div class="flex flex-col gap-1">
             {#each actions as a}
+                {@const disabled = a.requiresApiKey && !hasApiKey()}
                 <button
                     id="ai-tab-{a.id}"
-                    onclick={() => (action = a.id)}
-                    aria-label={a.label}
-                    title={a.label}
-                    class="p-2 rounded-full text-black/50 transition-colors {a.hoverClass}"
+                    onclick={() => selectAction(a.id)}
+                    aria-label={disabled ? `${a.label} (add API key in settings)` : `${a.label} (${a.shortcut})`}
+                    title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
+                    class="p-2 rounded-full transition-colors
+                        {disabled
+                            ? 'text-black/20 cursor-pointer'
+                            : 'text-black/50 ' + a.hoverClass}"
                 >
                     <a.icon size={18} />
                 </button>
@@ -234,11 +350,15 @@
         <div class="flex-1"></div>
         <button
             onclick={() => (action = "settings")}
-            aria-label="AI Settings"
-            title="AI Settings"
-            class="p-2 rounded-full text-black/30 hover:text-black/60 transition-colors"
+            aria-label={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
+            title={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
+            class="relative p-2 rounded-full transition-colors
+                {hasApiKey() ? 'text-black/30 hover:text-black/60' : 'text-amber-600/80 hover:text-amber-700'}"
         >
             <Settings2Icon size={15} />
+            {#if !hasApiKey()}
+                <span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            {/if}
         </button>
     </div>
 
@@ -259,16 +379,19 @@
                     {@const dist = Math.abs(i - activeIdx)}
                     {@const scale = activeIdx < 0 ? 1 : dist === 0 ? 1 : dist === 1 ? 0.88 : 0.76}
                     {@const opacity = activeIdx < 0 ? 0.5 : dist === 0 ? 1 : dist === 1 ? 0.45 : 0.25}
+                    {@const disabled = a.requiresApiKey && !hasApiKey()}
                     <button
                         bind:this={iconEls[i]}
                         onclick={() => selectAction(a.id)}
-                        aria-label={a.label}
-                        title={a.label}
-                        style="transform: scale({scale}); opacity: {opacity};"
+                        aria-label={disabled ? `${a.label} (add API key in settings)` : `${a.label} (${a.shortcut})`}
+                        title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
+                        style="transform: scale({scale}); opacity: {disabled ? opacity * 0.4 : opacity};"
                         class="p-2 rounded-full shrink-0 transition-all duration-200
                             {action === a.id
                                 ? a.activeClass
-                                : 'text-black/70 hover:bg-white/30'}"
+                                : disabled
+                                    ? 'text-black/30'
+                                    : 'text-black/70 hover:bg-white/30'}"
                     >
                         <a.icon size={16} />
                     </button>
@@ -324,6 +447,7 @@
     </div>
 
     {#if expanded}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize width"
@@ -331,6 +455,7 @@
             class="resize-handle resize-handle-right"
             onmousedown={(e) => startResize(e, "right")}
         ></div>
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize height"
@@ -338,6 +463,7 @@
             class="resize-handle resize-handle-bottom"
             onmousedown={(e) => startResize(e, "bottom")}
         ></div>
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize panel"
@@ -355,6 +481,9 @@
     .resize-handle {
         position: absolute;
         z-index: 10;
+        /*background: transparent;
+        border: 0;
+        padding: 0;*/
     }
 
     .resize-handle-right {

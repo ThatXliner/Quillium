@@ -1,33 +1,113 @@
+<!--
+    Chat.svelte — Free-form conversational AI panel (blue theme).
+
+    Provides a simple chat interface where the writer can ask questions
+    about their document. Uses the "chat" mode stream which has no tool
+    definitions — the LLM responds with plain text only.
+
+    State machine (driven by `chat.status` from @ai-sdk/svelte Chat):
+      ready     — user can type and submit.
+      submitted — message sent, waiting for first token.
+      streaming — tokens arriving, "Thinking..." indicator shown.
+      error     — request failed, error message displayed.
+
+    The `$effect` block syncs `chat.status` to `aiProcessing.active`
+    so the sidebar glow activates during requests.
+
+    Dependencies: chatFactory (createAiChat), utils (renderMarkdown),
+    stores (selectedText, documentContent), posthog.
+-->
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+/*
+ * Chat.svelte
+ *
+ * Free-form conversational AI panel (blue theme).
+ *
+ * Renders:
+ *   A scrollable message list with user/assistant bubbles, a
+ *   streaming indicator, error display, and a bottom input form
+ *   with selection-context chip.
+ *
+ * Props: none.
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - $selectedText — shown as a context chip above the input;
+ *     included in the chat's system prompt by chatFactory.
+ *   - $documentContent — used by chatFactory for document context.
+ *
+ * Stores written:
+ *   - aiProcessing.active (via setAiProcessing) — set true while
+ *     streaming so the sidebar glow activates.
+ *
+ * AI streaming layer:
+ *   Uses createAiChat({ mode: "chat" }) which returns a chat
+ *   object from @ai-sdk/svelte. No tool definitions — the LLM
+ *   responds with plain text only. Messages render markdown via
+ *   renderMarkdown (async, returns sanitized HTML).
+ *
+ * State machine (chat.status):
+ *   ready -> submitted -> streaming -> ready
+ *                                   \-> error
+ */
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { appSettings } from "$lib/settings.svelte";
+import posthog from "$lib/posthog";
 
-    let input = $state("");
-    const { chat, clearChat } = createAiChat({ mode: "chat" });
+let input = $state("");
+const { chat, clearChat } = createAiChat({ mode: "chat" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
 
-    async function handleSubmit(event: Event) {
-        event.preventDefault();
-        const formData = new FormData(event.target as HTMLFormElement);
-        const userMessage = formData.get("message") as string;
-        if (!userMessage.trim() || chat.status !== "ready") return;
-        await chat.sendMessage({ text: userMessage });
-        input = "";
-    }
+function useQuickPrompt(prompt: string) {
+    posthog.capture("ai_chat_quick_prompt_used", {
+        has_selection: !!$selectedText,
+    });
+    chat.sendMessage({ text: prompt });
+}
+
+// Sync streaming state to the global AI processing indicator
+// so the sidebar glow activates during chat requests.
+// States: ready -> submitted -> streaming -> ready (or error).
+$effect(() => {
+    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
+
+/**
+ * Extract the user's message from the form, validate it, send it
+ * to the AI chat, and clear the input. Captures a posthog event
+ * with selection context and message length.
+ */
+async function handleSubmit(event: Event) {
+    event.preventDefault();
+    const formData = new FormData(event.target as HTMLFormElement);
+    const userMessage = formData.get("message") as string;
+    if (!userMessage.trim() || chat.status !== "ready") return;
+    posthog.capture("ai_chat_message_sent", {
+        has_selection: !!$selectedText,
+        message_length: userMessage.length,
+    });
+    await chat.sendMessage({ text: userMessage });
+    input = "";
+}
 </script>
 
 <div class="flex flex-col h-full">
-    <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 relative">
-        {#if chat.messages.length > 0}
+    <!-- Clear chat row -->
+    {#if chat.messages.length > 0}
+        <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
                 onclick={clearChat}
-                title="Clear chat"
-                class="absolute top-2 right-2 text-[10px] text-black/25 hover:text-black/50 transition-colors"
-            >Clear</button>
-        {/if}
+                title="Start a fresh conversation (clears all messages)"
+                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
+            >New chat</button>
+        </div>
+    {/if}
+
+    <!-- Chat messages -->
+    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message (message.id)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}
@@ -100,6 +180,19 @@
 
     <!-- Input form -->
     <div class="border-t border-black/10 p-3 bg-white/30">
+        {#if customChatPrompts.length > 0}
+            <div class="mb-2 flex flex-wrap gap-1.5">
+                {#each customChatPrompts as { label, prompt }}
+                    <button
+                        onclick={() => useQuickPrompt(prompt)}
+                        disabled={chat.status !== "ready" || !$documentContent}
+                        class="px-2 py-1 text-xs bg-white hover:bg-blue-50 rounded border border-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {label}
+                    </button>
+                {/each}
+            </div>
+        {/if}
         {#if $selectedText}
             <div
                 class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"

@@ -1,40 +1,73 @@
 <script lang="ts">
-    import { ChevronRight, SparklesIcon, X } from "lucide-svelte";
-    import { tick } from "svelte";
-    import type { EditorView } from "@codemirror/view";
-    import { modalStack } from "$lib/stores";
-    import { annotationField, diffTokens, tokenize, type Annotation } from ".";
+/**
+ * DiffModal.svelte — Full-screen modal showing a token-level
+ * diff between the original document text and a chosen AI
+ * suggestion replacement.
+ *
+ * Props:
+ *   - suggestionId: number — ID of the suggestion annotation
+ *   - parentView: EditorView — the CodeMirror editor that
+ *     owns the suggestion (used to read annotation state)
+ *   - stackIndex: number — this modal's position in the
+ *     global modalStack (used for breadcrumb rendering)
+ *
+ * Events emitted: none
+ * Stores:
+ *   - modalStack (read/write): breadcrumb trail + pop on close
+ *
+ * Parent: rendered by the modal layer in +page.svelte
+ * Children: none
+ *
+ * Layout: left pane = diff view, right sidebar = replacement
+ * list with optional rationale text.
+ */
+import { ChevronRight, SparklesIcon, X } from "lucide-svelte";
+import type { EditorView } from "@codemirror/view";
+import { modalStack } from "$lib/stores";
+import { annotationField, diffTokens, tokenize, type Annotation } from ".";
 
-    const { suggestionId, parentView, stackIndex }: { suggestionId: number; parentView: EditorView; stackIndex: number } = $props();
+const {
+    suggestionId,
+    parentView,
+    stackIndex,
+}: { suggestionId: number; parentView: EditorView; stackIndex: number } = $props();
 
-    const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
+// Breadcrumb trail sliced up to and including this modal level
+const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
-    let dialogEl = $state<HTMLDialogElement>();
+let dialogEl = $state<HTMLDialogElement>();
 
-    const suggestion = $derived(
-        parentView.state.field(annotationField)[suggestionId] as Annotation<"suggestion"> | undefined,
-    );
+// NOTE: $derived on parentView.state.field(...) is NOT reactive to CodeMirror
+// transactions — parentView is a plain prop, not $state, so Svelte cannot track
+// mutations to view.state. This expression only runs once at component init.
+// Reactivity for state changes would require either a manually-synced $state
+// mirror (like modalAnnotations in RevisionModal) or reading from the global
+// $annotations store. For DiffModal, the suggestion content is effectively
+// static once the modal opens, so the lack of reactivity is acceptable.
+const suggestion = $derived(
+    parentView.state.field(annotationField)[suggestionId] as Annotation<"suggestion"> | undefined,
+);
 
-    let selectedIndex = $state(0);
+let selectedIndex = $state(0);
 
-    const ops = $derived.by(() => {
-        if (!suggestion) return [];
-        const replacement = suggestion.replacements[selectedIndex];
-        if (!replacement) return [];
-        const { from, to } = suggestion.selection.main;
-        const original = parentView.state.sliceDoc(from, to);
-        return diffTokens(tokenize(original), tokenize(replacement.text));
-    });
+// Compute diff ops whenever the selected replacement changes
+const ops = $derived.by(() => {
+    if (!suggestion) return [];
+    const replacement = suggestion.replacements[selectedIndex];
+    if (!replacement) return [];
+    const { from, to } = suggestion.selection.main;
+    const original = parentView.state.sliceDoc(from, to);
+    return diffTokens(tokenize(original), tokenize(replacement.text));
+});
 
-    function close() {
-        modalStack.pop();
-    }
+function close() {
+    modalStack.pop();
+}
 
-    $effect(() => {
-        tick().then(() => {
-            if (dialogEl && !dialogEl.open) dialogEl.showModal();
-        });
-    });
+// Open the <dialog> element as a modal once it is bound.
+$effect(() => {
+    if (dialogEl && !dialogEl.open) dialogEl.showModal();
+});
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -42,6 +75,7 @@
     bind:this={dialogEl}
     class="diff-modal"
     onclick={(e) => { if (e.target === dialogEl) close(); }}
+    oncancel={(e) => { e.preventDefault(); close(); }}
 >
     <div class="diff-modal-inner">
         <!-- Header -->
@@ -63,9 +97,10 @@
                 </nav>
             </div>
             <button
-                class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
                 onclick={close}
             >
+                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
                 <X size={16} />
             </button>
         </div>

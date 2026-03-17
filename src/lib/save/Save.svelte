@@ -1,46 +1,58 @@
+<!--
+    Save.svelte — Glassmorphic dropdown menu for document actions.
+
+    Rendered inside the StatusBar. Provides destructive document
+    operations (currently "Scrap draft") behind a dropdown trigger
+    styled with backdrop-blur and inset shadows to match the
+    neumorphic/glassmorphic design language.
+
+    Interacts with:
+      - Tauri backend via `invoke("scrap")` to delete the current
+        draft on disk, then reloads the page for a fresh start.
+      - PostHog for analytics event tracking ("draft_scrapped").
+-->
 <script>
 import { invoke } from "@tauri-apps/api/core";
 import { DropdownMenu } from "bits-ui";
-import {
-	Trash2,
-	ChevronDown,
-	Images,
-	FolderPlus,
-	SaveIcon,
-	FlameIcon,
-} from "lucide-svelte";
+import { Trash2, ChevronDown, Images, FolderPlus, SaveIcon, FlameIcon } from "lucide-svelte";
+import posthog from "$lib/posthog";
+
+/** Scrap the current draft via Tauri and reload the app. */
+function scrapDraftAndReload() {
+    posthog.capture("draft_scrapped");
+    invoke("scrap").then(() => {
+        // See issue #80: show a confirmation toast after reload.
+        window.location.reload();
+    });
+}
+
 const options = [
-	// {
-	// 	name: "Clear history",
-	// 	icon: FlameIcon,
-	// 	props: {
-	// 		onclick: () => {
-	//
-	// 		},
-	// 	},
-	// },
-	{
-		name: "Scrap draft",
-		icon: Trash2,
-		props: {
-			onclick: () => {
-				invoke("scrap").then(() => {
-					// TODO: a popup when loaded
-					window.location.reload();
-				});
-			},
-		},
-	},
-	// {
-	// 	name: "New project",
-	// 	icon: FolderPlus,
-	// 	props: { onclick: () => console.log("New project") },
-	// },
-	// {
-	// 	name: "See gallery",
-	// 	icon: Images,
-	// 	props: { onclick: () => console.log("See gallery") },
-	// },
+    // {
+    // 	name: "Clear history",
+    // 	icon: FlameIcon,
+    // 	props: {
+    // 		onclick: () => {
+    //
+    // 		},
+    // 	},
+    // },
+    {
+        name: "Scrap draft",
+        icon: Trash2,
+        props: {
+            onclick: scrapDraftAndReload,
+        },
+    },
+    // {
+    // 	name: "New project",
+    // 	icon: FolderPlus,
+    // 	props: { onclick: () => console.log("New project") },
+    // },
+    // {
+    // 	name: "See gallery",
+    // 	icon: Images,
+    // 	props: { onclick: () => console.log("See gallery") },
+    // },
 ];
 </script>
 

@@ -1,45 +1,140 @@
+<!--
+    Revise.svelte — Text revision AI panel (purple theme).
+
+    Provides targeted rewriting and revision suggestions. Uses the
+    "revise" mode stream which includes two tools:
+      - createSuggestion: proposes one or more rewritten versions of a
+        passage, each with an optional rationale.
+      - createComment: adds an explanatory note about the revision.
+
+    These tool calls are routed through chatFactory.handleToolCall to
+    the annotation system, which attaches inline suggestions/comments
+    to the CodeMirror editor.
+
+    Features:
+      - "Revise" quick-action button (selection-aware).
+      - Quick-prompt grid for common revision tasks (conciseness, flow,
+        grammar, etc.).
+
+    State machine (driven by `chat.status`):
+      ready     — user can submit or click a quick action.
+      submitted — waiting for first token.
+      streaming — tokens arriving, "Revising..." indicator shown.
+      error     — implicit (chat.error set).
+
+    Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
+-->
 <script lang="ts">
-    import { selectedText, documentContent } from "$lib/stores";
-    import { renderMarkdown } from "$lib/ai/utils";
-    import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+/*
+ * Revise.svelte
+ *
+ * Text revision AI panel (purple theme).
+ *
+ * Renders:
+ *   A "Revise" quick-action button, a grid of quick-prompt chips
+ *   for common revision tasks, scrollable message list with
+ *   user/assistant bubbles, streaming indicator, and a bottom
+ *   input form with selection-context chip.
+ *
+ * Props: none.
+ * Events: none dispatched.
+ *
+ * Stores read:
+ *   - $selectedText — toggles quick-action label and scopes
+ *     quick prompts to "this selected text" vs "my document".
+ *   - $documentContent — gates action buttons (disabled when empty)
+ *     and displayed as character count.
+ *
+ * Stores written:
+ *   - aiProcessing.active (via setAiProcessing) — true while
+ *     streaming so the sidebar glow activates.
+ *
+ * AI streaming layer:
+ *   Uses createAiChat({ mode: "revise" }) which provides two
+ *   tool definitions: createSuggestion (proposes rewritten
+ *   versions with optional rationale) and createComment (adds
+ *   explanatory notes). Tool calls are routed through
+ *   chatFactory.handleToolCall to the annotation system.
+ *
+ * State machine (chat.status):
+ *   ready -> submitted -> streaming -> ready
+ *                                   \-> error (chat.error set)
+ */
+import { selectedText, documentContent } from "$lib/stores";
+import { renderMarkdown } from "$lib/ai/utils";
+import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { appSettings } from "$lib/settings.svelte";
+import posthog from "$lib/posthog";
 
-    let input = $state("");
+let input = $state("");
 
-    const { chat, clearChat } = createAiChat({ mode: "revise" });
+const { chat, clearChat } = createAiChat({ mode: "revise" });
 
-    $effect(() => { setAiProcessing(chat.status === "submitted" || chat.status === "streaming"); });
+// Sync streaming state to the global AI processing indicator.
+// States: ready -> submitted -> streaming -> ready (or error).
+$effect(() => {
+    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+});
 
-    function handleSubmit(event: SubmitEvent) {
-        event.preventDefault();
-        if (!input.trim() || chat.status !== "ready") return;
+function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+    if (!input.trim() || chat.status !== "ready") return;
 
-        chat.sendMessage({ text: input });
-        input = "";
-    }
+    posthog.capture("ai_revise_requested", {
+        has_selection: !!$selectedText,
+        trigger: "manual",
+    });
+    chat.sendMessage({ text: input });
+    input = "";
+}
 
-    function reviseText() {
-        const context = $selectedText
-            ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
-            : "Please revise my document to improve flow and conciseness.";
+/**
+ * Build a selection-aware revision prompt and send it as a chat
+ * message. If text is selected, targets the selection; otherwise
+ * targets the whole document.
+ */
+function reviseText() {
+    const context = $selectedText
+        ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
+        : "Please revise my document to improve flow and conciseness.";
 
-        input = context;
-        chat.sendMessage({ text: context });
-    }
+    posthog.capture("ai_revise_requested", {
+        has_selection: !!$selectedText,
+        trigger: "quick_action",
+    });
+    input = context;
+    chat.sendMessage({ text: context });
+}
 
-    const quickPrompts = [
-        "Make this more concise",
-        "Improve the flow and transitions",
-        "Make this more engaging",
-        "Fix grammar and style issues",
-        "Simplify complex sentences",
-    ];
+const defaultQuickPrompts = [
+    { label: "Make this more concise", prompt: "Make this more concise" },
+    { label: "Improve the flow and transitions", prompt: "Improve the flow and transitions" },
+    { label: "Make this more engaging", prompt: "Make this more engaging" },
+    { label: "Fix grammar and style issues", prompt: "Fix grammar and style issues" },
+    { label: "Simplify complex sentences", prompt: "Simplify complex sentences" },
+];
 
-    function useQuickPrompt(prompt: string) {
-        const target = $selectedText ? "this selected text" : "my document";
-        const message = `${prompt} in ${target}`;
-        input = message;
-        chat.sendMessage({ text: message });
-    }
+let allRevisePrompts = $derived([
+    ...defaultQuickPrompts,
+    ...appSettings.customQuickActions
+        .filter((a) => a.panel === "revise")
+        .map((a) => ({ label: a.label, prompt: a.prompt })),
+]);
+
+/**
+ * Compose a revision message from a quick-prompt chip, scoped to
+ * the current selection or the full document, then send it.
+ */
+function useQuickPrompt(prompt: string) {
+    const target = $selectedText ? "this selected text" : "my document";
+    const message = `${prompt} in ${target}`;
+    posthog.capture("ai_revise_quick_prompt_used", {
+        prompt,
+        has_selection: !!$selectedText,
+    });
+    input = message;
+    chat.sendMessage({ text: message });
+}
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
@@ -62,27 +157,31 @@
 
         <!-- Quick prompts -->
         <div class="mt-2 grid grid-cols-2 gap-1.5">
-            {#each quickPrompts as prompt}
+            {#each allRevisePrompts as { label, prompt }}
                 <button
                     onclick={() => useQuickPrompt(prompt)}
                     disabled={chat.status !== "ready" || !$documentContent}
                     class="px-2 py-1.5 text-xs bg-white hover:bg-purple-50 rounded border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
                 >
-                    {prompt}
+                    {label}
                 </button>
             {/each}
         </div>
     </div>
 
-    <!-- Chat messages -->
-    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 relative">
-        {#if chat.messages.length > 0}
+    <!-- Clear chat row -->
+    {#if chat.messages.length > 0}
+        <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
                 onclick={clearChat}
-                title="Clear chat"
-                class="absolute top-2 right-2 text-[10px] text-black/25 hover:text-black/50 transition-colors"
-            >Clear</button>
-        {/if}
+                title="Start a fresh conversation (clears all messages)"
+                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
+            >New chat</button>
+        </div>
+    {/if}
+
+    <!-- Chat messages -->
+    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {#each chat.messages as message, messageIndex (messageIndex)}
             {#each message.parts as part, partIndex (partIndex)}
                 {#if part.type === "text"}

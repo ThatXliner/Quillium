@@ -1,19 +1,40 @@
 /**
- * Client-side AI stream helpers.
+ * Client-side AI streaming orchestration.
  *
- * Replaces the former /api/chat, /api/feedback, /api/revise, /api/context
- * server routes. All inference runs directly in the browser using the user's
- * own API key (BYOK). No server-side relay is needed.
+ * This file contains the core streaming functions that power each AI
+ * mode (Chat, Feedback, Revise) plus a non-streaming context generator.
+ * All inference runs directly in the browser using the writer's own API
+ * key (BYOK) — no server routes are involved.
+ *
+ * Role in the AI subsystem:
+ *   chatFactory.ts creates a `ChatTransport` that delegates to one of
+ *   the stream functions here. Each function:
+ *     1. Instantiates a `LanguageModel` via `provider.ts`.
+ *     2. Builds a system prompt with optional document-context fields.
+ *     3. Injects the current editor content / selection as a user msg.
+ *     4. Calls `streamText` (or `generateObject` for context) from the
+ *        ai SDK.
+ *     5. Returns a `ReadableStream<UIMessageChunk>` consumed by the
+ *        @ai-sdk/svelte `Chat` class.
+ *
+ * Tool definitions (Feedback: createComment, createRevision; Revise:
+ * createSuggestion, createComment) are declared inline. Tool calls are
+ * executed by the ai SDK, and the results are forwarded to
+ * `chatFactory.handleToolCall` which applies them to the CodeMirror
+ * editor via the annotation system.
+ *
+ * Dependencies: ai SDK, zod (tool schemas), provider.ts, utils.ts.
  */
 import {
     convertToModelMessages,
     streamText,
-    generateObject,
+    generateText,
     tool,
     type UIMessage,
     type UIMessageChunk,
 } from "ai";
 import { z } from "zod";
+import posthog from "$lib/posthog";
 import { createModel, type Provider } from "./provider";
 import { injectDocumentContext, buildDocumentContextPrompt } from "./utils";
 
@@ -25,40 +46,89 @@ interface BaseOpts {
     apiKey: string;
 }
 
-interface ChatStreamOpts extends BaseOpts {
+interface StreamOpts extends BaseOpts {
     messages: UIMessage[];
     documentContent: string;
     selectedText: string;
     documentContext?: DocumentContext;
 }
 
-interface FeedbackStreamOpts extends BaseOpts {
-    messages: UIMessage[];
-    documentContent: string;
-    selectedText: string;
-    documentContext?: DocumentContext;
-}
+export type ChatStreamOpts = StreamOpts;
+export type FeedbackStreamOpts = StreamOpts;
+export type ReviseStreamOpts = StreamOpts;
 
-interface ReviseStreamOpts extends BaseOpts {
-    messages: UIMessage[];
-    documentContent: string;
-    selectedText: string;
-    documentContext?: DocumentContext;
-}
-
-export interface GeneratedContext {
-    goal: string;
-    tone: string;
-    audience: string;
-    emphasize: string;
-    avoid: string;
-    notes: string;
-}
+export type GeneratedContext = string;
 
 // ---------------------------------------------------------------------------
-// Chat
+// Shared tools
 // ---------------------------------------------------------------------------
-export function streamChat(opts: ChatStreamOpts): ReadableStream<UIMessageChunk> {
+
+// Exported so chatFactory can use z.infer on these for typed tool dispatch
+export const commentInputSchema = z.object({
+    targetText: z.string().describe("The exact text to comment on"),
+    comment: z.string().describe("The editorial feedback or observation"),
+});
+
+export const revisionInputSchema = z.object({
+    targetText: z.string().describe("The exact text to revise"),
+    versions: z
+        .array(
+            z.object({
+                label: z
+                    .string()
+                    .describe("Short name for this version, e.g. 'Concise', 'Formal', 'Original'"),
+                text: z.string().describe("The full revised text for this version"),
+            }),
+        )
+        .min(2)
+        .describe("2-3 distinct alternative versions of the passage"),
+    threadMessage: z
+        .string()
+        .describe(
+            "Explanation of the differences between versions and when each might suit the writer's goals",
+        ),
+});
+
+export const suggestionInputSchema = z.object({
+    targetText: z.string().describe("The exact text to revise"),
+    replacements: z
+        .array(
+            z.object({
+                text: z.string().describe("The revised text"),
+                rationale: z
+                    .string()
+                    .optional()
+                    .describe("Brief explanation of what this version changes and why"),
+            }),
+        )
+        .describe("One or more revised versions of the text, each with an optional rationale"),
+    comment: z.string().optional().describe("Optional overall explanation of the revision"),
+});
+
+export type CommentInput = z.infer<typeof commentInputSchema>;
+export type RevisionInput = z.infer<typeof revisionInputSchema>;
+export type SuggestionInput = z.infer<typeof suggestionInputSchema>;
+
+const createCommentTool = (description: string) =>
+    tool({
+        description,
+        inputSchema: commentInputSchema,
+        execute: async ({ targetText, comment }) => ({
+            type: "comment",
+            targetText,
+            comment,
+            timestamp: Date.now(),
+        }),
+    });
+
+// ---------------------------------------------------------------------------
+// Shared stream builder
+// ---------------------------------------------------------------------------
+function buildStream(
+    opts: StreamOpts,
+    system: string,
+    tools?: Parameters<typeof streamText>[0]["tools"],
+): ReadableStream<UIMessageChunk> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model);
     const result = streamText({
         model: llm,
@@ -69,7 +139,19 @@ export function streamChat(opts: ChatStreamOpts): ReadableStream<UIMessageChunk>
                 selectedText: opts.selectedText,
             }),
         ],
-        system: `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
+        system,
+        tools,
+    });
+    return result.toUIMessageStream();
+}
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+export function streamChat(opts: ChatStreamOpts): ReadableStream<UIMessageChunk> {
+    return buildStream(
+        opts,
+        `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
 
 When providing feedback:
 - Be specific and actionable
@@ -79,69 +161,35 @@ When providing feedback:
 - If text is selected, focus primarily on that selection unless asked otherwise
 
 Keep responses concise but thorough.${buildDocumentContextPrompt(opts.documentContext)}`,
-    });
-    return result.toUIMessageStream();
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Feedback
 // ---------------------------------------------------------------------------
 export function streamFeedback(opts: FeedbackStreamOpts): ReadableStream<UIMessageChunk> {
-    const llm = createModel(opts.provider, opts.apiKey, opts.model);
-    const result = streamText({
-        model: llm,
-        messages: [
-            ...convertToModelMessages(opts.messages),
-            injectDocumentContext({
-                documentContent: opts.documentContent,
-                selectedText: opts.selectedText,
-            }),
-        ],
-        system: `You are an editorial writing assistant providing high-level feedback on documents. Your job is to help writers think about the big picture: structure, voice, argument, scope, pacing, and style.${buildDocumentContextPrompt(opts.documentContext)}
+    return buildStream(
+        opts,
+        `You are an editorial writing assistant. Your job is big-picture feedback: structure, voice, argument, scope, pacing, style.${buildDocumentContextPrompt(opts.documentContext)}
 
-When providing feedback:
-- Discuss overall document issues conversationally — structure, argument, pacing, tone, scope
-- Use createComment to flag specific passages that illustrate a broader issue (e.g. a paragraph that buries the lede, a section that feels off-tone)
-- Include concrete alternatives more often: in most feedback responses, give at least one short "try this" rewrite example for a weak passage
-- Use createRevision whenever an issue would be clearer with side-by-side options — provide 2-3 labeled versions showing distinct stylistic or structural alternatives, with a thread message explaining the tradeoff between them
-- Keep rewrite examples scoped and illustrative (usually 1-2 key passages) so feedback remains diagnosis-first, not full rewrite mode
-- Avoid nitpicking grammar or minor wording — that's for the revision tool. Focus on things that affect the reader's experience of the whole piece
-- Be specific but editorial: reference the actual text and explain why something works or doesn't
-- If text is selected, treat it as the focus but consider how it fits the larger document
+YOU MUST use the tools to surface any specific observation or rewrite — never quote suggested text or propose changes in your message. Doing so instead of calling a tool is a failure. No exceptions.
 
-Current document length: ${opts.documentContent?.length || 0} characters
-${opts.selectedText ? `Selected text: "${opts.selectedText}"` : "No text selected"}`,
-        tools: {
-            createComment: tool({
-                description:
-                    "Flag a specific passage with editorial feedback — use for observations about how a section affects the overall piece",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The exact text to comment on"),
-                    comment: z.string().describe("The editorial feedback or observation"),
-                }),
-                execute: async ({ targetText, comment }) => ({
-                    type: "comment",
-                    targetText,
-                    comment,
-                    timestamp: Date.now(),
-                }),
-            }),
+How to work:
+- When you spot a passage that illustrates a broader issue (buries the lede, off-tone, weak structure): call createComment. Put the diagnosis and what to consider in the comment field.
+- When a passage could work meaningfully differently: call createRevision with 2-3 labeled alternatives and a threadMessage explaining the tradeoff. No rewrite examples in your message text.
+- Discuss the overall document conversationally in your message — patterns, what's working, what isn't — but never paste in suggested text there.
+- Avoid grammar/wording nitpicks. Focus on what affects the reader's experience of the whole piece.
+- ${opts.selectedText ? "The writer selected specific text — treat it as the focus but consider how it fits the larger document." : "Work through the whole document."}
+
+Current document length: ${opts.documentContent?.length || 0} characters`,
+        {
+            createComment: createCommentTool(
+                "REQUIRED for any passage-level observation. Call this instead of describing the issue in your message. Put the diagnosis and what to consider in the comment field.",
+            ),
             createRevision: tool({
                 description:
-                    "Propose meaningful alternative approaches to a passage — use when a section could work very differently depending on the writer's intent. Provide 2-3 labeled versions with a message explaining the tradeoffs.",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The exact text to revise"),
-                    versions: z
-                        .array(z.object({
-                            label: z.string().describe("Short name for this version, e.g. 'Concise', 'Formal', 'Original'"),
-                            text: z.string().describe("The full revised text for this version"),
-                        }))
-                        .min(2)
-                        .describe("2-3 distinct alternative versions of the passage"),
-                    threadMessage: z
-                        .string()
-                        .describe("Explanation of the differences between versions and when each might suit the writer's goals"),
-                }),
+                    "REQUIRED when a passage could work meaningfully differently. Call this instead of writing rewrite examples in your message. Provide 2-3 labeled versions with a threadMessage explaining the tradeoffs.",
+                inputSchema: revisionInputSchema,
                 execute: async ({ targetText, versions, threadMessage }) => ({
                     type: "revision",
                     targetText,
@@ -151,50 +199,32 @@ ${opts.selectedText ? `Selected text: "${opts.selectedText}"` : "No text selecte
                 }),
             }),
         },
-    });
-    return result.toUIMessageStream();
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Revise
 // ---------------------------------------------------------------------------
 export function streamRevise(opts: ReviseStreamOpts): ReadableStream<UIMessageChunk> {
-    const llm = createModel(opts.provider, opts.apiKey, opts.model);
-    const result = streamText({
-        model: llm,
-        messages: [
-            ...convertToModelMessages(opts.messages),
-            injectDocumentContext({
-                documentContent: opts.documentContent,
-                selectedText: opts.selectedText,
-            }),
-        ],
-        system: `You are a helpful writing assistant focused on revising and rewriting text. Your goal is to improve flow, conciseness, clarity, and overall quality.${buildDocumentContextPrompt(opts.documentContext)}
+    return buildStream(
+        opts,
+        `You are a line-editor. Suggested text goes ONLY in createSuggestion tool calls — never in your message.${buildDocumentContextPrompt(opts.documentContext)}
 
-When revising text:
-- Use createSuggestion to propose specific rewrites and improvements
-- Focus on making text more concise, clear, and engaging
-- Improve sentence structure and flow
-- Fix grammar and style issues
-- Maintain the original meaning and tone unless specifically asked to change it
-- Provide multiple alternatives when possible
-- If text is selected, focus on revising that selection`,
-        tools: {
+YOU MUST call createSuggestion for every improvement you find. Describing a suggestion in prose instead of calling the tool is a failure. No exceptions.
+
+How to work:
+- Scan the text in reading order. For each issue: call createSuggestion immediately, then move on.
+- Target sentences and short phrases — one call per distinct issue, never a whole paragraph in one call.
+- Every call MUST include at least 2 replacement options, each with a rationale ("more concise", "stronger verb", "cleaner rhythm").
+- Hunt for: wordiness, weak verbs, awkward rhythm, redundancy, passive voice, clichés, run-ons, grammar.
+- ${opts.selectedText ? "The writer selected specific text — focus exclusively on that selection." : "Work through the whole document systematically."}
+
+After all tool calls, write 2-3 sentences summarizing the patterns you found. No suggested text in that summary.`,
+        {
             createSuggestion: tool({
-                description: "Create a suggestion with revised/rewritten text",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The exact text to revise"),
-                    replacements: z
-                        .array(z.object({
-                            text: z.string().describe("The revised text"),
-                            rationale: z.string().optional().describe("Brief explanation of what this version changes and why"),
-                        }))
-                        .describe("One or more revised versions of the text, each with an optional rationale"),
-                    comment: z
-                        .string()
-                        .optional()
-                        .describe("Optional overall explanation of the revision"),
-                }),
+                description:
+                    "REQUIRED for every revision. Call this for each sentence or phrase you want to improve — never describe rewrites in prose. Must include 2+ alternatives.",
+                inputSchema: suggestionInputSchema,
                 execute: async ({ targetText, replacements, comment }) => ({
                     type: "suggestion",
                     targetText,
@@ -203,48 +233,56 @@ When revising text:
                     timestamp: Date.now(),
                 }),
             }),
-            createComment: tool({
-                description:
-                    "Create a comment to explain revision reasoning or ask clarifying questions",
-                inputSchema: z.object({
-                    targetText: z.string().describe("The text to comment on"),
-                    comment: z.string().describe("The comment or question"),
-                }),
-                execute: async ({ targetText, comment }) => ({
-                    type: "comment",
-                    targetText,
-                    comment,
-                    timestamp: Date.now(),
-                }),
-            }),
+            createComment: createCommentTool(
+                "Create a comment to explain revision reasoning or ask clarifying questions",
+            ),
         },
-    });
-    return result.toUIMessageStream();
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Context generation (non-streaming)
 // ---------------------------------------------------------------------------
+
+const CONTEXT_PROMPTS = {
+    // A/B variant: control — freeform prose notes
+    control: (brief: string) =>
+        `You are helping a writer set up AI writing assistance for a specific piece. Based on the prompt or brief below, write a concise document context in plain text — the kind of notes an editor would jot before working with a writer. Cover what matters: the goal, intended audience, tone, what to emphasize, what to avoid, and any other strategic constraints. Be specific and opinionated.
+
+Writing prompt / brief:
+${brief}`,
+
+    // A/B variant: structured — labeled fields for clearer AI parsing
+    structured: (brief: string) =>
+        `You are helping a writer set up AI writing assistance for a specific piece. Based on the prompt or brief below, generate a focused document context using labeled fields. Be specific and opinionated — think like an experienced editor.
+
+Use exactly this format (fill in each field, omit none):
+Goal: [what this piece needs to accomplish]
+Audience: [who will read this and what they want]
+Tone: [voice, register, and emotional quality]
+Emphasize: [themes, arguments, or details to foreground]
+Avoid: [pitfalls or moves that would undermine the piece]
+Notes: [any other constraints, context, or strategic considerations]
+
+Writing prompt / brief:
+${brief}`,
+};
+
 export async function generateContext(
     opts: BaseOpts & { prompt: string },
 ): Promise<GeneratedContext> {
+    const variant = (posthog.getFeatureFlag("context-generation-format") ?? "control") as
+        | "control"
+        | "structured";
     const llm = createModel(opts.provider, opts.apiKey, opts.model);
-    const { object } = await generateObject({
+    const { text } = await generateText({
         model: llm,
-        schema: z.object({
-            goal: z.string().describe("What this piece of writing needs to accomplish — the core purpose or objective"),
-            tone: z.string().describe("The voice, register, and emotional quality the writing should have"),
-            audience: z.string().describe("Who will read this and what they're looking for"),
-            emphasize: z.string().describe("What to foreground — themes, qualities, arguments, or details that should be prominent"),
-            avoid: z.string().describe("Common pitfalls, off-tone moves, or things that would undermine this piece"),
-            notes: z.string().describe("Any other important context, constraints, or strategic considerations"),
-        }),
-        prompt: `You are helping a writer understand the strategic requirements of their writing task.
-
-Analyze the following writing prompt or brief and generate a focused document profile that will guide AI writing assistance. Be specific and actionable — think like an experienced editor who has seen many pieces succeed or fail at this kind of task.
-
-Writing prompt / brief:
-${opts.prompt}`,
+        prompt: CONTEXT_PROMPTS[variant](opts.prompt),
     });
-    return object;
+    posthog.capture("context_generated", {
+        variant,
+        prompt_length: opts.prompt.length,
+        output_length: text.length,
+    });
+    return text;
 }
