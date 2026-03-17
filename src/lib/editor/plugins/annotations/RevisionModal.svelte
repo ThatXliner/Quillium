@@ -1149,7 +1149,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
   /* Base text layer (outermost / depth-0) */
   .context-text {
-    display: block;
     font-size: 11px;
     line-height: 1.7;
     color: rgba(80, 40, 120, 0.35);
@@ -1158,14 +1157,16 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     word-break: break-word;
   }
 
+  .context-depth-0 {
+    display: block;
+  }
+
 
   /* Each nesting level: inset block with deeper purple bg + stronger text */
   .context-nest {
     display: inline;
     border-radius: 4px;
-    padding: 2px 4px;
-    box-decoration-break: clone;
-    -webkit-box-decoration-break: clone;
+    padding: 1px 3px;
   }
 
   /* Depth 0: outermost revision highlight (light purple) */
