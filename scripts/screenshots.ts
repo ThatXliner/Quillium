@@ -34,8 +34,8 @@ const VIEWPORT = { width: 1440, height: 900 };
 const DEVICE_SCALE_FACTOR = 2;
 
 // Minimum fraction of pixels that must differ for a screenshot to be considered
-// "significantly changed" and worth committing. 0.005 = 0.5% of total pixels.
-const DIFF_THRESHOLD = 0.005;
+// "significantly changed" and worth committing. 0.01 = 1% of total pixels.
+const DIFF_THRESHOLD = 0.01;
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
