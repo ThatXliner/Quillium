@@ -43,6 +43,7 @@
 import type { EditorView } from "@codemirror/view";
 import { writable } from "svelte/store";
 import type { Annotations, GenericAnnotation } from "./editor/plugins/annotations";
+import posthog from "./posthog";
 
 /**
  * The main CodeMirror EditorView instance. Set once when
@@ -341,7 +342,14 @@ export const modalStack = {
                             entry.type === "diff" &&
                             existing.suggestionId === entry.suggestionId)),
             );
-            if (isDuplicate) return s;
+            if (isDuplicate) {
+                posthog.capture("modal_stack_duplicate_push", {
+                    entry_type: entry.type,
+                    revision_id: entry.type === "revision" ? entry.revisionId : undefined,
+                    suggestion_id: entry.type === "diff" ? entry.suggestionId : undefined,
+                });
+                return s;
+            }
             return [...s, entry];
         }),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
