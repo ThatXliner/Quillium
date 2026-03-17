@@ -4,19 +4,15 @@
 /* Serif */
 @import "@fontsource/eb-garamond/latin.css";
 @import "@fontsource/lora/latin.css";
-@import "@fontsource/im-fell-english/latin.css";
-@import "@fontsource/merriweather/latin.css";
 @import "@fontsource/ia-writer-quattro/latin.css";
 /* Sans */
 @import "@fontsource/raleway/latin.css";
 @import "@fontsource/inter/latin.css";
 @import "@fontsource/nunito/latin.css";
 /* Typewriter */
-@import "@fontsource/special-elite/latin.css";
 @import "@fontsource/courier-prime/latin.css";
 /* Handwriting */
 @import "@fontsource/caveat/latin.css";
-@import "@fontsource/kalam/latin.css";
 /* Accessibility */
 @import "@fontsource/opendyslexic/latin.css";
 
