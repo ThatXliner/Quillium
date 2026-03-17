@@ -14,10 +14,6 @@ import type {
     LoadResult,
 } from "./types";
 
-// ── Initialisation ────────────────────────────────────────────────
-
-export async function initDb(): Promise<void> {}
-
 // ── Reset ─────────────────────────────────────────────────────────
 
 /**

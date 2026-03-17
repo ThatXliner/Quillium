@@ -7,7 +7,6 @@ import {
     listDocuments,
     listTrashedDocuments,
     createDocument,
-    initDb,
     trashDocument,
     restoreDocument,
     deleteDocument,
@@ -56,7 +55,6 @@ const hasContinue = $derived($currentDocumentId !== null);
 
 async function load() {
     loading = true;
-    await initDb();
     [documents, trashedDocuments, trashRetention] = await Promise.all([
         listDocuments(),
         listTrashedDocuments(),

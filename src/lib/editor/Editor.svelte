@@ -39,7 +39,6 @@ import {
     clearPendingNestedEditorSelections,
 } from "$lib/stores";
 import {
-    initDb,
     listDocuments,
     listDrafts,
     createDocument,
@@ -223,7 +222,6 @@ function buildStateFromLoad(snapshotJson: string | null, eventsSince: EventRecor
 
 // ── State restoration ───────────────────────────────────────────
 const fromSave = (async () => {
-    await initDb();
     const docId = get(currentDocumentId);
 
     if (docId) {
