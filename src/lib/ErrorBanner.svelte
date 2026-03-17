@@ -1,5 +1,5 @@
 <script lang="ts">
-import { X, AlertTriangle, Download, RotateCcw } from "lucide-svelte";
+import { X, AlertTriangle, Download, RotateCcw, RefreshCw } from "lucide-svelte";
 import { errorBanner } from "./stores";
 import { readBackup, clearBackup } from "./errorGuard";
 import type { BackupEntry } from "./errorGuard";
@@ -41,6 +41,10 @@ function restoreBackup() {
     window.dispatchEvent(new CustomEvent("quillium:restore-backup", { detail: backup }));
     clearBackup(banner.backupType);
     $errorBanner = null;
+}
+
+function reloadApp() {
+    window.location.reload();
 }
 
 function reportIssue() {
@@ -93,6 +97,14 @@ function reportIssue() {
                     Restore previous
                 </button>
             {/if}
+            <button
+                onclick={reloadApp}
+                title="Reload the app"
+                class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-md transition-colors"
+            >
+                <RefreshCw size={12} />
+                Reload app
+            </button>
             <button
                 onclick={dismiss}
                 title="Dismiss"
