@@ -35,6 +35,14 @@ import { restoreBackup } from "$lib/editor/restore";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
+let modalDialogEl = $state<HTMLDialogElement>();
+
+// Keep the shared modal dialog open while the stack is non-empty.
+$effect(() => {
+    if ($modalStack.length > 0 && modalDialogEl && !modalDialogEl.open) {
+        modalDialogEl.showModal();
+    }
+});
 
 /** Show the tutorial on first visit if the user hasn't seen it. */
 function showTutorialOnFirstVisit() {
@@ -192,21 +200,50 @@ if (import.meta.env.DEV) {
 {/if}
 
 <!--
-    Modal stack — renders all entries to keep their editor state
-    alive, but only the topmost entry's dialog is visible. Lower
-    entries stay mounted (preserving their CodeMirror editors) with
-    their dialog hidden.
+    Modal stack — one shared <dialog> hosts whichever entry is on top.
+    When the top entry changes (push/pop), the old component unmounts
+    (flushing its editor state to the parent) and the new one mounts.
 -->
-{#each $modalStack as entry, i (entry)}
-    {#if entry.type === "diff"}
-        <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} isTop={i === $modalStack.length - 1} />
-    {:else if entry.type === "revision"}
-        <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} isTop={i === $modalStack.length - 1} />
-    {/if}
-{/each}
+{#if $modalStack.length > 0}
+    {@const topIndex = $modalStack.length - 1}
+    {@const top = $modalStack[topIndex]}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+    <dialog
+        bind:this={modalDialogEl}
+        class="modal-shell"
+        onclick={(e) => { if (e.target === modalDialogEl) modalStack.pop(); }}
+        oncancel={(e) => { e.preventDefault(); modalStack.pop(); }}
+    >
+        {#key `${topIndex}-${top.type}-${top.type === "revision" ? top.revisionId : top.type === "diff" ? top.suggestionId : ""}`}
+            {#if top.type === "diff"}
+                <DiffModal suggestionId={top.suggestionId} parentView={top.parentView} stackIndex={topIndex} />
+            {:else if top.type === "revision"}
+                <RevisionModal revisionId={top.revisionId} view={top.parentView} stackIndex={topIndex} />
+            {/if}
+        {/key}
+    </dialog>
+{/if}
 
 <style>
     :global(html) {
         background-color: #e5e7eb; /* gray-200 */
+    }
+
+    .modal-shell {
+        border: none;
+        padding: 0;
+        background: transparent;
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        max-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-shell::backdrop {
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(4px);
     }
 </style>

@@ -32,7 +32,7 @@ The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 └──────────────┴──────────────────────┴──────────────────┘
 ```
 
-Modal overlays (revision editors, diff views) are rendered via `modalStack` — a stack managed by `src/lib/stores.ts`. All entries stay mounted (preserving their CodeMirror editors), but only the **topmost** entry's `<dialog>` is visible. Lower entries hide their dialog via an `isTop` prop, so pushing/popping never destroys a parent modal's editor state.
+Modal overlays (revision editors, diff views) are rendered via `modalStack` — a stack managed by `src/lib/stores.ts`. A single shared `<dialog>` in `+page.svelte` hosts the topmost entry's content; `RevisionModal` and `DiffModal` are pure content components with no dialog of their own. When the top entry changes (push/pop), the old component unmounts (flushing its editor state) and the new one mounts.
 
 ---
 
@@ -456,7 +456,7 @@ type ModalEntry =
     | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
 ```
 
-`+page.svelte` renders `{#each $modalStack as entry}` — every entry stays mounted to preserve its CodeMirror editor state. Each modal receives an `isTop` prop; only the topmost entry's `<dialog>` is shown (`showModal()`), while lower entries close their dialog. This avoids the infinite-recursion problem that would occur if pushing a child modal unmounted the parent (triggering `onDestroy` → state flush → parent effects → re-push).
+`+page.svelte` owns a single shared `<dialog>` that opens when `modalStack` is non-empty. Inside it, a `{#key}` block renders only the topmost entry as a `<RevisionModal>` or `<DiffModal>` content component (no `<dialog>` of their own). When the top entry changes (push/pop), the `{#key}` unmounts the old component (triggering `onDestroy` → `destroyEditor` → state flush to parent version blob) and mounts the new one. Editor state survives round-trips through `VersionState` blobs — `destroyEditor` serializes via `toJSON(nestedSavedFields)` and `createEditor` restores from the blob.
 
 | Method | Effect |
 |---|---|

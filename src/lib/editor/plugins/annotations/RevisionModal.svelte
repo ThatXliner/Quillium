@@ -72,8 +72,7 @@ const {
     revisionId,
     view,
     stackIndex,
-    isTop,
-}: { revisionId: number; view: EditorView; stackIndex: number; isTop: boolean } = $props();
+}: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
 // Capture the pending command eagerly at mount time so we don't
 // re-read it reactively from the (mutable) modal stack later.
@@ -289,7 +288,6 @@ function send(event: FsmEvent) {
         case "unmounted": {
             if (event.type === "DIALOG_BOUND") {
                 fsmState = "mounting";
-                if (dialogEl && !dialogEl.open && isTop) dialogEl.showModal();
                 // The "mounting" → "ready" transition is handled by
                 // the $effect below, which fires once the DOM updates
                 // and editorHost is available.
@@ -376,7 +374,7 @@ $effect(() => {
 // ─── Sensor Effect A: Dialog bind + rebuild token ───────────────────
 let lastRebuildToken = 0;
 $effect(() => {
-    const el = dialogEl;
+    const el = wrapperEl;
     const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
     const token = entry?.rebuildToken ?? 0;
 
@@ -391,18 +389,6 @@ $effect(() => {
     }
 });
 
-// Show/hide the dialog when this modal moves to/from the top of the stack.
-// All modals stay mounted (preserving their editor state), but only the
-// topmost one is visible.
-$effect(() => {
-    if (!dialogEl) return;
-    if (isTop && !dialogEl.open) {
-        dialogEl.showModal();
-    } else if (!isTop && dialogEl.open) {
-        dialogEl.close();
-    }
-});
-
 // NOTE: $derived on view.state.field(...) is NOT reactive to CodeMirror
 // transactions. view is a plain prop (not $state), so Svelte cannot observe
 // mutations to view.state. This only captures the value at the time the
@@ -414,7 +400,7 @@ const revision = $derived(
 
 let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
-let dialogEl = $state<HTMLDialogElement>();
+let wrapperEl = $state<HTMLDivElement>();
 let lastDispatchedDoc = "";
 // Track which version index the editor was created for, so destroyEditor
 // flushes state into the correct version slot even if activeVersionIndex
@@ -623,7 +609,7 @@ $effect(() => {
 // push modals as appropriate via their own focus-request handlers.
 
 // Init is handled by FSM: unmounted → mounting → ready
-// (See Sensor Effect A above which sends DIALOG_BOUND when dialogEl binds)
+// (See Sensor Effect A above which sends DIALOG_BOUND when wrapperEl binds)
 
 onDestroy(() => {
     destroyEditor();
@@ -746,20 +732,12 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-<dialog
-  bind:this={dialogEl}
-  class="revision-modal"
-  onclick={(e) => {
-    if (e.target === dialogEl) close();
-  }}
-  oncancel={(e) => {
-    e.preventDefault();
-    close();
-  }}
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  bind:this={wrapperEl}
+  class="revision-modal-inner"
   onkeydown={onDialogKeydown}
 >
-  <div class="revision-modal-inner">
     <!-- Header -->
     <div
       class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0"
@@ -1040,28 +1018,9 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
         </div>
       {/if}
     </div>
-  </div>
-</dialog>
+</div>
 
 <style>
-  .revision-modal {
-    border: none;
-    padding: 0;
-    background: transparent;
-    width: 100vw;
-    height: 100vh;
-    max-width: 100vw;
-    max-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .revision-modal::backdrop {
-    background: rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(4px);
-  }
-
   .revision-modal-inner {
     display: flex;
     flex-direction: column;
