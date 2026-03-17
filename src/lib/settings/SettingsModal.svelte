@@ -17,6 +17,7 @@ import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle } from "luci
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import FontGuideModal from "./FontGuideModal.svelte";
+import { FONTS } from "./fonts";
 
 const { onclose }: { onclose: () => void } = $props();
 
@@ -53,134 +54,22 @@ const sans = firstInstalled("SF Pro Text", "Inter", "Segoe UI", "Helvetica Neue"
 const monoStack = `${mono.cssName}, ui-monospace, monospace`;
 const sansStack = `${sans.cssName}, system-ui, sans-serif`;
 
+// Map static font data into picker FontOption shape, then inject the two
+// runtime-resolved system entries (system sans + system mono).
 const DOC_FONTS: FontOption[] = [
-    // Our picks — five across categories
-    {
-        group: "Serif",
-        label: "EB Garamond",
-        value: '"EB Garamond", Garamond, Georgia, serif',
-        sample: "Classic Renaissance serif",
-    },
-    {
-        featured: true,
-        group: "Serif",
-        label: "Georgia",
-        value: "Georgia, serif",
-        sample: "Warm, readable default",
-    },
-    {
-        featured: true,
-        group: "Typewriter",
-        label: "Courier Prime",
-        value: '"Courier Prime", "Courier New", Courier, monospace',
-        sample: "Classic typewriter feel",
-    },
-    {
-        featured: true,
-        group: "Sans",
-        label: "Raleway",
-        value: '"Raleway", system-ui, sans-serif',
-        sample: "Elegant geometric sans",
-    },
-    {
-        featured: true,
-        group: "Misc",
-        label: "Comic Sans MS",
-        value: '"Comic Sans MS", "Comic Sans", cursive',
-        sample: "Switch fonts to catch mistakes",
-    },
-    // All fonts
+    ...FONTS.map((f) => ({
+        label: f.name,
+        value: f.cssFamily,
+        sample: f.sample,
+        group: f.group,
+        featured: f.docFeatured,
+    })),
     { group: "Sans", label: sans.label, value: sansStack },
-    {
-        group: "Sans",
-        label: "Arial",
-        value: "Arial, Helvetica, sans-serif",
-    },
-    {
-        group: "Sans",
-        label: "Calibri",
-        value: '"Calibri", "Gill Sans", sans-serif',
-    },
-    {
-        group: "Sans",
-        label: "Verdana",
-        value: "Verdana, Geneva, sans-serif",
-    },
-    {
-        group: "Serif",
-        label: "Times New Roman",
-        value: '"Times New Roman", Times, serif',
-    },
-    {
-        group: "Serif",
-        label: "Roboto Serif",
-        value: '"Roboto Serif", Georgia, serif',
-    },
-    {
-        group: "Serif",
-        label: "Lora",
-        value: '"Lora", Georgia, serif',
-    },
-    {
-        group: "Serif",
-        label: "New York",
-        value: '"New York", ui-serif, Georgia, serif',
-    },
-    {
-        group: "Serif",
-        label: "Libre Baskerville",
-        value: '"Libre Baskerville", Georgia, serif',
-    },
-    {
-        group: "Serif",
-        label: "Baskerville",
-        value: '"Baskerville", "Baskerville Old Face", serif',
-    },
-    {
-        group: "Serif",
-        label: "Palatino",
-        value: '"Palatino Linotype", Palatino, "Book Antiqua", serif',
-    },
-    {
-        group: "Serif",
-        label: "Charter",
-        value: '"Charter", "Bitstream Charter", "Sitka Text", serif',
-    },
-    {
-        group: "Serif",
-        label: "IM Fell English",
-        value: '"IM Fell English", Georgia, serif',
-    },
-    {
-        group: "Typewriter",
-        label: "Special Elite",
-        value: '"Special Elite", "Courier New", monospace',
-    },
-    {
-        group: "Typewriter",
-        label: mono.label,
-        value: monoStack,
-    },
-    {
-        group: "Handwriting",
-        label: "Caveat",
-        value: '"Caveat", cursive',
-    },
-    {
-        group: "Handwriting",
-        label: "Kalam",
-        value: '"Kalam", cursive',
-    },
-    {
-        group: "Accessibility",
-        label: "OpenDyslexic",
-        value: '"OpenDyslexic", sans-serif',
-        sample: "Designed for dyslexic readers",
-    },
+    { group: "Typewriter", label: mono.label, value: monoStack },
 ];
 
 const UI_FONTS: FontOption[] = [
-    // Our picks — one per category
+    // System fonts come first as featured picks
     {
         featured: true,
         group: "Sans",
@@ -190,39 +79,18 @@ const UI_FONTS: FontOption[] = [
     },
     {
         featured: true,
-        group: "Serif",
-        label: "Lora",
-        value: '"Lora", Georgia, serif',
-        sample: "Warm, literary serif",
-    },
-    {
-        featured: true,
         group: "Mono",
         label: mono.label,
         value: monoStack,
         sample: "Crisp monospace precision",
     },
-    // All fonts
-    {
-        group: "Sans",
-        label: "Raleway",
-        value: '"Raleway", system-ui, sans-serif',
-    },
-    {
-        group: "Serif",
-        label: "New York",
-        value: '"New York", ui-serif, Georgia, serif',
-    },
-    {
-        group: "Serif",
-        label: "Baskerville",
-        value: '"Baskerville", "Baskerville Old Face", serif',
-    },
-    {
-        group: "Serif",
-        label: "Georgia",
-        value: "Georgia, serif",
-    },
+    ...FONTS.filter((f) => f.uiFont || f.uiFeatured).map((f) => ({
+        label: f.name,
+        value: f.cssFamily,
+        sample: f.sample,
+        group: f.group,
+        featured: f.uiFeatured,
+    })),
 ];
 
 // Local draft — a shallow copy of persisted settings

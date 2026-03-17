@@ -7,6 +7,7 @@
 <script lang="ts">
 import { X } from "lucide-svelte";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
+import { FONTS } from "./fonts";
 
 const { onclose }: { onclose: () => void } = $props();
 
@@ -28,170 +29,6 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 const SAMPLE = "The quick brown fox jumps over the lazy dog.";
-
-const FONTS = [
-    {
-        name: "Georgia",
-        cssFamily: "Georgia, serif",
-        category: "Serif",
-        pick: true,
-        desc: "Matthew Carter designed this for screens in 1993, and it still holds up. Warm, sturdy, never fussy. Our default for a reason.",
-    },
-    {
-        name: "Courier Prime",
-        cssFamily: '"Courier Prime", "Courier New", Courier, monospace',
-        category: "Typewriter",
-        pick: true,
-        desc: "Courier, but fixed. Same tap-tap rhythm and even spacing — just better rendered. Switch to this mid-draft and your prose suddenly sounds different. That's the point.",
-    },
-    {
-        name: "Raleway",
-        cssFamily: '"Raleway", system-ui, sans-serif',
-        category: "Sans-Serif",
-        pick: true,
-        desc: "Geometric and airy. If you want the page to breathe without feeling clinical, Raleway is the move. Good for essays and anything contemporary.",
-    },
-    {
-        name: "Comic Sans MS",
-        cssFamily: '"Comic Sans MS", "Comic Sans", cursive',
-        category: "Misc",
-        pick: true,
-        desc: "Yes, on purpose. Reading your draft in a font you'd never publish in is like reading it aloud — it breaks the spell and you hear what's actually there. We include it for the same reason.",
-    },
-    {
-        name: "EB Garamond",
-        cssFamily: '"EB Garamond", Garamond, Georgia, serif',
-        category: "Serif",
-        pick: false,
-        desc: "Renaissance-era elegance, faithfully revived. It makes long-form fiction feel like a proper book. Rewards a large screen.",
-    },
-    {
-        name: "Lora",
-        cssFamily: '"Lora", Georgia, serif',
-        category: "Serif",
-        pick: false,
-        desc: "Calligraphic roots, warm at body size. Feels natural without being informal. Memoir, personal essays, anything that needs a human touch.",
-    },
-    {
-        name: "Roboto Serif",
-        cssFamily: '"Roboto Serif", Georgia, serif',
-        category: "Serif",
-        pick: false,
-        desc: "Clean, modern, no personality to get in the way. A digital book feel without any ornament.",
-    },
-    {
-        name: "Libre Baskerville",
-        cssFamily: '"Libre Baskerville", Georgia, serif',
-        category: "Serif",
-        pick: false,
-        desc: "High-contrast strokes, sharp serifs, authoritative presence. Classic transitional serif, optimized for the web. Good for writing that means business.",
-    },
-    {
-        name: "Baskerville",
-        cssFamily: '"Baskerville", "Baskerville Old Face", serif',
-        category: "Serif",
-        pick: false,
-        desc: "The native system version of Baskerville — same character, but rendered by your OS. Looks slightly different depending on platform.",
-    },
-    {
-        name: "Palatino",
-        cssFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif',
-        category: "Serif",
-        pick: false,
-        desc: "Hermann Zapf's calligraphic humanist. Wide, open, handmade-feeling. Handles long stretches of text without wearing you out.",
-    },
-    {
-        name: "Charter",
-        cssFamily: '"Charter", "Bitstream Charter", "Sitka Text", serif',
-        category: "Serif",
-        pick: false,
-        desc: "Built to survive being faxed. Sturdy, geometric, impossible to misread. iA Writer defaults to this — that's not a coincidence.",
-    },
-    {
-        name: "New York",
-        cssFamily: '"New York", ui-serif, Georgia, serif',
-        category: "Serif",
-        pick: false,
-        desc: "Apple's serif, built for Retina. Adapts optically to size. If you're on macOS it'll look great; elsewhere it falls back to Georgia.",
-    },
-    {
-        name: "IM Fell English",
-        cssFamily: '"IM Fell English", Georgia, serif',
-        category: "Serif",
-        pick: false,
-        desc: "Scanned from a 17th-century type specimen, imperfections included. Makes the page feel like a manuscript. Historical fiction's best friend.",
-    },
-    {
-        name: "Times New Roman",
-        cssFamily: '"Times New Roman", Times, serif',
-        category: "Serif",
-        pick: false,
-        desc: "Here because some people think in it. The invisible furniture of decades of word processing. Not interesting, but reliable.",
-    },
-    {
-        name: "System sans-serif",
-        cssFamily: "system-ui, -apple-system, sans-serif",
-        category: "Sans-Serif",
-        pick: false,
-        desc: "Whatever your OS uses for UI — SF Pro, Segoe UI, Roboto. Maximally familiar. Makes the editor feel like your native environment.",
-    },
-    {
-        name: "Arial",
-        cssFamily: "Arial, Helvetica, sans-serif",
-        category: "Sans-Serif",
-        pick: false,
-        desc: "Not beautiful, but everywhere and readable at any size. The draft-in-a-pinch font.",
-    },
-    {
-        name: "Calibri",
-        cssFamily: '"Calibri", "Gill Sans", sans-serif',
-        category: "Sans-Serif",
-        pick: false,
-        desc: "Slightly warmer than Arial, rounder letterforms. Microsoft's default for over a decade — you probably have muscle memory for it.",
-    },
-    {
-        name: "Verdana",
-        cssFamily: "Verdana, Geneva, sans-serif",
-        category: "Sans-Serif",
-        pick: false,
-        desc: "Wide, widely-spaced, legible at tiny sizes. Matthew Carter designed it for the early web, before web typography was a real thing.",
-    },
-    {
-        name: "Special Elite",
-        cssFamily: '"Special Elite", "Courier New", monospace',
-        category: "Typewriter",
-        pick: false,
-        desc: "Rougher and more distinctive than Courier — based on Royal Safari and Olympia SM machines. Reach for this when Courier Prime feels too clean.",
-    },
-    {
-        name: "System monospace",
-        cssFamily: "ui-monospace, monospace",
-        category: "Typewriter",
-        pick: false,
-        desc: "SF Mono, Cascadia Code, Fira Code — whatever your OS provides. Brings a code-editor feel to the page. Some writers find the even rhythm clarifying.",
-    },
-    {
-        name: "Caveat",
-        cssFamily: '"Caveat", cursive',
-        category: "Handwriting",
-        pick: false,
-        desc: "Casual, personal, slightly messy. Good for journaling or when you want the page to feel like a first draft in the best sense.",
-    },
-    {
-        name: "Kalam",
-        cssFamily: '"Kalam", cursive',
-        category: "Handwriting",
-        pick: false,
-        desc: "Hand-printed rather than cursive — neat handwriting, not scrawl. More structured than Caveat without losing the personal feel.",
-    },
-    {
-        name: "OpenDyslexic",
-        cssFamily: '"OpenDyslexic", sans-serif',
-        category: "Accessibility",
-        pick: false,
-        desc: "Weighted bottoms and distinct letterforms to reduce character confusion. Not a cure, results vary, but worth trying if standard fonts feel slippery.",
-    },
-];
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -233,14 +70,14 @@ const FONTS = [
 
             <!-- Font entries -->
             {#each FONTS as font}
-                <div class="font-entry {font.pick ? 'font-entry-pick' : ''}">
+                <div class="font-entry {font.docFeatured ? 'font-entry-pick' : ''}">
                     <div class="flex items-baseline gap-2 mb-1">
                         <span
                             class="font-name"
                             style="font-family: {font.cssFamily};"
                         >{font.name}</span>
                         <span class="category-badge">{font.category}</span>
-                        {#if font.pick}
+                        {#if font.docFeatured}
                             <span class="pick-badge">Our Pick</span>
                         {/if}
                     </div>
