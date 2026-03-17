@@ -50,6 +50,7 @@ let view: EditorView | undefined;
 beforeEach(() => {
     annotationUiEvent.set(null);
     appSettings.atomicRevisions = true;
+    appSettings.showNestedEditor = false;
 });
 
 afterEach(() => {
