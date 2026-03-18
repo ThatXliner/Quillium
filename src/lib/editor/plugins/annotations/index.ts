@@ -218,7 +218,7 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand
         const revFrom = activeRevision.selection.main.from;
         const sel = view.state.selection.main;
         publishAnnotationUiEvent({
-            type: "revision-open-nested-editor",
+            type: "revision-request-modal",
             command: {
                 revisionId: activeRevision.id,
                 type,

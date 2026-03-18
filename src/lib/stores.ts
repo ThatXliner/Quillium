@@ -180,7 +180,12 @@ export type AnnotationUiEvent =
       }
     | {
           token: number;
-          type: "revision-open-nested-editor";
+          type: "nested-annotation-create";
+          command: NestedEditorCommand;
+      }
+    | {
+          token: number;
+          type: "revision-request-modal";
           command: NestedEditorCommand;
       }
     | {
@@ -364,6 +369,18 @@ export const modalStack = {
             };
             return trimmed;
         }),
+    consumePendingCommand: (index: number) => {
+        let pending: PendingNestedCommand | undefined;
+        _modalStack.update((s) => {
+            const entry = s[index];
+            if (entry?.type !== "revision" || !entry.pendingNestedCommand) return s;
+            pending = entry.pendingNestedCommand;
+            const copy = [...s];
+            copy[index] = { ...entry, pendingNestedCommand: undefined };
+            return copy;
+        });
+        return pending;
+    },
     clear: () => {
         _modalStack.set([]);
         _modalAnnotationStores.set({});

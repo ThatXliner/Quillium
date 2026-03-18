@@ -59,6 +59,7 @@ import {
 } from "$lib/stores";
 import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
+import { appSettings } from "$lib/settings.svelte";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
@@ -74,11 +75,11 @@ const {
     stackIndex,
 }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
-// Capture the pending command eagerly at mount time so we don't
-// re-read it reactively from the (mutable) modal stack later.
-const initialEntry = $modalStack[stackIndex];
-const initialPendingCommand =
-    initialEntry?.type === "revision" ? initialEntry.pendingNestedCommand : undefined;
+// Single active modal: true when this entry is on top of the stack.
+const isTop = $derived(stackIndex === $modalStack.length - 1);
+
+// Capture and consume any pending nested command once on mount.
+const initialPendingCommand = modalStack.consumePendingCommand(stackIndex);
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
@@ -288,7 +289,7 @@ function send(event: FsmEvent) {
         case "unmounted": {
             if (event.type === "DIALOG_BOUND") {
                 fsmState = "mounting";
-                if (dialogEl && !dialogEl.open) dialogEl.showModal();
+                if (dialogEl && isTop && !dialogEl.open) dialogEl.showModal();
                 // The "mounting" → "ready" transition is handled by
                 // the $effect below, which fires once the DOM updates
                 // and editorHost is available.
@@ -379,8 +380,12 @@ $effect(() => {
     const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
     const token = entry?.rebuildToken ?? 0;
 
-    if (fsmState === "unmounted" && el) {
+    if (fsmState === "unmounted" && el && isTop) {
         send({ type: "DIALOG_BOUND" });
+    } else if (!isTop && el?.open) {
+        el.close();
+    } else if (fsmState === "ready" && isTop && el && !el.open) {
+        el.showModal();
     } else if (fsmState === "ready" && token && token !== lastRebuildToken) {
         lastRebuildToken = token;
         send({ type: "REBUILD_REQUESTED" });
@@ -502,7 +507,7 @@ $effect(() => {
         const parentLevel = $modalAnnotationStores;
         ann = parentLevel[stackIndex - 1];
     }
-    if (fsmState !== "ready" || !editor || !ann) return;
+    if (!isTop || fsmState !== "ready" || !editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex])
         return;
@@ -593,9 +598,10 @@ $effect(() => {
     if (
         !event ||
         fsmState !== "ready" ||
+        !isTop ||
         !editor ||
         event.token === lastNestedEditorEventToken ||
-        event.type !== "revision-open-nested-editor" ||
+        event.type !== "nested-annotation-create" ||
         event.command.revisionId !== revisionId
     )
         return;

@@ -35,6 +35,8 @@ const {
 // Breadcrumb trail sliced up to and including this modal level
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
+const isTop = $derived(stackIndex === $modalStack.length - 1);
+
 let dialogEl = $state<HTMLDialogElement>();
 
 // NOTE: $derived on parentView.state.field(...) is NOT reactive to CodeMirror
@@ -66,7 +68,12 @@ function close() {
 
 // Open the <dialog> element as a modal once it is bound.
 $effect(() => {
-    if (dialogEl && !dialogEl.open) dialogEl.showModal();
+    if (!dialogEl) return;
+    if (isTop && !dialogEl.open) {
+        dialogEl.showModal();
+    } else if (!isTop && dialogEl.open) {
+        dialogEl.close();
+    }
 });
 </script>
 

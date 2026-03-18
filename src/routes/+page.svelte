@@ -191,19 +191,17 @@ if (import.meta.env.DEV) {
     <DebugPanel reloadEditor={() => editorComponent?.reload()} />
 {/if}
 
-<!--
-    Modal stack — renders nested revision/diff overlays.
-    Each entry in the modalStack store becomes a DiffModal or
-    RevisionModal. The stack supports arbitrary nesting depth
-    (revisions inside revisions).
--->
-{#each $modalStack as entry, i (entry)}
+<!-- Modal stack — render only the top entry as a single dialog; the stack
+     remains for breadcrumbs/state but prevents multiple real <dialog>s. -->
+{#if $modalStack.length > 0}
+    {@const entry = $modalStack[$modalStack.length - 1]}
+    {@const i = $modalStack.length - 1}
     {#if entry.type === "diff"}
         <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />
     {:else if entry.type === "revision"}
         <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
     {/if}
-{/each}
+{/if}
 
 <style>
     :global(html) {

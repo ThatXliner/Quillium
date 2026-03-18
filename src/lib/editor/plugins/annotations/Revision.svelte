@@ -169,20 +169,36 @@ $effect(() => {
     if (
         !event ||
         event.token === lastOpenNestedEditorToken ||
-        event.type !== "revision-open-nested-editor" ||
+        event.type !== "revision-request-modal" ||
         event.command.revisionId !== revision.id
     )
         return;
-    // If there's already a modal open for this revision *anywhere* in the
-    // stack, the modal's own Sensor Effect C will create the sub-annotation
-    // directly in its nested editor. Consume the token and bail to prevent
-    // a duplicate modal push.
-    const stack = $modalStack;
+    lastOpenNestedEditorToken = event.token;
+    const cmd = event.command;
+    modalStack.push({
+        type: "revision",
+        revisionId: revision.id,
+        parentView: view,
+        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+        pendingNestedCommand: {
+            type: cmd.type,
+            selectionFrom: cmd.selectionFrom,
+            selectionTo: cmd.selectionTo,
+        },
+    });
+});
+
+$effect(() => {
+    const event = $annotationUiEvent;
     if (
-        stack.some(
-            (entry) => entry.type === "revision" && entry.revisionId === revision.id,
-        )
-    ) {
+        !event ||
+        event.token === lastOpenNestedEditorToken ||
+        event.type !== "nested-annotation-create" ||
+        event.command.revisionId !== revision.id
+    )
+        return;
+    // If a modal is already open for this revision, let that modal handle the event.
+    if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id)) {
         lastOpenNestedEditorToken = event.token;
         return;
     }
