@@ -12,9 +12,12 @@ import { FONTS } from "./fonts";
 const { onclose, tab = "doc" }: { onclose: () => void; tab?: "doc" | "ui" } = $props();
 
 let activeTab = $state<"doc" | "ui">(tab);
+let activeCategory = $state("all");
 
 let trackEl = $state<HTMLElement | undefined>(undefined);
 let pillStyle = $state("");
+let categoryTrackEl = $state<HTMLElement | undefined>(undefined);
+let categoryPillStyle = $state("");
 
 $effect(() => {
     if (!trackEl) return;
@@ -23,6 +26,15 @@ $effect(() => {
     const btn = buttons[idx];
     if (!btn) return;
     pillStyle = `--pill-width: ${btn.offsetWidth}px; --pill-x: ${btn.offsetLeft - 3}px;`;
+});
+
+$effect(() => {
+    if (!categoryTrackEl) return;
+    const buttons = categoryTrackEl.querySelectorAll<HTMLButtonElement>(".category-tab-btn");
+    const idx = categoryOptions(currentFonts()).findIndex((category) => category.value === activeCategory);
+    const btn = idx >= 0 ? buttons[idx] : undefined;
+    if (!btn) return;
+    categoryPillStyle = `--category-pill-width: ${btn.offsetWidth}px; --category-pill-x: ${btn.offsetLeft - 3}px;`;
 });
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
@@ -45,6 +57,16 @@ function handleKeydown(e: KeyboardEvent) {
 const SAMPLE = "The quick brown fox jumps over the lazy dog.";
 
 const CATEGORY_ORDER = ["Serif", "Sans-Serif", "Typewriter", "Handwriting", "Misc", "Accessibility"];
+const FILTER_GROUPS = [
+    { value: "all", label: "All", matches: (_category: string) => true },
+    { value: "serif", label: "Serif", matches: (category: string) => category === "Serif" },
+    { value: "sans", label: "Sans", matches: (category: string) => category === "Sans-Serif" },
+    {
+        value: "misc",
+        label: "Misc",
+        matches: (category: string) => ["Typewriter", "Handwriting", "Misc", "Accessibility"].includes(category),
+    },
+] as const;
 
 function sortedFonts(fonts: typeof FONTS, pickKey: "docFeatured" | "uiFeatured") {
     return [...fonts].sort((a, b) => {
@@ -58,6 +80,27 @@ function sortedFonts(fonts: typeof FONTS, pickKey: "docFeatured" | "uiFeatured")
 
 const docFonts = sortedFonts(FONTS, "docFeatured");
 const uiFonts = sortedFonts(FONTS.filter((f) => f.uiFont), "uiFeatured");
+
+function categoryOptions(fonts: typeof FONTS) {
+    return FILTER_GROUPS.filter((group) =>
+        group.value === "all" || fonts.some((font) => group.matches(font.category)),
+    );
+}
+
+function filteredFonts(fonts: typeof FONTS) {
+    const filter = FILTER_GROUPS.find((group) => group.value === activeCategory);
+    if (!filter || filter.value === "all") return fonts;
+    return fonts.filter((font) => filter.matches(font.category));
+}
+
+function currentFonts() {
+    return activeTab === "doc" ? docFonts : uiFonts;
+}
+
+$effect(() => {
+    const visibleFonts = currentFonts();
+    if (!categoryOptions(visibleFonts).some((category) => category.value === activeCategory)) activeCategory = "all";
+});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -111,8 +154,22 @@ const uiFonts = sortedFonts(FONTS.filter((f) => f.uiFont), "uiFeatured");
                 </p>
             </div>
 
+            <div class="category-filter-row">
+                <div class="category-track" bind:this={categoryTrackEl} style={categoryPillStyle}>
+                    <div class="category-pill"></div>
+                    {#each categoryOptions(currentFonts()) as category}
+                    <button
+                        class="category-tab-btn outline-none {activeCategory === category.value ? 'category-tab-btn-active' : ''}"
+                        onclick={() => activeCategory = category.value}
+                    >
+                        {category.label}
+                    </button>
+                    {/each}
+                </div>
+            </div>
+
             <!-- Font entries -->
-            {#each (activeTab === "doc" ? docFonts : uiFonts) as font}
+            {#each filteredFonts(currentFonts()) as font}
                 {@const isPick = activeTab === "doc" ? font.docFeatured : font.uiFeatured}
                 <div class="font-entry {isPick ? 'font-entry-pick' : ''}">
                     <div class="flex items-baseline gap-2 mb-1">
@@ -218,6 +275,58 @@ const uiFonts = sortedFonts(FONTS.filter((f) => f.uiFont), "uiFeatured");
     }
 
     /* Font entry */
+    .category-filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        margin: 0 0 0.9rem;
+    }
+
+    .category-track {
+        position: relative;
+        display: inline-flex;
+        gap: 2px;
+        background: rgba(180, 180, 180, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 999px;
+        padding: 3px;
+        backdrop-filter: blur(8px);
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .category-pill {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        height: calc(100% - 6px);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9);
+        transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+        width: var(--category-pill-width, 44px);
+        transform: translateX(var(--category-pill-x, 0px));
+    }
+
+    .category-tab-btn {
+        position: relative;
+        font-size: 11px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.38);
+        padding: 2px 10px;
+        border-radius: 999px;
+        transition: color 0.2s;
+        cursor: pointer;
+        z-index: 1;
+    }
+
+    .category-tab-btn:hover {
+        color: rgba(0, 0, 0, 0.55);
+    }
+
+    .category-tab-btn-active {
+        color: rgba(0, 0, 0, 0.7);
+    }
+
     .font-entry {
         padding: 0.75rem 0.125rem;
         border-bottom: 1px solid rgba(0, 0, 0, 0.04);
