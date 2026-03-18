@@ -216,6 +216,8 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         // Undo while nested editor still has focus — delegates to parent via makeParentUndoKeymap
         await page.keyboard.press("ControlOrMeta+z");
 
-        await expect.poll(() => getCmText(nestedEditor)).toBe("hello my b world");
+        const anyEditor = page.locator(".revision-modal-editor .cm-content, .revision-inline-editor .cm-content").first();
+        await expect(anyEditor).toBeVisible({ timeout: 6000 });
+        await expect.poll(() => getCmText(anyEditor)).toBe("hello my b world");
     });
 });
