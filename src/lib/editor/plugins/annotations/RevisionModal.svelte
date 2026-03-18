@@ -429,7 +429,7 @@ let pullingFromParent = false;
 let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-function flushEditorVersionState(addToHistory = false) {
+function flushEditorVersionState() {
     if (!editor) return;
     const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || editorVersionIndex >= rev.versions.length) return;
@@ -439,7 +439,7 @@ function flushEditorVersionState(addToHistory = false) {
     lastFlushedVersionStateJson = blobJson;
     view.dispatch(
         updateRevisionVersionState(view.state, revisionId, editorVersionIndex, blob, {
-            addToHistory,
+            addToHistory: false,
         }),
     );
 }
@@ -471,7 +471,7 @@ function createEditor(version: VersionState, versionIndex?: number) {
                 (tr) => tr.annotation(revisionInternalEdit) !== undefined,
             );
             if (!pullingFromParent && !isRevisionSystemSync && annotationsChanged(update)) {
-                flushEditorVersionState(false);
+                flushEditorVersionState();
             }
         },
         view,
@@ -500,7 +500,7 @@ function destroyEditor() {
     // rev.activeVersionIndex, which may have changed if a parent breadcrumb
     // version switch happened before this destroy.
     if (editor) {
-        flushEditorVersionState(false);
+        flushEditorVersionState();
     }
     editor?.destroy();
     editor = undefined;
