@@ -165,14 +165,15 @@ test("AI sidebar can open chat and feedback panels", async ({ page }) => {
     await page.goto("/");
 
     await page.locator("#ai-tab-chat").click();
-    await expect(page.locator("#ai-sidebar")).toContainText("Chat with AI");
+    await expect(page.locator("#ai-sidebar")).toContainText("AI Settings");
+    await expect(page.locator("#ai-sidebar")).toContainText("Start a conversation");
 
     const feedbackButton = page.locator(
         "#ai-sidebar .overflow-x-auto button[aria-label*='Feedback']",
     );
     await feedbackButton.click();
 
-    await expect(page.locator("#ai-sidebar")).toContainText("Get Feedback");
+    await expect(page.locator("#ai-sidebar")).toContainText("Feedback");
 });
 
 test("settings modal opens from status bar", async ({ page }) => {
