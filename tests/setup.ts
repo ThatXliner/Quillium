@@ -10,6 +10,32 @@ beforeAll(() => {
             getRandomValues: (buffer: Uint8Array) => randomFillSync(buffer),
         },
     });
+
+    class MockIntersectionObserver {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+    }
+
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+        value: MockIntersectionObserver,
+        configurable: true,
+    });
+
+    if (!Element.prototype.animate) {
+        Object.defineProperty(Element.prototype, "animate", {
+            value: () => ({
+                finished: Promise.resolve(),
+                cancel() {},
+                play() {},
+                pause() {},
+                reverse() {},
+                addEventListener() {},
+                removeEventListener() {},
+            }),
+            configurable: true,
+        });
+    }
 });
 
 // Reset all Tauri mocks between tests. Vitest reuses the jsdom window across
