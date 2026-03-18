@@ -69,7 +69,7 @@ describe("annotation keymap integration", () => {
         expect(consumed).toBe(true);
         expect(get(annotationUiEvent)).toEqual(
             expect.objectContaining({
-                type: "revision-open-nested-editor",
+                type: "revision-request-modal",
                 command: {
                     revisionId,
                     type: "revision",
@@ -90,7 +90,7 @@ describe("annotation keymap integration", () => {
         expect(consumed).toBe(true);
         expect(get(annotationUiEvent)).toEqual(
             expect.objectContaining({
-                type: "revision-open-nested-editor",
+                type: "revision-request-modal",
                 command: {
                     revisionId,
                     type: "comment",

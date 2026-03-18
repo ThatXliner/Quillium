@@ -129,7 +129,7 @@ afterEach(() => {
 });
 
 describe("nested editor keymap intercepts annotation creation", () => {
-    it("Mod-Alt-k in nested editor fires revision-open-nested-editor instead of creating annotation", () => {
+    it("Mod-Alt-k in nested editor fires nested-annotation-create instead of creating annotation", () => {
         parentView = createParentView("Alpha Beta Gamma");
         const revisionId = addRevision(parentView, 6, 10);
         nestedView = createNestedView(parentView, revisionId, "Beta");
@@ -145,7 +145,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         expect(uiEvent).not.toBeNull();
         expect(uiEvent).toEqual(
             expect.objectContaining({
-                type: "revision-open-nested-editor",
+                type: "nested-annotation-create",
                 command: {
                     revisionId,
                     type: "revision",
@@ -160,7 +160,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         expect(nestedAnnotations).toHaveLength(0);
     });
 
-    it("Mod-Alt-m in nested editor fires revision-open-nested-editor for comment", () => {
+    it("Mod-Alt-m in nested editor fires nested-annotation-create for comment", () => {
         parentView = createParentView("Alpha Beta Gamma");
         const revisionId = addRevision(parentView, 6, 10);
         nestedView = createNestedView(parentView, revisionId, "Beta");
@@ -175,7 +175,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         expect(uiEvent).not.toBeNull();
         expect(uiEvent).toEqual(
             expect.objectContaining({
-                type: "revision-open-nested-editor",
+                type: "nested-annotation-create",
                 command: {
                     revisionId,
                     type: "comment",
