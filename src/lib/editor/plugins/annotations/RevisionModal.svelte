@@ -36,8 +36,10 @@ import { scale, slide } from "svelte/transition";
 import {
     addAnnotation,
     annotationField,
+    annotationsChanged,
     setActiveRevisionVersion,
     createNewRevision,
+    revisionInternalEdit,
     updateRevisionVersionLabel,
     updateRevisionVersionState,
     updateThread,
@@ -408,6 +410,7 @@ let editorHost = $state<HTMLDivElement>();
 let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
 let lastDispatchedDoc = "";
+let lastFlushedVersionStateJson = "";
 // Track which version index the editor was created for, so destroyEditor
 // flushes state into the correct version slot even if activeVersionIndex
 // has changed (e.g. a parent breadcrumb version switch).
@@ -425,6 +428,21 @@ let pullingFromParent = false;
 // that needs to re-run when the nested editor changes.
 let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
+
+function flushEditorVersionState(addToHistory = false) {
+    if (!editor) return;
+    const rev = view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined;
+    if (!rev || editorVersionIndex >= rev.versions.length) return;
+    const blob = editor.state.toJSON(nestedSavedFields) as VersionState;
+    const blobJson = JSON.stringify(blob);
+    if (blobJson === lastFlushedVersionStateJson) return;
+    lastFlushedVersionStateJson = blobJson;
+    view.dispatch(
+        updateRevisionVersionState(view.state, revisionId, editorVersionIndex, blob, {
+            addToHistory,
+        }),
+    );
+}
 
 /**
  * Bootstrap a nested CodeMirror editor from a VersionState.
@@ -449,6 +467,12 @@ function createEditor(version: VersionState, versionIndex?: number) {
             }
             modalAnnotations = editor.state.field(annotationField);
             modalActiveAnnotation = getActiveAnnotation(editor.state);
+            const isRevisionSystemSync = update.transactions.some(
+                (tr) => tr.annotation(revisionInternalEdit) !== undefined,
+            );
+            if (!pullingFromParent && !isRevisionSystemSync && annotationsChanged(update)) {
+                flushEditorVersionState(false);
+            }
         },
         view,
         revisionId,
@@ -457,6 +481,7 @@ function createEditor(version: VersionState, versionIndex?: number) {
     lastDispatchedDoc = editor.state.doc.toString();
     modalAnnotations = editor.state.field(annotationField);
     modalActiveAnnotation = getActiveAnnotation(editor.state);
+    lastFlushedVersionStateJson = JSON.stringify(editor.state.toJSON(nestedSavedFields));
 }
 
 function moveCursorToEnd(activeEditor: EditorView) {
@@ -475,22 +500,13 @@ function destroyEditor() {
     // rev.activeVersionIndex, which may have changed if a parent breadcrumb
     // version switch happened before this destroy.
     if (editor) {
-        const rev = view.state.field(annotationField)[revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (rev && editorVersionIndex < rev.versions.length) {
-            const blob = editor.state.toJSON(nestedSavedFields) as VersionState;
-            view.dispatch(
-                updateRevisionVersionState(view.state, revisionId, editorVersionIndex, blob, {
-                    addToHistory: false,
-                }),
-            );
-        }
+        flushEditorVersionState(false);
     }
     editor?.destroy();
     editor = undefined;
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
+    lastFlushedVersionStateJson = "";
 }
 
 function close() {
