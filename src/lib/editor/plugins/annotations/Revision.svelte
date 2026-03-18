@@ -41,7 +41,12 @@ import {
 import { versionText, type VersionState } from "./models";
 import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
-import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
+import {
+    annotationUiEvent,
+    modalStack,
+    consumePendingNestedEditorSelection,
+    getEditorViewId,
+} from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -67,6 +72,10 @@ const {
 const thread = $derived(revision.thread);
 const activeVersion = $derived(revision.versions[revision.activeVersionIndex]);
 const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
+
+function hasSourceViewId(sourceViewId: number, targetView: EditorView) {
+    return sourceViewId === getEditorViewId(targetView);
+}
 
 let isEditorOpen = $state(false);
 let userClosedEditor = false;
@@ -224,7 +233,7 @@ $effect(() => {
         event.token === lastFocusRequestToken ||
         event.type !== "revision-focus-request" ||
         event.revisionId !== revision.id ||
-        event.sourceView !== view
+        !hasSourceViewId(event.sourceViewId, view)
     )
         return;
     lastFocusRequestToken = event.token;
@@ -433,7 +442,7 @@ $effect(() => {
         event.token === lastNestedRevFocusToken ||
         event.type !== "revision-focus-request" ||
         !nestedEditor ||
-        event.sourceView !== nestedEditor
+        !hasSourceViewId(event.sourceViewId, nestedEditor)
     )
         return;
     // Only handle if the target revision exists in our inline nested editor

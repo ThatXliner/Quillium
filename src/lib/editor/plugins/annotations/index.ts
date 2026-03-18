@@ -95,7 +95,11 @@ import {
     _revisionCleanup,
     setActiveRevisionVersion,
 } from "./annotationField";
-import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
+import {
+    getEditorViewId,
+    publishAnnotationUiEvent,
+    type NestedEditorCommand,
+} from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
 import { nestedEditorEdit } from "./annotationField";
 
@@ -812,7 +816,7 @@ const revisionClickHandler = EditorView.domEventHandlers({
                     type: "revision-focus-request",
                     revisionId: annotation.id,
                     relativePos: pos - from,
-                    sourceView: view,
+                    sourceViewId: getEditorViewId(view),
                 });
                 return false;
             }

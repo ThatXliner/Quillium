@@ -45,6 +45,17 @@ import { writable } from "svelte/store";
 import type { Annotations, GenericAnnotation } from "./editor/plugins/annotations";
 import posthog from "./posthog";
 
+const editorViewIds = new WeakMap<EditorView, number>();
+let nextEditorViewId = 1;
+
+export function getEditorViewId(view: EditorView): number {
+    let id = editorViewIds.get(view);
+    if (id !== undefined) return id;
+    id = nextEditorViewId++;
+    editorViewIds.set(view, id);
+    return id;
+}
+
 /**
  * The main CodeMirror EditorView instance. Set once when
  * Editor.svelte mounts. Read by any component that needs direct
@@ -193,7 +204,7 @@ export type AnnotationUiEvent =
           type: "revision-focus-request";
           revisionId: number;
           relativePos: number;
-          sourceView: import("@codemirror/view").EditorView;
+          sourceViewId: number;
       }
     | {
           token: number;
@@ -280,11 +291,18 @@ export type PendingNestedCommand = {
  * - "revision": a nested revision editor overlay
  */
 export type ModalEntry =
-    | { type: "diff"; suggestionId: number; parentView: EditorView; label: string }
+    | {
+          type: "diff";
+          suggestionId: number;
+          parentView: EditorView;
+          parentViewId?: number;
+          label: string;
+      }
     | {
           type: "revision";
           revisionId: number;
           parentView: EditorView;
+          parentViewId?: number;
           label: string;
           pendingNestedCommand?: PendingNestedCommand;
       };
@@ -334,28 +352,31 @@ export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>
         _modalStack.update((s) => {
+            const parentViewId = getEditorViewId(entry.parentView);
+            const normalizedEntry = { ...entry, parentViewId } as ModalEntry;
             // Prevent duplicate modals for the same annotation + parent view
             // anywhere in the stack, not just the top.
             const isDuplicate = s.some(
                 (existing) =>
-                    existing.type === entry.type &&
-                    existing.parentView === entry.parentView &&
+                    existing.type === normalizedEntry.type &&
+                    (existing.parentViewId ?? getEditorViewId(existing.parentView)) === parentViewId &&
                     ((existing.type === "revision" &&
-                        entry.type === "revision" &&
-                        existing.revisionId === entry.revisionId) ||
+                        normalizedEntry.type === "revision" &&
+                        existing.revisionId === normalizedEntry.revisionId) ||
                         (existing.type === "diff" &&
-                            entry.type === "diff" &&
-                            existing.suggestionId === entry.suggestionId)),
+                            normalizedEntry.type === "diff" &&
+                            existing.suggestionId === normalizedEntry.suggestionId)),
             );
             if (isDuplicate) {
                 posthog.capture("modal_stack_duplicate_push", {
-                    entry_type: entry.type,
-                    revision_id: entry.type === "revision" ? entry.revisionId : undefined,
-                    suggestion_id: entry.type === "diff" ? entry.suggestionId : undefined,
+                    entry_type: normalizedEntry.type,
+                    revision_id: normalizedEntry.type === "revision" ? normalizedEntry.revisionId : undefined,
+                    suggestion_id:
+                        normalizedEntry.type === "diff" ? normalizedEntry.suggestionId : undefined,
                 });
                 return s;
             }
-            return [...s, entry];
+            return [...s, normalizedEntry];
         }),
     pop: () => _modalStack.update((s) => s.slice(0, -1)),
     popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),

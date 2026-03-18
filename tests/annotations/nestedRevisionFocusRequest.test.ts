@@ -18,9 +18,9 @@
  *   - The parentView reference is the parent view, not the nested editor
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { get } from "svelte/store";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
 import {
@@ -36,6 +36,7 @@ import {
     modalStack,
     annotationUiEvent,
     publishAnnotationUiEvent,
+    getEditorViewId,
 } from "$lib/stores";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -199,7 +200,7 @@ describe("revision-focus-request from nested inline editor", () => {
         expect(entry.pendingNestedCommand?.type).toBe("cursor");
     });
 
-    it("revision-focus-request event from nested editor carries correct sourceView", () => {
+    it("revision-focus-request event from nested editor carries a stable sourceViewId", () => {
         const parentView = createView("hello world");
         views.push(parentView);
 
@@ -212,7 +213,7 @@ describe("revision-focus-request from nested inline editor", () => {
             type: "revision-focus-request",
             revisionId: nestedRevId,
             relativePos: 1,
-            sourceView: nestedView,
+            sourceViewId: getEditorViewId(nestedView),
         });
 
         const event = get(annotationUiEvent);
@@ -220,8 +221,8 @@ describe("revision-focus-request from nested inline editor", () => {
         expect(event!.type).toBe("revision-focus-request");
         if (event!.type !== "revision-focus-request") return;
 
-        // sourceView is the nested editor (inline editor that was clicked in)
-        expect(event!.sourceView).toBe(nestedView);
+        // sourceViewId is stable even if the event object gets proxied by Svelte.
+        expect(event!.sourceViewId).toBe(getEditorViewId(nestedView));
         // revisionId is the nested revision's ID
         expect(event!.revisionId).toBe(nestedRevId);
         // The handler should match this to nestedEditor and push the PARENT modal
