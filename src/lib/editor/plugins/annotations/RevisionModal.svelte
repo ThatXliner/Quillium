@@ -323,7 +323,7 @@ function send(event: FsmEvent) {
             } else if (event.type === "NESTED_ANNOTATION_EVENT") {
                 if (!editor) break;
                 executePendingNestedCommand(editor, event.cmd);
-                if (event.cmd.type === "revision") {
+                if (event.cmd.type === "revision" && !appSettings.showNestedEditor) {
                     const nestedAnns = editor.state.field(annotationField);
                     const newId = Math.max(...Object.keys(nestedAnns).map(Number));
                     const newAnn = nestedAnns[newId];
