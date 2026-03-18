@@ -401,20 +401,19 @@ unmounted ──────────► mounting ─────────
 | `REBUILD_REQUESTED` | Sensor Effect A detects a new `rebuildToken` on the modal stack entry (set by `popToAndRebuild` when a child modal switches the parent's active version) |
 | `VERSION_SWITCHED` | User picks a different version from the breadcrumb dropdown, or Sensor Effect B detects the parent's `activeVersionIndex` changed |
 | `EXTERNAL_DOC_CHANGED` | Sensor Effect B detects the parent's version doc text changed (undo, typing in parent) |
-| `NESTED_ANNOTATION_EVENT` | Sensor Effect C receives a `revision-open-nested-editor` UI event targeting this modal's revision |
+| `NESTED_ANNOTATION_EVENT` | Sensor Effect C receives a `nested-annotation-create` UI event targeting this modal's revision |
 
 #### Sensor effects
 
-The FSM is driven by four reactive sensor effects that translate external signals into FSM events:
+The FSM is driven by reactive sensor effects that translate external signals into FSM events:
 
 | Effect | Watches | Sends |
 |---|---|---|
 | **A: Dialog bind + rebuild token** | `dialogEl`, `$modalStack[stackIndex].rebuildToken` | `DIALOG_BOUND`, `REBUILD_REQUESTED` |
 | **B: External sync** | `$annotationsStore` (root) or `$modalAnnotationStores[stackIndex-1]` (nested) | `VERSION_SWITCHED`, `EXTERNAL_DOC_CHANGED` |
-| **C: Nested annotation event** | `$annotationUiEvent` where `type === "revision-open-nested-editor"` and `command.revisionId === revisionId` | `NESTED_ANNOTATION_EVENT` |
-| **D: Nested revision click** | `$annotationUiEvent` where `type === "revision-focus-request"` and `revisionId` exists in `editor.state.field(annotationField)` | Pushes a new modal onto `modalStack` directly (no FSM event needed) |
+| **C: Nested annotation event** | `$annotationUiEvent` where `type === "nested-annotation-create"` and `command.revisionId === revisionId` | `NESTED_ANNOTATION_EVENT` |
 
-Sensor Effect D handles the case where the user clicks on a nested revision decoration inside the modal's CodeMirror editor. The `revisionClickHandler` extension (included in every nested editor via `getExtensions`) fires a `revision-focus-request` with the nested annotation's ID. Effect D checks whether that ID belongs to a revision in *this* modal's nested editor — if so, it pushes a new modal with `parentView: editor`, enabling click-to-open at any nesting depth.
+Nested revision clicks inside a modal are not handled by a separate RevisionModal sensor anymore. The modal's sidebar renders `Revision.svelte` cards with `view={editor}`, and those cards consume `revision-focus-request` themselves. If the clicked revision came from that nested editor, `Revision.svelte` pushes the next modal level directly.
 
 ### Undo
 
@@ -440,7 +439,7 @@ Modal’s `parentView` can be another nested `EditorView`. `translateAndDispatch
 
 **Downward path** (undo/external change → nested editors): each modal’s external-sync `$effect` detects changes in its parent `view`’s annotation state and patches its nested editor buffer. This cascades: root change → level-0 modal pulls → level-0’s nested editor state changes → level-1 modal pulls, etc.
 
-**Sub-annotation creation from within a modal**: the nested editor’s `makeParentUndoKeymap` binds Mod-Alt-m/k to fire `publishAnnotationUiEvent("revision-open-nested-editor")`. The `Revision.svelte` component in the modal’s sidebar catches this and pushes a new modal for the sub-annotation. The sub-annotation is created directly in the new modal’s nested editor via `executePendingNestedCommand`.
+**Sub-annotation creation from within a modal**: the nested editor’s keymap fires `publishAnnotationUiEvent({ type: "nested-annotation-create", ... })`. If no modal is open for that revision, `Revision.svelte` pushes one with a `pendingNestedCommand`. If a modal is already open for that revision, the open modal consumes the same event and runs `executePendingNestedCommand(...)` directly.
 
 **Annotation ID independence**: each nested editor has its own `annotationField` with IDs starting from 0. The global `$annotationsStore` only contains the root editor’s annotations. Nested modals must not look up their `revisionId` in `$annotationsStore` — it would find an unrelated annotation or `undefined`.
 
@@ -452,8 +451,8 @@ Modal’s `parentView` can be another nested `EditorView`. `translateAndDispatch
 
 ```typescript
 type ModalEntry =
-    | { type: "diff"; suggestionId: number; parentView: EditorView; label: string }
-    | { type: "revision"; revisionId: number; parentView: EditorView; label: string; pendingNestedCommand?: PendingNestedCommand };
+    | { type: "diff"; suggestionId: number; parentView: EditorView; parentViewId?: number; label: string }
+    | { type: "revision"; revisionId: number; parentView: EditorView; parentViewId?: number; label: string; pendingNestedCommand?: PendingNestedCommand };
 ```
 
 `+page.svelte` renders `{#each $modalStack as entry}` — every entry produces a live overlay simultaneously. Modals stack visually, not replace each other.
@@ -465,6 +464,8 @@ type ModalEntry =
 | `popTo(i)` | Close all modals above index `i` |
 | `popToAndRebuild(i)` | `popTo(i)` + stamp `rebuildToken` on entry `i` so it recreates its editor |
 | `clear()` | Close all modals |
+
+`modalStack.push()` normalizes entries with a stable `parentViewId = getEditorViewId(parentView)`. Duplicate detection keys off `type + annotation id + parentViewId`, not `parentView === ...`. This matters because Svelte `$state(...)` proxies can break object identity checks even when the underlying `EditorView` is the same instance.
 
 **`popToAndRebuild`**: when a child modal switches the active version on a parent-level revision, the parent modal's editor was built from the old version and must be recreated. Stamping `rebuildToken: Date.now()` on the entry signals the parent modal's `$effect` to destroy and recreate its editor with the new version's content.
 
@@ -481,10 +482,15 @@ Events carry a monotonically increasing `token` so components can gate on `event
 | Event type | Emitted by | Consumed by |
 |---|---|---|
 | `revision-boundary-nudge` | `nudgeBoundary` command, `boundaryInsertNudge` plugin | `Revision.svelte` (shows hint) |
-| `revision-open-nested-editor` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command) |
-| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor; opens modal for clicked nested revision in inline editor), `RevisionModal.svelte` Sensor Effect D (opens modal for clicked nested revision in modal editor) |
+| `nested-annotation-create` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command), `RevisionModal.svelte` Sensor Effect C (executes pending command in the open modal) |
+| `revision-request-modal` | `redirectToNestedEditor` command when the user targets a revision without an already-open modal | `Revision.svelte` (pushes modal with pending command) |
+| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in inline nested editor; opens modal for clicked nested revision when the source view matches its inline editor) |
 | `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
-| `pending-nested-editor-selection` | `createRevisionCommand` | `Revision.svelte` (selects all text in newly mounted nested editor) |
+| `pending-nested-editor-selection` | `createRevisionCommand` | `Revision.svelte` (selects text in a newly mounted nested editor) |
+| `annotation-focus-reply` | thread focus actions | `Thread.svelte` (focuses reply input) |
+| `annotation-add-version` | add-version command | `Revision.svelte` (creates a new version) |
+
+`revision-focus-request` carries `sourceViewId`, not an `EditorView` object. `getEditorViewId(view)` assigns each `EditorView` a stable numeric ID via `WeakMap`, so components can match the source editor without relying on proxy-sensitive object identity.
 
 **Pattern for consuming events in Svelte:**
 ```typescript
