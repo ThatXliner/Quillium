@@ -32,6 +32,11 @@ bun run biome     # Run both format and lint
 # Testing (uses Vitest — must use `bun run test`, NOT `bun test`)
 bun run test          # Watch mode
 bun run test:run      # Single run
+bun run test:run src/lib/editor/plugins/annotations/annotations.fuzz.test.ts  # Single file
+
+# End-to-end tests (Playwright)
+bun run test:e2e              # Headless
+bun run test:e2e:headed       # With browser window
 
 # Tauri commands
 bun run tauri dev        # Run Tauri development mode
@@ -40,80 +45,88 @@ bun run tauri build      # Build Tauri application
 
 ## Architecture Overview
 
-### Frontend Stack
-- **SvelteKit**: Web framework with static adapter for Tauri compatibility
-- **TypeScript**: Strict typing enabled
-- **Tailwind CSS**: Styling framework (v4)
-- **CodeMirror 6**: Core editor functionality
-- **Biome**: Linting and formatting (4-space indentation, 80-character line width)
+See `ARCHITECTURE.md` for the full deep dive — especially the annotationField three-phase update cycle, undo/redo inversion, and nested editor sync. What follows is enough to orient quickly.
 
-### Backend/Desktop
-- **Tauri**: Cross-platform desktop application framework
-- **Rust**: Backend logic (minimal currently)
-
-### State Management
-Two primary state management approaches are used:
-
-1. **CodeMirror StateFields**: For editor-specific state (annotations, document content)
-2. **Svelte Stores**: For UI state synchronization with editor state
-
-Key global stores in `src/lib/stores.ts`:
-- `editorView`: Main CodeMirror editor instance
-- `annotations`: Manually synced annotation state
-- `activeAnnotation`: Currently focused annotation (comment, revision, or suggestion)
-
-### Core Components
-
-#### Editor System (`src/lib/editor/`)
-- `Editor.svelte`: Main editor component with CodeMirror integration
-- `extensions.ts`: CodeMirror extension configuration
-- `StatusBar.svelte`: Writing statistics (word count, WPM, character count)
-
-#### Annotation System (`src/lib/editor/plugins/annotations/`)
-- `annotationField.ts`: CodeMirror state field for annotations
-- `Annotations.svelte`: Side panel for displaying/managing annotations
-- `Comment.svelte` & `Revision.svelte`: Individual annotation components
-- `models.ts`: TypeScript interfaces for annotation data structures
-
-#### AI Integration (`src/lib/ai/`)
-- `AISidebar.svelte`: AI-powered writing assistant interface
-- `Chat.svelte`: Conversation interface with AI
-- `Reference.svelte`: Context reference display
-- `index.ts`: OpenAI client configuration
+### Tech Stack
+- **SvelteKit** (static adapter for Tauri) + **TypeScript** (strict) + **Tailwind CSS v4**
+- **CodeMirror 6**: Core editor engine — owns document state, annotations, undo history
+- **Tauri** (Rust): Desktop runtime, SQLite persistence via Tauri commands
+- **Biome**: Linting/formatting (4-space indent, 80-char line width, trailing commas + semicolons)
 
 ### Application Layout
-The main layout (`src/routes/+page.svelte`) uses a three-panel design:
-- Left: AI Sidebar
-- Center: Editor
-- Right: Annotations panel
 
-## Development Environment
+Three-panel layout in `src/routes/+page.svelte`:
+- **Left**: AI Sidebar (Chat / Feedback / Revise tabs)
+- **Center**: CodeMirror editor (816px fixed width)
+- **Right**: Annotations panel (comment, revision, suggestion cards)
 
-### Configuration Files
-- `biome.json`: Linting/formatting rules with Svelte-specific overrides
-- `svelte.config.js`: Static adapter configuration for Tauri
-- `vite.config.js`: Tauri-specific Vite configuration (port 1420)
-- `src-tauri/tauri.conf.json`: Desktop application configuration
+Modal overlays (revision editors, diff views) stack on top via `modalStack` in `src/lib/stores.ts`.
 
-### Code Style
+### State Management: CodeMirror ↔ Svelte
+
+CodeMirror owns its own immutable state — `EditorView.state` is swapped on every transaction, but `EditorView` itself is a stable mutable object that Svelte's reactivity system cannot observe. Manual synchronization is required:
+
+1. `Editor.svelte`'s `updateListener` fires on every transaction
+2. It pushes values into Svelte writable stores (`annotations`, `activeAnnotation`, `documentContent`, `selectedText`)
+3. Components read these stores for reactive rendering
+
+`$editorView` is set once at mount and never re-fires — use it only for imperative access (dispatching transactions), never for deriving reactive state.
+
+### The Annotation System
+
+The annotation system is Quillium's core complexity. Three annotation types share a `BaseAnnotation` (selection, id, thread):
+- **Comment**: Text thread attached to a range
+- **Suggestion**: AI-generated replacement text with rationale
+- **Revision**: Multiple named versions of a text range, with nested editor support
+
+**Always use `isAnnotationOfType(annotation, "revision")` — never compare `_type` directly.**
+
+The system is layered across files in `src/lib/editor/plugins/annotations/`:
+- `models.ts` — Types, factory helpers, type guards, Zod schemas (no CodeMirror imports)
+- `annotationField.ts` — StateField + StateEffects + undo inversion (the heart of it)
+- `utils.ts` — Range mapping, active annotation queries
+- `index.ts` — ViewPlugins, keybindings, public API factory functions
+- `eventBus.ts` — Typed pub/sub bus decoupling ViewPlugins from components
+- `NestedEditorController.ts` — Shared lifecycle/sync for inline and modal nested editors
+
+#### annotationField Three-Phase Update
+
+`annotationField.update()` runs on every transaction:
+
+1. **Remap positions** — maps all annotation selections through doc changes. Comments/suggestions removed if range collapses to zero. Revisions survive briefly for cleanup.
+2. **Apply effects** — processes StateEffects (add, remove, thread update, version switch, etc.). Tracks which revisions had explicit effects.
+3. **Push doc to version state** — for revisions NOT in the explicit-effect set, reads the doc slice under the revision range and writes it into `versions[activeVersionIndex].doc`.
+
+Phase 3 only runs when `tr.docChanged`. This is how typing inside an active revision in the main doc keeps version text current without explicit effects.
+
+### Nested Editors
+
+Revision annotations support editing via nested CodeMirror editors (inline in the card or in a full-screen modal). Both delegate to `NestedEditorController`:
+
+- **Nested → parent**: `translateAndDispatch` maps changes to parent coordinates and dispatches with `nestedEditorEdit.of(revisionId)` + `addToHistory: true`
+- **Parent → nested**: `syncFromParent(doc)` patches the nested buffer when external changes arrive, tagged with `parentSyncEdit` annotation to prevent echo loops
+- **Undo**: Nested editors have no local history — Mod-z delegates to `undo(parentView)`. The parent undo inverts the doc change, Phase 3 re-reads the correct text, and the Svelte `$effect` patches the nested editor
+- **Modal flush**: Modal editors use `flushBehavior: "flush"` to serialize nested state back to the parent version blob on destroy
+
+Modals support infinite nesting — each modal's `parentView` can be another nested EditorView. `translateAndDispatch` chains upward automatically.
+
+### Persistence
+
+SQLite event log (Rust, WAL mode) with periodic snapshots:
+- Every `docChanged` or annotation mutation → `appendEvent()` via Tauri `invoke()`
+- Snapshot triggered after ≥50 events or ≥120 seconds since last snapshot
+- Load = latest snapshot + replay events since snapshot via `replayEvents()`
+- Active revision version text is crash-safe (per-keystroke via `translateAndDispatch`). Non-active version text and `activeVersionIndex` are snapshot-only.
+
+### AI Integration
+
+Provider-agnostic via the universal `ai` SDK with `@ai-sdk/openai`, `@ai-sdk/anthropic`, and `@ai-sdk/google`. Provider/model configuration in `src/lib/ai/settings.svelte.ts`, client setup in `src/lib/ai/provider.ts`.
+
+## Code Style
 - 4-space indentation (2-space for JSON)
 - 80-character line width
 - Trailing commas and semicolons required
 - Import organization enabled
-
-## Key Development Notes
-
-### State Synchronization
-Due to CodeMirror's architecture, manual state synchronization is required between editor state and Svelte stores. The editor's `updateListener` in `Editor.svelte` handles this synchronization.
-
-### AI Integration
-The application uses OpenAI's API through the `@ai-sdk/openai` package. API configuration is handled in `src/lib/ai/index.ts`.
-
-### Testing
-We have Vitest for unit tests and Playwright for end-to-end.
-
-### Build Process
-The application uses a static build process via `@sveltejs/adapter-static` to be compatible with Tauri's requirements. The Tauri configuration handles the build orchestration between frontend and backend.
 
 ---
 
