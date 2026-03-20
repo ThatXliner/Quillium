@@ -41,6 +41,7 @@
     ],
     "macOS": {
       "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB"
-    }
+    },
+    "createUpdaterArtifacts": true
   }
 }
