@@ -357,10 +357,33 @@ export const modalStack = {
             }
             return [...s, entry];
         }),
-    pop: () => _modalStack.update((s) => s.slice(0, -1)),
-    popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),
+    pop: () =>
+        _modalStack.update((s) => {
+            if (s.length > 0) {
+                _modalAnnotationStores.update((m) => {
+                    const copy = { ...m };
+                    delete copy[s.length - 1];
+                    return copy;
+                });
+            }
+            return s.slice(0, -1);
+        }),
+    popTo: (index: number) =>
+        _modalStack.update((s) => {
+            _modalAnnotationStores.update((m) => {
+                const copy = { ...m };
+                for (let i = index + 1; i < s.length; i++) delete copy[i];
+                return copy;
+            });
+            return s.slice(0, index + 1);
+        }),
     popToAndRebuild: (index: number) =>
         _modalStack.update((s) => {
+            _modalAnnotationStores.update((m) => {
+                const copy = { ...m };
+                for (let i = index + 1; i < s.length; i++) delete copy[i];
+                return copy;
+            });
             const trimmed = s.slice(0, index + 1);
             const target = trimmed[index];
             if (!target) return trimmed;
