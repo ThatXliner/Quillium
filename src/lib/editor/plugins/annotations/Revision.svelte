@@ -92,7 +92,7 @@ const controller = new NestedEditorController(view, revision.id, {
     onUpdate: (_annotations, active) => {
         activeAnnotation = active;
     },
-}, "no-flush");
+}, "flush-on-destroy");
 
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;

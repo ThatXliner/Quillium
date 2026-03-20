@@ -238,17 +238,16 @@ if (import.meta.env.DEV) {
     <DebugPanel reloadEditor={() => editorComponent?.reload()} />
 {/if}
 
-<!-- Modal stack — render only the top entry as a single dialog; the stack
-     remains for breadcrumbs/state but prevents multiple real <dialog>s. -->
-{#if $modalStack.length > 0}
-    {@const entry = $modalStack[$modalStack.length - 1]}
-    {@const i = $modalStack.length - 1}
+<!-- Modal stack — render all entries so parent editors stay alive when a
+     child modal is pushed on top. Each modal manages its own dialog
+     visibility via `isTop` (only the topmost shows its <dialog>). -->
+{#each $modalStack as entry, i (i)}
     {#if entry.type === "diff"}
         <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />
     {:else if entry.type === "revision"}
         <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
     {/if}
-{/if}
+{/each}
 
 <style>
     :global(html) {

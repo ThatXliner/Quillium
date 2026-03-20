@@ -277,4 +277,67 @@ test.describe("revision modal annotation visibility", () => {
 
         expect(errors).toHaveLength(0);
     });
+
+    test("nested annotations survive when opening a deeper revision", async ({ page }) => {
+        const errors: string[] = [];
+        page.on("pageerror", (error) => {
+            errors.push(error.message ?? String(error));
+        });
+
+        await setupFullRevision(page, "hello world");
+
+        // Open the revision modal
+        const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
+        if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
+            await expand.click();
+        }
+        const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
+        await expect(modalEditor).toBeVisible({ timeout: 8000 });
+        await expect.poll(() => getCmText(modalEditor)).toBe("hello world");
+
+        // Create two nested revisions in the modal
+        // First: select "hello"
+        await modalEditor.click();
+        await page.keyboard.press("Home");
+        for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
+        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.waitForTimeout(500);
+
+        // Second: select "world"
+        await modalEditor.click();
+        await page.keyboard.press("End");
+        for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+        await page.keyboard.press("ControlOrMeta+Alt+k");
+
+        // Wait for both annotation cards to appear
+        const cards = page.locator("dialog .annotation-card-inline");
+        await expect(cards).toHaveCount(2, { timeout: 5000 });
+
+        // Open the first nested revision via its expand button
+        const firstCard = cards.first();
+        const expandBtn = firstCard.locator("[data-tutorial-action='expand-revision-modal']");
+        await expect(expandBtn).toBeVisible({ timeout: 3000 });
+        await expandBtn.click();
+
+        // The deeper modal's editor should contain the revision text.
+        // Use dialog[open] to target the visible (child) modal, not the
+        // hidden parent modal which is still in the DOM.
+        const deeperEditor = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
+        await expect(deeperEditor).toBeVisible({ timeout: 5000 });
+        await expect.poll(() => getCmText(deeperEditor)).toBe("hello");
+
+        // Go back to parent modal
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(500);
+
+        // Parent modal should reopen with original text and both annotations
+        const parentEditor = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
+        await expect(parentEditor).toBeVisible({ timeout: 5000 });
+        await expect.poll(() => getCmText(parentEditor)).toBe("hello world");
+
+        const parentCards = page.locator("dialog[open] .annotation-card-inline");
+        await expect(parentCards).toHaveCount(2, { timeout: 5000 });
+
+        expect(errors).toHaveLength(0);
+    });
 });

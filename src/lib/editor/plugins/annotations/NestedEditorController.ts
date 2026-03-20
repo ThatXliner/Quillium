@@ -37,7 +37,7 @@ export type NestedEditorCallbacks = {
     onUpdate?: (annotations: Annotations, activeAnnotation: GenericAnnotation | undefined) => void;
 };
 
-export type FlushBehavior = "flush" | "no-flush";
+export type FlushBehavior = "flush" | "flush-on-destroy" | "no-flush";
 
 /**
  * Controls the lifecycle and sync of a nested CodeMirror editor within
@@ -127,7 +127,7 @@ export class NestedEditorController {
     destroy(): void {
         if (!this._editor) return;
 
-        if (this.flushBehavior === "flush") {
+        if (this.flushBehavior === "flush" || this.flushBehavior === "flush-on-destroy") {
             this.flushToParent();
         }
 

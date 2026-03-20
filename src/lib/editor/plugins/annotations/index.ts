@@ -714,13 +714,38 @@ function addRevisionVersionCommand(): StateCommand {
 function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
     return ({ state, dispatch }) => {
         const annotation = getActiveRevisionAnnotation(state);
-        if (!annotation) return false;
-        const count = annotation.versions.length;
-        if (count <= 1) return true;
-        const current = annotation.activeVersionIndex;
-        const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
-        dispatch(setActiveRevisionVersion(state, annotation.id, next));
-        return true;
+        if (annotation) {
+            const count = annotation.versions.length;
+            if (count <= 1) return true;
+            const current = annotation.activeVersionIndex;
+            const next =
+                direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
+            dispatch(setActiveRevisionVersion(state, annotation.id, next));
+            return true;
+        }
+        // Cursor isn't inside a revision — find the nearest one and
+        // nudge the user toward the inline/modal editor.
+        const cursor = state.selection.main.from;
+        let nearestId: number | null = null;
+        let nearestDist = Infinity;
+        for (const ann of Object.values(state.field(annotationField))) {
+            if (!isAnnotationOfType(ann, "revision")) continue;
+            const { from, to } = ann.selection.main;
+            if (from === to) continue;
+            const dist = Math.min(Math.abs(cursor - from), Math.abs(cursor - to));
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestId = ann.id;
+            }
+        }
+        if (nearestId !== null) {
+            annotationEventBus.emit({
+                type: "revision-boundary-nudge",
+                revisionId: nearestId,
+            });
+            return true;
+        }
+        return false;
     };
 }
 

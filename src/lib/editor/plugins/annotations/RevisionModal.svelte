@@ -437,14 +437,21 @@ $effect(() => {
         const parentLevel = $modalAnnotationStores;
         ann = parentLevel[stackIndex - 1];
     }
-    if (!isTop || fsmState !== "ready" || !controller.editor || !ann) return;
+    if (fsmState !== "ready" || !controller.editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex])
         return;
 
+    // Version switches rebuild the editor, which would destroy it while
+    // a child modal depends on it. Only process when we're the top modal.
+    // When not top, don't update lastSyncedVersionIndex — the mismatch
+    // will be detected when the child modal closes and this becomes top,
+    // triggering the deferred rebuild.
     if (lastSyncedVersionIndex >= 0 && rev.activeVersionIndex !== lastSyncedVersionIndex) {
-        lastSyncedVersionIndex = rev.activeVersionIndex;
-        send({ type: "VERSION_SWITCHED" });
+        if (isTop) {
+            lastSyncedVersionIndex = rev.activeVersionIndex;
+            send({ type: "VERSION_SWITCHED" });
+        }
         return;
     }
     lastSyncedVersionIndex = rev.activeVersionIndex;
