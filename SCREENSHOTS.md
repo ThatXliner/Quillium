@@ -36,3 +36,8 @@
 
 ![Document library](screenshots/06-library.png)
 *The document library: grid view with document cards and the preview panel.*
+
+## Full UI — Hero
+
+![Full UI hero screenshot](screenshots/08-full-ui.png)
+*All three annotation types beside a short prose passage, with the AI Chat sidebar open showing a context snippet and an active comment thread.*

@@ -59,6 +59,7 @@ import {
 } from "$lib/stores";
 import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
+import { appSettings } from "$lib/settings.svelte";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
@@ -74,11 +75,11 @@ const {
     stackIndex,
 }: { revisionId: number; view: EditorView; stackIndex: number } = $props();
 
-// Capture the pending command eagerly at mount time so we don't
-// re-read it reactively from the (mutable) modal stack later.
-const initialEntry = $modalStack[stackIndex];
-const initialPendingCommand =
-    initialEntry?.type === "revision" ? initialEntry.pendingNestedCommand : undefined;
+// Single active modal: true when this entry is on top of the stack.
+const isTop = $derived(stackIndex === $modalStack.length - 1);
+
+// Capture and consume any pending nested command once on mount.
+const initialPendingCommand = modalStack.consumePendingCommand(stackIndex);
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
@@ -288,7 +289,7 @@ function send(event: FsmEvent) {
         case "unmounted": {
             if (event.type === "DIALOG_BOUND") {
                 fsmState = "mounting";
-                if (dialogEl && !dialogEl.open) dialogEl.showModal();
+                if (dialogEl && isTop && !dialogEl.open) dialogEl.showModal();
                 // The "mounting" → "ready" transition is handled by
                 // the $effect below, which fires once the DOM updates
                 // and editorHost is available.
@@ -379,8 +380,12 @@ $effect(() => {
     const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
     const token = entry?.rebuildToken ?? 0;
 
-    if (fsmState === "unmounted" && el) {
+    if (fsmState === "unmounted" && el && isTop) {
         send({ type: "DIALOG_BOUND" });
+    } else if (!isTop && el?.open) {
+        el.close();
+    } else if (fsmState === "ready" && isTop && el && !el.open) {
+        el.showModal();
     } else if (fsmState === "ready" && token && token !== lastRebuildToken) {
         lastRebuildToken = token;
         send({ type: "REBUILD_REQUESTED" });
@@ -502,7 +507,7 @@ $effect(() => {
         const parentLevel = $modalAnnotationStores;
         ann = parentLevel[stackIndex - 1];
     }
-    if (fsmState !== "ready" || !editor || !ann) return;
+    if (!isTop || fsmState !== "ready" || !editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex])
         return;
@@ -593,9 +598,10 @@ $effect(() => {
     if (
         !event ||
         fsmState !== "ready" ||
+        !isTop ||
         !editor ||
         event.token === lastNestedEditorEventToken ||
-        event.type !== "revision-open-nested-editor" ||
+        event.type !== "nested-annotation-create" ||
         event.command.revisionId !== revisionId
     )
         return;
@@ -908,9 +914,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <Kbd keys={[modKey, "↵"]} />
         </button>
         <button
-          class="p-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+          class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
           onclick={close}
         >
+          <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
           <X size={16} />
         </button>
       </div>
@@ -1067,6 +1074,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     height: 100%;
     width: 100%;
     background: transparent;
+    font-family: var(--doc-font-family);
   }
 
   .revision-modal-editor :global(.cm-scroller) {
@@ -1080,6 +1088,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     min-height: 100%;
     padding: 20px 32px 32px 32px;
     font-size: 15px;
+    font-family: var(--doc-font-family);
   }
 
   .revision-modal-editor :global(.cm-focused) {
@@ -1146,7 +1155,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
   /* Base text layer (outermost / depth-0) */
   .context-text {
-    display: block;
     font-size: 11px;
     line-height: 1.7;
     color: rgba(80, 40, 120, 0.35);
@@ -1155,14 +1163,16 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     word-break: break-word;
   }
 
+  .context-depth-0 {
+    display: block;
+  }
+
 
   /* Each nesting level: inset block with deeper purple bg + stronger text */
   .context-nest {
     display: inline;
     border-radius: 4px;
-    padding: 2px 4px;
-    box-decoration-break: clone;
-    -webkit-box-decoration-break: clone;
+    padding: 1px 3px;
   }
 
   /* Depth 0: outermost revision highlight (light purple) */

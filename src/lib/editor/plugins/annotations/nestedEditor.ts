@@ -159,7 +159,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
             const sel = view.state.selection.main;
             if (sel.empty) return false;
             publishAnnotationUiEvent({
-                type: "revision-open-nested-editor",
+                type: "nested-annotation-create",
                 command: {
                     revisionId,
                     type,

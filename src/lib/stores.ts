@@ -43,6 +43,7 @@
 import type { EditorView } from "@codemirror/view";
 import { writable } from "svelte/store";
 import type { Annotations, GenericAnnotation } from "./editor/plugins/annotations";
+import posthog from "./posthog";
 
 /**
  * The main CodeMirror EditorView instance. Set once when
@@ -179,7 +180,12 @@ export type AnnotationUiEvent =
       }
     | {
           token: number;
-          type: "revision-open-nested-editor";
+          type: "nested-annotation-create";
+          command: NestedEditorCommand;
+      }
+    | {
+          token: number;
+          type: "revision-request-modal";
           command: NestedEditorCommand;
       }
     | {
@@ -330,19 +336,25 @@ export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>
         _modalStack.update((s) => {
-            const top = s[s.length - 1];
-            // Prevent duplicate modals for the same annotation + parent view.
-            if (
-                top &&
-                top.type === entry.type &&
-                top.parentView === entry.parentView &&
-                ((top.type === "revision" &&
-                    entry.type === "revision" &&
-                    top.revisionId === entry.revisionId) ||
-                    (top.type === "diff" &&
-                        entry.type === "diff" &&
-                        top.suggestionId === entry.suggestionId))
-            ) {
+            // Prevent duplicate modals for the same annotation + parent view
+            // anywhere in the stack, not just the top.
+            const isDuplicate = s.some(
+                (existing) =>
+                    existing.type === entry.type &&
+                    existing.parentView === entry.parentView &&
+                    ((existing.type === "revision" &&
+                        entry.type === "revision" &&
+                        existing.revisionId === entry.revisionId) ||
+                        (existing.type === "diff" &&
+                            entry.type === "diff" &&
+                            existing.suggestionId === entry.suggestionId)),
+            );
+            if (isDuplicate) {
+                posthog.capture("modal_stack_duplicate_push", {
+                    entry_type: entry.type,
+                    revision_id: entry.type === "revision" ? entry.revisionId : undefined,
+                    suggestion_id: entry.type === "diff" ? entry.suggestionId : undefined,
+                });
                 return s;
             }
             return [...s, entry];
@@ -359,6 +371,18 @@ export const modalStack = {
             };
             return trimmed;
         }),
+    consumePendingCommand: (index: number) => {
+        let pending: PendingNestedCommand | undefined;
+        _modalStack.update((s) => {
+            const entry = s[index];
+            if (entry?.type !== "revision" || !entry.pendingNestedCommand) return s;
+            pending = entry.pendingNestedCommand;
+            const copy = [...s];
+            copy[index] = { ...entry, pendingNestedCommand: undefined };
+            return copy;
+        });
+        return pending;
+    },
     clear: () => {
         _modalStack.set([]);
         _modalAnnotationStores.set({});

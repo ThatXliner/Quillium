@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/* ── Fontsource font imports ─────────────────────────────────────────────── */
+/* Serif */
+@import "@fontsource/eb-garamond/latin.css";
+@import "@fontsource/lora/latin.css";
+@import "@fontsource/ia-writer-quattro/latin.css";
+/* Sans */
+@import "@fontsource/raleway/latin.css";
+@import "@fontsource/inter/latin.css";
+@import "@fontsource/nunito/latin.css";
+/* Typewriter */
+@import "@fontsource/courier-prime/latin.css";
+/* Handwriting */
+@import "@fontsource/caveat/latin.css";
+/* Accessibility */
+@import "@fontsource/opendyslexic/latin.css";
+
 :root {
     --doc-font-family: "SF Pro Text", system-ui, sans-serif;
     --doc-font-size: 18px;

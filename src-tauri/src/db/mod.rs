@@ -1,7 +1,6 @@
 pub mod documents;
 pub mod events;
 pub mod load;
-pub mod migration;
 pub mod schema;
 
 use serde::{Deserialize, Serialize};
@@ -51,11 +50,4 @@ pub struct LoadResult {
     pub snapshot_state_json: Option<String>,
     pub snapshot_event_id: i64,
     pub events_since: Vec<EventRecord>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MigrationResult {
-    pub migrated: bool,
-    pub document_id: Option<String>,
 }

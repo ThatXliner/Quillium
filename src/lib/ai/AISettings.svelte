@@ -29,7 +29,7 @@
 <script lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon } from "lucide-svelte";
-import { aiSettings, hasApiKey, loadApiKeyForProvider } from "$lib/ai/settings.svelte";
+import { aiSettings, hasApiKey, loadApiKeyForProvider, HAS_API_KEY } from "$lib/ai/settings.svelte";
 import type { Provider } from "$lib/ai/provider";
 import posthog from "$lib/posthog";
 
@@ -108,10 +108,15 @@ let saveTimer: ReturnType<typeof setTimeout>;
 
 $effect(() => {
     const provider = selectedProvider;
+    // Only query the keychain if the user has previously saved an API key
+    // (avoids the keychain prompt before AI is configured).
+    if (!localStorage.getItem(HAS_API_KEY)) {
+        keyLoading = false;
+        return;
+    }
     keyLoading = true;
     invoke<string | null>("get_api_key", { provider })
         .then((key) => {
-            console.log("get_api_key", provider, "->", key);
             apiKey = key ?? "";
             aiSettings.apiKey = apiKey;
         })
@@ -170,9 +175,11 @@ async function saveApiKey() {
                 key: apiKey.trim(),
             });
             aiSettings.apiKey = apiKey.trim();
+            localStorage.setItem(HAS_API_KEY, "1");
         } else {
             await invoke("delete_api_key", { provider: selectedProvider });
             aiSettings.apiKey = "";
+            localStorage.removeItem(HAS_API_KEY);
         }
         saveStatus = "saved";
     } catch (e) {

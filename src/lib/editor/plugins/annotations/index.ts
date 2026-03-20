@@ -208,12 +208,17 @@ function getActiveRevisionAnnotation(state: EditorState) {
 function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand {
     return (view) => {
         if (!appSettings.atomicRevisions) return false;
+        // When inline nested editors are enabled, annotation creation
+        // should happen directly in the main editor — no modal redirect.
+        // The modal path is only for commands inside a nested editor
+        // (handled by makeParentUndoKeymap in nestedEditor.ts).
+        if (appSettings.showNestedEditor) return false;
         const activeRevision = getActiveRevisionAnnotation(view.state);
         if (!activeRevision) return false; // fall through to original keymap
         const revFrom = activeRevision.selection.main.from;
         const sel = view.state.selection.main;
         publishAnnotationUiEvent({
-            type: "revision-open-nested-editor",
+            type: "revision-request-modal",
             command: {
                 revisionId: activeRevision.id,
                 type,

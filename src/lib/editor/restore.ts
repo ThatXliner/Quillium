@@ -171,10 +171,13 @@ export function restoreBackup(view: EditorView, documentText: string): void {
     });
 
     // Replace the doc and remove all stale annotations atomically.
+    // Tag as "input.restore" so the persistence layer skips the
+    // suspicious-change detector (otherwise it would re-trigger a
+    // backup of the pre-restore state, creating a circular problem).
     view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: documentText },
         effects: Object.values(annotations).map((ann) => removeAnnotation.of(ann)),
-        userEvent: "input",
+        userEvent: "input.restore",
     });
 
     // Re-add each annotation with a healed selection.

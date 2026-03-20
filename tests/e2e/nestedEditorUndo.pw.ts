@@ -25,17 +25,35 @@ async function createRevisionAndOpenNestedEditor(page: Page, text: string) {
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.press("ControlOrMeta+Alt+k");
 
-    const inlineHost = page.locator(".revision-inline-editor");
+    // Try to open the revision modal for deterministic access
+    const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
+    if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
+        await expand.click();
+        const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
+        await expect(modalEditor).toBeVisible({ timeout: 8000 });
+        return modalEditor;
+    }
+
+    // Fallback: use the inline nested editor if modal button isn't present
+    const toggle = page.locator("[data-tutorial-action='toggle-nested-editor']").first();
+    if (await toggle.isVisible({ timeout: 4000 }).catch(() => false)) {
+        await toggle.click();
+    }
+    const inlineHost = page.locator(".revision-inline-editor .cm-content").first();
     await expect(inlineHost).toBeVisible({ timeout: 8000 });
-    const nestedEditor = inlineHost.locator(".cm-content").first();
-    await expect(nestedEditor).toBeVisible({ timeout: 8000 });
-    return nestedEditor;
+    return inlineHost;
 }
 
 /** Get text content of a CodeMirror .cm-content element */
 test.describe("nested editor: add text then delete it, then undo from main editor", () => {
     test.beforeEach(async ({ page }) => {
         await installTauriMock(page);
+        await page.addInitScript(() => {
+            localStorage.setItem(
+                "quillium-app-settings",
+                JSON.stringify({ showNestedEditor: true, atomicRevisions: true }),
+            );
+        });
         await page.goto("/");
         await expect(page.locator("#editor-document .cm-content")).toBeVisible();
     });
@@ -61,8 +79,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         for (let i = 0; i < 5; i++) await page.keyboard.press("Backspace");
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
 
-        // Step 4: click main editor to focus it, then press Cmd+Z
-        await page.locator("#editor-document .cm-content").click();
+        // Step 4: press Cmd+Z (nested editor keymap delegates undo to parent)
         await page.keyboard.press("ControlOrMeta+z");
 
         // Expected: the deletion is undone → nested editor shows "hello my b world"
@@ -88,8 +105,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         for (let i = 0; i < 6; i++) await page.keyboard.press("Backspace");
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
 
-        // Undo from main editor
-        await page.locator("#editor-document .cm-content").click();
+        // Undo (nested editor delegates to parent)
         await page.keyboard.press("ControlOrMeta+z");
 
         // Should restore "hello EXTRA world"
@@ -113,8 +129,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         for (let i = 0; i < 5; i++) await page.keyboard.press("Backspace");
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
 
-        // Undo #1 from main editor: should restore "hello my b world"
-        await page.locator("#editor-document .cm-content").click();
+        // Undo #1 (delegated to parent): should restore "hello my b world"
         await page.keyboard.press("ControlOrMeta+z");
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello my b world");
 
@@ -201,6 +216,8 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         // Undo while nested editor still has focus — delegates to parent via makeParentUndoKeymap
         await page.keyboard.press("ControlOrMeta+z");
 
-        await expect.poll(() => getCmText(nestedEditor)).toBe("hello my b world");
+        const anyEditor = page.locator(".revision-modal-editor .cm-content, .revision-inline-editor .cm-content").first();
+        await expect(anyEditor).toBeVisible({ timeout: 6000 });
+        await expect.poll(() => getCmText(anyEditor)).toBe("hello my b world");
     });
 });

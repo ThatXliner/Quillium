@@ -169,16 +169,39 @@ $effect(() => {
     if (
         !event ||
         event.token === lastOpenNestedEditorToken ||
-        event.type !== "revision-open-nested-editor" ||
+        event.type !== "revision-request-modal" ||
         event.command.revisionId !== revision.id
     )
         return;
-    // If there's already a modal open for this revision, the modal's own
-    // event handler will create the sub-annotation directly in its nested
-    // editor rather than pushing a duplicate modal from the sidebar.
-    const stack = $modalStack;
-    const topModal = stack[stack.length - 1];
-    if (topModal?.type === "revision" && topModal.revisionId === revision.id) return;
+    lastOpenNestedEditorToken = event.token;
+    const cmd = event.command;
+    modalStack.push({
+        type: "revision",
+        revisionId: revision.id,
+        parentView: view,
+        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+        pendingNestedCommand: {
+            type: cmd.type,
+            selectionFrom: cmd.selectionFrom,
+            selectionTo: cmd.selectionTo,
+        },
+    });
+});
+
+$effect(() => {
+    const event = $annotationUiEvent;
+    if (
+        !event ||
+        event.token === lastOpenNestedEditorToken ||
+        event.type !== "nested-annotation-create" ||
+        event.command.revisionId !== revision.id
+    )
+        return;
+    // If a modal is already open for this revision, let that modal handle the event.
+    if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id)) {
+        lastOpenNestedEditorToken = event.token;
+        return;
+    }
     lastOpenNestedEditorToken = event.token;
     const cmd = event.command;
     modalStack.push({
@@ -664,7 +687,7 @@ onDestroy(() => {
         height: 100%;
         min-height: 220px;
         font-size: 13px;
-        font-family: inherit;
+        font-family: var(--doc-font-family);
         line-height: 1.6;
         background: transparent;
     }
@@ -677,7 +700,7 @@ onDestroy(() => {
         text-indent: 0;
         font-size: 13px;
         line-height: 1.6;
-        font-family: inherit;
+        font-family: var(--doc-font-family);
     }
 
     @keyframes focus-flash {

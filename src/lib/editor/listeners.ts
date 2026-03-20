@@ -219,13 +219,17 @@ async function doAppend(update: ViewUpdate) {
 
     // Guard: check for suspiciously large deletions before writing to DB.
     // The backup is saved *before* the write so the user can always recover.
-    // Skip if every doc-changing transaction is an explicit user delete —
-    // that means the user deliberately selected text and pressed Delete/Backspace.
+    // Skip if every doc-changing transaction is an explicit user delete or a
+    // restore operation — i.e. the user deliberately deleted text or invoked restore.
     if (update.docChanged) {
-        const allUserInitiated = update.transactions
+        const allUserInitiatedOrRestore = update.transactions
             .filter((tr) => tr.docChanged)
-            .every((tr) => tr.isUserEvent("delete"));
-        if (!allUserInitiated) {
+            .every(
+                (tr) =>
+                    tr.isUserEvent("delete") ||
+                    tr.isUserEvent("input.restore"),
+            );
+        if (!allUserInitiatedOrRestore) {
             const oldText = update.startState.doc.toString();
             const newText = update.state.doc.toString();
             const suspicious = checkForSuspiciousChange(oldText, newText);

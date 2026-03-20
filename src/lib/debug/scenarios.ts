@@ -1122,4 +1122,51 @@ export const scenarios: Scenario[] = [
             }
         },
     },
+
+    // ── Screenshot: full UI (original prose) ──────────────────────────────────
+    // Used by scripts/screenshots.ts for the hero/marketing screenshot.
+    // Shows the AI chat sidebar open alongside all three annotation types
+    // in a realistic editorial session.
+    {
+        id: "screenshot-full-ui",
+        label: "Screenshot: full UI (original prose)",
+        description:
+            "Hero screenshot — AI chat sidebar + comment, revision, and comment-with-thread on a short original passage",
+        category: "debug",
+        doc: `The café had emptied out by the time she noticed the letter. It was propped against the salt shaker, her name written in handwriting she didn't recognise — careful, unhurried, like someone who had practised saying something difficult.
+
+She had been walking for hours when the rain began — gently at first, then all at once, the way grief arrives without warning or ceremony. By the time she reached the corner of Elm and Fifth, her coat was soaked through and she had stopped noticing. The city kept moving around her the way it always did, indifferent and bright.
+
+She ordered another coffee she wouldn't finish. The letter stayed where it was.
+
+Outside, a man walked his dog in the rain. The dog did not seem to mind.`,
+        setup(view) {
+            createComment({
+                targetText: "emptied out",
+                comment: 'Too casual? "grown quiet" might land better.',
+                author: "Elena",
+                view,
+            });
+            createRevision({
+                targetText:
+                    "the rain began — gently at first, then all at once, the way grief arrives without warning or ceremony",
+                versions: [
+                    {
+                        label: "then all at once...",
+                        text: "the rain came — first gently, then all at once, the way grief tends to arrive",
+                    },
+                ],
+                threadMessage:
+                    "The second half is the stronger image. Consider cutting 'without warning or ceremony' — the reader already feels it.",
+                author: "Elena",
+                view,
+            });
+            createComment({
+                targetText: "The letter stayed where it was.",
+                comment: "This is the best line in the chapter.",
+                author: "Elena",
+                view,
+            });
+        },
+    },
 ];

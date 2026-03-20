@@ -33,6 +33,12 @@ import type { EventPayload } from "$lib/db/events";
 import type { BackupEntry } from "$lib/errorGuard";
 import { restoreBackup } from "$lib/editor/restore";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+
+let updateAvailable = $state(false);
+let updateVersion = $state("");
+let updateInstalling = $state(false);
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -72,8 +78,32 @@ function handleKeydown(e: KeyboardEvent) {
     }
 }
 
+async function installUpdate() {
+    updateInstalling = true;
+    try {
+        const update = await check();
+        if (update) {
+            await update.downloadAndInstall();
+            await relaunch();
+        }
+    } catch (e) {
+        console.error("Update install failed:", e);
+        updateInstalling = false;
+    }
+}
+
 onMount(() => {
     showTutorialOnFirstVisit();
+
+    // Check for updates silently in the background.
+    check().then((update) => {
+        if (update?.available) {
+            updateAvailable = true;
+            updateVersion = update.version;
+        }
+    }).catch(() => {
+        // Ignore — no network or endpoint not set up yet.
+    });
 
     // Handle restore-backup events dispatched by ErrorBanner.svelte.
     function handleRestoreBackup(e: Event) {
@@ -181,6 +211,23 @@ if (import.meta.env.DEV) {
     <Editor bind:this={editorComponent} />
 </div>
 
+<!-- Update banner — shown when a new version is available -->
+{#if updateAvailable}
+    <div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 bg-white rounded-xl shadow-xl border border-black/[0.07] text-[13px]">
+        <span class="text-black/60">Quillium <span class="font-semibold text-black/80">{updateVersion}</span> is available</span>
+        <button
+            onclick={installUpdate}
+            disabled={updateInstalling}
+            class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-full text-[12px] font-medium transition-colors disabled:opacity-50"
+        >{updateInstalling ? "Installing…" : "Update"}</button>
+        <button
+            onclick={() => updateAvailable = false}
+            class="text-black/25 hover:text-black/50 transition-colors"
+            aria-label="Dismiss"
+        >✕</button>
+    </div>
+{/if}
+
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
 {#if $tutorialActive}
     <Tutorial onComplete={() => {}} />
@@ -191,19 +238,17 @@ if (import.meta.env.DEV) {
     <DebugPanel reloadEditor={() => editorComponent?.reload()} />
 {/if}
 
-<!--
-    Modal stack — renders nested revision/diff overlays.
-    Each entry in the modalStack store becomes a DiffModal or
-    RevisionModal. The stack supports arbitrary nesting depth
-    (revisions inside revisions).
--->
-{#each $modalStack as entry, i (entry)}
+<!-- Modal stack — render only the top entry as a single dialog; the stack
+     remains for breadcrumbs/state but prevents multiple real <dialog>s. -->
+{#if $modalStack.length > 0}
+    {@const entry = $modalStack[$modalStack.length - 1]}
+    {@const i = $modalStack.length - 1}
     {#if entry.type === "diff"}
         <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />
     {:else if entry.type === "revision"}
         <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
     {/if}
-{/each}
+{/if}
 
 <style>
     :global(html) {

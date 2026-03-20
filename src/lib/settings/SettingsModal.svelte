@@ -13,13 +13,21 @@
       - onclose: () => void — called when the modal is fully dismissed.
 -->
 <script lang="ts">
-import { X, Settings2, Check, ChevronDown, Plus, Trash2 } from "lucide-svelte";
+import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle } from "lucide-svelte";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
+import FontGuideModal from "./FontGuideModal.svelte";
+import { FONTS } from "./fonts";
 
 const { onclose }: { onclose: () => void } = $props();
 
-type FontOption = { label: string; value: string; sample: string };
+type FontOption = {
+    label: string;
+    value: string;
+    sample?: string;
+    group?: string;
+    featured?: boolean;
+};
 
 function firstInstalled(...names: string[]): { label: string; cssName: string } {
     for (const name of names) {
@@ -29,7 +37,10 @@ function firstInstalled(...names: string[]): { label: string; cssName: string } 
     const last = names[names.length - 1];
     return { label: last, cssName: `"${last}"` };
 }
-
+const PLACEHOLDER =
+    Math.random() < 0.2
+        ? "Sphinx of black quartz, judge my vow"
+        : "The quick brown fox jumps over the lazy dog";
 const mono = firstInstalled(
     "SF Mono",
     "JetBrains Mono",
@@ -43,16 +54,43 @@ const sans = firstInstalled("SF Pro Text", "Inter", "Segoe UI", "Helvetica Neue"
 const monoStack = `${mono.cssName}, ui-monospace, monospace`;
 const sansStack = `${sans.cssName}, system-ui, sans-serif`;
 
+// Map static font data into picker FontOption shape, then inject the two
+// runtime-resolved system entries (system sans + system mono).
 const DOC_FONTS: FontOption[] = [
-    { label: sans.label, value: sansStack, sample: "The quick brown fox jumps" },
-    { label: "Georgia", value: "Georgia, serif", sample: "The quick brown fox jumps" },
-    { label: mono.label, value: monoStack, sample: "The quick brown fox jumps" },
+    ...FONTS.filter((f) => f.docFont).map((f) => ({
+        label: f.name,
+        value: f.cssFamily,
+        sample: f.sample,
+        group: f.group,
+        featured: f.docFeatured,
+    })),
+    { group: "Sans", label: sans.label, value: sansStack },
+    { group: "Typewriter", label: mono.label, value: monoStack },
 ];
 
 const UI_FONTS: FontOption[] = [
-    { label: sans.label, value: sansStack, sample: "App interface" },
-    { label: "Georgia", value: "Georgia, serif", sample: "App interface" },
-    { label: mono.label, value: monoStack, sample: "App interface" },
+    // System fonts come first as featured picks
+    {
+        featured: true,
+        group: "Sans",
+        label: sans.label,
+        value: sansStack,
+        sample: "Crisp system default",
+    },
+    {
+        featured: true,
+        group: "Mono",
+        label: mono.label,
+        value: monoStack,
+        sample: "Crisp monospace precision",
+    },
+    ...FONTS.filter((f) => f.uiFont || f.uiFeatured).map((f) => ({
+        label: f.name,
+        value: f.cssFamily,
+        sample: f.sample,
+        group: f.group,
+        featured: f.uiFeatured,
+    })),
 ];
 
 // Local draft — a shallow copy of persisted settings
@@ -101,6 +139,7 @@ let alerting = $state(false);
 
 // Which custom dropdown is open: "doc" | "ui" | null
 let openDropdown = $state<"doc" | "ui" | null>(null);
+let showFontGuide = $state<"doc" | "ui" | null>(null);
 
 $effect(() => {
     if (dialogEl && !dialogEl.open) {
@@ -188,8 +227,9 @@ function fontLabel(fonts: FontOption[], value: string) {
             <button
                 onclick={tryClose}
                 aria-label="Close settings"
-                class="p-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
             >
+                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
@@ -203,10 +243,27 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- Font family row -->
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">Font family</div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="setting-title">Font family</div>
+                        <button
+                            onclick={() => showFontGuide = "doc"}
+                            aria-label="Font guide"
+                            class="text-black/25 hover:text-black/50 transition-colors"
+                        >
+                            <HelpCircle size={13} />
+                        </button>
+                    </div>
                     <div class="setting-desc">Editor font</div>
                 </div>
                 <!-- Custom dropdown -->
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.docFontFamily !== "Georgia, serif"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.docFontFamily = "Georgia, serif"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <div class="font-dropdown relative" role="none">
                     <button
                         onclick={() => openDropdown = openDropdown === "doc" ? null : "doc"}
@@ -217,7 +274,8 @@ function fontLabel(fonts: FontOption[], value: string) {
                     </button>
                     {#if openDropdown === "doc"}
                         <div class="dropdown-popover">
-                            {#each DOC_FONTS as font}
+                            <div class="dropdown-section-label">Our Picks</div>
+                            {#each DOC_FONTS.filter(f => f.featured) as font}
                                 {@const selected = draft.docFontFamily === font.value}
                                 <button
                                     class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
@@ -228,8 +286,29 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     }}
                                 >
                                     <div class="flex-1 min-w-0">
-                                        <div class="dropdown-option-label">{font.label}</div>
-                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font.sample}</div>
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
+                                    </div>
+                                    {#if selected}
+                                        <Check size={11} class="text-blue-500 shrink-0" />
+                                    {/if}
+                                </button>
+                            {/each}
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">All Fonts</div>
+                            {#each DOC_FONTS.filter(f => !f.featured).sort((a, b) => a.label.localeCompare(b.label)) as font}
+                                {@const selected = draft.docFontFamily === font.value}
+                                <button
+                                    class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
+                                    onclick={() => {
+                                        draft.docFontFamily = font.value;
+                                        openDropdown = null;
+                                        handleChange();
+                                    }}
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
                                         <Check size={11} class="text-blue-500 shrink-0" />
@@ -238,6 +317,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {/each}
                         </div>
                     {/if}
+                </div>
                 </div>
             </div>
 
@@ -294,9 +374,26 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- UI font row -->
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">UI font family</div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="setting-title">UI font family</div>
+                        <button
+                            onclick={() => showFontGuide = "ui"}
+                            aria-label="Font guide"
+                            class="text-black/25 hover:text-black/50 transition-colors"
+                        >
+                            <HelpCircle size={13} />
+                        </button>
+                    </div>
                     <div class="setting-desc">UI font</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.uiFontFamily !== sansStack}
+                    <button
+                        type="button"
+                        onclick={() => { draft.uiFontFamily = sansStack; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <div class="font-dropdown relative" role="none">
                     <button
                         onclick={() => openDropdown = openDropdown === "ui" ? null : "ui"}
@@ -307,7 +404,8 @@ function fontLabel(fonts: FontOption[], value: string) {
                     </button>
                     {#if openDropdown === "ui"}
                         <div class="dropdown-popover">
-                            {#each UI_FONTS as font}
+                            <div class="dropdown-section-label">Our Picks</div>
+                            {#each UI_FONTS.filter(f => f.featured) as font}
                                 {@const selected = draft.uiFontFamily === font.value}
                                 <button
                                     class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
@@ -318,8 +416,29 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     }}
                                 >
                                     <div class="flex-1 min-w-0">
-                                        <div class="dropdown-option-label">{font.label}</div>
-                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font.sample}</div>
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{font?.sample ?? PLACEHOLDER}</div>
+                                    </div>
+                                    {#if selected}
+                                        <Check size={11} class="text-blue-500 shrink-0" />
+                                    {/if}
+                                </button>
+                            {/each}
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">All Fonts</div>
+                            {#each UI_FONTS.filter(f => !f.featured).sort((a, b) => a.label.localeCompare(b.label)) as font}
+                                {@const selected = draft.uiFontFamily === font.value}
+                                <button
+                                    class="dropdown-option {selected ? 'dropdown-option-active' : ''}"
+                                    onclick={() => {
+                                        draft.uiFontFamily = font.value;
+                                        openDropdown = null;
+                                        handleChange();
+                                    }}
+                                >
+                                    <div class="flex-1 min-w-0">
+                                        <div class="dropdown-option-label" style="font-family: {font.value};">{font.label}</div>
+                                        <div class="dropdown-option-sample" style="font-family: {font.value};">{PLACEHOLDER}</div>
                                     </div>
                                     {#if selected}
                                         <Check size={11} class="text-blue-500 shrink-0" />
@@ -329,6 +448,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         </div>
                     {/if}
                 </div>
+                </div>
             </div>
 
             <!-- Title visibility -->
@@ -337,7 +457,15 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Document title</div>
                     <div class="setting-desc">When to show the title in the status bar</div>
                 </div>
-                <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.titleVisibility !== "hover"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.titleVisibility = "hover"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
                     {#each ([["hover", "On hover"], ["always", "Always"], ["never", "Never"]] as const) as [val, label]}
                         <button
                             onclick={() => { draft.titleVisibility = val; handleChange(); }}
@@ -347,6 +475,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                                     : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
                         >{label}</button>
                     {/each}
+                </div>
                 </div>
             </div>
 
@@ -361,6 +490,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Nested editor in revisions</div>
                     <div class="setting-desc">Inline editor inside revision cards</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showNestedEditor}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showNestedEditor = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <button
                     role="switch"
                     aria-checked={draft.showNestedEditor}
@@ -378,6 +515,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.showNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
             </div>
 
             <!-- Atomic revisions toggle -->
@@ -386,6 +524,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Atomic revisions</div>
                     <div class="setting-desc">Edit revision text only in the revision editor</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.atomicRevisions}
+                    <button
+                        type="button"
+                        onclick={() => { draft.atomicRevisions = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <button
                     role="switch"
                     aria-checked={draft.atomicRevisions}
@@ -403,6 +549,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.atomicRevisions ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
             </div>
 
             <!-- Select text toggle -->
@@ -411,6 +558,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Select text in nested editor</div>
                     <div class="setting-desc">Highlight selected text when a revision opens</div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.selectTextInNestedEditor}
+                    <button
+                        type="button"
+                        onclick={() => { draft.selectTextInNestedEditor = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
                 <button
                     role="switch"
                     aria-checked={draft.selectTextInNestedEditor}
@@ -428,6 +583,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.selectTextInNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
             </div>
 
             <div class="section-divider"></div>
@@ -526,6 +682,10 @@ function fontLabel(fonts: FontOption[], value: string) {
         </div><!-- end shake wrapper -->
     </div>
 </dialog>
+
+{#if showFontGuide}
+    <FontGuideModal tab={showFontGuide} onclose={() => showFontGuide = null} />
+{/if}
 
 <style>
     .settings-modal {
@@ -672,6 +832,8 @@ function fontLabel(fonts: FontOption[], value: string) {
         top: calc(100% + 4px);
         right: 0;
         min-width: 200px;
+        max-height: 280px;
+        overflow-y: auto;
         background: white;
         border: 1px solid rgba(0, 0, 0, 0.09);
         border-radius: 10px;
@@ -680,7 +842,6 @@ function fontLabel(fonts: FontOption[], value: string) {
             0 2px 8px -2px rgba(0, 0, 0, 0.07);
         padding: 4px;
         z-index: 50;
-        overflow: hidden;
     }
 
     .dropdown-option {
@@ -719,5 +880,20 @@ function fontLabel(fonts: FontOption[], value: string) {
         color: rgba(0, 0, 0, 0.38);
         margin-top: 2px;
         line-height: 1.3;
+    }
+
+    .dropdown-section-label {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.3);
+        padding: 4px 9px 2px;
+    }
+
+    .dropdown-divider {
+        height: 1px;
+        background: rgba(0, 0, 0, 0.06);
+        margin: 4px 0;
     }
 </style>

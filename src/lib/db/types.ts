@@ -43,8 +43,3 @@ export type LoadResult = {
     snapshotEventId: number;
     eventsSince: EventRecord[];
 };
-
-export type MigrationResult = {
-    migrated: boolean;
-    documentId: string | null;
-};

@@ -28,14 +28,16 @@ import { PNG } from "pngjs";
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const noServer = process.argv.includes("--no-server");
+const force = process.argv.includes("--force");
 const BASE_URL = noServer ? "http://localhost:1420" : "http://localhost:4173";
 const OUT_DIR = "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
 const DEVICE_SCALE_FACTOR = 2;
 
 // Minimum fraction of pixels that must differ for a screenshot to be considered
-// "significantly changed" and worth committing. 0.005 = 0.5% of total pixels.
-const DIFF_THRESHOLD = 0.005;
+// "significantly changed" and worth committing. 0.01 = 1% of total pixels.
+// If --force is set, all screenshots are updated (threshold = 0).
+const DIFF_THRESHOLD = force ? 0 : 0.01;
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
@@ -118,6 +120,22 @@ async function installTauriMock(
             libraryDocs: typeof LIBRARY_DOCUMENTS;
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            // Hide the debug button so it never appears in screenshots.
+            document.addEventListener("DOMContentLoaded", () => {
+                const style = document.createElement("style");
+                style.textContent =
+                    "[aria-label='Open debug panel'] { display: none !important; }";
+                document.head.appendChild(style);
+            });
+            // Ensure a consistent font for all screenshots regardless of any
+            // persisted user settings that may be present in the browser profile.
+            localStorage.setItem(
+                "quillium-app-settings",
+                JSON.stringify({
+                    docFontFamily: "Georgia, serif",
+                    docFontSize: 18,
+                }),
+            );
 
             let nextCallbackId = 1;
             const callbacks = new Map<number, (...args: unknown[]) => unknown>();
@@ -531,6 +549,72 @@ async function scenarioRevisionModal(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
+/**
+ * 08. full-ui — Hero marketing screenshot: all three annotation types visible
+ *    beside an original short prose passage, the AI Chat sidebar open with
+ *    a context snippet, and the last comment card active (showing thread +
+ *    reply input + Suggest button).
+ */
+async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+
+    const applied = await applyDebugScenario(page, "screenshot-full-ui");
+    if (!applied) {
+        // Fallback: no scenario bridge in this build — skip
+        await page.close();
+        return;
+    }
+
+    // Open the AI Chat sidebar so it appears in the screenshot
+    await page.locator("#ai-tab-chat").waitFor({ state: "visible" });
+    await page
+        .waitForFunction(
+            () =>
+                document
+                    .querySelector("#ai-tab-chat")
+                    ?.getAttribute("aria-label")
+                    ?.includes("⌘") ?? false,
+            { timeout: 5000 },
+        )
+        .catch(() => {});
+    await page.locator("#ai-tab-chat").click({ force: true });
+    await page.locator("#ai-sidebar").waitFor({ state: "visible" });
+
+    // Select "The letter stayed where it was." as a range — this both activates
+    // the comment card AND populates $selectedText so the Context box appears.
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const editorViewStore = w.__editorView__ as
+            | { subscribe(fn: (v: unknown) => void): () => void }
+            | undefined;
+        if (!editorViewStore) return;
+        let view: unknown;
+        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        unsub();
+        if (!view) return;
+        const v = view as {
+            state: { doc: { toString(): string } };
+            dispatch(tr: object): void;
+            focus(): void;
+        };
+        const doc = v.state.doc.toString();
+        const target = "The letter stayed where it was.";
+        const from = doc.indexOf(target);
+        if (from === -1) return;
+        const to = from + target.length;
+        v.focus();
+        v.dispatch({ selection: { anchor: from, head: to } });
+    });
+    await page.waitForTimeout(400);
+
+    await shot(page, "08-full-ui");
+    await page.close();
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -579,6 +663,7 @@ async function main(): Promise<void> {
         await scenarioRevisionActive(context);
         await scenarioLibrary(context);
         await scenarioRevisionModal(context);
+        await scenarioFullUi(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {
