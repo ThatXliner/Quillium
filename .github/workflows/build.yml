@@ -103,6 +103,7 @@ jobs:
 
   publish-release:
     needs: build-tauri
+    if: always() && needs.build-tauri.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       contents: read
