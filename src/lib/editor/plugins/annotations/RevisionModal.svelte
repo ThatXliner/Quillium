@@ -323,7 +323,10 @@ function send(event: FsmEvent) {
             } else if (event.type === "NESTED_ANNOTATION_EVENT") {
                 if (!editor) break;
                 executePendingNestedCommand(editor, event.cmd);
-                if (event.cmd.type === "revision") {
+                if (event.cmd.type === "revision" && !appSettings.showNestedEditor) {
+                    // Only auto-push a child modal when inline editors are
+                    // disabled. When they're enabled, the Revision.svelte card
+                    // in the annotations sidebar handles display inline.
                     const nestedAnns = editor.state.field(annotationField);
                     const newId = Math.max(...Object.keys(nestedAnns).map(Number));
                     const newAnn = nestedAnns[newId];
