@@ -17,6 +17,7 @@
  *   06-library.png          — document library with multiple documents and preview panel
  *   07-revision-modal.png   — revision full-screen modal editor open
  *   09-update-banner.png    — update notification banner in bottom-right
+ *   10-autoai-widget.png   — AutoAI collaborator bubble with popover open
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
@@ -636,6 +637,46 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
 }
 
 /**
+ * 10. autoai-widget — The AutoAI collaborator bubble at bottom-right in its
+ *    active state (rainbow border), with the config popover open showing
+ *    the persona, mode, delay, focus level, and annotation type controls.
+ *    Annotations from the AutoAI are visible in the panel.
+ */
+async function scenarioAutoAIWidget(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    // Pre-enable AutoAI in localStorage so the widget starts in active state.
+    await page.addInitScript(() => {
+        localStorage.setItem(
+            "quillium-autoai-settings",
+            JSON.stringify({
+                enabled: true,
+                mode: "continuous",
+                debounceMs: 10000,
+                persona: "Auto",
+                annotationTypes: ["comment", "suggestion", "revision"],
+                conservativeness: "conservative",
+            }),
+        );
+    });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-autoai-widget");
+    if (!applied) {
+        await setEditorText(page, PROSE_SHORT);
+    }
+    // Click away so no annotation is active — widget is the focus
+    await page.mouse.click(720, 700);
+    await page.waitForTimeout(300);
+    // Open the AutoAI config popover
+    await page.locator("button[aria-label='AutoAI collaborator']").click();
+    await page.waitForTimeout(400);
+    await shot(page, "10-autoai-widget");
+    await page.close();
+}
+
+/**
  * 09. update-banner — The update notification banner in the bottom-right
  *    corner, showing an available version with Update and Dismiss buttons.
  */
@@ -704,6 +745,7 @@ async function main(): Promise<void> {
         await scenarioRevisionModal(context);
         await scenarioFullUi(context);
         await scenarioUpdateBanner(context);
+        await scenarioAutoAIWidget(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {

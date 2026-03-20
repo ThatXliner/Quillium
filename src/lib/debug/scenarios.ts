@@ -1123,6 +1123,40 @@ export const scenarios: Scenario[] = [
         },
     },
 
+    // ── Screenshot: AutoAI widget ─────────────────────────────────────────────
+    // Used by scripts/screenshots.ts to show the AutoAI collaborator bubble
+    // with its config popover open and the rainbow active state.
+    {
+        id: "screenshot-autoai-widget",
+        label: "Screenshot: AutoAI widget (Dickens)",
+        description:
+            "AutoAI collaborator bubble with popover open — shows the feature in its active state",
+        category: "debug",
+        doc: DICKENS_DOC,
+        setup(view) {
+            // Add a few annotations to show AutoAI already did some work
+            createComment({
+                targetText: "it was the age of wisdom, it was the age of foolishness",
+                comment:
+                    "The relentless parallelism is deliberate — the accumulation is the argument. Protect this structure.",
+                author: "Auto",
+                view,
+            });
+            createSuggestion({
+                state: view.state,
+                dispatch: (tr) => view.dispatch(tr),
+                targetText: "we were all going direct to Heaven, we were all going direct the other way",
+                replacements: [
+                    {
+                        text: "all going direct to Heaven, all going direct the other way",
+                        rationale: "Dropping 'we were' tightens the parallel and sharpens the irony",
+                    },
+                ],
+                author: "Auto",
+            });
+        },
+    },
+
     // ── Screenshot: full UI (original prose) ──────────────────────────────────
     // Used by scripts/screenshots.ts for the hero/marketing screenshot.
     // Shows the AI chat sidebar open alongside all three annotation types
