@@ -886,7 +886,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       ></div>
 
       <!-- Right sidebar: context + annotations -->
-      {#if contextLayers.length > 0 || (controller.editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
+      {#if contextLayers.length > 0 || (modalAnnotations && Object.keys(modalAnnotations).length > 0)}
         <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col bg-purple-50/20">
 
           <!-- Context panel -->
@@ -942,7 +942,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           {/if}
 
           <!-- Annotations -->
-          {#if controller.editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
+          {#if modalAnnotations && Object.keys(modalAnnotations).length > 0}
             <div class="flex-1 overflow-y-auto px-2 py-3">
               <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
                 Annotations
