@@ -1,8 +1,6 @@
 name: Build Release
 
 on:
-  release:
-    types: [created]
   push:
     tags:
       - "v*"
@@ -15,8 +13,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest" # for Arm based macs (M1 and above).
+          - platform: "macos-latest" # ARM (M1 and above)
             args: "--target aarch64-apple-darwin"
+          # Intel Mac build disabled until TAURI_SIGNING_PRIVATE_KEY is verified
+          # - platform: "macos-latest"
+          #   args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-latest"
             args: ""
           - platform: "windows-latest"
@@ -56,7 +57,7 @@ jobs:
         run: bun ci
 
       - name: Import Apple Developer Certificate
-        if: ${{ matrix.platform == 'macos-latest' }}
+        if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -70,8 +71,9 @@ jobs:
           security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security find-identity -v -p codesigning build.keychain
+
       - name: Verify Certificate
-        if: ${{ matrix.platform == 'macos-latest' }}
+        if: matrix.platform == 'macos-latest'
         run: |
           CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
@@ -97,9 +99,11 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+          uploadUpdaterJson: false
 
   publish-release:
     needs: build-tauri
+    if: always() && needs.build-tauri.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -111,13 +115,80 @@ jobs:
           mkdir assets
           gh release download ${{ github.ref_name }} \
             --repo ${{ github.repository }} \
-            --dir assets
+            --dir assets || true
+          echo "=== Downloaded assets ==="
+          ls -la assets/
+          # Bail if no builds succeeded
+          if [ -z "$(ls -A assets/ 2>/dev/null)" ]; then
+            echo "::error::No release assets found — all builds failed"
+            exit 1
+          fi
 
-      - name: Rewrite latest.json URLs to point to public repo
+      - name: Build latest.json
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          PRIVATE="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
-          PUBLIC="https://github.com/ThatXliner/quillium-releases/releases/download/${{ github.ref_name }}"
-          sed -i "s|$PRIVATE|$PUBLIC|g" assets/latest.json
+          VERSION="${TAG#v}"
+          BASE_URL="https://github.com/ThatXliner/quillium-releases/releases/download/$TAG"
+          export VERSION BASE_URL
+
+          python3 << 'PYEOF'
+          import json, os, glob, datetime
+
+          version = os.environ["VERSION"]
+          base_url = os.environ["BASE_URL"]
+
+          platforms = {}
+
+          def add_platform(key, artifact, sig_file):
+              sig_path = f"assets/{sig_file}"
+              if os.path.isfile(sig_path):
+                  with open(sig_path) as f:
+                      sig = f.read().strip()
+                  platforms[key] = {
+                      "url": f"{base_url}/{artifact}",
+                      "signature": sig,
+                  }
+              else:
+                  print(f"WARNING: {sig_file} not found, skipping {key}")
+
+          # macOS ARM (M1+)
+          add_platform("darwin-aarch64",
+              "quillium_aarch64.app.tar.gz",
+              "quillium_aarch64.app.tar.gz.sig")
+
+          # macOS Intel
+          add_platform("darwin-x86_64",
+              "quillium_x64.app.tar.gz",
+              "quillium_x64.app.tar.gz.sig")
+
+          # Linux x86_64 (version in filename)
+          linux_sigs = glob.glob("assets/quillium_*_amd64.AppImage.sig")
+          if linux_sigs:
+              sig_name = os.path.basename(linux_sigs[0])
+              artifact_name = sig_name.removesuffix(".sig")
+              add_platform("linux-x86_64", artifact_name, sig_name)
+
+          # Windows x86_64 (version in filename)
+          win_sigs = glob.glob("assets/quillium_*_x64-setup.exe.sig")
+          if win_sigs:
+              sig_name = os.path.basename(win_sigs[0])
+              artifact_name = sig_name.removesuffix(".sig")
+              add_platform("windows-x86_64", artifact_name, sig_name)
+
+          result = {
+              "version": version,
+              "notes": f"Quillium v{version}",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }
+
+          with open("assets/latest.json", "w") as f:
+              json.dump(result, f, indent=2)
+
+          print("=== latest.json ===")
+          print(json.dumps(result, indent=2))
+          PYEOF
 
       - name: Create release and upload assets to public repo
         env:
@@ -127,9 +198,11 @@ jobs:
           gh release create ${{ github.ref_name }} \
             --repo ThatXliner/quillium-releases \
             --title "Quillium ${{ github.ref_name }}" \
-            --notes "See the assets to download and install this version."
+            --notes "See the assets to download and install this version." \
+            || true
 
-          # Upload all assets
+          # Upload all assets (--clobber to overwrite if re-running)
           gh release upload ${{ github.ref_name }} \
             --repo ThatXliner/quillium-releases \
+            --clobber \
             assets/*
