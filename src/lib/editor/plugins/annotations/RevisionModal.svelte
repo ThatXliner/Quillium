@@ -862,7 +862,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     <div class="flex flex-1 overflow-hidden">
       <!-- Thread sidebar (left) -->
       <div
-        class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col bg-purple-50/90"
+        class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col min-h-0 bg-purple-50/90"
       >
         <div class="px-4 py-3 border-b border-purple-100/50 shrink-0">
           <span
@@ -894,7 +894,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
       <!-- Right sidebar: context + annotations -->
       {#if contextLayers.length > 0 || (modalAnnotations && Object.keys(modalAnnotations).length > 0)}
-        <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col bg-purple-50/20">
+        <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col min-h-0 bg-purple-50/20">
 
           <!-- Context panel -->
           {#if contextLayers.length > 0}
@@ -950,7 +950,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
           <!-- Annotations -->
           {#if modalAnnotations && Object.keys(modalAnnotations).length > 0}
-            <div class="flex-1 overflow-y-auto px-2 py-3">
+            <div class="flex-1 min-h-0 overflow-y-auto px-2 py-3">
               <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
                 Annotations
               </div>
