@@ -39,7 +39,7 @@ import {
     _nestedEditRevision,
     setActiveRevisionVersion,
 } from "./annotationField";
-import { publishAnnotationUiEvent } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import { versionText, type VersionState, isAnnotationOfType } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
@@ -85,7 +85,7 @@ export function createNestedEditorState(
             // range and cause the decoration layer to crash at render time. Drop
             // annotationField from the blob in that case — nested annotations are
             // a nice-to-have and the doc content is still restored correctly.
-            const annotationsValid = nestedAnnotationsInRange(raw.annotationField, docLen);
+            const salvaged = salvageNestedAnnotations(raw.annotationField, docLen);
 
             if (!selectionValid) {
                 console.warn(
@@ -93,16 +93,16 @@ export function createNestedEditorState(
                         ` (docLen=${docLen}, sel=${JSON.stringify(sel)}); resetting to cursor at 0`,
                 );
             }
-            if (!annotationsValid) {
+            if (salvaged.droppedCount > 0) {
                 console.warn(
-                    "[nestedEditor] serialized annotationField contains out-of-range positions" +
-                        ` (docLen=${docLen}); dropping nested annotations`,
+                    `[nestedEditor] dropped ${salvaged.droppedCount} out-of-range nested annotation(s)` +
+                        ` (docLen=${docLen}); ${salvaged.keptCount} annotation(s) preserved`,
                 );
             }
             const blob = {
                 ...version,
                 selection: selectionValid ? sel : { ranges: [{ anchor: 0, head: 0 }], main: 0 },
-                ...(annotationsValid ? {} : { annotationField: undefined }),
+                annotationField: salvaged.result,
             };
             return EditorState.fromJSON(blob, { extensions }, nestedSavedFields);
         } catch (error) {
@@ -116,21 +116,48 @@ export function createNestedEditorState(
 }
 
 /**
- * Returns true if all annotation selections in a serialized annotationField
- * blob are within [0, docLen]. Used to detect stale positions before passing
- * the blob to EditorState.fromJSON, which would otherwise crash the decoration
- * layer at render time.
+ * Filters a serialized annotationField blob, keeping annotations whose
+ * selections are within [0, docLen] and dropping those with out-of-range
+ * positions. Returns the filtered blob (or undefined if all were dropped).
  */
-function nestedAnnotationsInRange(annotationField: unknown, docLen: number): boolean {
-    if (annotationField == null || typeof annotationField !== "object") return true;
-    for (const ann of Object.values(annotationField as Record<string, unknown>)) {
-        if (ann == null || typeof ann !== "object") continue;
+function salvageNestedAnnotations(
+    annotationField: unknown,
+    docLen: number,
+): { result: unknown; droppedCount: number; keptCount: number } {
+    if (annotationField == null || typeof annotationField !== "object")
+        return { result: annotationField, droppedCount: 0, keptCount: 0 };
+
+    const entries = Object.entries(annotationField as Record<string, unknown>);
+    const kept: Record<string, unknown> = {};
+    let droppedCount = 0;
+
+    for (const [key, ann] of entries) {
+        // Drop entries that aren't valid annotation objects (must have
+        // a selection with ranges array to be a persisted annotation).
+        if (ann == null || typeof ann !== "object") {
+            droppedCount++;
+            continue;
+        }
         const sel = (ann as { selection?: { ranges?: { anchor: number; head: number }[] } })
             .selection;
-        if (!sel?.ranges) continue;
-        if (sel.ranges.some((r) => r.anchor > docLen || r.head > docLen)) return false;
+        if (!sel?.ranges) {
+            droppedCount++;
+            continue;
+        }
+        // Drop annotations with out-of-range or negative positions.
+        if (sel.ranges.every((r) => r.anchor >= 0 && r.anchor <= docLen && r.head >= 0 && r.head <= docLen)) {
+            kept[key] = ann;
+        } else {
+            droppedCount++;
+        }
     }
-    return true;
+
+    const keptCount = Object.keys(kept).length;
+    return {
+        result: keptCount > 0 ? kept : undefined,
+        droppedCount,
+        keptCount,
+    };
 }
 
 function hasSerializedNestedState(
@@ -158,7 +185,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
         return (view: EditorView) => {
             const sel = view.state.selection.main;
             if (sel.empty) return false;
-            publishAnnotationUiEvent({
+            annotationEventBus.emit({
                 type: "nested-annotation-create",
                 command: {
                     revisionId,
@@ -191,7 +218,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
             {
                 key: "Mod-Enter",
                 run() {
-                    publishAnnotationUiEvent({
+                    annotationEventBus.emit({
                         type: "annotation-add-version",
                         annotationId: revisionId,
                     });

@@ -42,10 +42,9 @@ import {
     activeAnnotation,
     annotations,
     editorView,
-    annotationUiEvent,
     selectedText,
-    publishAnnotationUiEvent,
 } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
@@ -380,48 +379,38 @@ function applyCardPositions(
 
 // Track which pending card is currently showing the alert animation
 let alertingPendingId: number | undefined = $state();
-let alertingTimeout: ReturnType<typeof setTimeout> | undefined;
-let lastPendingAlertToken = 0;
 
-// React to pending-comment events: scroll the pending card
-// into view, then play a shake + red-outline-fade animation on it.
-// Subscribes to annotationElementsVersion so it retries if the
-// element hasn't been registered yet when the event first fires.
+// React to pending-comment events: scroll the pending card into view,
+// then play a shake + red-outline-fade animation on it. The alert only
+// fires when canCreateNewComment() is false, so the pending comment card
+// already exists in the DOM — no timing workaround needed.
 $effect(() => {
-    if (!isFloating) return;
-    void annotationElementsVersion; // retry when elements register
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastPendingAlertToken ||
-        event.type !== "pending-comment-alert" ||
-        !pendingComment
-    )
-        return;
+    return annotationEventBus.on("pending-comment-alert", () => {
+        if (!isFloating || !pendingComment) return;
 
-    const el = annotationElements[pendingComment.id];
-    if (!el) return;
-    lastPendingAlertToken = event.token;
+        const el = annotationElements[pendingComment.id];
+        if (!el) return;
 
-    // Scroll the editor to show the pending comment's highlighted text
-    if (resolvedView) {
-        resolvedView.dispatch({
-            selection: { anchor: pendingComment.selection.main.from },
-            scrollIntoView: true,
-        });
-    }
+        // Scroll the editor to show the pending comment's highlighted text
+        if (resolvedView) {
+            resolvedView.dispatch({
+                selection: { anchor: pendingComment.selection.main.from },
+                scrollIntoView: true,
+            });
+        }
 
-    // Scroll the pending card into view
-    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        // Scroll the pending card into view
+        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-    // Trigger shake + ring by setting alertingPendingId.
-    alertingPendingId = pendingComment.id;
-    el.classList.add("pending-shake");
-    clearTimeout(alertingTimeout);
-    alertingTimeout = setTimeout(() => {
+        // Trigger shake animation via CSS. The animation-name reset
+        // (removing then re-adding the class) ensures it replays on
+        // repeated alerts. The animationend event cleans up — no
+        // setTimeout needed.
+        alertingPendingId = pendingComment.id;
         el.classList.remove("pending-shake");
-        alertingPendingId = undefined;
-    }, 1400);
+        void el.offsetWidth; // force reflow to restart animation
+        el.classList.add("pending-shake");
+    });
 });
 
 // Annotation keyboard shortcuts:
@@ -440,7 +429,7 @@ $effect(() => {
                 active._type === "revision"
             ) {
                 e.preventDefault();
-                publishAnnotationUiEvent({
+                annotationEventBus.emit({
                     type: "annotation-focus-reply",
                     annotationId: active.id,
                 });
@@ -448,7 +437,7 @@ $effect(() => {
         } else if ((e.key === "v" || e.key === "V") && e.shiftKey) {
             if (active._type === "revision") {
                 e.preventDefault();
-                publishAnnotationUiEvent({
+                annotationEventBus.emit({
                     type: "annotation-add-version",
                     annotationId: active.id,
                 });
@@ -565,7 +554,10 @@ $effect(() => {
                             />
                         {/if}
                         {#if alertingPendingId === c.id}
-                            <div class="alert-ring rounded-[14px]"></div>
+                            <div
+                                class="alert-ring rounded-[14px]"
+                                onanimationend={() => { alertingPendingId = undefined; }}
+                            ></div>
                         {/if}
                     </div>
                 {/each}

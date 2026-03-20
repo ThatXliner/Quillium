@@ -1,6 +1,6 @@
 /**
  * Tests that Mod-Alt-k and Mod-Alt-m in the nested editor intercept
- * annotation creation and publish a revision-open-nested-editor event
+ * annotation creation and publish a nested-annotation-create event
  * instead of creating a dead-end annotation in the nested editor's state.
  *
  * Bug: pressing Cmd+Alt+K in the inline nested editor would create an
@@ -9,15 +9,14 @@
  * the modal with the pending nested command.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { get } from "svelte/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation, type VersionState } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
-import { annotationUiEvent } from "$lib/stores";
+import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -116,12 +115,11 @@ function extractBindings(
 
 let parentView: EditorView | undefined;
 let nestedView: EditorView | undefined;
-
-beforeEach(() => {
-    annotationUiEvent.set(null);
-});
+let unsubs: (() => void)[] = [];
 
 afterEach(() => {
+    for (const unsub of unsubs) unsub();
+    unsubs = [];
     nestedView?.destroy();
     nestedView = undefined;
     parentView?.destroy();
@@ -130,6 +128,8 @@ afterEach(() => {
 
 describe("nested editor keymap intercepts annotation creation", () => {
     it("Mod-Alt-k in nested editor fires nested-annotation-create instead of creating annotation", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
         parentView = createParentView("Alpha Beta Gamma");
         const revisionId = addRevision(parentView, 6, 10);
         nestedView = createNestedView(parentView, revisionId, "Beta");
@@ -141,9 +141,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         expect(consumed).toBe(true);
 
         // Should have published the nested editor event
-        const uiEvent = get(annotationUiEvent);
-        expect(uiEvent).not.toBeNull();
-        expect(uiEvent).toEqual(
+        expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "nested-annotation-create",
                 command: {
@@ -161,6 +159,8 @@ describe("nested editor keymap intercepts annotation creation", () => {
     });
 
     it("Mod-Alt-m in nested editor fires nested-annotation-create for comment", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
         parentView = createParentView("Alpha Beta Gamma");
         const revisionId = addRevision(parentView, 6, 10);
         nestedView = createNestedView(parentView, revisionId, "Beta");
@@ -171,9 +171,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         const consumed = runNestedKey(nestedView, parentView, revisionId, "Mod-Alt-m");
         expect(consumed).toBe(true);
 
-        const uiEvent = get(annotationUiEvent);
-        expect(uiEvent).not.toBeNull();
-        expect(uiEvent).toEqual(
+        expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "nested-annotation-create",
                 command: {
@@ -191,6 +189,8 @@ describe("nested editor keymap intercepts annotation creation", () => {
     });
 
     it("Mod-Alt-k with empty selection in nested editor does not fire event", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("nested-annotation-create", spy));
         parentView = createParentView("Alpha Beta Gamma");
         const revisionId = addRevision(parentView, 6, 10);
         nestedView = createNestedView(parentView, revisionId, "Beta");
@@ -202,8 +202,7 @@ describe("nested editor keymap intercepts annotation creation", () => {
         expect(consumed).toBe(false);
 
         // No event should fire (empty selection)
-        const uiEvent = get(annotationUiEvent);
-        expect(uiEvent).toBeNull();
+        expect(spy).not.toHaveBeenCalled();
 
         // No annotation should be created either
         const nestedAnnotations = Object.values(nestedView.state.field(annotationField));

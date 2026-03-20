@@ -20,8 +20,7 @@
  * All other changes (typing, undo) are applied as incremental
  * updates/deltas to the existing nested editor instance.
  */
-import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
@@ -39,9 +38,10 @@ import {
     type Thread as ThreadType,
 } from ".";
 import { versionText, type VersionState } from "./models";
-import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
-import { getActiveAnnotation } from "./utils";
-import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
+import { previewVersionText } from "./nestedEditor";
+import { NestedEditorController } from "./NestedEditorController";
+import { modalStack } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -86,34 +86,29 @@ function openEditor() {
 }
 
 let nestedEditorHost = $state<HTMLDivElement>();
-let nestedEditor = $state<EditorView | undefined>(undefined);
 let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-// Track which version the nested editor was built for, so we know
-// when to destroy/recreate (version switch).
-let mountedVersionId = -1;
-// Track the annotationField blob the inline editor was built with, so
-// we can detect when a modal flush writes new nested annotations into
-// the version and trigger a rebuild.
-let mountedAnnotationFieldBlob: unknown = undefined;
+const controller = new NestedEditorController(view, revision.id, {
+    onUpdate: (_annotations, active) => {
+        activeAnnotation = active;
+    },
+}, "flush-on-destroy");
 
-// Track the last doc the nested editor dispatched up to the parent.
-// Used to distinguish "doc changed externally (undo/typing)" from
-// "doc changed because the nested editor typed it" so we don't
-// unnecessarily patch the nested editor with its own content.
-let lastDispatchedDoc = "";
-// Guard: set to true while we are programmatically patching the nested editor
-// from an external parent change, so the updateListener skips translateAndDispatch
-// and doesn't bounce the change back up to the parent.
-let pullingFromParent = false;
-
-let lastBoundaryNudgeToken = 0;
-let lastOpenNestedEditorToken = 0;
-let lastFocusRequestToken = 0;
-let lastNestedSelectionToken = 0;
-let lastAddVersionToken = 0;
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
+let pendingFocusPos: number | undefined;
+
+function placeCursorInEditor(editor: EditorView, relPos: number) {
+    editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
+    editor.focus();
+    clearTimeout(cursorArrivingTimeout);
+    cursorArriving = false;
+    void nestedEditorHost?.offsetWidth;
+    cursorArriving = true;
+    cursorArrivingTimeout = setTimeout(() => {
+        cursorArriving = false;
+    }, 650);
+}
 
 let showBoundaryHint = $state(false);
 let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -148,183 +143,102 @@ function cancelLabelEdit() {
 }
 
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastBoundaryNudgeToken ||
-        event.type !== "revision-boundary-nudge" ||
-        event.revisionId !== revision.id
-    )
-        return;
-    lastBoundaryNudgeToken = event.token;
-    showBoundaryHint = true;
-    clearTimeout(boundaryHintTimeout);
-    boundaryHintTimeout = setTimeout(() => {
-        showBoundaryHint = false;
-    }, 4000);
-});
-
-$effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastOpenNestedEditorToken ||
-        event.type !== "revision-request-modal" ||
-        event.command.revisionId !== revision.id
-    )
-        return;
-    lastOpenNestedEditorToken = event.token;
-    const cmd = event.command;
-    modalStack.push({
-        type: "revision",
-        revisionId: revision.id,
-        parentView: view,
-        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-        pendingNestedCommand: {
-            type: cmd.type,
-            selectionFrom: cmd.selectionFrom,
-            selectionTo: cmd.selectionTo,
-        },
+    return annotationEventBus.on("revision-boundary-nudge", (event) => {
+        if (event.revisionId !== revision.id) return;
+        showBoundaryHint = true;
+        clearTimeout(boundaryHintTimeout);
+        boundaryHintTimeout = setTimeout(() => {
+            showBoundaryHint = false;
+        }, 4000);
     });
 });
 
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastOpenNestedEditorToken ||
-        event.type !== "nested-annotation-create" ||
-        event.command.revisionId !== revision.id
-    )
-        return;
-    // If a modal is already open for this revision, let that modal handle the event.
-    if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id)) {
-        lastOpenNestedEditorToken = event.token;
-        return;
-    }
-    lastOpenNestedEditorToken = event.token;
-    const cmd = event.command;
-    modalStack.push({
-        type: "revision",
-        revisionId: revision.id,
-        parentView: view,
-        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-        pendingNestedCommand: {
-            type: cmd.type,
-            selectionFrom: cmd.selectionFrom,
-            selectionTo: cmd.selectionTo,
-        },
-    });
-});
-
-$effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastFocusRequestToken ||
-        event.type !== "revision-focus-request" ||
-        event.revisionId !== revision.id ||
-        event.sourceView !== view
-    )
-        return;
-    lastFocusRequestToken = event.token;
-    const relPos = event.relativePos;
-    if (appSettings.showNestedEditor) {
-        const placeCursor = (editor: EditorView) => {
-            editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
-            editor.focus();
-            clearTimeout(cursorArrivingTimeout);
-            cursorArriving = false;
-            void nestedEditorHost?.offsetWidth;
-            cursorArriving = true;
-            cursorArrivingTimeout = setTimeout(() => {
-                cursorArriving = false;
-            }, 650);
-        };
-        if (isEditorOpen && nestedEditor) {
-            placeCursor(nestedEditor);
-        } else {
-            userClosedEditor = false;
-            isEditorOpen = true;
-            tick().then(() => {
-                if (nestedEditor) placeCursor(nestedEditor);
-            });
-        }
-    } else {
+    return annotationEventBus.on("revision-request-modal", (event) => {
+        if (event.command.revisionId !== revision.id) return;
+        const cmd = event.command;
         modalStack.push({
             type: "revision",
             revisionId: revision.id,
             parentView: view,
             label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-            pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+            pendingNestedCommand: {
+                type: cmd.type,
+                selectionFrom: cmd.selectionFrom,
+                selectionTo: cmd.selectionTo,
+            },
         });
-    }
+    });
+});
+
+$effect(() => {
+    return annotationEventBus.on("nested-annotation-create", (event) => {
+        if (event.command.revisionId !== revision.id) return;
+        // If a modal is already open for this revision, let that modal handle the event.
+        if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id))
+            return;
+        const cmd = event.command;
+        modalStack.push({
+            type: "revision",
+            revisionId: revision.id,
+            parentView: view,
+            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            pendingNestedCommand: {
+                type: cmd.type,
+                selectionFrom: cmd.selectionFrom,
+                selectionTo: cmd.selectionTo,
+            },
+        });
+    });
+});
+
+$effect(() => {
+    return annotationEventBus.on("revision-focus-request", (event) => {
+        if (event.revisionId !== revision.id || event.sourceView !== view) return;
+        const relPos = event.relativePos;
+        if (appSettings.showNestedEditor) {
+            if (isEditorOpen && controller.editor) {
+                placeCursorInEditor(controller.editor, relPos);
+            } else {
+                // Store the pending focus position — the creation $effect
+                // will apply it when the editor is ready. We can't use
+                // tick() here because the event bus fires synchronously
+                // before Svelte's reactive flush, so the editor doesn't
+                // exist yet when the first tick() resolves.
+                pendingFocusPos = relPos;
+                userClosedEditor = false;
+                isEditorOpen = true;
+            }
+        } else {
+            modalStack.push({
+                type: "revision",
+                revisionId: revision.id,
+                parentView: view,
+                label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+                pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+            });
+        }
+    });
 });
 
 /**
  * Mount a nested CodeMirror editor for the given version.
  */
 function createNestedEditor(version: VersionState) {
-    if (!nestedEditorHost || nestedEditor) return;
-    const state = createNestedEditorState(
-        version,
-        (update: ViewUpdate) => {
-            if (!nestedEditor) return;
-            activeAnnotation = getActiveAnnotation(nestedEditor.state);
-            // Translate doc changes to parent coordinates and dispatch.
-            // Skip when we're programmatically syncing from the parent to avoid
-            // bouncing the change back up and corrupting the parent document.
-            if (!pullingFromParent && translateAndDispatch(update, view, revision.id)) {
-                // Track what we dispatched so the external-sync $effect
-                // doesn't re-patch the nested editor with its own content.
-                lastDispatchedDoc = nestedEditor.state.doc.toString();
-            }
-        },
-        view,
-        revision.id,
-    );
-    nestedEditor = new EditorView({ state, parent: nestedEditorHost });
-    mountedVersionId = revision.activeVersionIndex;
-    mountedAnnotationFieldBlob = (version as { annotationField?: unknown }).annotationField;
-    lastDispatchedDoc = nestedEditor.state.doc.toString();
-    activeAnnotation = getActiveAnnotation(nestedEditor.state);
-
-    // Apply pending selection if this annotation just created one.
-    const event = $annotationUiEvent;
-    const selectionEvent =
-        consumePendingNestedEditorSelection(revision.id, lastNestedSelectionToken) ??
-        (event &&
-        event.token !== lastNestedSelectionToken &&
-        event.type === "pending-nested-editor-selection" &&
-        event.annotationId === revision.id
-            ? event
-            : undefined);
-    if (selectionEvent) {
-        lastNestedSelectionToken = selectionEvent.token;
-        const docLen = nestedEditor.state.doc.length;
-        const from = Math.min(selectionEvent.from, docLen);
-        const to = Math.min(selectionEvent.to, docLen);
-        nestedEditor.dispatch({
-            selection: { anchor: from, head: to },
-            scrollIntoView: true,
-        });
-        nestedEditor.focus();
+    if (!nestedEditorHost || controller.editor) return;
+    controller.create(nestedEditorHost, version, revision.activeVersionIndex);
+    controller.applyPendingSelection();
+    // Apply pending focus from revision-focus-request that arrived before
+    // the editor was created (event bus fires synchronously before Svelte flush).
+    if (pendingFocusPos !== undefined && controller.editor) {
+        placeCursorInEditor(controller.editor, pendingFocusPos);
+        pendingFocusPos = undefined;
     }
 }
 
 function destroyNestedEditor() {
-    // NOTE: we intentionally do NOT flush nested annotation state here.
-    // updateRevisionVersionState replaces the doc range, which creates a
-    // revisionInternalEdit transaction that corrupts undo positions when
-    // the user immediately presses Cmd+Z after clicking away from the
-    // revision. The parent doc is the source of truth (Phase 3 keeps
-    // version.doc in sync), so the doc content is already correct.
-    // Nested annotation persistence is handled by the modal editor.
-    nestedEditor?.destroy();
-    nestedEditor = undefined;
+    controller.destroy();
     activeAnnotation = undefined;
-    mountedVersionId = -1;
-    mountedAnnotationFieldBlob = undefined;
 }
 
 // Create or destroy the nested editor when the toggle changes.
@@ -341,83 +255,55 @@ $effect(() => {
 
 // When the selected version changes, destroy and recreate.
 $effect(() => {
-    if (!nestedEditor || !isEditorOpen) return;
-    const currentVersionId = revision.activeVersionIndex;
-    if (currentVersionId === mountedVersionId) return;
+    if (!controller.editor || !isEditorOpen) return;
+    if (!controller.needsVersionSwitch(revision.activeVersionIndex)) return;
 
-    // Version switched — recreate for new version.
     destroyNestedEditor();
     tick().then(() => {
         if (!isEditorOpen || !activeVersion) return;
         createNestedEditor(activeVersion);
-        if (nestedEditor) {
-            const end = nestedEditor.state.doc.length;
-            nestedEditor.dispatch({
+        if (controller.editor) {
+            const end = controller.editor.state.doc.length;
+            controller.editor.dispatch({
                 selection: { anchor: end },
                 scrollIntoView: true,
             });
-            nestedEditor.focus();
+            controller.editor.focus();
         }
     });
 });
 
 // When the modal closes, it flushes nested annotations back into the
-// version blob via _updateRevisionVersionState. The version index
-// stays the same, so the version-switch effect above doesn't fire.
-// But the inline nested editor was built from the old blob and still
-// has the stale annotationField — decorations for nested annotations
-// are missing. Detect the flush by watching for a new annotationField
+// version blob. Detect the flush by watching for a new annotationField
 // blob on activeVersion and rebuild the inline editor from it.
 $effect(() => {
-    if (!nestedEditor || !isEditorOpen || !activeVersion) return;
+    if (!controller.editor || !isEditorOpen || !activeVersion) return;
     const incomingBlob = (activeVersion as { annotationField?: unknown }).annotationField;
-    if (incomingBlob === mountedAnnotationFieldBlob) return;
-    // The version blob's annotationField changed — rebuild so the inline
-    // editor picks up the updated nested annotation decorations.
+    if (!controller.needsAnnotationRebuild(incomingBlob)) return;
     destroyNestedEditor();
     createNestedEditor(activeVersion);
 });
 
-// When the version doc changes externally (undo, non-atomic typing from
-// the parent editor), patch the nested editor to match. Phase 3 keeps
-// activeVersion.doc current, so we just watch it and apply the diff.
-// We skip patching when the doc change originated from the nested editor
-// itself (tracked via lastDispatchedDoc) to avoid a feedback loop.
+// When the version doc changes externally (undo, parent typing), patch
+// the nested editor. The controller handles skipping self-originated changes.
 $effect(() => {
     const externalDoc = activeVersion?.doc ?? "";
-    if (!nestedEditor || externalDoc === lastDispatchedDoc) return;
-    const current = nestedEditor.state.doc.toString();
-    if (current !== externalDoc) {
-        pullingFromParent = true;
-        nestedEditor.dispatch({
-            changes: { from: 0, to: current.length, insert: externalDoc },
-            // Mark as a pull/non-history transaction so the nested editor
-            // bridge can ignore it when translating changes back to the parent.
-            annotations: Transaction.addToHistory.of(false),
-        });
-        pullingFromParent = false;
-    }
-    lastDispatchedDoc = externalDoc;
+    if (!controller.editor) return;
+    controller.syncFromParent(externalDoc);
 });
 
 // ⌘Enter when this revision is active → create a new version
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastAddVersionToken ||
-        event.type !== "annotation-add-version" ||
-        event.annotationId !== revision.id
-    )
-        return;
-    lastAddVersionToken = event.token;
-    posthog.capture("revision_version_created", { version_count: revision.versions.length });
-    view.dispatch(createNewRevision(view.state, revision.id));
-    tick().then(() => {
-        if (appSettings.showNestedEditor) {
-            userClosedEditor = false;
-            isEditorOpen = true;
-        }
+    return annotationEventBus.on("annotation-add-version", (event) => {
+        if (event.annotationId !== revision.id) return;
+        posthog.capture("revision_version_created", { version_count: revision.versions.length });
+        view.dispatch(createNewRevision(view.state, revision.id));
+        tick().then(() => {
+            if (appSettings.showNestedEditor) {
+                userClosedEditor = false;
+                isEditorOpen = true;
+            }
+        });
     });
 });
 
@@ -425,37 +311,28 @@ $effect(() => {
 // the revisionClickHandler fires revision-focus-request with that nested
 // revision's ID. No other component matches it, so we handle it here by
 // opening a modal for the nested revision.
-let lastNestedRevFocusToken = 0;
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastNestedRevFocusToken ||
-        event.type !== "revision-focus-request" ||
-        !nestedEditor ||
-        event.sourceView !== nestedEditor
-    )
-        return;
-    // Only handle if the target revision exists in our inline nested editor
-    const nestedAnns = nestedEditor.state.field(annotationField);
-    const nestedRev = nestedAnns[event.revisionId];
-    if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
-    lastNestedRevFocusToken = event.token;
-    // Expand this parent revision as a modal first, then place the cursor
-    // on the nested revision so it activates inline within that modal.
-    // This ensures the full editing context (parent modal) is always
-    // present before the nested revision is opened — never skipping levels.
-    const nestedRevPos = nestedRev.selection.main.from;
-    modalStack.push({
-        type: "revision",
-        revisionId: revision.id,
-        parentView: view,
-        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-        pendingNestedCommand: {
-            type: "cursor",
-            selectionFrom: nestedRevPos,
-            selectionTo: nestedRevPos,
-        },
+    return annotationEventBus.on("revision-focus-request", (event) => {
+        const nestedEditor = controller.editor;
+        if (!nestedEditor || event.sourceView !== nestedEditor) return;
+        // Only handle if the target revision exists in our inline nested editor
+        const nestedAnns = nestedEditor.state.field(annotationField);
+        const nestedRev = nestedAnns[event.revisionId];
+        if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
+        // Expand this parent revision as a modal first, then place the cursor
+        // on the nested revision so it activates inline within that modal.
+        const nestedRevPos = nestedRev.selection.main.from;
+        modalStack.push({
+            type: "revision",
+            revisionId: revision.id,
+            parentView: view,
+            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            pendingNestedCommand: {
+                type: "cursor",
+                selectionFrom: nestedRevPos,
+                selectionTo: nestedRevPos,
+            },
+        });
     });
 });
 
@@ -632,7 +509,7 @@ onDestroy(() => {
                 onclick={() => {
                     userClosedEditor = false;
                     isEditorOpen = true;
-                    tick().then(() => nestedEditor?.focus());
+                    tick().then(() => controller.editor?.focus());
                 }}
             >
                 <span class="shrink-0 mt-px">↓</span>

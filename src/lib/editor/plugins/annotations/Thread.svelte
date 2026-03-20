@@ -24,7 +24,8 @@ import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
 import ThreadMessage from "./ThreadMessage.svelte";
 import type { Thread as ThreadType } from ".";
-import { annotationUiEvent, editorView } from "$lib/stores";
+import { editorView } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
 
@@ -60,24 +61,16 @@ let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
 const hasText = $derived(!!newMessage.trim());
 const sendActive = $derived(isFocused && hasText);
-let lastFocusReplyToken = 0;
-
 function blurToEditor() {
     textareaEl?.blur();
     (view ?? $editorView)?.focus();
 }
 
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastFocusReplyToken ||
-        event.type !== "annotation-focus-reply" ||
-        event.annotationId !== annotationId
-    )
-        return;
-    lastFocusReplyToken = event.token;
-    textareaEl?.focus();
+    return annotationEventBus.on("annotation-focus-reply", (event) => {
+        if (event.annotationId !== annotationId) return;
+        textareaEl?.focus();
+    });
 });
 
 function send() {

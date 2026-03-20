@@ -28,7 +28,7 @@ Version pills are the primary navigation control. Switching versions replaces th
 
 - **Comments** and **suggestions** are tied to live text; deleting their text removes the annotation.
 - **Revisions** survive text deletion — the annotation persists so the user can reopen the version later without losing the branch point.
-- Only one pending (empty-thread) comment is allowed at a time to avoid duplicated drafts.
+- Only one pending (empty-thread) comment is allowed at a time **per editor level** (main doc, each nested editor) to avoid duplicated drafts. Nested editors have independent `annotationField` instances, so each level enforces its own limit.
 
 ## Nested annotations (annotations inside revisions)
 

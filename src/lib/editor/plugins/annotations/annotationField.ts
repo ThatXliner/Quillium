@@ -510,39 +510,49 @@ function applyRevisionVersionEffect(
     annotation: GenericAnnotation,
     oldAnnotations: Annotations,
     tr: Transaction,
-): void {
-    if (!isAnnotationOfType(annotation, "revision")) return;
+): GenericAnnotation {
+    if (!isAnnotationOfType(annotation, "revision")) return annotation;
 
     if (e.is(_addVersionToRevision)) {
         const insertionIndex = Math.max(
             0,
             Math.min(e.value.at ?? annotation.versions.length, annotation.versions.length),
         );
-        annotation.versions.splice(insertionIndex, 0, e.value.newVersion);
-        annotation.activeVersionIndex = insertionIndex;
+        const newVersions = annotation.versions.slice();
+        newVersions.splice(insertionIndex, 0, e.value.newVersion);
+        return { ...annotation, versions: newVersions, activeVersionIndex: insertionIndex };
     } else if (e.is(_deleteVersionFromRevision)) {
-        annotation.versions.splice(e.value.versionId, 1);
-        if (e.value.versionId < annotation.activeVersionIndex) {
-            annotation.activeVersionIndex -= 1;
-        } else if (annotation.activeVersionIndex >= annotation.versions.length) {
-            annotation.activeVersionIndex = Math.max(0, annotation.versions.length - 1);
+        const newVersions = annotation.versions.slice();
+        newVersions.splice(e.value.versionId, 1);
+        let newIndex = annotation.activeVersionIndex;
+        if (e.value.versionId < newIndex) {
+            newIndex -= 1;
+        } else if (newIndex >= newVersions.length) {
+            newIndex = Math.max(0, newVersions.length - 1);
         }
+        return { ...annotation, versions: newVersions, activeVersionIndex: newIndex };
     } else if (e.is(_updateActiveRevisionVersion)) {
-        annotation.activeVersionIndex = e.value.to;
         // When switching versions, reconstruct the selection
         // to cover the inserted text. This is critical for
         // collapsed ranges (all text was deleted) where
         // selection.map() keeps the range collapsed instead
         // of expanding around the newly inserted version
         // text.
+        const targetVersion = annotation.versions[e.value.to];
         const oldAnnotation = oldAnnotations[e.value.annotationId];
-        if (oldAnnotation) {
+        let selection = annotation.selection;
+        if (targetVersion && oldAnnotation) {
             const from = tr.changes.mapPos(oldAnnotation.selection.main.from, -1);
-            const vText = versionText(annotation.versions[e.value.to] ?? { doc: "" });
-            const to = from + vText.length;
-            annotation.selection = EditorSelection.single(from, to);
+            const vText = versionText(targetVersion);
+            const to = Math.min(from + vText.length, tr.state.doc.length);
+            selection = EditorSelection.single(
+                Math.min(from, tr.state.doc.length),
+                to,
+            );
         }
+        return { ...annotation, activeVersionIndex: e.value.to, selection };
     }
+    return annotation;
 }
 
 /**
@@ -610,35 +620,42 @@ export const annotationField = StateField.define<Annotations>({
                 const annotation = annotations[e.value.annotationId];
                 if (!isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
-                applyRevisionVersionEffect(e, annotation, oldAnnotations, tr);
-
-                annotations[e.value.annotationId] = annotation;
+                annotations[e.value.annotationId] = applyRevisionVersionEffect(
+                    e, annotation, oldAnnotations, tr,
+                );
             } else if (e.is(_updateRevisionVersionLabel)) {
                 const annotation = annotations[e.value.annotationId];
                 if (!isAnnotationOfType(annotation, "revision")) continue;
                 const version = annotation.versions[e.value.versionId];
                 if (version) {
-                    annotation.versions[e.value.versionId] = {
+                    const newVersions = annotation.versions.slice();
+                    newVersions[e.value.versionId] = {
                         ...version,
                         label: e.value.label,
                     };
+                    annotations[e.value.annotationId] = { ...annotation, versions: newVersions };
                 }
-                annotations[e.value.annotationId] = annotation;
             } else if (e.is(_updateRevisionVersionState)) {
                 const annotation = annotations[e.value.annotationId];
                 if (!isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
-                annotation.versions[e.value.versionId] = e.value.versionState;
+                const newVersions = annotation.versions.slice();
+                newVersions[e.value.versionId] = e.value.versionState;
+                let selection = annotation.selection;
                 if (annotation.activeVersionIndex === e.value.versionId && tr.docChanged) {
-                    const oldAnnotation = oldAnnotations[e.value.annotationId];
-                    if (oldAnnotation) {
-                        const from = tr.changes.mapPos(oldAnnotation.selection.main.from, -1);
-                        const text = versionText(e.value.versionState);
-                        const to = from + text.length;
-                        annotation.selection = EditorSelection.single(from, to);
-                    }
+                    // Use the already-remapped selection from Phase 1 (not
+                    // oldAnnotations) to avoid double-mapping when both Phase 1
+                    // and this effect fire on the same transaction.
+                    const from = annotation.selection.main.from;
+                    const text = versionText(e.value.versionState);
+                    const to = from + text.length;
+                    selection = EditorSelection.single(from, to);
                 }
-                annotations[e.value.annotationId] = annotation;
+                annotations[e.value.annotationId] = {
+                    ...annotation,
+                    versions: newVersions,
+                    selection,
+                };
             } else if (e.is(addSuggestion)) {
                 const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
                 for (const { from, to } of cursor) {

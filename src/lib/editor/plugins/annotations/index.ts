@@ -95,7 +95,8 @@ import {
     _revisionCleanup,
     setActiveRevisionVersion,
 } from "./annotationField";
-import { publishAnnotationUiEvent, type NestedEditorCommand } from "$lib/stores";
+import { type NestedEditorCommand } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import { nestedEditorEdit } from "./annotationField";
 
@@ -170,7 +171,7 @@ function nudgeBoundary(direction: "backward" | "forward"): StateCommand {
         const target = getRevisionAtContentBoundary(state, direction);
         if (!target) return false;
         // Fire the nudge — the Revision card will show the hint.
-        publishAnnotationUiEvent({
+        annotationEventBus.emit({
             type: "revision-boundary-nudge",
             revisionId: target.id,
         });
@@ -217,7 +218,7 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand
         if (!activeRevision) return false; // fall through to original keymap
         const revFrom = activeRevision.selection.main.from;
         const sel = view.state.selection.main;
-        publishAnnotationUiEvent({
+        annotationEventBus.emit({
             type: "revision-request-modal",
             command: {
                 revisionId: activeRevision.id,
@@ -360,7 +361,7 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
                         const { from, to } = annotation.selection.main;
                         if (from === to) continue;
                         if (fromA === from || fromA === to) {
-                            publishAnnotationUiEvent({
+                            annotationEventBus.emit({
                                 type: "revision-boundary-nudge",
                                 revisionId: annotation.id,
                             });
@@ -638,7 +639,7 @@ export function createRevision({
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
     // locks it so that we can't have multiple pending states
     if (!canCreateNewComment(state.field(annotationField))) {
-        publishAnnotationUiEvent({
+        annotationEventBus.emit({
             type: "pending-comment-alert",
         });
         return true;
@@ -683,7 +684,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     // When the setting is on and there is an actual selection, signal
     // the nested editor to select all text on mount.
     if (appSettings.selectTextInNestedEditor && !sel.empty) {
-        publishAnnotationUiEvent({
+        annotationEventBus.emit({
             type: "pending-nested-editor-selection",
             annotationId: newAnnotation.id,
             from: 0,
@@ -705,7 +706,7 @@ function addRevisionVersionCommand(): StateCommand {
     return ({ state }) => {
         const annotation = getActiveRevisionAnnotation(state);
         if (!annotation) return false;
-        publishAnnotationUiEvent({ type: "annotation-add-version", annotationId: annotation.id });
+        annotationEventBus.emit({ type: "annotation-add-version", annotationId: annotation.id });
         return true;
     };
 }
@@ -713,13 +714,38 @@ function addRevisionVersionCommand(): StateCommand {
 function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
     return ({ state, dispatch }) => {
         const annotation = getActiveRevisionAnnotation(state);
-        if (!annotation) return false;
-        const count = annotation.versions.length;
-        if (count <= 1) return true;
-        const current = annotation.activeVersionIndex;
-        const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
-        dispatch(setActiveRevisionVersion(state, annotation.id, next));
-        return true;
+        if (annotation) {
+            const count = annotation.versions.length;
+            if (count <= 1) return true;
+            const current = annotation.activeVersionIndex;
+            const next =
+                direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
+            dispatch(setActiveRevisionVersion(state, annotation.id, next));
+            return true;
+        }
+        // Cursor isn't inside a revision — find the nearest one and
+        // nudge the user toward the inline/modal editor.
+        const cursor = state.selection.main.from;
+        let nearestId: number | null = null;
+        let nearestDist = Infinity;
+        for (const ann of Object.values(state.field(annotationField))) {
+            if (!isAnnotationOfType(ann, "revision")) continue;
+            const { from, to } = ann.selection.main;
+            if (from === to) continue;
+            const dist = Math.min(Math.abs(cursor - from), Math.abs(cursor - to));
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestId = ann.id;
+            }
+        }
+        if (nearestId !== null) {
+            annotationEventBus.emit({
+                type: "revision-boundary-nudge",
+                revisionId: nearestId,
+            });
+            return true;
+        }
+        return false;
     };
 }
 
@@ -808,7 +834,7 @@ const revisionClickHandler = EditorView.domEventHandlers({
             if (pos >= from && pos <= to) {
                 // Move cursor to clicked position so the annotation becomes active
                 view.dispatch({ selection: { anchor: pos }, scrollIntoView: false });
-                publishAnnotationUiEvent({
+                annotationEventBus.emit({
                     type: "revision-focus-request",
                     revisionId: annotation.id,
                     relativePos: pos - from,

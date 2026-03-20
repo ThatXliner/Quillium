@@ -167,98 +167,6 @@ export type NestedEditorCommand = {
     selectionTo: number;
 };
 
-/**
- * One-shot UI events emitted by annotation commands/plugins and
- * consumed by Svelte components. Keeps editor plugin logic decoupled
- * from component-specific stores.
- */
-export type AnnotationUiEvent =
-    | {
-          token: number;
-          type: "revision-boundary-nudge";
-          revisionId: number;
-      }
-    | {
-          token: number;
-          type: "nested-annotation-create";
-          command: NestedEditorCommand;
-      }
-    | {
-          token: number;
-          type: "revision-request-modal";
-          command: NestedEditorCommand;
-      }
-    | {
-          token: number;
-          type: "revision-focus-request";
-          revisionId: number;
-          relativePos: number;
-          sourceView: import("@codemirror/view").EditorView;
-      }
-    | {
-          token: number;
-          type: "pending-comment-alert";
-      }
-    | {
-          token: number;
-          type: "pending-nested-editor-selection";
-          annotationId: number;
-          from: number;
-          to: number;
-      }
-    | {
-          token: number;
-          type: "annotation-focus-reply";
-          annotationId: number;
-      }
-    | {
-          token: number;
-          type: "annotation-add-version";
-          annotationId: number;
-      };
-
-type WithoutToken<T> = T extends { token: number } ? Omit<T, "token"> : never;
-export type AnnotationUiEventInput = WithoutToken<AnnotationUiEvent>;
-
-export const annotationUiEvent = writable<AnnotationUiEvent | null>(null);
-
-let nextAnnotationUiEventToken = 1;
-
-type PendingNestedEditorSelectionEvent = Extract<
-    AnnotationUiEvent,
-    { type: "pending-nested-editor-selection" }
->;
-const pendingNestedEditorSelections = new Map<number, PendingNestedEditorSelectionEvent>();
-
-function storePendingNestedEditorSelection(event: PendingNestedEditorSelectionEvent) {
-    pendingNestedEditorSelections.set(event.annotationId, event);
-}
-
-export function consumePendingNestedEditorSelection(annotationId: number, lastToken: number) {
-    const selection = pendingNestedEditorSelections.get(annotationId);
-    if (!selection || selection.token === lastToken) return undefined;
-    pendingNestedEditorSelections.delete(annotationId);
-    return selection;
-}
-
-/** Clear all pending nested editor selections. Called on document switch
- *  to prevent stale entries from being consumed by a new document whose
- *  annotations happen to share the same IDs. */
-export function clearPendingNestedEditorSelections() {
-    pendingNestedEditorSelections.clear();
-}
-
-export function publishAnnotationUiEvent(event: AnnotationUiEventInput) {
-    const payload = {
-        ...event,
-        token: nextAnnotationUiEventToken++,
-    } as AnnotationUiEvent;
-    annotationUiEvent.set(payload);
-    if (payload.type === "pending-nested-editor-selection") {
-        storePendingNestedEditorSelection(payload);
-    }
-}
-
 // ── Modal stack types ────────────────────────────────────────
 
 /** A single diff operation used in diff display. */
@@ -357,10 +265,33 @@ export const modalStack = {
             }
             return [...s, entry];
         }),
-    pop: () => _modalStack.update((s) => s.slice(0, -1)),
-    popTo: (index: number) => _modalStack.update((s) => s.slice(0, index + 1)),
+    pop: () =>
+        _modalStack.update((s) => {
+            if (s.length > 0) {
+                _modalAnnotationStores.update((m) => {
+                    const copy = { ...m };
+                    delete copy[s.length - 1];
+                    return copy;
+                });
+            }
+            return s.slice(0, -1);
+        }),
+    popTo: (index: number) =>
+        _modalStack.update((s) => {
+            _modalAnnotationStores.update((m) => {
+                const copy = { ...m };
+                for (let i = index + 1; i < s.length; i++) delete copy[i];
+                return copy;
+            });
+            return s.slice(0, index + 1);
+        }),
     popToAndRebuild: (index: number) =>
         _modalStack.update((s) => {
+            _modalAnnotationStores.update((m) => {
+                const copy = { ...m };
+                for (let i = index + 1; i < s.length; i++) delete copy[i];
+                return copy;
+            });
             const trimmed = s.slice(0, index + 1);
             const target = trimmed[index];
             if (!target) return trimmed;

@@ -36,8 +36,8 @@ import {
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
-    clearPendingNestedEditorSelections,
 } from "$lib/stores";
+import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import {
     listDocuments,
     listDrafts,
@@ -294,7 +294,7 @@ export async function loadDocument(id: string) {
 
     // Clear stale pending selections from the previous document so they
     // can't be consumed by a new document whose annotations share the same IDs.
-    clearPendingNestedEditorSelections();
+    annotationEventBus.clearPendingSelections();
 
     const draftId = await resolveActiveDraft(id);
     currentDraftId.set(draftId);
