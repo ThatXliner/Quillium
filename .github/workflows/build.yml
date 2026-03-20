@@ -115,9 +115,14 @@ jobs:
           mkdir assets
           gh release download ${{ github.ref_name }} \
             --repo ${{ github.repository }} \
-            --dir assets
+            --dir assets || true
           echo "=== Downloaded assets ==="
           ls -la assets/
+          # Bail if no builds succeeded
+          if [ -z "$(ls -A assets/ 2>/dev/null)" ]; then
+            echo "::error::No release assets found — all builds failed"
+            exit 1
+          fi
 
       - name: Build latest.json
         env:
