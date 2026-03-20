@@ -371,6 +371,34 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- INTERFACE section -->
             <div class="section-label">Interface</div>
 
+            <!-- Color scheme row -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Color scheme</div>
+                    <div class="setting-desc">Light, dark, or follow system</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.colorScheme !== "system"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.colorScheme = "system"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
+                    {#each ([["light", "Light"], ["system", "System"], ["dark", "Dark"]] as const) as [val, label]}
+                        <button
+                            onclick={() => { draft.colorScheme = val; handleChange(); }}
+                            class="px-3 py-1.5 text-[11px] font-medium transition-colors
+                                {draft.colorScheme === val
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                        >{label}</button>
+                    {/each}
+                </div>
+                </div>
+            </div>
+
             <!-- UI font row -->
             <div class="setting-row">
                 <div class="setting-meta">

@@ -219,7 +219,7 @@ onMount(load);
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Full-screen 50/50 split -->
-<div class="h-screen flex" style="background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%)">
+<div class="library-root h-screen flex" style="background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%)">
 
     <!-- Left half: header + document grid -->
     <div class="w-1/2 flex flex-col min-h-0">

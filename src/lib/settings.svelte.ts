@@ -23,6 +23,7 @@ type AppSettings = {
     customQuickActions: CustomQuickAction[];
     titleVisibility: "hover" | "always" | "never";
     uiZoom: number;
+    colorScheme: "light" | "dark" | "system";
 };
 
 const DEFAULTS: AppSettings = {
@@ -35,6 +36,7 @@ const DEFAULTS: AppSettings = {
     customQuickActions: [],
     titleVisibility: "hover",
     uiZoom: 1,
+    colorScheme: "system",
 };
 
 function loadSettings(): AppSettings {
@@ -65,6 +67,24 @@ export function applySettings(s: AppSettings) {
     root.style.setProperty("--doc-font-size", `${s.docFontSize}px`);
     root.style.setProperty("--ui-font-family", s.uiFontFamily);
     root.style.zoom = String(s.uiZoom);
+
+    // Apply color scheme
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const isDark =
+        s.colorScheme === "dark" || (s.colorScheme === "system" && prefersDark);
+
+    if (s.colorScheme === "dark") {
+        root.setAttribute("data-theme", "dark");
+    } else if (s.colorScheme === "light") {
+        root.setAttribute("data-theme", "light");
+    } else {
+        // system: follow OS preference via CSS media query
+        root.removeAttribute("data-theme");
+    }
+
+    // "is-dark" class drives global CSS overrides that can't rely on
+    // CSS media queries alone (e.g. overrides on specific component IDs)
+    root.classList.toggle("is-dark", isDark);
 }
 
 export const appSettings = $state<AppSettings>(loadSettings());
@@ -72,6 +92,15 @@ export const appSettings = $state<AppSettings>(loadSettings());
 // Apply persisted settings on startup
 if (typeof document !== "undefined") {
     applySettings(appSettings);
+
+    // Re-apply when OS color scheme changes (only matters for "system" mode)
+    window
+        .matchMedia("(prefers-color-scheme: dark)")
+        .addEventListener("change", () => {
+            if (appSettings.colorScheme === "system") {
+                applySettings(appSettings);
+            }
+        });
 }
 
 /**
