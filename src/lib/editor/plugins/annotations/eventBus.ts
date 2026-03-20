@@ -61,13 +61,6 @@ class AnnotationEventBus {
         EventOfType<"pending-nested-editor-selection">
     >();
 
-    /**
-     * One-shot flag for pending-comment-alert events. Like pendingSelections,
-     * the alert may fire before the Annotations component has registered the
-     * pending card element. The component checks this flag when elements change.
-     */
-    private _pendingCommentAlert = false;
-
     /** Subscribe to events of a specific type. Returns an unsubscribe function. */
     on<T extends EventType>(type: T, listener: Listener<T>): () => void {
         let set = this.listeners.get(type);
@@ -88,9 +81,6 @@ class AnnotationEventBus {
                 event as EventOfType<"pending-nested-editor-selection">,
             );
         }
-        if (event.type === "pending-comment-alert") {
-            this._pendingCommentAlert = true;
-        }
         const set = this.listeners.get(event.type);
         if (!set) return;
         for (const listener of set) {
@@ -105,15 +95,6 @@ class AnnotationEventBus {
         const event = this.pendingSelections.get(annotationId);
         if (event) this.pendingSelections.delete(annotationId);
         return event;
-    }
-
-    /** Consume the pending comment alert flag (one-shot). */
-    consumePendingCommentAlert(): boolean {
-        if (this._pendingCommentAlert) {
-            this._pendingCommentAlert = false;
-            return true;
-        }
-        return false;
     }
 
     /** Clear all pending selections (called on document switch). */
