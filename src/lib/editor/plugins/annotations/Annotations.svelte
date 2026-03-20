@@ -379,15 +379,13 @@ function applyCardPositions(
 
 // Track which pending card is currently showing the alert animation
 let alertingPendingId: number | undefined = $state();
-let alertingTimeout: ReturnType<typeof setTimeout> | undefined;
 
 // React to pending-comment events: scroll the pending card into view,
-// then play a shake + red-outline-fade animation on it. Uses tick()
-// to wait for Svelte's DOM flush so the card element is guaranteed
-// to exist when we look it up — no retry logic needed.
+// then play a shake + red-outline-fade animation on it. The alert only
+// fires when canCreateNewComment() is false, so the pending comment card
+// already exists in the DOM — no timing workaround needed.
 $effect(() => {
-    return annotationEventBus.on("pending-comment-alert", async () => {
-        await tick();
+    return annotationEventBus.on("pending-comment-alert", () => {
         if (!isFloating || !pendingComment) return;
 
         const el = annotationElements[pendingComment.id];
@@ -404,14 +402,14 @@ $effect(() => {
         // Scroll the pending card into view
         el.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-        // Trigger shake + ring by setting alertingPendingId.
+        // Trigger shake animation via CSS. The animation-name reset
+        // (removing then re-adding the class) ensures it replays on
+        // repeated alerts. The animationend event cleans up — no
+        // setTimeout needed.
         alertingPendingId = pendingComment.id;
+        el.classList.remove("pending-shake");
+        void el.offsetWidth; // force reflow to restart animation
         el.classList.add("pending-shake");
-        clearTimeout(alertingTimeout);
-        alertingTimeout = setTimeout(() => {
-            el.classList.remove("pending-shake");
-            alertingPendingId = undefined;
-        }, 1400);
     });
 });
 
@@ -556,7 +554,10 @@ $effect(() => {
                             />
                         {/if}
                         {#if alertingPendingId === c.id}
-                            <div class="alert-ring rounded-[14px]"></div>
+                            <div
+                                class="alert-ring rounded-[14px]"
+                                onanimationend={() => { alertingPendingId = undefined; }}
+                            ></div>
                         {/if}
                     </div>
                 {/each}
