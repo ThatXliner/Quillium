@@ -35,6 +35,7 @@ import { restoreBackup } from "$lib/editor/restore";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 
 let updateAvailable = $state(false);
 let updateVersion = $state("");
@@ -213,19 +214,12 @@ if (import.meta.env.DEV) {
 
 <!-- Update banner — shown when a new version is available -->
 {#if updateAvailable}
-    <div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 bg-white rounded-xl shadow-xl border border-black/[0.07] text-[13px]">
-        <span class="text-black/60">Quillium <span class="font-semibold text-black/80">{updateVersion}</span> is available</span>
-        <button
-            onclick={installUpdate}
-            disabled={updateInstalling}
-            class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-full text-[12px] font-medium transition-colors disabled:opacity-50"
-        >{updateInstalling ? "Installing…" : "Update"}</button>
-        <button
-            onclick={() => updateAvailable = false}
-            class="text-black/25 hover:text-black/50 transition-colors"
-            aria-label="Dismiss"
-        >✕</button>
-    </div>
+    <UpdateBanner
+        version={updateVersion}
+        installing={updateInstalling}
+        oninstall={installUpdate}
+        ondismiss={() => updateAvailable = false}
+    />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
