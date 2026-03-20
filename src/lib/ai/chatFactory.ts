@@ -40,6 +40,7 @@ import {
     streamChat,
     streamFeedback,
     streamRevise,
+    streamDictionary,
     type CommentInput,
     type RevisionInput,
     type SuggestionInput,
@@ -142,11 +143,12 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
  * is a reactive @ai-sdk/svelte Chat whose `.messages`, `.status`,
  * and `.error` properties drive the component UI.
  */
-export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" }) {
+export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | "dictionary" }) {
     const streamFns = {
         chat: streamChat,
         feedback: streamFeedback,
         revise: streamRevise,
+        dictionary: streamDictionary,
     } as const;
 
     const transportWithTracking: StreamFn = (opts) => {
