@@ -29,7 +29,7 @@
  *   - Handles a pendingNestedCommand from the modal stack entry
  *     to auto-create a comment or sub-revision on open.
  */
-import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import { scale, slide } from "svelte/transition";
@@ -57,8 +57,8 @@ import {
     type ModalEntry,
 } from "$lib/stores";
 import { annotationEventBus } from "./eventBus";
-import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
-import { nestedSavedFields } from "$lib/editor/extensions";
+import { previewVersionText } from "./nestedEditor";
+import { NestedEditorController } from "./NestedEditorController";
 import { appSettings } from "$lib/settings.svelte";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
@@ -290,9 +290,6 @@ function send(event: FsmEvent) {
             if (event.type === "DIALOG_BOUND") {
                 fsmState = "mounting";
                 if (dialogEl && isTop && !dialogEl.open) dialogEl.showModal();
-                // The "mounting" → "ready" transition is handled by
-                // the $effect below, which fires once the DOM updates
-                // and editorHost is available.
             }
             break;
         }
@@ -303,30 +300,13 @@ function send(event: FsmEvent) {
                 if (event.type === "VERSION_SWITCHED") {
                     modalStack.popTo(stackIndex);
                 }
-                // The "rebuilding" → "ready" transition is handled by
-                // the $effect below, which fires on the next render
-                // after destroyEditor clears the old editor.
             } else if (event.type === "EXTERNAL_DOC_CHANGED") {
-                if (!editor) break;
-                if (event.doc === lastDispatchedDoc) break;
-                const current = editor.state.doc.toString();
-                if (current !== event.doc) {
-                    pullingFromParent = true;
-                    editor.dispatch({
-                        changes: { from: 0, to: current.length, insert: event.doc },
-                        annotations: Transaction.addToHistory.of(false),
-                    });
-                    pullingFromParent = false;
-                    modalAnnotations = editor.state.field(annotationField);
-                }
-                lastDispatchedDoc = event.doc;
+                controller.syncFromParent(event.doc);
             } else if (event.type === "NESTED_ANNOTATION_EVENT") {
+                const editor = controller.editor;
                 if (!editor) break;
                 executePendingNestedCommand(editor, event.cmd);
                 if (event.cmd.type === "revision" && !appSettings.showNestedEditor) {
-                    // Only auto-push a child modal when inline editors are
-                    // disabled. When they're enabled, the Revision.svelte card
-                    // in the annotations sidebar handles display inline.
                     const nestedAnns = editor.state.field(annotationField);
                     const newId = Math.max(...Object.keys(nestedAnns).map(Number));
                     const newAnn = nestedAnns[newId];
@@ -354,10 +334,10 @@ function send(event: FsmEvent) {
 $effect(() => {
     if (fsmState === "mounting" && editorHost) {
         const rev = readRevision();
-        if (rev && !editor) {
+        if (rev && !controller.editor) {
             createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
         }
-        const activeEditor = editor;
+        const activeEditor = controller.editor;
         if (activeEditor) {
             if (initialPendingCommand) {
                 executePendingNestedCommand(activeEditor, initialPendingCommand);
@@ -370,7 +350,7 @@ $effect(() => {
         const rev = readRevision();
         if (rev) {
             createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
-            if (editor) moveCursorToEnd(editor);
+            if (controller.editor) moveCursorToEnd(controller.editor);
         }
         fsmState = "ready";
     }
@@ -408,58 +388,24 @@ const revision = $derived(
 );
 
 let editorHost = $state<HTMLDivElement>();
-let editor = $state<EditorView | undefined>(undefined);
 let dialogEl = $state<HTMLDialogElement>();
-let lastDispatchedDoc = "";
-// Track which version index the editor was created for, so destroyEditor
-// flushes state into the correct version slot even if activeVersionIndex
-// has changed (e.g. a parent breadcrumb version switch).
-let editorVersionIndex = 0;
-// Guard: set to true while we are programmatically patching the nested editor
-// from an external parent change, so the updateListener skips translateAndDispatch
-// and doesn't bounce the change back up to the parent.
-let pullingFromParent = false;
 
 // Manually-synced mirrors of the nested editor's CodeMirror state.
-// Because CodeMirror manages its own state internally (view.state is a plain
-// object, not $state), Svelte has no way to react to transactions automatically.
-// The nested editor's updateListener callback (inside createEditor) writes here
-// on every transaction, making these the reactive entry-point for everything
-// that needs to re-run when the nested editor changes.
+// The controller's onUpdate callback writes here on every transaction,
+// making these the reactive entry-point for the Svelte template.
 let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-/**
- * Bootstrap a nested CodeMirror editor from a VersionState.
- * Restores from JSON if the version already contains serialised
- * editor state, otherwise creates a fresh state from the doc
- * text. Attaches an updateListener that translates doc changes
- * to parent coordinates via translateAndDispatch. Nested state
- * is flushed back to the parent on destroy via destroyEditor.
- */
+const controller = new NestedEditorController(view, revisionId, {
+    onUpdate: (annotations, activeAnnotation) => {
+        modalAnnotations = annotations;
+        modalActiveAnnotation = activeAnnotation;
+    },
+}, "flush");
+
 function createEditor(version: VersionState, versionIndex?: number) {
-    if (!editorHost || editor) return;
-    if (versionIndex !== undefined) editorVersionIndex = versionIndex;
-    const state = createNestedEditorState(
-        version,
-        (update: ViewUpdate) => {
-            if (!editor) return;
-            // Translate doc changes to parent coordinates and dispatch.
-            // Skip when we're programmatically syncing from the parent to avoid
-            // bouncing the change back up and corrupting the parent document.
-            if (!pullingFromParent && translateAndDispatch(update, view, revisionId)) {
-                lastDispatchedDoc = editor.state.doc.toString();
-            }
-            modalAnnotations = editor.state.field(annotationField);
-            modalActiveAnnotation = getActiveAnnotation(editor.state);
-        },
-        view,
-        revisionId,
-    );
-    editor = new EditorView({ state, parent: editorHost });
-    lastDispatchedDoc = editor.state.doc.toString();
-    modalAnnotations = editor.state.field(annotationField);
-    modalActiveAnnotation = getActiveAnnotation(editor.state);
+    if (!editorHost || controller.editor) return;
+    controller.create(editorHost, version, versionIndex ?? 0);
 }
 
 function moveCursorToEnd(activeEditor: EditorView) {
@@ -472,26 +418,7 @@ function moveCursorToEnd(activeEditor: EditorView) {
 }
 
 function destroyEditor() {
-    // Flush nested annotation state back into the parent revision's version blob
-    // before destroying, so nested annotations survive modal close and version switches.
-    // Use editorVersionIndex (set when the editor was created) rather than
-    // rev.activeVersionIndex, which may have changed if a parent breadcrumb
-    // version switch happened before this destroy.
-    if (editor) {
-        const rev = view.state.field(annotationField)[revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        if (rev && editorVersionIndex < rev.versions.length) {
-            const blob = editor.state.toJSON(nestedSavedFields) as VersionState;
-            view.dispatch(
-                updateRevisionVersionState(view.state, revisionId, editorVersionIndex, blob, {
-                    addToHistory: false,
-                }),
-            );
-        }
-    }
-    editor?.destroy();
-    editor = undefined;
+    controller.destroy();
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
 }
@@ -510,7 +437,7 @@ $effect(() => {
         const parentLevel = $modalAnnotationStores;
         ann = parentLevel[stackIndex - 1];
     }
-    if (!isTop || fsmState !== "ready" || !editor || !ann) return;
+    if (!isTop || fsmState !== "ready" || !controller.editor || !ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex])
         return;
@@ -600,7 +527,7 @@ $effect(() => {
         if (
             fsmState !== "ready" ||
             !isTop ||
-            !editor ||
+            !controller.editor ||
             event.command.revisionId !== revisionId
         )
             return;
@@ -959,7 +886,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       ></div>
 
       <!-- Right sidebar: context + annotations -->
-      {#if contextLayers.length > 0 || (editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
+      {#if contextLayers.length > 0 || (controller.editor && modalAnnotations && Object.keys(modalAnnotations).length > 0)}
         <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col bg-purple-50/20">
 
           <!-- Context panel -->
@@ -1015,13 +942,13 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           {/if}
 
           <!-- Annotations -->
-          {#if editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
+          {#if controller.editor && modalAnnotations && Object.keys(modalAnnotations).length > 0}
             <div class="flex-1 overflow-y-auto px-2 py-3">
               <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
                 Annotations
               </div>
               <Annotations
-                view={editor}
+                view={controller.editor}
                 annotationsData={modalAnnotations}
                 activeAnnotationData={modalActiveAnnotation}
                 layout="inline"
