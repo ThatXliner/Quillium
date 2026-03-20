@@ -96,6 +96,19 @@ const controller = new NestedEditorController(view, revision.id, {
 
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
+let pendingFocusPos: number | undefined;
+
+function placeCursorInEditor(editor: EditorView, relPos: number) {
+    editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
+    editor.focus();
+    clearTimeout(cursorArrivingTimeout);
+    cursorArriving = false;
+    void nestedEditorHost?.offsetWidth;
+    cursorArriving = true;
+    cursorArrivingTimeout = setTimeout(() => {
+        cursorArriving = false;
+    }, 650);
+}
 
 let showBoundaryHint = $state(false);
 let boundaryHintTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -184,25 +197,17 @@ $effect(() => {
         if (event.revisionId !== revision.id || event.sourceView !== view) return;
         const relPos = event.relativePos;
         if (appSettings.showNestedEditor) {
-            const placeCursor = (editor: EditorView) => {
-                editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
-                editor.focus();
-                clearTimeout(cursorArrivingTimeout);
-                cursorArriving = false;
-                void nestedEditorHost?.offsetWidth;
-                cursorArriving = true;
-                cursorArrivingTimeout = setTimeout(() => {
-                    cursorArriving = false;
-                }, 650);
-            };
             if (isEditorOpen && controller.editor) {
-                placeCursor(controller.editor);
+                placeCursorInEditor(controller.editor, relPos);
             } else {
+                // Store the pending focus position — the creation $effect
+                // will apply it when the editor is ready. We can't use
+                // tick() here because the event bus fires synchronously
+                // before Svelte's reactive flush, so the editor doesn't
+                // exist yet when the first tick() resolves.
+                pendingFocusPos = relPos;
                 userClosedEditor = false;
                 isEditorOpen = true;
-                tick().then(() => {
-                    if (controller.editor) placeCursor(controller.editor);
-                });
             }
         } else {
             modalStack.push({
@@ -223,6 +228,12 @@ function createNestedEditor(version: VersionState) {
     if (!nestedEditorHost || controller.editor) return;
     controller.create(nestedEditorHost, version, revision.activeVersionIndex);
     controller.applyPendingSelection();
+    // Apply pending focus from revision-focus-request that arrived before
+    // the editor was created (event bus fires synchronously before Svelte flush).
+    if (pendingFocusPos !== undefined && controller.editor) {
+        placeCursorInEditor(controller.editor, pendingFocusPos);
+        pendingFocusPos = undefined;
+    }
 }
 
 function destroyNestedEditor() {
