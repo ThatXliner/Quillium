@@ -15,8 +15,9 @@ jobs:
         include:
           - platform: "macos-latest" # ARM (M1 and above)
             args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest" # Intel
-            args: "--target x86_64-apple-darwin"
+          # Intel Mac build disabled until TAURI_SIGNING_PRIVATE_KEY is verified
+          # - platform: "macos-latest"
+          #   args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-latest"
             args: ""
           - platform: "windows-latest"
