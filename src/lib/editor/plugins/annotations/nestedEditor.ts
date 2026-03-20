@@ -39,7 +39,7 @@ import {
     _nestedEditRevision,
     setActiveRevisionVersion,
 } from "./annotationField";
-import { publishAnnotationUiEvent } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import { versionText, type VersionState, isAnnotationOfType } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
@@ -178,7 +178,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
         return (view: EditorView) => {
             const sel = view.state.selection.main;
             if (sel.empty) return false;
-            publishAnnotationUiEvent({
+            annotationEventBus.emit({
                 type: "nested-annotation-create",
                 command: {
                     revisionId,
@@ -211,7 +211,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
             {
                 key: "Mod-Enter",
                 run() {
-                    publishAnnotationUiEvent({
+                    annotationEventBus.emit({
                         type: "annotation-add-version",
                         annotationId: revisionId,
                     });

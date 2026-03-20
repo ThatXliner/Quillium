@@ -32,11 +32,8 @@ import {
     isAnnotationOfType,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import {
-    modalStack,
-    annotationUiEvent,
-    publishAnnotationUiEvent,
-} from "$lib/stores";
+import { modalStack } from "$lib/stores";
+import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -207,24 +204,27 @@ describe("revision-focus-request from nested inline editor", () => {
         views.push(nestedView);
         const nestedRevId = addRevision(nestedView, 0, 3, "hel");
 
+        // Listen for the event
+        let received: { revisionId: number; sourceView: EditorView } | undefined;
+        const unsub = annotationEventBus.on("revision-focus-request", (event) => {
+            received = { revisionId: event.revisionId, sourceView: event.sourceView };
+        });
+
         // Publish the event as the revisionClickHandler would
-        publishAnnotationUiEvent({
+        annotationEventBus.emit({
             type: "revision-focus-request",
             revisionId: nestedRevId,
             relativePos: 1,
             sourceView: nestedView,
         });
+        unsub();
 
-        const event = get(annotationUiEvent);
-        expect(event).not.toBeNull();
-        expect(event!.type).toBe("revision-focus-request");
-        if (event!.type !== "revision-focus-request") return;
-
+        expect(received).toBeDefined();
         // sourceView is the nested editor (inline editor that was clicked in)
-        expect(event!.sourceView).toBe(nestedView);
+        expect(received!.sourceView).toBe(nestedView);
         // revisionId is the nested revision's ID
-        expect(event!.revisionId).toBe(nestedRevId);
+        expect(received!.revisionId).toBe(nestedRevId);
         // The handler should match this to nestedEditor and push the PARENT modal
-        // (this is what Revision.svelte's $effect does after the fix)
+        // (this is what Revision.svelte's event bus listener does after the fix)
     });
 });

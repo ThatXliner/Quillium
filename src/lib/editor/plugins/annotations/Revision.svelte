@@ -41,7 +41,8 @@ import {
 import { versionText, type VersionState } from "./models";
 import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
 import { getActiveAnnotation } from "./utils";
-import { annotationUiEvent, modalStack, consumePendingNestedEditorSelection } from "$lib/stores";
+import { modalStack } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -107,11 +108,6 @@ let lastDispatchedDoc = "";
 // and doesn't bounce the change back up to the parent.
 let pullingFromParent = false;
 
-let lastBoundaryNudgeToken = 0;
-let lastOpenNestedEditorToken = 0;
-let lastFocusRequestToken = 0;
-let lastNestedSelectionToken = 0;
-let lastAddVersionToken = 0;
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -148,117 +144,90 @@ function cancelLabelEdit() {
 }
 
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastBoundaryNudgeToken ||
-        event.type !== "revision-boundary-nudge" ||
-        event.revisionId !== revision.id
-    )
-        return;
-    lastBoundaryNudgeToken = event.token;
-    showBoundaryHint = true;
-    clearTimeout(boundaryHintTimeout);
-    boundaryHintTimeout = setTimeout(() => {
-        showBoundaryHint = false;
-    }, 4000);
-});
-
-$effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastOpenNestedEditorToken ||
-        event.type !== "revision-request-modal" ||
-        event.command.revisionId !== revision.id
-    )
-        return;
-    lastOpenNestedEditorToken = event.token;
-    const cmd = event.command;
-    modalStack.push({
-        type: "revision",
-        revisionId: revision.id,
-        parentView: view,
-        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-        pendingNestedCommand: {
-            type: cmd.type,
-            selectionFrom: cmd.selectionFrom,
-            selectionTo: cmd.selectionTo,
-        },
+    return annotationEventBus.on("revision-boundary-nudge", (event) => {
+        if (event.revisionId !== revision.id) return;
+        showBoundaryHint = true;
+        clearTimeout(boundaryHintTimeout);
+        boundaryHintTimeout = setTimeout(() => {
+            showBoundaryHint = false;
+        }, 4000);
     });
 });
 
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastOpenNestedEditorToken ||
-        event.type !== "nested-annotation-create" ||
-        event.command.revisionId !== revision.id
-    )
-        return;
-    // If a modal is already open for this revision, let that modal handle the event.
-    if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id)) {
-        lastOpenNestedEditorToken = event.token;
-        return;
-    }
-    lastOpenNestedEditorToken = event.token;
-    const cmd = event.command;
-    modalStack.push({
-        type: "revision",
-        revisionId: revision.id,
-        parentView: view,
-        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-        pendingNestedCommand: {
-            type: cmd.type,
-            selectionFrom: cmd.selectionFrom,
-            selectionTo: cmd.selectionTo,
-        },
-    });
-});
-
-$effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastFocusRequestToken ||
-        event.type !== "revision-focus-request" ||
-        event.revisionId !== revision.id ||
-        event.sourceView !== view
-    )
-        return;
-    lastFocusRequestToken = event.token;
-    const relPos = event.relativePos;
-    if (appSettings.showNestedEditor) {
-        const placeCursor = (editor: EditorView) => {
-            editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
-            editor.focus();
-            clearTimeout(cursorArrivingTimeout);
-            cursorArriving = false;
-            void nestedEditorHost?.offsetWidth;
-            cursorArriving = true;
-            cursorArrivingTimeout = setTimeout(() => {
-                cursorArriving = false;
-            }, 650);
-        };
-        if (isEditorOpen && nestedEditor) {
-            placeCursor(nestedEditor);
-        } else {
-            userClosedEditor = false;
-            isEditorOpen = true;
-            tick().then(() => {
-                if (nestedEditor) placeCursor(nestedEditor);
-            });
-        }
-    } else {
+    return annotationEventBus.on("revision-request-modal", (event) => {
+        if (event.command.revisionId !== revision.id) return;
+        const cmd = event.command;
         modalStack.push({
             type: "revision",
             revisionId: revision.id,
             parentView: view,
             label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-            pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+            pendingNestedCommand: {
+                type: cmd.type,
+                selectionFrom: cmd.selectionFrom,
+                selectionTo: cmd.selectionTo,
+            },
         });
-    }
+    });
+});
+
+$effect(() => {
+    return annotationEventBus.on("nested-annotation-create", (event) => {
+        if (event.command.revisionId !== revision.id) return;
+        // If a modal is already open for this revision, let that modal handle the event.
+        if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id))
+            return;
+        const cmd = event.command;
+        modalStack.push({
+            type: "revision",
+            revisionId: revision.id,
+            parentView: view,
+            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            pendingNestedCommand: {
+                type: cmd.type,
+                selectionFrom: cmd.selectionFrom,
+                selectionTo: cmd.selectionTo,
+            },
+        });
+    });
+});
+
+$effect(() => {
+    return annotationEventBus.on("revision-focus-request", (event) => {
+        if (event.revisionId !== revision.id || event.sourceView !== view) return;
+        const relPos = event.relativePos;
+        if (appSettings.showNestedEditor) {
+            const placeCursor = (editor: EditorView) => {
+                editor.dispatch({ selection: { anchor: relPos }, scrollIntoView: true });
+                editor.focus();
+                clearTimeout(cursorArrivingTimeout);
+                cursorArriving = false;
+                void nestedEditorHost?.offsetWidth;
+                cursorArriving = true;
+                cursorArrivingTimeout = setTimeout(() => {
+                    cursorArriving = false;
+                }, 650);
+            };
+            if (isEditorOpen && nestedEditor) {
+                placeCursor(nestedEditor);
+            } else {
+                userClosedEditor = false;
+                isEditorOpen = true;
+                tick().then(() => {
+                    if (nestedEditor) placeCursor(nestedEditor);
+                });
+            }
+        } else {
+            modalStack.push({
+                type: "revision",
+                revisionId: revision.id,
+                parentView: view,
+                label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+                pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+            });
+        }
+    });
 });
 
 /**
@@ -290,17 +259,8 @@ function createNestedEditor(version: VersionState) {
     activeAnnotation = getActiveAnnotation(nestedEditor.state);
 
     // Apply pending selection if this annotation just created one.
-    const event = $annotationUiEvent;
-    const selectionEvent =
-        consumePendingNestedEditorSelection(revision.id, lastNestedSelectionToken) ??
-        (event &&
-        event.token !== lastNestedSelectionToken &&
-        event.type === "pending-nested-editor-selection" &&
-        event.annotationId === revision.id
-            ? event
-            : undefined);
+    const selectionEvent = annotationEventBus.consumePendingSelection(revision.id);
     if (selectionEvent) {
-        lastNestedSelectionToken = selectionEvent.token;
         const docLen = nestedEditor.state.doc.length;
         const from = Math.min(selectionEvent.from, docLen);
         const to = Math.min(selectionEvent.to, docLen);
@@ -402,22 +362,16 @@ $effect(() => {
 
 // ⌘Enter when this revision is active → create a new version
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastAddVersionToken ||
-        event.type !== "annotation-add-version" ||
-        event.annotationId !== revision.id
-    )
-        return;
-    lastAddVersionToken = event.token;
-    posthog.capture("revision_version_created", { version_count: revision.versions.length });
-    view.dispatch(createNewRevision(view.state, revision.id));
-    tick().then(() => {
-        if (appSettings.showNestedEditor) {
-            userClosedEditor = false;
-            isEditorOpen = true;
-        }
+    return annotationEventBus.on("annotation-add-version", (event) => {
+        if (event.annotationId !== revision.id) return;
+        posthog.capture("revision_version_created", { version_count: revision.versions.length });
+        view.dispatch(createNewRevision(view.state, revision.id));
+        tick().then(() => {
+            if (appSettings.showNestedEditor) {
+                userClosedEditor = false;
+                isEditorOpen = true;
+            }
+        });
     });
 });
 
@@ -425,37 +379,27 @@ $effect(() => {
 // the revisionClickHandler fires revision-focus-request with that nested
 // revision's ID. No other component matches it, so we handle it here by
 // opening a modal for the nested revision.
-let lastNestedRevFocusToken = 0;
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        event.token === lastNestedRevFocusToken ||
-        event.type !== "revision-focus-request" ||
-        !nestedEditor ||
-        event.sourceView !== nestedEditor
-    )
-        return;
-    // Only handle if the target revision exists in our inline nested editor
-    const nestedAnns = nestedEditor.state.field(annotationField);
-    const nestedRev = nestedAnns[event.revisionId];
-    if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
-    lastNestedRevFocusToken = event.token;
-    // Expand this parent revision as a modal first, then place the cursor
-    // on the nested revision so it activates inline within that modal.
-    // This ensures the full editing context (parent modal) is always
-    // present before the nested revision is opened — never skipping levels.
-    const nestedRevPos = nestedRev.selection.main.from;
-    modalStack.push({
-        type: "revision",
-        revisionId: revision.id,
-        parentView: view,
-        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-        pendingNestedCommand: {
-            type: "cursor",
-            selectionFrom: nestedRevPos,
-            selectionTo: nestedRevPos,
-        },
+    return annotationEventBus.on("revision-focus-request", (event) => {
+        if (!nestedEditor || event.sourceView !== nestedEditor) return;
+        // Only handle if the target revision exists in our inline nested editor
+        const nestedAnns = nestedEditor.state.field(annotationField);
+        const nestedRev = nestedAnns[event.revisionId];
+        if (!nestedRev || !isAnnotationOfType(nestedRev, "revision")) return;
+        // Expand this parent revision as a modal first, then place the cursor
+        // on the nested revision so it activates inline within that modal.
+        const nestedRevPos = nestedRev.selection.main.from;
+        modalStack.push({
+            type: "revision",
+            revisionId: revision.id,
+            parentView: view,
+            label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            pendingNestedCommand: {
+                type: "cursor",
+                selectionFrom: nestedRevPos,
+                selectionTo: nestedRevPos,
+            },
+        });
     });
 });
 

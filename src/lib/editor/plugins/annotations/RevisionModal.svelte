@@ -52,11 +52,11 @@ import { createNewAnnotation, isAnnotationOfType, versionText, type VersionState
 import { EditorSelection, Transaction } from "@codemirror/state";
 import {
     annotations as annotationsStore,
-    annotationUiEvent,
     modalStack,
     modalAnnotationStores,
     type ModalEntry,
 } from "$lib/stores";
+import { annotationEventBus } from "./eventBus";
 import { createNestedEditorState, translateAndDispatch, previewVersionText } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import { appSettings } from "$lib/settings.svelte";
@@ -595,21 +595,17 @@ function executePendingNestedCommand(
 }
 
 // ─── Sensor Effect C: Nested annotation event ──────────────────────
-let lastNestedEditorEventToken = $annotationUiEvent?.token ?? 0;
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (
-        !event ||
-        fsmState !== "ready" ||
-        !isTop ||
-        !editor ||
-        event.token === lastNestedEditorEventToken ||
-        event.type !== "nested-annotation-create" ||
-        event.command.revisionId !== revisionId
-    )
-        return;
-    lastNestedEditorEventToken = event.token;
-    send({ type: "NESTED_ANNOTATION_EVENT", cmd: event.command });
+    return annotationEventBus.on("nested-annotation-create", (event) => {
+        if (
+            fsmState !== "ready" ||
+            !isTop ||
+            !editor ||
+            event.command.revisionId !== revisionId
+        )
+            return;
+        send({ type: "NESTED_ANNOTATION_EVENT", cmd: event.command });
+    });
 });
 
 // NOTE: No Sensor Effect D for nested revision clicks here.

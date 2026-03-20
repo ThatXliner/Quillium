@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { get } from "svelte/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { appSettings } from "$lib/settings.svelte";
@@ -9,7 +8,7 @@ import {
 } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
-import { annotationUiEvent } from "$lib/stores";
+import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 
 function createView(doc: string) {
     const state = EditorState.create({
@@ -46,20 +45,24 @@ function addRevision(view: EditorView, from: number, to: number) {
 }
 
 let view: EditorView | undefined;
+let unsubs: (() => void)[] = [];
 
 beforeEach(() => {
-    annotationUiEvent.set(null);
     appSettings.atomicRevisions = true;
     appSettings.showNestedEditor = false;
 });
 
 afterEach(() => {
+    for (const unsub of unsubs) unsub();
+    unsubs = [];
     view?.destroy();
     view = undefined;
 });
 
 describe("annotation keymap integration", () => {
     it("redirects Mod-Alt-k to nested editor when cursor is inside revision", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("revision-request-modal", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
@@ -67,7 +70,7 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Mod-Alt-k");
 
         expect(consumed).toBe(true);
-        expect(get(annotationUiEvent)).toEqual(
+        expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-request-modal",
                 command: {
@@ -81,6 +84,8 @@ describe("annotation keymap integration", () => {
     });
 
     it("redirects Mod-Alt-m to nested editor when cursor is inside revision", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("revision-request-modal", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
@@ -88,7 +93,7 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Mod-Alt-m");
 
         expect(consumed).toBe(true);
-        expect(get(annotationUiEvent)).toEqual(
+        expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-request-modal",
                 command: {
@@ -102,6 +107,8 @@ describe("annotation keymap integration", () => {
     });
 
     it("Backspace at revision start boundary fires nudge signal", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("revision-boundary-nudge", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
@@ -109,7 +116,7 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Backspace");
 
         expect(consumed).toBe(false);
-        expect(get(annotationUiEvent)).toEqual(
+        expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-boundary-nudge",
                 revisionId,
@@ -118,6 +125,8 @@ describe("annotation keymap integration", () => {
     });
 
     it("Delete at revision end boundary fires nudge signal", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("revision-boundary-nudge", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
@@ -125,7 +134,7 @@ describe("annotation keymap integration", () => {
         const consumed = runKey(view, "Delete");
 
         expect(consumed).toBe(false);
-        expect(get(annotationUiEvent)).toEqual(
+        expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-boundary-nudge",
                 revisionId,
@@ -146,12 +155,14 @@ describe("annotation keymap integration", () => {
     });
 
     it("insert at revision boundary triggers boundaryInsertNudge plugin", () => {
+        const spy = vi.fn();
+        unsubs.push(annotationEventBus.on("revision-boundary-nudge", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
         view.dispatch({ changes: { from: 6, insert: "X" } });
 
-        expect(get(annotationUiEvent)).toEqual(
+        expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-boundary-nudge",
                 revisionId,

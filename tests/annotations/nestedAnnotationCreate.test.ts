@@ -12,12 +12,8 @@ import { annotations as annotationExtensions } from "$lib/editor/plugins/annotat
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import Revision from "$lib/editor/plugins/annotations/Revision.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
-import {
-    modalStack,
-    publishAnnotationUiEvent,
-    annotationUiEvent,
-    type NestedEditorCommand,
-} from "$lib/stores";
+import { modalStack, type NestedEditorCommand } from "$lib/stores";
+import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import { appSettings } from "$lib/settings.svelte";
 
 function createView(doc: string) {
@@ -45,7 +41,7 @@ function addRevision(view: EditorView, from: number, to: number, doc: string) {
 }
 
 function publishNestedCommand(command: NestedEditorCommand) {
-    publishAnnotationUiEvent({
+    annotationEventBus.emit({
         type: "nested-annotation-create",
         command,
     });
@@ -56,7 +52,6 @@ let components: { destroy: () => void }[] = [];
 
 beforeEach(() => {
     modalStack.clear();
-    annotationUiEvent.set(null);
 });
 
 afterEach(() => {
