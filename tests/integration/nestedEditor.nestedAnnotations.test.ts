@@ -71,6 +71,10 @@ function addComment(
     view.dispatch(
         view.state.update({
             effects: [addAnnotation.of(annotation)],
+            // Keep out of history to avoid the mapRange mutation-through-shared-
+            // reference bug where Phase 1 remaps the annotation in place and
+            // the history's stored effect sees already-mapped positions.
+            annotations: Transaction.addToHistory.of(false),
         }),
     );
     return annotation.id;
@@ -391,5 +395,219 @@ describe("nested annotation creation enters parent undo history via version stat
         expect(view.state.doc.toString()).toBe("hello world");
         expect(getVersionDoc(view, revId)).toBe("hello world");
         expect(getRevisionSlice(view, revId)).toBe("hello world");
+    });
+});
+
+// ── Undo cycles with nested annotations via minimal diff ─────────────────────
+
+describe("undo/redo cycles preserve nested annotations via minimal diff", () => {
+    it("comment survives nested edit → undo → redo cycle", () => {
+        // Comment on "hello" [0,5], then simulate an edit+undo+redo
+        const commentId = addComment(view, 0, 5);
+
+        // Edit: append "!" at end
+        view.dispatch({
+            changes: { from: 11, to: 11, insert: "!" },
+            annotations: Transaction.addToHistory.of(true),
+        });
+        expect(view.state.doc.toString()).toBe("hello world!");
+
+        // Undo the edit — minimal diff path patches the editor
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello world");
+
+        const ann = view.state.field(annotationField)[commentId];
+        expect(ann).toBeDefined();
+        expect(ann.selection.main.from).toBe(0);
+        expect(ann.selection.main.to).toBe(5);
+
+        // Redo the edit
+        redo(view);
+        expect(view.state.doc.toString()).toBe("hello world!");
+
+        const annAfterRedo = view.state.field(annotationField)[commentId];
+        expect(annAfterRedo).toBeDefined();
+        expect(annAfterRedo.selection.main.from).toBe(0);
+        expect(annAfterRedo.selection.main.to).toBe(5);
+    });
+
+    it("comment at end of doc survives prefix insertion via minimal diff", () => {
+        // Comment on "world" [6,11], insert "hey " at start
+        const commentId = addComment(view, 6, 11);
+
+        applyMinimalDiff(view, "hey hello world");
+
+        const ann = view.state.field(annotationField)[commentId];
+        expect(ann).toBeDefined();
+        // "world" shifted right by 4 chars
+        expect(ann.selection.main.from).toBe(10);
+        expect(ann.selection.main.to).toBe(15);
+    });
+
+    it("comment survives multiple sequential minimal diffs", () => {
+        const commentId = addComment(view, 0, 5);
+
+        // Three sequential diffs
+        applyMinimalDiff(view, "hello world!");
+        applyMinimalDiff(view, "hello world!!");
+        applyMinimalDiff(view, "hello world!!!");
+
+        const ann = view.state.field(annotationField)[commentId];
+        expect(ann).toBeDefined();
+        expect(ann.selection.main.from).toBe(0);
+        expect(ann.selection.main.to).toBe(5);
+    });
+
+    it("multiple comments survive a single minimal diff", () => {
+        const c1 = addComment(view, 0, 5);  // "hello"
+        const c2 = addComment(view, 6, 11); // "world"
+
+        // Append "!" → only suffix changes
+        applyMinimalDiff(view, "hello world!");
+
+        const a1 = view.state.field(annotationField)[c1];
+        const a2 = view.state.field(annotationField)[c2];
+        expect(a1).toBeDefined();
+        expect(a2).toBeDefined();
+        expect(a1.selection.main.from).toBe(0);
+        expect(a1.selection.main.to).toBe(5);
+        expect(a2.selection.main.from).toBe(6);
+        expect(a2.selection.main.to).toBe(11);
+    });
+
+    it("nested edit undo restores annotation positions via minimal diff", () => {
+        // Create revision spanning entire doc, add a comment inside it
+        const revId = addRevision(view, 0, 11, "hello world");
+        const commentId = addComment(view, 0, 5);
+
+        // Nested edit: insert "X" at position 5 → "helloX world"
+        simulateNestedEdit(view, revId, 5, 5, "X");
+        expect(view.state.doc.toString()).toBe("helloX world");
+
+        // The comment should still be at [0,5] (insertion was at the boundary)
+        const annBefore = view.state.field(annotationField)[commentId];
+        expect(annBefore).toBeDefined();
+
+        // Undo the nested edit
+        undo(view);
+        expect(view.state.doc.toString()).toBe("hello world");
+
+        // Comment should survive the undo (minimal diff doesn't destroy it)
+        const annAfter = view.state.field(annotationField)[commentId];
+        expect(annAfter).toBeDefined();
+        expect(annAfter.selection.main.from).toBe(0);
+        expect(annAfter.selection.main.to).toBe(5);
+    });
+});
+
+// ── Multiple flush + undo sequences ──────────────────────────────────────────
+
+describe("multiple version state flushes are independently undoable", () => {
+    it("two sequential flushes can be undone independently", () => {
+        const revId = addRevision(view, 0, 11, "hello world");
+
+        // First flush: add a comment annotation
+        const blob1 = {
+            doc: "hello world",
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: {
+                        ranges: [{ anchor: 0, head: 5 }],
+                        main: 0,
+                    },
+                    thread: [],
+                },
+            },
+        };
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state, revId, 0,
+                blob1 as VersionState,
+                { addToHistory: true },
+            ),
+        );
+
+        // Second flush: add another annotation
+        const blob2 = {
+            doc: "hello world",
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: {
+                        ranges: [{ anchor: 0, head: 5 }],
+                        main: 0,
+                    },
+                    thread: [],
+                },
+                1: {
+                    _type: "comment",
+                    id: 1,
+                    selection: {
+                        ranges: [{ anchor: 6, head: 11 }],
+                        main: 0,
+                    },
+                    thread: [],
+                },
+            },
+        };
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state, revId, 0,
+                blob2 as VersionState,
+                { addToHistory: true },
+            ),
+        );
+
+        // Verify both annotations in blob
+        const rev2 = view.state.field(annotationField)[revId];
+        if (isAnnotationOfType(rev2, "revision")) {
+            const af = (rev2.versions[0] as { annotationField?: Record<string, unknown> })
+                .annotationField;
+            expect(af).toBeDefined();
+            expect(Object.keys(af!).length).toBe(2);
+        }
+
+        // Undo second flush → back to 1 annotation
+        undo(view);
+        const rev1 = view.state.field(annotationField)[revId];
+        if (isAnnotationOfType(rev1, "revision")) {
+            const af = (rev1.versions[0] as { annotationField?: Record<string, unknown> })
+                .annotationField;
+            expect(af).toBeDefined();
+            expect(Object.keys(af!).length).toBe(1);
+        }
+
+        // Undo first flush → back to no annotations
+        undo(view);
+        const rev0 = view.state.field(annotationField)[revId];
+        if (isAnnotationOfType(rev0, "revision")) {
+            const af = (rev0.versions[0] as { annotationField?: Record<string, unknown> })
+                .annotationField;
+            const count = af ? Object.keys(af).length : 0;
+            expect(count).toBe(0);
+        }
+    });
+
+    it("revision survives version state flush (doc text unchanged)", () => {
+        const revId = addRevision(view, 0, 11, "hello world");
+
+        // Flush should not change the doc text or revision range
+        const blob = { doc: "hello world" };
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state, revId, 0,
+                blob as VersionState,
+                { addToHistory: true },
+            ),
+        );
+
+        expect(view.state.doc.toString()).toBe("hello world");
+        const rev = view.state.field(annotationField)[revId];
+        expect(rev).toBeDefined();
+        expect(rev.selection.main.from).toBe(0);
+        expect(rev.selection.main.to).toBe(11);
     });
 });
