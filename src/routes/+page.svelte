@@ -36,6 +36,7 @@ import { appSettings, applySettings, persistSettings } from "$lib/settings.svelt
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
+import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 
 let updateAvailable = $state(false);
 let updateVersion = $state("");
@@ -231,6 +232,9 @@ if (import.meta.env.DEV) {
 {#if import.meta.env.DEV && $debugPanelActive}
     <DebugPanel reloadEditor={() => editorComponent?.reload()} />
 {/if}
+
+<!-- AutoAI collaborator widget — fixed bottom-right bubble -->
+<AutoAIWidget />
 
 <!-- Modal stack — render all entries so parent editors stay alive when a
      child modal is pushed on top. Each modal manages its own dialog
