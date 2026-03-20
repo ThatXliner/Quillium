@@ -16,8 +16,11 @@
 import { Annotation, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
+    addAnnotation,
     annotationField,
+    removeAnnotation,
     updateRevisionVersionState,
+    updateThread,
 } from "./annotationField";
 import { createNestedEditorState, translateAndDispatch } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
@@ -146,8 +149,32 @@ export class NestedEditorController {
 
         const current = this._editor.state.doc.toString();
         if (current !== externalDoc) {
+            // Compute a minimal diff via common prefix/suffix matching.
+            // This preserves nested annotation positions through small,
+            // localized changes instead of destroying them with a
+            // full-document replacement.
+            const minLen = Math.min(current.length, externalDoc.length);
+            let prefix = 0;
+            while (
+                prefix < minLen &&
+                current.charCodeAt(prefix) === externalDoc.charCodeAt(prefix)
+            ) {
+                prefix++;
+            }
+            let suffix = 0;
+            while (
+                suffix < minLen - prefix &&
+                current.charCodeAt(current.length - 1 - suffix) ===
+                    externalDoc.charCodeAt(externalDoc.length - 1 - suffix)
+            ) {
+                suffix++;
+            }
+            const from = prefix;
+            const to = current.length - suffix;
+            const insert = externalDoc.slice(prefix, externalDoc.length - suffix);
+
             this._editor.dispatch({
-                changes: { from: 0, to: current.length, insert: externalDoc },
+                changes: { from, to, insert },
                 annotations: [
                     Transaction.addToHistory.of(false),
                     parentSyncEdit.of(true),
@@ -188,7 +215,16 @@ export class NestedEditorController {
 
     /**
      * Internal: called on every nested editor transaction.
-     * Translates doc changes to parent and notifies callbacks.
+     * Handles both upward data paths:
+     *   1. Doc changes → translateAndDispatch (maps changes to parent coordinates)
+     *   2. Annotation changes → flushAnnotationStateToParent (serializes
+     *      annotationField blob to the parent's version state)
+     *
+     * Both paths dispatch to the parent with addToHistory: true so the
+     * parent's undo history captures all nested mutations — not just doc
+     * edits. This closes the architectural gap where annotation-only
+     * mutations (e.g. creating a comment in a nested editor) had no
+     * upward path and were invisible to parent undo.
      */
     private onNestedUpdate(update: ViewUpdate): void {
         if (!this._editor) return;
@@ -203,10 +239,75 @@ export class NestedEditorController {
             this._lastDispatchedDoc = this._editor.state.doc.toString();
         }
 
+        // For modal editors (flushBehavior: "flush"), detect annotation-only
+        // mutations (add/remove/update effects) and propagate them to the
+        // parent's version blob so they enter the parent's undo history.
+        // Inline editors (flushBehavior: "no-flush") skip this — their
+        // annotation state is ephemeral, and flushing here would trigger
+        // the annotation-rebuild $effect in Revision.svelte, which tears
+        // down and recreates the inline editor on every annotation change.
+        if (
+            this.flushBehavior === "flush" &&
+            !isParentSync &&
+            this.hasAnnotationMutationEffect(update)
+        ) {
+            this.flushAnnotationStateToParent();
+        }
+
         this.callbacks.onUpdate?.(
             this._editor.state.field(annotationField),
             getActiveAnnotation(this._editor.state),
         );
+    }
+
+    /**
+     * Check whether any transaction in this update carried an
+     * annotation-mutating effect (add, remove, or thread update).
+     *
+     * This deliberately ignores position remapping through doc changes
+     * (Phase 1), which happens on every doc-changing transaction but
+     * doesn't represent a user-initiated annotation mutation. Without
+     * this distinction, every keystroke in the nested editor would
+     * trigger an extra _updateRevisionVersionState dispatch.
+     */
+    private hasAnnotationMutationEffect(update: ViewUpdate): boolean {
+        return update.transactions.some((tr) =>
+            tr.effects.some(
+                (e) =>
+                    e.is(addAnnotation) ||
+                    e.is(removeAnnotation) ||
+                    e.is(updateThread),
+            ),
+        );
+    }
+
+    /**
+     * Serialize the nested editor's annotationField state to the parent's
+     * version blob with addToHistory: true. This is the upward path for
+     * annotation mutations — the complement to translateAndDispatch for
+     * doc changes.
+     */
+    private flushAnnotationStateToParent(): void {
+        if (!this._editor) return;
+
+        const rev = this.parentView.state.field(annotationField)[
+            this.revisionId
+        ] as AnnotationType<"revision"> | undefined;
+
+        if (rev && this._editorVersionIndex < rev.versions.length) {
+            const blob = this._editor.state.toJSON(
+                nestedSavedFields,
+            ) as VersionState;
+            this.parentView.dispatch(
+                updateRevisionVersionState(
+                    this.parentView.state,
+                    this.revisionId,
+                    this._editorVersionIndex,
+                    blob,
+                    { addToHistory: true },
+                ),
+            );
+        }
     }
 
     /**
