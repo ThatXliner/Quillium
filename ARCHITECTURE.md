@@ -351,28 +351,32 @@ Nested editors remain intentional viewports that never own their document. When 
 2. `translateAndDispatch` translates each change into parent coordinates (`rev.selection.main.from + delta`) and dispatches it with `nestedEditorEdit.of(revisionId)` plus `Transaction.addToHistory.of(true)`.
 3. The parent doc is the single source of truth, so Phase 3 (`pushDocToVersionState`) still re-reads the post-transaction slice and keeps `versions[activeVersionIndex].doc` current for version switching (the revision is not added to `revisionsWithExplicitEffect`, so it pushes normally).
 
-### Reactive pull for inline/modal editors
+### NestedEditorController
 
-For the inline and modal editors, we watch the parent-provided version text directly via Svelte reactivity. Inline editors observe `activeVersion?.doc` and the modal watches `$annotationsStore`; both skip re-patching when the nested editor itself authored the change (`lastDispatchedDoc`). When a truly external update occurs (undo, redo, or another cursored write), the watcher replaces the nested editor’s entire buffer with the new text via a single `EditorView.dispatch({ changes: { from: 0, to: current.length, insert: externalDoc } })`. That keeps the editor up to date without destroying the view or rebuilding the extension stack—only the contents are rewritten. The only time we tear down and recreate the nested editor is on version switches or when the modal closes.
+Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors delegate lifecycle and sync to a shared `NestedEditorController` class. The controller encapsulates:
 
-Replacing the whole buffer is the tradeoff we accepted for this reactive, bridge-less path: the cursor/selection and scroll position do not survive the rewrite, so the nested editor appears to jump back to the top. There is no dedicated cursor-persistence mechanism yet, and documenting that limitation in this section keeps intentions clear for future follow-ups.
+- **Create/destroy**: Calls `createNestedEditorState` and manages the `EditorView` instance.
+- **Parent → nested sync**: `syncFromParent(doc)` replaces the nested buffer when external changes arrive. Skips self-originated changes by tracking `lastDispatchedDoc` internally.
+- **Nested → parent sync**: The controller’s `updateListener` calls `translateAndDispatch` to map nested edits to parent coordinates. It uses a CodeMirror `Transaction.annotation` (`parentSyncEdit`) to tag sync transactions, so the listener reliably skips them regardless of async callback timing.
+- **Flush behavior**: Configured as `"flush"` (modal) or `"no-flush"` (inline). Flush serializes nested state via `updateRevisionVersionState` before destroying.
+- **Version switch / annotation blob detection**: `needsVersionSwitch()` and `needsAnnotationRebuild()` let the owning component decide when to tear down and recreate.
 
-`lastDispatchedDoc` is the guard that prevents a feedback loop. Translate-and-dispatch updates set it to the nested editor’s current text, so the reactive watcher ignores the transaction that originated from the nested editor itself. Everything else is treated as an external edit that needs a full replace, which is why the watcher lives outside CodeMirror (in Svelte `$effect`s) rather than inside a CodeMirror ViewPlugin.
+Replacing the whole buffer is the tradeoff we accepted for this reactive path: the cursor/selection and scroll position do not survive the rewrite, so the nested editor appears to jump back to the top. There is no dedicated cursor-persistence mechanism yet.
 
 ### Inline editor
 
-`Revision.svelte` still uses `createNestedEditorState` to bootstrap the inline editor and installs `translateAndDispatch` in the nested update listener. When the inline editor toggles open, it creates the view and sets `lastDispatchedDoc`. Closing destroys the view like before, and version switches still trigger `currentVersionId !== mountedVersionId` to rebuild from the new `VersionState` (the only rebuild path now).
+`Revision.svelte` creates a `NestedEditorController` with `flushBehavior: "no-flush"` (the parent doc is the source of truth via Phase 3). Svelte `$effect` blocks watch `activeVersion?.doc` and delegate to `controller.syncFromParent()`. Version switches and annotation blob changes trigger destroy + recreate via the controller.
 
 ### Modal editor
 
-The modal editor (`RevisionModal.svelte`) reuses the same helpers and keeps its own `lastDispatchedDoc`. The external-sync `$effect` watches the parent's annotation state for changes:
+`RevisionModal.svelte` creates a `NestedEditorController` with `flushBehavior: "flush"`. The external-sync `$effect` watches the parent’s annotation state:
 
-- **Root-level modals** (`stackIndex === 0`) watch `$annotationsStore` (the global Svelte store mirroring the main editor's `annotationField`).
-- **Deeply nested modals** (`stackIndex > 0`) watch `$modalAnnotationStores[stackIndex - 1]` — a per-level global store that each RevisionModal publishes its nested editor's annotation state into. This chains recursively: undo at the root cascades through each level's external-sync `$effect`.
+- **Root-level modals** (`stackIndex === 0`) watch `$annotationsStore`.
+- **Deeply nested modals** (`stackIndex > 0`) watch `$modalAnnotationStores[stackIndex - 1]`.
 
 Annotation IDs are scoped per-editor and can collide across nesting levels, so deeply nested modals must never read from `$annotationsStore` directly.
 
-`destroyEditor` flushes the nested editor's state (including sub-annotations) into the parent revision's version blob. It uses a tracked `editorVersionIndex` (set when the editor was created) rather than `rev.activeVersionIndex`, which may have changed if a parent breadcrumb version switch happened before the destroy. This prevents flushing old version content into the wrong version slot.
+On destroy, the controller flushes nested editor state into the parent revision’s version blob using the `editorVersionIndex` tracked at creation time (not `rev.activeVersionIndex`, which may have changed).
 
 #### RevisionModal FSM
 
@@ -411,8 +415,8 @@ The FSM is driven by four reactive sensor effects that translate external signal
 |---|---|---|
 | **A: Dialog bind + rebuild token** | `dialogEl`, `$modalStack[stackIndex].rebuildToken` | `DIALOG_BOUND`, `REBUILD_REQUESTED` |
 | **B: External sync** | `$annotationsStore` (root) or `$modalAnnotationStores[stackIndex-1]` (nested) | `VERSION_SWITCHED`, `EXTERNAL_DOC_CHANGED` |
-| **C: Nested annotation event** | `$annotationUiEvent` where `type === "revision-open-nested-editor"` and `command.revisionId === revisionId` | `NESTED_ANNOTATION_EVENT` |
-| **D: Nested revision click** | `$annotationUiEvent` where `type === "revision-focus-request"` and `revisionId` exists in `editor.state.field(annotationField)` | Pushes a new modal onto `modalStack` directly (no FSM event needed) |
+| **C: Nested annotation event** | `annotationEventBus` `"nested-annotation-create"` event where `command.revisionId === revisionId` | `NESTED_ANNOTATION_EVENT` |
+| **D: Nested revision click** | `annotationEventBus` `"revision-focus-request"` event — handled by `Revision.svelte` cards in the modal's sidebar | Pushes a new modal onto `modalStack` directly (no FSM event needed) |
 
 Sensor Effect D handles the case where the user clicks on a nested revision decoration inside the modal's CodeMirror editor. The `revisionClickHandler` extension (included in every nested editor via `getExtensions`) fires a `revision-focus-request` with the nested annotation's ID. Effect D checks whether that ID belongs to a revision in *this* modal's nested editor — if so, it pushes a new modal with `parentView: editor`, enabling click-to-open at any nesting depth.
 
@@ -440,7 +444,7 @@ Modal’s `parentView` can be another nested `EditorView`. `translateAndDispatch
 
 **Downward path** (undo/external change → nested editors): each modal’s external-sync `$effect` detects changes in its parent `view`’s annotation state and patches its nested editor buffer. This cascades: root change → level-0 modal pulls → level-0’s nested editor state changes → level-1 modal pulls, etc.
 
-**Sub-annotation creation from within a modal**: the nested editor’s `makeParentUndoKeymap` binds Mod-Alt-m/k to fire `publishAnnotationUiEvent("revision-open-nested-editor")`. The `Revision.svelte` component in the modal’s sidebar catches this and pushes a new modal for the sub-annotation. The sub-annotation is created directly in the new modal’s nested editor via `executePendingNestedCommand`.
+**Sub-annotation creation from within a modal**: the nested editor’s `makeParentUndoKeymap` binds Mod-Alt-m/k to emit `"nested-annotation-create"` on the `annotationEventBus`. The `Revision.svelte` component in the modal’s sidebar catches this and pushes a new modal for the sub-annotation. The sub-annotation is created directly in the new modal’s nested editor via `executePendingNestedCommand`.
 
 **Annotation ID independence**: each nested editor has its own `annotationField` with IDs starting from 0. The global `$annotationsStore` only contains the root editor’s annotations. Nested modals must not look up their `revisionId` in `$annotationsStore` — it would find an unrelated annotation or `undefined`.
 
@@ -472,28 +476,30 @@ type ModalEntry =
 
 ---
 
-## The `annotationUiEvent` Channel
+## The Annotation Event Bus
 
-`annotationUiEvent` is a one-shot event store (a `writable<AnnotationUiEvent | null>`) for decoupling `ViewPlugin` / command logic from component-specific reactions.
+`annotationEventBus` (in `eventBus.ts`) is a typed publish/subscribe bus that decouples `ViewPlugin` / command logic from component-specific reactions.
 
-Events carry a monotonically increasing `token` so components can gate on `event.token !== lastSeenToken`, preventing double-handling.
+Components subscribe via `annotationEventBus.on(type, handler)` inside `$effect` blocks and return the unsubscribe function as cleanup. Events are delivered directly to all listeners of the matching type — no deduplication tokens needed.
 
 | Event type | Emitted by | Consumed by |
 |---|---|---|
 | `revision-boundary-nudge` | `nudgeBoundary` command, `boundaryInsertNudge` plugin | `Revision.svelte` (shows hint) |
-| `revision-open-nested-editor` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command) |
-| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor in nested editor; opens modal for clicked nested revision in inline editor), `RevisionModal.svelte` Sensor Effect D (opens modal for clicked nested revision in modal editor) |
+| `revision-request-modal` | `redirectToNestedEditor` command | `Revision.svelte` (opens modal with pending command) |
+| `nested-annotation-create` | `makeParentUndoKeymap` (Mod-Alt-m/k) | `Revision.svelte` (opens modal), `RevisionModal.svelte` (FSM event) |
+| `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor or opens modal) |
 | `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
-| `pending-nested-editor-selection` | `createRevisionCommand` | `Revision.svelte` (selects all text in newly mounted nested editor) |
+| `pending-nested-editor-selection` | `createRevisionCommand` | Stored in bus, consumed by `controller.applyPendingSelection()` on mount |
+| `annotation-focus-reply` | Keyboard shortcut (Cmd+/) | `Thread.svelte` (focuses reply textarea) |
+| `annotation-add-version` | `addRevisionVersionCommand`, keyboard shortcuts | `Revision.svelte` (creates new version) |
 
 **Pattern for consuming events in Svelte:**
 ```typescript
-let lastToken = 0;
 $effect(() => {
-    const event = $annotationUiEvent;
-    if (!event || event.token === lastToken || event.type !== "my-event") return;
-    lastToken = event.token;
-    // handle event
+    return annotationEventBus.on("revision-boundary-nudge", (event) => {
+        if (event.revisionId !== revision.id) return;
+        // handle event
+    });
 });
 ```
 
@@ -664,7 +670,7 @@ On undo (Mod-z in nested editor delegates to undo(parentView)):
 → Parent undoes doc change → revision range text reverts
 → Phase 3 runs on inverted transaction → version.doc pushed to reverted text
 → Svelte $effect in Revision.svelte / RevisionModal.svelte detects activeVersion.doc changed
-    → patches nested editor buffer (full replace, guarded by pullingFromParent)
+    → patches nested editor buffer (full replace via controller.syncFromParent, guarded by parentSyncEdit annotation)
     → nested editor shows reverted text (no destroy/recreate)
 ```
 
