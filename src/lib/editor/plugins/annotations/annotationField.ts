@@ -535,12 +535,16 @@ function applyRevisionVersionEffect(
         // selection.map() keeps the range collapsed instead
         // of expanding around the newly inserted version
         // text.
+        const targetVersion = annotation.versions[e.value.to];
         const oldAnnotation = oldAnnotations[e.value.annotationId];
-        if (oldAnnotation) {
+        if (targetVersion && oldAnnotation) {
             const from = tr.changes.mapPos(oldAnnotation.selection.main.from, -1);
-            const vText = versionText(annotation.versions[e.value.to] ?? { doc: "" });
-            const to = from + vText.length;
-            annotation.selection = EditorSelection.single(from, to);
+            const vText = versionText(targetVersion);
+            const to = Math.min(from + vText.length, tr.state.doc.length);
+            annotation.selection = EditorSelection.single(
+                Math.min(from, tr.state.doc.length),
+                to,
+            );
         }
     }
 }
