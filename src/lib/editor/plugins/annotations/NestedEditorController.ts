@@ -27,7 +27,7 @@ import { nestedSavedFields } from "$lib/editor/extensions";
 import { getActiveAnnotation } from "./utils";
 import { annotationEventBus } from "./eventBus";
 import type { VersionState, Annotation as AnnotationType, Annotations } from "./models";
-import { isAnnotationOfType, type GenericAnnotation } from "./models";
+import type { GenericAnnotation } from "./models";
 
 /** Transaction annotation marking a sync from the parent document. */
 const parentSyncEdit = Annotation.define<true>();

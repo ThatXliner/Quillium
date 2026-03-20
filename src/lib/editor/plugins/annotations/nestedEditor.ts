@@ -132,13 +132,20 @@ function salvageNestedAnnotations(
     let droppedCount = 0;
 
     for (const [key, ann] of entries) {
+        // Drop entries that aren't valid annotation objects (must have
+        // a selection with ranges array to be a persisted annotation).
         if (ann == null || typeof ann !== "object") {
-            kept[key] = ann;
+            droppedCount++;
             continue;
         }
         const sel = (ann as { selection?: { ranges?: { anchor: number; head: number }[] } })
             .selection;
-        if (!sel?.ranges || sel.ranges.every((r) => r.anchor <= docLen && r.head <= docLen)) {
+        if (!sel?.ranges) {
+            droppedCount++;
+            continue;
+        }
+        // Drop annotations with out-of-range or negative positions.
+        if (sel.ranges.every((r) => r.anchor >= 0 && r.anchor <= docLen && r.head >= 0 && r.head <= docLen)) {
             kept[key] = ann;
         } else {
             droppedCount++;

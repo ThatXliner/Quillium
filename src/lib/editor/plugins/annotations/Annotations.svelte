@@ -381,35 +381,49 @@ function applyCardPositions(
 let alertingPendingId: number | undefined = $state();
 let alertingTimeout: ReturnType<typeof setTimeout> | undefined;
 
+// Shared logic for pending-comment alert animation.
+function triggerPendingCommentAlert() {
+    if (!isFloating || !pendingComment) return;
+
+    const el = annotationElements[pendingComment.id];
+    if (!el) return;
+
+    // Scroll the editor to show the pending comment's highlighted text
+    if (resolvedView) {
+        resolvedView.dispatch({
+            selection: { anchor: pendingComment.selection.main.from },
+            scrollIntoView: true,
+        });
+    }
+
+    // Scroll the pending card into view
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    // Trigger shake + ring by setting alertingPendingId.
+    alertingPendingId = pendingComment.id;
+    el.classList.add("pending-shake");
+    clearTimeout(alertingTimeout);
+    alertingTimeout = setTimeout(() => {
+        el.classList.remove("pending-shake");
+        alertingPendingId = undefined;
+    }, 1400);
+}
+
 // React to pending-comment events: scroll the pending card
 // into view, then play a shake + red-outline-fade animation on it.
 $effect(() => {
     return annotationEventBus.on("pending-comment-alert", () => {
-        if (!isFloating || !pendingComment) return;
-
-        const el = annotationElements[pendingComment.id];
-        if (!el) return;
-
-        // Scroll the editor to show the pending comment's highlighted text
-        if (resolvedView) {
-            resolvedView.dispatch({
-                selection: { anchor: pendingComment.selection.main.from },
-                scrollIntoView: true,
-            });
-        }
-
-        // Scroll the pending card into view
-        el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-
-        // Trigger shake + ring by setting alertingPendingId.
-        alertingPendingId = pendingComment.id;
-        el.classList.add("pending-shake");
-        clearTimeout(alertingTimeout);
-        alertingTimeout = setTimeout(() => {
-            el.classList.remove("pending-shake");
-            alertingPendingId = undefined;
-        }, 1400);
+        triggerPendingCommentAlert();
     });
+});
+
+// Retry: if the alert fired before the pending card element was registered,
+// the event bus stores a one-shot flag. Check it when elements change.
+$effect(() => {
+    void annotationElementsVersion;
+    if (annotationEventBus.consumePendingCommentAlert()) {
+        triggerPendingCommentAlert();
+    }
 });
 
 // Annotation keyboard shortcuts:
