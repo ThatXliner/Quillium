@@ -24,6 +24,7 @@ import {
     type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { nestedSavedFields } from "$lib/editor/extensions";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -609,5 +610,81 @@ describe("multiple version state flushes are independently undoable", () => {
         expect(rev).toBeDefined();
         expect(rev.selection.main.from).toBe(0);
         expect(rev.selection.main.to).toBe(11);
+    });
+});
+
+// ── Nested editor hydration from version blob ────────────────────────────────
+
+describe("EditorState.fromJSON hydrates annotations from version blob", () => {
+    it("annotationField is populated when blob contains annotations", () => {
+        const blob = {
+            doc: "hello world",
+            selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: {
+                        ranges: [{ anchor: 0, head: 5 }],
+                        main: 0,
+                    },
+                    thread: [{ message: "test", author: "user", time: 1 }],
+                },
+            },
+        };
+
+        const state = EditorState.fromJSON(
+            blob,
+            { extensions: [annotationExtensions()] },
+            nestedSavedFields,
+        );
+
+        const anns = state.field(annotationField);
+        const keys = Object.keys(anns);
+        expect(keys.length).toBe(1);
+        expect(anns[0]).toBeDefined();
+        expect(anns[0].selection.main.from).toBe(0);
+        expect(anns[0].selection.main.to).toBe(5);
+    });
+
+    it("annotationField is empty when blob has no annotationField key", () => {
+        const blob = {
+            doc: "hello world",
+            selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+        };
+
+        const state = EditorState.fromJSON(
+            blob,
+            { extensions: [annotationExtensions()] },
+            nestedSavedFields,
+        );
+
+        const anns = state.field(annotationField);
+        expect(Object.keys(anns).length).toBe(0);
+    });
+
+    it("multiple annotations round-trip through toJSON/fromJSON", () => {
+        // Create a view with two comments, serialize, deserialize
+        const tempView = createView("hello world");
+        addComment(tempView, 0, 5);
+        addComment(tempView, 6, 11);
+
+        const serialized = tempView.state.toJSON(nestedSavedFields);
+        tempView.destroy();
+
+        // Verify the serialized blob has annotations
+        const af = (serialized as { annotationField?: unknown }).annotationField;
+        expect(af).toBeDefined();
+        expect(Object.keys(af as object).length).toBe(2);
+
+        // Reconstruct state from the blob
+        const state = EditorState.fromJSON(
+            serialized,
+            { extensions: [annotationExtensions()] },
+            nestedSavedFields,
+        );
+
+        const anns = state.field(annotationField);
+        expect(Object.keys(anns).length).toBe(2);
     });
 });

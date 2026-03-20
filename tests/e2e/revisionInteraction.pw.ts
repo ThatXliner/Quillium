@@ -201,13 +201,47 @@ test.describe("revision modal annotation visibility", () => {
         // Create a comment via Mod-Alt-M
         await page.keyboard.press("ControlOrMeta+Alt+m");
 
-        // Wait briefly for the annotation to be created and rendered
-        await page.waitForTimeout(500);
+        // The modal's annotations sidebar should show the annotation card
+        const annotationCard = page.locator("dialog .annotation-card-inline").first();
+        await expect(annotationCard).toBeVisible({ timeout: 5000 });
 
-        // The modal's annotations sidebar should show the comment
-        // Look for any annotation card within the modal dialog
-        const annotationCard = page.locator("dialog .annotation-card, dialog [class*='comment']").first();
-        // If the sidebar doesn't use those selectors, at least verify no errors
+        expect(errors).toHaveLength(0);
+    });
+
+    test("creating a revision inside the modal shows it in the annotations sidebar", async ({
+        page,
+    }) => {
+        const errors: string[] = [];
+        page.on("pageerror", (error) => {
+            errors.push(error.message ?? String(error));
+        });
+
+        await setupFullRevision(page, "hello world");
+
+        // Open the revision modal
+        const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
+        if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
+            await expand.click();
+        }
+        const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
+        await expect(modalEditor).toBeVisible({ timeout: 8000 });
+        await expect.poll(() => getCmText(modalEditor)).toBe("hello world");
+
+        // Select "world" in the modal editor
+        await modalEditor.click();
+        await page.keyboard.press("End");
+        for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+
+        // Create a nested revision via Mod-Alt-K
+        await page.keyboard.press("ControlOrMeta+Alt+k");
+
+        // Wait for annotation to be processed
+        await page.waitForTimeout(1000);
+
+        // The modal's annotations sidebar should show the annotation card
+        const annotationCard = page.locator("dialog .annotation-card-inline").first();
+        await expect(annotationCard).toBeVisible({ timeout: 5000 });
+
         expect(errors).toHaveLength(0);
     });
 
