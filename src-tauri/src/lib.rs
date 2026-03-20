@@ -7,8 +7,8 @@ use tauri::Manager;
 use db::{
     documents::{
         create_document, create_draft, delete_document, get_document, get_trash_retention,
-        list_documents, list_drafts, list_trashed_documents, purge_expired_trash,
-        restore_document, set_trash_retention, trash_document, update_document_meta,
+        list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
+        set_trash_retention, trash_document, update_document_meta,
     },
     events::{append_event, create_snapshot},
     load::load_document_state,
@@ -75,18 +75,13 @@ fn cmd_restore_document(state: tauri::State<DbState>, id: String) -> Result<(), 
 }
 
 #[tauri::command]
-fn cmd_list_trashed_documents(
-    state: tauri::State<DbState>,
-) -> Result<Vec<DocumentMeta>, String> {
+fn cmd_list_trashed_documents(state: tauri::State<DbState>) -> Result<Vec<DocumentMeta>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     list_trashed_documents(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn cmd_list_drafts(
-    state: tauri::State<DbState>,
-    doc_id: String,
-) -> Result<Vec<DraftMeta>, String> {
+fn cmd_list_drafts(state: tauri::State<DbState>, doc_id: String) -> Result<Vec<DraftMeta>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     list_drafts(&conn, &doc_id).map_err(|e| e.to_string())
 }
@@ -145,10 +140,7 @@ fn cmd_get_trash_retention(state: tauri::State<DbState>) -> Result<Option<i64>, 
 
 /// Persists the trash auto-empty setting. Pass null to disable.
 #[tauri::command]
-fn cmd_set_trash_retention(
-    state: tauri::State<DbState>,
-    days: Option<i64>,
-) -> Result<(), String> {
+fn cmd_set_trash_retention(state: tauri::State<DbState>, days: Option<i64>) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     set_trash_retention(&conn, days).map_err(|e| e.to_string())
 }
@@ -210,6 +202,8 @@ fn scrap(state: tauri::State<DbState>) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let db_path = app

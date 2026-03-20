@@ -84,6 +84,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           PUBLIC_POSTHOG_KEY: ${{ vars.PUBLIC_POSTHOG_KEY }}
           PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Quillium v__VERSION__"
@@ -91,3 +93,39 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  publish-release:
+    needs: build-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download all release assets from private repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir assets
+          gh release download ${{ github.ref_name }} \
+            --repo ${{ github.repository }} \
+            --dir assets
+
+      - name: Rewrite latest.json URLs to point to public repo
+        run: |
+          PRIVATE="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          PUBLIC="https://github.com/ThatXliner/quillium-releases/releases/download/${{ github.ref_name }}"
+          sed -i "s|$PRIVATE|$PUBLIC|g" assets/latest.json
+
+      - name: Create release and upload assets to public repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_PAT }}
+        run: |
+          # Create the release in the public repo
+          gh release create ${{ github.ref_name }} \
+            --repo ThatXliner/quillium-releases \
+            --title "Quillium ${{ github.ref_name }}" \
+            --notes "See the assets to download and install this version."
+
+          # Upload all assets
+          gh release upload ${{ github.ref_name }} \
+            --repo ThatXliner/quillium-releases \
+            assets/*
