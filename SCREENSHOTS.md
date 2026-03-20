@@ -41,3 +41,8 @@
 
 ![Full UI hero screenshot](screenshots/08-full-ui.png)
 *All three annotation types beside a short prose passage, with the AI Chat sidebar open showing a context snippet and an active comment thread.*
+
+## Update Banner
+
+![Update banner](screenshots/09-update-banner.png)
+*The update notification banner appears in the bottom-right when a new version is available.*
