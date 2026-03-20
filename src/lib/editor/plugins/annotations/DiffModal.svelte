@@ -171,6 +171,9 @@ $effect(() => {
         height: 100vh;
         max-width: 100vw;
         max-height: 100vh;
+    }
+
+    .diff-modal[open] {
         display: flex;
         align-items: center;
         justify-content: center;
