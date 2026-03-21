@@ -374,7 +374,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- Expanded panel -->
     <div
         class="w-full h-full flex flex-col transition-opacity duration-150
-            {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}"
+            {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 invisible pointer-events-none'}"
     >
         <!-- Row 1: icon wheel -->
         <div class="shrink-0 pt-2.5 pb-1">
