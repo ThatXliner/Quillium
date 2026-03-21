@@ -18,7 +18,7 @@
  *   07-revision-modal.png   — revision full-screen modal editor open
  *   09-update-banner.png    — update notification banner in bottom-right
  *   10-autoai-bubble.png   — AutoAI collaborator bubble in active state (rainbow border)
- *   11-autoai-radial.png   — AutoAI radial menu fanned open with all satellite circles
+ *   11-autoai-card.png     — AutoAI settings card morphed open from the bubble
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
@@ -676,17 +676,20 @@ async function scenarioAutoAIBubble(ctx: BrowserContext): Promise<void> {
 }
 
 /**
- * 11. autoai-radial — The AutoAI radial menu fanned open: all six satellite
- *    circles (enable, mode, focus, comments, suggestions, revisions) spread
- *    out from the main bubble with their labels.
+ * 11. autoai-card — The AutoAI settings card morphed open from the bubble,
+ *    showing the persona name, toggle, mode, delay, focus, and annotation
+ *    type controls.
  */
-async function scenarioAutoAIRadial(ctx: BrowserContext): Promise<void> {
+async function scenarioAutoAICard(ctx: BrowserContext): Promise<void> {
     const page = await setupAutoAIPage(ctx);
-    // Click the main bubble to open the radial menu
-    await page.locator("button[aria-label='AutoAI']").click();
-    // Wait for the spring animation to settle
-    await page.waitForTimeout(500);
-    await shot(page, "11-autoai-radial");
+    // Click the bubble to open the settings card
+    await page
+        .locator("button[aria-label*='AutoAI']")
+        .first()
+        .click();
+    // Wait for the morph transition to complete (340ms) + panel fade-in (80ms delay)
+    await page.waitForTimeout(600);
+    await shot(page, "11-autoai-card");
     await page.close();
 }
 
@@ -760,7 +763,7 @@ async function main(): Promise<void> {
         await scenarioFullUi(context);
         await scenarioUpdateBanner(context);
         await scenarioAutoAIBubble(context);
-        await scenarioAutoAIRadial(context);
+        await scenarioAutoAICard(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {
