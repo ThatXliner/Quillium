@@ -34,7 +34,7 @@ import { Chat } from "@ai-sdk/svelte";
 import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
 import posthog from "$lib/posthog";
 import { documentContent, selectedText, editorView } from "$lib/stores";
-import { aiSettings, documentContext, setAiProcessing } from "./settings.svelte";
+import { aiSettings, documentContext, ensureApiKeyLoaded, setAiProcessing } from "./settings.svelte";
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
 import {
     streamChat,
@@ -115,18 +115,17 @@ type StreamFn = (opts: {
  */
 function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
     return {
-        sendMessages({ messages }: { messages: UIMessage[] } & Record<string, unknown>) {
-            return Promise.resolve(
-                streamFn({
-                    messages,
-                    documentContent: get(documentContent),
-                    selectedText: get(selectedText),
-                    provider: aiSettings.provider,
-                    model: aiSettings.model,
-                    apiKey: aiSettings.apiKey,
-                    documentContext: { ...documentContext },
-                }),
-            );
+        async sendMessages({ messages }: { messages: UIMessage[] } & Record<string, unknown>) {
+            await ensureApiKeyLoaded();
+            return streamFn({
+                messages,
+                documentContent: get(documentContent),
+                selectedText: get(selectedText),
+                provider: aiSettings.provider,
+                model: aiSettings.model,
+                apiKey: aiSettings.apiKey,
+                documentContext: { ...documentContext },
+            });
         },
         reconnectToStream() {
             return Promise.resolve(null);

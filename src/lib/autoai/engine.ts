@@ -13,7 +13,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { documentContent, editorView } from "$lib/stores";
 import { createModel } from "$lib/ai/provider";
-import { aiSettings } from "$lib/ai/settings.svelte";
+import { aiSettings, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
 import { setAiProcessing } from "$lib/ai/settings.svelte";
 import {
     createComment,
@@ -139,6 +139,7 @@ async function runReview(content: string, manual = false) {
 
     setAiProcessing(true);
     try {
+        await ensureApiKeyLoaded();
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { object } = await generateObject({
             model,

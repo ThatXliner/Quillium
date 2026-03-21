@@ -93,9 +93,20 @@ export async function loadApiKeyForProvider(provider: Provider) {
     }
 }
 
-// Load key for the current provider on startup, but only if the user has
-// previously saved an API key (avoids triggering the keychain prompt
-// when AI features have never been configured).
-if (typeof window !== "undefined" && localStorage.getItem(HAS_API_KEY_KEY)) {
-    loadApiKeyForProvider(aiSettings.provider);
+// Lazy-load the API key on first access rather than at module import
+// time. This avoids triggering the macOS keychain permission prompt
+// immediately on app startup — the prompt will only appear when the
+// user actually interacts with AI features.
+let _apiKeyLoadPromise: Promise<void> | null = null;
+
+export function ensureApiKeyLoaded(): Promise<void> {
+    if (_apiKeyLoadPromise) return _apiKeyLoadPromise;
+    if (
+        typeof window === "undefined" ||
+        !localStorage.getItem(HAS_API_KEY_KEY)
+    ) {
+        return Promise.resolve();
+    }
+    _apiKeyLoadPromise = loadApiKeyForProvider(aiSettings.provider);
+    return _apiKeyLoadPromise;
 }

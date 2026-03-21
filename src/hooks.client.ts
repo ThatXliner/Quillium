@@ -28,6 +28,11 @@ if (typeof window !== "undefined") {
 
     window.addEventListener("unhandledrejection", (event) => {
         const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+        // Svelte's internal effect_orphan error is benign — SvelteKit's
+        // generated root.svelte uses $effect.pre during async mount and
+        // this can surface as an unhandled rejection in some Tauri webview
+        // timing scenarios. Ignore it rather than showing a crash banner.
+        if (err.message?.includes("effect_orphan")) return;
         saveEmergencyBackup(`Unhandled promise rejection: ${err.message}`);
         const details = err.stack ?? err.message;
         showCrashBanner("Something went wrong. Your work has been backed up.", details);

@@ -71,7 +71,7 @@ import {
     CompassIcon,
     Minimize2Icon,
 } from "lucide-svelte";
-import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
+import { aiProcessing, hasApiKey, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
@@ -194,6 +194,9 @@ function handleClickOutside(e: MouseEvent) {
 }
 
 function selectAction(id: NonNullable<Action>) {
+    // Lazily load the API key from the keychain on first interaction,
+    // avoiding the macOS keychain permission prompt on app startup.
+    ensureApiKeyLoaded();
     const def = actions.find((a) => a.id === id);
     if (def?.requiresApiKey && !hasApiKey()) {
         action = "settings";
