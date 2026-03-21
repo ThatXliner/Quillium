@@ -17,7 +17,8 @@
  *   06-library.png          — document library with multiple documents and preview panel
  *   07-revision-modal.png   — revision full-screen modal editor open
  *   09-update-banner.png    — update notification banner in bottom-right
- *   10-autoai-widget.png   — AutoAI collaborator bubble with popover open
+ *   10-autoai-bubble.png   — AutoAI collaborator bubble in active state (rainbow border)
+ *   11-autoai-radial.png   — AutoAI radial menu fanned open with all satellite circles
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
@@ -636,17 +637,11 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
-/**
- * 10. autoai-widget — The AutoAI collaborator bubble at bottom-right in its
- *    active state (rainbow border), with the config popover open showing
- *    the persona, mode, delay, focus level, and annotation type controls.
- *    Annotations from the AutoAI are visible in the panel.
- */
-async function scenarioAutoAIWidget(ctx: BrowserContext): Promise<void> {
+/** Shared setup for AutoAI screenshots — enables AutoAI via localStorage. */
+async function setupAutoAIPage(ctx: BrowserContext): Promise<Page> {
     const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
-    await installTauriMock(page);
-    // Pre-enable AutoAI in localStorage so the widget starts in active state.
+    await installTauriMock(page, { fakeApiKey: true });
     await page.addInitScript(() => {
         localStorage.setItem(
             "quillium-autoai-settings",
@@ -663,16 +658,35 @@ async function scenarioAutoAIWidget(ctx: BrowserContext): Promise<void> {
     await page.goto(BASE_URL);
     await waitForEditor(page);
     const applied = await applyDebugScenario(page, "screenshot-autoai-widget");
-    if (!applied) {
-        await setEditorText(page, PROSE_SHORT);
-    }
-    // Click away so no annotation is active — widget is the focus
+    if (!applied) await setEditorText(page, PROSE_SHORT);
+    // Click away so no annotation is active
     await page.mouse.click(720, 700);
     await page.waitForTimeout(300);
-    // Open the AutoAI config popover
-    await page.locator("button[aria-label='AutoAI collaborator']").click();
-    await page.waitForTimeout(400);
-    await shot(page, "10-autoai-widget");
+    return page;
+}
+
+/**
+ * 10. autoai-bubble — The AutoAI collaborator bubble in its active state:
+ *    rainbow conic-gradient border showing AutoAI is enabled and watching.
+ */
+async function scenarioAutoAIBubble(ctx: BrowserContext): Promise<void> {
+    const page = await setupAutoAIPage(ctx);
+    await shot(page, "10-autoai-bubble");
+    await page.close();
+}
+
+/**
+ * 11. autoai-radial — The AutoAI radial menu fanned open: all six satellite
+ *    circles (enable, mode, focus, comments, suggestions, revisions) spread
+ *    out from the main bubble with their labels.
+ */
+async function scenarioAutoAIRadial(ctx: BrowserContext): Promise<void> {
+    const page = await setupAutoAIPage(ctx);
+    // Click the main bubble to open the radial menu
+    await page.locator("button[aria-label='AutoAI']").click();
+    // Wait for the spring animation to settle
+    await page.waitForTimeout(500);
+    await shot(page, "11-autoai-radial");
     await page.close();
 }
 
@@ -745,7 +759,8 @@ async function main(): Promise<void> {
         await scenarioRevisionModal(context);
         await scenarioFullUi(context);
         await scenarioUpdateBanner(context);
-        await scenarioAutoAIWidget(context);
+        await scenarioAutoAIBubble(context);
+        await scenarioAutoAIRadial(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {
