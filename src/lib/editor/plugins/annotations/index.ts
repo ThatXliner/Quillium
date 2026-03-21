@@ -95,7 +95,7 @@ import {
     _revisionCleanup,
     setActiveRevisionVersion,
 } from "./annotationField";
-import { type NestedEditorCommand } from "$lib/stores";
+import type { NestedEditorCommand } from "$lib/stores";
 import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import { nestedEditorEdit } from "./annotationField";
@@ -654,6 +654,7 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
                     createNewAnnotation(state.field(annotationField), state.selection, "comment"),
                 ),
             ],
+            annotations: Transaction.addToHistory.of(true),
         }),
     );
     return true;
@@ -679,6 +680,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
                     ],
                 }),
             ],
+            annotations: Transaction.addToHistory.of(true),
         }),
     );
     // When the setting is on and there is an actual selection, signal
@@ -727,7 +729,7 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
         // nudge the user toward the inline/modal editor.
         const cursor = state.selection.main.from;
         let nearestId: number | null = null;
-        let nearestDist = Infinity;
+        let nearestDist = Number.POSITIVE_INFINITY;
         for (const ann of Object.values(state.field(annotationField))) {
             if (!isAnnotationOfType(ann, "revision")) continue;
             const { from, to } = ann.selection.main;
