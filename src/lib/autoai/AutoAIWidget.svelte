@@ -1,9 +1,13 @@
 <!--
     AutoAIWidget.svelte — Fixed bottom-left AI collaborator bubble.
 
-    Morphs between a circular bubble and an expanded settings card using the
-    same transition-[width,height,border-radius] pattern as AISidebar.svelte.
-    A single element expands — no swap between two elements.
+    Morphs between a circular bubble and a settings card using the exact
+    same pattern as AISidebar.svelte:
+      - Single container div with transition-[width,height,border-radius]
+      - Two absolutely-positioned overlapping layers (bubble / panel)
+      - Each layer fades via transition-opacity; panel has an 80ms delay
+      - overflow-hidden clips content during the morph
+      - rounded-[100px] (not 9999px) for the circle state
 -->
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
@@ -17,27 +21,29 @@ import {
 } from "./settings.svelte";
 import { startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
 
-let popoverOpen = $state(false);
+let open = $state(false);
 let widgetEl = $state<HTMLDivElement | null>(null);
 let autoAIRunning = $state(autoAISettings.enabled);
 
+const locked = $derived(!hasApiKey());
+const isReviewing = $derived(autoAIRunning && aiProcessing.active);
+const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
+
+function toggleOpen() {
+    open = !open;
+}
+
 function toggleEnabled() {
+    if (locked) return;
     autoAISettings.enabled = !autoAISettings.enabled;
     autoAIRunning = autoAISettings.enabled;
     persistAutoAISettings();
-    if (autoAISettings.enabled) {
-        startAutoAI();
-    } else {
-        stopAutoAI();
-    }
-}
-
-function handleBubbleClick() {
-    popoverOpen = !popoverOpen;
+    if (autoAISettings.enabled) startAutoAI();
+    else stopAutoAI();
 }
 
 function handleManualReview() {
-    popoverOpen = false;
+    open = false;
     triggerManualReview();
 }
 
@@ -75,10 +81,8 @@ function handlePersonaInput(e: Event) {
 }
 
 function handleDocClick(e: MouseEvent) {
-    if (!popoverOpen) return;
-    if (widgetEl && !widgetEl.contains(e.target as Node)) {
-        popoverOpen = false;
-    }
+    if (!open) return;
+    if (widgetEl && !widgetEl.contains(e.target as Node)) open = false;
 }
 
 onMount(() => {
@@ -90,57 +94,67 @@ onDestroy(() => {
     document.removeEventListener("mousedown", handleDocClick);
     stopAutoAI();
 });
-
-const isReviewing = $derived(autoAIRunning && aiProcessing.active);
-const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
-const locked = $derived(!hasApiKey());
 </script>
 
 <!--
-    Single morphing element. In bubble state: 40×40, border-radius:50%.
-    In open state: 232px wide, auto height, border-radius:14px.
-    The same transition-[width,height,border-radius] pattern as AISidebar.
+    Single morphing container — exactly like AISidebar:
+    closed: w-[40px] h-[40px] rounded-[100px]
+    open:   w-[232px] h-auto rounded-[14px]
+    transition-[width,height,border-radius] duration-[340ms]
 -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-    class="autoai-widget"
-    class:open={popoverOpen}
-    class:active={autoAIRunning && !locked}
-    class:reviewing={isReviewing}
-    class:locked
     bind:this={widgetEl}
-    role="dialog"
-    aria-label="AutoAI collaborator"
+    onclick={(e) => e.stopPropagation()}
+    class="autoai-container {open ? 'w-[232px] rounded-[14px]' : 'w-[40px] h-[40px] rounded-[100px]'}
+           {autoAIRunning && !locked && !open ? 'rainbow-active' : ''}
+           {isReviewing && !open ? 'rainbow-reviewing' : ''}"
 >
-    <!-- Bubble icon — visible when closed, fades out when open -->
-    <button
-        class="bubble-face"
-        class:hidden={popoverOpen}
-        onclick={handleBubbleClick}
-        tabindex={popoverOpen ? -1 : 0}
-        aria-label={locked ? "AutoAI — add an API key in settings to enable" : autoAIRunning ? "AutoAI active — click to configure" : "AutoAI — click to enable"}
-        title={locked ? "Add an API key in settings to use AutoAI" : undefined}
-        aria-expanded={popoverOpen}
-    >
-        <!-- Quill icon -->
-        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M13 2C13 2 10 3 8 6C6 9 6 13 6 13C6 13 7 11 9 10C11 9 13 8 13 8C13 8 11 9 10 11C9 13 9 14 9 14L7.5 14C7.5 14 7 12 7 10C7 8 8 5 10 4C12 3 13 2 13 2Z" fill="currentColor" opacity="0.85"/>
-            <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.4"/>
-        </svg>
-    </button>
+    <!-- Bubble layer — visible when closed -->
+    <div class="absolute inset-0 flex items-center justify-center
+                transition-opacity duration-150
+                {open ? 'opacity-0 pointer-events-none' : 'opacity-100'}">
+        <button
+            onclick={toggleOpen}
+            aria-label={locked
+                ? "AutoAI — add an API key in settings to enable"
+                : autoAIRunning
+                    ? "AutoAI active — click to configure"
+                    : "AutoAI — click to enable"}
+            title={locked ? "Add an API key in settings to use AutoAI" : undefined}
+            aria-expanded={open}
+            class="w-full h-full flex items-center justify-center rounded-[inherit]
+                   bg-transparent border-none cursor-pointer
+                   {locked ? 'text-gray-400' : 'text-amber-700'}"
+        >
+            <!-- Quill icon -->
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
+                <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
+            </svg>
+        </button>
+    </div>
 
-    <!-- Expanded content — fades in when open -->
-    <div class="panel-content" class:visible={popoverOpen} aria-hidden={!popoverOpen}>
+    <!-- Panel layer — visible when open, 80ms delay matches AISidebar -->
+    <div class="w-full flex flex-col gap-[10px] p-3
+                transition-opacity duration-150
+                {open ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}">
+
         <!-- Header -->
-        <div class="panel-header">
-            <div class="header-icon">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M13 2C13 2 10 3 8 6C6 9 6 13 6 13C6 13 7 11 9 10C11 9 13 8 13 8C13 8 11 9 10 11C9 13 9 14 9 14L7.5 14C7.5 14 7 12 7 10C7 8 8 5 10 4C12 3 13 2 13 2Z" fill="currentColor" opacity="0.85"/>
-                    <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.4"/>
+        <div class="flex items-center gap-2">
+            <div class="w-6 h-6 rounded-full border border-amber-300 bg-[#faf8f5]
+                        flex items-center justify-center text-amber-700 shrink-0">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
+                    <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
                 </svg>
             </div>
-            <div class="header-text">
-                <span class="header-name">{autoAISettings.persona}</span>
-                <span class="header-sub">
+            <div class="flex flex-col flex-1 min-w-0">
+                <span class="text-[13px] font-semibold text-gray-800 truncate leading-tight">
+                    {autoAISettings.persona}
+                </span>
+                <span class="text-[10px] text-gray-400 whitespace-nowrap">
                     {#if isReviewing}
                         Reviewing…
                     {:else if autoAIRunning}
@@ -150,16 +164,23 @@ const locked = $derived(!hasApiKey());
                     {/if}
                 </span>
             </div>
+            <!-- Toggle -->
             <button
-                class="toggle-btn"
-                class:on={autoAISettings.enabled && !locked}
-                onclick={locked ? undefined : toggleEnabled}
+                class="toggle-btn {autoAISettings.enabled && !locked ? 'on' : ''}"
+                onclick={toggleEnabled}
                 disabled={locked}
                 aria-label={locked ? "Add an API key to enable AutoAI" : autoAISettings.enabled ? "Pause AutoAI" : "Enable AutoAI"}
             >
                 <span class="toggle-knob"></span>
             </button>
-            <button class="close-btn" onclick={handleBubbleClick} aria-label="Close">
+            <!-- Close -->
+            <button
+                onclick={toggleOpen}
+                aria-label="Close"
+                class="w-5 h-5 flex items-center justify-center rounded text-gray-400
+                       hover:text-gray-600 hover:bg-black/5 border-none bg-transparent
+                       cursor-pointer transition-colors shrink-0"
+            >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                     <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
@@ -167,16 +188,24 @@ const locked = $derived(!hasApiKey());
         </div>
 
         {#if locked}
-            <p class="locked-notice">Add an API key in settings to enable AutoAI.</p>
+            <p class="text-[11px] text-gray-400 leading-snug m-0">
+                Add an API key in settings to enable AutoAI.
+            </p>
         {:else if autoAISettings.mode === "manual" && autoAISettings.enabled}
-            <button class="review-now-btn" onclick={handleManualReview}>
+            <button
+                onclick={handleManualReview}
+                class="w-full py-1.5 rounded-lg bg-amber-50 border border-amber-200
+                       text-amber-900 text-[12px] font-medium cursor-pointer
+                       hover:bg-amber-100 transition-colors"
+            >
                 Review now
             </button>
         {/if}
 
-        <hr class="divider" />
+        <hr class="border-none border-t border-[#ede8e0] m-0" />
 
-        <div class="popover-field">
+        <!-- Name -->
+        <div class="field">
             <label class="field-label" for="autoai-persona">NAME</label>
             <input
                 id="autoai-persona"
@@ -185,58 +214,62 @@ const locked = $derived(!hasApiKey());
                 value={autoAISettings.persona}
                 oninput={handlePersonaInput}
                 maxlength={20}
-                tabindex={popoverOpen ? 0 : -1}
+                tabindex={open ? 0 : -1}
             />
         </div>
 
-        <div class="popover-field">
+        <!-- Mode -->
+        <div class="field">
             <span class="field-label">MODE</span>
-            <div class="segment-ctrl">
-                <button class="seg-btn" class:seg-active={autoAISettings.mode === "continuous"} onclick={() => setMode("continuous")} tabindex={popoverOpen ? 0 : -1}>Continuous</button>
-                <button class="seg-btn" class:seg-active={autoAISettings.mode === "manual"} onclick={() => setMode("manual")} tabindex={popoverOpen ? 0 : -1}>Manual</button>
+            <div class="seg-ctrl">
+                <button class="seg-btn {autoAISettings.mode === 'continuous' ? 'seg-active' : ''}"
+                    onclick={() => setMode("continuous")} tabindex={open ? 0 : -1}>Continuous</button>
+                <button class="seg-btn {autoAISettings.mode === 'manual' ? 'seg-active' : ''}"
+                    onclick={() => setMode("manual")} tabindex={open ? 0 : -1}>Manual</button>
             </div>
         </div>
 
+        <!-- Delay -->
         {#if autoAISettings.mode === "continuous"}
-            <div class="popover-field">
+            <div class="field">
                 <label class="field-label" for="autoai-debounce">DELAY: {debounceSeconds}S</label>
                 <input
                     id="autoai-debounce"
-                    class="field-range"
-                    type="range"
-                    min="2"
-                    max="60"
+                    class="w-full accent-amber-500"
+                    type="range" min="2" max="60"
                     value={debounceSeconds}
                     oninput={handleDebounceInput}
-                    tabindex={popoverOpen ? 0 : -1}
+                    tabindex={open ? 0 : -1}
                 />
             </div>
         {/if}
 
-        <div class="popover-field">
+        <!-- Focus -->
+        <div class="field">
             <span class="field-label">FOCUS</span>
-            <div class="segment-ctrl">
+            <div class="seg-ctrl">
                 {#each (["conservative", "balanced", "thorough"] as AutoAIConservativeness[]) as level}
                     <button
-                        class="seg-btn"
-                        class:seg-active={autoAISettings.conservativeness === level}
+                        class="seg-btn {autoAISettings.conservativeness === level ? 'seg-active' : ''}"
                         onclick={() => setConservativeness(level)}
-                        tabindex={popoverOpen ? 0 : -1}
+                        tabindex={open ? 0 : -1}
                     >{level[0].toUpperCase() + level.slice(1)}</button>
                 {/each}
             </div>
         </div>
 
-        <div class="popover-field">
+        <!-- Annotate with -->
+        <div class="field">
             <span class="field-label">ANNOTATE WITH</span>
-            <div class="checkbox-row">
+            <div class="flex gap-[10px]">
                 {#each (["comment", "suggestion", "revision"] as AutoAIAnnotationType[]) as type}
-                    <label class="checkbox-label">
+                    <label class="flex items-center gap-1 text-[11px] text-gray-700 cursor-pointer">
                         <input
                             type="checkbox"
+                            class="accent-amber-500 cursor-pointer"
                             checked={autoAISettings.annotationTypes.includes(type)}
                             onchange={() => toggleAnnotationType(type)}
-                            tabindex={popoverOpen ? 0 : -1}
+                            tabindex={open ? 0 : -1}
                         />
                         {type[0].toUpperCase() + type.slice(1)}s
                     </label>
@@ -247,179 +280,62 @@ const locked = $derived(!hasApiKey());
 </div>
 
 <style>
-    /* ── Root morphing element ── */
-    .autoai-widget {
+    /* ── Morphing container ── */
+    .autoai-container {
         position: fixed;
         bottom: 24px;
         left: 24px;
         z-index: 40;
-
-        /* Bubble state */
-        width: 40px;
-        height: 40px;
-        border-radius: 20px;
         overflow: hidden;
 
+        /* Closed height is set via Tailwind h-[40px];
+           open height is content-driven so we don't set it here */
         background: #faf8f5;
-        border: 2px solid #d6b87a; /* warm amber — idle */
+        border: 2px solid #d6b87a;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
-        cursor: pointer;
 
-        /* The morph: same pattern as AISidebar */
+        /* Same easing curve as AISidebar */
         transition:
-            width 300ms cubic-bezier(0.33, 0, 0.2, 1),
-            height 300ms cubic-bezier(0.33, 0, 0.2, 1),
-            border-radius 300ms cubic-bezier(0.33, 0, 0.2, 1),
-            box-shadow 200ms ease,
-            border-color 300ms ease;
+            width 340ms cubic-bezier(0.33, 0, 0.2, 1),
+            height 340ms cubic-bezier(0.33, 0, 0.2, 1),
+            border-radius 340ms cubic-bezier(0.33, 0, 0.2, 1),
+            border-color 300ms ease,
+            box-shadow 200ms ease;
     }
 
-    .autoai-widget.open {
-        width: 232px;
-        height: auto; /* content-driven */
-        border-radius: 14px;
+    /* Open state — override height for content-driven sizing */
+    .autoai-container.w-\[232px\] {
+        height: auto;
         border-color: #e8e0d4;
-        cursor: default;
-        box-shadow:
-            0 4px 16px rgba(0, 0, 0, 0.10),
-            0 1px 4px rgba(0, 0, 0, 0.06);
-        overflow: visible; /* allow range thumb to render */
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
+        overflow: visible; /* allow range thumbs to render outside clip */
     }
 
-    /* Locked state — muted, no amber */
-    .autoai-widget.locked:not(.open) {
-        border-color: #d1d5db;
-        opacity: 0.6;
-    }
-
-    .autoai-widget.locked .bubble-face {
-        color: #9ca3af;
-    }
-
-    /* Active (rainbow) border */
-    .autoai-widget.active:not(.open) {
+    /* Rainbow border — active (static) */
+    .rainbow-active {
         border: 2px solid transparent;
         background:
             linear-gradient(#faf8f5, #faf8f5) padding-box,
             conic-gradient(from 0deg, #f59e0b, #ec4899, #8b5cf6, #3b82f6, #10b981, #f59e0b) border-box;
     }
 
-    .autoai-widget.reviewing:not(.open) {
+    /* Rainbow border — reviewing (spinning) */
+    .rainbow-reviewing {
+        border: 2px solid transparent;
         animation: rainbow-spin 2s linear infinite;
     }
 
     @keyframes rainbow-spin {
+        from {
+            background:
+                linear-gradient(#faf8f5, #faf8f5) padding-box,
+                conic-gradient(from 0deg, #f59e0b, #ec4899, #8b5cf6, #3b82f6, #10b981, #f59e0b) border-box;
+        }
         to {
             background:
                 linear-gradient(#faf8f5, #faf8f5) padding-box,
                 conic-gradient(from 360deg, #f59e0b, #ec4899, #8b5cf6, #3b82f6, #10b981, #f59e0b) border-box;
         }
-    }
-
-    /* ── Bubble face (icon, visible when closed) ── */
-    .bubble-face {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #92681a;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        border-radius: inherit;
-        transition: opacity 150ms ease, transform 150ms ease;
-    }
-
-    .bubble-face.hidden {
-        opacity: 0;
-        pointer-events: none;
-        transform: scale(0.7);
-    }
-
-    .bubble-face:not(.hidden):hover {
-        opacity: 0.8;
-    }
-
-    /* ── Expanded panel content ── */
-    .panel-content {
-        padding: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 150ms ease 50ms; /* slight delay so morph starts first */
-    }
-
-    .panel-content.visible {
-        opacity: 1;
-        pointer-events: auto;
-    }
-
-    /* ── Header ── */
-    .panel-header {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-    }
-
-    .header-icon {
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        border: 1.5px solid #d6b87a;
-        background: #faf8f5;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #92681a;
-        flex-shrink: 0;
-    }
-
-    .header-text {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-        min-width: 0;
-    }
-
-    .header-name {
-        font-size: 13px;
-        font-weight: 600;
-        color: #1f2937;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        line-height: 1.2;
-    }
-
-    .header-sub {
-        font-size: 10px;
-        color: #9ca3af;
-        white-space: nowrap;
-    }
-
-    .close-btn {
-        width: 20px;
-        height: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: none;
-        background: transparent;
-        color: #9ca3af;
-        cursor: pointer;
-        border-radius: 4px;
-        padding: 0;
-        flex-shrink: 0;
-        transition: color 0.15s, background 0.15s;
-    }
-
-    .close-btn:hover {
-        color: #6b7280;
-        background: #f3f0eb;
     }
 
     /* ── Toggle ── */
@@ -434,6 +350,11 @@ const locked = $derived(!hasApiKey());
         transition: background 0.2s;
         padding: 0;
         flex-shrink: 0;
+    }
+
+    .toggle-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
     }
 
     .toggle-btn.on {
@@ -456,41 +377,8 @@ const locked = $derived(!hasApiKey());
         transform: translateX(13px);
     }
 
-    /* ── Divider ── */
-    .divider {
-        border: none;
-        border-top: 1px solid #ede8e0;
-        margin: 0;
-    }
-
-    /* ── Locked notice ── */
-    .locked-notice {
-        font-size: 11px;
-        color: #9ca3af;
-        margin: 0;
-        line-height: 1.4;
-    }
-
-    /* ── Review now ── */
-    .review-now-btn {
-        width: 100%;
-        padding: 6px 0;
-        border-radius: 8px;
-        background: #fef3c7;
-        border: 1px solid #fcd34d;
-        color: #92400e;
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.15s;
-    }
-
-    .review-now-btn:hover {
-        background: #fde68a;
-    }
-
     /* ── Fields ── */
-    .popover-field {
+    .field {
         display: flex;
         flex-direction: column;
         gap: 5px;
@@ -519,13 +407,8 @@ const locked = $derived(!hasApiKey());
         border-color: #fcd34d;
     }
 
-    .field-range {
-        width: 100%;
-        accent-color: #f59e0b;
-    }
-
     /* ── Segmented control ── */
-    .segment-ctrl {
+    .seg-ctrl {
         display: flex;
         border: 1px solid #e5ddd3;
         border-radius: 8px;
@@ -552,25 +435,5 @@ const locked = $derived(!hasApiKey());
         background: #fef3c7;
         color: #92400e;
         font-weight: 500;
-    }
-
-    /* ── Checkboxes ── */
-    .checkbox-row {
-        display: flex;
-        gap: 10px;
-    }
-
-    .checkbox-label {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 11px;
-        color: #374151;
-        cursor: pointer;
-    }
-
-    .checkbox-label input {
-        accent-color: #f59e0b;
-        cursor: pointer;
     }
 </style>
