@@ -24,6 +24,7 @@ import {
     autoAISettings,
     type AutoAIConservativeness,
 } from "./settings.svelte";
+import { toast } from "svelte-sonner";
 
 // Only re-review if the doc changed by at least this many characters.
 const MIN_DIFF_CHARS = 20;
@@ -87,11 +88,12 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastReviewedContent = "";
 let unsubscribe: (() => void) | null = null;
 
-function applyAnnotations(result: ReviewResult, doc: string) {
+function applyAnnotations(result: ReviewResult, doc: string): number {
     const view = get(editorView);
-    if (!view) return;
+    if (!view) return 0;
 
     const allowed = new Set(autoAISettings.annotationTypes);
+    let applied = 0;
 
     for (const ann of result.annotations) {
         // Skip annotation types the user disabled.
@@ -107,6 +109,7 @@ function applyAnnotations(result: ReviewResult, doc: string) {
                     author: autoAISettings.persona,
                     view,
                 });
+                applied++;
             } else if (ann.type === "suggestion") {
                 createSuggestion({
                     targetText: ann.targetText,
@@ -115,6 +118,7 @@ function applyAnnotations(result: ReviewResult, doc: string) {
                     state: view.state,
                     dispatch: view.dispatch.bind(view),
                 });
+                applied++;
             } else if (ann.type === "revision") {
                 createRevision({
                     targetText: ann.targetText,
@@ -123,14 +127,16 @@ function applyAnnotations(result: ReviewResult, doc: string) {
                     author: autoAISettings.persona,
                     view,
                 });
+                applied++;
             }
         } catch {
             // targetText lookup failed (e.g. doc changed mid-review) — skip.
         }
     }
+    return applied;
 }
 
-async function runReview(content: string) {
+async function runReview(content: string, manual = false) {
     if (!content.trim()) return;
     lastReviewedContent = content;
 
@@ -147,7 +153,10 @@ async function runReview(content: string) {
             system: buildSystemPrompt(),
             prompt: `Review this document:\n\n${content}`,
         });
-        applyAnnotations(object, content);
+        const applied = applyAnnotations(object, content);
+        if (manual && applied === 0) {
+            toast("No issues found — your writing looks good.");
+        }
     } catch (e) {
         console.error("[AutoAI] review failed:", e);
     } finally {
@@ -197,5 +206,5 @@ export function triggerManualReview() {
         clearTimeout(debounceTimer);
         debounceTimer = null;
     }
-    runReview(content);
+    runReview(content, true);
 }
