@@ -52,14 +52,18 @@ function handleFocusSlider(e: Event) {
     persistAutoAISettings();
 }
 
-function toggleOpen() { open = !open; editingName = false; }
+function toggleOpen() {
+    open = !open;
+    editingName = false;
+}
 
 function toggleEnabled() {
     if (locked) return;
     autoAISettings.enabled = !autoAISettings.enabled;
     autoAIRunning = autoAISettings.enabled;
     persistAutoAISettings();
-    if (autoAISettings.enabled) startAutoAI(); else stopAutoAI();
+    if (autoAISettings.enabled) startAutoAI();
+    else stopAutoAI();
 }
 
 function handleManualReview() {
@@ -102,7 +106,9 @@ function startEditingName() {
     setTimeout(() => nameInputEl?.focus(), 0);
 }
 
-function stopEditingName() { editingName = false; }
+function stopEditingName() {
+    editingName = false;
+}
 
 function handleNameKeydown(e: KeyboardEvent) {
     if (e.key === "Enter" || e.key === "Escape") stopEditingName();
@@ -129,9 +135,9 @@ onDestroy(() => {
 });
 
 const annotationPills = [
-    { type: "comment"    as AutoAIAnnotationType, label: "Comments",    cls: "pill-comment"    },
+    { type: "comment" as AutoAIAnnotationType, label: "Comments", cls: "pill-comment" },
     { type: "suggestion" as AutoAIAnnotationType, label: "Suggestions", cls: "pill-suggestion" },
-    { type: "revision"   as AutoAIAnnotationType, label: "Revisions",   cls: "pill-revision"   },
+    { type: "revision" as AutoAIAnnotationType, label: "Revisions", cls: "pill-revision" },
 ];
 </script>
 
@@ -240,14 +246,19 @@ const annotationPills = [
                 {#if autoAISettings.mode === "continuous"}
                     <span class="mode-hint">Reviews as you write</span>
                 {:else}
-                    <div class="mode-hint mode-hint-row">Trigger with <Kbd keys={["⌘", "⇧", "R"]} /></div>
+                    <div class="mode-hint mode-hint-row mb-2 mt-1">Trigger with <Kbd keys={["⌘", "⇧", "R"]} /></div>
                 {/if}
             </div>
 
             <!-- Delay or Review now -->
             {#if autoAISettings.mode === "continuous"}
                 <div class="field">
-                    <label class="field-label" for="autoai-debounce">DELAY: {debounceSeconds}S</label>
+                    <div class="delay-label-row">
+                        <label class="field-label" for="autoai-debounce">DELAY: {debounceSeconds}S</label>
+                        {#if debounceSeconds !== 10}
+                            <button class="reset-btn" onclick={() => { autoAISettings.debounceMs = 10000; persistAutoAISettings(); }} tabindex={open ? 0 : -1}>reset</button>
+                        {/if}
+                    </div>
                     <input id="autoai-debounce" class="range" type="range" min="2" max="60"
                         value={debounceSeconds} oninput={handleDebounceInput} tabindex={open ? 0 : -1} />
                 </div>
@@ -458,6 +469,15 @@ const annotationPills = [
     .mode-hint-row {
         display: flex; align-items: center; gap: 3px;
     }
+    .delay-label-row {
+        display: flex; align-items: center; justify-content: space-between;
+    }
+    .reset-btn {
+        font-size: 9px; color: #c4b89a; background: none; border: none;
+        padding: 0; cursor: pointer; text-decoration: underline;
+        text-underline-offset: 2px; transition: color 0.15s;
+    }
+    .reset-btn:hover { color: #92681a; }
 
     .divider { height: 1px; background: #ede8e0; flex-shrink: 0; }
 
