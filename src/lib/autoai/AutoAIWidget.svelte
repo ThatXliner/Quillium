@@ -146,7 +146,7 @@ const annotationPills = [
 <div
     bind:this={widgetEl}
     onclick={(e) => e.stopPropagation()}
-    class="autoai-container {open ? 'w-[360px] h-[220px] rounded-[16px]' : 'w-[40px] h-[40px] rounded-[100px]'}
+    class="autoai-container {open ? 'w-[360px] h-[220px] rounded-[16px]' : 'w-[67px] h-[67px] rounded-[100px]'}
            {autoAIRunning && !locked && !open ? 'rainbow-active' : ''}
            {isReviewing && !open ? 'rainbow-reviewing' : ''}"
 >
@@ -162,12 +162,12 @@ const annotationPills = [
                    {locked ? 'text-gray-400' : 'text-amber-700'}"
         >
             {#if locked}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <rect x="3.5" y="7" width="9" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
             {:else}
-                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
                     <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
                 </svg>
