@@ -502,11 +502,23 @@ const annotationPills = [
     /* ── Review now ── */
     .review-btn {
         width: 100%; padding: 5px 0; border-radius: 7px;
-        background: #fef3c7; border: 1px solid #fcd34d;
+        background: rgba(254, 243, 199, 0.7);
+        border: 1px solid rgba(252, 211, 77, 0.4);
         color: #92400e; font-size: 11px; font-weight: 500;
-        cursor: pointer; transition: background 0.15s;
+        cursor: pointer; transition: background 0.15s, box-shadow 0.15s;
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.6),
+            inset 0 -1px 0 rgba(0,0,0,0.04),
+            0 1px 3px rgba(0,0,0,0.08);
+        backdrop-filter: blur(4px);
     }
-    .review-btn:hover { background: #fde68a; }
+    .review-btn:hover {
+        background: rgba(253, 230, 138, 0.8);
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.7),
+            inset 0 -1px 0 rgba(0,0,0,0.06),
+            0 2px 4px rgba(0,0,0,0.10);
+    }
 
     /* ── Annotation type pills (right pane) ── */
     .pill {
