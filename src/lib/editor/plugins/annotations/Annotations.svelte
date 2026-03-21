@@ -157,14 +157,28 @@ const hasSelection = $derived($selectedText.length > 0);
 const hasComments = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "comment")));
 const hasRevisions = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "revision")));
 
-const selectionY = $derived.by(() => {
+// selectionY is computed via $effect instead of $derived because
+// coordsAtPos can trigger a CodeMirror measure cycle that fires
+// the updateListener → store write, which is forbidden inside $derived.
+let selectionY = $state<number | null>(null);
+$effect(() => {
     void $selectedText; // re-run when selection changes
-    if (!resolvedView || !hasSelection) return null;
+    if (!resolvedView || !hasSelection) {
+        selectionY = null;
+        return;
+    }
     const sel = resolvedView.state.selection.main;
-    const from = resolvedView.coordsAtPos(sel.from);
-    const to = resolvedView.coordsAtPos(sel.to);
-    if (!from || !to) return null;
-    return (from.top + to.bottom) / 2;
+    try {
+        const from = resolvedView.coordsAtPos(sel.from);
+        const to = resolvedView.coordsAtPos(sel.to);
+        if (!from || !to) {
+            selectionY = null;
+            return;
+        }
+        selectionY = (from.top + to.bottom) / 2;
+    } catch {
+        selectionY = null;
+    }
 });
 const pendingComment = $derived(
     sortedAnnotations.find(
@@ -172,14 +186,17 @@ const pendingComment = $derived(
     ),
 );
 
-// Pair each annotation with its viewport Y position
-const positionedAnnotations = $derived(() => {
+// Compute positioned annotations on demand (NOT in $derived —
+// coordsAtPos can trigger a CodeMirror measure cycle that fires
+// the updateListener, which writes to Svelte stores. Writing to
+// $state inside $derived throws state_unsafe_mutation.)
+function getPositionedAnnotations() {
     if (!sortedAnnotations.length || !resolvedView || !isFloating) return [];
     return sortedAnnotations.map((annotation) => ({
         annotation,
         viewportY: getAnnotationViewportY(annotation),
     }));
-});
+}
 
 const annotationElements: { [id: number]: HTMLDivElement | undefined } = {};
 let annotationElementsVersion = $state(0);
@@ -255,7 +272,7 @@ function debouncedUpdatePositions() {
 function updateAnnotationPositions() {
     if (!resolvedView || !isFloating) return;
 
-    const positions = positionedAnnotations();
+    const positions = getPositionedAnnotations();
     const MIN_SPACING = 8;
     const TOP_CLAMP = 64;
     const leftPx = getAnnotationLeft();
