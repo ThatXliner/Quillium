@@ -109,12 +109,12 @@ type Satellite = {
 };
 
 const satellites: Satellite[] = [
-    { id: "enable",      angle: 90,  dist: 70  },
-    { id: "mode",        angle: 130, dist: 70  },
-    { id: "focus",       angle: 50,  dist: 70  },
-    { id: "comments",    angle: 155, dist: 120 },
-    { id: "suggestions", angle: 105, dist: 125 },
-    { id: "revisions",   angle: 60,  dist: 120 },
+    { id: "enable",      angle: 90,  dist: 68  },
+    { id: "mode",        angle: 60,  dist: 68  },
+    { id: "focus",       angle: 30,  dist: 68  },
+    { id: "comments",    angle: 75,  dist: 130 },
+    { id: "suggestions", angle: 45,  dist: 130 },
+    { id: "revisions",   angle: 15,  dist: 130 },
 ];
 
 function satPos(angle: number, dist: number) {
