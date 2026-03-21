@@ -396,12 +396,23 @@ let dialogEl = $state<HTMLDialogElement>();
 let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-const controller = new NestedEditorController(view, revisionId, {
-    onUpdate: (annotations, activeAnnotation) => {
-        modalAnnotations = annotations;
-        modalActiveAnnotation = activeAnnotation;
+// For deeply nested modals (level 2+), undo must target the root view
+// that owns the history stack — not the immediate parent, which has
+// history: false. The root is always the first modal entry's parent.
+const historyView = stackIndex > 0 ? $modalStack[0].parentView : undefined;
+
+const controller = new NestedEditorController(
+    view,
+    revisionId,
+    {
+        onUpdate: (annotations, activeAnnotation) => {
+            modalAnnotations = annotations;
+            modalActiveAnnotation = activeAnnotation;
+        },
     },
-}, "flush");
+    "flush",
+    historyView,
+);
 
 function createEditor(version: VersionState, versionIndex?: number) {
     if (!editorHost || controller.editor) return;
