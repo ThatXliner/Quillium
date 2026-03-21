@@ -257,7 +257,7 @@ const locked = $derived(!hasApiKey());
         /* Bubble state */
         width: 40px;
         height: 40px;
-        border-radius: 9999px;
+        border-radius: 20px;
         overflow: hidden;
 
         background: #faf8f5;
