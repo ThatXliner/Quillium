@@ -50,7 +50,7 @@
  *   ready -> submitted -> streaming -> ready
  *                                   \-> error
  */
-import { selectedText, documentContent } from "$lib/stores";
+import { selectedText, documentContent, pendingChatMessage } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
@@ -67,6 +67,15 @@ function useQuickPrompt(prompt: string) {
     });
     chat.sendMessage({ text: prompt });
 }
+
+// Send any pending message from DictionaryPopover "Open in Chat"
+$effect(() => {
+    if ($pendingChatMessage !== null && chat.status === "ready") {
+        const msg = $pendingChatMessage;
+        pendingChatMessage.set(null);
+        chat.sendMessage({ text: msg });
+    }
+});
 
 // Sync streaming state to the global AI processing indicator
 // so the sidebar glow activates during chat requests.

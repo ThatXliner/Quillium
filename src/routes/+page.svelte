@@ -22,6 +22,7 @@
 import { onMount } from "svelte";
 import Editor from "$lib/editor/Editor.svelte";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
+import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import { tutorialActive, modalStack, editorView } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
@@ -207,6 +208,7 @@ if (import.meta.env.DEV) {
 <svelte:window onkeydown={handleKeydown} />
 
 <AiSidebar />
+<DictionaryPopover />
 
 <div class="h-screen w-full">
     <Editor bind:this={editorComponent} />

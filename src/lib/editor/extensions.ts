@@ -45,6 +45,7 @@ import {
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
 import { type ListenerOptions, listeners } from "./listeners";
+import { dictionaryExtension } from "./dictionaryPlugin";
 
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
@@ -99,5 +100,6 @@ export const getExtensions = (options?: ListenerOptions) => {
         }),
         listeners(options),
         annotations(),
+        dictionaryExtension,
     ];
 };

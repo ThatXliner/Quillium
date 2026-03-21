@@ -693,15 +693,6 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     }
     return true;
 };
-const dev_dontuseinprod_createSuggestion: StateCommand = ({ state, dispatch }) => {
-    createSuggestion({
-        editorSelection: state.selection,
-        state,
-        dispatch,
-        replacements: ["ur mother"],
-    });
-    return true;
-};
 function addRevisionVersionCommand(): StateCommand {
     return ({ state }) => {
         const annotation = getActiveRevisionAnnotation(state);
@@ -803,10 +794,6 @@ export const annotationKeymap: KeyBinding[] = [
     {
         key: "Mod-Alt-k",
         run: createRevisionCommand,
-    },
-    {
-        key: "Mod-b",
-        run: dev_dontuseinprod_createSuggestion,
     },
 ];
 

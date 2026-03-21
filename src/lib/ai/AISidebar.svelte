@@ -2,7 +2,7 @@
     AISidebar.svelte — Top-level container for all AI features.
 
     This component renders a floating, resizable sidebar anchored to the
-    left edge of the viewport. It acts as a shell/router for the five AI
+    left edge of the viewport. It acts as a shell/router for the four AI
     panels: Chat, Feedback, Revise, DocumentContext, and AISettings.
 
     UI states:
@@ -62,7 +62,6 @@ import Feedback from "./Feedback.svelte";
 import Revise from "./Revise.svelte";
 import AISettings from "./AISettings.svelte";
 import DocumentContext from "./DocumentContext.svelte";
-import Dictionary from "./Dictionary.svelte";
 import {
     MessageCircleIcon,
     ZapIcon,
@@ -71,12 +70,12 @@ import {
     Settings2Icon,
     CompassIcon,
     Minimize2Icon,
-    BookOpenIcon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
+import { pendingChatMessage } from "$lib/stores";
 import posthog from "$lib/posthog";
 
-type Action = null | "chat" | "feedback" | "revise" | "context" | "dictionary" | "settings";
+type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
 let action = $state<Action>(null);
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -126,15 +125,6 @@ const actions: {
         hoverClass: "hover:text-amber-600",
         requiresApiKey: true,
     },
-    {
-        id: "dictionary",
-        icon: BookOpenIcon,
-        label: "Dictionary",
-        shortcut: isMac ? "⌘⇧5" : "Ctrl+Shift+5",
-        activeClass: "text-teal-600 bg-white/60",
-        hoverClass: "hover:text-teal-600",
-        requiresApiKey: true,
-    },
 ];
 
 const panelTitles: Record<NonNullable<Action>, string> = {
@@ -142,7 +132,6 @@ const panelTitles: Record<NonNullable<Action>, string> = {
     feedback: "Get Feedback",
     revise: "Revise & Rewrite",
     context: "Document Context",
-    dictionary: "Dictionary & Thesaurus",
     settings: "AI Settings",
 };
 
@@ -289,13 +278,19 @@ $effect(() => {
     };
 });
 
+// Open Chat tab when DictionaryPopover triggers "Open in Chat"
+$effect(() => {
+    if ($pendingChatMessage !== null) {
+        selectAction("chat");
+    }
+});
+
 // Keyboard shortcuts for the sidebar
 const actionKeys: Record<string, NonNullable<Action>> = {
     "1": "chat",
     "2": "feedback",
     "3": "revise",
     "4": "context",
-    "5": "dictionary",
 };
 
 function handleKeydown(e: KeyboardEvent) {
@@ -455,7 +450,6 @@ function handleKeydown(e: KeyboardEvent) {
             <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
             <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
             <div class="absolute inset-0 overflow-y-auto {action === 'context' ? '' : 'hidden'}"><DocumentContext /></div>
-            <div class="absolute inset-0 flex flex-col {action === 'dictionary' ? '' : 'hidden'}"><Dictionary /></div>
             <div class="absolute inset-0 flex flex-col {action === 'settings' ? '' : 'hidden'}"><AISettings /></div>
         </div>
     </div>

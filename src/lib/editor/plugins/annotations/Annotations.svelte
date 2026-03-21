@@ -154,6 +154,7 @@ const sortedAnnotations = $derived(
 );
 
 const hasSelection = $derived($selectedText.length > 0);
+const isSingleWordSelection = $derived(hasSelection && !/\s/.test($selectedText) && $selectedText.length <= 60);
 const hasComments = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "comment")));
 const hasRevisions = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "revision")));
 
@@ -463,7 +464,7 @@ $effect(() => {
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
-    {#if isFloating && hasSelection && selectionY !== null && (!hasComments || !hasRevisions)}
+    {#if isFloating && hasSelection && selectionY !== null && (!hasComments || !hasRevisions || isSingleWordSelection)}
         {@const leftPx = getAnnotationLeft()}
         <div
             class="fixed z-40 flex flex-col gap-2 pointer-events-none -translate-y-1/2"
@@ -479,6 +480,12 @@ $effect(() => {
                 <div class="flex items-center gap-2 text-black/40">
                     <Kbd variant="large" keys={[mod, opt, "K"]} />
                     <span class="text-sm font-medium text-black/35">revision</span>
+                </div>
+            {/if}
+            {#if isSingleWordSelection}
+                <div class="flex items-center gap-2 text-black/40">
+                    <Kbd variant="large" keys={[mod, "B"]} />
+                    <span class="text-sm font-medium text-black/35">dictionary</span>
                 </div>
             {/if}
         </div>
