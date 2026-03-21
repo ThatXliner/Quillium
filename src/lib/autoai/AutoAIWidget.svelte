@@ -230,11 +230,11 @@ const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
     .autoai-root {
         position: fixed;
         bottom: 24px;
-        right: 24px;
+        left: 24px;
         z-index: 40;
         display: flex;
-        flex-direction: column;
-        align-items: flex-end;
+        flex-direction: column-reverse;
+        align-items: flex-start;
         gap: 8px;
     }
 
