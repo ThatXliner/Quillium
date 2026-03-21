@@ -20,10 +20,7 @@ import {
     createSuggestion,
     createRevision,
 } from "$lib/editor/plugins/annotations/index";
-import {
-    autoAISettings,
-    type AutoAIConservativeness,
-} from "./settings.svelte";
+import { autoAISettings, type AutoAIConservativeness } from "./settings.svelte";
 import { toast } from "svelte-sonner";
 
 // Only re-review if the doc changed by at least this many characters.
@@ -142,11 +139,7 @@ async function runReview(content: string, manual = false) {
 
     setAiProcessing(true);
     try {
-        const model = createModel(
-            aiSettings.provider,
-            aiSettings.apiKey,
-            aiSettings.model,
-        );
+        const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { object } = await generateObject({
             model,
             schema: AnnotationSchema,

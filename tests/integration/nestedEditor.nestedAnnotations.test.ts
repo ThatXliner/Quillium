@@ -38,12 +38,7 @@ function createView(doc: string) {
     return new EditorView({ state, parent: el });
 }
 
-function addRevision(
-    view: EditorView,
-    from: number,
-    to: number,
-    doc: string,
-): number {
+function addRevision(view: EditorView, from: number, to: number, doc: string): number {
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
@@ -53,17 +48,11 @@ function addRevision(
         activeVersionIndex: 0,
         versions: [{ doc }],
     };
-    view.dispatch(
-        view.state.update({ effects: [addAnnotation.of(annotation)] }),
-    );
+    view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
 }
 
-function addComment(
-    view: EditorView,
-    from: number,
-    to: number,
-): number {
+function addComment(view: EditorView, from: number, to: number): number {
     const annotation = createNewAnnotation(
         view.state.field(annotationField),
         EditorSelection.single(from, to),
@@ -89,53 +78,38 @@ function simulateNestedEdit(
     insert: string,
 ) {
     const rev = view.state.field(annotationField)[revId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error("No revision");
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
     const offset = rev.selection.main.from;
     view.dispatch({
         changes: { from: offset + from, to: offset + to, insert },
         effects: [_nestedEditRevision.of(revId)],
-        annotations: [
-            nestedEditorEdit.of(revId),
-            Transaction.addToHistory.of(true),
-        ],
+        annotations: [nestedEditorEdit.of(revId), Transaction.addToHistory.of(true)],
     });
 }
 
 function getVersionDoc(view: EditorView, revId: number): string {
     const rev = view.state.field(annotationField)[revId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error("No revision");
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
     return versionText(rev.versions[rev.activeVersionIndex]);
 }
 
 function getRevisionSlice(view: EditorView, revId: number): string {
     const rev = view.state.field(annotationField)[revId];
-    if (!rev || !isAnnotationOfType(rev, "revision"))
-        throw new Error("No revision");
-    return view.state.doc
-        .slice(rev.selection.main.from, rev.selection.main.to)
-        .toString();
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+    return view.state.doc.slice(rev.selection.main.from, rev.selection.main.to).toString();
 }
 
 /**
  * Apply a minimal diff (common prefix/suffix matching) to an editor,
  * replicating the algorithm in syncFromParent.
  */
-function applyMinimalDiff(
-    editor: EditorView,
-    newDoc: string,
-    addToHistory = false,
-): void {
+function applyMinimalDiff(editor: EditorView, newDoc: string, addToHistory = false): void {
     const current = editor.state.doc.toString();
     if (current === newDoc) return;
 
     const minLen = Math.min(current.length, newDoc.length);
     let prefix = 0;
-    while (
-        prefix < minLen &&
-        current.charCodeAt(prefix) === newDoc.charCodeAt(prefix)
-    ) {
+    while (prefix < minLen && current.charCodeAt(prefix) === newDoc.charCodeAt(prefix)) {
         prefix++;
     }
     let suffix = 0;
@@ -236,8 +210,7 @@ describe("minimal diff (syncFromParent algorithm) preserves annotations", () => 
         const ann = view.state.field(annotationField)[commentId];
         expect(ann).toBeDefined();
         // The annotation survived and still has nonzero width
-        const width =
-            ann.selection.main.to - ann.selection.main.from;
+        const width = ann.selection.main.to - ann.selection.main.from;
         expect(width).toBeGreaterThan(0);
     });
 
@@ -278,13 +251,9 @@ describe("nested annotation creation enters parent undo history via version stat
         };
 
         view.dispatch(
-            updateRevisionVersionState(
-                view.state,
-                revId,
-                0,
-                blobWithAnnotation as VersionState,
-                { addToHistory: true },
-            ),
+            updateRevisionVersionState(view.state, revId, 0, blobWithAnnotation as VersionState, {
+                addToHistory: true,
+            }),
         );
 
         // Verify the version state now has the annotation blob
@@ -331,13 +300,9 @@ describe("nested annotation creation enters parent undo history via version stat
         };
 
         view.dispatch(
-            updateRevisionVersionState(
-                view.state,
-                revId,
-                0,
-                blobWithAnnotation as VersionState,
-                { addToHistory: true },
-            ),
+            updateRevisionVersionState(view.state, revId, 0, blobWithAnnotation as VersionState, {
+                addToHistory: true,
+            }),
         );
 
         undo(view);
@@ -377,13 +342,9 @@ describe("nested annotation creation enters parent undo history via version stat
         };
 
         view.dispatch(
-            updateRevisionVersionState(
-                view.state,
-                revId,
-                0,
-                blobWithAnnotation as VersionState,
-                { addToHistory: true },
-            ),
+            updateRevisionVersionState(view.state, revId, 0, blobWithAnnotation as VersionState, {
+                addToHistory: true,
+            }),
         );
 
         // Undo flush
@@ -460,7 +421,7 @@ describe("undo/redo cycles preserve nested annotations via minimal diff", () => 
     });
 
     it("multiple comments survive a single minimal diff", () => {
-        const c1 = addComment(view, 0, 5);  // "hello"
+        const c1 = addComment(view, 0, 5); // "hello"
         const c2 = addComment(view, 6, 11); // "world"
 
         // Append "!" → only suffix changes
@@ -523,11 +484,9 @@ describe("multiple version state flushes are independently undoable", () => {
             },
         };
         view.dispatch(
-            updateRevisionVersionState(
-                view.state, revId, 0,
-                blob1 as VersionState,
-                { addToHistory: true },
-            ),
+            updateRevisionVersionState(view.state, revId, 0, blob1 as VersionState, {
+                addToHistory: true,
+            }),
         );
 
         // Second flush: add another annotation
@@ -555,11 +514,9 @@ describe("multiple version state flushes are independently undoable", () => {
             },
         };
         view.dispatch(
-            updateRevisionVersionState(
-                view.state, revId, 0,
-                blob2 as VersionState,
-                { addToHistory: true },
-            ),
+            updateRevisionVersionState(view.state, revId, 0, blob2 as VersionState, {
+                addToHistory: true,
+            }),
         );
 
         // Verify both annotations in blob
@@ -598,11 +555,9 @@ describe("multiple version state flushes are independently undoable", () => {
         // Flush should not change the doc text or revision range
         const blob = { doc: "hello world" };
         view.dispatch(
-            updateRevisionVersionState(
-                view.state, revId, 0,
-                blob as VersionState,
-                { addToHistory: true },
-            ),
+            updateRevisionVersionState(view.state, revId, 0, blob as VersionState, {
+                addToHistory: true,
+            }),
         );
 
         expect(view.state.doc.toString()).toBe("hello world");

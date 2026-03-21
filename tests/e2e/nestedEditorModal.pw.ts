@@ -19,9 +19,7 @@ test.describe("inline editor lifecycle", () => {
         await q.init();
     });
 
-    test("inline editor opens when revision becomes active", async ({
-        page,
-    }) => {
+    test("inline editor opens when revision becomes active", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
@@ -31,9 +29,7 @@ test.describe("inline editor lifecycle", () => {
         await q.expectInlineText("world");
     });
 
-    test("inline editor closes when cursor moves outside revision", async ({
-        page,
-    }) => {
+    test("inline editor closes when cursor moves outside revision", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
@@ -46,9 +42,7 @@ test.describe("inline editor lifecycle", () => {
         await expect(q.inlineEditor).toBeHidden({ timeout: 3_000 });
     });
 
-    test("clicking back on revision text reopens inline editor", async ({
-        page,
-    }) => {
+    test("clicking back on revision text reopens inline editor", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
@@ -83,9 +77,7 @@ test.describe("inline editor lifecycle", () => {
 // ── Modal editor lifecycle ──────────────────────────────────────────────────
 
 test.describe("modal editor lifecycle", () => {
-    test("modal opens via expand button and shows correct text", async ({
-        page,
-    }) => {
+    test("modal opens via expand button and shows correct text", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
@@ -183,9 +175,7 @@ test.describe("undo/redo across modal boundaries", () => {
         q.expectNoPageErrors();
     });
 
-    test("multiple edits in modal, close, undo all from main editor", async ({
-        page,
-    }) => {
+    test("multiple edits in modal, close, undo all from main editor", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
@@ -224,9 +214,7 @@ test.describe("undo/redo across modal boundaries", () => {
 // ── Deep nesting ────────────────────────────────────────────────────────────
 
 test.describe("deep nesting", () => {
-    test("nested annotations survive parent modal close/reopen", async ({
-        page,
-    }) => {
+    test("nested annotations survive parent modal close/reopen", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
@@ -253,16 +241,12 @@ test.describe("deep nesting", () => {
 
         // Open nested modal (first card)
         const nestedExpand = page
-            .locator(
-                "dialog[open] [data-tutorial-action='expand-revision-modal']",
-            )
+            .locator("dialog[open] [data-tutorial-action='expand-revision-modal']")
             .first();
         await expect(nestedExpand).toBeVisible({ timeout: 3_000 });
         await nestedExpand.click();
 
-        const nestedModal = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const nestedModal = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(nestedModal).toBeVisible({ timeout: 5_000 });
 
         // Close nested modal
@@ -270,22 +254,16 @@ test.describe("deep nesting", () => {
         await page.waitForTimeout(500);
 
         // Parent modal should reopen with both annotations
-        const parentModal = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const parentModal = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(parentModal).toBeVisible({ timeout: 5_000 });
 
-        const parentCards = page.locator(
-            "dialog[open] .annotation-card-inline",
-        );
+        const parentCards = page.locator("dialog[open] .annotation-card-inline");
         await expect(parentCards).toHaveCount(2, { timeout: 5_000 });
 
         q.expectNoPageErrors();
     });
 
-    test("edit at level 2, undo at level 2, verify at level 1", async ({
-        page,
-    }) => {
+    test("edit at level 2, undo at level 2, verify at level 1", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
@@ -303,16 +281,12 @@ test.describe("deep nesting", () => {
 
         // Open level 2
         const expand = page
-            .locator(
-                "dialog[open] [data-tutorial-action='expand-revision-modal']",
-            )
+            .locator("dialog[open] [data-tutorial-action='expand-revision-modal']")
             .first();
         await expect(expand).toBeVisible({ timeout: 5_000 });
         await expand.click();
 
-        const modal2 = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const modal2 = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(modal2).toBeVisible({ timeout: 8_000 });
 
         // Edit at level 2
@@ -328,9 +302,7 @@ test.describe("deep nesting", () => {
         await page.waitForTimeout(500);
 
         // Level 1 should show "hello world" unchanged
-        const parentModal = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const parentModal = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(parentModal).toBeVisible({ timeout: 5_000 });
 
         const text = await q.cmText(parentModal);
@@ -360,9 +332,7 @@ test.describe("no page errors during complex flows", () => {
         q.expectNoPageErrors();
     });
 
-    test("edit in inline, open modal, edit in modal, close, undo", async ({
-        page,
-    }) => {
+    test("edit in inline, open modal, edit in modal, close, undo", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();

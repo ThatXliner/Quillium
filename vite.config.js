@@ -8,10 +8,7 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-    plugins: [
-        sveltekit(),
-        tailwindcss(),
-    ],
+    plugins: [sveltekit(), tailwindcss()],
     define: {
         __APP_VERSION__: JSON.stringify(pkg.version),
     },

@@ -39,8 +39,13 @@ const PROVIDERS: { id: Provider; label: string; color: string }[] = [
     { id: "google", label: "Google", color: "#4285f4" },
 ];
 
-
-const MODEL_OPTIONS: Partial<Record<Provider, { id: string; label: string; description: string }[]>> & Record<"openai" | "anthropic" | "google", { id: string; label: string; description: string }[]> = {
+const MODEL_OPTIONS: Partial<
+    Record<Provider, { id: string; label: string; description: string }[]>
+> &
+    Record<
+        "openai" | "anthropic" | "google",
+        { id: string; label: string; description: string }[]
+    > = {
     openai: [
         { id: "gpt-5.4", label: "GPT-5.4", description: "Most capable" },
         {
@@ -107,20 +112,25 @@ let selectedModel = $state(loadModel());
 // "openai-codex" is stored as the provider when codex mode is active,
 // but the tab still shows "openai" — this tracks the toggle state.
 let useCodex = $state(
-    typeof localStorage !== "undefined" &&
-        localStorage.getItem(PROVIDER_KEY) === "openai-codex",
+    typeof localStorage !== "undefined" && localStorage.getItem(PROVIDER_KEY) === "openai-codex",
 );
 
 const KONAMI = [
-    "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown",
-    "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight",
-    "b", "a",
+    "ArrowUp",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowLeft",
+    "ArrowRight",
+    "b",
+    "a",
 ];
 const CODEX_UNLOCKED_KEY = "quillium-codex-unlocked";
 let konamiProgress = 0;
 let codexUnlocked = $state(
-    typeof localStorage !== "undefined" &&
-        !!localStorage.getItem(CODEX_UNLOCKED_KEY),
+    typeof localStorage !== "undefined" && !!localStorage.getItem(CODEX_UNLOCKED_KEY),
 );
 
 function onApiKeyKeydown(e: KeyboardEvent) {

@@ -45,10 +45,7 @@ export class EditorHarness {
     private constructor(doc: string) {
         const state = EditorState.create({
             doc,
-            extensions: [
-                history({ newGroupDelay: 0 }),
-                annotationExtensions(),
-            ],
+            extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
         });
         this._parent = document.createElement("div");
         document.body.appendChild(this._parent);
@@ -103,9 +100,7 @@ export class EditorHarness {
         if (!isAnnotationOfType(rev, "revision")) {
             throw new Error(`Annotation ${revisionId} is not a revision`);
         }
-        return this.view.state.doc
-            .slice(rev.selection.main.from, rev.selection.main.to)
-            .toString();
+        return this.view.state.doc.slice(rev.selection.main.from, rev.selection.main.to).toString();
     }
 
     /** Active version text for a revision annotation. */
@@ -195,15 +190,9 @@ export class EditorHarness {
         activeVersionIndex = 0,
     ): number {
         const ann = {
-            ...createNewAnnotation(
-                this.annotations,
-                EditorSelection.single(from, to),
-                "revision",
-            ),
+            ...createNewAnnotation(this.annotations, EditorSelection.single(from, to), "revision"),
             activeVersionIndex,
-            versions: versions ?? [
-                { doc: this.view.state.doc.sliceString(from, to) },
-            ],
+            versions: versions ?? [{ doc: this.view.state.doc.sliceString(from, to) }],
         };
         this.view.dispatch({
             effects: [addAnnotation.of(ann)],
@@ -259,12 +248,7 @@ export class EditorHarness {
      * Simulate a nested editor edit. `from`/`to` are positions relative to
      * the start of the revision's range.
      */
-    nestedEdit(
-        revisionId: number,
-        from: number,
-        to: number,
-        insert: string,
-    ): this {
+    nestedEdit(revisionId: number, from: number, to: number, insert: string): this {
         const rev = this.annotation(revisionId);
         if (!isAnnotationOfType(rev, "revision")) {
             throw new Error(`Annotation ${revisionId} is not a revision`);
@@ -273,10 +257,7 @@ export class EditorHarness {
         this.view.dispatch({
             changes: { from: offset + from, to: offset + to, insert },
             effects: [_nestedEditRevision.of(revisionId)],
-            annotations: [
-                nestedEditorEdit.of(revisionId),
-                Transaction.addToHistory.of(true),
-            ],
+            annotations: [nestedEditorEdit.of(revisionId), Transaction.addToHistory.of(true)],
         });
         return this;
     }
@@ -295,11 +276,7 @@ export class EditorHarness {
 
     /** Apply a suggestion replacement. */
     applySuggestion(suggestionId: number, replacementIndex = 0): this {
-        const spec = applySuggestion(
-            this.view.state,
-            suggestionId,
-            replacementIndex,
-        );
+        const spec = applySuggestion(this.view.state, suggestionId, replacementIndex);
         this.view.dispatch(spec);
         return this;
     }
@@ -307,16 +284,9 @@ export class EditorHarness {
     // ── Thread operations ───────────────────────────────────────────────
 
     /** Add a message to an annotation's thread. */
-    addThreadMessage(
-        annotationId: number,
-        message: string,
-        author = "user",
-    ): this {
+    addThreadMessage(annotationId: number, message: string, author = "user"): this {
         const ann = this.annotation(annotationId);
-        const newThread = [
-            ...ann.thread,
-            { message, author, time: Date.now() },
-        ];
+        const newThread = [...ann.thread, { message, author, time: Date.now() }];
         this.view.dispatch({
             effects: [updateThread.of({ annotationId, newThread })],
         });
@@ -327,11 +297,7 @@ export class EditorHarness {
 
     /** Switch the active version for a revision annotation. */
     switchVersion(revisionId: number, versionIndex: number): this {
-        const spec = setActiveRevisionVersion(
-            this.view.state,
-            revisionId,
-            versionIndex,
-        );
+        const spec = setActiveRevisionVersion(this.view.state, revisionId, versionIndex);
         this.view.dispatch(spec);
         return this;
     }
@@ -345,11 +311,7 @@ export class EditorHarness {
 
     /** Delete a version from a revision. */
     deleteVersion(revisionId: number, versionIndex: number): this {
-        const spec = deleteRevisionVersion(
-            this.view.state,
-            revisionId,
-            versionIndex,
-        );
+        const spec = deleteRevisionVersion(this.view.state, revisionId, versionIndex);
         this.view.dispatch(spec);
         return this;
     }
@@ -407,10 +369,7 @@ export class EditorHarness {
         for (const ann of Object.values(this.annotations)) {
             if (!isAnnotationOfType(ann, "revision")) continue;
             const slice = this.view.state.doc
-                .sliceString(
-                    ann.selection.main.from,
-                    ann.selection.main.to,
-                )
+                .sliceString(ann.selection.main.from, ann.selection.main.to)
                 .toString();
             const vDoc = versionText(ann.versions[ann.activeVersionIndex]);
             if (slice !== vDoc) {

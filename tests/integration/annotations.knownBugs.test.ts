@@ -25,9 +25,7 @@ describe("Regression: replace covering annotation range removes it cleanly", () 
 
         const ann = h.annotations[id];
         if (ann) {
-            expect(ann.selection.main.from).toBeLessThanOrEqual(
-                ann.selection.main.to,
-            );
+            expect(ann.selection.main.from).toBeLessThanOrEqual(ann.selection.main.to);
         }
     });
 
@@ -39,9 +37,7 @@ describe("Regression: replace covering annotation range removes it cleanly", () 
 
         const ann = h.annotations[id];
         if (ann) {
-            expect(ann.selection.main.from).toBeLessThanOrEqual(
-                ann.selection.main.to,
-            );
+            expect(ann.selection.main.from).toBeLessThanOrEqual(ann.selection.main.to);
         }
     });
 
@@ -53,9 +49,7 @@ describe("Regression: replace covering annotation range removes it cleanly", () 
 
         const ann = h.annotations[id];
         if (ann) {
-            expect(ann.selection.main.from).toBeLessThanOrEqual(
-                ann.selection.main.to,
-            );
+            expect(ann.selection.main.from).toBeLessThanOrEqual(ann.selection.main.to);
         }
     });
 });

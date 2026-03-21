@@ -310,10 +310,7 @@ describe("multi-annotation undo/redo sequences", () => {
 describe("version switching edge cases", () => {
     it("switch version then undo restores previous version", () => {
         h = EditorHarness.create("hello");
-        const id = h.addRevision(0, 5, [
-            { doc: "hello" },
-            { doc: "world" },
-        ]);
+        const id = h.addRevision(0, 5, [{ doc: "hello" }, { doc: "world" }]);
 
         h.switchVersion(id, 1);
         expect(h.doc).toBe("world");
@@ -327,10 +324,7 @@ describe("version switching edge cases", () => {
 
     it("edit, switch version, undo switch, undo edit", () => {
         h = EditorHarness.create("hello");
-        const id = h.addRevision(0, 5, [
-            { doc: "hello" },
-            { doc: "hi" },
-        ]);
+        const id = h.addRevision(0, 5, [{ doc: "hello" }, { doc: "hi" }]);
 
         h.nestedInsert(id, 5, "!");
         expect(h.doc).toBe("hello!");
@@ -349,11 +343,7 @@ describe("version switching edge cases", () => {
 
     it("rapid version switching back and forth with undo", () => {
         h = EditorHarness.create("aaa");
-        const id = h.addRevision(0, 3, [
-            { doc: "aaa" },
-            { doc: "bbb" },
-            { doc: "ccc" },
-        ]);
+        const id = h.addRevision(0, 3, [{ doc: "aaa" }, { doc: "bbb" }, { doc: "ccc" }]);
 
         h.switchVersion(id, 1);
         expect(h.doc).toBe("bbb");

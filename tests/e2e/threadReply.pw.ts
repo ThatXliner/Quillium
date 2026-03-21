@@ -41,9 +41,7 @@ test.describe("thread reply send button", () => {
     test.beforeEach(async ({ page }) => {
         await installTauriMock(page);
         await page.goto("/");
-        await expect(
-            page.locator("#editor-document .cm-content"),
-        ).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
     });
 
     test("clicking Send button submits reply text", async ({ page }) => {
@@ -62,9 +60,7 @@ test.describe("thread reply send button", () => {
         await sendButton.click();
 
         // The reply should appear in the thread
-        await expect(
-            page.locator("text=I agree, let me fix it"),
-        ).toBeVisible({ timeout: 5000 });
+        await expect(page.locator("text=I agree, let me fix it")).toBeVisible({ timeout: 5000 });
 
         // The textarea should be cleared after sending
         await expect(replyBox).toHaveValue("");

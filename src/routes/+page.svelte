@@ -55,7 +55,7 @@ function showTutorialOnFirstVisit() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-if ((e.metaKey || e.ctrlKey) && e.key === "o") {
+    if ((e.metaKey || e.ctrlKey) && e.key === "o") {
         e.preventDefault();
         goToLibrary();
     }
@@ -101,14 +101,16 @@ onMount(() => {
     showTutorialOnFirstVisit();
 
     // Check for updates silently in the background.
-    check().then((update) => {
-        if (update?.available) {
-            updateAvailable = true;
-            updateVersion = update.version;
-        }
-    }).catch(() => {
-        // Ignore — no network or endpoint not set up yet.
-    });
+    check()
+        .then((update) => {
+            if (update?.available) {
+                updateAvailable = true;
+                updateVersion = update.version;
+            }
+        })
+        .catch(() => {
+            // Ignore — no network or endpoint not set up yet.
+        });
 
     // Handle restore-backup events dispatched by ErrorBanner.svelte.
     function handleRestoreBackup(e: Event) {

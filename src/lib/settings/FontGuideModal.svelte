@@ -31,7 +31,9 @@ $effect(() => {
 $effect(() => {
     if (!categoryTrackEl) return;
     const buttons = categoryTrackEl.querySelectorAll<HTMLButtonElement>(".category-tab-btn");
-    const idx = categoryOptions(currentFonts()).findIndex((category) => category.value === activeCategory);
+    const idx = categoryOptions(currentFonts()).findIndex(
+        (category) => category.value === activeCategory,
+    );
     const btn = idx >= 0 ? buttons[idx] : undefined;
     if (!btn) return;
     categoryPillStyle = `--category-pill-width: ${btn.offsetWidth}px; --category-pill-x: ${btn.offsetLeft - 3}px;`;
@@ -59,7 +61,14 @@ const SAMPLE =
         ? "Sphinx of black quartz, judge my vow."
         : "The quick brown fox jumps over the lazy dog.";
 
-const CATEGORY_ORDER = ["Serif", "Sans-Serif", "Typewriter", "Handwriting", "Misc", "Accessibility"];
+const CATEGORY_ORDER = [
+    "Serif",
+    "Sans-Serif",
+    "Typewriter",
+    "Handwriting",
+    "Misc",
+    "Accessibility",
+];
 const FILTER_GROUPS = [
     { value: "all", label: "All", matches: (_category: string) => true },
     { value: "serif", label: "Serif", matches: (category: string) => category === "Serif" },
@@ -67,7 +76,8 @@ const FILTER_GROUPS = [
     {
         value: "misc",
         label: "Misc",
-        matches: (category: string) => ["Typewriter", "Handwriting", "Misc", "Accessibility"].includes(category),
+        matches: (category: string) =>
+            ["Typewriter", "Handwriting", "Misc", "Accessibility"].includes(category),
     },
 ] as const;
 
@@ -82,11 +92,14 @@ function sortedFonts(fonts: typeof FONTS, pickKey: "docFeatured" | "uiFeatured")
 }
 
 const docFonts = sortedFonts(FONTS, "docFeatured");
-const uiFonts = sortedFonts(FONTS.filter((f) => f.uiFont), "uiFeatured");
+const uiFonts = sortedFonts(
+    FONTS.filter((f) => f.uiFont),
+    "uiFeatured",
+);
 
 function categoryOptions(fonts: typeof FONTS) {
-    return FILTER_GROUPS.filter((group) =>
-        group.value === "all" || fonts.some((font) => group.matches(font.category)),
+    return FILTER_GROUPS.filter(
+        (group) => group.value === "all" || fonts.some((font) => group.matches(font.category)),
     );
 }
 
@@ -102,7 +115,8 @@ function currentFonts() {
 
 $effect(() => {
     const visibleFonts = currentFonts();
-    if (!categoryOptions(visibleFonts).some((category) => category.value === activeCategory)) activeCategory = "all";
+    if (!categoryOptions(visibleFonts).some((category) => category.value === activeCategory))
+        activeCategory = "all";
 });
 </script>
 

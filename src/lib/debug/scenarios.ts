@@ -1145,11 +1145,13 @@ export const scenarios: Scenario[] = [
             createSuggestion({
                 state: view.state,
                 dispatch: (tr) => view.dispatch(tr),
-                targetText: "we were all going direct to Heaven, we were all going direct the other way",
+                targetText:
+                    "we were all going direct to Heaven, we were all going direct the other way",
                 replacements: [
                     {
                         text: "all going direct to Heaven, all going direct the other way",
-                        rationale: "Dropping 'we were' tightens the parallel and sharpens the irony",
+                        rationale:
+                            "Dropping 'we were' tightens the parallel and sharpens the irony",
                     },
                 ],
                 author: "Auto",

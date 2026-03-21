@@ -102,11 +102,7 @@ type Command =
 
 // ── Invariant checker ───────────────────────────────────────────────────────
 
-function assertInvariants(
-    h: EditorHarness,
-    label: string,
-    versionMgmtOccurred = false,
-): void {
+function assertInvariants(h: EditorHarness, label: string, versionMgmtOccurred = false): void {
     const docLen = h.doc.length;
 
     for (const ann of Object.values(h.annotations)) {
@@ -118,10 +114,9 @@ function assertInvariants(
         // 1. Ranges in bounds and non-inverted
         expect(from, `${label}: ann ${ann.id} from`).toBeGreaterThanOrEqual(0);
         expect(to, `${label}: ann ${ann.id} to`).toBeLessThanOrEqual(docLen);
-        expect(
-            from,
-            `${label}: ann ${ann.id} inverted range [${from}, ${to}]`,
-        ).toBeLessThanOrEqual(to);
+        expect(from, `${label}: ann ${ann.id} inverted range [${from}, ${to}]`).toBeLessThanOrEqual(
+            to,
+        );
 
         // 2. Revision-specific invariants
         if (isAnnotationOfType(ann, "revision")) {
@@ -144,10 +139,7 @@ function assertInvariants(
             if (from < to && !versionMgmtOccurred) {
                 const slice = h.revisionSlice(ann.id);
                 const vDoc = h.versionDoc(ann.id);
-                expect(
-                    vDoc,
-                    `${label}: rev ${ann.id} version.doc`,
-                ).toBe(slice);
+                expect(vDoc, `${label}: rev ${ann.id} version.doc`).toBe(slice);
             }
         }
 
@@ -165,11 +157,7 @@ function assertInvariants(
     expect(h.redoDepth, `${label}: redoDepth`).toBeGreaterThanOrEqual(0);
 }
 
-const VERSION_MGMT_TYPES = new Set([
-    "addNewVersion",
-    "deleteVersion",
-    "switchVersion",
-]);
+const VERSION_MGMT_TYPES = new Set(["addNewVersion", "deleteVersion", "switchVersion"]);
 
 function isVersionMgmtCmd(cmd: Command): boolean {
     return VERSION_MGMT_TYPES.has(cmd.type);
@@ -195,12 +183,7 @@ function pickAnyAnnotation(h: EditorHarness, idx: number): number | null {
     return ids[Math.abs(idx) % ids.length];
 }
 
-function clampRange(
-    from: number,
-    to: number,
-    docLen: number,
-    minLen = 1,
-): [number, number] | null {
+function clampRange(from: number, to: number, docLen: number, minLen = 1): [number, number] | null {
     if (docLen < minLen) return null;
     const f = Math.min(from, docLen - minLen);
     const t = Math.min(Math.max(to, f + minLen), docLen);
@@ -270,24 +253,14 @@ function executeCommand(h: EditorHarness, cmd: Command): boolean {
                 if (revId === null) return false;
                 const rev = h.annotation(revId);
                 if (!isAnnotationOfType(rev, "revision")) return false;
-                const rangeLen =
-                    rev.selection.main.to - rev.selection.main.from;
-                h.nestedInsert(
-                    revId,
-                    Math.min(Math.abs(cmd.relPos), rangeLen),
-                    cmd.text,
-                );
+                const rangeLen = rev.selection.main.to - rev.selection.main.from;
+                h.nestedInsert(revId, Math.min(Math.abs(cmd.relPos), rangeLen), cmd.text);
                 return true;
             }
             case "nestedDelete": {
                 const revId = pickRevision(h, cmd.revIdx);
                 if (revId === null) return false;
-                const r = revisionRelRange(
-                    h,
-                    revId,
-                    cmd.relFrom,
-                    cmd.relTo,
-                );
+                const r = revisionRelRange(h, revId, cmd.relFrom, cmd.relTo);
                 if (!r) return false;
                 h.nestedDelete(revId, r[0], r[1]);
                 return true;
@@ -295,12 +268,7 @@ function executeCommand(h: EditorHarness, cmd: Command): boolean {
             case "nestedReplace": {
                 const revId = pickRevision(h, cmd.revIdx);
                 if (revId === null) return false;
-                const r = revisionRelRange(
-                    h,
-                    revId,
-                    cmd.relFrom,
-                    cmd.relTo,
-                );
+                const r = revisionRelRange(h, revId, cmd.relFrom, cmd.relTo);
                 if (!r) return false;
                 h.nestedEdit(revId, r[0], r[1], cmd.text);
                 return true;
@@ -321,8 +289,7 @@ function executeCommand(h: EditorHarness, cmd: Command): boolean {
                 const rev = h.annotation(revId);
                 if (!isAnnotationOfType(rev, "revision")) return false;
                 if (rev.versions.length < 2) return false;
-                const target =
-                    Math.abs(cmd.versionIdx) % rev.versions.length;
+                const target = Math.abs(cmd.versionIdx) % rev.versions.length;
                 if (target === rev.activeVersionIndex) return false;
                 h.switchVersion(revId, target);
                 return true;
@@ -349,8 +316,7 @@ function executeCommand(h: EditorHarness, cmd: Command): boolean {
                 const sug = h.annotation(sugId);
                 if (!isAnnotationOfType(sug, "suggestion")) return false;
                 if (sug.replacements.length === 0) return false;
-                const ri =
-                    Math.abs(cmd.replacementIdx) % sug.replacements.length;
+                const ri = Math.abs(cmd.replacementIdx) % sug.replacements.length;
                 h.applySuggestion(sugId, ri);
                 return true;
             }
@@ -370,13 +336,11 @@ const arbInsert: fc.Arbitrary<InsertCmd> = fc
     .tuple(arbPos, arbText)
     .map(([pos, text]) => ({ type: "insert", pos, text }));
 
-const arbDelete: fc.Arbitrary<DeleteCmd> = fc
-    .tuple(arbPos, arbPos)
-    .map(([a, b]) => ({
-        type: "delete",
-        from: Math.min(a, b),
-        to: Math.max(a, b),
-    }));
+const arbDelete: fc.Arbitrary<DeleteCmd> = fc.tuple(arbPos, arbPos).map(([a, b]) => ({
+    type: "delete",
+    from: Math.min(a, b),
+    to: Math.max(a, b),
+}));
 
 const arbReplace: fc.Arbitrary<ReplaceCmd> = fc
     .tuple(arbPos, arbPos, arbText)
@@ -387,21 +351,17 @@ const arbReplace: fc.Arbitrary<ReplaceCmd> = fc
         text,
     }));
 
-const arbAddRevision: fc.Arbitrary<AddRevisionCmd> = fc
-    .tuple(arbPos, arbPos)
-    .map(([a, b]) => ({
-        type: "addRevision",
-        from: Math.min(a, b),
-        to: Math.max(a, b),
-    }));
+const arbAddRevision: fc.Arbitrary<AddRevisionCmd> = fc.tuple(arbPos, arbPos).map(([a, b]) => ({
+    type: "addRevision",
+    from: Math.min(a, b),
+    to: Math.max(a, b),
+}));
 
-const arbAddComment: fc.Arbitrary<AddCommentCmd> = fc
-    .tuple(arbPos, arbPos)
-    .map(([a, b]) => ({
-        type: "addComment",
-        from: Math.min(a, b),
-        to: Math.max(a, b),
-    }));
+const arbAddComment: fc.Arbitrary<AddCommentCmd> = fc.tuple(arbPos, arbPos).map(([a, b]) => ({
+    type: "addComment",
+    from: Math.min(a, b),
+    to: Math.max(a, b),
+}));
 
 const arbAddSuggestion: fc.Arbitrary<AddSuggestionCmd> = fc
     .tuple(arbPos, arbPos, arbText)
@@ -412,9 +372,10 @@ const arbAddSuggestion: fc.Arbitrary<AddSuggestionCmd> = fc
         replacement,
     }));
 
-const arbRemoveAnnotation: fc.Arbitrary<RemoveAnnotationCmd> = arbIdx.map(
-    (annIdx) => ({ type: "removeAnnotation", annIdx }),
-);
+const arbRemoveAnnotation: fc.Arbitrary<RemoveAnnotationCmd> = arbIdx.map((annIdx) => ({
+    type: "removeAnnotation",
+    annIdx,
+}));
 
 const arbNestedInsert: fc.Arbitrary<NestedInsertCmd> = fc
     .tuple(arbIdx, arbPos, arbText)
@@ -455,9 +416,10 @@ const arbSwitchVersion: fc.Arbitrary<SwitchVersionCmd> = fc
         versionIdx,
     }));
 
-const arbAddNewVersion: fc.Arbitrary<AddNewVersionCmd> = arbIdx.map(
-    (revIdx) => ({ type: "addNewVersion", revIdx }),
-);
+const arbAddNewVersion: fc.Arbitrary<AddNewVersionCmd> = arbIdx.map((revIdx) => ({
+    type: "addNewVersion",
+    revIdx,
+}));
 
 const arbDeleteVersion: fc.Arbitrary<DeleteVersionCmd> = fc
     .tuple(arbIdx, fc.integer({ min: 0, max: 10 }))
@@ -505,126 +467,130 @@ describe("annotation state machine (property-based)", () => {
         harness?.destroy();
     });
 
-    it("invariants hold after every step — short sequences (30 steps, 500 runs)", { timeout: 30_000 }, () => {
-        fc.assert(
-            fc.property(
-                arbText,
-                fc.array(arbCommand, { minLength: 5, maxLength: 30 }),
-                (initialDoc, commands) => {
-                    harness = EditorHarness.create(initialDoc);
-                    let vMgmt = false;
-                    for (let i = 0; i < commands.length; i++) {
-                        if (isVersionMgmtCmd(commands[i])) vMgmt = true;
-                        if (executeCommand(harness, commands[i])) {
-                            assertInvariants(
-                                harness,
-                                `step ${i} (${commands[i].type})`,
-                                vMgmt,
-                            );
+    it(
+        "invariants hold after every step — short sequences (30 steps, 500 runs)",
+        { timeout: 30_000 },
+        () => {
+            fc.assert(
+                fc.property(
+                    arbText,
+                    fc.array(arbCommand, { minLength: 5, maxLength: 30 }),
+                    (initialDoc, commands) => {
+                        harness = EditorHarness.create(initialDoc);
+                        let vMgmt = false;
+                        for (let i = 0; i < commands.length; i++) {
+                            if (isVersionMgmtCmd(commands[i])) vMgmt = true;
+                            if (executeCommand(harness, commands[i])) {
+                                assertInvariants(harness, `step ${i} (${commands[i].type})`, vMgmt);
+                            }
                         }
-                    }
-                    harness.destroy();
-                },
-            ),
-            { numRuns: 500, endOnFailure: true },
-        );
-    });
+                        harness.destroy();
+                    },
+                ),
+                { numRuns: 500, endOnFailure: true },
+            );
+        },
+    );
 
-    it("invariants hold after every step — medium sequences (80 steps, 200 runs)", { timeout: 30_000 }, () => {
-        fc.assert(
-            fc.property(
-                arbText,
-                fc.array(arbCommand, { minLength: 20, maxLength: 80 }),
-                (initialDoc, commands) => {
-                    harness = EditorHarness.create(initialDoc);
-                    let vMgmt = false;
-                    for (let i = 0; i < commands.length; i++) {
-                        if (isVersionMgmtCmd(commands[i])) vMgmt = true;
-                        if (executeCommand(harness, commands[i])) {
-                            assertInvariants(
-                                harness,
-                                `step ${i} (${commands[i].type})`,
-                                vMgmt,
-                            );
+    it(
+        "invariants hold after every step — medium sequences (80 steps, 200 runs)",
+        { timeout: 30_000 },
+        () => {
+            fc.assert(
+                fc.property(
+                    arbText,
+                    fc.array(arbCommand, { minLength: 20, maxLength: 80 }),
+                    (initialDoc, commands) => {
+                        harness = EditorHarness.create(initialDoc);
+                        let vMgmt = false;
+                        for (let i = 0; i < commands.length; i++) {
+                            if (isVersionMgmtCmd(commands[i])) vMgmt = true;
+                            if (executeCommand(harness, commands[i])) {
+                                assertInvariants(harness, `step ${i} (${commands[i].type})`, vMgmt);
+                            }
                         }
-                    }
-                    harness.destroy();
-                },
-            ),
-            { numRuns: 200, endOnFailure: true },
-        );
-    });
+                        harness.destroy();
+                    },
+                ),
+                { numRuns: 200, endOnFailure: true },
+            );
+        },
+    );
 
-    it("invariants hold after every step — long sequences (200 steps, 50 runs)", { timeout: 30_000 }, () => {
-        fc.assert(
-            fc.property(
-                arbText,
-                fc.array(arbCommand, { minLength: 50, maxLength: 200 }),
-                (initialDoc, commands) => {
-                    harness = EditorHarness.create(initialDoc);
-                    let vMgmt = false;
-                    for (let i = 0; i < commands.length; i++) {
-                        if (isVersionMgmtCmd(commands[i])) vMgmt = true;
-                        if (executeCommand(harness, commands[i])) {
-                            assertInvariants(
-                                harness,
-                                `step ${i} (${commands[i].type})`,
-                                vMgmt,
-                            );
+    it(
+        "invariants hold after every step — long sequences (200 steps, 50 runs)",
+        { timeout: 30_000 },
+        () => {
+            fc.assert(
+                fc.property(
+                    arbText,
+                    fc.array(arbCommand, { minLength: 50, maxLength: 200 }),
+                    (initialDoc, commands) => {
+                        harness = EditorHarness.create(initialDoc);
+                        let vMgmt = false;
+                        for (let i = 0; i < commands.length; i++) {
+                            if (isVersionMgmtCmd(commands[i])) vMgmt = true;
+                            if (executeCommand(harness, commands[i])) {
+                                assertInvariants(harness, `step ${i} (${commands[i].type})`, vMgmt);
+                            }
                         }
-                    }
-                    harness.destroy();
-                },
-            ),
-            { numRuns: 50, endOnFailure: true },
-        );
-    });
+                        harness.destroy();
+                    },
+                ),
+                { numRuns: 50, endOnFailure: true },
+            );
+        },
+    );
 
-    it("full undo → full redo restores doc (forward-only commands, 40 steps)", { timeout: 30_000 }, () => {
-        const arbForwardCmd = fc.oneof(
-            { weight: 3, arbitrary: arbInsert },
-            { weight: 2, arbitrary: arbAddRevision },
-            { weight: 1, arbitrary: arbAddComment },
-            { weight: 1, arbitrary: arbAddSuggestion },
-            { weight: 3, arbitrary: arbNestedInsert },
-            { weight: 1, arbitrary: arbNestedReplace },
-            { weight: 1, arbitrary: arbAddNewVersion },
-            { weight: 1, arbitrary: arbApplySuggestion },
-        );
+    it(
+        "full undo → full redo restores doc (forward-only commands, 40 steps)",
+        { timeout: 30_000 },
+        () => {
+            const arbForwardCmd = fc.oneof(
+                { weight: 3, arbitrary: arbInsert },
+                { weight: 2, arbitrary: arbAddRevision },
+                { weight: 1, arbitrary: arbAddComment },
+                { weight: 1, arbitrary: arbAddSuggestion },
+                { weight: 3, arbitrary: arbNestedInsert },
+                { weight: 1, arbitrary: arbNestedReplace },
+                { weight: 1, arbitrary: arbAddNewVersion },
+                { weight: 1, arbitrary: arbApplySuggestion },
+            );
 
-        fc.assert(
-            fc.property(
-                arbText,
-                fc.array(arbForwardCmd, { minLength: 3, maxLength: 40 }),
-                (initialDoc, commands) => {
-                    harness = EditorHarness.create(initialDoc);
-                    let vMgmt = false;
+            fc.assert(
+                fc.property(
+                    arbText,
+                    fc.array(arbForwardCmd, { minLength: 3, maxLength: 40 }),
+                    (initialDoc, commands) => {
+                        harness = EditorHarness.create(initialDoc);
+                        let vMgmt = false;
 
-                    for (const cmd of commands) {
-                        if (isVersionMgmtCmd(cmd)) vMgmt = true;
-                        executeCommand(harness, cmd);
-                    }
-                    const finalDoc = harness.doc;
+                        for (const cmd of commands) {
+                            if (isVersionMgmtCmd(cmd)) vMgmt = true;
+                            executeCommand(harness, cmd);
+                        }
+                        const finalDoc = harness.doc;
 
-                    // Full undo
-                    while (harness.undoDepth > 0) {
-                        harness.undo();
-                        assertInvariants(harness, "undo pass", vMgmt);
-                    }
+                        // Full undo
+                        while (harness.undoDepth > 0) {
+                            harness.undo();
+                            assertInvariants(harness, "undo pass", vMgmt);
+                        }
 
-                    // Full redo
-                    while (harness.redoDepth > 0) {
-                        harness.redo();
-                        assertInvariants(harness, "redo pass", vMgmt);
-                    }
+                        // Full redo
+                        while (harness.redoDepth > 0) {
+                            harness.redo();
+                            assertInvariants(harness, "redo pass", vMgmt);
+                        }
 
-                    expect(harness.doc).toBe(finalDoc);
-                    harness.destroy();
-                },
-            ),
-            { numRuns: 200, endOnFailure: true },
-        );
-    });
+                        expect(harness.doc).toBe(finalDoc);
+                        harness.destroy();
+                    },
+                ),
+                { numRuns: 200, endOnFailure: true },
+            );
+        },
+    );
 });
 
 // ── Targeted property tests ─────────────────────────────────────────────────
@@ -638,23 +604,16 @@ describe("targeted property tests", () => {
 
     it("inserting at every position relative to a revision is safe", () => {
         fc.assert(
-            fc.property(
-                fc.integer({ min: 0, max: 20 }),
-                arbText,
-                (insertPos, insertText) => {
-                    harness = EditorHarness.create("abcdefghij");
-                    harness.addRevision(2, 8);
-                    harness.insert(
-                        Math.min(insertPos, harness.doc.length),
-                        insertText,
-                    );
-                    assertInvariants(harness, `insert at ${insertPos}`);
-                    harness.undo();
-                    assertInvariants(harness, "after undo");
-                    expect(harness.doc).toBe("abcdefghij");
-                    harness.destroy();
-                },
-            ),
+            fc.property(fc.integer({ min: 0, max: 20 }), arbText, (insertPos, insertText) => {
+                harness = EditorHarness.create("abcdefghij");
+                harness.addRevision(2, 8);
+                harness.insert(Math.min(insertPos, harness.doc.length), insertText);
+                assertInvariants(harness, `insert at ${insertPos}`);
+                harness.undo();
+                assertInvariants(harness, "after undo");
+                expect(harness.doc).toBe("abcdefghij");
+                harness.destroy();
+            }),
             { numRuns: 200 },
         );
     });
@@ -690,11 +649,7 @@ describe("targeted property tests", () => {
                     harness = EditorHarness.create(initialDoc || "x");
                     const docLen = harness.doc.length;
                     const revId = harness.addRevision(0, docLen);
-                    harness.nestedInsert(
-                        revId,
-                        Math.min(relPos, docLen),
-                        insertText,
-                    );
+                    harness.nestedInsert(revId, Math.min(relPos, docLen), insertText);
                     const afterInsert = harness.doc;
                     harness.undo();
                     assertInvariants(harness, "after undo");
@@ -710,66 +665,54 @@ describe("targeted property tests", () => {
 
     it("N undos then N redos is identity for nested inserts (200 runs)", () => {
         fc.assert(
-            fc.property(
-                fc.array(arbText, { minLength: 1, maxLength: 12 }),
-                (texts) => {
-                    harness = EditorHarness.create("base");
-                    const revId = harness.addRevision(0, 4);
-                    let offset = 4;
-                    for (const text of texts) {
-                        harness.nestedInsert(revId, offset, text);
-                        offset += text.length;
-                    }
-                    const finalDoc = harness.doc;
-                    for (let i = 0; i < texts.length; i++) {
-                        harness.undo();
-                        assertInvariants(harness, `undo #${i}`);
-                    }
-                    expect(harness.doc).toBe("base");
-                    for (let i = 0; i < texts.length; i++) {
-                        harness.redo();
-                        assertInvariants(harness, `redo #${i}`);
-                    }
-                    expect(harness.doc).toBe(finalDoc);
-                    harness.destroy();
-                },
-            ),
+            fc.property(fc.array(arbText, { minLength: 1, maxLength: 12 }), (texts) => {
+                harness = EditorHarness.create("base");
+                const revId = harness.addRevision(0, 4);
+                let offset = 4;
+                for (const text of texts) {
+                    harness.nestedInsert(revId, offset, text);
+                    offset += text.length;
+                }
+                const finalDoc = harness.doc;
+                for (let i = 0; i < texts.length; i++) {
+                    harness.undo();
+                    assertInvariants(harness, `undo #${i}`);
+                }
+                expect(harness.doc).toBe("base");
+                for (let i = 0; i < texts.length; i++) {
+                    harness.redo();
+                    assertInvariants(harness, `redo #${i}`);
+                }
+                expect(harness.doc).toBe(finalDoc);
+                harness.destroy();
+            }),
             { numRuns: 200 },
         );
     });
 
     it("multiple revisions with interleaved edits (100 runs)", () => {
         fc.assert(
-            fc.property(
-                fc.array(arbText, { minLength: 1, maxLength: 10 }),
-                (edits) => {
-                    harness = EditorHarness.create("aaaa bbbb cccc");
-                    const r1 = harness.addRevision(0, 4);
-                    const r2 = harness.addRevision(5, 9);
-                    const r3 = harness.addRevision(10, 14);
-                    const revIds = [r1, r2, r3];
-                    for (let i = 0; i < edits.length; i++) {
-                        const revId = revIds[i % revIds.length];
-                        try {
-                            const rev = harness.annotation(revId);
-                            if (!isAnnotationOfType(rev, "revision")) continue;
-                            const len =
-                                rev.selection.main.to -
-                                rev.selection.main.from;
-                            if (len === 0) continue;
-                            harness.nestedInsert(
-                                revId,
-                                Math.min(1, len),
-                                edits[i],
-                            );
-                            assertInvariants(harness, `edit ${i}`);
-                        } catch {
-                            // revision removed
-                        }
+            fc.property(fc.array(arbText, { minLength: 1, maxLength: 10 }), (edits) => {
+                harness = EditorHarness.create("aaaa bbbb cccc");
+                const r1 = harness.addRevision(0, 4);
+                const r2 = harness.addRevision(5, 9);
+                const r3 = harness.addRevision(10, 14);
+                const revIds = [r1, r2, r3];
+                for (let i = 0; i < edits.length; i++) {
+                    const revId = revIds[i % revIds.length];
+                    try {
+                        const rev = harness.annotation(revId);
+                        if (!isAnnotationOfType(rev, "revision")) continue;
+                        const len = rev.selection.main.to - rev.selection.main.from;
+                        if (len === 0) continue;
+                        harness.nestedInsert(revId, Math.min(1, len), edits[i]);
+                        assertInvariants(harness, `edit ${i}`);
+                    } catch {
+                        // revision removed
                     }
-                    harness.destroy();
-                },
-            ),
+                }
+                harness.destroy();
+            }),
             { numRuns: 100 },
         );
     });
@@ -828,10 +771,7 @@ describe("targeted property tests", () => {
                     harness = EditorHarness.create(initialDoc || "x");
                     for (let i = 0; i < commands.length; i++) {
                         if (executeCommand(harness, commands[i])) {
-                            assertInvariants(
-                                harness,
-                                `step ${i} (${commands[i].type})`,
-                            );
+                            assertInvariants(harness, `step ${i} (${commands[i].type})`);
                         }
                     }
                     harness.destroy();

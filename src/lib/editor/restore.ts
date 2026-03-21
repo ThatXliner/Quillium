@@ -46,10 +46,7 @@ type RawNestedAnnotation = {
  */
 function healNestedAnnotations(version: VersionState): VersionState {
     const raw = version as { annotationField?: Record<string, RawNestedAnnotation> };
-    if (
-        raw.annotationField == null ||
-        typeof raw.annotationField !== "object"
-    ) {
+    if (raw.annotationField == null || typeof raw.annotationField !== "object") {
         return version;
     }
 
@@ -72,12 +69,7 @@ function healNestedAnnotations(version: VersionState): VersionState {
         for (const r of ranges) {
             // If positions are already in range, extract the anchor text
             // and verify it still matches.
-            if (
-                r.anchor >= 0 &&
-                r.anchor <= docLen &&
-                r.head >= 0 &&
-                r.head <= docLen
-            ) {
+            if (r.anchor >= 0 && r.anchor <= docLen && r.head >= 0 && r.head <= docLen) {
                 newRanges.push(r);
                 continue;
             }

@@ -8,7 +8,13 @@ import { QuilliumPage } from "./QuilliumPage";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function qp(page: Parameters<typeof test>[1] extends (args: infer A) => unknown ? A extends { page: infer P } ? P : never : never) {
+function qp(
+    page: Parameters<typeof test>[1] extends (args: infer A) => unknown
+        ? A extends { page: infer P }
+            ? P
+            : never
+        : never,
+) {
     return new QuilliumPage(page);
 }
 
@@ -63,9 +69,7 @@ test.describe("undo/redo chains", () => {
         expect(t2).not.toContain("bbb");
     });
 
-    test("undo after creating revision restores original text", async ({
-        page,
-    }) => {
+    test("undo after creating revision restores original text", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
@@ -78,9 +82,7 @@ test.describe("undo/redo chains", () => {
         await q.expectEditorText("hello world");
     });
 
-    test("type, create comment, delete text, undo restores text + comment", async ({
-        page,
-    }) => {
+    test("type, create comment, delete text, undo restores text + comment", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.init();
@@ -116,9 +118,7 @@ test.describe("selection behavior", () => {
         await expect(q.statusBar).toContainText("11 total");
     });
 
-    test("status bar shows selection word and char count", async ({
-        page,
-    }) => {
+    test("status bar shows selection word and char count", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("one two three");
@@ -130,9 +130,7 @@ test.describe("selection behavior", () => {
         await expect(q.statusBar).toContainText("13 total");
     });
 
-    test("partial selection shows selected vs total counts", async ({
-        page,
-    }) => {
+    test("partial selection shows selected vs total counts", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world foo bar");
@@ -176,9 +174,7 @@ test.describe("status bar", () => {
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 
 test.describe("keyboard shortcuts", () => {
-    test("Cmd+Alt+M creates comment when text is selected", async ({
-        page,
-    }) => {
+    test("Cmd+Alt+M creates comment when text is selected", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
@@ -186,15 +182,11 @@ test.describe("keyboard shortcuts", () => {
         await q.createComment();
 
         // Pre-comment composer should appear
-        const textarea = page.locator(
-            "textarea[placeholder='Add a comment…']",
-        );
+        const textarea = page.locator("textarea[placeholder='Add a comment…']");
         await expect(textarea).toBeVisible({ timeout: 5_000 });
     });
 
-    test("Cmd+Alt+K creates revision when text is selected", async ({
-        page,
-    }) => {
+    test("Cmd+Alt+K creates revision when text is selected", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");
@@ -216,18 +208,14 @@ test.describe("keyboard shortcuts", () => {
 
         await q.escape();
         // Sidebar should collapse
-        await expect(
-            page.locator("#ai-sidebar .overflow-x-auto"),
-        ).not.toBeVisible();
+        await expect(page.locator("#ai-sidebar .overflow-x-auto")).not.toBeVisible();
     });
 });
 
 // ── Settings effects ────────────────────────────────────────────────────────
 
 test.describe("settings effects", () => {
-    test("atomicRevisions=false allows cursor into revision range", async ({
-        page,
-    }) => {
+    test("atomicRevisions=false allows cursor into revision range", async ({ page }) => {
         const q = new QuilliumPage(page, {
             settings: { atomicRevisions: false, showNestedEditor: true },
         });
@@ -243,9 +231,7 @@ test.describe("settings effects", () => {
         q.expectNoPageErrors();
     });
 
-    test("showNestedEditor=false hides inline editor for active revision", async ({
-        page,
-    }) => {
+    test("showNestedEditor=false hides inline editor for active revision", async ({ page }) => {
         const q = new QuilliumPage(page, {
             settings: { showNestedEditor: false, atomicRevisions: true },
         });
@@ -257,9 +243,7 @@ test.describe("settings effects", () => {
         await expect(q.inlineEditor).not.toBeVisible({ timeout: 3_000 });
     });
 
-    test("showNestedEditor=true shows inline editor for active revision", async ({
-        page,
-    }) => {
+    test("showNestedEditor=true shows inline editor for active revision", async ({ page }) => {
         const q = new QuilliumPage(page, {
             settings: { showNestedEditor: true, atomicRevisions: true },
         });
@@ -281,14 +265,10 @@ test.describe("persistence", () => {
         await q.init();
         await q.typeInEditor("hello");
 
-        await expect
-            .poll(() => q.countInvocations("cmd_append_event"))
-            .toBeGreaterThan(0);
+        await expect.poll(() => q.countInvocations("cmd_append_event")).toBeGreaterThan(0);
     });
 
-    test("creating annotation triggers cmd_append_event", async ({
-        page,
-    }) => {
+    test("creating annotation triggers cmd_append_event", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("hello world");

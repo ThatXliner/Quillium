@@ -129,8 +129,7 @@ async function installTauriMock(
             // Hide the debug button so it never appears in screenshots.
             document.addEventListener("DOMContentLoaded", () => {
                 const style = document.createElement("style");
-                style.textContent =
-                    "[aria-label='Open debug panel'] { display: none !important; }";
+                style.textContent = "[aria-label='Open debug panel'] { display: none !important; }";
                 document.head.appendChild(style);
             });
             // Ensure a consistent font for all screenshots regardless of any
@@ -596,10 +595,8 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
     await page
         .waitForFunction(
             () =>
-                document
-                    .querySelector("#ai-tab-chat")
-                    ?.getAttribute("aria-label")
-                    ?.includes("⌘") ?? false,
+                document.querySelector("#ai-tab-chat")?.getAttribute("aria-label")?.includes("⌘") ??
+                false,
             { timeout: 5000 },
         )
         .catch(() => {});
@@ -615,7 +612,9 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
             | undefined;
         if (!editorViewStore) return;
         let view: unknown;
-        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
         unsub();
         if (!view) return;
         const v = view as {
@@ -683,10 +682,7 @@ async function scenarioAutoAIBubble(ctx: BrowserContext): Promise<void> {
 async function scenarioAutoAICard(ctx: BrowserContext): Promise<void> {
     const page = await setupAutoAIPage(ctx);
     // Click the bubble to open the settings card
-    await page
-        .locator("button[aria-label*='AutoAI']")
-        .first()
-        .click();
+    await page.locator("button[aria-label*='AutoAI']").first().click();
     // Wait for the morph transition to complete (340ms) + panel fade-in (80ms delay)
     await page.waitForTimeout(600);
     await shot(page, "11-autoai-card");

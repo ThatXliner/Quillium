@@ -88,11 +88,16 @@ function openEditor() {
 let nestedEditorHost = $state<HTMLDivElement>();
 let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-const controller = new NestedEditorController(view, revision.id, {
-    onUpdate: (_annotations, active) => {
-        activeAnnotation = active;
+const controller = new NestedEditorController(
+    view,
+    revision.id,
+    {
+        onUpdate: (_annotations, active) => {
+            activeAnnotation = active;
+        },
     },
-}, "flush-on-destroy");
+    "flush-on-destroy",
+);
 
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -175,7 +180,11 @@ $effect(() => {
     return annotationEventBus.on("nested-annotation-create", (event) => {
         if (event.command.revisionId !== revision.id) return;
         // If a modal is already open for this revision, let that modal handle the event.
-        if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id))
+        if (
+            $modalStack.some(
+                (entry) => entry.type === "revision" && entry.revisionId === revision.id,
+            )
+        )
             return;
         const cmd = event.command;
         modalStack.push({
@@ -215,7 +224,11 @@ $effect(() => {
                 revisionId: revision.id,
                 parentView: view,
                 label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-                pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+                pendingNestedCommand: {
+                    type: "cursor",
+                    selectionFrom: relPos,
+                    selectionTo: relPos,
+                },
             });
         }
     });

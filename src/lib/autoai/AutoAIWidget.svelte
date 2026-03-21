@@ -48,7 +48,7 @@ const focusDescriptions: Record<AutoAIConservativeness, string> = {
 const focusIndex = $derived(focusLevels.indexOf(autoAISettings.conservativeness));
 
 function handleFocusSlider(e: Event) {
-    const idx = parseInt((e.target as HTMLInputElement).value, 10);
+    const idx = Number.parseInt((e.target as HTMLInputElement).value, 10);
     autoAISettings.conservativeness = focusLevels[idx];
     persistAutoAISettings();
 }
@@ -89,7 +89,7 @@ function toggleAnnotationType(type: AutoAIAnnotationType) {
 }
 
 function handleDebounceInput(e: Event) {
-    const val = parseInt((e.target as HTMLInputElement).value, 10);
+    const val = Number.parseInt((e.target as HTMLInputElement).value, 10);
     if (!Number.isNaN(val) && val >= 2 && val <= 60) {
         autoAISettings.debounceMs = val * 1000;
         persistAutoAISettings();

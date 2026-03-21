@@ -139,9 +139,7 @@ test.describe("nested annotation creation from inline editor", () => {
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
     });
 
-    test("Mod-Alt-M in inline editor with selection opens modal for comment", async ({
-        page,
-    }) => {
+    test("Mod-Alt-M in inline editor with selection opens modal for comment", async ({ page }) => {
         await setupFullRevision(page, "hello world");
 
         const inlineEditor = page.locator(".revision-inline-editor .cm-content").first();
@@ -322,7 +320,9 @@ test.describe("revision modal annotation visibility", () => {
         // The deeper modal's editor should contain the revision text.
         // Use dialog[open] to target the visible (child) modal, not the
         // hidden parent modal which is still in the DOM.
-        const deeperEditor = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
+        const deeperEditor = page
+            .locator("dialog[open] .revision-modal-editor .cm-content")
+            .first();
         await expect(deeperEditor).toBeVisible({ timeout: 5000 });
         await expect.poll(() => getCmText(deeperEditor)).toBe("hello");
 
@@ -331,7 +331,9 @@ test.describe("revision modal annotation visibility", () => {
         await page.waitForTimeout(500);
 
         // Parent modal should reopen with original text and both annotations
-        const parentEditor = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
+        const parentEditor = page
+            .locator("dialog[open] .revision-modal-editor .cm-content")
+            .first();
         await expect(parentEditor).toBeVisible({ timeout: 5000 });
         await expect.poll(() => getCmText(parentEditor)).toBe("hello world");
 

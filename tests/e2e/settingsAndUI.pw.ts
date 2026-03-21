@@ -19,17 +19,11 @@ test.describe("settings modal", () => {
 
         const modal = await q.openSettings();
         await expect(modal.getByText("Settings")).toBeVisible();
-        await expect(
-            modal.getByText("Document", { exact: true }),
-        ).toBeVisible();
-        await expect(
-            modal.getByText("Interface", { exact: true }),
-        ).toBeVisible();
+        await expect(modal.getByText("Document", { exact: true })).toBeVisible();
+        await expect(modal.getByText("Interface", { exact: true })).toBeVisible();
     });
 
-    test("closes when clicking outside or pressing escape", async ({
-        page,
-    }) => {
+    test("closes when clicking outside or pressing escape", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
 
@@ -77,35 +71,25 @@ test.describe("AI sidebar", () => {
 
         await q.escape();
         // After escape, the expanded panel should collapse
-        await expect(
-            page.locator("#ai-sidebar .overflow-x-auto"),
-        ).not.toBeVisible();
+        await expect(page.locator("#ai-sidebar .overflow-x-auto")).not.toBeVisible();
     });
 });
 
 // ── Tutorial ────────────────────────────────────────────────────────────────
 
 test.describe("tutorial", () => {
-    test("tutorial appears on first visit (no seen flag)", async ({
-        page,
-    }) => {
+    test("tutorial appears on first visit (no seen flag)", async ({ page }) => {
         const q = new QuilliumPage(page, { skipTutorial: false });
         await q.init();
 
-        await expect(
-            page.getByText("Choose Tutorial Sections"),
-        ).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText("Choose Tutorial Sections")).toBeVisible({ timeout: 10_000 });
     });
 
-    test("tutorial does not appear when seen flag is set", async ({
-        page,
-    }) => {
+    test("tutorial does not appear when seen flag is set", async ({ page }) => {
         const q = new QuilliumPage(page, { skipTutorial: true });
         await q.init();
 
-        await expect(
-            page.getByText("Choose Tutorial Sections"),
-        ).not.toBeVisible();
+        await expect(page.getByText("Choose Tutorial Sections")).not.toBeVisible();
     });
 
     test("Take tour button opens tutorial", async ({ page }) => {
@@ -113,9 +97,7 @@ test.describe("tutorial", () => {
         await q.init();
 
         await page.getByRole("button", { name: "Take tour" }).click();
-        await expect(
-            page.getByText("Choose Tutorial Sections"),
-        ).toBeVisible();
+        await expect(page.getByText("Choose Tutorial Sections")).toBeVisible();
     });
 });
 
@@ -138,9 +120,7 @@ test.describe("zoom controls", () => {
             return document.documentElement.style.zoom || "1";
         });
 
-        expect(parseFloat(String(newZoom))).toBeGreaterThanOrEqual(
-            parseFloat(String(initialZoom)),
-        );
+        expect(Number.parseFloat(String(newZoom))).toBeGreaterThanOrEqual(Number.parseFloat(String(initialZoom)));
     });
 
     test("Cmd+0 resets zoom", async ({ page }) => {
@@ -157,7 +137,7 @@ test.describe("zoom controls", () => {
         const zoom = await page.evaluate(() => {
             return document.documentElement.style.zoom || "1";
         });
-        expect(parseFloat(String(zoom))).toBe(1);
+        expect(Number.parseFloat(String(zoom))).toBe(1);
     });
 });
 
@@ -178,14 +158,8 @@ test.describe("error resilience", () => {
 
         await q.editor.click();
         // Type rapidly
-        await page.keyboard.type(
-            "The quick brown fox jumps over the lazy dog. ",
-            { delay: 10 },
-        );
-        await page.keyboard.type(
-            "The quick brown fox jumps over the lazy dog.",
-            { delay: 10 },
-        );
+        await page.keyboard.type("The quick brown fox jumps over the lazy dog. ", { delay: 10 });
+        await page.keyboard.type("The quick brown fox jumps over the lazy dog.", { delay: 10 });
 
         q.expectNoPageErrors();
     });
@@ -203,9 +177,7 @@ test.describe("error resilience", () => {
         q.expectNoPageErrors();
     });
 
-    test("no page errors after multiple undo past history start", async ({
-        page,
-    }) => {
+    test("no page errors after multiple undo past history start", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.init();
