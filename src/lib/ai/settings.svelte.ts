@@ -79,7 +79,7 @@ export const aiSettings = $state({
 });
 
 export function hasApiKey(): boolean {
-    return aiSettings.apiKey.trim().length > 0;
+    return aiSettings.provider === "openai-codex" || aiSettings.apiKey.trim().length > 0;
 }
 
 export const HAS_API_KEY = HAS_API_KEY_KEY;

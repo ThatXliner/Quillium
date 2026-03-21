@@ -54,7 +54,10 @@ function handleKeydown(e: KeyboardEvent) {
     }
 }
 
-const SAMPLE = "The quick brown fox jumps over the lazy dog.";
+const SAMPLE =
+    Math.random() < 0.2
+        ? "Sphinx of black quartz, judge my vow."
+        : "The quick brown fox jumps over the lazy dog.";
 
 const CATEGORY_ORDER = ["Serif", "Sans-Serif", "Typewriter", "Handwriting", "Misc", "Accessibility"];
 const FILTER_GROUPS = [
