@@ -51,15 +51,13 @@ export class QuilliumPage {
         return this.page.locator(".revision-inline-editor .cm-content").first();
     }
     get modalEditor(): Locator {
-        return this.page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        return this.page.locator("dialog[open] .revision-modal-editor .cm-content").first();
     }
     get aiSidebar(): Locator {
         return this.page.locator("#ai-sidebar");
     }
     get annotationCards(): Locator {
-        return this.page.locator(".annotation-card-inline");
+        return this.page.locator(".annotation-card");
     }
     get modalAnnotationCards(): Locator {
         return this.page.locator("dialog[open] .annotation-card-inline");
@@ -87,26 +85,16 @@ export class QuilliumPage {
                     localStorage.setItem("quillium_tutorial_seen", "1");
                 }
                 if (Object.keys(payload.settings).length > 0) {
-                    localStorage.setItem(
-                        "quillium-app-settings",
-                        JSON.stringify(payload.settings),
-                    );
+                    localStorage.setItem("quillium-app-settings", JSON.stringify(payload.settings));
                 }
 
                 let nextCallbackId = 1;
-                const callbacks = new Map<
-                    number,
-                    (...args: unknown[]) => unknown
-                >();
+                const callbacks = new Map<number, (...args: unknown[]) => unknown>();
                 const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
 
-                (
-                    window as unknown as Record<string, unknown>
-                ).__TAURI_MOCK__ = { invokeCalls };
+                (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
 
-                (
-                    window as unknown as Record<string, unknown>
-                ).__TAURI_INTERNALS__ = {
+                (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
                     invoke: async (cmd: string, args: unknown) => {
                         invokeCalls.push({ cmd, args });
 
@@ -153,8 +141,7 @@ export class QuilliumPage {
                             };
                         }
 
-                        if (cmd === "cmd_append_event")
-                            return { eventId: 0, needsSnapshot: false };
+                        if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
                         if (cmd === "cmd_create_snapshot") return null;
                         if (cmd === "cmd_update_document_meta") return null;
                         if (cmd === "get_api_key") return payload.apiKey;
@@ -182,9 +169,7 @@ export class QuilliumPage {
 
                         return null;
                     },
-                    transformCallback: (
-                        callback: (...args: unknown[]) => unknown,
-                    ) => {
+                    transformCallback: (callback: (...args: unknown[]) => unknown) => {
                         const id = nextCallbackId++;
                         callbacks.set(id, callback);
                         return id;
@@ -195,9 +180,7 @@ export class QuilliumPage {
                     convertFileSrc: (filePath: string) => filePath,
                 };
 
-                (
-                    window as unknown as Record<string, unknown>
-                ).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+                (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
                     unregisterListener: () => {},
                 };
             },
@@ -227,15 +210,14 @@ export class QuilliumPage {
 
     /** Return all Tauri IPC command names invoked so far. */
     async getInvokedCommands(): Promise<string[]> {
-        return this.page.evaluate(
-            () =>
-                (
-                    window as unknown as {
-                        __TAURI_MOCK__: {
-                            invokeCalls: Array<{ cmd: string }>;
-                        };
-                    }
-                ).__TAURI_MOCK__.invokeCalls.map((x) => x.cmd),
+        return this.page.evaluate(() =>
+            (
+                window as unknown as {
+                    __TAURI_MOCK__: {
+                        invokeCalls: Array<{ cmd: string }>;
+                    };
+                }
+            ).__TAURI_MOCK__.invokeCalls.map((x) => x.cmd),
         );
     }
 
@@ -401,11 +383,7 @@ export class QuilliumPage {
      * Type text, select a range within it, and create a revision.
      * Returns the text that was selected for the revision.
      */
-    async createRevisionOnRange(
-        fullText: string,
-        from: number,
-        to: number,
-    ): Promise<string> {
+    async createRevisionOnRange(fullText: string, from: number, to: number): Promise<string> {
         await this.typeInEditor(fullText);
         await this.selectRange(from, to);
         await this.createRevision();
@@ -428,9 +406,7 @@ export class QuilliumPage {
 
     /** Open the revision modal via the expand button. */
     async openRevisionModal(): Promise<Locator> {
-        const expand = this.page
-            .locator("[data-tutorial-action='expand-revision-modal']")
-            .first();
+        const expand = this.page.locator("[data-tutorial-action='expand-revision-modal']").first();
         if (await expand.isVisible({ timeout: 4_000 }).catch(() => false)) {
             await expand.click();
         }
@@ -439,11 +415,7 @@ export class QuilliumPage {
     }
 
     /** Type text, select a range, and create a comment. */
-    async createCommentOnRange(
-        fullText: string,
-        from: number,
-        to: number,
-    ): Promise<void> {
+    async createCommentOnRange(fullText: string, from: number, to: number): Promise<void> {
         await this.typeInEditor(fullText);
         await this.selectRange(from, to);
         await this.createComment();
@@ -454,9 +426,7 @@ export class QuilliumPage {
      * Assumes the comment textarea is visible.
      */
     async submitComment(text: string): Promise<void> {
-        const textarea = this.page.locator(
-            "textarea[placeholder='Add a comment…']",
-        );
+        const textarea = this.page.locator("textarea[placeholder='Add a comment…']");
         await expect(textarea).toBeVisible({ timeout: 5_000 });
         await textarea.fill(text);
         await this.sendReply();
@@ -473,17 +443,10 @@ export class QuilliumPage {
      * Click at a fractional position within a locator's bounding box.
      * xFrac/yFrac are 0..1 proportions.
      */
-    async clickAt(
-        locator: Locator,
-        xFrac: number,
-        yFrac = 0.5,
-    ): Promise<void> {
+    async clickAt(locator: Locator, xFrac: number, yFrac = 0.5): Promise<void> {
         const box = await locator.boundingBox();
         if (!box) throw new Error("Element not visible for clickAt");
-        await this.page.mouse.click(
-            box.x + box.width * xFrac,
-            box.y + box.height * yFrac,
-        );
+        await this.page.mouse.click(box.x + box.width * xFrac, box.y + box.height * yFrac);
     }
 
     /** Click at the very beginning of the editor (outside any revision). */
@@ -511,9 +474,7 @@ export class QuilliumPage {
     // ── Settings modal ──────────────────────────────────────────────────
 
     async openSettings(): Promise<Locator> {
-        await this.page
-            .locator("#status-bar button[aria-label='Open settings']")
-            .click();
+        await this.page.locator("#status-bar button[aria-label='Open settings']").click();
         const modal = this.page.locator(".settings-modal-inner");
         await expect(modal).toBeVisible({ timeout: 5_000 });
         return modal;

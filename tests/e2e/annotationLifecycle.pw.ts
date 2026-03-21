@@ -54,9 +54,7 @@ test.describe("comment lifecycle", () => {
         });
     });
 
-    test("deleting commented text removes comment from sidebar", async ({
-        page,
-    }) => {
+    test("deleting commented text removes comment from sidebar", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
@@ -72,7 +70,7 @@ test.describe("comment lifecycle", () => {
         await page.keyboard.press("Backspace");
 
         // Comment card should disappear (range collapsed)
-        await expect(page.locator(".annotation-card-inline")).toHaveCount(0, {
+        await expect(page.locator(".annotation-card")).toHaveCount(0, {
             timeout: 5_000,
         });
     });
@@ -155,9 +153,7 @@ test.describe("revision lifecycle", () => {
         await expect(q.modalEditor).not.toBeVisible({ timeout: 3_000 });
     });
 
-    test("deleting revision text and undoing restores revision", async ({
-        page,
-    }) => {
+    test("deleting revision text and undoing restores revision", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
@@ -234,9 +230,7 @@ test.describe("revision with nested annotations", () => {
 // ── Undo/redo with annotations ──────────────────────────────────────────────
 
 test.describe("annotation undo/redo", () => {
-    test("undo revision creation removes annotation card", async ({
-        page,
-    }) => {
+    test("undo revision creation removes annotation card", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
@@ -250,15 +244,16 @@ test.describe("annotation undo/redo", () => {
         await expect(q.annotationCards).toHaveCount(0, { timeout: 5_000 });
     });
 
-    test("redo after undo of revision creation restores card", async ({
-        page,
-    }) => {
+    test("redo after undo of revision creation restores card", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.setup();
         await q.goto();
 
         await q.createFullRevision("hello world");
         await q.undo();
+        // After undo destroys the inline editor, focus is lost; refocus
+        // the main editor so redo reaches CodeMirror's history.
+        await q.editor.click();
         await q.redo();
 
         await expect(q.annotationCards.first()).toBeVisible({
@@ -266,9 +261,7 @@ test.describe("annotation undo/redo", () => {
         });
     });
 
-    test("undo in modal editor delegates to parent correctly", async ({
-        page,
-    }) => {
+    test("undo in modal editor delegates to parent correctly", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
@@ -293,9 +286,7 @@ test.describe("annotation undo/redo", () => {
         q.expectNoPageErrors();
     });
 
-    test("type in nested editor, delete, undo restores (the reported bug)", async ({
-        page,
-    }) => {
+    test("type in nested editor, delete, undo restores (the reported bug)", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
@@ -327,9 +318,7 @@ test.describe("annotation undo/redo", () => {
 // ── Deep nesting ────────────────────────────────────────────────────────────
 
 test.describe("deep modal nesting", () => {
-    test("three levels of nesting: open, edit, close back", async ({
-        page,
-    }) => {
+    test("three levels of nesting: open, edit, close back", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
@@ -348,16 +337,12 @@ test.describe("deep modal nesting", () => {
 
         // Open the nested revision's modal
         const nestedExpand = page
-            .locator(
-                "dialog[open] [data-tutorial-action='expand-revision-modal']",
-            )
+            .locator("dialog[open] [data-tutorial-action='expand-revision-modal']")
             .first();
         await expect(nestedExpand).toBeVisible({ timeout: 5_000 });
         await nestedExpand.click();
 
-        const modal2 = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const modal2 = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(modal2).toBeVisible({ timeout: 8_000 });
 
         // Edit in level 2
@@ -370,9 +355,7 @@ test.describe("deep modal nesting", () => {
         await page.waitForTimeout(500);
 
         // Back to level 1 — text should show "hello!" for that range
-        const parentModal = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const parentModal = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(parentModal).toBeVisible({ timeout: 5_000 });
 
         q.expectNoPageErrors();
@@ -382,9 +365,7 @@ test.describe("deep modal nesting", () => {
 // ── Multiple annotations ────────────────────────────────────────────────────
 
 test.describe("multiple annotations", () => {
-    test("create two revisions on non-overlapping ranges", async ({
-        page,
-    }) => {
+    test("create two revisions on non-overlapping ranges", async ({ page }) => {
         const q = new QuilliumPage(page);
         q.capturePageErrors();
         await q.setup();
