@@ -104,7 +104,7 @@ function handleNameKeydown(e: KeyboardEvent) {
 
 function openSettings() {
     open = false;
-    window.dispatchEvent(new CustomEvent("quillium:open-settings"));
+    window.dispatchEvent(new CustomEvent("quillium:open-ai-settings"));
 }
 
 function handleDocClick(e: MouseEvent) {
