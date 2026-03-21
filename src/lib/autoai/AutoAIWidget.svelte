@@ -318,7 +318,12 @@ const annotationPills = [
         overflow: hidden;
         background: #faf8f5;
         border: 2px solid #d6b87a;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+        box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.7),
+            inset 0 -1px 0 rgba(0,0,0,0.04),
+            0 4px 12px rgba(0,0,0,0.12),
+            0 1px 3px rgba(0,0,0,0.08);
+        backdrop-filter: blur(8px);
         transition:
             width 340ms cubic-bezier(0.33,0,0.2,1),
             height 340ms cubic-bezier(0.33,0,0.2,1),
@@ -330,6 +335,7 @@ const annotationPills = [
     .autoai-container.w-\[360px\] {
         border-color: #e8e0d4;
         box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+        backdrop-filter: none;
     }
 
     .rainbow-active {
