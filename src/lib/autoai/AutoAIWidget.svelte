@@ -256,7 +256,7 @@ const annotationPills = [
                     <div class="delay-label-row">
                         <label class="field-label" for="autoai-debounce">DELAY: {debounceSeconds}S</label>
                         {#if debounceSeconds !== 10}
-                            <button class="reset-btn" onclick={() => { autoAISettings.debounceMs = 10000; persistAutoAISettings(); }} tabindex={open ? 0 : -1}>reset</button>
+                            <button class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer bg-none border-none p-0" onclick={() => { autoAISettings.debounceMs = 10000; persistAutoAISettings(); }} tabindex={open ? 0 : -1}>Reset</button>
                         {/if}
                     </div>
                     <input id="autoai-debounce" class="range" type="range" min="2" max="60"
@@ -472,12 +472,6 @@ const annotationPills = [
     .delay-label-row {
         display: flex; align-items: center; justify-content: space-between;
     }
-    .reset-btn {
-        font-size: 9px; color: #c4b89a; background: none; border: none;
-        padding: 0; cursor: pointer; text-decoration: underline;
-        text-underline-offset: 2px; transition: color 0.15s;
-    }
-    .reset-btn:hover { color: #92681a; }
 
     .divider { height: 1px; background: #ede8e0; flex-shrink: 0; }
 
