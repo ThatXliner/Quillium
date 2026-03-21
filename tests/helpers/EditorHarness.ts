@@ -21,6 +21,10 @@ import {
     nestedEditorEdit,
     _nestedEditRevision,
     setActiveRevisionVersion,
+    createNewRevision,
+    deleteRevisionVersion,
+    applySuggestion,
+    updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
@@ -287,11 +291,61 @@ export class EditorHarness {
         return this.nestedEdit(revisionId, relFrom, relTo, "");
     }
 
+    // ── Suggestion operations ──────────────────────────────────────────
+
+    /** Apply a suggestion replacement. */
+    applySuggestion(suggestionId: number, replacementIndex = 0): this {
+        const spec = applySuggestion(
+            this.view.state,
+            suggestionId,
+            replacementIndex,
+        );
+        this.view.dispatch(spec);
+        return this;
+    }
+
+    // ── Thread operations ───────────────────────────────────────────────
+
+    /** Add a message to an annotation's thread. */
+    addThreadMessage(
+        annotationId: number,
+        message: string,
+        author = "user",
+    ): this {
+        const ann = this.annotation(annotationId);
+        const newThread = [
+            ...ann.thread,
+            { message, author, time: Date.now() },
+        ];
+        this.view.dispatch({
+            effects: [updateThread.of({ annotationId, newThread })],
+        });
+        return this;
+    }
+
     // ── Version management ──────────────────────────────────────────────
 
     /** Switch the active version for a revision annotation. */
     switchVersion(revisionId: number, versionIndex: number): this {
         const spec = setActiveRevisionVersion(
+            this.view.state,
+            revisionId,
+            versionIndex,
+        );
+        this.view.dispatch(spec);
+        return this;
+    }
+
+    /** Add a new empty version to a revision (like Cmd+Shift+V). */
+    addNewVersion(revisionId: number): this {
+        const spec = createNewRevision(this.view.state, revisionId);
+        this.view.dispatch(spec);
+        return this;
+    }
+
+    /** Delete a version from a revision. */
+    deleteVersion(revisionId: number, versionIndex: number): this {
+        const spec = deleteRevisionVersion(
             this.view.state,
             revisionId,
             versionIndex,
