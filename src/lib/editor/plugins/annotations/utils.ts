@@ -45,14 +45,21 @@ import {
 } from "./models";
 import { annotationField } from "./annotationField";
 
-// Filters out collapsed (zero-width) ranges from a selection.
-// Returns null if no non-empty ranges remain, which signals
-// to the caller that the annotation should be removed.
+// Filters out collapsed (zero-width) and inverted (from > to)
+// ranges from a selection. Returns null if no valid ranges
+// remain, which signals to the caller that the annotation
+// should be removed.
 // Revisions set allowEmpty=true so they survive even when
-// their text is fully deleted (they can switch versions).
+// their text is fully deleted (they can switch versions),
+// but inverted ranges are always removed.
 export function cleanRangesOf(selection: EditorSelection, allowEmpty = false) {
-    if (allowEmpty) return selection;
-    const newRanges = selection.ranges.filter((range) => range.from !== range.to);
+    // Fast path: check if any range needs filtering.
+    const hasInverted = selection.ranges.some((r) => r.from > r.to);
+    if (allowEmpty && !hasInverted) return selection;
+
+    const newRanges = selection.ranges.filter(
+        (range) => range.from <= range.to && (allowEmpty || range.from !== range.to),
+    );
     return newRanges.length > 0 ? EditorSelection.create(newRanges, selection.mainIndex) : null;
 }
 
