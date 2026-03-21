@@ -36,6 +36,10 @@ import { appSettings, applySettings, persistSettings } from "$lib/settings.svelt
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
+import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
+import { Toaster } from "svelte-sonner";
+import { triggerManualReview } from "$lib/autoai/engine";
+import { autoAISettings } from "$lib/autoai/settings.svelte";
 
 let updateAvailable = $state(false);
 let updateVersion = $state("");
@@ -51,7 +55,7 @@ function showTutorialOnFirstVisit() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "o") {
+if ((e.metaKey || e.ctrlKey) && e.key === "o") {
         e.preventDefault();
         goToLibrary();
     }
@@ -114,8 +118,16 @@ onMount(() => {
         restoreBackup(view, documentText);
     }
 
+    function handleManualReviewEvent() {
+        if (autoAISettings.enabled) triggerManualReview();
+    }
+
     window.addEventListener("quillium:restore-backup", handleRestoreBackup);
-    return () => window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
+    window.addEventListener("quillium:manual-review", handleManualReviewEvent);
+    return () => {
+        window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
+        window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
+    };
 });
 
 // DEV only: expose window.__runScenario__(id) for the screenshot script.
@@ -231,6 +243,10 @@ if (import.meta.env.DEV) {
 {#if import.meta.env.DEV && $debugPanelActive}
     <DebugPanel reloadEditor={() => editorComponent?.reload()} />
 {/if}
+
+<!-- AutoAI collaborator widget — fixed bottom-right bubble -->
+<AutoAIWidget />
+<Toaster position="bottom-right" />
 
 <!-- Modal stack — render all entries so parent editors stay alive when a
      child modal is pushed on top. Each modal manages its own dialog

@@ -62,6 +62,13 @@ const editorKeymap: KeyBinding[] = [
     ...completionKeymap,
     ...lintKeymap,
     indentWithTab,
+    {
+        key: "Mod-Shift-r",
+        run() {
+            window.dispatchEvent(new CustomEvent("quillium:manual-review"));
+            return true;
+        },
+    },
 ] as unknown as KeyBinding[];
 
 const nestedEditorKeymap: KeyBinding[] = [

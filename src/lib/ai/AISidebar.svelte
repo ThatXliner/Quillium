@@ -267,6 +267,15 @@ $effect(() => {
     }
 });
 
+// Allow external callers (e.g. AutoAIWidget) to open AI settings via event.
+$effect(() => {
+    function handleOpenAiSettings() {
+        action = "settings";
+    }
+    window.addEventListener("quillium:open-ai-settings", handleOpenAiSettings);
+    return () => window.removeEventListener("quillium:open-ai-settings", handleOpenAiSettings);
+});
+
 // Cleanup resize listeners on unmount
 $effect(() => {
     return () => {
