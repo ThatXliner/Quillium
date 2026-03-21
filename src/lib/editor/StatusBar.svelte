@@ -39,6 +39,13 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 const modKey = isMac ? "⌘" : "Ctrl";
 let settingsOpen = $state(false);
 let hovered = $state(false);
+
+// Allow AutoAIWidget (and others) to open settings via a custom event.
+$effect(() => {
+    function handleOpenSettings() { settingsOpen = true; }
+    window.addEventListener("quillium:open-settings", handleOpenSettings);
+    return () => window.removeEventListener("quillium:open-settings", handleOpenSettings);
+});
 let titleLinger = $state(false);
 let lingerTimer: ReturnType<typeof setTimeout> | undefined;
 
