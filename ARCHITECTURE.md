@@ -94,6 +94,10 @@ src/
 │   ├── tutorial/
 │   │   ├── Tutorial.svelte    # Onboarding tutorial overlay
 │   │   └── steps.ts           # Tutorial step definitions
+│   ├── autoai/
+│   │   ├── AutoAIWidget.svelte  # Bubble + expanded panel UI
+│   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
+│   │   └── settings.svelte.ts  # AutoAI settings store (reactive, persisted)
 │   ├── stores.ts              # Global Svelte stores
 │   └── settings.svelte.ts     # App settings (reactive, persisted)
 └── routes/
@@ -595,6 +599,83 @@ The annotation keymap (installed at `Prec.high`) intercepts before default CodeM
 | `Mod-Alt-K` | `redirectToNestedEditor("revision")` → `createRevisionCommand` |
 
 Each handler returns `false` to fall through to the next binding if it doesn't apply. `redirectToNestedEditor` returns `true` (swallowing the keypress) only when the cursor is inside an active revision — otherwise it returns `false` and the real create command runs.
+
+---
+
+## AutoAI
+
+AutoAI is a background AI review system that watches document content and creates annotations automatically. It runs as an independent subsystem, separate from the AI sidebar, and is controlled via a fixed-position bubble widget in the bottom-left corner.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/autoai/settings.svelte.ts` | Settings store, type definitions, localStorage persistence |
+| `src/lib/autoai/engine.ts` | Review orchestration, AI calls (`generateObject`), annotation dispatch |
+| `src/lib/autoai/AutoAIWidget.svelte` | Bubble + expanded settings panel UI |
+
+### Settings
+
+AutoAI settings are stored in `autoAISettings` (`$state` proxy) and persisted to localStorage under `"quillium-autoai-settings"`:
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Whether AutoAI is active |
+| `mode` | `"continuous"` \| `"manual"` | `"continuous"` | Auto-review on change vs. manual trigger |
+| `debounceMs` | number | 10000 | Delay (ms) before triggering a review after doc change |
+| `persona` | string | `"AutoAI"` | Name shown in annotation author fields |
+| `annotationTypes` | set | all three | Which types to create: comments, suggestions, revisions |
+| `conservativeness` | enum | `"balanced"` | Review depth: conservative / balanced / thorough |
+
+### Review Engine (`engine.ts`)
+
+**`startAutoAI()`** subscribes to the `documentContent` store. On each change ≥ 20 characters it schedules a debounced `runReview()`.
+
+**`stopAutoAI()`** unsubscribes the listener and cancels any pending timer.
+
+**`triggerManualReview()`** bypasses debounce and calls `runReview()` immediately.
+
+**`runReview()` flow:**
+
+```
+documentContent changed (≥ 20 chars)
+→ debounce (debounceMs)
+→ generateObject() — single non-streaming AI call
+    system prompt: persona + conservativeness level + annotation type constraints
+    Zod schema: array of { type, targetText, ... }
+→ applyAnnotations() — for each result:
+    find targetText in current doc
+    dispatch createComment / createSuggestion / createRevision
+```
+
+The AI call uses `createModel()` from `src/lib/ai/provider.ts` with the user's configured provider, API key, and model. `aiProcessing` is set for the duration to block concurrent AI sidebar operations.
+
+### Widget UI (`AutoAIWidget.svelte`)
+
+A morphing bubble component fixed at `bottom: 24px; left: 24px`:
+
+**Collapsed** (67 × 67px):
+- Quill icon (amber) when enabled; lock icon (gray) when no API key configured
+- Rainbow gradient border + spinning animation while a review is in progress
+
+**Expanded** (360 × 220px, two-pane layout):
+- **Left pane**: persona name (editable), enable toggle, mode selector (Auto / Manual)
+  - Auto mode: delay slider (2–60 s)
+  - Manual mode: "Review now" button
+- **Right pane**: annotation type pills (Comments / Suggestions / Revisions), conservativeness slider (3-stop: Conservative → Balanced → Thorough)
+
+Closes on outside click or Esc. Controls are dimmed at 40% opacity when no API key is set.
+
+### Keybinding
+
+`Mod-Shift-r` — registered in `src/lib/editor/extensions.ts` (main editor only). Dispatches the custom DOM event `"quillium:manual-review"`, which `+page.svelte` handles by calling `triggerManualReview()` if AutoAI is enabled. This keybinding is **not** included in nested editor extension stacks.
+
+### Integration Points
+
+- **Document content**: Engine subscribes to `documentContent` (written by `Editor.svelte`'s `updateListener`).
+- **Annotation creation**: Calls the same factory functions (`createComment`, `createSuggestion`, `createRevision`) used by the AI sidebar and other annotation flows.
+- **AI settings**: Reads `aiSettings` (provider, model, apiKey) via `createModel()` — AutoAI shares the same provider configuration as the sidebar.
+- **`+page.svelte`**: Renders `<AutoAIWidget />`, listens for `"quillium:manual-review"` and `"quillium:open-ai-settings"` custom events.
 
 ---
 
