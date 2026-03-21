@@ -19,7 +19,11 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 
-export type Provider = "openai" | "anthropic" | "google";
+export type Provider = "openai" | "openai-codex" | "anthropic" | "google";
+
+// The openai-oauth CLI proxy listens on this address when running.
+// Start it with: npx openai-oauth
+const CODEX_PROXY_BASE_URL = "http://127.0.0.1:10531/v1";
 
 /**
  * Instantiate a vendor-specific LanguageModel for the given provider.
@@ -27,11 +31,19 @@ export type Provider = "openai" | "anthropic" | "google";
  * Each vendor SDK follows the same two-step pattern:
  *   1. Create a provider instance with the user's API key.
  *   2. Call it with the model ID to get a LanguageModel.
+ *
+ * The "openai-codex" provider routes through a local OAuth proxy
+ * (npx openai-oauth) instead of using an API key directly.
  */
 export function createModel(provider: Provider, apiKey: string, modelId: string): LanguageModel {
     switch (provider) {
         case "openai":
             return createOpenAI({ apiKey })(modelId) as LanguageModel;
+        case "openai-codex":
+            return createOpenAI({
+                apiKey: "oauth",
+                baseURL: CODEX_PROXY_BASE_URL,
+            })(modelId) as LanguageModel;
         case "anthropic":
             return createAnthropic({ apiKey })(modelId) as unknown as LanguageModel;
         case "google":

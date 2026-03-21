@@ -39,7 +39,8 @@ const PROVIDERS: { id: Provider; label: string; color: string }[] = [
     { id: "google", label: "Google", color: "#4285f4" },
 ];
 
-const MODEL_OPTIONS: Record<Provider, { id: string; label: string; description: string }[]> = {
+
+const MODEL_OPTIONS: Partial<Record<Provider, { id: string; label: string; description: string }[]>> & Record<"openai" | "anthropic" | "google", { id: string; label: string; description: string }[]> = {
     openai: [
         { id: "gpt-5.4", label: "GPT-5.4", description: "Most capable" },
         {
@@ -90,7 +91,10 @@ const MODEL_KEY = "quillium-ai-model";
 
 function loadProvider(): Provider {
     if (typeof localStorage === "undefined") return "openai";
-    return (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";
+    const stored = (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";
+    // "openai-codex" is stored when codex mode is active, but the tab still
+    // shows "openai" — map it back for selectedProvider state.
+    return stored === "openai-codex" ? "openai" : stored;
 }
 
 function loadModel(): string {
@@ -100,6 +104,37 @@ function loadModel(): string {
 
 let selectedProvider = $state<Provider>(loadProvider());
 let selectedModel = $state(loadModel());
+// "openai-codex" is stored as the provider when codex mode is active,
+// but the tab still shows "openai" — this tracks the toggle state.
+let useCodex = $state(
+    typeof localStorage !== "undefined" &&
+        localStorage.getItem(PROVIDER_KEY) === "openai-codex",
+);
+
+const KONAMI = [
+    "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown",
+    "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight",
+    "b", "a",
+];
+const CODEX_UNLOCKED_KEY = "quillium-codex-unlocked";
+let konamiProgress = 0;
+let codexUnlocked = $state(
+    typeof localStorage !== "undefined" &&
+        !!localStorage.getItem(CODEX_UNLOCKED_KEY),
+);
+
+function onApiKeyKeydown(e: KeyboardEvent) {
+    if (e.key === KONAMI[konamiProgress]) {
+        konamiProgress++;
+        if (konamiProgress === KONAMI.length) {
+            codexUnlocked = true;
+            localStorage.setItem(CODEX_UNLOCKED_KEY, "1");
+            konamiProgress = 0;
+        }
+    } else {
+        konamiProgress = e.key === KONAMI[0] ? 1 : 0;
+    }
+}
 let apiKey = $state(aiSettings.apiKey);
 let keyLoading = $state(!aiSettings.apiKey);
 let showKey = $state(false);
@@ -135,17 +170,32 @@ $effect(() => {
  * re-fetch the API key from the system keychain.
  */
 function selectProvider(id: Provider) {
+    // "openai-codex" is not a tab — tabs only show the three base providers.
+    // When codex mode is active, selectedProvider stays "openai" for UI
+    // purposes; the real provider written to aiSettings is "openai-codex".
     selectedProvider = id;
-    localStorage.setItem(PROVIDER_KEY, id);
-    const first = MODEL_OPTIONS[id][0];
+    if (id !== "openai") useCodex = false;
+    const effectiveId: Provider = id === "openai" && useCodex ? "openai-codex" : id;
+    localStorage.setItem(PROVIDER_KEY, effectiveId);
+    const first = (MODEL_OPTIONS[id] ?? MODEL_OPTIONS["openai"])[0];
     selectedModel = first.id;
     localStorage.setItem(MODEL_KEY, first.id);
-    aiSettings.provider = id;
+    aiSettings.provider = effectiveId;
     aiSettings.model = first.id;
-    posthog.capture("ai_settings_provider_changed", { provider: id });
-    loadApiKeyForProvider(id).then(() => {
-        apiKey = aiSettings.apiKey;
-    });
+    posthog.capture("ai_settings_provider_changed", { provider: effectiveId });
+    if (effectiveId !== "openai-codex") {
+        loadApiKeyForProvider(id).then(() => {
+            apiKey = aiSettings.apiKey;
+        });
+    }
+}
+
+function toggleCodex(enabled: boolean) {
+    useCodex = enabled;
+    const effectiveId: Provider = enabled ? "openai-codex" : "openai";
+    localStorage.setItem(PROVIDER_KEY, effectiveId);
+    aiSettings.provider = effectiveId;
+    posthog.capture("ai_settings_provider_changed", { provider: effectiveId });
 }
 
 function selectModel(id: string) {
@@ -195,7 +245,7 @@ async function saveApiKey() {
 
 <div class="flex flex-col gap-4 p-3 overflow-y-auto h-full">
     <!-- No API key banner -->
-    {#if !hasApiKey() && !keyLoading}
+    {#if !hasApiKey() && !keyLoading && !useCodex}
         <div class="flex items-start gap-2 rounded-lg bg-amber-50/80 border border-amber-200/60 px-3 py-2.5">
             <KeyRoundIcon size={13} class="text-amber-500 shrink-0 mt-0.5" />
             <p class="text-[11px] text-amber-700/90 leading-snug">
@@ -276,9 +326,57 @@ async function saveApiKey() {
         </div>
     </div>
 
+    <!-- Codex subscription toggle (OpenAI only, unlocked via Konami code on the API key input) -->
+    {#if selectedProvider === "openai" && codexUnlocked}
+        <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between rounded-lg bg-white/50 border border-black/10 px-3 py-2.5">
+                <div class="flex-1 min-w-0 pr-3">
+                    <p class="text-xs font-medium text-black/70 leading-tight">Use Codex subscription</p>
+                    <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
+                        Use your ChatGPT Plus/Pro plan instead of an API key.
+                    </p>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={useCodex}
+                    aria-label="Use Codex subscription"
+                    onclick={() => toggleCodex(!useCodex)}
+                    class="relative shrink-0 w-8 h-4.5 rounded-full transition-colors duration-200
+                        {useCodex ? 'bg-blue-500' : 'bg-black/15'}"
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200
+                            {useCodex ? 'translate-x-3.5' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+            {#if useCodex}
+                <div class="rounded-lg bg-blue-50/60 border border-blue-200/50 px-3 py-2.5 flex flex-col gap-2">
+                    <p class="text-[10px] font-semibold text-blue-700/80 uppercase tracking-wider">Setup required</p>
+                    <div class="flex flex-col gap-1">
+                        <p class="text-[10px] text-black/50 leading-snug">1. Log in once (opens browser):</p>
+                        <div class="rounded-md bg-black/5 border border-black/8 px-2.5 py-1.5 font-mono text-[11px] text-black/70 select-all">
+                            npx @openai/codex login
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <p class="text-[10px] text-black/50 leading-snug">2. Start the local proxy before each session:</p>
+                        <div class="rounded-md bg-black/5 border border-black/8 px-2.5 py-1.5 font-mono text-[11px] text-black/70 select-all">
+                            npx openai-oauth
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-black/35 leading-snug">
+                        Keep the proxy running while using Quillium. It routes requests through your ChatGPT subscription on port 10531.
+                    </p>
+                </div>
+            {/if}
+        </div>
+    {/if}
+
     <div class="w-full h-px bg-black/8"></div>
 
     <!-- API Key -->
+    {#if !useCodex || selectedProvider !== "openai"}
     <div>
         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
             API Key
@@ -292,6 +390,7 @@ async function saveApiKey() {
                         type={showKey ? "text" : "password"}
                         bind:value={apiKey}
                         placeholder="sk-..."
+                        onkeydown={selectedProvider === "openai" ? onApiKeyKeydown : undefined}
                         class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
                     />
                     <button
@@ -337,4 +436,5 @@ async function saveApiKey() {
             </p>
         {/if}
     </div>
+    {/if}
 </div>
