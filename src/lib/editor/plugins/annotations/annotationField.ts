@@ -348,6 +348,17 @@ export function updateRevisionVersionState(
             annotations,
         });
     }
+    // Skip doc changes when the document already matches the version text.
+    // Redundant changes would appear as "foreign" edits to CodeMirror's
+    // history, breaking undo of prior entries (e.g. modal flush after
+    // translateAndDispatch).
+    const currentText = state.sliceDoc(original.selection.main.from, original.selection.main.to);
+    if (currentText === text) {
+        return state.update({
+            effects,
+            annotations,
+        });
+    }
     return state.update({
         effects,
         annotations,
@@ -545,10 +556,7 @@ function applyRevisionVersionEffect(
             const from = tr.changes.mapPos(oldAnnotation.selection.main.from, -1);
             const vText = versionText(targetVersion);
             const to = Math.min(from + vText.length, tr.state.doc.length);
-            selection = EditorSelection.single(
-                Math.min(from, tr.state.doc.length),
-                to,
-            );
+            selection = EditorSelection.single(Math.min(from, tr.state.doc.length), to);
         }
         return { ...annotation, activeVersionIndex: e.value.to, selection };
     }
@@ -623,7 +631,10 @@ export const annotationField = StateField.define<Annotations>({
                 if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
                 annotations[e.value.annotationId] = applyRevisionVersionEffect(
-                    e, annotation, oldAnnotations, tr,
+                    e,
+                    annotation,
+                    oldAnnotations,
+                    tr,
                 );
             } else if (e.is(_updateRevisionVersionLabel)) {
                 const annotation = annotations[e.value.annotationId];
@@ -760,13 +771,14 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     const effects = [];
     const oldAnnotations = transaction.startState.field(annotationField);
 
-    // Skip cleanup transactions dispatched by collapsedRevisionResolver.
-    // Those transactions remove collapsed revisions with addToHistory.of(false),
-    // so they don't create a new undo entry. Without this guard,
-    // invertedEffects would generate addAnnotation(collapsed) effects that get
-    // merged into the deletion's undo entry — re-inserting orphaned collapsed
-    // annotations on Cmd+Z. The deletion already stores _restoreAnnotation
-    // effects for every collapsed revision, so nothing more is needed.
+    // Skip transactions that opted out of history (addToHistory.of(false)).
+    // These don't create a new undo entry, so any inverted effects we
+    // generate would get merged into the *previous* undo entry and corrupt
+    // its replay. This covers:
+    //   - Cleanup transactions from collapsedRevisionResolver
+    //   - Modal flush dispatches (flushToParent)
+    //   - Any other internal bookkeeping dispatches
+    if (transaction.annotation(Transaction.addToHistory) === false) return [];
     if (transaction.annotation(_revisionCleanup)) return [];
 
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
