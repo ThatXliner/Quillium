@@ -115,14 +115,13 @@ function assertInvariants(
         const from = ann.selection.main.from;
         const to = ann.selection.main.to;
 
-        // 1. Ranges in bounds
+        // 1. Ranges in bounds and non-inverted
         expect(from, `${label}: ann ${ann.id} from`).toBeGreaterThanOrEqual(0);
         expect(to, `${label}: ann ${ann.id} to`).toBeLessThanOrEqual(docLen);
-
-        // KNOWN BUG: replace operations covering an annotation's full range
-        // can leave it with an inverted range (from > to). Skip further
-        // checks for these. See annotations.knownBugs.test.ts.
-        if (from > to) continue;
+        expect(
+            from,
+            `${label}: ann ${ann.id} inverted range [${from}, ${to}]`,
+        ).toBeLessThanOrEqual(to);
 
         // 2. Revision-specific invariants
         if (isAnnotationOfType(ann, "revision")) {
@@ -582,8 +581,6 @@ describe("annotation state machine (property-based)", () => {
     });
 
     it("full undo → full redo restores doc (forward-only commands, 40 steps)", { timeout: 30_000 }, () => {
-        // Exclude version management ops — they have known undo bugs
-        // (see annotations.knownBugs.test.ts) that cause TypeError in CM.
         const arbForwardCmd = fc.oneof(
             { weight: 3, arbitrary: arbInsert },
             { weight: 2, arbitrary: arbAddRevision },
@@ -591,6 +588,8 @@ describe("annotation state machine (property-based)", () => {
             { weight: 1, arbitrary: arbAddSuggestion },
             { weight: 3, arbitrary: arbNestedInsert },
             { weight: 1, arbitrary: arbNestedReplace },
+            { weight: 1, arbitrary: arbAddNewVersion },
+            { weight: 1, arbitrary: arbApplySuggestion },
         );
 
         fc.assert(
@@ -599,42 +598,27 @@ describe("annotation state machine (property-based)", () => {
                 fc.array(arbForwardCmd, { minLength: 3, maxLength: 40 }),
                 (initialDoc, commands) => {
                     harness = EditorHarness.create(initialDoc);
+                    let vMgmt = false;
 
                     for (const cmd of commands) {
+                        if (isVersionMgmtCmd(cmd)) vMgmt = true;
                         executeCommand(harness, cmd);
                     }
                     const finalDoc = harness.doc;
 
                     // Full undo
-                    let undoBroken = false;
                     while (harness.undoDepth > 0) {
-                        try {
-                            harness.undo();
-                        } catch {
-                            // KNOWN BUG: undo can crash on removed
-                            // annotations. Bail the round-trip check.
-                            undoBroken = true;
-                            break;
-                        }
-                        assertInvariants(harness, "undo pass");
+                        harness.undo();
+                        assertInvariants(harness, "undo pass", vMgmt);
                     }
 
-                    if (!undoBroken) {
-                        // Full redo
-                        while (harness.redoDepth > 0) {
-                            try {
-                                harness.redo();
-                            } catch {
-                                undoBroken = true;
-                                break;
-                            }
-                            assertInvariants(harness, "redo pass");
-                        }
-
-                        if (!undoBroken) {
-                            expect(harness.doc).toBe(finalDoc);
-                        }
+                    // Full redo
+                    while (harness.redoDepth > 0) {
+                        harness.redo();
+                        assertInvariants(harness, "redo pass", vMgmt);
                     }
+
+                    expect(harness.doc).toBe(finalDoc);
                     harness.destroy();
                 },
             ),
@@ -843,25 +827,11 @@ describe("targeted property tests", () => {
                 (initialDoc, commands) => {
                     harness = EditorHarness.create(initialDoc || "x");
                     for (let i = 0; i < commands.length; i++) {
-                        // applySuggestion removes the annotation and
-                        // undoing that can trigger a known crash
                         if (executeCommand(harness, commands[i])) {
-                            try {
-                                assertInvariants(
-                                    harness,
-                                    `step ${i} (${commands[i].type})`,
-                                );
-                            } catch (e) {
-                                // KNOWN BUG: undo of applySuggestion
-                                // can leave dangling annotation refs
-                                if (
-                                    e instanceof TypeError &&
-                                    String(e.message).includes("_type")
-                                ) {
-                                    break;
-                                }
-                                throw e;
-                            }
+                            assertInvariants(
+                                harness,
+                                `step ${i} (${commands[i].type})`,
+                            );
                         }
                     }
                     harness.destroy();
