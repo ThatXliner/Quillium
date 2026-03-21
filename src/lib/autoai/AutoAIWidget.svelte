@@ -16,7 +16,6 @@ import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
 import {
     autoAISettings,
     persistAutoAISettings,
-    type AutoAIAnnotationType,
     type AutoAIConservativeness,
 } from "./settings.svelte";
 import { startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
@@ -50,16 +49,6 @@ function cycleFocus() {
     persistAutoAISettings();
 }
 
-function toggleType(type: AutoAIAnnotationType) {
-    const idx = autoAISettings.annotationTypes.indexOf(type);
-    if (idx === -1) {
-        autoAISettings.annotationTypes = [...autoAISettings.annotationTypes, type];
-    } else {
-        if (autoAISettings.annotationTypes.length === 1) return; // keep at least one
-        autoAISettings.annotationTypes = autoAISettings.annotationTypes.filter(t => t !== type);
-    }
-    persistAutoAISettings();
-}
 
 function handleDocClick(e: MouseEvent) {
     if (!open) return;
@@ -108,14 +97,16 @@ type Satellite = {
     dist: number;
 };
 
-const satellites: Satellite[] = [
-    { id: "enable",      angle: 90,  dist: 68  },
-    { id: "mode",        angle: 60,  dist: 68  },
-    { id: "focus",       angle: 30,  dist: 68  },
-    { id: "comments",    angle: 75,  dist: 130 },
-    { id: "suggestions", angle: 45,  dist: 130 },
-    { id: "revisions",   angle: 15,  dist: 130 },
-];
+// 3 satellites, evenly sliced across a 75° arc (15°–90°), all same radius.
+const ARC_START = 15;
+const ARC_END = 90;
+const DIST = 80;
+const SAT_IDS = ["focus", "mode", "enable"];
+const satellites: Satellite[] = SAT_IDS.map((id, i) => ({
+    id,
+    angle: ARC_START + (ARC_END - ARC_START) * (i / (SAT_IDS.length - 1)),
+    dist: DIST,
+}));
 
 function satPos(angle: number, dist: number) {
     const rad = (angle * Math.PI) / 180;
@@ -126,9 +117,6 @@ function satPos(angle: number, dist: number) {
     return { x, y };
 }
 
-function isTypeOn(type: AutoAIAnnotationType) {
-    return autoAISettings.annotationTypes.includes(type);
-}
 </script>
 
 <div
@@ -193,35 +181,6 @@ function isTypeOn(type: AutoAIAnnotationType) {
                 </button>
                 <span class="sat-label">{focusLabel[autoAISettings.conservativeness]}</span>
 
-            {:else if sat.id === "comments"}
-                <button
-                    class="sat-btn sat-type {isTypeOn('comment') ? 'sat-type-on' : ''}"
-                    onclick={() => toggleType("comment")}
-                    title="{isTypeOn('comment') ? 'Disable' : 'Enable'} comments"
-                >
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 2h12v9H9l-3 3v-3H2V2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-                </button>
-                <span class="sat-label">Notes</span>
-
-            {:else if sat.id === "suggestions"}
-                <button
-                    class="sat-btn sat-type {isTypeOn('suggestion') ? 'sat-type-on sat-type-green' : ''}"
-                    onclick={() => toggleType("suggestion")}
-                    title="{isTypeOn('suggestion') ? 'Disable' : 'Enable'} suggestions"
-                >
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M8 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-                <span class="sat-label">Suggest</span>
-
-            {:else if sat.id === "revisions"}
-                <button
-                    class="sat-btn sat-type {isTypeOn('revision') ? 'sat-type-on sat-type-purple' : ''}"
-                    onclick={() => toggleType("revision")}
-                    title="{isTypeOn('revision') ? 'Disable' : 'Enable'} revisions"
-                >
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 4h5l3 3v5H4V4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 4v3h3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-                </button>
-                <span class="sat-label">Revise</span>
             {/if}
         </div>
     {/each}
@@ -367,14 +326,6 @@ function isTypeOn(type: AutoAIAnnotationType) {
     .sat-focus-conservative { background: #f0fdf4; border-color: #86efac; color: #166534; }
     .sat-focus-balanced     { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
     .sat-focus-thorough     { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
-
-    /* Annotation type — off state */
-    .sat-type { opacity: 0.45; }
-
-    /* On states */
-    .sat-type-on { opacity: 1; background: #fef9f0; border-color: #fcd34d; color: #92400e; }
-    .sat-type-on.sat-type-green  { background: #f0fdf4; border-color: #86efac; color: #166534; }
-    .sat-type-on.sat-type-purple { background: #faf5ff; border-color: #d8b4fe; color: #6b21a8; }
 
     .sat-label {
         font-size: 9px;
