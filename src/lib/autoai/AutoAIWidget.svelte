@@ -107,7 +107,7 @@ onDestroy(() => {
 <div
     bind:this={widgetEl}
     onclick={(e) => e.stopPropagation()}
-    class="autoai-container {open ? 'w-[232px] rounded-[14px]' : 'w-[40px] h-[40px] rounded-[100px]'}
+    class="autoai-container {open ? 'w-[232px] h-[380px] rounded-[14px]' : 'w-[40px] h-[40px] rounded-[100px]'}
            {autoAIRunning && !locked && !open ? 'rainbow-active' : ''}
            {isReviewing && !open ? 'rainbow-reviewing' : ''}"
 >
@@ -137,7 +137,7 @@ onDestroy(() => {
     </div>
 
     <!-- Panel layer — visible when open, 80ms delay matches AISidebar -->
-    <div class="w-full flex flex-col gap-[10px] p-3
+    <div class="w-full h-full flex flex-col gap-[10px] p-3 overflow-y-auto
                 transition-opacity duration-150
                 {open ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}">
 
@@ -303,12 +303,10 @@ onDestroy(() => {
             box-shadow 200ms ease;
     }
 
-    /* Open state — override height for content-driven sizing */
+    /* Open state */
     .autoai-container.w-\[232px\] {
-        height: auto;
         border-color: #e8e0d4;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
-        overflow: visible; /* allow range thumbs to render outside clip */
     }
 
     /* Rainbow border — active (static) */
