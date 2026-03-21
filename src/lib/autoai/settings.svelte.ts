@@ -23,7 +23,7 @@ const DEFAULTS: AutoAISettings = {
     enabled: false,
     mode: "continuous",
     debounceMs: 10000,
-    persona: "Auto",
+    persona: "AutoAI",
     annotationTypes: ["comment", "suggestion", "revision"],
     conservativeness: "conservative",
 };
