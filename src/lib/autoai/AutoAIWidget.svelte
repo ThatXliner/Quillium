@@ -12,6 +12,7 @@
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
 import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 import {
     autoAISettings,
     persistAutoAISettings,
@@ -37,6 +38,11 @@ const focusLabels: Record<AutoAIConservativeness, string> = {
     conservative: "Conservative",
     balanced: "Balanced",
     thorough: "Thorough",
+};
+const focusDescriptions: Record<AutoAIConservativeness, string> = {
+    conservative: "Clear issues only",
+    balanced: "Style & clarity too",
+    thorough: "Reviews everything",
 };
 const focusIndex = $derived(focusLevels.indexOf(autoAISettings.conservativeness));
 
@@ -221,7 +227,8 @@ const annotationPills = [
 
             <div class="divider"></div>
 
-            <!-- Mode -->
+            <!-- Mode + Delay (dimmed when no API key) -->
+            <div class="{locked ? 'opacity-40 pointer-events-none' : ''}">
             <div class="field">
                 <span class="field-label">MODE</span>
                 <div class="seg-ctrl">
@@ -230,10 +237,11 @@ const annotationPills = [
                     <button class="seg-btn {autoAISettings.mode === 'manual' ? 'seg-active' : ''}"
                         onclick={() => setMode("manual")} tabindex={open ? 0 : -1}>Manual</button>
                 </div>
-                <span class="mode-hint">
-                    {#if autoAISettings.mode === "continuous"}Reviews as you write
-                    {:else}You trigger reviews{/if}
-                </span>
+                {#if autoAISettings.mode === "continuous"}
+                    <span class="mode-hint">Reviews as you write</span>
+                {:else}
+                    <div class="mode-hint mode-hint-row">Trigger with <Kbd keys={["⌘", "⇧", "R"]} /></div>
+                {/if}
             </div>
 
             <!-- Delay or Review now -->
@@ -248,6 +256,7 @@ const annotationPills = [
                     Review now
                 </button>
             {/if}
+            </div>
         </div>
 
         <!-- Vertical divider -->
@@ -256,22 +265,27 @@ const annotationPills = [
         <!-- RIGHT PANE -->
         <div class="right-pane">
             <!-- Annotation type pills -->
-            <div class="flex flex-col gap-[5px]">
-                {#each annotationPills as p}
-                    <button
-                        class="pill {autoAISettings.annotationTypes.includes(p.type) ? p.cls : 'pill-off'}"
-                        onclick={() => toggleAnnotationType(p.type)}
-                        tabindex={open ? 0 : -1}
-                        aria-pressed={autoAISettings.annotationTypes.includes(p.type)}
-                    >{p.label}</button>
-                {/each}
+            <div class="field">
+                <span class="field-label">FIND</span>
+                <div class="flex flex-col gap-[5px]">
+                    {#each annotationPills as p}
+                        <button
+                            class="pill {autoAISettings.annotationTypes.includes(p.type) ? p.cls : 'pill-off'}"
+                            onclick={() => toggleAnnotationType(p.type)}
+                            tabindex={open ? 0 : -1}
+                            aria-pressed={autoAISettings.annotationTypes.includes(p.type)}
+                        >{p.label}</button>
+                    {/each}
+                </div>
             </div>
 
             <div class="divider"></div>
 
             <!-- Focus 3-stop slider -->
             <div class="field">
+                <span class="field-label">DEPTH</span>
                 <span class="focus-label">{focusLabels[autoAISettings.conservativeness]}</span>
+                <span class="focus-desc">{focusDescriptions[autoAISettings.conservativeness]}</span>
                 <div class="focus-slider-wrap">
                     <span class="focus-stop">○</span>
                     <input class="range focus-range" type="range" min="0" max="2"
@@ -417,11 +431,11 @@ const annotationPills = [
     .icon-btn {
         width: 18px; height: 18px;
         display: flex; align-items: center; justify-content: center;
-        border: none; background: transparent; color: #9ca3af;
+        border: none; background: transparent; color: #c4bdb4;
         cursor: pointer; border-radius: 3px; padding: 0; flex-shrink: 0;
         transition: color 0.15s;
     }
-    .icon-btn:hover { color: #6b7280; }
+    .icon-btn:hover { color: #9ca3af; }
 
     /* ── Status ── */
     .status-line {
@@ -440,6 +454,9 @@ const annotationPills = [
 
     .mode-hint {
         font-size: 10px; color: #b5a99a; line-height: 1.2;
+    }
+    .mode-hint-row {
+        display: flex; align-items: center; gap: 3px;
     }
 
     .divider { height: 1px; background: #ede8e0; flex-shrink: 0; }
@@ -496,6 +513,11 @@ const annotationPills = [
         font-size: 11px; font-weight: 500; color: #6b7280;
         text-align: center;
         transition: color 0.2s;
+    }
+    .focus-desc {
+        font-size: 10px; color: #a89f96;
+        text-align: center;
+        margin-top: -2px;
     }
     .focus-slider-wrap {
         display: flex; align-items: center; gap: 3px;
