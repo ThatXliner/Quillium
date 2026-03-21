@@ -604,7 +604,7 @@ Each handler returns `false` to fall through to the next binding if it doesn't a
 
 ## AutoAI
 
-AutoAI is a background AI review system that watches document content and creates annotations automatically. It runs as an independent subsystem, separate from the AI sidebar, and is controlled via a fixed-position bubble widget in the bottom-left corner.
+AutoAI is a background AI review system that watches document content and creates annotations automatically. It runs as an independent subsystem, separate from the AI sidebar (aside from the AI provider), and is controlled via a fixed-position bubble widget in the bottom-left corner.
 
 ### Files
 
