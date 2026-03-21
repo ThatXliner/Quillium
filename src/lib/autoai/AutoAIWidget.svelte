@@ -160,19 +160,13 @@ const annotationPills = [
             aria-expanded={open}
             class="w-full h-full flex items-center justify-center rounded-[inherit]
                    bg-transparent border-none cursor-pointer
-                   {noApiKey ? 'text-gray-400' : !autoAIRunning ? 'text-gray-400' : 'text-amber-700'}"
+                   {noApiKey ? 'text-gray-400' : 'text-amber-700'}"
         >
             {#if noApiKey}
                 <!-- Lock icon -->
                 <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <rect x="3.5" y="7" width="9" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-            {:else if !autoAIRunning}
-                <!-- Pause icon -->
-                <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <rect x="4" y="3" width="3" height="10" rx="1" fill="currentColor"/>
-                    <rect x="9" y="3" width="3" height="10" rx="1" fill="currentColor"/>
                 </svg>
             {:else}
                 <!-- Quill icon -->
