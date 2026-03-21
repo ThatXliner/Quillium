@@ -28,7 +28,8 @@ let nameInputEl = $state<HTMLInputElement | null>(null);
 let widgetEl = $state<HTMLDivElement | null>(null);
 let autoAIRunning = $state(autoAISettings.enabled);
 
-const locked = $derived(!hasApiKey());
+const noApiKey = $derived(!hasApiKey());
+const locked = $derived(noApiKey || !autoAIRunning);
 const isReviewing = $derived(autoAIRunning && aiProcessing.active);
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
 
@@ -58,7 +59,7 @@ function toggleOpen() {
 }
 
 function toggleEnabled() {
-    if (locked) return;
+    if (noApiKey) return;
     autoAISettings.enabled = !autoAISettings.enabled;
     autoAIRunning = autoAISettings.enabled;
     persistAutoAISettings();
@@ -155,18 +156,26 @@ const annotationPills = [
                 flex items-center justify-center">
         <button
             onclick={toggleOpen}
-            aria-label={locked ? "AutoAI — add an API key to enable" : autoAIRunning ? "AutoAI active — click to configure" : "AutoAI — click to configure"}
+            aria-label={noApiKey ? "AutoAI — add an API key to enable" : autoAIRunning ? "AutoAI active — click to configure" : "AutoAI paused — click to configure"}
             aria-expanded={open}
             class="w-full h-full flex items-center justify-center rounded-[inherit]
                    bg-transparent border-none cursor-pointer
-                   {locked ? 'text-gray-400' : 'text-amber-700'}"
+                   {noApiKey ? 'text-gray-400' : !autoAIRunning ? 'text-gray-400' : 'text-amber-700'}"
         >
-            {#if locked}
+            {#if noApiKey}
+                <!-- Lock icon -->
                 <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <rect x="3.5" y="7" width="9" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
+            {:else if !autoAIRunning}
+                <!-- Pause icon -->
+                <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <rect x="4" y="3" width="3" height="10" rx="1" fill="currentColor"/>
+                    <rect x="9" y="3" width="3" height="10" rx="1" fill="currentColor"/>
+                </svg>
             {:else}
+                <!-- Quill icon -->
                 <svg width="28" height="28" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
                     <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
@@ -211,10 +220,10 @@ const annotationPills = [
                     {/if}
                 </div>
                 <button
-                    class="toggle-btn {autoAISettings.enabled && !locked ? 'on' : ''}"
+                    class="toggle-btn {autoAISettings.enabled && !noApiKey ? 'on' : ''}"
                     onclick={toggleEnabled}
-                    disabled={locked}
-                    aria-label={locked ? "Add an API key to enable" : autoAISettings.enabled ? "Pause" : "Enable"}
+                    disabled={noApiKey}
+                    aria-label={noApiKey ? "Add an API key to enable" : autoAISettings.enabled ? "Pause" : "Enable"}
                 ><span class="toggle-knob"></span></button>
                 <button class="icon-btn" onclick={toggleOpen} aria-label="Close">
                     <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
@@ -225,7 +234,7 @@ const annotationPills = [
 
             <!-- Status -->
             <p class="status-line">
-                {#if locked}<button class="settings-link" onclick={openSettings} tabindex={open ? 0 : -1}>Add an API key</button> to enable AutoAI.
+                {#if noApiKey}<button class="settings-link" onclick={openSettings} tabindex={open ? 0 : -1}>Add an API key</button> to enable AutoAI.
                 {:else if isReviewing}Reviewing…
                 {:else if autoAIRunning}Active · every {debounceSeconds}s
                 {:else}Paused{/if}
