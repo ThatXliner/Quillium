@@ -107,7 +107,7 @@ onDestroy(() => {
 <div
     bind:this={widgetEl}
     onclick={(e) => e.stopPropagation()}
-    class="autoai-container {open ? 'w-[232px] h-[380px] rounded-[14px]' : 'w-[40px] h-[40px] rounded-[100px]'}
+    class="autoai-container {open ? 'w-[320px] h-[290px] rounded-[14px]' : 'w-[40px] h-[40px] rounded-[100px]'}
            {autoAIRunning && !locked && !open ? 'rainbow-active' : ''}
            {isReviewing && !open ? 'rainbow-reviewing' : ''}"
 >
@@ -137,7 +137,7 @@ onDestroy(() => {
     </div>
 
     <!-- Panel layer — visible when open, 80ms delay matches AISidebar -->
-    <div class="w-full h-full flex flex-col gap-[10px] p-3 overflow-y-auto
+    <div class="w-full h-full flex flex-col gap-[8px] p-3
                 transition-opacity duration-150
                 {open ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}">
 
@@ -194,7 +194,7 @@ onDestroy(() => {
         {:else if autoAISettings.mode === "manual" && autoAISettings.enabled}
             <button
                 onclick={handleManualReview}
-                class="w-full py-1.5 rounded-lg bg-amber-50 border border-amber-200
+                class="w-full py-1 rounded-lg bg-amber-50 border border-amber-200
                        text-amber-900 text-[12px] font-medium cursor-pointer
                        hover:bg-amber-100 transition-colors"
             >
@@ -204,76 +204,80 @@ onDestroy(() => {
 
         <hr class="border-none border-t border-[#ede8e0] m-0" />
 
-        <!-- Name -->
-        <div class="field">
-            <label class="field-label" for="autoai-persona">NAME</label>
-            <input
-                id="autoai-persona"
-                class="field-input"
-                type="text"
-                value={autoAISettings.persona}
-                oninput={handlePersonaInput}
-                maxlength={20}
-                tabindex={open ? 0 : -1}
-            />
-        </div>
+        <!-- Two-column grid for compact layout -->
+        <div class="grid grid-cols-2 gap-x-3 gap-y-[8px]">
 
-        <!-- Mode -->
-        <div class="field">
-            <span class="field-label">MODE</span>
-            <div class="seg-ctrl">
-                <button class="seg-btn {autoAISettings.mode === 'continuous' ? 'seg-active' : ''}"
-                    onclick={() => setMode("continuous")} tabindex={open ? 0 : -1}>Continuous</button>
-                <button class="seg-btn {autoAISettings.mode === 'manual' ? 'seg-active' : ''}"
-                    onclick={() => setMode("manual")} tabindex={open ? 0 : -1}>Manual</button>
-            </div>
-        </div>
-
-        <!-- Delay -->
-        {#if autoAISettings.mode === "continuous"}
+            <!-- Name -->
             <div class="field">
-                <label class="field-label" for="autoai-debounce">DELAY: {debounceSeconds}S</label>
+                <label class="field-label" for="autoai-persona">NAME</label>
                 <input
-                    id="autoai-debounce"
-                    class="w-full accent-amber-500"
-                    type="range" min="2" max="60"
-                    value={debounceSeconds}
-                    oninput={handleDebounceInput}
+                    id="autoai-persona"
+                    class="field-input"
+                    type="text"
+                    value={autoAISettings.persona}
+                    oninput={handlePersonaInput}
+                    maxlength={20}
                     tabindex={open ? 0 : -1}
                 />
             </div>
-        {/if}
 
-        <!-- Focus -->
-        <div class="field">
-            <span class="field-label">FOCUS</span>
-            <div class="seg-ctrl">
-                {#each (["conservative", "balanced", "thorough"] as AutoAIConservativeness[]) as level}
-                    <button
-                        class="seg-btn {autoAISettings.conservativeness === level ? 'seg-active' : ''}"
-                        onclick={() => setConservativeness(level)}
-                        tabindex={open ? 0 : -1}
-                    >{level[0].toUpperCase() + level.slice(1)}</button>
-                {/each}
+            <!-- Mode -->
+            <div class="field">
+                <span class="field-label">MODE</span>
+                <div class="seg-ctrl">
+                    <button class="seg-btn {autoAISettings.mode === 'continuous' ? 'seg-active' : ''}"
+                        onclick={() => setMode("continuous")} tabindex={open ? 0 : -1}>Auto</button>
+                    <button class="seg-btn {autoAISettings.mode === 'manual' ? 'seg-active' : ''}"
+                        onclick={() => setMode("manual")} tabindex={open ? 0 : -1}>Manual</button>
+                </div>
             </div>
-        </div>
 
-        <!-- Annotate with -->
-        <div class="field">
-            <span class="field-label">ANNOTATE WITH</span>
-            <div class="flex gap-[10px]">
-                {#each (["comment", "suggestion", "revision"] as AutoAIAnnotationType[]) as type}
-                    <label class="flex items-center gap-1 text-[11px] text-gray-700 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            class="accent-amber-500 cursor-pointer"
-                            checked={autoAISettings.annotationTypes.includes(type)}
-                            onchange={() => toggleAnnotationType(type)}
+            <!-- Delay — spans both cols when visible -->
+            {#if autoAISettings.mode === "continuous"}
+                <div class="field col-span-2">
+                    <label class="field-label" for="autoai-debounce">DELAY: {debounceSeconds}S</label>
+                    <input
+                        id="autoai-debounce"
+                        class="w-full accent-amber-500"
+                        type="range" min="2" max="60"
+                        value={debounceSeconds}
+                        oninput={handleDebounceInput}
+                        tabindex={open ? 0 : -1}
+                    />
+                </div>
+            {/if}
+
+            <!-- Focus — spans both cols -->
+            <div class="field col-span-2">
+                <span class="field-label">FOCUS</span>
+                <div class="seg-ctrl">
+                    {#each (["conservative", "balanced", "thorough"] as AutoAIConservativeness[]) as level}
+                        <button
+                            class="seg-btn {autoAISettings.conservativeness === level ? 'seg-active' : ''}"
+                            onclick={() => setConservativeness(level)}
                             tabindex={open ? 0 : -1}
-                        />
-                        {type[0].toUpperCase() + type.slice(1)}s
-                    </label>
-                {/each}
+                        >{level[0].toUpperCase() + level.slice(1)}</button>
+                    {/each}
+                </div>
+            </div>
+
+            <!-- Annotate with — spans both cols, pill toggles -->
+            <div class="field col-span-2">
+                <span class="field-label">ANNOTATE WITH</span>
+                <div class="flex gap-[6px]">
+                    {#each ([
+                        { type: "comment",    label: "Comments",    on: "pill-comment",    off: "pill-off" },
+                        { type: "suggestion", label: "Suggestions", on: "pill-suggestion", off: "pill-off" },
+                        { type: "revision",   label: "Revisions",   on: "pill-revision",   off: "pill-off" },
+                    ] as { type: AutoAIAnnotationType, label: string, on: string, off: string }[]) as p}
+                        <button
+                            class="pill {autoAISettings.annotationTypes.includes(p.type) ? p.on : p.off}"
+                            onclick={() => toggleAnnotationType(p.type)}
+                            tabindex={open ? 0 : -1}
+                            aria-pressed={autoAISettings.annotationTypes.includes(p.type)}
+                        >{p.label}</button>
+                    {/each}
+                </div>
             </div>
         </div>
     </div>
@@ -434,4 +438,27 @@ onDestroy(() => {
         color: #92400e;
         font-weight: 500;
     }
+
+    /* ── Annotation type pills ── */
+    .pill {
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 500;
+        border: 1.5px solid transparent;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+        white-space: nowrap;
+    }
+
+    .pill-off {
+        background: white;
+        color: #9ca3af;
+        border-color: #e5ddd3;
+    }
+    .pill-off:hover { border-color: #c4b89a; color: #6b7280; }
+
+    .pill-comment   { background: #fef9e7; color: #92400e; border-color: #fcd34d; }
+    .pill-suggestion { background: #f0fdf4; color: #166534; border-color: #86efac; }
+    .pill-revision  { background: #faf5ff; color: #6b21a8; border-color: #d8b4fe; }
 </style>
