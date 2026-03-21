@@ -1,13 +1,13 @@
 <!--
-    AutoAIWidget.svelte — Fixed bottom-right AI collaborator bubble.
+    AutoAIWidget.svelte — Fixed bottom-left AI collaborator bubble.
 
-    Notion-Nosey-style circular avatar. Rainbow outline when AutoAI is
-    active. Click to open a config popover (toggle, mode, debounce, persona,
-    annotation types, conservativeness).
+    Morphs between a circular bubble and an expanded settings card using the
+    same transition-[width,height,border-radius] pattern as AISidebar.svelte.
+    A single element expands — no swap between two elements.
 -->
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
-import { aiProcessing } from "$lib/ai/settings.svelte";
+import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
 import {
     autoAISettings,
     persistAutoAISettings,
@@ -19,9 +19,6 @@ import { startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
 
 let popoverOpen = $state(false);
 let widgetEl = $state<HTMLDivElement | null>(null);
-
-// Track running state separately so the rainbow shows when reviewing
-// even if aiProcessing is also used by other AI features.
 let autoAIRunning = $state(autoAISettings.enabled);
 
 function toggleEnabled() {
@@ -35,7 +32,7 @@ function toggleEnabled() {
     }
 }
 
-function handleWidgetClick() {
+function handleBubbleClick() {
     popoverOpen = !popoverOpen;
 }
 
@@ -77,7 +74,6 @@ function handlePersonaInput(e: Event) {
     persistAutoAISettings();
 }
 
-// Close popover when clicking outside.
 function handleDocClick(e: MouseEvent) {
     if (!popoverOpen) return;
     if (widgetEl && !widgetEl.contains(e.target as Node)) {
@@ -97,285 +93,359 @@ onDestroy(() => {
 
 const isReviewing = $derived(autoAIRunning && aiProcessing.active);
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
+const locked = $derived(!hasApiKey());
 </script>
 
-<div class="autoai-root" bind:this={widgetEl}>
-    <!-- The bubble -->
+<!--
+    Single morphing element. In bubble state: 40×40, border-radius:50%.
+    In open state: 232px wide, auto height, border-radius:14px.
+    The same transition-[width,height,border-radius] pattern as AISidebar.
+-->
+<div
+    class="autoai-widget"
+    class:open={popoverOpen}
+    class:active={autoAIRunning && !locked}
+    class:reviewing={isReviewing}
+    class:locked
+    bind:this={widgetEl}
+    role="dialog"
+    aria-label="AutoAI collaborator"
+>
+    <!-- Bubble icon — visible when closed, fades out when open -->
     <button
-        class="autoai-bubble"
-        class:active={autoAIRunning}
-        class:reviewing={isReviewing}
-        onclick={handleWidgetClick}
-        title={autoAIRunning ? "AutoAI is active — click to configure" : "AutoAI — click to enable"}
-        aria-label="AutoAI collaborator"
+        class="bubble-face"
+        class:hidden={popoverOpen}
+        onclick={handleBubbleClick}
+        tabindex={popoverOpen ? -1 : 0}
+        aria-label={locked ? "AutoAI — add an API key in settings to enable" : autoAIRunning ? "AutoAI active — click to configure" : "AutoAI — click to enable"}
+        title={locked ? "Add an API key in settings to use AutoAI" : undefined}
+        aria-expanded={popoverOpen}
     >
-        <span class="autoai-initials">{autoAISettings.persona.slice(0, 2).toUpperCase()}</span>
+        <!-- Quill icon -->
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M13 2C13 2 10 3 8 6C6 9 6 13 6 13C6 13 7 11 9 10C11 9 13 8 13 8C13 8 11 9 10 11C9 13 9 14 9 14L7.5 14C7.5 14 7 12 7 10C7 8 8 5 10 4C12 3 13 2 13 2Z" fill="currentColor" opacity="0.85"/>
+            <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.4"/>
+        </svg>
     </button>
 
-    <!-- Config popover -->
-    {#if popoverOpen}
-        <div class="autoai-popover">
-            <div class="popover-header">
-                <span class="popover-title">{autoAISettings.persona}</span>
-                <span class="popover-subtitle">AI Collaborator</span>
+    <!-- Expanded content — fades in when open -->
+    <div class="panel-content" class:visible={popoverOpen} aria-hidden={!popoverOpen}>
+        <!-- Header -->
+        <div class="panel-header">
+            <div class="header-icon">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M13 2C13 2 10 3 8 6C6 9 6 13 6 13C6 13 7 11 9 10C11 9 13 8 13 8C13 8 11 9 10 11C9 13 9 14 9 14L7.5 14C7.5 14 7 12 7 10C7 8 8 5 10 4C12 3 13 2 13 2Z" fill="currentColor" opacity="0.85"/>
+                    <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.4"/>
+                </svg>
             </div>
-
-            <!-- Enable / disable -->
-            <div class="popover-row">
-                <span class="row-label">Active</span>
-                <button
-                    class="toggle-btn"
-                    class:on={autoAISettings.enabled}
-                    onclick={toggleEnabled}
-                    aria-label={autoAISettings.enabled ? "Disable AutoAI" : "Enable AutoAI"}
-                >
-                    <span class="toggle-knob"></span>
-                </button>
+            <div class="header-text">
+                <span class="header-name">{autoAISettings.persona}</span>
+                <span class="header-sub">
+                    {#if isReviewing}
+                        Reviewing…
+                    {:else if autoAIRunning}
+                        Active · every {debounceSeconds}s
+                    {:else}
+                        Paused
+                    {/if}
+                </span>
             </div>
+            <button
+                class="toggle-btn"
+                class:on={autoAISettings.enabled && !locked}
+                onclick={locked ? undefined : toggleEnabled}
+                disabled={locked}
+                aria-label={locked ? "Add an API key to enable AutoAI" : autoAISettings.enabled ? "Pause AutoAI" : "Enable AutoAI"}
+            >
+                <span class="toggle-knob"></span>
+            </button>
+            <button class="close-btn" onclick={handleBubbleClick} aria-label="Close">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
 
-            {#if autoAISettings.enabled}
-                <!-- Manual trigger -->
-                {#if autoAISettings.mode === "manual"}
-                    <button class="review-now-btn" onclick={handleManualReview}>
-                        Review now
-                    </button>
-                {/if}
-            {/if}
+        {#if locked}
+            <p class="locked-notice">Add an API key in settings to enable AutoAI.</p>
+        {:else if autoAISettings.mode === "manual" && autoAISettings.enabled}
+            <button class="review-now-btn" onclick={handleManualReview}>
+                Review now
+            </button>
+        {/if}
 
-            <hr class="popover-divider" />
+        <hr class="divider" />
 
-            <!-- Persona -->
-            <div class="popover-field">
-                <label class="field-label" for="autoai-persona">Name</label>
-                <input
-                    id="autoai-persona"
-                    class="field-input"
-                    type="text"
-                    value={autoAISettings.persona}
-                    oninput={handlePersonaInput}
-                    maxlength={20}
-                />
-            </div>
+        <div class="popover-field">
+            <label class="field-label" for="autoai-persona">NAME</label>
+            <input
+                id="autoai-persona"
+                class="field-input"
+                type="text"
+                value={autoAISettings.persona}
+                oninput={handlePersonaInput}
+                maxlength={20}
+                tabindex={popoverOpen ? 0 : -1}
+            />
+        </div>
 
-            <!-- Mode -->
-            <div class="popover-field">
-                <span class="field-label">Mode</span>
-                <div class="segment-ctrl">
-                    <button
-                        class="seg-btn"
-                        class:seg-active={autoAISettings.mode === "continuous"}
-                        onclick={() => setMode("continuous")}
-                    >Continuous</button>
-                    <button
-                        class="seg-btn"
-                        class:seg-active={autoAISettings.mode === "manual"}
-                        onclick={() => setMode("manual")}
-                    >Manual</button>
-                </div>
-            </div>
-
-            <!-- Debounce (continuous only) -->
-            {#if autoAISettings.mode === "continuous"}
-                <div class="popover-field">
-                    <label class="field-label" for="autoai-debounce">
-                        Delay: {debounceSeconds}s
-                    </label>
-                    <input
-                        id="autoai-debounce"
-                        class="field-range"
-                        type="range"
-                        min="2"
-                        max="60"
-                        value={debounceSeconds}
-                        oninput={handleDebounceInput}
-                    />
-                </div>
-            {/if}
-
-            <!-- Conservativeness -->
-            <div class="popover-field">
-                <span class="field-label">Focus</span>
-                <div class="segment-ctrl">
-                    {#each (["conservative", "balanced", "thorough"] as AutoAIConservativeness[]) as level}
-                        <button
-                            class="seg-btn"
-                            class:seg-active={autoAISettings.conservativeness === level}
-                            onclick={() => setConservativeness(level)}
-                        >{level[0].toUpperCase() + level.slice(1)}</button>
-                    {/each}
-                </div>
-            </div>
-
-            <!-- Annotation types -->
-            <div class="popover-field">
-                <span class="field-label">Annotate with</span>
-                <div class="checkbox-row">
-                    {#each (["comment", "suggestion", "revision"] as AutoAIAnnotationType[]) as type}
-                        <label class="checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={autoAISettings.annotationTypes.includes(type)}
-                                onchange={() => toggleAnnotationType(type)}
-                            />
-                            {type[0].toUpperCase() + type.slice(1)}s
-                        </label>
-                    {/each}
-                </div>
+        <div class="popover-field">
+            <span class="field-label">MODE</span>
+            <div class="segment-ctrl">
+                <button class="seg-btn" class:seg-active={autoAISettings.mode === "continuous"} onclick={() => setMode("continuous")} tabindex={popoverOpen ? 0 : -1}>Continuous</button>
+                <button class="seg-btn" class:seg-active={autoAISettings.mode === "manual"} onclick={() => setMode("manual")} tabindex={popoverOpen ? 0 : -1}>Manual</button>
             </div>
         </div>
-    {/if}
+
+        {#if autoAISettings.mode === "continuous"}
+            <div class="popover-field">
+                <label class="field-label" for="autoai-debounce">DELAY: {debounceSeconds}S</label>
+                <input
+                    id="autoai-debounce"
+                    class="field-range"
+                    type="range"
+                    min="2"
+                    max="60"
+                    value={debounceSeconds}
+                    oninput={handleDebounceInput}
+                    tabindex={popoverOpen ? 0 : -1}
+                />
+            </div>
+        {/if}
+
+        <div class="popover-field">
+            <span class="field-label">FOCUS</span>
+            <div class="segment-ctrl">
+                {#each (["conservative", "balanced", "thorough"] as AutoAIConservativeness[]) as level}
+                    <button
+                        class="seg-btn"
+                        class:seg-active={autoAISettings.conservativeness === level}
+                        onclick={() => setConservativeness(level)}
+                        tabindex={popoverOpen ? 0 : -1}
+                    >{level[0].toUpperCase() + level.slice(1)}</button>
+                {/each}
+            </div>
+        </div>
+
+        <div class="popover-field">
+            <span class="field-label">ANNOTATE WITH</span>
+            <div class="checkbox-row">
+                {#each (["comment", "suggestion", "revision"] as AutoAIAnnotationType[]) as type}
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            checked={autoAISettings.annotationTypes.includes(type)}
+                            onchange={() => toggleAnnotationType(type)}
+                            tabindex={popoverOpen ? 0 : -1}
+                        />
+                        {type[0].toUpperCase() + type.slice(1)}s
+                    </label>
+                {/each}
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
-    .autoai-root {
+    /* ── Root morphing element ── */
+    .autoai-widget {
         position: fixed;
         bottom: 24px;
         left: 24px;
         z-index: 40;
-        display: flex;
-        flex-direction: column-reverse;
-        align-items: flex-start;
-        gap: 8px;
-    }
 
-    /* Bubble */
-    .autoai-bubble {
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        border: 2.5px solid transparent;
-        background:
-            linear-gradient(#f5f3f0, #f5f3f0) padding-box,
-            linear-gradient(135deg, #d1d5db, #9ca3af) border-box;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        /* Bubble state */
+        width: 40px;
+        height: 40px;
+        border-radius: 9999px;
+        overflow: hidden;
+
+        background: #faf8f5;
+        border: 2px solid #d6b87a; /* warm amber — idle */
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
         cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+
+        /* The morph: same pattern as AISidebar */
         transition:
-            box-shadow 0.2s,
-            transform 0.15s;
+            width 300ms cubic-bezier(0.33, 0, 0.2, 1),
+            height 300ms cubic-bezier(0.33, 0, 0.2, 1),
+            border-radius 300ms cubic-bezier(0.33, 0, 0.2, 1),
+            box-shadow 200ms ease,
+            border-color 300ms ease;
     }
 
-    .autoai-bubble:hover {
-        transform: scale(1.06);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+    .autoai-widget.open {
+        width: 232px;
+        height: auto; /* content-driven */
+        border-radius: 14px;
+        border-color: #e8e0d4;
+        cursor: default;
+        box-shadow:
+            0 4px 16px rgba(0, 0, 0, 0.10),
+            0 1px 4px rgba(0, 0, 0, 0.06);
+        overflow: visible; /* allow range thumb to render */
     }
 
-    .autoai-bubble.active {
+    /* Locked state — muted, no amber */
+    .autoai-widget.locked:not(.open) {
+        border-color: #d1d5db;
+        opacity: 0.6;
+    }
+
+    .autoai-widget.locked .bubble-face {
+        color: #9ca3af;
+    }
+
+    /* Active (rainbow) border */
+    .autoai-widget.active:not(.open) {
+        border: 2px solid transparent;
         background:
-            linear-gradient(#f5f3f0, #f5f3f0) padding-box,
-            conic-gradient(
-                from 0deg,
-                #f59e0b,
-                #ec4899,
-                #8b5cf6,
-                #3b82f6,
-                #10b981,
-                #f59e0b
-            ) border-box;
+            linear-gradient(#faf8f5, #faf8f5) padding-box,
+            conic-gradient(from 0deg, #f59e0b, #ec4899, #8b5cf6, #3b82f6, #10b981, #f59e0b) border-box;
     }
 
-    .autoai-bubble.reviewing {
+    .autoai-widget.reviewing:not(.open) {
         animation: rainbow-spin 2s linear infinite;
     }
 
     @keyframes rainbow-spin {
         to {
             background:
-                linear-gradient(#f5f3f0, #f5f3f0) padding-box,
-                conic-gradient(
-                    from 360deg,
-                    #f59e0b,
-                    #ec4899,
-                    #8b5cf6,
-                    #3b82f6,
-                    #10b981,
-                    #f59e0b
-                ) border-box;
+                linear-gradient(#faf8f5, #faf8f5) padding-box,
+                conic-gradient(from 360deg, #f59e0b, #ec4899, #8b5cf6, #3b82f6, #10b981, #f59e0b) border-box;
         }
     }
 
-    .autoai-initials {
-        font-size: 13px;
-        font-weight: 600;
-        color: #4b5563;
-        letter-spacing: 0.02em;
-        user-select: none;
+    /* ── Bubble face (icon, visible when closed) ── */
+    .bubble-face {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #92681a;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        border-radius: inherit;
+        transition: opacity 150ms ease, transform 150ms ease;
     }
 
-    /* Popover */
-    .autoai-popover {
-        width: 240px;
-        background: rgba(250, 248, 245, 0.96);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.5);
-        border-radius: 14px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
-        padding: 14px;
+    .bubble-face.hidden {
+        opacity: 0;
+        pointer-events: none;
+        transform: scale(0.7);
+    }
+
+    .bubble-face:not(.hidden):hover {
+        opacity: 0.8;
+    }
+
+    /* ── Expanded panel content ── */
+    .panel-content {
+        padding: 12px;
         display: flex;
         flex-direction: column;
         gap: 10px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 150ms ease 50ms; /* slight delay so morph starts first */
     }
 
-    .popover-header {
+    .panel-content.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* ── Header ── */
+    .panel-header {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+    .header-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 1.5px solid #d6b87a;
+        background: #faf8f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #92681a;
+        flex-shrink: 0;
+    }
+
+    .header-text {
+        flex: 1;
         display: flex;
         flex-direction: column;
         gap: 1px;
+        min-width: 0;
     }
 
-    .popover-title {
-        font-size: 14px;
+    .header-name {
+        font-size: 13px;
         font-weight: 600;
         color: #1f2937;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.2;
     }
 
-    .popover-subtitle {
-        font-size: 11px;
+    .header-sub {
+        font-size: 10px;
         color: #9ca3af;
+        white-space: nowrap;
     }
 
-    .popover-divider {
-        border: none;
-        border-top: 1px solid #e5e7eb;
-        margin: 0;
-    }
-
-    /* Toggle */
-    .popover-row {
+    .close-btn {
+        width: 20px;
+        height: 20px;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: #9ca3af;
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 0;
+        flex-shrink: 0;
+        transition: color 0.15s, background 0.15s;
     }
 
-    .row-label {
-        font-size: 13px;
-        color: #374151;
+    .close-btn:hover {
+        color: #6b7280;
+        background: #f3f0eb;
     }
 
+    /* ── Toggle ── */
     .toggle-btn {
-        width: 36px;
-        height: 20px;
-        border-radius: 10px;
+        width: 30px;
+        height: 17px;
+        border-radius: 9px;
         background: #d1d5db;
         border: none;
         cursor: pointer;
         position: relative;
         transition: background 0.2s;
         padding: 0;
+        flex-shrink: 0;
     }
 
     .toggle-btn.on {
-        background: #3b82f6;
+        background: #f59e0b;
     }
 
     .toggle-knob {
         position: absolute;
         top: 2px;
         left: 2px;
-        width: 16px;
-        height: 16px;
+        width: 13px;
+        height: 13px;
         border-radius: 50%;
         background: white;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
@@ -383,28 +453,43 @@ const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
     }
 
     .toggle-btn.on .toggle-knob {
-        transform: translateX(16px);
+        transform: translateX(13px);
     }
 
-    /* Review now button */
+    /* ── Divider ── */
+    .divider {
+        border: none;
+        border-top: 1px solid #ede8e0;
+        margin: 0;
+    }
+
+    /* ── Locked notice ── */
+    .locked-notice {
+        font-size: 11px;
+        color: #9ca3af;
+        margin: 0;
+        line-height: 1.4;
+    }
+
+    /* ── Review now ── */
     .review-now-btn {
         width: 100%;
         padding: 6px 0;
         border-radius: 8px;
-        background: #eff6ff;
-        border: 1px solid #bfdbfe;
-        color: #1d4ed8;
-        font-size: 13px;
+        background: #fef3c7;
+        border: 1px solid #fcd34d;
+        color: #92400e;
+        font-size: 12px;
         font-weight: 500;
         cursor: pointer;
         transition: background 0.15s;
     }
 
     .review-now-btn:hover {
-        background: #dbeafe;
+        background: #fde68a;
     }
 
-    /* Fields */
+    /* ── Fields ── */
     .popover-field {
         display: flex;
         flex-direction: column;
@@ -412,16 +497,16 @@ const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
     }
 
     .field-label {
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 500;
-        color: #6b7280;
+        color: #9ca3af;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.06em;
     }
 
     .field-input {
         font-size: 13px;
-        border: 1px solid #e5e7eb;
+        border: 1px solid #e5ddd3;
         border-radius: 7px;
         padding: 5px 8px;
         background: white;
@@ -431,46 +516,45 @@ const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
     }
 
     .field-input:focus {
-        border-color: #93c5fd;
+        border-color: #fcd34d;
     }
 
     .field-range {
         width: 100%;
-        accent-color: #3b82f6;
+        accent-color: #f59e0b;
     }
 
-    /* Segmented control */
+    /* ── Segmented control ── */
     .segment-ctrl {
         display: flex;
-        border: 1px solid #e5e7eb;
+        border: 1px solid #e5ddd3;
         border-radius: 8px;
         overflow: hidden;
+        background: white;
     }
 
     .seg-btn {
         flex: 1;
         padding: 5px 0;
-        font-size: 12px;
+        font-size: 11px;
         border: none;
-        background: white;
+        background: transparent;
         color: #6b7280;
         cursor: pointer;
-        transition:
-            background 0.15s,
-            color 0.15s;
+        transition: background 0.15s, color 0.15s;
     }
 
     .seg-btn + .seg-btn {
-        border-left: 1px solid #e5e7eb;
+        border-left: 1px solid #e5ddd3;
     }
 
     .seg-btn.seg-active {
-        background: #eff6ff;
-        color: #1d4ed8;
+        background: #fef3c7;
+        color: #92400e;
         font-weight: 500;
     }
 
-    /* Checkboxes */
+    /* ── Checkboxes ── */
     .checkbox-row {
         display: flex;
         gap: 10px;
@@ -480,13 +564,13 @@ const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
         display: flex;
         align-items: center;
         gap: 4px;
-        font-size: 12px;
+        font-size: 11px;
         color: #374151;
         cursor: pointer;
     }
 
     .checkbox-label input {
-        accent-color: #3b82f6;
+        accent-color: #f59e0b;
         cursor: pointer;
     }
 </style>
