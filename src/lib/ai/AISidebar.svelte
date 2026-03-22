@@ -454,7 +454,7 @@ function handleKeydown(e: KeyboardEvent) {
             <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
             <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
             <div class="absolute inset-0 overflow-y-auto {action === 'context' ? '' : 'hidden'}"><DocumentContext /></div>
-            <div class="absolute inset-0 flex flex-col {action === 'settings' ? '' : 'hidden'}"><AISettings /></div>
+            {#if action === 'settings'}<div class="absolute inset-0 flex flex-col"><AISettings /></div>{/if}
         </div>
     </div>
 
