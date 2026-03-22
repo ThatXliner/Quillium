@@ -263,6 +263,6 @@ if (import.meta.env.DEV) {
 
 <style>
     :global(html) {
-        background-color: #e5e7eb; /* gray-200 */
+        background-color: var(--color-bg);
     }
 </style>

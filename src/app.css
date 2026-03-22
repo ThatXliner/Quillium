@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* ── Dark mode variant: triggered by data-theme="dark" or OS preference ─── */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ── Fontsource font imports ─────────────────────────────────────────────── */
 /* Serif */
 @import "@fontsource/eb-garamond/latin.css";
@@ -20,10 +23,67 @@
     --doc-font-family: "SF Pro Text", system-ui, sans-serif;
     --doc-font-size: 18px;
     --ui-font-family: system-ui, -apple-system, sans-serif;
+
+    /* Light theme tokens */
+    --color-bg: #e5e7eb;
+    --color-surface: #ffffff;
+    --color-surface-subtle: rgba(0,0,0,0.02);
+    --color-surface-hover: rgba(0,0,0,0.04);
+    --color-border: rgba(0,0,0,0.09);
+    --color-border-subtle: rgba(0,0,0,0.06);
+    --color-text: rgba(0,0,0,0.85);
+    --color-text-muted: rgba(0,0,0,0.5);
+    --color-text-faint: rgba(0,0,0,0.35);
+    --color-sidebar-bg: #f5f5f4;
+    --color-panel-bg: rgba(245,245,244,0.85);
+    --color-editor-doc: #ffffff;
+    --color-input-bg: #ffffff;
+    color-scheme: light;
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] {
+    --color-bg: #1a1a1a;
+    --color-surface: #252525;
+    --color-surface-subtle: rgba(255,255,255,0.03);
+    --color-surface-hover: rgba(255,255,255,0.06);
+    --color-border: rgba(255,255,255,0.1);
+    --color-border-subtle: rgba(255,255,255,0.07);
+    --color-text: rgba(255,255,255,0.87);
+    --color-text-muted: rgba(255,255,255,0.5);
+    --color-text-faint: rgba(255,255,255,0.3);
+    --color-sidebar-bg: #1e1e1e;
+    --color-panel-bg: rgba(30,30,30,0.9);
+    --color-editor-doc: #1f1e1c;
+    --color-input-bg: #2a2a2a;
+    color-scheme: dark;
+}
+
+/* System preference fallback (when no data-theme is set) */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --color-bg: #1a1a1a;
+        --color-surface: #252525;
+        --color-surface-subtle: rgba(255,255,255,0.03);
+        --color-surface-hover: rgba(255,255,255,0.06);
+        --color-border: rgba(255,255,255,0.1);
+        --color-border-subtle: rgba(255,255,255,0.07);
+        --color-text: rgba(255,255,255,0.87);
+        --color-text-muted: rgba(255,255,255,0.5);
+        --color-text-faint: rgba(255,255,255,0.3);
+        --color-sidebar-bg: #1e1e1e;
+        --color-panel-bg: rgba(30,30,30,0.9);
+        --color-editor-doc: #1f1e1c;
+        --color-input-bg: #2a2a2a;
+        color-scheme: dark;
+    }
 }
 
 body {
     font-family: var(--ui-font-family);
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 @keyframes shake {
@@ -47,4 +107,82 @@ body {
 
 .shake {
     animation: shake 0.4s ease;
+}
+
+/* ── Dark mode global overrides ─────────────────────────────────────────── */
+/*
+ * These target key structural elements since Tailwind utility classes
+ * are hardcoded throughout the component tree.
+ *
+ * The "is-dark" class is added to <html> by applySettings() whenever
+ * dark mode is active (either explicit or resolved from system pref).
+ */
+
+/* Library page background */
+html.is-dark .library-root {
+    background: linear-gradient(135deg, #1c1c1c 0%, #181818 100%) !important;
+}
+
+html.is-dark #ai-sidebar {
+    background-color: rgba(35, 34, 33, 0.85) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+html.is-dark #editor-document {
+    background-color: #1f1e1c !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6) !important;
+}
+
+html.is-dark .cm-content {
+    color: rgba(230, 222, 210, 0.92) !important;
+    caret-color: rgba(230, 222, 210, 0.92) !important;
+}
+
+html.is-dark .cm-cursor {
+    border-left-color: rgba(230, 222, 210, 0.92) !important;
+}
+
+html.is-dark #status-bar {
+    background-color: rgba(35, 34, 33, 0.75) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+html.is-dark .settings-modal-inner {
+    background-color: #232220 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+html.is-dark input:not([type="range"]),
+html.is-dark textarea {
+    background-color: #2a2a2a !important;
+    color: rgba(255, 255, 255, 0.87) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* CodeMirror annotation highlights — dark variants */
+html.is-dark .cm-comment {
+    background-color: rgba(254, 242, 205, 0.15) !important;
+}
+html.is-dark .cm-comment-active,
+html.is-dark .cm-comment-active .cm-comment {
+    background-color: rgba(252, 188, 5, 0.35) !important;
+}
+html.is-dark .cm-revision-active .cm-revision,
+html.is-dark .cm-revision-active {
+    background-color: rgba(168, 85, 247, 0.25) !important;
+}
+html.is-dark .cm-suggestion-active .cm-suggestion,
+html.is-dark .cm-suggestion-active {
+    background-color: rgba(34, 197, 94, 0.2) !important;
+}
+html.is-dark .cm-suggestion-diff-del {
+    color: #fca5a5 !important;
+    background-color: rgba(220, 38, 38, 0.25) !important;
+}
+html.is-dark .cm-suggestion-diff-ins {
+    color: #86efac !important;
+    background-color: rgba(21, 128, 61, 0.3) !important;
 }
