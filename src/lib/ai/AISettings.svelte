@@ -29,13 +29,16 @@
 <script lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon } from "lucide-svelte";
-import { aiSettings, hasApiKey, loadApiKeyForProvider, HAS_API_KEY } from "$lib/ai/settings.svelte";
+import {
+    aiSettings,
+    hasApiKey,
+    loadApiKeyForProvider,
+    HAS_API_KEY_KEY,
+    resetApiKeyLoadPromise,
+} from "$lib/ai/settings.svelte";
 import type { Provider } from "$lib/ai/provider";
 import posthog from "$lib/posthog";
-import {
-    autoAISettings,
-    persistAutoAISettings,
-} from "$lib/autoai/settings.svelte";
+import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 
 const PROVIDERS: { id: Provider; label: string; color: string }[] = [
@@ -155,12 +158,15 @@ let keyLoading = $state(!aiSettings.apiKey);
 let showKey = $state(false);
 let saveStatus = $state<"idle" | "saved" | "error">("idle");
 let saveTimer: ReturnType<typeof setTimeout>;
+// Technically hasApiKey already does the length check but
+// we need to do it here for Svelte to detect it
+let canSave = $derived(!!apiKey.trim() || hasApiKey());
 
 $effect(() => {
     const provider = selectedProvider;
     // Only query the keychain if the user has previously saved an API key
     // (avoids the keychain prompt before AI is configured).
-    if (!localStorage.getItem(HAS_API_KEY)) {
+    if (!localStorage.getItem(HAS_API_KEY_KEY)) {
         keyLoading = false;
         return;
     }
@@ -240,11 +246,12 @@ async function saveApiKey() {
                 key: apiKey.trim(),
             });
             aiSettings.apiKey = apiKey.trim();
-            localStorage.setItem(HAS_API_KEY, "1");
+            localStorage.setItem(HAS_API_KEY_KEY, "1");
         } else {
             await invoke("delete_api_key", { provider: selectedProvider });
             aiSettings.apiKey = "";
-            localStorage.removeItem(HAS_API_KEY);
+            localStorage.removeItem(HAS_API_KEY_KEY);
+            resetApiKeyLoadPromise();
             if (autoAISettings.enabled) {
                 autoAISettings.enabled = false;
                 persistAutoAISettings();
@@ -428,21 +435,25 @@ async function saveApiKey() {
             </div>
             <button
                 onclick={saveApiKey}
-                disabled={!apiKey.trim() && !keyLoading}
+                disabled={!canSave && !keyLoading}
                 class="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-colors
                     {saveStatus === 'saved'
                         ? 'bg-green-500/15 text-green-700'
                         : saveStatus === 'error'
                           ? 'bg-red-500/15 text-red-700'
-                          : !apiKey.trim()
+                          : !canSave
                             ? 'bg-black/5 text-black/25 cursor-not-allowed'
-                            : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25'}"
+                            : !apiKey.trim()
+                              ? 'bg-red-500/15 text-red-700 hover:bg-red-500/25'
+                              : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25'}"
             >
                 {#if saveStatus === "saved"}
                     <CheckIcon size={12} />
-                    Saved to keychain
+                    {apiKey.trim() ? "Saved to keychain" : "Key removed"}
                 {:else if saveStatus === "error"}
                     Failed to save
+                {:else if !apiKey.trim() && hasApiKey()}
+                    Remove key
                 {:else}
                     Save to keychain
                 {/if}
