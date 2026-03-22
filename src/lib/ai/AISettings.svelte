@@ -32,6 +32,11 @@ import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon } from "lucide-svelte";
 import { aiSettings, hasApiKey, loadApiKeyForProvider, HAS_API_KEY } from "$lib/ai/settings.svelte";
 import type { Provider } from "$lib/ai/provider";
 import posthog from "$lib/posthog";
+import {
+    autoAISettings,
+    persistAutoAISettings,
+} from "$lib/autoai/settings.svelte";
+import { stopAutoAI } from "$lib/autoai/engine";
 
 const PROVIDERS: { id: Provider; label: string; color: string }[] = [
     { id: "openai", label: "OpenAI", color: "#10a37f" },
@@ -240,6 +245,11 @@ async function saveApiKey() {
             await invoke("delete_api_key", { provider: selectedProvider });
             aiSettings.apiKey = "";
             localStorage.removeItem(HAS_API_KEY);
+            if (autoAISettings.enabled) {
+                autoAISettings.enabled = false;
+                persistAutoAISettings();
+                stopAutoAI();
+            }
         }
         saveStatus = "saved";
     } catch (e) {
