@@ -112,13 +112,13 @@ src/
 | File | Purpose |
 |---|---|
 | `static/logo.svg` | Quill mark on transparent background — used in-app and on the landing page |
-| `static/icon.svg` | Quill mark on neumorphic rounded-rect background — the canonical app icon SVG |
-| `src-tauri/icons/Quillium.png` | **Source of truth for platform icons.** Hand-crafted 512×512 PNG. SVG filter rendering (`feDropShadow`) varies across tools (Inkscape, Chromium, `tauri icon`), so this pre-rendered PNG is used instead of `icon.svg` for icon generation |
+| `static/icon.svg` | **Source of truth for the app icon.** Hand-crafted quill mark on neumorphic rounded-rect background |
+| `src-tauri/icons/Quillium.png` | Pre-rendered 512×512 PNG exported from `icon.svg`. SVG filter rendering (`feDropShadow`) varies across tools (Inkscape, Chromium, `tauri icon`), so this PNG is used for platform icon generation |
 | `src-tauri/icons/*` | Generated platform icons (icns, ico, Windows/iOS/Android sizes) |
 
 To regenerate all platform icons from `Quillium.png`: `bun run icons`
 
-If the logo design changes, update `Quillium.png` first (e.g. export from Figma or a browser), then run `bun run icons`.
+If the logo design changes, update `icon.svg` first, then re-export `Quillium.png` (e.g. from a browser), then run `bun run icons`.
 
 ---
 
