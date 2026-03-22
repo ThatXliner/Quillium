@@ -536,78 +536,113 @@
   }
 
   .manifesto-inner {
-    max-width: 640px;
+    max-width: 800px;
     margin: 0 auto;
   }
 
-  .manifesto blockquote {
+  .manifesto-headline {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 400;
+    font-style: italic;
+    line-height: 1.25;
+    color: var(--text-primary);
+    margin-bottom: 1.25rem;
+  }
+
+  .manifesto-subtitle {
+    font-size: 1.05rem;
+    color: var(--text-tertiary);
+    margin-bottom: 3.5rem;
+    line-height: 1.6;
+  }
+
+  .manifesto-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 4rem;
+    text-align: left;
+  }
+
+  .manifesto-card {
+    background: radial-gradient(circle at 30% 20%, var(--surface), var(--surface-darker));
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    box-shadow: var(--neu);
+    padding: 2rem;
+  }
+
+  .manifesto-card h3 {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-primary);
+    margin-bottom: 1.25rem;
+  }
+
+  .manifesto-card p {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.75;
+  }
+
+  .manifesto-card ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .manifesto-card li {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+
+  .manifesto-card li .bullet {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--yellow);
+    flex-shrink: 0;
+    margin-top: 0.45em;
+  }
+
+  .manifesto-divider {
+    width: 100%;
+    max-width: 800px;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.06);
+    margin: 0 auto 4rem;
+  }
+
+  .manifesto-quote {
     font-family: 'Newsreader', Georgia, serif;
     font-size: clamp(1.3rem, 2.5vw, 1.65rem);
     font-style: italic;
-    line-height: 1.7;
+    line-height: 1.6;
     color: var(--text-primary);
-    margin-bottom: 2.5rem;
-    position: relative;
-  }
-  .manifesto blockquote::before {
-    content: '';
-    display: block;
-    width: 40px;
-    height: 3px;
-    background: var(--blue);
-    border-radius: 2px;
-    margin: 0 auto 2rem;
-    opacity: 0.4;
+    margin-bottom: 2rem;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
   }
 
-  .manifesto p {
-    font-size: 1rem;
+  .manifesto-quote .highlight {
+    color: var(--yellow);
+  }
+
+  .manifesto-closing {
+    font-size: 0.95rem;
     color: var(--text-secondary);
     line-height: 1.8;
-    margin-bottom: 1.5rem;
-  }
-
-  .manifesto .em-highlight {
-    color: var(--text-primary);
-    font-weight: 500;
-  }
-
-  /* ── PERSONAS ── */
-  .personas-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
-  }
-
-  .persona-card {
-    background: radial-gradient(circle at 30% 20%, var(--surface), var(--surface-darker));
-    border-radius: 24px;
-    box-shadow: var(--neu);
-    border: 1px solid var(--glass-border);
-    padding: 2.25rem;
-    transition: transform 340ms cubic-bezier(0.33, 0, 0.2, 1);
-  }
-  .persona-card:hover { transform: translateY(-4px); }
-
-  .persona-card h3 {
-    font-family: 'Newsreader', Georgia, serif;
-    font-size: 1.2rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-  }
-  .persona-card .persona-desc {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    line-height: 1.7;
-    margin-bottom: 1.25rem;
-  }
-  .persona-quote {
-    font-size: 0.8rem;
-    font-style: italic;
-    color: var(--text-tertiary);
-    border-left: 2px solid rgba(0,0,0,0.08);
-    padding-left: 0.75rem;
-    line-height: 1.6;
+    max-width: 640px;
+    margin: 0 auto;
   }
 
   /* ── CTA SECTION ── */
@@ -717,7 +752,7 @@
       gap: 2rem;
     }
     .feature-row.reverse { direction: ltr; }
-    .personas-grid { grid-template-columns: 1fr; }
+    .manifesto-cards { grid-template-columns: 1fr; }
     .email-form { flex-direction: column; }
     .nav-links { gap: 1rem; }
     .nav-badge { display: none; }
@@ -895,69 +930,56 @@
 <!-- ════════ MANIFESTO ════════ -->
 <section id="manifesto" class="manifesto">
   <div class="manifesto-inner fade-up">
-    <p class="section-label">Manifesto</p>
+    <p class="section-label">The Manifesto</p>
 
-    <blockquote>
+    <h2 class="manifesto-headline">
       Writing tools have always assumed you know where you're going.
-      They give you a blank page and a blinking cursor and say: begin.
-    </blockquote>
+    </h2>
 
-    <p>
-      But writers don't work that way. A novel is four drafts of the same chapter.
-      An essay is three abandoned theses before the real one arrives. A memoir is the same
-      sentence rewritten until it finally sounds like the truth.
+    <p class="manifesto-subtitle">
+      They don't. Neither do you. That's not a flaw.
     </p>
 
-    <p>
-      <span class="em-highlight">That's not a flaw. That's the process.</span>
-    </p>
-
-    <p>
-      Quillium is the editor that treats non-linearity as a feature, not a problem to manage.
-      It's the space where every draft, every branch, every what-if is preserved — because
-      the path you didn't take might be the path you need tomorrow.
-    </p>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ════════ PERSONAS ════════ -->
-<section>
-  <div class="container">
-    <p class="section-label">Who it's for</p>
-    <h2 class="section-title">Writers who think in versions.</h2>
-    <p class="section-desc">
-      If you've ever wished you could go back to "the way it was three hours ago,"
-      Quillium was built for you.
-    </p>
-
-    <div class="personas-grid fade-up">
-      <div class="persona-card">
-        <h3>The Novelist</h3>
-        <p class="persona-desc">
-          You're on chapter twelve, but chapter four still has three versions you can't choose between.
-          Quillium holds them all without making you decide today.
+    <div class="manifesto-cards">
+      <div class="manifesto-card">
+        <h3>The Problem</h3>
+        <p>
+          Writing is a web of attempts — a tangle of better and worse,
+          a conversation between drafts. Every blank page pretending
+          otherwise is lying to you.
         </p>
-        <p class="persona-quote">"I need a tool that lets me be indecisive without punishment."</p>
       </div>
-      <div class="persona-card">
-        <h3>The Essayist</h3>
-        <p class="persona-desc">
-          Your thesis changes when you write the conclusion. You need to test both directions
-          without losing either. Branch the argument. See where each one lands.
-        </p>
-        <p class="persona-quote">"I don't know what I think until I've written it two ways."</p>
-      </div>
-      <div class="persona-card">
-        <h3>The Memoirist</h3>
-        <p class="persona-desc">
-          Every sentence matters. You rewrite the same paragraph until it sounds like
-          the truth — not a version of it. Quillium keeps every attempt within reach.
-        </p>
-        <p class="persona-quote">"The right word is always the one I almost deleted."</p>
+      <div class="manifesto-card">
+        <h3>Who It's For</h3>
+        <ul>
+          <li>
+            <span class="bullet"></span>
+            Novelists writing the same chapter four different ways
+          </li>
+          <li>
+            <span class="bullet"></span>
+            Essayists testing three theses before committing to one
+          </li>
+          <li>
+            <span class="bullet"></span>
+            Memoirists still reshaping sentences at 2am
+          </li>
+        </ul>
       </div>
     </div>
+
+    <div class="manifesto-divider"></div>
+
+    <p class="manifesto-quote">
+      "We built an editor that treats non-linearity as a
+      <span class="highlight">feature</span>, not a problem to manage."
+    </p>
+
+    <p class="manifesto-closing">
+      AI as a second voice in the room — one that annotates rather than interrupts,
+      responds to your text rather than pulling you away from it.
+      Warm. Calm. Focused. Because the writing is the product.
+    </p>
   </div>
 </section>
 
