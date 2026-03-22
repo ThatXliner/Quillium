@@ -23,6 +23,7 @@ type AppSettings = {
     customQuickActions: CustomQuickAction[];
     titleVisibility: "hover" | "always" | "never";
     uiZoom: number;
+    analyticsEnabled: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -35,6 +36,7 @@ const DEFAULTS: AppSettings = {
     customQuickActions: [],
     titleVisibility: "hover",
     uiZoom: 1,
+    analyticsEnabled: true,
 };
 
 function loadSettings(): AppSettings {

@@ -1,6 +1,7 @@
 import posthog from "posthog-js";
 import { dev } from "$app/environment";
 import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from "$env/static/public";
+import { appSettings } from "$lib/settings.svelte";
 
 declare const __APP_VERSION__: string;
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
@@ -15,8 +16,13 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
 
     posthog.register({ app_version: appVersion });
 
+    // Respect the user's analytics preference
+    if (!appSettings.analyticsEnabled) {
+        posthog.opt_out_capturing();
+    }
+
     console.log(
-        `%c 🪶 Quillium (${appVersion}) %c PostHog analytics active`,
+        `%c 🪶 Quillium (${appVersion}) %c PostHog analytics ${appSettings.analyticsEnabled ? "active" : "opted out"}`,
         "background:#3b82f6;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
         "background:#1d4ed8;color:#fff;font-weight:400;padding:2px 8px;border-radius:0 4px 4px 0;",
     );
@@ -25,6 +31,17 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         console.warn("[Quillium] Dev mode — analytics disabled.");
     } else {
         console.warn("[Quillium] PostHog env vars missing — analytics disabled.");
+    }
+}
+
+/**
+ * Call after changing `appSettings.analyticsEnabled` to sync PostHog state.
+ */
+export function syncAnalyticsOptOut(enabled: boolean) {
+    if (enabled) {
+        posthog.opt_in_capturing();
+    } else {
+        posthog.opt_out_capturing();
     }
 }
 
