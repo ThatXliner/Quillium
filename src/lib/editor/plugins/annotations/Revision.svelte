@@ -70,6 +70,7 @@ const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
 
 let isEditorOpen = $state(false);
 let userClosedEditor = false;
+let nestedEditorFocused = $state(false);
 
 $effect(() => {
     if (isActive) {
@@ -561,14 +562,24 @@ onDestroy(() => {
     <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
                 bind:this={nestedEditorHost}
                 class="revision-inline-editor"
                 class:cursor-arriving={cursorArriving}
+                onfocusin={() => nestedEditorFocused = true}
+                onfocusout={() => nestedEditorFocused = false}
             ></div>
-            <div class="flex items-center justify-end gap-1.5 px-2.5 pb-1.5 text-[10px] text-purple-400/70">
-                <Kbd keys={["Cmd", "↵"]} /> <span>new version</span>
-            </div>
+            {#if !nestedEditorFocused}
+                <div class="flex items-center justify-center gap-1.5 px-2.5 pb-1.5 text-[10px] text-purple-400/70">
+                    <Kbd keys={["Cmd", "E"]} /> <span>to edit</span>
+                </div>
+            {/if}
+        </div>
+    {:else if isActive}
+        <!-- If !showNestedEditor -->
+        <div class="mx-3 mb-2 flex items-center gap-1.5 text-[10px] text-purple-400/70">
+            <Kbd keys={["Cmd", "E"]} /> <span>to edit</span>
         </div>
     {/if}
 
