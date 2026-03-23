@@ -14,7 +14,7 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         capture_exceptions: true,
     });
 
-    posthog.register({ app_version: appVersion });
+    posthog.register({ app_version: appVersion, app: "desktop" });
 
     // Respect the user's analytics preference
     if (!appSettings.analyticsEnabled) {
