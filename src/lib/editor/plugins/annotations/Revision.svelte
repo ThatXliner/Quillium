@@ -470,8 +470,9 @@ onDestroy(() => {
             }}
             title="Create a new version ({modKey}↵)"
         >
-            <PlusIcon size={10} />
-            <span>New version</span>
+            <PlusIcon size={14} />
+            <span>New Version</span>
+            <span class="ml-0.5 opacity-50"><Kbd keys={["Cmd", "↵"]} /></span>
         </button>
         {#if appSettings.showNestedEditor}
         <button
