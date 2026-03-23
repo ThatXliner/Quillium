@@ -59,6 +59,7 @@ const shortcutGroups = [
         shortcuts: [
             { keys: [mod, opt, "M"], label: "Add comment" },
             { keys: [mod, opt, "K"], label: "Add revision" },
+            { keys: [mod, "E"], label: "Enter revision editor" },
             { keys: [mod, "/"], label: "Reply to annotation" },
             { keys: [mod, "↵"], label: "New revision version (in editor)" },
             { keys: [mod, "↵"], label: "Send reply" },

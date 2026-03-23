@@ -234,6 +234,28 @@ $effect(() => {
     });
 });
 
+// ⌘E → enter the revision's editor (inline or modal)
+$effect(() => {
+    return annotationEventBus.on("annotation-enter-editor", (event) => {
+        if (event.annotationId !== revision.id) return;
+        if (appSettings.showNestedEditor) {
+            if (isEditorOpen && controller.editor) {
+                controller.editor.focus();
+            } else {
+                userClosedEditor = false;
+                isEditorOpen = true;
+            }
+        } else {
+            modalStack.push({
+                type: "revision",
+                revisionId: revision.id,
+                parentView: view,
+                label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+            });
+        }
+    });
+});
+
 /**
  * Mount a nested CodeMirror editor for the given version.
  */
@@ -544,6 +566,9 @@ onDestroy(() => {
                 class="revision-inline-editor"
                 class:cursor-arriving={cursorArriving}
             ></div>
+            <div class="flex items-center justify-end gap-1.5 px-2.5 pb-1.5 text-[10px] text-purple-400/70">
+                <Kbd keys={["Cmd", "↵"]} /> <span>new version</span>
+            </div>
         </div>
     {/if}
 

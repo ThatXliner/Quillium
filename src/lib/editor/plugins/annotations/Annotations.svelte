@@ -427,6 +427,7 @@ $effect(() => {
 
 // Annotation keyboard shortcuts:
 //   ⌘/          — focus reply textarea (comment / suggestion / revision)
+//   ⌘E          — enter revision editor (inline or modal)
 $effect(() => {
     function onKeydown(e: KeyboardEvent) {
         if (!(e.metaKey || e.ctrlKey)) return;
@@ -442,6 +443,14 @@ $effect(() => {
                 e.preventDefault();
                 annotationEventBus.emit({
                     type: "annotation-focus-reply",
+                    annotationId: active.id,
+                });
+            }
+        } else if ((e.key === "e" || e.key === "E") && !e.shiftKey) {
+            if (active._type === "revision") {
+                e.preventDefault();
+                annotationEventBus.emit({
+                    type: "annotation-enter-editor",
                     annotationId: active.id,
                 });
             }
