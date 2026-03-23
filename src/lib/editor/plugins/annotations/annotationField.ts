@@ -752,6 +752,7 @@ export const annotationField = StateField.define<Annotations>({
         }));
     },
     fromJSON(value: unknown) {
+        if (value == null) return {} as Annotations;
         const result = RawAnnotationsSchema.safeParse(value);
         if (!result.success) {
             console.warn(

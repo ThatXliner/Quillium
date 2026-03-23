@@ -60,7 +60,7 @@ const shortcutGroups = [
             { keys: [mod, opt, "M"], label: "Add comment" },
             { keys: [mod, opt, "K"], label: "Add revision" },
             { keys: [mod, "/"], label: "Reply to annotation" },
-            { keys: [mod, "⇧", "V"], label: "New revision version" },
+            { keys: [mod, "↵"], label: "New revision version (in editor)" },
             { keys: [mod, "↵"], label: "Send reply" },
         ],
     },
