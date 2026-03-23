@@ -841,12 +841,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
       <!-- Right actions -->
       <div class="flex items-center gap-2 shrink-0">
-        {#if revision && revision.versions.length > 1}
-          <div class="flex items-center gap-0.5 opacity-40">
-            <Kbd keys={["Ctrl", "["]} />
-            <Kbd keys={["Ctrl", "]"]} />
-          </div>
-        {/if}
         <button
           class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
               bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"

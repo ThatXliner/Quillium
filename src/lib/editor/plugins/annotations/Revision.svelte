@@ -443,12 +443,6 @@ onDestroy(() => {
                 </button>
             </div>
         {/each}
-        {#if isActive && revision.versions.length > 1}
-            <div class="ml-auto flex items-center gap-0.5 opacity-50">
-                <Kbd keys={["Ctrl", "["]} />
-                <Kbd keys={["Ctrl", "]"]} />
-            </div>
-        {/if}
     </div>
 
     <!-- Actions row -->
