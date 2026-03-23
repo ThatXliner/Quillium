@@ -197,6 +197,11 @@
     background: linear-gradient(135deg, #3b82f6, #2563eb);
     border-color: rgba(255,255,255,0.15);
   }
+  .logo-frame.transparent {
+    background: repeating-conic-gradient(#e5e7eb 0% 25%, #f3f4f6 0% 50%) 0 0 / 16px 16px;
+    box-shadow: none;
+    border: 1px dashed rgba(0,0,0,0.15);
+  }
 
   .logo-frame img {
     width: 110px;
@@ -207,6 +212,22 @@
     font-size: 0.75rem;
     color: var(--text-secondary);
     font-weight: 500;
+  }
+
+  .export-btn {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--blue-600);
+    background: none;
+    border: 1px solid var(--blue-500);
+    border-radius: 6px;
+    padding: 0.3rem 0.75rem;
+    cursor: pointer;
+    transition: background 200ms ease, color 200ms ease;
+  }
+  .export-btn:hover {
+    background: var(--blue-500);
+    color: #fff;
   }
 
   /* ── Color Palette ── */
@@ -691,6 +712,13 @@
         </div>
         <span class="logo-variant-label">On Brand</span>
       </div>
+      <div class="logo-variant">
+        <div class="logo-frame transparent">
+          <img src="static/logo-no-bg.svg" alt="Logo without background">
+        </div>
+        <span class="logo-variant-label">No Background (Flat)</span>
+        <button class="export-btn" onclick="exportPNG()">Export PNG (1024&times;1024)</button>
+      </div>
     </div>
   </div>
 </section>
@@ -1087,5 +1115,32 @@
   Quillium Brand Guidelines
 </footer>
 
+<script>
+function exportPNG() {
+  var svgMarkup = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">' +
+    '<g transform="translate(113, 96) rotate(19) scale(1.18) translate(-100, -100)">' +
+    '<path d="M140,28 C128,42 110,55 90,68 C74,80 62,96 56,116 C52,132 52,150 56,168 L60,174 C60,152 64,134 72,118 C82,100 96,88 112,76 C126,65 136,50 140,36Z" fill="none" stroke="#6b7280" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<path d="M138,32 C118,62 94,98 72,135 C62,150 58,166 58,174" fill="none" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>' +
+    '<circle cx="58" cy="174" r="3.2" fill="#3b82f6"/>' +
+    '<circle cx="55" cy="179.5" r="3.2" fill="#a855f7"/>' +
+    '<circle cx="61" cy="179.5" r="3.2" fill="#22c55e"/>' +
+    '<circle cx="58" cy="185" r="3.2" fill="#fcbc05"/>' +
+    '</g></svg>';
+  var size = 1024;
+  var canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  var ctx = canvas.getContext("2d");
+  var img = new Image();
+  img.onload = function () {
+    ctx.drawImage(img, 0, 0, size, size);
+    var a = document.createElement("a");
+    a.download = "quillium-icon-1024.png";
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
+}
+</script>
 </body>
 </html>
