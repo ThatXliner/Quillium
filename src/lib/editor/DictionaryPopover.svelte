@@ -124,13 +124,21 @@ function handleKeydown(e: KeyboardEvent) {
 
 // ── Dictionary API ─────────────────────────────────────────────
 
+let lookupController: AbortController | null = null;
+
 async function lookupWord(w: string) {
+    // Cancel any in-flight request so stale results can't overwrite fresh ones.
+    lookupController?.abort();
+    const controller = new AbortController();
+    lookupController = controller;
+
     lookupLoading = true;
     lookupError = null;
     lookupResult = null;
     try {
         const res = await fetch(
             `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`,
+            { signal: controller.signal },
         );
         if (res.status === 404) {
             lookupError = `No results for "${w}".`;
@@ -141,8 +149,10 @@ async function lookupWord(w: string) {
             return;
         }
         lookupResult = (await res.json()) as DictEntry[];
-    } catch {
-        lookupError = "Could not reach dictionary.";
+    } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+            lookupError = "Could not reach dictionary.";
+        }
     } finally {
         lookupLoading = false;
     }
