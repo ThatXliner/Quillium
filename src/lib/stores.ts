@@ -176,6 +176,12 @@ export const tutorialModalGuide = writable<TutorialModalGuide>({
 export const tutorialNavCommand = writable<"next" | "back" | "skip" | null>(null);
 
 /**
+ * The DB id of the most recently persisted event for the current draft.
+ * Updated by listeners.ts after each successful appendEvent.
+ */
+export const lastPersistedEventId = writable<number>(-1);
+
+/**
  * Command payload dispatched when the user triggers an annotation
  * command (comment/revision) while the cursor is inside an active
  * revision in the main document. Carries the revision ID, command

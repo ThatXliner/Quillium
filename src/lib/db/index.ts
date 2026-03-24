@@ -7,7 +7,7 @@
  * @tauri-apps/plugin-sql directly.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult } from "./types";
+import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta } from "./types";
 
 // ── Reset ─────────────────────────────────────────────────────────
 
@@ -117,5 +117,33 @@ export async function loadDocumentState(
     return invoke<LoadResult>("cmd_load_document_state", {
         docId,
         draftId: draftId ?? null,
+    });
+}
+
+// ── Version history ───────────────────────────────────────────────
+
+export async function listSnapshots(draftId: string): Promise<SnapshotMeta[]> {
+    return invoke<SnapshotMeta[]>("cmd_list_snapshots", { draftId });
+}
+
+export async function labelSnapshot(snapshotId: number, label: string): Promise<void> {
+    return invoke<void>("cmd_label_snapshot", { snapshotId, label });
+}
+
+export async function restoreToSnapshot(draftId: string, snapshotId: number): Promise<void> {
+    return invoke<void>("cmd_restore_to_snapshot", { draftId, snapshotId });
+}
+
+export async function createNamedSnapshot(
+    draftId: string,
+    stateJson: string,
+    upToEventId: number,
+    label: string,
+): Promise<number> {
+    return invoke<number>("cmd_create_named_snapshot", {
+        draftId,
+        stateJson,
+        upToEventId,
+        label,
     });
 }

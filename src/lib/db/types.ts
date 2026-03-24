@@ -43,3 +43,11 @@ export type LoadResult = {
     snapshotEventId: number;
     eventsSince: EventRecord[];
 };
+
+export type SnapshotMeta = {
+    id: number;
+    draftId: string;
+    upToEventId: number;
+    createdAt: number;
+    label: string | null;
+};
