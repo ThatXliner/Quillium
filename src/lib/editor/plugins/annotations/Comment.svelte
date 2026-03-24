@@ -22,8 +22,8 @@
  * button are visible.
  */
 import { Trash2, Expand } from "lucide-svelte";
-import { streamChat } from "$lib/ai/clientStreams";
 import { aiSettings } from "$lib/ai/settings.svelte";
+import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
 import posthog from "$lib/posthog";
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
@@ -52,19 +52,14 @@ const selectedText = $derived(
     view.state.sliceDoc(comment.selection.main.from, comment.selection.main.to),
 );
 
-/**
- * Build an AI prompt from the thread + selected text, stream
- * the response, and append it as an "AI" message in the thread.
- */
 async function aiSuggestion() {
     posthog.capture("comment_ai_suggestion_requested", {
         thread_length: thread.length,
         has_selection: !!selectedText,
     });
-    const prompt = buildAiPrompt();
-
+    const prompt = buildCommentAiPrompt(thread, selectedText);
     try {
-        const aiResponse = await streamAiResponse(prompt);
+        const aiResponse = await streamCommentAiResponse(prompt, selectedText, aiSettings);
         updateThread([...thread, { message: aiResponse, author: "AI", time: Date.now() }]);
     } catch {
         updateThread([
@@ -76,66 +71,6 @@ async function aiSuggestion() {
             },
         ]);
     }
-}
-
-/**
- * Construct the prompt string sent to the AI, including the
- * thread messages and the document text the comment refers to.
- */
-function buildAiPrompt(): string {
-    let prompt = "Provide suggestions based on the following";
-    if (thread.length === 1) {
-        prompt += " comment:\n";
-    } else {
-        prompt += " conversation thread:\n";
-    }
-    prompt += "```\n";
-    if (thread.length === 1) {
-        prompt += thread[0].message;
-    } else {
-        prompt += thread.map((message) => `${message.author}: ${message.message}`).join("\n");
-    }
-    prompt += "\n```\n";
-    prompt += "For context, here is the selected text the comment is referring to:\n";
-    prompt += "```\n";
-    prompt += selectedText;
-    prompt += "```\n";
-    prompt += "Be concise.";
-    return prompt;
-}
-
-/**
- * Open a streaming chat connection and collect the full AI
- * text-delta response into a single string.
- */
-async function streamAiResponse(prompt: string): Promise<string> {
-    const stream = streamChat({
-        messages: [
-            {
-                id: "1",
-                role: "user",
-                parts: [{ type: "text", text: prompt }],
-            },
-        ],
-        documentContent: "",
-        selectedText,
-        provider: aiSettings.provider,
-        model: aiSettings.model,
-        apiKey: aiSettings.apiKey,
-    });
-
-    const reader = stream.getReader();
-    let aiResponse = "";
-
-    while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value?.type === "text-delta") {
-            aiResponse += value.delta;
-        }
-    }
-
-    return aiResponse;
 }
 </script>
 
@@ -164,6 +99,7 @@ async function streamAiResponse(prompt: string): Promise<string> {
                     });
                 }}
                 title="Expand thread"
+                aria-label="Expand comment thread"
             >
                 <Expand size={14} />
             </button>
@@ -177,6 +113,7 @@ async function streamAiResponse(prompt: string): Promise<string> {
                     removeComment();
                 }}
                 title="Delete comment"
+                aria-label="Delete comment"
             >
                 <Trash2 size={16} />
             </button>

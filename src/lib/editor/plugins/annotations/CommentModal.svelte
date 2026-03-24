@@ -21,14 +21,13 @@
 import { ChevronRight, ChevronDown, ChevronUp, MessageSquare, SparklesIcon, X } from "lucide-svelte";
 import { slide } from "svelte/transition";
 import type { EditorView } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
-import { modalStack, annotations as annotationsStore } from "$lib/stores";
+import { modalStack, annotations as annotationsStore, modalAnnotationStores } from "$lib/stores";
 import { updateThread } from "./annotationField";
 import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { streamChat } from "$lib/ai/clientStreams";
 import { aiSettings } from "$lib/ai/settings.svelte";
+import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
 import posthog from "$lib/posthog";
 
 const {
@@ -42,10 +41,14 @@ const isTop = $derived(stackIndex === $modalStack.length - 1);
 
 let dialogEl = $state<HTMLDialogElement>();
 
-// Read comment reactively from the global annotations store so
-// thread updates made here reflect immediately.
+// Read comment from the correct annotation source:
+// - stackIndex 0 → main editor's global annotations store
+// - stackIndex N → parent modal's nested annotation store (index N-1)
 const comment = $derived(
-    $annotationsStore?.[commentId] as Annotation<"comment"> | undefined,
+    (stackIndex === 0
+        ? $annotationsStore
+        : $modalAnnotationStores[stackIndex - 1]
+    )?.[commentId] as Annotation<"comment"> | undefined,
 );
 
 const selectedText = $derived(
@@ -213,35 +216,9 @@ async function aiSuggestion() {
         has_selection: !!selectedText,
         from_modal: true,
     });
-
-    let prompt = "Provide suggestions based on the following";
-    prompt += currentThread.length === 1 ? " comment:\n" : " conversation thread:\n";
-    prompt += "```\n";
-    prompt +=
-        currentThread.length === 1
-            ? currentThread[0].message
-            : currentThread.map((m) => `${m.author}: ${m.message}`).join("\n");
-    prompt += "\n```\n";
-    prompt += "For context, here is the selected text the comment is referring to:\n";
-    prompt += "```\n" + selectedText + "```\n";
-    prompt += "Be concise.";
-
+    const prompt = buildCommentAiPrompt(currentThread, selectedText);
     try {
-        const stream = streamChat({
-            messages: [{ id: "1", role: "user", parts: [{ type: "text", text: prompt }] }],
-            documentContent: "",
-            selectedText,
-            provider: aiSettings.provider,
-            model: aiSettings.model,
-            apiKey: aiSettings.apiKey,
-        });
-        const reader = stream.getReader();
-        let aiResponse = "";
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (value?.type === "text-delta") aiResponse += value.delta;
-        }
+        const aiResponse = await streamCommentAiResponse(prompt, selectedText, aiSettings);
         handleUpdateThread([
             ...currentThread,
             { message: aiResponse, author: "AI", time: Date.now() },

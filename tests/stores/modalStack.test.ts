@@ -25,6 +25,15 @@ function revisionEntry(id = 0): ModalEntry {
     };
 }
 
+function commentEntry(id = 0, view: EditorView = fakeView): ModalEntry {
+    return {
+        type: "comment",
+        commentId: id,
+        parentView: view,
+        label: `Comment ${id}`,
+    };
+}
+
 beforeEach(() => {
     modalStack.clear();
 });
@@ -121,6 +130,36 @@ describe("modalStack.popToAndRebuild", () => {
         const stack = get(modalStack);
         expect(stack).toHaveLength(1);
         expect((stack[0] as ModalEntry & { rebuildToken?: number }).rebuildToken).toBeUndefined();
+    });
+});
+
+// ── duplicate-push prevention ─────────────────────────────────────────────────
+
+describe("modalStack.push duplicate prevention — comment", () => {
+    it("does not push the same comment+view twice", () => {
+        modalStack.push(commentEntry(1));
+        modalStack.push(commentEntry(1));
+        expect(get(modalStack)).toHaveLength(1);
+    });
+
+    it("pushes a comment with a different commentId", () => {
+        modalStack.push(commentEntry(1));
+        modalStack.push(commentEntry(2));
+        expect(get(modalStack)).toHaveLength(2);
+    });
+
+    it("pushes a comment with a different parentView", () => {
+        const otherView = {} as EditorView;
+        modalStack.push(commentEntry(1, fakeView));
+        modalStack.push(commentEntry(1, otherView));
+        expect(get(modalStack)).toHaveLength(2);
+    });
+
+    it("does not push a duplicate even when it is not at the top of the stack", () => {
+        modalStack.push(commentEntry(1));
+        modalStack.push(revisionEntry(2));
+        modalStack.push(commentEntry(1)); // duplicate of index 0
+        expect(get(modalStack)).toHaveLength(2);
     });
 });
 
