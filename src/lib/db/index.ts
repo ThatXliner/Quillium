@@ -139,6 +139,16 @@ export async function restoreToSnapshot(draftId: string, snapshotId: number): Pr
     return invoke<void>("cmd_restore_to_snapshot", { draftId, snapshotId });
 }
 
+/** Returns the auto-prune retention in days, or null if disabled. */
+export async function getSnapshotRetention(): Promise<number | null> {
+    return invoke<number | null>("cmd_get_snapshot_retention");
+}
+
+/** Saves the snapshot auto-prune retention. Pass null to disable. */
+export async function setSnapshotRetention(days: number | null): Promise<void> {
+    return invoke<void>("cmd_set_snapshot_retention", { days });
+}
+
 /** Returns total bytes of state_json for all snapshots of a draft. */
 export async function getSnapshotStorageSize(draftId: string): Promise<number> {
     return invoke<number>("cmd_get_snapshot_storage_size", { draftId });

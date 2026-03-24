@@ -10,7 +10,7 @@ use db::{
         list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
         set_trash_retention, trash_document, update_document_meta,
     },
-    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state, get_snapshot_storage_size, prune_snapshots_keep_last_n, prune_snapshots_older_than},
+    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state, get_snapshot_storage_size, prune_snapshots_keep_last_n, prune_snapshots_older_than, get_snapshot_retention, set_snapshot_retention},
     load::load_document_state,
     schema::open_db,
     AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
@@ -183,6 +183,21 @@ fn cmd_create_named_snapshot(
 }
 
 #[tauri::command]
+fn cmd_get_snapshot_retention(state: tauri::State<DbState>) -> Result<Option<i64>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_snapshot_retention(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_snapshot_retention(
+    state: tauri::State<DbState>,
+    days: Option<i64>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_snapshot_retention(&conn, days).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn cmd_get_snapshot_storage_size(
     state: tauri::State<DbState>,
     draft_id: String,
@@ -299,6 +314,18 @@ pub fn run() {
             if let Ok(Some(days)) = get_trash_retention(&conn) {
                 let _ = purge_expired_trash(&conn, days);
             }
+            // Auto-prune old snapshots on startup per retention policy.
+            if let Ok(Some(days)) = get_snapshot_retention(&conn) {
+                // Prune across all drafts.
+                if let Ok(mut stmt) = conn.prepare("SELECT DISTINCT draft_id FROM snapshots") {
+                    if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
+                        let draft_ids: Vec<String> = rows.filter_map(|r| r.ok()).collect();
+                        for draft_id in draft_ids {
+                            let _ = prune_snapshots_older_than(&conn, &draft_id, days);
+                        }
+                    }
+                }
+            }
             app.manage(DbState(Mutex::new(conn)));
             Ok(())
         })
@@ -326,6 +353,8 @@ pub fn run() {
             cmd_label_snapshot,
             cmd_restore_to_snapshot,
             cmd_create_named_snapshot,
+            cmd_get_snapshot_retention,
+            cmd_set_snapshot_retention,
             cmd_get_snapshot_storage_size,
             cmd_prune_snapshots_keep_last_n,
             cmd_prune_snapshots_older_than,

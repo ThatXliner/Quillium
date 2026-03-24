@@ -154,6 +154,38 @@ pub fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Option
     }
 }
 
+pub fn get_snapshot_retention(conn: &Connection) -> Result<Option<i64>> {
+    let result: rusqlite::Result<String> = conn.query_row(
+        "SELECT value FROM _meta WHERE key = 'snapshot_retention_days'",
+        [],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(val) => {
+            if val == "never" {
+                Ok(None)
+            } else {
+                Ok(val.parse::<i64>().ok())
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn set_snapshot_retention(conn: &Connection, days: Option<i64>) -> Result<()> {
+    let value = match days {
+        Some(d) => d.to_string(),
+        None => "never".to_string(),
+    };
+    conn.execute(
+        "INSERT INTO _meta (key, value) VALUES ('snapshot_retention_days', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![value],
+    )?;
+    Ok(())
+}
+
 pub fn get_snapshot_storage_size(conn: &Connection, draft_id: &str) -> Result<i64> {
     conn.query_row(
         "SELECT COALESCE(SUM(LENGTH(state_json)), 0) FROM snapshots WHERE draft_id = ?1",
