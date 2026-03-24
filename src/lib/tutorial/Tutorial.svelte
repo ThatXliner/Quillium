@@ -601,6 +601,19 @@ onDestroy(() => {
                 </div>
 
                 <div class="flex flex-col gap-2">
+                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
+                        <input
+                            type="checkbox"
+                            checked={includeNested}
+                            onchange={(e) => setSection("nested", (e.currentTarget as HTMLInputElement).checked)}
+                            class="mt-0.5"
+                        />
+                        <span>
+                            <span class="block text-xs font-medium text-black/80">Nested Revision Walkthrough</span>
+                            <span class="block text-[11px] text-black/55">Interactive steps for creating and expanding nested revisions</span>
+                        </span>
+                    </label>
+
                     {#if appSettings.aiEnabled}
                     <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
                         <input
@@ -615,19 +628,6 @@ onDestroy(() => {
                         </span>
                     </label>
                     {/if}
-
-                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
-                        <input
-                            type="checkbox"
-                            checked={includeNested}
-                            onchange={(e) => setSection("nested", (e.currentTarget as HTMLInputElement).checked)}
-                            class="mt-0.5"
-                        />
-                        <span>
-                            <span class="block text-xs font-medium text-black/80">Nested Revision Walkthrough</span>
-                            <span class="block text-[11px] text-black/55">Interactive steps for creating and expanding nested revisions</span>
-                        </span>
-                    </label>
 
                     <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
                         <input
