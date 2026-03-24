@@ -10,7 +10,7 @@ use db::{
         list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
         set_trash_retention, trash_document, update_document_meta,
     },
-    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot},
+    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state},
     load::load_document_state,
     schema::open_db,
     AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
@@ -138,6 +138,15 @@ fn cmd_list_snapshots(
 ) -> Result<Vec<SnapshotMeta>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     list_snapshots(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_load_snapshot_state(
+    state: tauri::State<DbState>,
+    snapshot_id: i64,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    load_snapshot_state(&conn, snapshot_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -284,6 +293,7 @@ pub fn run() {
             cmd_create_snapshot,
             cmd_load_document_state,
             cmd_list_snapshots,
+            cmd_load_snapshot_state,
             cmd_label_snapshot,
             cmd_restore_to_snapshot,
             cmd_create_named_snapshot,

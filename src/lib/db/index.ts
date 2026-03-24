@@ -126,6 +126,11 @@ export async function listSnapshots(draftId: string): Promise<SnapshotMeta[]> {
     return invoke<SnapshotMeta[]>("cmd_list_snapshots", { draftId });
 }
 
+/** Returns the state_json blob for a specific snapshot, or null if not found. */
+export async function loadSnapshotState(snapshotId: number): Promise<string | null> {
+    return invoke<string | null>("cmd_load_snapshot_state", { snapshotId });
+}
+
 export async function labelSnapshot(snapshotId: number, label: string): Promise<void> {
     return invoke<void>("cmd_label_snapshot", { snapshotId, label });
 }

@@ -142,6 +142,16 @@ pub fn list_snapshots(conn: &Connection, draft_id: &str) -> Result<Vec<SnapshotM
     rows.collect()
 }
 
+pub fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Option<String>> {
+    conn.query_row(
+        "SELECT state_json FROM snapshots WHERE id = ?1",
+        params![snapshot_id],
+        |row| row.get(0),
+    )
+    .ok()
+    .map_or(Ok(None), |v| Ok(Some(v)))
+}
+
 pub fn label_snapshot(conn: &Connection, snapshot_id: i64, label: &str) -> Result<()> {
     conn.execute(
         "UPDATE snapshots SET label = ?1 WHERE id = ?2",
