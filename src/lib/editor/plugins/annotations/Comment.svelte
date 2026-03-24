@@ -21,7 +21,7 @@
  * message. When active, the full thread, reply input, and "Suggest"
  * button are visible.
  */
-import { Trash2 } from "lucide-svelte";
+import { Trash2, Expand } from "lucide-svelte";
 import { streamChat } from "$lib/ai/clientStreams";
 import { aiSettings } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
@@ -29,6 +29,7 @@ import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
+import { modalStack } from "$lib/stores";
 
 const {
     comment,
@@ -148,19 +149,38 @@ async function streamAiResponse(prompt: string): Promise<string> {
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-0">
         <h3 class="text-[10px] font-semibold text-blue-600/70 uppercase tracking-wider">Comment</h3>
-        <button
-            class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-            onclick={() => {
-                posthog.capture("annotation_deleted", {
-                    type: "comment",
-                    thread_length: thread.length,
-                });
-                removeComment();
-            }}
-            title="Delete comment"
-        >
-            <Trash2 size={16} />
-        </button>
+        <div class="flex items-center gap-0.5">
+            <button
+                class="p-1 rounded-md text-blue-400/50 hover:text-blue-600/70 hover:bg-white/40 transition-colors"
+                onclick={() => {
+                    posthog.capture("comment_modal_opened", {
+                        thread_length: thread.length,
+                    });
+                    modalStack.push({
+                        type: "comment",
+                        commentId: comment.id,
+                        parentView: view,
+                        label: selectedText.slice(0, 40) || "Comment",
+                    });
+                }}
+                title="Expand thread"
+            >
+                <Expand size={14} />
+            </button>
+            <button
+                class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+                onclick={() => {
+                    posthog.capture("annotation_deleted", {
+                        type: "comment",
+                        thread_length: thread.length,
+                    });
+                    removeComment();
+                }}
+                title="Delete comment"
+            >
+                <Trash2 size={16} />
+            </button>
+        </div>
     </div>
 
     <!-- Quoted text chip — clicking jumps cursor into the annotation range -->
