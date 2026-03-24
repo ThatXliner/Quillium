@@ -695,15 +695,6 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     }
     return true;
 };
-const dev_dontuseinprod_createSuggestion: StateCommand = ({ state, dispatch }) => {
-    createSuggestion({
-        editorSelection: state.selection,
-        state,
-        dispatch,
-        replacements: ["ur mother"],
-    });
-    return true;
-};
 function addRevisionVersionCommand(): StateCommand {
     return ({ state }) => {
         const annotation = getActiveRevisionAnnotation(state);
