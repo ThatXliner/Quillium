@@ -347,7 +347,7 @@
         <!-- Timeline panel -->
         <div id="versions-panel" class="w-72 bg-white border-l border-black/[0.08] flex flex-col overflow-hidden
                     shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.06)]">
-            <div class="px-4 pt-3 pb-2 border-b border-black/[0.06] space-y-2.5">
+            <div class="px-4 pt-3 pb-2 border-b border-black/[0.06] space-y-1.5">
                 <div class="flex items-center justify-between">
                     <h2 class="text-sm font-semibold text-black/70">Versions</h2>
                     {#if storageBytes !== null}
