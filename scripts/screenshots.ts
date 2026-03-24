@@ -717,7 +717,9 @@ async function scenarioDictionary(ctx: BrowserContext): Promise<void> {
             | undefined;
         if (!editorViewStore) return;
         let view: unknown;
-        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
         unsub();
         if (!view) return;
         const v = view as {
@@ -734,29 +736,11 @@ async function scenarioDictionary(ctx: BrowserContext): Promise<void> {
     });
     await page.waitForTimeout(300);
 
-    // Open the dictionary tab — wait for API key to resolve first so
-    // hasApiKey() returns true and the click doesn't redirect to settings.
-    await page.locator("#ai-tab-dictionary").waitFor({ state: "visible" });
-    await page
-        .waitForFunction(
-            () =>
-                !document
-                    .querySelector("#ai-tab-dictionary")
-                    ?.getAttribute("aria-label")
-                    ?.includes("add API key") ?? false,
-            { timeout: 8000 },
-        )
-        .catch(() => {});
-    await page.locator("#ai-tab-dictionary").click({ force: true });
-    await page.locator("#ai-sidebar").waitFor({ state: "visible" });
-    // If we ended up on settings, click dictionary again
-    await page.waitForTimeout(300);
-    const titleText = await page.locator("#ai-sidebar .text-xs.font-semibold").innerText().catch(() => "");
-    if (titleText.includes("Settings")) {
-        await page.locator("#ai-tab-dictionary").click({ force: true });
-        await page.waitForTimeout(400);
-    }
-    await page.waitForTimeout(300);
+    // Open the dictionary/thesaurus popover via the keyboard shortcut (⌘B / Ctrl+B).
+    // The sidebar Dictionary tab was removed in favour of the floating popover.
+    const dictionaryShortcut = process.platform === "darwin" ? "Meta+B" : "Control+B";
+    await page.keyboard.press(dictionaryShortcut);
+    await page.waitForTimeout(500);
 
     await shot(page, "10-dictionary");
     await page.close();

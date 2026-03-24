@@ -63,7 +63,9 @@ async function openDictionaryOn(q: QuilliumPage, word: string) {
  * Use these helpers instead of toBeVisible/not.toBeVisible.
  */
 async function expectPopoverVisible(page: Page) {
-    await expect(page.locator(".dictionary-popover")).toHaveClass(/opacity-100/, { timeout: 5_000 });
+    await expect(page.locator(".dictionary-popover")).toHaveClass(/opacity-100/, {
+        timeout: 5_000,
+    });
 }
 
 async function expectPopoverHidden(page: Page) {

@@ -91,7 +91,7 @@ let anchorWord = $state("");
 
 // Close when the editor selection moves away from the original word.
 $effect(() => {
-    if (visible && $selectedText !== anchorWord) {
+    if (visible && ($selectedText ?? "").trim() !== anchorWord) {
         dismiss();
     }
 });
@@ -219,7 +219,10 @@ function openInChat() {
     }
     pendingChatMessage.set(msg);
     window.dispatchEvent(new CustomEvent("quillium:open-chat"));
-    posthog.capture("dictionary_open_in_chat", { word, has_describe_history: chat.messages.length > 0 });
+    posthog.capture("dictionary_open_in_chat", {
+        word,
+        has_describe_history: chat.messages.length > 0,
+    });
     dismiss();
 }
 
@@ -238,7 +241,7 @@ async function handleDescribeSubmit(e: Event) {
 <!-- Backdrop: click outside to dismiss -->
 {#if visible}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="fixed inset-0 z-[99]" onclick={dismiss}></div>
+    <div class="fixed inset-0 z-[99]" onclick={(e) => { e.stopPropagation(); dismiss(); }}></div>
 {/if}
 
 <!-- Popover -->

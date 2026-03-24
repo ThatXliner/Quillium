@@ -131,16 +131,16 @@ export const currentDraftId = writable<string | null>(null);
 export const tutorialActive = writable(false);
 
 /**
- * When set to a non-null string, the Chat panel will send it as a message
- * and clear this store. AISidebar reacts by opening the Chat tab.
+ * When set to a non-null string, the AI sidebar will open the Chat tab
+ * and pre-fill the chat input with this value, then clear this store.
  * Written by: DictionaryPopover "Open in Chat" button.
- * Read by: AISidebar.svelte (opens tab), Chat.svelte (sends message).
+ * Read by: AISidebar.svelte (opens tab), Chat.svelte (pre-fills input).
  */
 export const pendingChatMessage = writable<string | null>(null);
 
 /**
  * Trigger payload for the dictionary popover.
- * Set by the CM keymap (dictionaryPlugin.ts) when Alt-d is pressed.
+ * Set by the CM keymap (dictionaryPlugin.ts) when Mod-b (⌘B) is pressed.
  * Read by: DictionaryPopover.svelte (reacts and opens itself).
  * null = popover is closed / not triggered.
  */

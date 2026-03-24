@@ -7,7 +7,6 @@
  */
 import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
-import { get } from "svelte/store";
 import { dictionaryTrigger } from "$lib/stores";
 
 function openDictionary(view: EditorView): boolean {
@@ -29,6 +28,4 @@ function openDictionary(view: EditorView): boolean {
     return true;
 }
 
-export const dictionaryExtension = Prec.high(
-    keymap.of([{ key: "Mod-b", run: openDictionary }]),
-);
+export const dictionaryExtension = Prec.high(keymap.of([{ key: "Mod-b", run: openDictionary }]));

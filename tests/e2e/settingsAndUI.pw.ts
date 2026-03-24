@@ -120,7 +120,9 @@ test.describe("zoom controls", () => {
             return document.documentElement.style.zoom || "1";
         });
 
-        expect(Number.parseFloat(String(newZoom))).toBeGreaterThanOrEqual(Number.parseFloat(String(initialZoom)));
+        expect(Number.parseFloat(String(newZoom))).toBeGreaterThanOrEqual(
+            Number.parseFloat(String(initialZoom)),
+        );
     });
 
     test("Cmd+0 resets zoom", async ({ page }) => {

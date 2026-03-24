@@ -5,22 +5,16 @@ test.describe("rapid ctrl+z spam resilience", () => {
     test.beforeEach(async ({ page }) => {
         await installTauriMock(page);
         await page.goto("/");
-        await expect(
-            page.locator("#editor-document .cm-content"),
-        ).toBeVisible();
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
     });
 
-    test("spamming ctrl+z after typing does not crash the editor", async ({
-        page,
-    }) => {
+    test("spamming ctrl+z after typing does not crash the editor", async ({ page }) => {
         const errors: string[] = [];
         page.on("pageerror", (error) => {
             errors.push(error.message ?? String(error));
         });
 
-        const editor = page
-            .locator("#editor-document .cm-content")
-            .first();
+        const editor = page.locator("#editor-document .cm-content").first();
         await editor.click();
 
         // Type several words so there is undo history to chew through
@@ -37,23 +31,17 @@ test.describe("rapid ctrl+z spam resilience", () => {
         }
 
         // Editor should be empty (all typing undone) and no errors
-        await expect
-            .poll(() => getCmText(editor), { timeout: 5000 })
-            .toBe("");
+        await expect.poll(() => getCmText(editor), { timeout: 5000 }).toBe("");
         expect(errors).toHaveLength(0);
     });
 
-    test("spamming ctrl+z after adding a comment does not crash", async ({
-        page,
-    }) => {
+    test("spamming ctrl+z after adding a comment does not crash", async ({ page }) => {
         const errors: string[] = [];
         page.on("pageerror", (error) => {
             errors.push(error.message ?? String(error));
         });
 
-        const editor = page
-            .locator("#editor-document .cm-content")
-            .first();
+        const editor = page.locator("#editor-document .cm-content").first();
         await editor.click();
         await page.keyboard.type("Hello world!");
 
@@ -82,17 +70,13 @@ test.describe("rapid ctrl+z spam resilience", () => {
         expect(text).toContain("Still works!");
     });
 
-    test("spamming ctrl+z after deleting annotated text does not crash", async ({
-        page,
-    }) => {
+    test("spamming ctrl+z after deleting annotated text does not crash", async ({ page }) => {
         const errors: string[] = [];
         page.on("pageerror", (error) => {
             errors.push(error.message ?? String(error));
         });
 
-        const editor = page
-            .locator("#editor-document .cm-content")
-            .first();
+        const editor = page.locator("#editor-document .cm-content").first();
         await editor.click();
 
         // Create text with a comment
@@ -117,9 +101,7 @@ test.describe("rapid ctrl+z spam resilience", () => {
         await page.waitForTimeout(500);
 
         // The editor must still be present (no ErrorBanner crash)
-        await expect(
-            page.locator("#editor-document .cm-content"),
-        ).toBeVisible({ timeout: 5000 });
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({ timeout: 5000 });
         expect(errors).toHaveLength(0);
 
         // Editor should still be functional after the spam
@@ -129,17 +111,13 @@ test.describe("rapid ctrl+z spam resilience", () => {
         expect(text).toContain("Still works!");
     });
 
-    test("interleaved ctrl+z and ctrl+shift+z spam does not crash", async ({
-        page,
-    }) => {
+    test("interleaved ctrl+z and ctrl+shift+z spam does not crash", async ({ page }) => {
         const errors: string[] = [];
         page.on("pageerror", (error) => {
             errors.push(error.message ?? String(error));
         });
 
-        const editor = page
-            .locator("#editor-document .cm-content")
-            .first();
+        const editor = page.locator("#editor-document .cm-content").first();
         await editor.click();
 
         await page.keyboard.type("Hello world!");

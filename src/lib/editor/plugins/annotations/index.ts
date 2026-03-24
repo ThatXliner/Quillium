@@ -695,14 +695,6 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     }
     return true;
 };
-function addRevisionVersionCommand(): StateCommand {
-    return ({ state }) => {
-        const annotation = getActiveRevisionAnnotation(state);
-        if (!annotation) return false;
-        annotationEventBus.emit({ type: "annotation-add-version", annotationId: annotation.id });
-        return true;
-    };
-}
 
 function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
     return ({ state, dispatch }) => {

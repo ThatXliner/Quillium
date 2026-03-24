@@ -2,7 +2,7 @@
     AISidebar.svelte — Top-level container for all AI features.
 
     This component renders a floating, resizable sidebar anchored to the
-    left edge of the viewport. It acts as a shell/router for the four AI
+    left edge of the viewport. It acts as a shell/router for the five AI
     panels: Chat, Feedback, Revise, DocumentContext, and AISettings.
 
     UI states:
