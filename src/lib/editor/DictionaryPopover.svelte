@@ -58,16 +58,11 @@ let lookupError = $state<string | null>(null);
 let lookupLoading = $state(false);
 
 // Describe mode (AI)
-let describeMode = $state(false);
 let describeInput = $state("");
 const { chat, clearChat } = createAiChat({ mode: "dictionary" });
 
 $effect(() => {
-    setAiProcessing(
-        lookupLoading ||
-        chat.status === "submitted" ||
-        chat.status === "streaming",
-    );
+    setAiProcessing(lookupLoading || chat.status === "submitted" || chat.status === "streaming");
 });
 
 // ── React to trigger store ─────────────────────────────────────
@@ -81,7 +76,6 @@ $effect(() => {
     posX = trigger.x;
     posY = trigger.y;
     visible = true;
-    describeMode = false;
     describeInput = "";
     clearChat();
     lookupResult = null;
@@ -89,10 +83,10 @@ $effect(() => {
     lookupWord(trigger.word);
 });
 
-// Close when selection changes away from the triggered word
+// Close when selection changes away from the triggered word.
 $effect(() => {
     if (visible && $selectedText !== word) {
-        visible = false;
+        dismiss();
     }
 });
 
@@ -206,6 +200,7 @@ function openInChat() {
         ? `Tell me more about the word "${word}": ${def}`
         : `Tell me more about the word "${word}"`;
     pendingChatMessage.set(msg);
+    window.dispatchEvent(new CustomEvent("quillium:open-chat"));
     posthog.capture("dictionary_open_in_chat", { word });
     dismiss();
 }
@@ -231,7 +226,7 @@ async function handleDescribeSubmit(e: Event) {
 <!-- Popover -->
 <div
     bind:this={popoverEl}
-    class="fixed z-[100] w-80 max-h-[480px] flex flex-col
+    class="dictionary-popover fixed z-[100] w-80 max-h-[480px] flex flex-col
         backdrop-blur-md bg-white/90 border border-white/40 shadow-xl rounded-2xl
         overflow-hidden transition-all duration-150
         {visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}"
@@ -338,46 +333,29 @@ async function handleDescribeSubmit(e: Event) {
                 {#if !hasApiKey()}
                     <span class="font-normal normal-case tracking-normal text-amber-500">· needs API key</span>
                 {/if}
-            </button>
+            </p>
 
-            {#if describeMode}
-                {#each chat.messages as message (message.id)}
-                    {#each message.parts as part, i (i)}
-                        {#if part.type === "text"}
-                            {@const renderPromise = renderMarkdown(part.text)}
-                            <div class="mt-2 {message.role === 'user' ? 'text-right' : ''}">
-                                <div class="inline-block text-xs px-2 py-1.5 rounded-lg {message.role === 'user' ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-700'}">
-                                    <div class="prose prose-xs max-w-none {message.role === 'user' ? 'prose-invert' : ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                                        {#await renderPromise then rendered}
-                                            {@html rendered}
-                                        {/await}
-                                    </div>
+            {#each chat.messages as message (message.id)}
+                {#each message.parts as part, i (i)}
+                    {#if part.type === "text"}
+                        {@const renderPromise = renderMarkdown(part.text)}
+                        <div class="mt-2 {message.role === 'user' ? 'text-right' : ''}">
+                            <div class="inline-block text-xs px-2 py-1.5 rounded-lg {message.role === 'user' ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-700'}">
+                                <div class="prose prose-xs max-w-none {message.role === 'user' ? 'prose-invert' : ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                                    {#await renderPromise then rendered}
+                                        {@html rendered}
+                                    {/await}
                                 </div>
                             </div>
-                        {/if}
-                    {/each}
+                        </div>
+                    {/if}
                 {/each}
+            {/each}
 
-                {#if chat.status === "streaming" || chat.status === "submitted"}
-                    <div class="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
-                        <span class="animate-pulse">●</span> Finding words...
-                    </div>
-                {/if}
-
-                <form onsubmit={handleDescribeSubmit} class="mt-2 flex gap-1">
-                    <input
-                        bind:value={describeInput}
-                        placeholder="Describe the idea..."
-                        disabled={!hasApiKey() || chat.status !== "ready"}
-                        class="flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
-                        autocomplete="off"
-                    />
-                    <button
-                        type="submit"
-                        disabled={!hasApiKey() || !describeInput.trim() || chat.status !== "ready"}
-                        class="px-2 py-1 text-xs bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 transition-colors"
-                    >Find</button>
-                </form>
+            {#if chat.status === "streaming" || chat.status === "submitted"}
+                <div class="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                    <span class="animate-pulse">●</span> Finding words...
+                </div>
             {/if}
 
             <form onsubmit={handleDescribeSubmit} class="mt-2 flex gap-1">

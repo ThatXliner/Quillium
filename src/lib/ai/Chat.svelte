@@ -68,12 +68,11 @@ function useQuickPrompt(prompt: string) {
     chat.sendMessage({ text: prompt });
 }
 
-// Send any pending message from DictionaryPopover "Open in Chat"
+// Pre-fill input from DictionaryPopover "Open in Chat"
 $effect(() => {
-    if ($pendingChatMessage !== null && chat.status === "ready") {
-        const msg = $pendingChatMessage;
+    if ($pendingChatMessage !== null) {
+        input = $pendingChatMessage;
         pendingChatMessage.set(null);
-        chat.sendMessage({ text: msg });
     }
 });
 

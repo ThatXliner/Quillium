@@ -72,7 +72,6 @@ import {
     Minimize2Icon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
-import { pendingChatMessage } from "$lib/stores";
 import posthog from "$lib/posthog";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
@@ -188,7 +187,8 @@ function handleClickOutside(e: MouseEvent) {
         expanded &&
         container &&
         !container.contains(target) &&
-        !(target as Element).closest?.(".cm-editor")
+        !(target as Element).closest?.(".cm-editor") &&
+        !(target as Element).closest?.(".dictionary-popover")
     ) {
         action = null;
     }
@@ -290,11 +290,13 @@ $effect(() => {
     };
 });
 
-// Open Chat tab when DictionaryPopover triggers "Open in Chat"
+// Open Chat (or Settings if no key) when DictionaryPopover triggers "Open in Chat"
 $effect(() => {
-    if ($pendingChatMessage !== null) {
-        selectAction("chat");
+    function handleOpenChat() {
+        action = hasApiKey() ? "chat" : "settings";
     }
+    window.addEventListener("quillium:open-chat", handleOpenChat);
+    return () => window.removeEventListener("quillium:open-chat", handleOpenChat);
 });
 
 // Keyboard shortcuts for the sidebar
