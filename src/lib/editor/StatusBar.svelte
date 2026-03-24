@@ -19,10 +19,11 @@
 -->
 <script lang="ts">
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
+import VersionHistory from "./VersionHistory.svelte";
 import { tutorialActive, saveStatus } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToLibrary } from "$lib/navigation";
-import { Settings2, LayoutGrid } from "lucide-svelte";
+import { Settings2, LayoutGrid, History } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 const {
@@ -38,6 +39,7 @@ const {
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
 let settingsOpen = $state(false);
+let historyOpen = $state(false);
 let hovered = $state(false);
 let titleLinger = $state(false);
 let lingerTimer: ReturnType<typeof setTimeout> | undefined;
@@ -60,6 +62,12 @@ $effect(() => {
 
 {#if settingsOpen}
     <SettingsModal onclose={() => (settingsOpen = false)} />
+{/if}
+{#if historyOpen}
+    <VersionHistory
+        onclose={() => (historyOpen = false)}
+        onrestore={() => { historyOpen = false; window.dispatchEvent(new CustomEvent("quillium:reload-editor")); }}
+    />
 {/if}
 
 <div
@@ -103,6 +111,15 @@ $effect(() => {
         >
             <LayoutGrid size={20} />
             <Kbd keys={[modKey, "O"]} />
+        </button>
+        <button
+            onclick={() => (historyOpen = !historyOpen)}
+            aria-label="Version history"
+            title="Version History"
+            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
+                {historyOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+        >
+            <History size={20} />
         </button>
         <button
             onclick={() => (settingsOpen = !settingsOpen)}

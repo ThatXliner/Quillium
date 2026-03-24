@@ -355,7 +355,17 @@ onMount(() => {
             fromSave.then(() => setTimeout(() => loadDocument(id)));
         }
     });
-    return unsubscribe;
+
+    // Listen for reload requests dispatched by VersionHistory after a restore.
+    function handleReloadEditor() {
+        reload();
+    }
+    window.addEventListener("quillium:reload-editor", handleReloadEditor);
+
+    return () => {
+        unsubscribe();
+        window.removeEventListener("quillium:reload-editor", handleReloadEditor);
+    };
 });
 </script>
 
