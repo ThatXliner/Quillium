@@ -68,12 +68,16 @@ $effect(() => {
     );
 });
 
-// Auto-fill from editor selection
+// Auto-fill from editor selection, but don't clobber user-entered input.
+let lastAutoFilled = $state("");
 $effect(() => {
     if ($selectedText && mode === "lookup") {
         const trimmed = $selectedText.trim();
         if (trimmed.length > 0 && trimmed.length <= 60 && !trimmed.includes("\n")) {
-            input = trimmed;
+            if (input === "" || input === lastAutoFilled) {
+                input = trimmed;
+                lastAutoFilled = trimmed;
+            }
         }
     }
 });

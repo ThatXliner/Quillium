@@ -245,8 +245,9 @@ After all tool calls, write 2-3 sentences summarizing the patterns you found. No
 // Dictionary / Thesaurus
 // ---------------------------------------------------------------------------
 export function streamDictionary(opts: DictionaryStreamOpts): ReadableStream<UIMessageChunk> {
+    // Dictionary lookups don't need full document context — only selectedText matters.
     return buildStream(
-        opts,
+        { ...opts, documentContent: "" },
         `You are a dictionary and thesaurus assistant for writers. Help with word definitions, synonyms, antonyms, and finding the perfect word.
 
 When the user asks about a specific word:
