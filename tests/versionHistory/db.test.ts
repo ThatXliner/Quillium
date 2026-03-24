@@ -5,6 +5,9 @@ import {
     labelSnapshot,
     restoreToSnapshot,
     createNamedSnapshot,
+    getSnapshotStorageSize,
+    pruneSnapshotsKeepLastN,
+    pruneSnapshotsOlderThan,
 } from "$lib/db";
 
 describe("version history db functions", () => {
@@ -117,6 +120,106 @@ describe("version history db functions", () => {
             const id = await createNamedSnapshot("draft-abc", "{}", 0, "label");
 
             expect(id).toBe(123);
+        });
+    });
+
+    describe("getSnapshotStorageSize", () => {
+        it("invokes cmd_get_snapshot_storage_size with the correct draftId", async () => {
+            const invoked: Array<{ cmd: string; args: unknown }> = [];
+            mockIPC((cmd, args) => {
+                invoked.push({ cmd, args });
+                return 0;
+            });
+
+            await getSnapshotStorageSize("draft-abc");
+
+            expect(invoked).toHaveLength(1);
+            expect(invoked[0].cmd).toBe("cmd_get_snapshot_storage_size");
+            expect((invoked[0].args as { draftId: string }).draftId).toBe("draft-abc");
+        });
+
+        it("returns the byte count from the backend", async () => {
+            mockIPC(() => 1_500_000);
+
+            const size = await getSnapshotStorageSize("draft-abc");
+
+            expect(size).toBe(1_500_000);
+        });
+
+        it("returns 0 when there are no snapshots", async () => {
+            mockIPC(() => 0);
+
+            const size = await getSnapshotStorageSize("draft-empty");
+
+            expect(size).toBe(0);
+        });
+    });
+
+    describe("pruneSnapshotsKeepLastN", () => {
+        it("invokes cmd_prune_snapshots_keep_last_n with draftId and keepN", async () => {
+            const invoked: Array<{ cmd: string; args: unknown }> = [];
+            mockIPC((cmd, args) => {
+                invoked.push({ cmd, args });
+                return 3;
+            });
+
+            await pruneSnapshotsKeepLastN("draft-abc", 10);
+
+            expect(invoked).toHaveLength(1);
+            expect(invoked[0].cmd).toBe("cmd_prune_snapshots_keep_last_n");
+            const args = invoked[0].args as { draftId: string; keepN: number };
+            expect(args.draftId).toBe("draft-abc");
+            expect(args.keepN).toBe(10);
+        });
+
+        it("returns the number of deleted snapshots", async () => {
+            mockIPC(() => 7);
+
+            const deleted = await pruneSnapshotsKeepLastN("draft-abc", 5);
+
+            expect(deleted).toBe(7);
+        });
+
+        it("returns 0 when nothing was pruned", async () => {
+            mockIPC(() => 0);
+
+            const deleted = await pruneSnapshotsKeepLastN("draft-abc", 100);
+
+            expect(deleted).toBe(0);
+        });
+    });
+
+    describe("pruneSnapshotsOlderThan", () => {
+        it("invokes cmd_prune_snapshots_older_than with draftId and olderThanDays", async () => {
+            const invoked: Array<{ cmd: string; args: unknown }> = [];
+            mockIPC((cmd, args) => {
+                invoked.push({ cmd, args });
+                return 2;
+            });
+
+            await pruneSnapshotsOlderThan("draft-abc", 30);
+
+            expect(invoked).toHaveLength(1);
+            expect(invoked[0].cmd).toBe("cmd_prune_snapshots_older_than");
+            const args = invoked[0].args as { draftId: string; olderThanDays: number };
+            expect(args.draftId).toBe("draft-abc");
+            expect(args.olderThanDays).toBe(30);
+        });
+
+        it("returns the number of deleted snapshots", async () => {
+            mockIPC(() => 4);
+
+            const deleted = await pruneSnapshotsOlderThan("draft-abc", 7);
+
+            expect(deleted).toBe(4);
+        });
+
+        it("returns 0 when nothing was pruned", async () => {
+            mockIPC(() => 0);
+
+            const deleted = await pruneSnapshotsOlderThan("draft-abc", 365);
+
+            expect(deleted).toBe(0);
         });
     });
 });
