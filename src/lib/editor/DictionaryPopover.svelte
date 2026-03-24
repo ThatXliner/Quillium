@@ -62,7 +62,7 @@ let describeInput = $state("");
 const { chat, clearChat } = createAiChat({ mode: "dictionary" });
 
 $effect(() => {
-    setAiProcessing(lookupLoading || chat.status === "submitted" || chat.status === "streaming");
+    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
 // ── React to trigger store ─────────────────────────────────────
@@ -71,6 +71,7 @@ $effect(() => {
     const trigger = $dictionaryTrigger;
     if (!trigger) return;
     word = trigger.word;
+    anchorWord = trigger.word;
     selFrom = trigger.selectionFrom;
     selTo = trigger.selectionTo;
     posX = trigger.x;
@@ -83,9 +84,14 @@ $effect(() => {
     lookupWord(trigger.word);
 });
 
-// Close when selection changes away from the triggered word.
+// The word the editor selection was on when the popover opened.
+// Updated only on fresh triggers, not chip lookups, so the auto-dismiss
+// doesn't fire when the user clicks an antonym/synonym chip.
+let anchorWord = $state("");
+
+// Close when the editor selection moves away from the original word.
 $effect(() => {
-    if (visible && $selectedText !== word) {
+    if (visible && $selectedText !== anchorWord) {
         dismiss();
     }
 });
@@ -194,14 +200,26 @@ function lookupChip(w: string) {
 }
 
 function openInChat() {
-    const entry = lookupResult?.[0];
-    const def = entry?.meanings?.[0]?.definitions?.[0]?.definition ?? "";
-    const msg = def
-        ? `Tell me more about the word "${word}": ${def}`
-        : `Tell me more about the word "${word}"`;
+    let msg: string;
+    if (chat.messages.length > 0) {
+        // Carry over the describe→find word conversation
+        const history = chat.messages
+            .map((m) => {
+                const text = m.parts.find((p) => p.type === "text")?.text ?? "";
+                return m.role === "user" ? `User: ${text}` : `Assistant: ${text}`;
+            })
+            .join("\n");
+        msg = `I was looking for a word. Here's the conversation so far:\n${history}\n\nCan you help me continue?`;
+    } else {
+        const entry = lookupResult?.[0];
+        const def = entry?.meanings?.[0]?.definitions?.[0]?.definition ?? "";
+        msg = def
+            ? `Tell me more about the word "${word}": ${def}`
+            : `Tell me more about the word "${word}"`;
+    }
     pendingChatMessage.set(msg);
     window.dispatchEvent(new CustomEvent("quillium:open-chat"));
-    posthog.capture("dictionary_open_in_chat", { word });
+    posthog.capture("dictionary_open_in_chat", { word, has_describe_history: chat.messages.length > 0 });
     dismiss();
 }
 
@@ -246,8 +264,9 @@ async function handleDescribeSubmit(e: Event) {
         <div class="flex items-center gap-1 shrink-0">
             <button
                 onclick={openInChat}
-                title="Open in Chat"
-                class="p-1 rounded-full text-black/30 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                disabled={!hasApiKey()}
+                title={hasApiKey() ? "Open in Chat" : "Needs API key"}
+                class="p-1 rounded-full text-black/30 hover:text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-black/30 disabled:hover:bg-transparent"
             >
                 <ExternalLinkIcon size={13} />
             </button>
