@@ -18,7 +18,7 @@
  * Parent: rendered by the modal layer in +page.svelte
  * Children: Thread.svelte
  */
-import { ChevronRight, ChevronDown, ChevronUp, MessageSquare, X } from "lucide-svelte";
+import { ChevronRight, ChevronDown, ChevronUp, MessageSquare, SparklesIcon, X } from "lucide-svelte";
 import { slide } from "svelte/transition";
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
@@ -26,6 +26,7 @@ import { modalStack, annotations as annotationsStore } from "$lib/stores";
 import { updateThread } from "./annotationField";
 import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 import { streamChat } from "$lib/ai/clientStreams";
 import { aiSettings } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
@@ -162,6 +163,26 @@ $effect(() => {
     return () => el.removeEventListener("scroll", handleScroll);
 });
 
+// ── Reply box state ──────────────────────────────────────────
+let newMessage = $state("");
+let textareaEl = $state<HTMLTextAreaElement | undefined>();
+let isFocused = $state(false);
+const sendActive = $derived(!!newMessage.trim());
+
+function send() {
+    if (!newMessage.trim() || !comment) return;
+    handleUpdateThread([
+        ...comment.thread,
+        { message: newMessage.trim(), author: "User", time: Date.now() },
+    ]);
+    newMessage = "";
+}
+
+function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+}
+
 // ── Dialog open/close ────────────────────────────────────────
 function close() {
     modalStack.pop();
@@ -273,22 +294,79 @@ async function aiSuggestion() {
 
         <!-- Body -->
         <div class="flex flex-1 overflow-hidden">
-            <!-- Thread (main) -->
-            <div class="flex-1 flex flex-col min-h-0 overflow-y-auto px-6 py-5">
+            <!-- Thread (main): messages scroll, reply anchored at bottom -->
+            <div class="flex-1 flex flex-col min-h-0">
+                <!-- Scrollable messages -->
+                <div class="flex-1 overflow-y-auto px-6 pt-5 pb-3">
+                    {#if comment}
+                        <Thread
+                            thread={comment.thread}
+                            updateThread={handleUpdateThread}
+                            annotationId={commentId}
+                            view={parentView}
+                            previewOnly={false}
+                            hideReply={true}
+                            accentClass="text-blue-600/80 hover:text-blue-700"
+                        />
+                    {:else}
+                        <p class="text-sm text-black/40 text-center mt-8">Comment not found.</p>
+                    {/if}
+                </div>
+
+                <!-- Reply box anchored at bottom -->
                 {#if comment}
-                    <Thread
-                        thread={comment.thread}
-                        updateThread={handleUpdateThread}
-                        annotationId={commentId}
-                        view={parentView}
-                        previewOnly={false}
-                        onAiSuggest={aiSuggestion}
-                        accentClass="text-blue-600/80 hover:text-blue-700"
-                        sendPillClass="bg-blue-500 text-white hover:bg-blue-600"
-                        focusRingClass="focus-within:ring-blue-300/50"
-                    />
-                {:else}
-                    <p class="text-sm text-black/40 text-center mt-8">Comment not found.</p>
+                    <div class="px-6 pb-5 pt-2 shrink-0">
+                        <div class="rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
+                            ring-1 ring-black/5 focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
+                            <textarea
+                                bind:this={textareaEl}
+                                bind:value={newMessage}
+                                placeholder="Reply…"
+                                rows="3"
+                                class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
+                                    text-black/70 placeholder:text-black/30 max-h-48 overflow-y-auto"
+                                onfocus={() => (isFocused = true)}
+                                onblur={() => (isFocused = false)}
+                                oninput={(e) => autoResize(e.currentTarget)}
+                                onkeydown={(e) => {
+                                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                        e.preventDefault();
+                                        send();
+                                    } else if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        textareaEl?.blur();
+                                    }
+                                }}
+                            ></textarea>
+                            <div class="flex items-center justify-between px-2 pb-1.5">
+                                <div class="flex items-center gap-1">
+                                    <button
+                                        aria-label="Get AI suggestion"
+                                        title="Get AI suggestion"
+                                        class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium
+                                            text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors"
+                                        onclick={aiSuggestion}
+                                    >
+                                        <SparklesIcon size={11} />
+                                        <span>Suggest</span>
+                                    </button>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <button
+                                        onclick={sendActive ? send : undefined}
+                                        class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
+                                            {sendActive ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm' : 'bg-black/5 text-black/30'}"
+                                    >
+                                        {isFocused ? "Send" : "Reply"}
+                                        <span class="flex items-center gap-0.5">
+                                            <Kbd keys={isFocused ? ["⌘", "↵"] : ["⌘", "/"]}
+                                                variant={sendActive ? "fullWhite" : isFocused ? "whiteGhost" : "default"} />
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 {/if}
             </div>
 
