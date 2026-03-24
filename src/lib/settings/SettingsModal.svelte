@@ -18,6 +18,7 @@ import { appSettings, applySettings, persistSettings } from "$lib/settings.svelt
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { syncAnalyticsOptOut } from "$lib/posthog";
+import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
 
@@ -172,6 +173,18 @@ function save() {
     if (analyticsChanged) {
         syncAnalyticsOptOut(draft.analyticsEnabled);
     }
+    posthog.capture("settings_saved", {
+        ai_enabled: draft.aiEnabled,
+        select_text_in_nested_editor: draft.selectTextInNestedEditor,
+        show_nested_editor: draft.showNestedEditor,
+        atomic_revisions: draft.atomicRevisions,
+        doc_font_family: draft.docFontFamily,
+        doc_font_size: draft.docFontSize,
+        ui_font_family: draft.uiFontFamily,
+        title_visibility: draft.titleVisibility,
+        ui_zoom: draft.uiZoom,
+        custom_quick_actions_count: draft.customQuickActions.length,
+    });
     onclose();
 }
 
