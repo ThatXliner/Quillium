@@ -304,7 +304,7 @@ async function handleDescribeSubmit(e: Event) {
                     <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
                         Synonyms <span class="font-normal normal-case tracking-normal text-gray-300">· click to replace</span>
                     </p>
-                    <div class="flex flex-wrap gap-1">
+                    <div class="flex flex-wrap gap-1 w-full">
                         {#each synonyms as syn}
                             <button
                                 onclick={() => replaceWith(syn)}
@@ -319,7 +319,7 @@ async function handleDescribeSubmit(e: Event) {
             {#if antonyms.length > 0}
                 <div>
                     <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Antonyms</p>
-                    <div class="flex flex-wrap gap-1">
+                    <div class="flex flex-wrap gap-1 w-full">
                         {#each antonyms as ant}
                             <button
                                 onclick={() => lookupChip(ant)}
@@ -333,11 +333,8 @@ async function handleDescribeSubmit(e: Event) {
 
         <!-- Describe → find word (AI) -->
         <div class="border-t border-black/8 pt-2">
-            <button
-                onclick={() => (describeMode = !describeMode)}
-                class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 hover:text-teal-600 transition-colors w-full text-left"
-            >
-                {describeMode ? "▾" : "▸"} Describe → find word
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                Describe → find word
                 {#if !hasApiKey()}
                     <span class="font-normal normal-case tracking-normal text-amber-500">· needs API key</span>
                 {/if}
@@ -382,6 +379,23 @@ async function handleDescribeSubmit(e: Event) {
                     >Find</button>
                 </form>
             {/if}
+
+            <form onsubmit={handleDescribeSubmit} class="mt-2 flex gap-1">
+                <!-- No idea why the style is required: nothing tailwind is working -->
+                <input
+                    bind:value={describeInput}
+                    placeholder="Describe the idea..."
+                    disabled={!hasApiKey() || chat.status !== "ready"}
+                    style="width:200px"
+                    class="flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
+                    autocomplete="off"
+                />
+                <button
+                    type="submit"
+                    disabled={!hasApiKey() || !describeInput.trim() || chat.status !== "ready"}
+                    class="px-2 py-1 text-xs bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 transition-colors"
+                >Find</button>
+            </form>
         </div>
     </div>
 </div>
