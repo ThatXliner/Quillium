@@ -97,7 +97,7 @@ test.describe("tutorial interactive revision detection", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true }),
+                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, aiEnabled: true }),
             );
         });
         await page.goto("/");
@@ -110,8 +110,8 @@ test.describe("tutorial interactive revision detection", () => {
         await startTour(page);
 
         // Navigate through non-interactive steps to reach "createRevision"
-        // Steps: welcome, ai-overview, ai-chat, ai-feedback, ai-revise, ai-context, writing-space
-        for (let i = 0; i < 7; i++) {
+        // Steps: welcome, writing-space, [then nested-create-revision which is interactive]
+        for (let i = 0; i < 2; i++) {
             await clickNext(page);
         }
 

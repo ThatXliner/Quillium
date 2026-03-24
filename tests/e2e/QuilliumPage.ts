@@ -30,7 +30,7 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
     apiKey: null,
     updateVersion: null,
     skipTutorial: true,
-    settings: { showNestedEditor: true, atomicRevisions: true },
+    settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
     initialDoc: null,
 };
 

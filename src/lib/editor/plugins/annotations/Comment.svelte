@@ -24,6 +24,7 @@
 import { Trash2, Expand } from "lucide-svelte";
 import { aiSettings } from "$lib/ai/settings.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
+import { appSettings } from "$lib/settings.svelte";
 import posthog from "$lib/posthog";
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
@@ -146,7 +147,7 @@ async function aiSuggestion() {
             {view}
             annotationId={comment.id}
             previewOnly={!isActive}
-            onAiSuggest={isActive ? aiSuggestion : undefined}
+            onAiSuggest={isActive && appSettings.aiEnabled ? aiSuggestion : undefined}
             accentClass="text-blue-600/80 hover:text-blue-700"
         />
     </div>
