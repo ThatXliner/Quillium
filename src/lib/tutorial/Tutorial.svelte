@@ -34,6 +34,7 @@ import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotati
 import { steps, type Step } from "./steps";
 import posthog from "$lib/posthog";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { appSettings } from "$lib/settings.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -78,7 +79,7 @@ let tooltipPos = $state({ top: 0, left: 0 });
 let visible = $state(false);
 let sectionPickerOpen = $state(true);
 
-let includeAi = $state(true);
+let includeAi = $state(appSettings.aiEnabled);
 let includeNested = $state(true);
 let includeShortcuts = $state(true);
 
@@ -603,19 +604,6 @@ onDestroy(() => {
                     <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
                         <input
                             type="checkbox"
-                            checked={includeAi}
-                            onchange={(e) => setSection("ai", (e.currentTarget as HTMLInputElement).checked)}
-                            class="mt-0.5"
-                        />
-                        <span>
-                            <span class="block text-xs font-medium text-black/80">AI Tools Tour</span>
-                            <span class="block text-[11px] text-black/55">Chat, Feedback, Revise, and Context buttons</span>
-                        </span>
-                    </label>
-
-                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
-                        <input
-                            type="checkbox"
                             checked={includeNested}
                             onchange={(e) => setSection("nested", (e.currentTarget as HTMLInputElement).checked)}
                             class="mt-0.5"
@@ -625,6 +613,21 @@ onDestroy(() => {
                             <span class="block text-[11px] text-black/55">Interactive steps for creating and expanding nested revisions</span>
                         </span>
                     </label>
+
+                    {#if appSettings.aiEnabled}
+                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
+                        <input
+                            type="checkbox"
+                            checked={includeAi}
+                            onchange={(e) => setSection("ai", (e.currentTarget as HTMLInputElement).checked)}
+                            class="mt-0.5"
+                        />
+                        <span>
+                            <span class="block text-xs font-medium text-black/80">AI Tools Tour</span>
+                            <span class="block text-[11px] text-black/55">Chat, Feedback, Revise, and Context buttons</span>
+                        </span>
+                    </label>
+                    {/if}
 
                     <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
                         <input

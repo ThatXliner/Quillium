@@ -165,7 +165,7 @@ test.describe("dictionary popover", () => {
         await mockDictionaryApi(page);
         const q = new QuilliumPage(page, {
             apiKey: "test-key",
-            settings: { showNestedEditor: true, atomicRevisions: true },
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
         });
         // Set the has-api-key flag so hasApiKey() returns true immediately
         // without waiting for the lazy keychain load.
