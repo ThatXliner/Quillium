@@ -358,14 +358,12 @@ async function handleDescribeSubmit(e: Event) {
                 </div>
             {/if}
 
-            <form onsubmit={handleDescribeSubmit} class="mt-2 flex gap-1">
-                <!-- No idea why the style is required: nothing tailwind is working -->
+            <form onsubmit={handleDescribeSubmit} class="mt-2 flex w-full gap-1">
                 <input
                     bind:value={describeInput}
                     placeholder="Describe the idea..."
                     disabled={!hasApiKey() || chat.status !== "ready"}
-                    style="width:200px"
-                    class="flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
+                    class="min-w-0 flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
                     autocomplete="off"
                 />
                 <button
