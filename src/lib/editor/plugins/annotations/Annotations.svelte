@@ -148,9 +148,10 @@ const sortedAnnotations = $derived(
         : [],
 );
 
-const hasSelection = $derived($selectedText.length > 0);
+const trimmedSelection = $derived($selectedText.trim());
+const hasSelection = $derived(trimmedSelection.length > 0);
 const isSingleWordSelection = $derived(
-    hasSelection && !/\s/.test($selectedText) && $selectedText.length <= 60,
+    hasSelection && !/\s/.test(trimmedSelection) && trimmedSelection.length <= 60,
 );
 const hasComments = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "comment")));
 const hasRevisions = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "revision")));

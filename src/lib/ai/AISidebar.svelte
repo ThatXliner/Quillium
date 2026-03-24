@@ -188,7 +188,8 @@ function handleClickOutside(e: MouseEvent) {
         container &&
         !container.contains(target) &&
         !(target as Element).closest?.(".cm-editor") &&
-        !(target as Element).closest?.(".dictionary-popover")
+        !(target as Element).closest?.(".dictionary-popover") &&
+        !(target as Element).closest?.(".dictionary-backdrop")
     ) {
         action = null;
     }

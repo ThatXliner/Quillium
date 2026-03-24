@@ -697,9 +697,9 @@ async function scenarioAutoAICard(ctx: BrowserContext): Promise<void> {
 }
 
 /**
- * 10. dictionary — The Dictionary & Thesaurus panel open in "Look up word"
- *    mode, with "wisdom" selected in the editor and the quick-action chips
- *    visible below the empty-state prompt.
+ * 10. dictionary — The floating Dictionary & Thesaurus popover open in
+ *    "Look up word" mode, with "wisdom" selected in the editor and
+ *    auto-populated into the popover via the keyboard shortcut (⌘B / Ctrl+B).
  */
 async function scenarioDictionary(ctx: BrowserContext): Promise<void> {
     const page = await ctx.newPage();

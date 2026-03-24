@@ -47,6 +47,8 @@ let visible = $state(false);
 let word = $state("");
 let selFrom = $state(0);
 let selTo = $state(0);
+let centerX = $state(0);
+let centerY = $state(0);
 let posX = $state(0);
 let posY = $state(0);
 
@@ -74,8 +76,8 @@ $effect(() => {
     anchorWord = trigger.word;
     selFrom = trigger.selectionFrom;
     selTo = trigger.selectionTo;
-    posX = trigger.x;
-    posY = trigger.y;
+    centerX = trigger.x;
+    centerY = trigger.y;
     visible = true;
     describeInput = "";
     clearChat();
@@ -100,14 +102,18 @@ $effect(() => {
 
 $effect(() => {
     if (!visible || !popoverEl) return;
+    // Read centerX/centerY (reactive triggers) but compute posX/posY
+    // idempotently so the effect doesn't re-trigger itself.
+    const cx = centerX;
+    const cy = centerY;
     requestAnimationFrame(() => {
         if (!popoverEl) return;
         const w = popoverEl.clientWidth;
         const h = popoverEl.clientHeight;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        posX = Math.min(Math.max(posX - w / 2, 8), vw - w - 8);
-        posY = Math.min(posY, vh - h - 8);
+        posX = Math.min(Math.max(cx - w / 2, 8), vw - w - 8);
+        posY = Math.min(cy, vh - h - 8);
     });
 });
 
@@ -140,6 +146,8 @@ async function lookupWord(w: string) {
             `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`,
             { signal: controller.signal },
         );
+        // Stale response — a newer request has taken over.
+        if (lookupController !== controller) return;
         if (res.status === 404) {
             lookupError = `No results for "${w}".`;
             return;
@@ -154,7 +162,10 @@ async function lookupWord(w: string) {
             lookupError = "Could not reach dictionary.";
         }
     } finally {
-        lookupLoading = false;
+        // Only clear loading if this is still the active request.
+        if (lookupController === controller) {
+            lookupLoading = false;
+        }
     }
 }
 
@@ -251,7 +262,7 @@ async function handleDescribeSubmit(e: Event) {
 <!-- Backdrop: click outside to dismiss -->
 {#if visible}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="fixed inset-0 z-[99]" onclick={(e) => { e.stopPropagation(); dismiss(); }}></div>
+    <div class="dictionary-backdrop fixed inset-0 z-[99]" onclick={(e) => { e.stopPropagation(); dismiss(); }}></div>
 {/if}
 
 <!-- Popover -->
