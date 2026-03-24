@@ -329,7 +329,7 @@ export const scenarios: Scenario[] = [
                     },
                 ],
                 threadMessage:
-                    "Extended version with more detail. Open this revision and use Cmd+Alt+K to create a nested revision inside it.",
+                    "The original stops at the simile. This version follows the thought all the way through — the precision of the gears, the maker who built them to last, then the pianist. Worth seeing if the extra weight earns itself.",
                 author: "Editor",
                 view,
             });
@@ -1022,6 +1022,37 @@ export const scenarios: Scenario[] = [
                 targetText: "it was the season of Light, it was the season of Darkness",
                 comment:
                     "Capitalisation is deliberate — Light and Darkness as proper nouns lend them allegorical weight. Don't normalise.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    // ── Screenshot: doubly-nested revision modal ──────────────────────────────
+    // Used by scripts/screenshots.ts to show a revision modal open over the main
+    // editor, with a second inner revision ready to be expanded into its own modal.
+    {
+        id: "screenshot-nested-revision",
+        label: "Screenshot: nested revision (Lighthouse Keeper)",
+        description:
+            "Outer revision open in modal with an inner revision ready to expand — used by the screenshot script",
+        category: "debug",
+        doc: DOC_LIGHTHOUSE_KEEPER,
+        setup(view) {
+            createRevision({
+                targetText:
+                    "running his fingers along the brass gears the way a pianist touches keys before a concert",
+                versions: [
+                    {
+                        label: "Extended",
+                        text: "running his fingers along the brass gears, feeling each tooth engage with the precision of something built to outlast its maker — the way a pianist runs scales before the hall fills",
+                    },
+                    {
+                        label: "Spare",
+                        text: "running his fingers along the brass gears the way a pianist warms up before the lights come down",
+                    },
+                ],
+                threadMessage:
+                    "The original simile is doing real work but it stops too soon. 'Extended' follows it further; 'Spare' trades the pianist for something quieter. Both drop the 'before a concert' ending, which lands a bit neat.",
                 author: "Editor",
                 view,
             });

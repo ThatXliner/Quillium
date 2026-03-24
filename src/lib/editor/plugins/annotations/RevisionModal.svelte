@@ -354,6 +354,13 @@ $effect(() => {
         }
         fsmState = "ready";
     }
+    // DEV bridge: expose each modal's nested EditorView by stack index so the
+    // screenshot script can retrieve it via window.__modalEditors__[stackIndex].
+    if (import.meta.env.DEV) {
+        const w = window as unknown as Record<string, unknown>;
+        if (!w.__modalEditors__) w.__modalEditors__ = {};
+        (w.__modalEditors__ as Record<number, unknown>)[stackIndex] = controller.editor;
+    }
 });
 
 // ─── Sensor Effect A: Dialog bind + rebuild token ───────────────────
