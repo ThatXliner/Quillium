@@ -187,7 +187,9 @@ function handleClickOutside(e: MouseEvent) {
         expanded &&
         container &&
         !container.contains(target) &&
-        !(target as Element).closest?.(".cm-editor")
+        !(target as Element).closest?.(".cm-editor") &&
+        !(target as Element).closest?.(".dictionary-popover") &&
+        !(target as Element).closest?.(".dictionary-backdrop")
     ) {
         action = null;
     }
@@ -287,6 +289,15 @@ $effect(() => {
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
     };
+});
+
+// Open Chat (or Settings if no key) when DictionaryPopover triggers "Open in Chat"
+$effect(() => {
+    function handleOpenChat() {
+        action = hasApiKey() ? "chat" : "settings";
+    }
+    window.addEventListener("quillium:open-chat", handleOpenChat);
+    return () => window.removeEventListener("quillium:open-chat", handleOpenChat);
 });
 
 // Keyboard shortcuts for the sidebar

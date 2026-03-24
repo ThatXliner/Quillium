@@ -612,6 +612,7 @@ The annotation keymap (installed at `Prec.high`) intercepts before default CodeM
 | `Delete` | `nudgeBoundary("forward")` → `deleteAdjacentRevision("forward")` → default |
 | `Mod-Alt-M` | `redirectToNestedEditor("comment")` → `createCommentCommand` |
 | `Mod-Alt-K` | `redirectToNestedEditor("revision")` → `createRevisionCommand` |
+| `Mod-B` | `openDictionary` (dictionary popover, `dictionaryPlugin.ts`) |
 
 Each handler returns `false` to fall through to the next binding if it doesn't apply. `redirectToNestedEditor` returns `true` (swallowing the keypress) only when the cursor is inside an active revision — otherwise it returns `false` and the real create command runs.
 
@@ -691,6 +692,43 @@ Closes on outside click or Esc. Controls are dimmed at 40% opacity when no API k
 - **Annotation creation**: Calls the same factory functions (`createComment`, `createSuggestion`, `createRevision`) used by the AI sidebar and other annotation flows.
 - **AI settings**: Reads `aiSettings` (provider, model, apiKey) via `createModel()` — AutoAI shares the same provider configuration as the sidebar.
 - **`+page.svelte`**: Renders `<AutoAIWidget />`, listens for `"quillium:manual-review"` and `"quillium:open-ai-settings"` custom events.
+
+---
+
+## Dictionary & Thesaurus
+
+A floating popover triggered by `Mod-B` (⌘B) when a single word is selected. Provides definitions, synonyms/antonyms from the Free Dictionary API, and an AI "describe → find word" mode.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/editor/dictionaryPlugin.ts` | CodeMirror keymap — validates selection (single word, ≤60 chars), computes popover coordinates, writes to `dictionaryTrigger` store |
+| `src/lib/editor/DictionaryPopover.svelte` | Floating popover UI — definitions, synonym/antonym chips, AI describe mode |
+| `src/lib/ai/clientStreams.ts` (`streamDictionary`) | AI stream for "describe → find word" mode (no document context injected) |
+
+### Flow
+
+```
+User selects a word → Mod-B
+→ dictionaryPlugin validates: single word, no whitespace, ≤60 chars
+→ writes { word, selectionFrom, selectionTo, x, y } to dictionaryTrigger store
+→ DictionaryPopover $effect reacts:
+    - positions popover at (x, y), clamped to viewport
+    - fetches https://api.dictionaryapi.dev/api/v2/entries/en/{word}
+    - renders definitions, synonyms (click to replace), antonyms (click to look up)
+→ "Describe → find word" (AI mode):
+    - uses createAiChat({ mode: "dictionary" }) → streamDictionary
+    - no document context sent (only selected text)
+→ "Open in Chat": sets pendingChatMessage store → AISidebar opens Chat tab
+```
+
+### Integration Points
+
+- **`dictionaryTrigger` store** (`stores.ts`): Written by the keymap, read by `DictionaryPopover.svelte`.
+- **`pendingChatMessage` store** (`stores.ts`): Written by "Open in Chat" button, read by `AISidebar.svelte` (opens Chat tab) and `Chat.svelte` (pre-fills input).
+- **`Annotations.svelte`**: Shows a `⌘B dictionary` keyboard hint when a single word is selected.
+- **Synonym replacement**: Dispatches a CodeMirror transaction replacing the trimmed selection range with the chosen synonym.
 
 ---
 

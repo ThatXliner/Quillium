@@ -16,6 +16,7 @@
  *   05-revision-active.png  — revision card active: version pills + nested editor open
  *   06-library.png          — document library with multiple documents and preview panel
  *   07-revision-modal.png   — revision full-screen modal editor open
+ *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   09-update-banner.png    — update notification banner in bottom-right
  *   10-autoai-bubble.png   — AutoAI collaborator bubble in active state (rainbow border)
  *   11-autoai-card.png     — AutoAI settings card morphed open from the bubble
@@ -126,6 +127,12 @@ async function installTauriMock(
             updateVersion: string | null;
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            // Signal that an API key has been saved so the settings module
+            // calls loadApiKeyForProvider() on startup. Without this,
+            // hasApiKey() always returns false and tab clicks redirect to Settings.
+            if (payload.fakeApiKey) {
+                localStorage.setItem("quillium-has-api-key", "1");
+            }
             // Hide the debug button so it never appears in screenshots.
             document.addEventListener("DOMContentLoaded", () => {
                 const style = document.createElement("style");
@@ -690,6 +697,56 @@ async function scenarioAutoAICard(ctx: BrowserContext): Promise<void> {
 }
 
 /**
+ * 10. dictionary — The floating Dictionary & Thesaurus popover open in
+ *    "Look up word" mode, with "wisdom" selected in the editor and
+ *    auto-populated into the popover via the keyboard shortcut (⌘B / Ctrl+B).
+ */
+async function scenarioDictionary(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+
+    // Select "wisdom" in the editor so the dictionary panel auto-populates it
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const editorViewStore = w.__editorView__ as
+            | { subscribe(fn: (v: unknown) => void): () => void }
+            | undefined;
+        if (!editorViewStore) return;
+        let view: unknown;
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
+        unsub();
+        if (!view) return;
+        const v = view as {
+            state: { doc: { toString(): string } };
+            dispatch(tr: object): void;
+            focus(): void;
+        };
+        const doc = v.state.doc.toString();
+        const target = "wisdom";
+        const from = doc.indexOf(target);
+        if (from === -1) return;
+        v.focus();
+        v.dispatch({ selection: { anchor: from, head: from + target.length } });
+    });
+    await page.waitForTimeout(300);
+
+    // Open the dictionary/thesaurus popover via the keyboard shortcut (⌘B / Ctrl+B).
+    // The sidebar Dictionary tab was removed in favour of the floating popover.
+    const dictionaryShortcut = process.platform === "darwin" ? "Meta+B" : "Control+B";
+    await page.keyboard.press(dictionaryShortcut);
+    await page.waitForTimeout(500);
+
+    await shot(page, "10-dictionary");
+    await page.close();
+}
+
+/**
  * 09. update-banner — The update notification banner in the bottom-right
  *    corner, showing an available version with Update and Dismiss buttons.
  */
@@ -757,6 +814,7 @@ async function main(): Promise<void> {
         await scenarioLibrary(context);
         await scenarioRevisionModal(context);
         await scenarioFullUi(context);
+        await scenarioDictionary(context);
         await scenarioUpdateBanner(context);
         await scenarioAutoAIBubble(context);
         await scenarioAutoAICard(context);

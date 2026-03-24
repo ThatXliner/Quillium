@@ -20,14 +20,8 @@ import {
     annotationKeymap,
     annotations as annotationExtensions,
 } from "$lib/editor/plugins/annotations";
-import {
-    addAnnotation,
-    annotationField,
-} from "$lib/editor/plugins/annotations/annotationField";
-import {
-    createNewAnnotation,
-    type VersionState,
-} from "$lib/editor/plugins/annotations/models";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { createNewAnnotation, type VersionState } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
 
@@ -53,16 +47,12 @@ function addRevision(view: EditorView, from: number, to: number) {
         activeVersionIndex: 0,
         versions: [{ doc: view.state.sliceDoc(from, to) } as VersionState],
     };
-    view.dispatch(
-        view.state.update({ effects: [addAnnotation.of(revision)] }),
-    );
+    view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
     return revision.id;
 }
 
 function runKey(view: EditorView, key: string) {
-    const handlers = annotationKeymap.filter(
-        (binding) => binding.key === key,
-    );
+    const handlers = annotationKeymap.filter((binding) => binding.key === key);
     for (const handler of handlers) {
         const consumed = handler.run?.(view);
         if (consumed) return true;
@@ -78,25 +68,16 @@ function extractBindings(
 ): Array<{ key?: string; run?: (view: EditorView) => boolean }> {
     if (!ext || typeof ext !== "object") return [];
     if ("inner" in (ext as Record<string, unknown>)) {
-        return extractBindings(
-            (ext as Record<string, unknown>).inner,
-        );
+        return extractBindings((ext as Record<string, unknown>).inner);
     }
     if (Array.isArray(ext)) {
         return ext.flatMap(extractBindings);
     }
-    if (
-        "key" in (ext as Record<string, unknown>) &&
-        "run" in (ext as Record<string, unknown>)
-    ) {
-        return [
-            ext as { key?: string; run?: (view: EditorView) => boolean },
-        ];
+    if ("key" in (ext as Record<string, unknown>) && "run" in (ext as Record<string, unknown>)) {
+        return [ext as { key?: string; run?: (view: EditorView) => boolean }];
     }
     if ("value" in (ext as Record<string, unknown>)) {
-        return extractBindings(
-            (ext as Record<string, unknown>).value,
-        );
+        return extractBindings((ext as Record<string, unknown>).value);
     }
     return [];
 }
@@ -118,17 +99,13 @@ afterEach(() => {
 
 describe("Mod-Enter removed from main annotationKeymap", () => {
     it("does not have a Mod-Enter binding", () => {
-        const modEnterBindings = annotationKeymap.filter(
-            (b) => b.key === "Mod-Enter",
-        );
+        const modEnterBindings = annotationKeymap.filter((b) => b.key === "Mod-Enter");
         expect(modEnterBindings).toHaveLength(0);
     });
 
     it("Mod-Enter in main editor does not fire annotation-add-version", () => {
         const spy = vi.fn();
-        unsubs.push(
-            annotationEventBus.on("annotation-add-version", spy),
-        );
+        unsubs.push(annotationEventBus.on("annotation-add-version", spy));
         view = createView("Alpha Beta Gamma");
         addRevision(view, 6, 10);
 
@@ -146,19 +123,14 @@ describe("Mod-Enter removed from main annotationKeymap", () => {
 describe("Mod-Enter in nested editor still creates version", () => {
     it("fires annotation-add-version from nested editor", () => {
         const spy = vi.fn();
-        unsubs.push(
-            annotationEventBus.on("annotation-add-version", spy),
-        );
+        unsubs.push(annotationEventBus.on("annotation-add-version", spy));
         view = createView("Alpha Beta Gamma");
         const revisionId = addRevision(view, 6, 10);
 
         // Create a nested editor with the parent undo keymap
         const nestedState = EditorState.create({
             doc: "Beta",
-            extensions: [
-                annotationExtensions(),
-                makeParentUndoKeymap(view, revisionId),
-            ],
+            extensions: [annotationExtensions(), makeParentUndoKeymap(view, revisionId)],
         });
         const el = document.createElement("div");
         document.body.appendChild(el);
@@ -187,9 +159,7 @@ describe("Mod-Enter in nested editor still creates version", () => {
 describe("annotation-enter-editor event", () => {
     it("event bus delivers annotation-enter-editor to subscribers", () => {
         const spy = vi.fn();
-        unsubs.push(
-            annotationEventBus.on("annotation-enter-editor", spy),
-        );
+        unsubs.push(annotationEventBus.on("annotation-enter-editor", spy));
 
         annotationEventBus.emit({
             type: "annotation-enter-editor",
@@ -205,10 +175,7 @@ describe("annotation-enter-editor event", () => {
 
     it("unsubscribe prevents further delivery", () => {
         const spy = vi.fn();
-        const unsub = annotationEventBus.on(
-            "annotation-enter-editor",
-            spy,
-        );
+        const unsub = annotationEventBus.on("annotation-enter-editor", spy);
 
         unsub();
         annotationEventBus.emit({

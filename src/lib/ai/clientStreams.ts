@@ -56,6 +56,7 @@ interface StreamOpts extends BaseOpts {
 export type ChatStreamOpts = StreamOpts;
 export type FeedbackStreamOpts = StreamOpts;
 export type ReviseStreamOpts = StreamOpts;
+export type DictionaryStreamOpts = StreamOpts;
 
 export type GeneratedContext = string;
 
@@ -237,6 +238,32 @@ After all tool calls, write 2-3 sentences summarizing the patterns you found. No
                 "Create a comment to explain revision reasoning or ask clarifying questions",
             ),
         },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Dictionary / Thesaurus
+// ---------------------------------------------------------------------------
+export function streamDictionary(opts: DictionaryStreamOpts): ReadableStream<UIMessageChunk> {
+    // Dictionary lookups don't need full document context — only selectedText matters.
+    return buildStream(
+        { ...opts, documentContent: "" },
+        `You are a dictionary and thesaurus assistant for writers. Help with word definitions, synonyms, antonyms, and finding the perfect word.
+
+When the user asks about a specific word:
+- Give a clear, concise definition (1-2 sentences)
+- List 5-8 synonyms with brief notes on nuance/tone differences
+- List 2-3 antonyms if relevant
+- Note register (formal/informal/literary) where helpful
+
+When the user describes a concept or feeling and wants a word for it:
+- Suggest 3-5 words that fit, ordered from most to least precise
+- For each: give the word, brief definition, and why it fits their description
+- Note any connotations writers should be aware of (tone, register, common usage)
+
+When the user has text selected, treat the selected word or phrase as the lookup target unless they specify otherwise.
+
+Keep responses focused and scannable — use short lines. Writers care about nuance, connotation, and tone.`,
     );
 }
 

@@ -369,6 +369,10 @@ export class QuilliumPage {
         await this.page.keyboard.press("ControlOrMeta+/");
     }
 
+    async openDictionary(): Promise<void> {
+        await this.page.keyboard.press("ControlOrMeta+b");
+    }
+
     async sendReply(): Promise<void> {
         await this.page.keyboard.press("ControlOrMeta+Enter");
     }
