@@ -139,6 +139,21 @@ export async function restoreToSnapshot(draftId: string, snapshotId: number): Pr
     return invoke<void>("cmd_restore_to_snapshot", { draftId, snapshotId });
 }
 
+/** Returns total bytes of state_json for all snapshots of a draft. */
+export async function getSnapshotStorageSize(draftId: string): Promise<number> {
+    return invoke<number>("cmd_get_snapshot_storage_size", { draftId });
+}
+
+/** Deletes unlabeled autosaves beyond the most recent keepN. Returns deleted count. */
+export async function pruneSnapshotsKeepLastN(draftId: string, keepN: number): Promise<number> {
+    return invoke<number>("cmd_prune_snapshots_keep_last_n", { draftId, keepN });
+}
+
+/** Deletes unlabeled autosaves older than olderThanDays days. Returns deleted count. */
+export async function pruneSnapshotsOlderThan(draftId: string, olderThanDays: number): Promise<number> {
+    return invoke<number>("cmd_prune_snapshots_older_than", { draftId, olderThanDays });
+}
+
 export async function createNamedSnapshot(
     draftId: string,
     stateJson: string,

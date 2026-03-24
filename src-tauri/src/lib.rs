@@ -10,7 +10,7 @@ use db::{
         list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
         set_trash_retention, trash_document, update_document_meta,
     },
-    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state},
+    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state, get_snapshot_storage_size, prune_snapshots_keep_last_n, prune_snapshots_older_than},
     load::load_document_state,
     schema::open_db,
     AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
@@ -182,6 +182,35 @@ fn cmd_create_named_snapshot(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn cmd_get_snapshot_storage_size(
+    state: tauri::State<DbState>,
+    draft_id: String,
+) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_snapshot_storage_size(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_prune_snapshots_keep_last_n(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    keep_n: i64,
+) -> Result<u64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    prune_snapshots_keep_last_n(&conn, &draft_id, keep_n).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_prune_snapshots_older_than(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    older_than_days: i64,
+) -> Result<u64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    prune_snapshots_older_than(&conn, &draft_id, older_than_days).map_err(|e| e.to_string())
+}
+
 // ── Trash retention commands ──────────────────────────────────────
 
 /// Returns the trash auto-empty setting in days, or null if "never".
@@ -297,6 +326,9 @@ pub fn run() {
             cmd_label_snapshot,
             cmd_restore_to_snapshot,
             cmd_create_named_snapshot,
+            cmd_get_snapshot_storage_size,
+            cmd_prune_snapshots_keep_last_n,
+            cmd_prune_snapshots_older_than,
             set_api_key,
             get_api_key,
             delete_api_key,

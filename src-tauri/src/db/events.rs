@@ -93,8 +93,6 @@ fn check_snapshot_threshold(conn: &Connection, draft_id: &str, now_ms: i64) -> R
     }
 }
 
-const MAX_UNLABELED_SNAPSHOTS: i64 = 10;
-
 pub fn create_snapshot(
     conn: &Connection,
     draft_id: &str,
@@ -106,20 +104,6 @@ pub fn create_snapshot(
         "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
          VALUES (?1, ?2, ?3, ?4, NULL)",
         params![draft_id, up_to_event_id, state_json, now],
-    )?;
-    // Prune excess unlabeled autosaves — keep the most recent MAX_UNLABELED_SNAPSHOTS.
-    // Labeled (named) snapshots are never deleted by this policy.
-    conn.execute(
-        "DELETE FROM snapshots
-         WHERE draft_id = ?1
-           AND label IS NULL
-           AND id NOT IN (
-               SELECT id FROM snapshots
-               WHERE draft_id = ?1 AND label IS NULL
-               ORDER BY id DESC
-               LIMIT ?2
-           )",
-        params![draft_id, MAX_UNLABELED_SNAPSHOTS],
     )?;
     Ok(())
 }
@@ -168,6 +152,42 @@ pub fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Option
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+pub fn get_snapshot_storage_size(conn: &Connection, draft_id: &str) -> Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(LENGTH(state_json)), 0) FROM snapshots WHERE draft_id = ?1",
+        params![draft_id],
+        |row| row.get(0),
+    )
+}
+
+pub fn prune_snapshots_keep_last_n(conn: &Connection, draft_id: &str, keep_n: i64) -> Result<u64> {
+    let deleted = conn.execute(
+        "DELETE FROM snapshots
+         WHERE draft_id = ?1
+           AND label IS NULL
+           AND id NOT IN (
+               SELECT id FROM snapshots
+               WHERE draft_id = ?1 AND label IS NULL
+               ORDER BY created_at DESC
+               LIMIT ?2
+           )",
+        params![draft_id, keep_n],
+    )?;
+    Ok(deleted as u64)
+}
+
+pub fn prune_snapshots_older_than(conn: &Connection, draft_id: &str, older_than_days: i64) -> Result<u64> {
+    let cutoff_ms = now_ms() - older_than_days * 86_400_000;
+    let deleted = conn.execute(
+        "DELETE FROM snapshots
+         WHERE draft_id = ?1
+           AND label IS NULL
+           AND created_at < ?2",
+        params![draft_id, cutoff_ms],
+    )?;
+    Ok(deleted as u64)
 }
 
 pub fn label_snapshot(conn: &Connection, snapshot_id: i64, label: &str) -> Result<()> {

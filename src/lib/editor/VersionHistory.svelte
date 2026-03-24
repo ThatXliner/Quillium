@@ -16,6 +16,9 @@
         restoreToSnapshot,
         createNamedSnapshot,
         loadSnapshotState,
+        getSnapshotStorageSize,
+        pruneSnapshotsKeepLastN,
+        pruneSnapshotsOlderThan,
     } from "$lib/db";
     import { savedFields, getExtensions } from "$lib/editor/extensions";
     import { goToEditor } from "$lib/navigation";
@@ -32,6 +35,16 @@
     let editingLabelText = $state("");
     let checkpointLabel = $state("");
     let savingCheckpoint = $state(false);
+
+    // ── Storage management ──────────────────────────────────────────
+    const STORAGE_WARN_BYTES = 1_073_741_824; // 1 GB
+    let storageBytes = $state<number | null>(null);
+    let showManageStorage = $state(false);
+    let pruneKeepN = $state(50);
+    let pruneOlderThanDays = $state(30);
+    let pruning = $state(false);
+    let pruneResult = $state<number | null>(null);
+    let confirmingPrune = $state<"keepN" | "olderThan" | null>(null);
 
     // Loaded state JSON for the selected snapshot — set async, consumed by $effect
     let previewStateJson = $state<string | null>(null);
@@ -81,12 +94,19 @@
     });
 
     // ── Data ────────────────────────────────────────────────────────
+    async function refreshStorageSize() {
+        const draftId = get(currentDraftId);
+        if (!draftId) return;
+        storageBytes = await getSnapshotStorageSize(draftId);
+    }
+
     async function loadSnapshots() {
         loading = true;
         const draftId = get(currentDraftId);
         if (!draftId) { loading = false; return; }
         try {
             snapshots = await listSnapshots(draftId);
+            await refreshStorageSize();
         } finally {
             loading = false;
         }
@@ -147,6 +167,46 @@
             }
         }
         editingLabelId = null;
+    }
+
+    // ── Storage pruning ─────────────────────────────────────────────
+    async function handlePruneKeepN() {
+        if (confirmingPrune !== "keepN") { confirmingPrune = "keepN"; return; }
+        const draftId = get(currentDraftId);
+        if (!draftId) return;
+        pruning = true;
+        pruneResult = null;
+        try {
+            const deleted = await pruneSnapshotsKeepLastN(draftId, pruneKeepN);
+            pruneResult = deleted;
+            confirmingPrune = null;
+            await loadSnapshots();
+        } finally {
+            pruning = false;
+        }
+    }
+
+    async function handlePruneOlderThan() {
+        if (confirmingPrune !== "olderThan") { confirmingPrune = "olderThan"; return; }
+        const draftId = get(currentDraftId);
+        if (!draftId) return;
+        pruning = true;
+        pruneResult = null;
+        try {
+            const deleted = await pruneSnapshotsOlderThan(draftId, pruneOlderThanDays);
+            pruneResult = deleted;
+            confirmingPrune = null;
+            await loadSnapshots();
+        } finally {
+            pruning = false;
+        }
+    }
+
+    function formatBytes(bytes: number): string {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`;
+        if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+        return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
     }
 
     // ── Date grouping ───────────────────────────────────────────────
@@ -288,11 +348,95 @@
         </div>
 
         <!-- Timeline panel -->
-        <div class="w-72 bg-white border-l border-black/[0.08] flex flex-col overflow-hidden
+        <div id="versions-panel" class="w-72 bg-white border-l border-black/[0.08] flex flex-col overflow-hidden
                     shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.06)]">
             <div class="px-4 py-3 border-b border-black/[0.06]">
-                <h2 class="text-sm font-semibold text-black/70">Versions</h2>
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-black/70">Versions</h2>
+                    {#if storageBytes !== null}
+                        <button
+                            onclick={() => { showManageStorage = !showManageStorage; pruneResult = null; confirmingPrune = null; }}
+                            class="text-xs transition-colors
+                                   {storageBytes >= STORAGE_WARN_BYTES
+                                       ? 'text-amber-600 hover:text-amber-700 font-medium'
+                                       : 'text-black/35 hover:text-black/60'}"
+                            title="Manage storage"
+                        >
+                            {formatBytes(storageBytes)}
+                        </button>
+                    {/if}
+                </div>
+                {#if storageBytes !== null && storageBytes >= STORAGE_WARN_BYTES}
+                    <p class="mt-1 text-xs text-amber-600 leading-snug">
+                        Storage is large. Consider pruning old versions.
+                    </p>
+                {/if}
             </div>
+
+            {#if showManageStorage}
+                <div class="px-4 py-3 border-b border-black/[0.06] bg-stone-50 space-y-3">
+                    <p class="text-xs font-medium text-black/60">Manage storage</p>
+
+                    <div class="space-y-1">
+                        <p class="text-xs text-black/45">Keep last N autosaves</p>
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min="1"
+                                bind:value={pruneKeepN}
+                                class="w-16 text-sm px-2 py-1 rounded border border-black/[0.12]
+                                       bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+                            />
+                            <button
+                                onclick={handlePruneKeepN}
+                                disabled={pruning}
+                                class="text-xs px-2.5 py-1 rounded transition-colors
+                                       disabled:opacity-40
+                                       {confirmingPrune === 'keepN'
+                                           ? 'bg-red-500 text-white hover:bg-red-600'
+                                           : 'bg-black/[0.06] text-black/60 hover:bg-black/[0.1]'}"
+                            >
+                                {confirmingPrune === "keepN" ? "Confirm?" : "Prune"}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <p class="text-xs text-black/45">Delete older than</p>
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min="1"
+                                bind:value={pruneOlderThanDays}
+                                class="w-16 text-sm px-2 py-1 rounded border border-black/[0.12]
+                                       bg-white focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+                            />
+                            <span class="text-xs text-black/40">days</span>
+                            <button
+                                onclick={handlePruneOlderThan}
+                                disabled={pruning}
+                                class="text-xs px-2.5 py-1 rounded transition-colors
+                                       disabled:opacity-40
+                                       {confirmingPrune === 'olderThan'
+                                           ? 'bg-red-500 text-white hover:bg-red-600'
+                                           : 'bg-black/[0.06] text-black/60 hover:bg-black/[0.1]'}"
+                            >
+                                {confirmingPrune === "olderThan" ? "Confirm?" : "Prune"}
+                            </button>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-black/35 leading-relaxed">
+                        Named checkpoints are never deleted.
+                    </p>
+
+                    {#if pruneResult !== null}
+                        <p class="text-xs text-green-700">
+                            Deleted {pruneResult} snapshot{pruneResult === 1 ? "" : "s"}.
+                        </p>
+                    {/if}
+                </div>
+            {/if}
 
             <div class="flex-1 overflow-y-auto">
                 {#if loading}

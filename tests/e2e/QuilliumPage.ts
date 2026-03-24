@@ -185,6 +185,33 @@ export class QuilliumPage {
                             return null;
                         }
                         if (cmd === "cmd_restore_to_snapshot") return null;
+                        if (cmd === "cmd_get_snapshot_storage_size") {
+                            // Return sum of state_json byte lengths for mock snapshots
+                            return payload.snapshots.reduce(
+                                (sum, s) => sum + JSON.stringify({ doc: s.doc, annotations: {} }).length,
+                                0,
+                            );
+                        }
+                        if (cmd === "cmd_prune_snapshots_keep_last_n") {
+                            const a = args as { draftId: string; keepN: number };
+                            const unlabeled = payload.snapshots.filter(
+                                (s) => s.draftId === a.draftId && s.label === null,
+                            );
+                            const toDelete = unlabeled.slice(a.keepN);
+                            const deleteIds = new Set(toDelete.map((s) => s.id));
+                            const before = payload.snapshots.length;
+                            payload.snapshots = payload.snapshots.filter((s) => !deleteIds.has(s.id));
+                            return before - payload.snapshots.length;
+                        }
+                        if (cmd === "cmd_prune_snapshots_older_than") {
+                            const a = args as { draftId: string; olderThanDays: number };
+                            const cutoff = Date.now() - a.olderThanDays * 86_400_000;
+                            const before = payload.snapshots.length;
+                            payload.snapshots = payload.snapshots.filter(
+                                (s) => s.label !== null || s.createdAt >= cutoff,
+                            );
+                            return before - payload.snapshots.length;
+                        }
                         if (cmd === "cmd_create_named_snapshot") {
                             const a = args as { label: string; upToEventId: number };
                             const newId = payload.snapshots.length + 100;
