@@ -122,7 +122,7 @@ onMount(() => {
     }
 
     function handleManualReviewEvent() {
-        if (autoAISettings.enabled) triggerManualReview();
+        if (appSettings.aiEnabled && autoAISettings.enabled) triggerManualReview();
     }
 
     window.addEventListener("quillium:restore-backup", handleRestoreBackup);
@@ -221,7 +221,9 @@ if (import.meta.env.DEV) {
 
 <svelte:window onkeydown={handleKeydown} />
 
-<AiSidebar />
+{#if appSettings.aiEnabled}
+    <AiSidebar />
+{/if}
 <DictionaryPopover />
 
 <div class="h-screen w-full">
@@ -249,7 +251,9 @@ if (import.meta.env.DEV) {
 {/if}
 
 <!-- AutoAI collaborator widget — fixed bottom-right bubble -->
-<AutoAIWidget />
+{#if appSettings.aiEnabled}
+    <AutoAIWidget />
+{/if}
 <Toaster position="bottom-right" />
 
 <!-- Modal stack — render all entries so parent editors stay alive when a

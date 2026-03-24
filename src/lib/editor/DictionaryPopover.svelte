@@ -17,6 +17,7 @@ import { hasApiKey } from "$lib/ai/settings.svelte";
 import { Transaction } from "@codemirror/state";
 import { ExternalLinkIcon, XIcon } from "lucide-svelte";
 import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -286,14 +287,16 @@ async function handleDescribeSubmit(e: Event) {
             {/if}
         </div>
         <div class="flex items-center gap-1 shrink-0">
-            <button
-                onclick={openInChat}
-                disabled={!hasApiKey()}
-                title={hasApiKey() ? "Open in Chat" : "Needs API key"}
-                class="p-1 rounded-full text-black/30 hover:text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-black/30 disabled:hover:bg-transparent"
-            >
-                <ExternalLinkIcon size={13} />
-            </button>
+            {#if appSettings.aiEnabled}
+                <button
+                    onclick={openInChat}
+                    disabled={!hasApiKey()}
+                    title={hasApiKey() ? "Open in Chat" : "Needs API key"}
+                    class="p-1 rounded-full text-black/30 hover:text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-black/30 disabled:hover:bg-transparent"
+                >
+                    <ExternalLinkIcon size={13} />
+                </button>
+            {/if}
             <button
                 onclick={dismiss}
                 class="p-1 rounded-full text-black/30 hover:text-black/60 hover:bg-black/10 transition-colors"
@@ -370,51 +373,53 @@ async function handleDescribeSubmit(e: Event) {
         {/if}
 
         <!-- Describe → find word (AI) -->
-        <div class="border-t border-black/8 pt-2">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
-                Describe → find word
-                {#if !hasApiKey()}
-                    <span class="font-normal normal-case tracking-normal text-amber-500">· needs API key</span>
-                {/if}
-            </p>
+        {#if appSettings.aiEnabled}
+            <div class="border-t border-black/8 pt-2">
+                <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                    Describe → find word
+                    {#if !hasApiKey()}
+                        <span class="font-normal normal-case tracking-normal text-amber-500">· needs API key</span>
+                    {/if}
+                </p>
 
-            {#each chat.messages as message (message.id)}
-                {#each message.parts as part, i (i)}
-                    {#if part.type === "text"}
-                        {@const renderPromise = renderMarkdown(part.text)}
-                        <div class="mt-2 {message.role === 'user' ? 'text-right' : ''}">
-                            <div class="inline-block text-xs px-2 py-1.5 rounded-lg {message.role === 'user' ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-700'}">
-                                <div class="prose prose-xs max-w-none {message.role === 'user' ? 'prose-invert' : ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                                    {#await renderPromise then rendered}
-                                        {@html rendered}
-                                    {/await}
+                {#each chat.messages as message (message.id)}
+                    {#each message.parts as part, i (i)}
+                        {#if part.type === "text"}
+                            {@const renderPromise = renderMarkdown(part.text)}
+                            <div class="mt-2 {message.role === 'user' ? 'text-right' : ''}">
+                                <div class="inline-block text-xs px-2 py-1.5 rounded-lg {message.role === 'user' ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-700'}">
+                                    <div class="prose prose-xs max-w-none {message.role === 'user' ? 'prose-invert' : ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                                        {#await renderPromise then rendered}
+                                            {@html rendered}
+                                        {/await}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    {/if}
+                        {/if}
+                    {/each}
                 {/each}
-            {/each}
 
-            {#if chat.status === "streaming" || chat.status === "submitted"}
-                <div class="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
-                    <span class="animate-pulse">●</span> Finding words...
-                </div>
-            {/if}
+                {#if chat.status === "streaming" || chat.status === "submitted"}
+                    <div class="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                        <span class="animate-pulse">●</span> Finding words...
+                    </div>
+                {/if}
 
-            <form onsubmit={handleDescribeSubmit} class="mt-2 flex w-full gap-1">
-                <input
-                    bind:value={describeInput}
-                    placeholder="Describe the idea..."
-                    disabled={!hasApiKey() || chat.status !== "ready"}
-                    class="min-w-0 flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
-                    autocomplete="off"
-                />
-                <button
-                    type="submit"
-                    disabled={!hasApiKey() || !describeInput.trim() || chat.status !== "ready"}
-                    class="px-2 py-1 text-xs bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 transition-colors"
-                >Find</button>
-            </form>
-        </div>
+                <form onsubmit={handleDescribeSubmit} class="mt-2 flex w-full gap-1">
+                    <input
+                        bind:value={describeInput}
+                        placeholder="Describe the idea..."
+                        disabled={!hasApiKey() || chat.status !== "ready"}
+                        class="min-w-0 flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
+                        autocomplete="off"
+                    />
+                    <button
+                        type="submit"
+                        disabled={!hasApiKey() || !describeInput.trim() || chat.status !== "ready"}
+                        class="px-2 py-1 text-xs bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 transition-colors"
+                    >Find</button>
+                </form>
+            </div>
+        {/if}
     </div>
 </div>

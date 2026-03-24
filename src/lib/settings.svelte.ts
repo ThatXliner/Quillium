@@ -24,6 +24,7 @@ type AppSettings = {
     titleVisibility: "hover" | "always" | "never";
     uiZoom: number;
     analyticsEnabled: boolean;
+    aiEnabled: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -37,6 +38,7 @@ const DEFAULTS: AppSettings = {
     titleVisibility: "hover",
     uiZoom: 1,
     analyticsEnabled: true,
+    aiEnabled: false,
 };
 
 function loadSettings(): AppSettings {

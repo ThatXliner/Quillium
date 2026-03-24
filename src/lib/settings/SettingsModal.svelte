@@ -16,6 +16,7 @@
 import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle } from "lucide-svelte";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { syncAnalyticsOptOut } from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
@@ -632,7 +633,48 @@ function fontLabel(fonts: FontOption[], value: string) {
 
             <div class="section-divider"></div>
 
-            <!-- QUICK ACTIONS section -->
+            <!-- AI section -->
+            <div class="section-label">AI</div>
+
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title flex items-center gap-1.5">
+                        Enable AI features
+                        <button
+                            onclick={() => openUrl("https://quillium.bryanhu.com/blog/ai-is-not-the-point")}
+                            aria-label="Why is this off by default?"
+                            title="Why is this off by default?"
+                            class="text-black/25 hover:text-black/50 transition-colors"
+                        >
+                            <HelpCircle size={13} />
+                        </button>
+                    </div>
+                    <div class="setting-desc">Show AI sidebar, auto-AI collaborator, and AI-powered tools</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button
+                        role="switch"
+                        aria-checked={draft.aiEnabled}
+                        aria-label="Toggle AI features"
+                        class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                            {draft.aiEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        onclick={() => {
+                            draft.aiEnabled = !draft.aiEnabled;
+                            handleChange();
+                        }}
+                    >
+                        <span
+                            class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                                transition-transform duration-200
+                                {draft.aiEnabled ? 'translate-x-4' : 'translate-x-0'}"
+                        ></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- QUICK ACTIONS section (AI-dependent) -->
+            {#if draft.aiEnabled}
+            <div class="section-divider"></div>
             <div class="section-label">Quick Actions</div>
 
             <!-- Panel selector -->
@@ -701,6 +743,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     Add chip
                 </button>
             </div>
+            {/if}
 
         </div>
 
