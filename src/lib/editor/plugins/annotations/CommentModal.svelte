@@ -292,10 +292,10 @@ async function aiSuggestion() {
                 {/if}
             </div>
 
-            <!-- Right sidebar: context -->
+            <!-- Right sidebar: context (1/3 of modal) -->
             {#if docContext}
-                <div class="w-56 shrink-0 border-l border-blue-100/60 flex flex-col min-h-0 bg-blue-50/20">
-                    <div class="border-b border-blue-100/60 shrink-0">
+                <div class="w-1/3 shrink-0 border-l border-blue-100/60 flex flex-col min-h-0 bg-blue-50/20">
+                    <div class="flex-1 min-h-0 flex flex-col">
                         <button
                             class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50/60 transition-colors"
                             onclick={() => (contextCollapsed = !contextCollapsed)}
@@ -308,7 +308,7 @@ async function aiSuggestion() {
                             {/if}
                         </button>
                         {#if !contextCollapsed}
-                            <div transition:slide={{ duration: 180 }} class="relative">
+                            <div transition:slide={{ duration: 180 }} class="relative flex-1 min-h-0 flex flex-col">
                                 <div
                                     bind:this={contextScrollEl}
                                     class="context-scroll"
@@ -376,7 +376,7 @@ async function aiSuggestion() {
     }
 
     .context-scroll {
-        height: 200px;
+        height: 100%;
         overflow-y: auto;
         scrollbar-width: none;
         -ms-overflow-style: none;
