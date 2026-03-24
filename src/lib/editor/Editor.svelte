@@ -36,6 +36,8 @@ import {
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
+    lastPersistedEventId,
+    lastSavedAt,
 } from "$lib/stores";
 import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import {
@@ -314,6 +316,8 @@ export async function loadDocument(id: string) {
 
     const draftId = await resolveActiveDraft(id);
     currentDraftId.set(draftId);
+    lastPersistedEventId.set(-1);
+    lastSavedAt.set(null);
 
     if (!draftId) {
         const state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
@@ -356,15 +360,8 @@ onMount(() => {
         }
     });
 
-    // Listen for reload requests dispatched by VersionHistory after a restore.
-    function handleReloadEditor() {
-        reload();
-    }
-    window.addEventListener("quillium:reload-editor", handleReloadEditor);
-
     return () => {
         unsubscribe();
-        window.removeEventListener("quillium:reload-editor", handleReloadEditor);
     };
 });
 </script>

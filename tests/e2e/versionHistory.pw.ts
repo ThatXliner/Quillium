@@ -10,7 +10,7 @@ import { QuilliumPage, type MockSnapshot } from "./QuilliumPage";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
-const BASE_TIME = new Date("2026-03-24T10:00:00").getTime();
+const BASE_TIME = Date.now();
 
 function makeSnapshots(): MockSnapshot[] {
     return [
@@ -163,7 +163,7 @@ test("inline label editing calls cmd_label_snapshot", async ({ page }) => {
 
     // Click the pencil icon on the "Before refactor" entry to enter edit mode
     const entry = page.locator("[aria-selected='true']");
-    await entry.locator("button[title='']").first().click();
+    await entry.locator("button[aria-label='Edit label']").first().click();
 
     const labelInput = entry.locator("input[type='text']");
     await expect(labelInput).toBeVisible();

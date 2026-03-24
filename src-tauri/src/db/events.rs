@@ -93,6 +93,8 @@ fn check_snapshot_threshold(conn: &Connection, draft_id: &str, now_ms: i64) -> R
     }
 }
 
+const MAX_UNLABELED_SNAPSHOTS: i64 = 10;
+
 pub fn create_snapshot(
     conn: &Connection,
     draft_id: &str,
@@ -104,6 +106,20 @@ pub fn create_snapshot(
         "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
          VALUES (?1, ?2, ?3, ?4, NULL)",
         params![draft_id, up_to_event_id, state_json, now],
+    )?;
+    // Prune excess unlabeled autosaves — keep the most recent MAX_UNLABELED_SNAPSHOTS.
+    // Labeled (named) snapshots are never deleted by this policy.
+    conn.execute(
+        "DELETE FROM snapshots
+         WHERE draft_id = ?1
+           AND label IS NULL
+           AND id NOT IN (
+               SELECT id FROM snapshots
+               WHERE draft_id = ?1 AND label IS NULL
+               ORDER BY id DESC
+               LIMIT ?2
+           )",
+        params![draft_id, MAX_UNLABELED_SNAPSHOTS],
     )?;
     Ok(())
 }
@@ -143,13 +159,15 @@ pub fn list_snapshots(conn: &Connection, draft_id: &str) -> Result<Vec<SnapshotM
 }
 
 pub fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Option<String>> {
-    conn.query_row(
+    match conn.query_row(
         "SELECT state_json FROM snapshots WHERE id = ?1",
         params![snapshot_id],
         |row| row.get(0),
-    )
-    .ok()
-    .map_or(Ok(None), |v| Ok(Some(v)))
+    ) {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 pub fn label_snapshot(conn: &Connection, snapshot_id: i64, label: &str) -> Result<()> {

@@ -85,8 +85,11 @@
         loading = true;
         const draftId = get(currentDraftId);
         if (!draftId) { loading = false; return; }
-        snapshots = await listSnapshots(draftId);
-        loading = false;
+        try {
+            snapshots = await listSnapshots(draftId);
+        } finally {
+            loading = false;
+        }
     }
 
     async function selectSnapshot(snapshot: SnapshotMeta) {
@@ -95,10 +98,14 @@
         previewLoading = true;
         previewStateJson = null;
 
-        const stateJson = await loadSnapshotState(snapshot.id);
-
-        previewStateJson = stateJson;
-        previewLoading = false;
+        try {
+            const stateJson = await loadSnapshotState(snapshot.id);
+            if (stateJson != null) {
+                previewStateJson = stateJson;
+            }
+        } finally {
+            previewLoading = false;
+        }
         // $effect re-runs automatically once previewEl is in the DOM and
         // previewStateJson/previewLoading have settled — no tick() needed.
     }
@@ -232,7 +239,7 @@
             />
             <button
                 onclick={saveCheckpoint}
-                disabled={savingCheckpoint || !checkpointLabel.trim()}
+                disabled={savingCheckpoint || !checkpointLabel.trim() || !$editorView || $lastPersistedEventId < 0}
                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
                        bg-blue-500 text-white hover:bg-blue-600 transition-colors
                        disabled:opacity-40 disabled:cursor-not-allowed"
@@ -301,6 +308,7 @@
                         </p>
                     </div>
                 {:else}
+                    <div role="listbox" aria-label="Version snapshots">
                     {#each groups as group}
                         <div class="px-4 pt-4 pb-1">
                             <span class="text-[11px] font-semibold text-black/35 uppercase tracking-wide">
@@ -309,11 +317,12 @@
                         </div>
                         {#each group.items as snapshot (snapshot.id)}
                             {@const isSelected = selectedSnapshot?.id === snapshot.id}
-                            <!-- svelte-ignore a11y_interactive_supports_focus -->
                             <div
                                 role="option"
+                                tabindex="0"
                                 aria-selected={isSelected}
                                 onclick={() => selectSnapshot(snapshot)}
+                                onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectSnapshot(snapshot); } }}
                                 class="w-full text-left px-4 py-2.5 flex items-start gap-3
                                        cursor-pointer transition-colors
                                        {isSelected
@@ -346,6 +355,7 @@
                                                 {snapshot.label}
                                             </span>
                                             <button
+                                                aria-label="Edit label"
                                                 onclick={(e) => {
                                                     e.stopPropagation();
                                                     editingLabelId = snapshot.id;
@@ -369,6 +379,7 @@
                                                     editingLabelText = "";
                                                 }}
                                                 title="Add label"
+                                                aria-label="Add label"
                                                 class="text-black/20 hover:text-black/50
                                                        transition-colors flex-shrink-0"
                                             >
@@ -376,11 +387,16 @@
                                             </button>
                                         </div>
                                     {/if}
-                                    <p class="text-[11px] text-black/35 mt-0.5">Auto-saved</p>
+                                    {#if snapshot.label}
+                                        <p class="text-[11px] text-black/35 mt-0.5">Named checkpoint</p>
+                                    {:else}
+                                        <p class="text-[11px] text-black/35 mt-0.5">Auto-saved</p>
+                                    {/if}
                                 </div>
                             </div>
                         {/each}
                     {/each}
+                    </div>
                 {/if}
             </div>
         </div>
