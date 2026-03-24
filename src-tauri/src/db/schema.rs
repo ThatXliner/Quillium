@@ -7,6 +7,11 @@ pub fn open_db(path: &Path) -> Result<Connection> {
         "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;",
     )?;
     init_schema(&conn)?;
+    // Migration: add label column to snapshots if it doesn't exist yet.
+    conn.execute(
+        "ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL",
+        [],
+    ).ok();
     Ok(conn)
 }
 

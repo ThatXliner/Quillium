@@ -10,10 +10,10 @@ use db::{
         list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
         set_trash_retention, trash_document, update_document_meta,
     },
-    events::{append_event, create_snapshot},
+    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot},
     load::load_document_state,
     schema::open_db,
-    AppendEventResult, DocumentMeta, DraftMeta, LoadResult,
+    AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 
@@ -129,6 +129,50 @@ fn cmd_load_document_state(
     load_document_state(&conn, &doc_id, draft_id.as_deref()).map_err(|e| e.to_string())
 }
 
+// ── Version history commands ──────────────────────────────────────
+
+#[tauri::command]
+fn cmd_list_snapshots(
+    state: tauri::State<DbState>,
+    draft_id: String,
+) -> Result<Vec<SnapshotMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_snapshots(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_label_snapshot(
+    state: tauri::State<DbState>,
+    snapshot_id: i64,
+    label: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    label_snapshot(&conn, snapshot_id, &label).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_restore_to_snapshot(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    snapshot_id: i64,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    restore_to_snapshot(&conn, &draft_id, snapshot_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_named_snapshot(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    state_json: String,
+    up_to_event_id: i64,
+    label: String,
+) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_named_snapshot(&conn, &draft_id, &state_json, up_to_event_id, &label)
+        .map_err(|e| e.to_string())
+}
+
 // ── Trash retention commands ──────────────────────────────────────
 
 /// Returns the trash auto-empty setting in days, or null if "never".
@@ -239,6 +283,10 @@ pub fn run() {
             cmd_append_event,
             cmd_create_snapshot,
             cmd_load_document_state,
+            cmd_list_snapshots,
+            cmd_label_snapshot,
+            cmd_restore_to_snapshot,
+            cmd_create_named_snapshot,
             set_api_key,
             get_api_key,
             delete_api_key,

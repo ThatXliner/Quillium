@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::AppendEventResult;
+use super::{AppendEventResult, SnapshotMeta};
 
 const SNAPSHOT_EVENT_THRESHOLD: i64 = 50;
 const SNAPSHOT_TIME_THRESHOLD_SECS: i64 = 120;
@@ -101,20 +101,74 @@ pub fn create_snapshot(
 ) -> Result<()> {
     let now = now_ms();
     conn.execute(
-        "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
-         VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
+         VALUES (?1, ?2, ?3, ?4, NULL)",
         params![draft_id, up_to_event_id, state_json, now],
     )?;
+    Ok(())
+}
 
-    // Prune: keep only the latest 3 snapshots per draft
+pub fn create_named_snapshot(
+    conn: &Connection,
+    draft_id: &str,
+    state_json: &str,
+    up_to_event_id: i64,
+    label: &str,
+) -> Result<i64> {
+    let now = now_ms();
     conn.execute(
-        "DELETE FROM snapshots WHERE draft_id = ?1
-         AND id NOT IN (
-             SELECT id FROM snapshots WHERE draft_id = ?1
-             ORDER BY up_to_event_id DESC LIMIT 3
-         )",
-        params![draft_id],
+        "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![draft_id, up_to_event_id, state_json, now, label],
     )?;
+    Ok(conn.last_insert_rowid())
+}
 
+pub fn list_snapshots(conn: &Connection, draft_id: &str) -> Result<Vec<SnapshotMeta>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, draft_id, up_to_event_id, created_at, label
+         FROM snapshots WHERE draft_id = ?1
+         ORDER BY up_to_event_id DESC",
+    )?;
+    let rows = stmt.query_map(params![draft_id], |row| {
+        Ok(SnapshotMeta {
+            id: row.get(0)?,
+            draft_id: row.get(1)?,
+            up_to_event_id: row.get(2)?,
+            created_at: row.get(3)?,
+            label: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn label_snapshot(conn: &Connection, snapshot_id: i64, label: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE snapshots SET label = ?1 WHERE id = ?2",
+        params![label, snapshot_id],
+    )?;
+    Ok(())
+}
+
+pub fn restore_to_snapshot(
+    conn: &Connection,
+    draft_id: &str,
+    snapshot_id: i64,
+) -> Result<()> {
+    let up_to_event_id: i64 = conn.query_row(
+        "SELECT up_to_event_id FROM snapshots WHERE id = ?1 AND draft_id = ?2",
+        params![snapshot_id, draft_id],
+        |row| row.get(0),
+    )?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "DELETE FROM events WHERE draft_id = ?1 AND id > ?2",
+        params![draft_id, up_to_event_id],
+    )?;
+    tx.execute(
+        "DELETE FROM snapshots WHERE draft_id = ?1 AND up_to_event_id > ?2",
+        params![draft_id, up_to_event_id],
+    )?;
+    tx.commit()?;
     Ok(())
 }

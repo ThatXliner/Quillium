@@ -51,3 +51,13 @@ pub struct LoadResult {
     pub snapshot_event_id: i64,
     pub events_since: Vec<EventRecord>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotMeta {
+    pub id: i64,
+    pub draft_id: String,
+    pub up_to_event_id: i64,
+    pub created_at: i64,
+    pub label: Option<String>,
+}
