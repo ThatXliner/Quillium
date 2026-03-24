@@ -25,6 +25,7 @@ import {
     saveStatus,
     errorBanner,
     lastPersistedEventId,
+    lastSavedAt,
 } from "$lib/stores";
 import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
 import { checkForSuspiciousChange, readBackup } from "$lib/errorGuard";
@@ -273,6 +274,7 @@ async function doAppend(update: ViewUpdate) {
         }
 
         lastPersistedEventId.set(result.eventId);
+        lastSavedAt.set(Date.now());
 
         if (result.needsSnapshot) {
             const stateJson = JSON.stringify(update.state.toJSON(savedFields));

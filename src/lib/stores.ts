@@ -182,6 +182,12 @@ export const tutorialNavCommand = writable<"next" | "back" | "skip" | null>(null
 export const lastPersistedEventId = writable<number>(-1);
 
 /**
+ * Unix timestamp (ms) of the most recent successful save.
+ * null until the first save in the current session.
+ */
+export const lastSavedAt = writable<number | null>(null);
+
+/**
  * Command payload dispatched when the user triggers an annotation
  * command (comment/revision) while the cursor is inside an active
  * revision in the main document. Carries the revision ID, command
