@@ -396,12 +396,23 @@ let dialogEl = $state<HTMLDialogElement>();
 let modalAnnotations = $state<AnnotationsMap | undefined>(undefined);
 let modalActiveAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-const controller = new NestedEditorController(view, revisionId, {
-    onUpdate: (annotations, activeAnnotation) => {
-        modalAnnotations = annotations;
-        modalActiveAnnotation = activeAnnotation;
+// For deeply nested modals (level 2+), undo must target the root view
+// that owns the history stack — not the immediate parent, which has
+// history: false. The root is always the first modal entry's parent.
+const historyView = stackIndex > 0 ? $modalStack[0].parentView : undefined;
+
+const controller = new NestedEditorController(
+    view,
+    revisionId,
+    {
+        onUpdate: (annotations, activeAnnotation) => {
+            modalAnnotations = annotations;
+            modalActiveAnnotation = activeAnnotation;
+        },
     },
-}, "flush");
+    "flush",
+    historyView,
+);
 
 function createEditor(version: VersionState, versionIndex?: number) {
     if (!editorHost || controller.editor) return;
@@ -830,12 +841,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
       <!-- Right actions -->
       <div class="flex items-center gap-2 shrink-0">
-        {#if revision && revision.versions.length > 1}
-          <div class="flex items-center gap-0.5 opacity-40">
-            <Kbd keys={["Ctrl", "["]} />
-            <Kbd keys={["Ctrl", "]"]} />
-          </div>
-        {/if}
         <button
           class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
               bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"

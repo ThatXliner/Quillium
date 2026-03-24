@@ -60,6 +60,7 @@ export class NestedEditorController {
         private readonly revisionId: number,
         private readonly callbacks: NestedEditorCallbacks,
         private readonly flushBehavior: FlushBehavior,
+        private readonly historyView?: EditorView,
     ) {}
 
     /** The nested editor instance, or undefined if not mounted. */
@@ -93,12 +94,15 @@ export class NestedEditorController {
             (update: ViewUpdate) => this.onNestedUpdate(update),
             this.parentView,
             this.revisionId,
+            this.historyView,
         );
 
         this._editor = new EditorView({ state, parent: host });
         this._mountedVersionIndex = versionIndex;
         this._editorVersionIndex = versionIndex;
-        this._mountedAnnotationFieldBlob = (version as { annotationField?: unknown }).annotationField;
+        this._mountedAnnotationFieldBlob = (
+            version as { annotationField?: unknown }
+        ).annotationField;
         this._lastDispatchedDoc = this._editor.state.doc.toString();
 
         // Fire initial callback
@@ -175,10 +179,7 @@ export class NestedEditorController {
 
             this._editor.dispatch({
                 changes: { from, to, insert },
-                annotations: [
-                    Transaction.addToHistory.of(false),
-                    parentSyncEdit.of(true),
-                ],
+                annotations: [Transaction.addToHistory.of(false), parentSyncEdit.of(true)],
             });
         }
         this._lastDispatchedDoc = externalDoc;
@@ -273,10 +274,7 @@ export class NestedEditorController {
     private hasAnnotationMutationEffect(update: ViewUpdate): boolean {
         return update.transactions.some((tr) =>
             tr.effects.some(
-                (e) =>
-                    e.is(addAnnotation) ||
-                    e.is(removeAnnotation) ||
-                    e.is(updateThread),
+                (e) => e.is(addAnnotation) || e.is(removeAnnotation) || e.is(updateThread),
             ),
         );
     }
@@ -290,14 +288,12 @@ export class NestedEditorController {
     private flushAnnotationStateToParent(): void {
         if (!this._editor) return;
 
-        const rev = this.parentView.state.field(annotationField)[
-            this.revisionId
-        ] as AnnotationType<"revision"> | undefined;
+        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
+            | AnnotationType<"revision">
+            | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            const blob = this._editor.state.toJSON(
-                nestedSavedFields,
-            ) as VersionState;
+            const blob = this._editor.state.toJSON(nestedSavedFields) as VersionState;
             this.parentView.dispatch(
                 updateRevisionVersionState(
                     this.parentView.state,

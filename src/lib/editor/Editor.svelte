@@ -167,6 +167,21 @@ function syncStoresToEditorState(update: ViewUpdate, doc: string, selText: strin
     $selectedText = selText;
 }
 
+// ── Keyboard shortcut telemetry ─────────────────────────────────
+// Track undo/redo and other notable editor actions so we can catch
+// abuse patterns (e.g. ctrl-z spam) in PostHog.
+function trackKeyboardActions(update: ViewUpdate) {
+    for (const tr of update.transactions) {
+        if (tr.isUserEvent("undo")) {
+            posthog.capture("editor_undo");
+        } else if (tr.isUserEvent("redo")) {
+            posthog.capture("editor_redo");
+        } else if (tr.isUserEvent("select.all")) {
+            posthog.capture("editor_select_all");
+        }
+    }
+}
+
 // ── Update listener ─────────────────────────────────────────────
 const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
@@ -175,6 +190,7 @@ const getExtensionOptions: ListenerOptions = {
 
         stats = computeWritingStats(doc, selText);
         syncStoresToEditorState(update, doc, selText);
+        trackKeyboardActions(update);
     },
 };
 

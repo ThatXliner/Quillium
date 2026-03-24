@@ -4,10 +4,7 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
 
-import {
-    annotationField,
-    addAnnotation,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import Revision from "$lib/editor/plugins/annotations/Revision.svelte";

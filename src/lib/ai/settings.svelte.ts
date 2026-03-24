@@ -29,7 +29,7 @@ import type { Provider } from "./provider";
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
-const HAS_API_KEY_KEY = "quillium-has-api-key";
+export const HAS_API_KEY_KEY = "quillium-has-api-key";
 
 export type DocumentContext = {
     freeform: string;
@@ -79,10 +79,15 @@ export const aiSettings = $state({
 });
 
 export function hasApiKey(): boolean {
-    return aiSettings.apiKey.trim().length > 0;
+    if (aiSettings.provider === "openai-codex") return true;
+    if (aiSettings.apiKey.trim().length > 0) return true;
+    // The key hasn't loaded from the keychain yet, but we know one
+    // exists — avoid flashing "no API key" UI on startup.
+    if (typeof localStorage !== "undefined" && !!localStorage.getItem(HAS_API_KEY_KEY)) {
+        return true;
+    }
+    return false;
 }
-
-export const HAS_API_KEY = HAS_API_KEY_KEY;
 
 export async function loadApiKeyForProvider(provider: Provider) {
     try {
@@ -93,9 +98,26 @@ export async function loadApiKeyForProvider(provider: Provider) {
     }
 }
 
-// Load key for the current provider on startup, but only if the user has
-// previously saved an API key (avoids triggering the keychain prompt
-// when AI features have never been configured).
-if (typeof window !== "undefined" && localStorage.getItem(HAS_API_KEY_KEY)) {
-    loadApiKeyForProvider(aiSettings.provider);
+// Lazy-load the API key on first access rather than at module import
+// time. This avoids triggering the macOS keychain permission prompt
+// immediately on app startup — the prompt will only appear when the
+// user actually interacts with AI features.
+let _apiKeyLoadPromise: Promise<void> | null = null;
+
+export function ensureApiKeyLoaded(): Promise<void> {
+    if (_apiKeyLoadPromise) return _apiKeyLoadPromise;
+    if (typeof window === "undefined" || !localStorage.getItem(HAS_API_KEY_KEY)) {
+        return Promise.resolve();
+    }
+    _apiKeyLoadPromise = loadApiKeyForProvider(aiSettings.provider);
+    return _apiKeyLoadPromise;
+}
+
+/**
+ * Reset the cached API-key load promise so that the next call to
+ * `ensureApiKeyLoaded()` will re-check localStorage / the keychain.
+ * Called after the user deletes their API key.
+ */
+export function resetApiKeyLoadPromise() {
+    _apiKeyLoadPromise = null;
 }

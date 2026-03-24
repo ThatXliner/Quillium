@@ -32,7 +32,6 @@ import {
     indentWithTab,
 } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
-import { lintKeymap } from "@codemirror/lint";
 import { search, searchKeymap } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import {
@@ -61,8 +60,14 @@ const editorKeymap: KeyBinding[] = [
     ...searchKeymap,
     ...historyKeymap,
     ...completionKeymap,
-    ...lintKeymap,
     indentWithTab,
+    {
+        key: "Mod-Shift-r",
+        run() {
+            window.dispatchEvent(new CustomEvent("quillium:manual-review"));
+            return true;
+        },
+    },
 ] as unknown as KeyBinding[];
 
 const nestedEditorKeymap: KeyBinding[] = [
@@ -70,7 +75,6 @@ const nestedEditorKeymap: KeyBinding[] = [
     ...defaultKeymap,
     ...searchKeymap,
     ...completionKeymap,
-    ...lintKeymap,
     indentWithTab,
 ] as unknown as KeyBinding[];
 

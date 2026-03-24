@@ -16,6 +16,7 @@
 import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle } from "lucide-svelte";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
+import { syncAnalyticsOptOut } from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
 
@@ -164,8 +165,12 @@ function handleChange() {
 }
 
 function save() {
+    const analyticsChanged = appSettings.analyticsEnabled !== draft.analyticsEnabled;
     Object.assign(appSettings, draft);
     persistSettings();
+    if (analyticsChanged) {
+        syncAnalyticsOptOut(draft.analyticsEnabled);
+    }
     onclose();
 }
 
@@ -581,6 +586,45 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
                             transition-transform duration-200
                             {draft.selectTextInNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <!-- PRIVACY section -->
+            <div class="section-label">Privacy</div>
+
+            <!-- Analytics toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Usage analytics</div>
+                    <div class="setting-desc">Help improve Quillium by sending anonymous usage data</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.analyticsEnabled}
+                    <button
+                        type="button"
+                        onclick={() => { draft.analyticsEnabled = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.analyticsEnabled}
+                    aria-label="Toggle usage analytics"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.analyticsEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.analyticsEnabled = !draft.analyticsEnabled;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.analyticsEnabled ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
                 </div>

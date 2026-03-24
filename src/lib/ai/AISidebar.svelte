@@ -71,7 +71,7 @@ import {
     CompassIcon,
     Minimize2Icon,
 } from "lucide-svelte";
-import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
+import { aiProcessing, hasApiKey, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
 import { pendingChatMessage } from "$lib/stores";
 import posthog from "$lib/posthog";
 
@@ -195,6 +195,9 @@ function handleClickOutside(e: MouseEvent) {
 }
 
 function selectAction(id: NonNullable<Action>) {
+    // Lazily load the API key from the keychain on first interaction,
+    // avoiding the macOS keychain permission prompt on app startup.
+    ensureApiKeyLoaded();
     const def = actions.find((a) => a.id === id);
     if (def?.requiresApiKey && !hasApiKey()) {
         action = "settings";
@@ -266,6 +269,15 @@ $effect(() => {
     if (expanded && action && action !== "settings") {
         scrollActiveIntoCenter(action);
     }
+});
+
+// Allow external callers (e.g. AutoAIWidget) to open AI settings via event.
+$effect(() => {
+    function handleOpenAiSettings() {
+        action = "settings";
+    }
+    window.addEventListener("quillium:open-ai-settings", handleOpenAiSettings);
+    return () => window.removeEventListener("quillium:open-ai-settings", handleOpenAiSettings);
 });
 
 // Cleanup resize listeners on unmount
@@ -373,7 +385,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- Expanded panel -->
     <div
         class="w-full h-full flex flex-col transition-opacity duration-150
-            {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}"
+            {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 invisible pointer-events-none'}"
     >
         <!-- Row 1: icon wheel -->
         <div class="shrink-0 pt-2.5 pb-1">
@@ -450,7 +462,7 @@ function handleKeydown(e: KeyboardEvent) {
             <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
             <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
             <div class="absolute inset-0 overflow-y-auto {action === 'context' ? '' : 'hidden'}"><DocumentContext /></div>
-            <div class="absolute inset-0 flex flex-col {action === 'settings' ? '' : 'hidden'}"><AISettings /></div>
+            {#if action === 'settings'}<div class="absolute inset-0 flex flex-col"><AISettings /></div>{/if}
         </div>
     </div>
 

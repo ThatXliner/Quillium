@@ -7,12 +7,7 @@
  * @tauri-apps/plugin-sql directly.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type {
-    AppendEventResult,
-    DocumentMeta,
-    DraftMeta,
-    LoadResult,
-} from "./types";
+import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult } from "./types";
 
 // ── Reset ─────────────────────────────────────────────────────────
 

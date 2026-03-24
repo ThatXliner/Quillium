@@ -18,6 +18,8 @@
  *   07-revision-modal.png   — revision full-screen modal editor open
  *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   09-update-banner.png    — update notification banner in bottom-right
+ *   10-autoai-bubble.png   — AutoAI collaborator bubble in active state (rainbow border)
+ *   11-autoai-card.png     — AutoAI settings card morphed open from the bubble
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
@@ -134,8 +136,7 @@ async function installTauriMock(
             // Hide the debug button so it never appears in screenshots.
             document.addEventListener("DOMContentLoaded", () => {
                 const style = document.createElement("style");
-                style.textContent =
-                    "[aria-label='Open debug panel'] { display: none !important; }";
+                style.textContent = "[aria-label='Open debug panel'] { display: none !important; }";
                 document.head.appendChild(style);
             });
             // Ensure a consistent font for all screenshots regardless of any
@@ -601,10 +602,8 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
     await page
         .waitForFunction(
             () =>
-                document
-                    .querySelector("#ai-tab-chat")
-                    ?.getAttribute("aria-label")
-                    ?.includes("⌘") ?? false,
+                document.querySelector("#ai-tab-chat")?.getAttribute("aria-label")?.includes("⌘") ??
+                false,
             { timeout: 5000 },
         )
         .catch(() => {});
@@ -620,7 +619,9 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
             | undefined;
         if (!editorViewStore) return;
         let view: unknown;
-        const unsub = editorViewStore.subscribe((v) => { view = v; });
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
         unsub();
         if (!view) return;
         const v = view as {
@@ -639,6 +640,59 @@ async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
     await page.waitForTimeout(400);
 
     await shot(page, "08-full-ui");
+    await page.close();
+}
+
+/** Shared setup for AutoAI screenshots — enables AutoAI via localStorage. */
+async function setupAutoAIPage(ctx: BrowserContext): Promise<Page> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.addInitScript(() => {
+        localStorage.setItem(
+            "quillium-autoai-settings",
+            JSON.stringify({
+                enabled: true,
+                mode: "continuous",
+                debounceMs: 10000,
+                persona: "Auto",
+                annotationTypes: ["comment", "suggestion", "revision"],
+                conservativeness: "conservative",
+            }),
+        );
+    });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-autoai-widget");
+    if (!applied) await setEditorText(page, PROSE_SHORT);
+    // Click away so no annotation is active
+    await page.mouse.click(720, 700);
+    await page.waitForTimeout(300);
+    return page;
+}
+
+/**
+ * 10. autoai-bubble — The AutoAI collaborator bubble in its active state:
+ *    rainbow conic-gradient border showing AutoAI is enabled and watching.
+ */
+async function scenarioAutoAIBubble(ctx: BrowserContext): Promise<void> {
+    const page = await setupAutoAIPage(ctx);
+    await shot(page, "10-autoai-bubble");
+    await page.close();
+}
+
+/**
+ * 11. autoai-card — The AutoAI settings card morphed open from the bubble,
+ *    showing the persona name, toggle, mode, delay, focus, and annotation
+ *    type controls.
+ */
+async function scenarioAutoAICard(ctx: BrowserContext): Promise<void> {
+    const page = await setupAutoAIPage(ctx);
+    // Click the bubble to open the settings card
+    await page.locator("button[aria-label*='AutoAI']").first().click();
+    // Wait for the morph transition to complete (340ms) + panel fade-in (80ms delay)
+    await page.waitForTimeout(600);
+    await shot(page, "11-autoai-card");
     await page.close();
 }
 
@@ -778,6 +832,8 @@ async function main(): Promise<void> {
         await scenarioFullUi(context);
         await scenarioDictionary(context);
         await scenarioUpdateBanner(context);
+        await scenarioAutoAIBubble(context);
+        await scenarioAutoAICard(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {

@@ -47,9 +47,9 @@ const arbSelection = fc
 /** A selection that may contain collapsed (zero-width) ranges */
 const arbMaybeCollapsedSelection = fc
     .array(
-        fc.tuple(arbNonNegInt, arbNonNegInt).map(([a, b]) =>
-            EditorSelection.range(Math.min(a, b), Math.max(a, b)),
-        ),
+        fc
+            .tuple(arbNonNegInt, arbNonNegInt)
+            .map(([a, b]) => EditorSelection.range(Math.min(a, b), Math.max(a, b))),
         { minLength: 1, maxLength: 4 },
     )
     .map((ranges) => EditorSelection.create(ranges, 0));
@@ -127,13 +127,18 @@ describe("getNewId", () => {
 
     it("consecutive calls on expanded map produce unique IDs", () => {
         fc.assert(
-            fc.property(arbAnnotations, arbAnnotationType, arbSelection, (annotations, type, sel) => {
-                const id1 = getNewId(annotations);
-                const expanded = { ...annotations };
-                expanded[id1] = makeAnnotation(id1, sel, type);
-                const id2 = getNewId(expanded);
-                expect(id1).not.toBe(id2);
-            }),
+            fc.property(
+                arbAnnotations,
+                arbAnnotationType,
+                arbSelection,
+                (annotations, type, sel) => {
+                    const id1 = getNewId(annotations);
+                    const expanded = { ...annotations };
+                    expanded[id1] = makeAnnotation(id1, sel, type);
+                    const id2 = getNewId(expanded);
+                    expect(id1).not.toBe(id2);
+                },
+            ),
         );
     });
 });
@@ -163,29 +168,44 @@ describe("getLastId", () => {
 describe("createNewAnnotation", () => {
     it("assigns a unique id not present in the map", () => {
         fc.assert(
-            fc.property(arbAnnotations, arbSelection, arbAnnotationType, (annotations, sel, type) => {
-                const annotation = createNewAnnotation(annotations, sel, type);
-                expect(annotations[annotation.id]).toBeUndefined();
-            }),
+            fc.property(
+                arbAnnotations,
+                arbSelection,
+                arbAnnotationType,
+                (annotations, sel, type) => {
+                    const annotation = createNewAnnotation(annotations, sel, type);
+                    expect(annotations[annotation.id]).toBeUndefined();
+                },
+            ),
         );
     });
 
     it("carries the provided selection and type", () => {
         fc.assert(
-            fc.property(arbAnnotations, arbSelection, arbAnnotationType, (annotations, sel, type) => {
-                const annotation = createNewAnnotation(annotations, sel, type);
-                expect(annotation._type).toBe(type);
-                expect(annotation.selection.eq(sel)).toBe(true);
-            }),
+            fc.property(
+                arbAnnotations,
+                arbSelection,
+                arbAnnotationType,
+                (annotations, sel, type) => {
+                    const annotation = createNewAnnotation(annotations, sel, type);
+                    expect(annotation._type).toBe(type);
+                    expect(annotation.selection.eq(sel)).toBe(true);
+                },
+            ),
         );
     });
 
     it("starts with an empty thread", () => {
         fc.assert(
-            fc.property(arbAnnotations, arbSelection, arbAnnotationType, (annotations, sel, type) => {
-                const annotation = createNewAnnotation(annotations, sel, type);
-                expect(annotation.thread).toHaveLength(0);
-            }),
+            fc.property(
+                arbAnnotations,
+                arbSelection,
+                arbAnnotationType,
+                (annotations, sel, type) => {
+                    const annotation = createNewAnnotation(annotations, sel, type);
+                    expect(annotation.thread).toHaveLength(0);
+                },
+            ),
         );
     });
 });
@@ -195,24 +215,34 @@ describe("createNewAnnotation", () => {
 describe("clone", () => {
     it("produces a deep copy — mutating clone does not affect original", () => {
         fc.assert(
-            fc.property(arbAnnotations, arbSelection, arbAnnotationType, (annotations, sel, type) => {
-                const original = makeAnnotation(getNewId(annotations), sel, type);
-                const copy = clone(original);
-                // Mutate the clone's thread
-                copy.thread.push({ message: "x", author: "a", time: 0 });
-                expect(original.thread).toHaveLength(0);
-            }),
+            fc.property(
+                arbAnnotations,
+                arbSelection,
+                arbAnnotationType,
+                (annotations, sel, type) => {
+                    const original = makeAnnotation(getNewId(annotations), sel, type);
+                    const copy = clone(original);
+                    // Mutate the clone's thread
+                    copy.thread.push({ message: "x", author: "a", time: 0 });
+                    expect(original.thread).toHaveLength(0);
+                },
+            ),
         );
     });
 
     it("selection is equal but not the same reference", () => {
         fc.assert(
-            fc.property(arbAnnotations, arbSelection, arbAnnotationType, (annotations, sel, type) => {
-                const original = makeAnnotation(getNewId(annotations), sel, type);
-                const copy = clone(original);
-                expect(copy.selection.eq(original.selection)).toBe(true);
-                expect(copy.selection).not.toBe(original.selection);
-            }),
+            fc.property(
+                arbAnnotations,
+                arbSelection,
+                arbAnnotationType,
+                (annotations, sel, type) => {
+                    const original = makeAnnotation(getNewId(annotations), sel, type);
+                    const copy = clone(original);
+                    expect(copy.selection.eq(original.selection)).toBe(true);
+                    expect(copy.selection).not.toBe(original.selection);
+                },
+            ),
         );
     });
 });
@@ -222,16 +252,21 @@ describe("clone", () => {
 describe("isAnnotationOfType", () => {
     it("is consistent with _type field", () => {
         fc.assert(
-            fc.property(arbAnnotations, arbSelection, arbAnnotationType, (annotations, sel, type) => {
-                const annotation = makeAnnotation(getNewId(annotations), sel, type);
-                expect(isAnnotationOfType(annotation, type)).toBe(true);
-                const otherTypes = (["comment", "suggestion", "revision"] as const).filter(
-                    (t) => t !== type,
-                );
-                for (const other of otherTypes) {
-                    expect(isAnnotationOfType(annotation, other)).toBe(false);
-                }
-            }),
+            fc.property(
+                arbAnnotations,
+                arbSelection,
+                arbAnnotationType,
+                (annotations, sel, type) => {
+                    const annotation = makeAnnotation(getNewId(annotations), sel, type);
+                    expect(isAnnotationOfType(annotation, type)).toBe(true);
+                    const otherTypes = (["comment", "suggestion", "revision"] as const).filter(
+                        (t) => t !== type,
+                    );
+                    for (const other of otherTypes) {
+                        expect(isAnnotationOfType(annotation, other)).toBe(false);
+                    }
+                },
+            ),
         );
     });
 });
@@ -518,9 +553,12 @@ describe("RawAnnotationsSchema", () => {
 
     it("rejects non-object values", () => {
         fc.assert(
-            fc.property(fc.oneof(fc.string(), fc.integer(), fc.boolean(), fc.constant(null)), (val) => {
-                expect(RawAnnotationsSchema.safeParse(val).success).toBe(false);
-            }),
+            fc.property(
+                fc.oneof(fc.string(), fc.integer(), fc.boolean(), fc.constant(null)),
+                (val) => {
+                    expect(RawAnnotationsSchema.safeParse(val).success).toBe(false);
+                },
+            ),
         );
     });
 });

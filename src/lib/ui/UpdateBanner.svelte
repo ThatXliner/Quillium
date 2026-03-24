@@ -1,12 +1,12 @@
 <script lang="ts">
-    interface Props {
-        version: string;
-        installing?: boolean;
-        oninstall: () => void;
-        ondismiss: () => void;
-    }
+interface Props {
+    version: string;
+    installing?: boolean;
+    oninstall: () => void;
+    ondismiss: () => void;
+}
 
-    let { version, installing = false, oninstall, ondismiss }: Props = $props();
+let { version, installing = false, oninstall, ondismiss }: Props = $props();
 </script>
 
 <div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 bg-white rounded-xl shadow-xl border border-black/[0.07] text-[13px]">

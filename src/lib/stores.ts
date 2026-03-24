@@ -257,6 +257,8 @@ export type ErrorBannerState = {
     hasBackup: boolean;
     /** "auto" = suspicious-change backup, "crash" = crash backup */
     backupType: "auto" | "crash";
+    /** Optional error details (stack trace, error message) for debugging */
+    details?: string;
 };
 
 export const errorBanner = writable<ErrorBannerState | null>(null);

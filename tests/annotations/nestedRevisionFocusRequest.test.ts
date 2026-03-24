@@ -23,14 +23,8 @@ import { get } from "svelte/store";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
-import {
-    annotationField,
-    addAnnotation,
-} from "$lib/editor/plugins/annotations/annotationField";
-import {
-    createNewAnnotation,
-    isAnnotationOfType,
-} from "$lib/editor/plugins/annotations/models";
+import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
+import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { modalStack } from "$lib/stores";
 import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
@@ -98,8 +92,8 @@ describe("revision-focus-request from nested inline editor", () => {
         // revision's position within the parent's version text.
         modalStack.push({
             type: "revision",
-            revisionId: parentRevId,   // parent's ID — the key invariant
-            parentView: parentView,     // parent view — not nestedView
+            revisionId: parentRevId, // parent's ID — the key invariant
+            parentView: parentView, // parent view — not nestedView
             label: "Revision",
             pendingNestedCommand: {
                 type: "cursor",
@@ -146,8 +140,8 @@ describe("revision-focus-request from nested inline editor", () => {
         // The OLD code would have done this — push the nested revision directly:
         modalStack.push({
             type: "revision",
-            revisionId: nestedRevId,   // WRONG: nested ID, not parent
-            parentView: nestedView,     // WRONG: nested view, not parent view
+            revisionId: nestedRevId, // WRONG: nested ID, not parent
+            parentView: nestedView, // WRONG: nested view, not parent view
             label: "nested rev",
             pendingNestedCommand: { type: "cursor", selectionFrom: 0, selectionTo: 0 },
         });
@@ -157,8 +151,8 @@ describe("revision-focus-request from nested inline editor", () => {
 
         // This illustrates the broken state: the modal stack has no record
         // of the parent revision, so the breadcrumb trail is incomplete.
-        expect(entry.revisionId).toBe(nestedRevId);    // shows the problem
-        expect(entry.parentView).toBe(nestedView);     // shows the problem
+        expect(entry.revisionId).toBe(nestedRevId); // shows the problem
+        expect(entry.parentView).toBe(nestedView); // shows the problem
         expect(entry.revisionId).not.toBe(parentRevId); // parent is missing
     });
 

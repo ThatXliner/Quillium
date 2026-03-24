@@ -70,6 +70,7 @@ const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
 
 let isEditorOpen = $state(false);
 let userClosedEditor = false;
+let nestedEditorFocused = $state(false);
 
 $effect(() => {
     if (isActive) {
@@ -88,11 +89,16 @@ function openEditor() {
 let nestedEditorHost = $state<HTMLDivElement>();
 let activeAnnotation = $state<GenericAnnotation | undefined>(undefined);
 
-const controller = new NestedEditorController(view, revision.id, {
-    onUpdate: (_annotations, active) => {
-        activeAnnotation = active;
+const controller = new NestedEditorController(
+    view,
+    revision.id,
+    {
+        onUpdate: (_annotations, active) => {
+            activeAnnotation = active;
+        },
     },
-}, "flush-on-destroy");
+    "flush-on-destroy",
+);
 
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -175,7 +181,11 @@ $effect(() => {
     return annotationEventBus.on("nested-annotation-create", (event) => {
         if (event.command.revisionId !== revision.id) return;
         // If a modal is already open for this revision, let that modal handle the event.
-        if ($modalStack.some((entry) => entry.type === "revision" && entry.revisionId === revision.id))
+        if (
+            $modalStack.some(
+                (entry) => entry.type === "revision" && entry.revisionId === revision.id,
+            )
+        )
             return;
         const cmd = event.command;
         modalStack.push({
@@ -215,7 +225,33 @@ $effect(() => {
                 revisionId: revision.id,
                 parentView: view,
                 label: activeVersion ? previewVersionText(activeVersion) : "Revision",
-                pendingNestedCommand: { type: "cursor", selectionFrom: relPos, selectionTo: relPos },
+                pendingNestedCommand: {
+                    type: "cursor",
+                    selectionFrom: relPos,
+                    selectionTo: relPos,
+                },
+            });
+        }
+    });
+});
+
+// ⌘E → enter the revision's editor (inline or modal)
+$effect(() => {
+    return annotationEventBus.on("annotation-enter-editor", (event) => {
+        if (event.annotationId !== revision.id) return;
+        if (appSettings.showNestedEditor) {
+            if (isEditorOpen && controller.editor) {
+                controller.editor.focus();
+            } else {
+                userClosedEditor = false;
+                isEditorOpen = true;
+            }
+        } else {
+            modalStack.push({
+                type: "revision",
+                revisionId: revision.id,
+                parentView: view,
+                label: activeVersion ? previewVersionText(activeVersion) : "Revision",
             });
         }
     });
@@ -430,12 +466,6 @@ onDestroy(() => {
                 </button>
             </div>
         {/each}
-        {#if isActive && revision.versions.length > 1}
-            <div class="ml-auto flex items-center gap-0.5 opacity-50">
-                <Kbd keys={["Ctrl", "["]} />
-                <Kbd keys={["Ctrl", "]"]} />
-            </div>
-        {/if}
     </div>
 
     <!-- Actions row -->
@@ -463,8 +493,9 @@ onDestroy(() => {
             }}
             title="Create a new version ({modKey}↵)"
         >
-            <PlusIcon size={10} />
-            <span>New version</span>
+            <PlusIcon size={14} />
+            <span>New Version</span>
+            <span class="ml-0.5 opacity-50"><Kbd keys={["Cmd", "↵"]} /></span>
         </button>
         {#if appSettings.showNestedEditor}
         <button
@@ -531,11 +562,24 @@ onDestroy(() => {
     <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
         <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
                 bind:this={nestedEditorHost}
                 class="revision-inline-editor"
                 class:cursor-arriving={cursorArriving}
+                onfocusin={() => nestedEditorFocused = true}
+                onfocusout={() => nestedEditorFocused = false}
             ></div>
+            {#if !nestedEditorFocused}
+                <div class="flex items-center justify-center gap-1.5 px-2.5 pb-1.5 text-[10px] text-purple-400/70">
+                    <Kbd keys={["Cmd", "E"]} /> <span>to edit</span>
+                </div>
+            {/if}
+        </div>
+    {:else if isActive}
+        <!-- If !showNestedEditor -->
+        <div class="mx-3 mb-2 flex items-center gap-1.5 text-[10px] text-purple-400/70">
+            <Kbd keys={["Cmd", "E"]} /> <span>to edit</span>
         </div>
     {/if}
 

@@ -348,6 +348,17 @@ export function updateRevisionVersionState(
             annotations,
         });
     }
+    // Skip doc changes when the document already matches the version text.
+    // Redundant changes would appear as "foreign" edits to CodeMirror's
+    // history, breaking undo of prior entries (e.g. modal flush after
+    // translateAndDispatch).
+    const currentText = state.sliceDoc(original.selection.main.from, original.selection.main.to);
+    if (currentText === text) {
+        return state.update({
+            effects,
+            annotations,
+        });
+    }
     return state.update({
         effects,
         annotations,
@@ -545,10 +556,7 @@ function applyRevisionVersionEffect(
             const from = tr.changes.mapPos(oldAnnotation.selection.main.from, -1);
             const vText = versionText(targetVersion);
             const to = Math.min(from + vText.length, tr.state.doc.length);
-            selection = EditorSelection.single(
-                Math.min(from, tr.state.doc.length),
-                to,
-            );
+            selection = EditorSelection.single(Math.min(from, tr.state.doc.length), to);
         }
         return { ...annotation, activeVersionIndex: e.value.to, selection };
     }
@@ -611,21 +619,26 @@ export const annotationField = StateField.define<Annotations>({
             } else if (e.is(removeAnnotation)) {
                 delete annotations[e.value.id];
             } else if (e.is(updateThread)) {
-                annotations[e.value.annotationId].thread = e.value.newThread;
+                const annotation = annotations[e.value.annotationId];
+                if (!annotation) continue;
+                annotation.thread = e.value.newThread;
             } else if (
                 e.is(_addVersionToRevision) ||
                 e.is(_deleteVersionFromRevision) ||
                 e.is(_updateActiveRevisionVersion)
             ) {
                 const annotation = annotations[e.value.annotationId];
-                if (!isAnnotationOfType(annotation, "revision")) continue;
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
                 annotations[e.value.annotationId] = applyRevisionVersionEffect(
-                    e, annotation, oldAnnotations, tr,
+                    e,
+                    annotation,
+                    oldAnnotations,
+                    tr,
                 );
             } else if (e.is(_updateRevisionVersionLabel)) {
                 const annotation = annotations[e.value.annotationId];
-                if (!isAnnotationOfType(annotation, "revision")) continue;
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
                 const version = annotation.versions[e.value.versionId];
                 if (version) {
                     const newVersions = annotation.versions.slice();
@@ -637,7 +650,7 @@ export const annotationField = StateField.define<Annotations>({
                 }
             } else if (e.is(_updateRevisionVersionState)) {
                 const annotation = annotations[e.value.annotationId];
-                if (!isAnnotationOfType(annotation, "revision")) continue;
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
                 const newVersions = annotation.versions.slice();
                 newVersions[e.value.versionId] = e.value.versionState;
@@ -739,6 +752,7 @@ export const annotationField = StateField.define<Annotations>({
         }));
     },
     fromJSON(value: unknown) {
+        if (value == null) return {} as Annotations;
         const result = RawAnnotationsSchema.safeParse(value);
         if (!result.success) {
             console.warn(
@@ -758,13 +772,14 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
     const effects = [];
     const oldAnnotations = transaction.startState.field(annotationField);
 
-    // Skip cleanup transactions dispatched by collapsedRevisionResolver.
-    // Those transactions remove collapsed revisions with addToHistory.of(false),
-    // so they don't create a new undo entry. Without this guard,
-    // invertedEffects would generate addAnnotation(collapsed) effects that get
-    // merged into the deletion's undo entry — re-inserting orphaned collapsed
-    // annotations on Cmd+Z. The deletion already stores _restoreAnnotation
-    // effects for every collapsed revision, so nothing more is needed.
+    // Skip transactions that opted out of history (addToHistory.of(false)).
+    // These don't create a new undo entry, so any inverted effects we
+    // generate would get merged into the *previous* undo entry and corrupt
+    // its replay. This covers:
+    //   - Cleanup transactions from collapsedRevisionResolver
+    //   - Modal flush dispatches (flushToParent)
+    //   - Any other internal bookkeeping dispatches
+    if (transaction.annotation(Transaction.addToHistory) === false) return [];
     if (transaction.annotation(_revisionCleanup)) return [];
 
     // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
@@ -827,6 +842,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             effects.push(addAnnotation.of(effect.value));
         } else if (effect.is(updateThread)) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
+            if (!oldAnnotation) continue;
             // Was a comment in the "pending" state
             if (oldAnnotation.thread.length === 0) {
                 effects.push(removeAnnotation.of(oldAnnotation));
@@ -839,8 +855,10 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 );
             }
         } else if (effect.is(addSuggestion)) {
-            const oldAnnotation =
-                oldAnnotations[Math.max(...Object.keys(oldAnnotations).map(Number))];
+            const keys = Object.keys(oldAnnotations).map(Number);
+            if (keys.length === 0) continue;
+            const oldAnnotation = oldAnnotations[Math.max(...keys)];
+            if (!oldAnnotation) continue;
             effects.push(removeAnnotation.of(oldAnnotation));
         } else if (
             effect.is(_addVersionToRevision) ||
@@ -848,7 +866,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             effect.is(_updateActiveRevisionVersion)
         ) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
-            if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
+            if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
             if (effect.is(_addVersionToRevision)) {
                 effects.push(
                     _deleteVersionFromRevision.of({
@@ -874,7 +892,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             }
         } else if (effect.is(_updateRevisionVersionState)) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
-            if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
+            if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
             effects.push(
                 _updateRevisionVersionState.of({
                     annotationId: oldAnnotation.id,
@@ -884,7 +902,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             );
         } else if (effect.is(_updateRevisionVersionLabel)) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
-            if (!isAnnotationOfType(oldAnnotation, "revision")) continue;
+            if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
             effects.push(
                 _updateRevisionVersionLabel.of({
                     annotationId: oldAnnotation.id,
@@ -894,7 +912,9 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             );
         } else if (effect.is(_applySuggestion)) {
             const annotations = transaction.startState.field(annotationField);
-            effects.push(addAnnotation.of(annotations[effect.value.annotationId]));
+            const ann = annotations[effect.value.annotationId];
+            if (!ann) continue;
+            effects.push(addAnnotation.of(ann));
         } else if (effect.is(_nestedEditRevision)) {
             // _nestedEditRevision is its own inverse: on undo the stored effect
             // would be the forward one, but undo doesn't need range expansion

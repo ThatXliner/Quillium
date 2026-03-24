@@ -6,10 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
  * When `updateVersion` is provided, the updater check() will return an
  * available update with that version. Otherwise it returns null (no update).
  */
-async function installTauriMock(
-    page: Page,
-    options: { updateVersion?: string } = {},
-) {
+async function installTauriMock(page: Page, options: { updateVersion?: string } = {}) {
     const updateVersion = options.updateVersion ?? null;
 
     await page.addInitScript(

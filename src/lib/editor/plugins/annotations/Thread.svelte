@@ -60,7 +60,7 @@ let newMessage = $state("");
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
 const hasText = $derived(!!newMessage.trim());
-const sendActive = $derived(isFocused && hasText);
+const sendActive = $derived(hasText);
 function blurToEditor() {
     textareaEl?.blur();
     (view ?? $editorView)?.focus();

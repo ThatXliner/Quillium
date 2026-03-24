@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quillium — Brand Guidelines</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #e5e7eb;
+    --surface: #d8dbe1;
+    --glass: rgba(185, 190, 199, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.3);
+    --text-primary: rgba(0, 0, 0, 0.9);
+    --text-secondary: rgba(0, 0, 0, 0.5);
+    --text-tertiary: rgba(0, 0, 0, 0.3);
+    --blue-500: #3b82f6;
+    --blue-600: #2563eb;
+    --green-500: #22c55e;
+    --green-50: #f0fdf4;
+    --purple-500: #a855f7;
+    --purple-50: #faf5ff;
+    --comment-inactive: #fef2cd;
+    --comment-active: #fcbc05;
+    --suggestion-inactive: #f0fdf4;
+    --suggestion-active: #dbf9e2;
+    --amber-600: #d97706;
+    --shadow-light: rgba(255, 255, 255, 0.9);
+    --shadow-dark: rgba(160, 165, 175, 0.5);
+    --neu-shadow: 6px 6px 14px var(--shadow-dark), -6px -6px 14px var(--shadow-light);
+    --neu-shadow-sm: 3px 3px 8px var(--shadow-dark), -3px -3px 8px var(--shadow-light);
+    --neu-inset: inset 3px 3px 8px var(--shadow-dark), inset -3px -3px 8px var(--shadow-light);
+    --neu-inset-sm: inset 2px 2px 5px var(--shadow-dark), inset -2px -2px 5px var(--shadow-light);
+  }
+
+  body {
+    background: var(--bg);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 4rem 2rem;
+    gap: 3rem;
+  }
+
+  .logo-showcase {
+    width: 220px;
+    height: 220px;
+    border-radius: 48px;
+    background: radial-gradient(circle at 40% 35%, #eceef2, #cdd1d9);
+    box-shadow: var(--neu-shadow);
+    border: 1.5px solid var(--glass-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 340ms cubic-bezier(0.33, 0, 0.2, 1);
+  }
+  .logo-showcase:hover {
+    transform: scale(1.03);
+  }
+  .logo-showcase img {
+    width: 180px;
+    height: 180px;
+  }
+
+  .hero-text {
+    text-align: center;
+  }
+  .hero-text h1 {
+    font-size: 3rem;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+  }
+  .hero-text p {
+    font-size: 1.125rem;
+    color: var(--text-secondary);
+    max-width: 480px;
+    font-weight: 400;
+  }
+  .hero-tagline {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+  .hero-tagline span {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-tertiary);
+  }
+
+  /* ── Sections ── */
+  .content {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  section {
+    margin-bottom: 5rem;
+  }
+
+  .section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-tertiary);
+    margin-bottom: 0.75rem;
+  }
+
+  .section-title {
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.5rem;
+  }
+
+  .section-desc {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    max-width: 600px;
+    margin-bottom: 2.5rem;
+    line-height: 1.7;
+  }
+
+  /* ── Neumorphic Card ── */
+  .neu-card {
+    background: radial-gradient(circle at 30% 20%, #eef0f3, #dfe2e8);
+    border-radius: 20px;
+    box-shadow: var(--neu-shadow);
+    border: 1px solid var(--glass-border);
+    padding: 2rem;
+  }
+
+  .neu-card-inset {
+    background: var(--bg);
+    border-radius: 14px;
+    box-shadow: var(--neu-inset);
+    padding: 1.5rem;
+  }
+
+  /* ── Logo Variations ── */
+  .logo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+  }
+
+  .logo-variant {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .logo-frame {
+    width: 140px;
+    height: 140px;
+    border-radius: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--neu-shadow-sm);
+    border: 1px solid var(--glass-border);
+    transition: transform 300ms ease;
+  }
+  .logo-frame:hover { transform: scale(1.04); }
+
+  .logo-frame.light {
+    background: radial-gradient(circle at 40% 35%, #eceef2, #cdd1d9);
+  }
+  .logo-frame.dark {
+    background: radial-gradient(circle at 45% 40%, #2d3140, #1e2230);
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: 6px 6px 14px rgba(0,0,0,0.4), -6px -6px 14px rgba(60,65,80,0.3);
+  }
+  .logo-frame.white {
+    background: #ffffff;
+  }
+  .logo-frame.blue {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border-color: rgba(255,255,255,0.15);
+  }
+  .logo-frame.transparent {
+    background: repeating-conic-gradient(#e5e7eb 0% 25%, #f3f4f6 0% 50%) 0 0 / 16px 16px;
+    box-shadow: none;
+    border: 1px dashed rgba(0,0,0,0.15);
+  }
+
+  .logo-frame img {
+    width: 110px;
+    height: 110px;
+  }
+
+  .logo-variant-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .export-btn {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--blue-600);
+    background: none;
+    border: 1px solid var(--blue-500);
+    border-radius: 6px;
+    padding: 0.3rem 0.75rem;
+    cursor: pointer;
+    transition: background 200ms ease, color 200ms ease;
+  }
+  .export-btn:hover {
+    background: var(--blue-500);
+    color: #fff;
+  }
+
+  /* ── Color Palette ── */
+  .color-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .color-card {
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--neu-shadow-sm);
+    border: 1px solid var(--glass-border);
+    background: #eef0f3;
+  }
+
+  .color-swatch {
+    height: 80px;
+    position: relative;
+  }
+
+  .color-info {
+    padding: 0.75rem 1rem;
+  }
+  .color-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+  }
+  .color-hex {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  /* ── Typography ── */
+  .type-samples {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .type-row {
+    display: flex;
+    align-items: baseline;
+    gap: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .type-row:last-child { border-bottom: none; }
+
+  .type-meta {
+    flex-shrink: 0;
+    width: 140px;
+  }
+  .type-meta-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+  }
+  .type-meta-detail {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.2rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  .type-sample-editor {
+    font-family: 'SF Pro Text', system-ui, -apple-system, sans-serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: var(--text-primary);
+    text-indent: 2em;
+  }
+  .type-sample-ui-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .type-sample-ui-body {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+  }
+  .type-sample-ui-caption {
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+
+  /* ── Depth & Neumorphism showcase ── */
+  .depth-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+
+  .depth-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .depth-box {
+    width: 100%;
+    aspect-ratio: 4/3;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: transform 300ms ease;
+  }
+  .depth-box:hover { transform: translateY(-2px); }
+
+  .depth-raised {
+    background: radial-gradient(circle at 30% 25%, #eef0f3, #dfe2e8);
+    box-shadow: var(--neu-shadow);
+    border: 1px solid var(--glass-border);
+  }
+
+  .depth-flat {
+    background: var(--bg);
+    box-shadow: none;
+    border: 1px solid rgba(0,0,0,0.04);
+  }
+
+  .depth-pressed {
+    background: var(--bg);
+    box-shadow: var(--neu-inset);
+    border: 1px solid rgba(0,0,0,0.02);
+  }
+
+  .depth-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .depth-css {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    text-align: center;
+  }
+
+  /* ── Glass Panel Demo ── */
+  .glass-demo {
+    position: relative;
+    height: 280px;
+    border-radius: 20px;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, #e8eaef 0%, #dde0e6 50%, #d5d8df 100%);
+    box-shadow: var(--neu-inset);
+  }
+
+  .glass-panel {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(185, 190, 199, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 2rem;
+    padding: 0.75rem 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  }
+
+  .glass-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;
+  }
+  .glass-label {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+  }
+  .glass-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(0, 0, 0, 0.15);
+  }
+  .glass-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(8px);
+    border: none;
+    box-shadow:
+      inset 1px 1px 3px rgba(255, 255, 255, 0.6),
+      2px 2px 8px rgba(160, 165, 175, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 300ms ease;
+  }
+  .glass-btn:hover { background: rgba(255, 255, 255, 0.7); }
+
+  /* ── Spacing & Radius ── */
+  .spacing-row {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .spacing-visual {
+    width: 120px;
+    height: 60px;
+    border-radius: 14px;
+    border: 2px dashed rgba(0,0,0,0.12);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .spacing-fill {
+    background: var(--blue-500);
+    opacity: 0.12;
+    border-radius: 10px;
+    position: absolute;
+  }
+
+  .radius-grid {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+  .radius-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .radius-box {
+    width: 80px;
+    height: 80px;
+    background: radial-gradient(circle at 30% 25%, #eef0f3, #dfe2e8);
+    box-shadow: var(--neu-shadow-sm);
+    border: 1px solid var(--glass-border);
+  }
+
+  /* ── Personality ── */
+  .personality-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
+
+  .personality-card {
+    background: radial-gradient(circle at 30% 20%, #eef0f3, #dfe2e8);
+    border-radius: 20px;
+    box-shadow: var(--neu-shadow-sm);
+    border: 1px solid var(--glass-border);
+    padding: 1.75rem;
+  }
+  .personality-card h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  .personality-card p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.65;
+  }
+
+  /* ── Do / Don't ── */
+  .do-dont-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+
+  .do-card, .dont-card {
+    border-radius: 20px;
+    padding: 2rem;
+    box-shadow: var(--neu-shadow-sm);
+    border: 1px solid var(--glass-border);
+  }
+  .do-card {
+    background: linear-gradient(135deg, #eef5ee, #e2e8e2);
+  }
+  .dont-card {
+    background: linear-gradient(135deg, #f5eeee, #e8e2e2);
+  }
+
+  .do-card h3, .dont-card h3 {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 1rem;
+  }
+  .do-card h3 { color: #16a34a; }
+  .dont-card h3 { color: #dc2626; }
+
+  .do-card ul, .dont-card ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .do-card li, .dont-card li {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    padding-left: 1.25rem;
+    position: relative;
+  }
+  .do-card li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+  }
+  .dont-card li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+  }
+
+  /* ── Motion ── */
+  .motion-demos {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .motion-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .motion-box {
+    width: 100px;
+    height: 100px;
+    border-radius: 20px;
+    background: radial-gradient(circle at 30% 25%, #eef0f3, #dfe2e8);
+    box-shadow: var(--neu-shadow-sm);
+    border: 1px solid var(--glass-border);
+    cursor: pointer;
+  }
+
+  .motion-300 {
+    transition: all 300ms ease;
+  }
+  .motion-300:hover {
+    box-shadow: var(--neu-inset-sm);
+    transform: scale(0.97);
+  }
+
+  .motion-340 {
+    transition: all 340ms cubic-bezier(0.33, 0, 0.2, 1);
+  }
+  .motion-340:hover {
+    border-radius: 14px;
+    width: 180px;
+  }
+
+  .motion-200 {
+    transition: all 200ms ease;
+  }
+  .motion-200:hover {
+    transform: scale(1.06);
+    box-shadow: var(--neu-shadow);
+  }
+
+  .motion-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-align: center;
+  }
+  .motion-detail {
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+  }
+
+  /* ── Divider ── */
+  .divider {
+    width: 60px;
+    height: 3px;
+    background: var(--bg);
+    box-shadow: var(--neu-inset-sm);
+    border-radius: 2px;
+    margin: 4rem auto;
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ HERO ════════════════ -->
+<section class="hero">
+  <div class="logo-showcase">
+    <img src="static/logo.svg" alt="Quillium logo">
+  </div>
+  <div class="hero-text">
+    <h1>Quillium</h1>
+    <p>A quiet, trusted companion for writers. Present when needed, invisible when not.</p>
+    <div class="hero-tagline">
+      <span>Warm</span>
+      <span>Creative</span>
+      <span>Focused</span>
+    </div>
+  </div>
+</section>
+
+<div class="content">
+
+<!-- ════════════════ LOGO USAGE ════════════════ -->
+<section>
+  <p class="section-label">01 / Identity</p>
+  <h2 class="section-title">Logo</h2>
+  <p class="section-desc">
+    The Quillium mark is an embossed quill feather silhouette rendered in the
+    neumorphic style of the application. The ink dot at the tip blends all four
+    brand colors — blue (chat), purple (revision), green (feedback), yellow (comment)
+    — in a single radial gradient.
+  </p>
+
+  <div class="neu-card">
+    <div class="logo-grid">
+      <div class="logo-variant">
+        <div class="logo-frame light">
+          <img src="static/logo.svg" alt="Logo on light">
+        </div>
+        <span class="logo-variant-label">Default (Neumorphic)</span>
+      </div>
+      <div class="logo-variant">
+        <div class="logo-frame white">
+          <img src="static/logo.svg" alt="Logo on white">
+        </div>
+        <span class="logo-variant-label">On White</span>
+      </div>
+      <div class="logo-variant">
+        <div class="logo-frame dark">
+          <img src="static/logo.svg" alt="Logo on dark">
+        </div>
+        <span class="logo-variant-label">On Dark</span>
+      </div>
+      <div class="logo-variant">
+        <div class="logo-frame blue">
+          <img src="static/logo.svg" alt="Logo on brand">
+        </div>
+        <span class="logo-variant-label">On Brand</span>
+      </div>
+      <div class="logo-variant">
+        <div class="logo-frame transparent">
+          <img src="static/logo-no-bg.svg" alt="Logo without background">
+        </div>
+        <span class="logo-variant-label">No Background (Flat)</span>
+        <button class="export-btn" onclick="exportPNG()">Export PNG (1024&times;1024)</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ COLORS ════════════════ -->
+<section>
+  <p class="section-label">02 / Color</p>
+  <h2 class="section-title">Color Palette</h2>
+  <p class="section-desc">
+    One color per action type. Accents are desaturated and gentle.
+    Text on glass uses opacity, not color. Color is never the only signal.
+  </p>
+
+  <h3 style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.08em;">Surfaces</h3>
+  <div class="color-grid" style="margin-bottom: 2.5rem;">
+    <div class="color-card">
+      <div class="color-swatch" style="background: #e5e7eb;"></div>
+      <div class="color-info">
+        <div class="color-name">App Background</div>
+        <div class="color-hex">gray-200 / #e5e7eb</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: #ffffff; border-bottom: 1px solid rgba(0,0,0,0.06);"></div>
+      <div class="color-info">
+        <div class="color-name">Document Surface</div>
+        <div class="color-hex">#ffffff</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: rgba(185, 190, 199, 0.7); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255,255,255,0.3);"></div>
+      <div class="color-info">
+        <div class="color-name">Panel Glass</div>
+        <div class="color-hex">gray-300/70 + blur</div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.08em;">Action Colors</h3>
+  <div class="color-grid" style="margin-bottom: 2.5rem;">
+    <div class="color-card">
+      <div class="color-swatch" style="background: linear-gradient(135deg, #3b82f6, #2563eb);"></div>
+      <div class="color-info">
+        <div class="color-name">Primary / Chat</div>
+        <div class="color-hex">blue-500 / #3b82f6</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: linear-gradient(135deg, #22c55e, #16a34a);"></div>
+      <div class="color-info">
+        <div class="color-name">Feedback / AI</div>
+        <div class="color-hex">green-500 / #22c55e</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: linear-gradient(135deg, #a855f7, #9333ea);"></div>
+      <div class="color-info">
+        <div class="color-name">Revision / AI</div>
+        <div class="color-hex">purple-500 / #a855f7</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: linear-gradient(135deg, #fcbc05, #f59e0b);"></div>
+      <div class="color-info">
+        <div class="color-name">Comment</div>
+        <div class="color-hex">#fcbc05</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: linear-gradient(135deg, #d97706, #b45309);"></div>
+      <div class="color-info">
+        <div class="color-name">Context / Amber</div>
+        <div class="color-hex">amber-600 / #d97706</div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.08em;">Highlights</h3>
+  <div class="color-grid">
+    <div class="color-card">
+      <div class="color-swatch" style="background: #fef2cd;"></div>
+      <div class="color-info">
+        <div class="color-name">Comment (Inactive)</div>
+        <div class="color-hex">#fef2cd</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: #fcbc05;"></div>
+      <div class="color-info">
+        <div class="color-name">Comment (Active)</div>
+        <div class="color-hex">#fcbc05</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: #f0fdf4;"></div>
+      <div class="color-info">
+        <div class="color-name">Suggestion (Inactive)</div>
+        <div class="color-hex">#f0fdf4</div>
+      </div>
+    </div>
+    <div class="color-card">
+      <div class="color-swatch" style="background: #dbf9e2;"></div>
+      <div class="color-info">
+        <div class="color-name">Suggestion (Active)</div>
+        <div class="color-hex">#dbf9e2</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ TYPOGRAPHY ════════════════ -->
+<section>
+  <p class="section-label">03 / Typography</p>
+  <h2 class="section-title">Type Scale</h2>
+  <p class="section-desc">
+    The editor font is sacred. UI chrome stays small. System fonts everywhere
+    for a native, fast, trusted feel.
+  </p>
+
+  <div class="neu-card">
+    <div class="type-samples">
+      <div class="type-row">
+        <div class="type-meta">
+          <div class="type-meta-label">Editor Body</div>
+          <div class="type-meta-detail">18px / SF Pro</div>
+        </div>
+        <p class="type-sample-editor">
+          She sat at her desk, watching the cursor blink. The words would come — they always did — but first she had to stop trying.
+        </p>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <div class="type-meta-label">UI Title</div>
+          <div class="type-meta-detail">text-xs / 600</div>
+        </div>
+        <span class="type-sample-ui-title">AI Settings</span>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <div class="type-meta-label">UI Body</div>
+          <div class="type-meta-detail">text-sm / 400</div>
+        </div>
+        <span class="type-sample-ui-body">Words: 1,247</span>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <div class="type-meta-label">UI Caption</div>
+          <div class="type-meta-detail">10px / 400</div>
+        </div>
+        <span class="type-sample-ui-caption">3,847 total</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ DEPTH ════════════════ -->
+<section>
+  <p class="section-label">04 / Depth</p>
+  <h2 class="section-title">Neumorphic Elevation</h2>
+  <p class="section-desc">
+    Three depth states create the tactile, notebook-like feel.
+    Raised elements catch light from the top-left. Pressed elements
+    sink into the surface.
+  </p>
+
+  <div class="depth-grid">
+    <div class="depth-item">
+      <div class="depth-box depth-raised">Raised</div>
+      <span class="depth-label">Panels, Cards, Buttons</span>
+      <span class="depth-css">shadow + highlight</span>
+    </div>
+    <div class="depth-item">
+      <div class="depth-box depth-flat">Flat</div>
+      <span class="depth-label">Background Surface</span>
+      <span class="depth-css">no shadow</span>
+    </div>
+    <div class="depth-item">
+      <div class="depth-box depth-pressed">Pressed</div>
+      <span class="depth-label">Inputs, Wells, Active</span>
+      <span class="depth-css">inset shadow</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ GLASS ════════════════ -->
+<section>
+  <p class="section-label">05 / Glass</p>
+  <h2 class="section-title">Glassmorphism</h2>
+  <p class="section-desc">
+    Used selectively — status bar, AI sidebar, save menu.
+    Not on the editor document. Not on annotation cards.
+    Glass creates lightness; overused it becomes noise.
+  </p>
+
+  <div class="glass-demo">
+    <div class="glass-panel">
+      <div class="glass-dot"></div>
+      <span class="glass-label">Saved</span>
+      <div class="glass-divider"></div>
+      <span class="glass-label" style="font-size: 0.875rem;">Words: 1,247</span>
+      <div class="glass-divider"></div>
+      <button class="glass-btn" aria-label="Settings demo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </div>
+  <div style="margin-top: 1.5rem;">
+    <div class="neu-card-inset" style="max-width: 480px;">
+      <p style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'SF Mono', 'Fira Code', monospace; line-height: 1.8;">
+        backdrop-filter: blur(12px);<br>
+        background: rgba(185, 190, 199, 0.7);<br>
+        border: 1px solid rgba(255, 255, 255, 0.3);<br>
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ RADIUS ════════════════ -->
+<section>
+  <p class="section-label">06 / Shape</p>
+  <h2 class="section-title">Border Radius</h2>
+  <p class="section-desc">
+    Rounded forms reinforce the warm, approachable character.
+    Pill shapes for status elements, generous rounding for panels.
+  </p>
+
+  <div class="radius-grid">
+    <div class="radius-item">
+      <div class="radius-box" style="border-radius: 8px;"></div>
+      <span class="depth-label">rounded-lg</span>
+      <span class="depth-css">Default</span>
+    </div>
+    <div class="radius-item">
+      <div class="radius-box" style="border-radius: 14px;"></div>
+      <span class="depth-label">14px</span>
+      <span class="depth-css">Expanded panels</span>
+    </div>
+    <div class="radius-item">
+      <div class="radius-box" style="border-radius: 20px;"></div>
+      <span class="depth-label">20px</span>
+      <span class="depth-css">Cards</span>
+    </div>
+    <div class="radius-item">
+      <div class="radius-box" style="border-radius: 50%;"></div>
+      <span class="depth-label">rounded-full</span>
+      <span class="depth-css">Buttons, pills</span>
+    </div>
+    <div class="radius-item">
+      <div class="radius-box" style="border-radius: 100px; width: 140px; height: 50px;"></div>
+      <span class="depth-label">100px</span>
+      <span class="depth-css">Collapsed panels</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ MOTION ════════════════ -->
+<section>
+  <p class="section-label">07 / Motion</p>
+  <h2 class="section-title">Transitions</h2>
+  <p class="section-desc">
+    Calm and unhurried. Motion exists to orient, not entertain.
+    Hover the boxes to feel each timing curve.
+  </p>
+
+  <div class="motion-demos">
+    <div class="motion-item">
+      <div class="motion-box motion-300"></div>
+      <span class="motion-label">Standard</span>
+      <span class="motion-detail">300ms ease</span>
+    </div>
+    <div class="motion-item">
+      <div class="motion-box motion-340"></div>
+      <span class="motion-label">Panel Expand</span>
+      <span class="motion-detail">340ms cubic-bezier</span>
+    </div>
+    <div class="motion-item">
+      <div class="motion-box motion-200"></div>
+      <span class="motion-label">Icon Scale</span>
+      <span class="motion-detail">200ms ease</span>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ PERSONALITY ════════════════ -->
+<section>
+  <p class="section-label">08 / Personality</p>
+  <h2 class="section-title">Brand Pillars</h2>
+  <p class="section-desc">
+    Every design decision should be legible through at least one of these lenses.
+  </p>
+
+  <div class="personality-grid">
+    <div class="personality-card">
+      <h3>Warm</h3>
+      <p>The tactile warmth of a well-made notebook. Soft backgrounds, gentle shadows, slightly warm tones. A workspace a writer would be proud to spend hours in.</p>
+    </div>
+    <div class="personality-card">
+      <h3>Creative</h3>
+      <p>Carries genuine personality, quietly. Respects the writer's headspace. Has the confidence of a trusted editor giving honest notes, not a chatbot reading from a script.</p>
+    </div>
+    <div class="personality-card">
+      <h3>Focused</h3>
+      <p>The writing comes first. Chrome, controls, and AI features retreat to the edges. The editor is the product. Everything else is scaffolding.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ DO / DON'T ════════════════ -->
+<section>
+  <p class="section-label">09 / Guidelines</p>
+  <h2 class="section-title">Design Principles</h2>
+  <p class="section-desc">
+    Pattern recognition for staying on-brand.
+  </p>
+
+  <div class="do-dont-grid">
+    <div class="do-card">
+      <h3>Do</h3>
+      <ul>
+        <li>Use warm whites and soft off-whites</li>
+        <li>Keep accents desaturated and gentle</li>
+        <li>Use opacity for text on glass surfaces</li>
+        <li>Let the writing surface be the hero</li>
+        <li>Use smooth, unhurried transitions</li>
+        <li>Honor the one-color-per-action system</li>
+        <li>Write like a thoughtful editor</li>
+      </ul>
+    </div>
+    <div class="dont-card">
+      <h3>Don't</h3>
+      <ul>
+        <li>Use pure white backgrounds</li>
+        <li>Use harsh primary colors or neon</li>
+        <li>Add aggressive gradients or sparkles</li>
+        <li>Create dense, dashboard-like chrome</li>
+        <li>Use instant or jarring state transitions</li>
+        <li>Mix color associations between features</li>
+        <li>Use emoji in UI labels</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ════════════════ REFERENCES ════════════════ -->
+<section>
+  <p class="section-label">10 / References</p>
+  <h2 class="section-title">Inspiration</h2>
+  <p class="section-desc">
+    What Quillium aspires to feel like, and what it explicitly avoids.
+  </p>
+
+  <div class="do-dont-grid">
+    <div class="do-card">
+      <h3 style="color: var(--text-secondary);">Study These</h3>
+      <ul>
+        <li style="color: var(--text-primary); font-weight: 500;">Bear <span style="color: var(--text-secondary); font-weight: 400;">— warmth, native feel, typography-first</span></li>
+        <li style="color: var(--text-primary); font-weight: 500;">Craft <span style="color: var(--text-secondary); font-weight: 400;">— document-as-canvas, clean chrome</span></li>
+        <li style="color: var(--text-primary); font-weight: 500;">iA Writer <span style="color: var(--text-secondary); font-weight: 400;">— radical focus, typography confidence</span></li>
+      </ul>
+    </div>
+    <div class="dont-card">
+      <h3 style="color: var(--text-secondary);">Avoid These</h3>
+      <ul>
+        <li style="color: var(--text-primary); font-weight: 500;">Figma <span style="color: var(--text-secondary); font-weight: 400;">— dense chrome, dashboard feel</span></li>
+        <li style="color: var(--text-primary); font-weight: 500;">Jira <span style="color: var(--text-secondary); font-weight: 400;">— sterile, everything equally urgent</span></li>
+        <li style="color: var(--text-primary); font-weight: 500;">Generic AI tools <span style="color: var(--text-secondary); font-weight: 400;">— neon, sparkles, aggressive CTAs</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer class="footer">
+  Quillium Brand Guidelines
+</footer>
+
+<script>
+function exportPNG() {
+  var svgMarkup = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">' +
+    '<g transform="translate(113, 96) rotate(19) scale(1.18) translate(-100, -100)">' +
+    '<path d="M140,28 C128,42 110,55 90,68 C74,80 62,96 56,116 C52,132 52,150 56,168 L60,174 C60,152 64,134 72,118 C82,100 96,88 112,76 C126,65 136,50 140,36Z" fill="none" stroke="#6b7280" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<path d="M138,32 C118,62 94,98 72,135 C62,150 58,166 58,174" fill="none" stroke="#6b7280" stroke-width="3" stroke-linecap="round"/>' +
+    '<circle cx="58" cy="174" r="3.2" fill="#3b82f6"/>' +
+    '<circle cx="55" cy="179.5" r="3.2" fill="#a855f7"/>' +
+    '<circle cx="61" cy="179.5" r="3.2" fill="#22c55e"/>' +
+    '<circle cx="58" cy="185" r="3.2" fill="#fcbc05"/>' +
+    '</g></svg>';
+  var size = 1024;
+  var canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  var ctx = canvas.getContext("2d");
+  var img = new Image();
+  img.onload = function () {
+    ctx.drawImage(img, 0, 0, size, size);
+    var a = document.createElement("a");
+    a.download = "quillium-icon-1024.png";
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgMarkup);
+}
+</script>
+</body>
+</html>

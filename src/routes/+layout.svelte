@@ -35,14 +35,16 @@ onNavigate((navigation) => {
     onerror={(error) => {
         saveEmergencyBackup(`Svelte component error: ${error instanceof Error ? error.message : String(error)}`);
         const hasCrashBackup = Boolean(readBackup("crash"));
+        const err = error instanceof Error ? error : new Error(String(error));
         errorBanner.set({
             message: hasCrashBackup
                 ? "Something went wrong. Your work has been backed up."
                 : "Something went wrong.",
             hasBackup: hasCrashBackup,
             backupType: "crash",
+            details: err.stack ?? err.message,
         });
-        posthog.captureException(error instanceof Error ? error : new Error(String(error)));
+        posthog.captureException(err);
     }}
 >
     {@render children()}

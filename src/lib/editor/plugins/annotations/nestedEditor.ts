@@ -47,16 +47,23 @@ const VERSION_PREVIEW_MAX = 34;
 /**
  * Creates a nested EditorState for a revision version.
  * No local history — undo/redo delegates to the parent via makeParentUndoKeymap.
+ *
+ * @param historyView — the ancestor view that owns the undo history.
+ *   For a level-1 nested editor this is the same as parentView (the main
+ *   editor). For deeper levels (level 2+) it must be the root view that
+ *   actually has history enabled, since intermediate parents have
+ *   history: false.
  */
 export function createNestedEditorState(
     version: VersionState,
     updateListener: (update: ViewUpdate) => void,
     parentView: EditorView,
     revisionId: number,
+    historyView?: EditorView,
 ): EditorState {
     const extensions = [
         ...getExtensions({ persist: false, history: false, updateListener }),
-        makeParentUndoKeymap(parentView, revisionId),
+        makeParentUndoKeymap(historyView ?? parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
     if (hasSerializedNestedState(version)) {
@@ -145,7 +152,11 @@ function salvageNestedAnnotations(
             continue;
         }
         // Drop annotations with out-of-range or negative positions.
-        if (sel.ranges.every((r) => r.anchor >= 0 && r.anchor <= docLen && r.head >= 0 && r.head <= docLen)) {
+        if (
+            sel.ranges.every(
+                (r) => r.anchor >= 0 && r.anchor <= docLen && r.head >= 0 && r.head <= docLen,
+            )
+        ) {
             kept[key] = ann;
         } else {
             droppedCount++;

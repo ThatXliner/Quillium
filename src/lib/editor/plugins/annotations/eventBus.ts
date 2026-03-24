@@ -36,7 +36,8 @@ export type AnnotationEvent =
           to: number;
       }
     | { type: "annotation-focus-reply"; annotationId: number }
-    | { type: "annotation-add-version"; annotationId: number };
+    | { type: "annotation-add-version"; annotationId: number }
+    | { type: "annotation-enter-editor"; annotationId: number };
 
 type EventType = AnnotationEvent["type"];
 
@@ -56,10 +57,7 @@ class AnnotationEventBus {
      * event fires (the annotation card renders asynchronously). Stored
      * here by annotationId so the component can pull on mount.
      */
-    private pendingSelections = new Map<
-        number,
-        EventOfType<"pending-nested-editor-selection">
-    >();
+    private pendingSelections = new Map<number, EventOfType<"pending-nested-editor-selection">>();
 
     /** Subscribe to events of a specific type. Returns an unsubscribe function. */
     on<T extends EventType>(type: T, listener: Listener<T>): () => void {

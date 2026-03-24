@@ -59,8 +59,9 @@ const shortcutGroups = [
         shortcuts: [
             { keys: [mod, opt, "M"], label: "Add comment" },
             { keys: [mod, opt, "K"], label: "Add revision" },
+            { keys: [mod, "E"], label: "Enter revision editor" },
             { keys: [mod, "/"], label: "Reply to annotation" },
-            { keys: [mod, "⇧", "V"], label: "New revision version" },
+            { keys: [mod, "↵"], label: "New revision version (in editor)" },
             { keys: [mod, "↵"], label: "Send reply" },
         ],
     },
@@ -84,9 +85,9 @@ let includeShortcuts = $state(true);
 let lastStepId = $state<string | null>(null);
 
 let nestedGuideState = $state({
-    baselineTopLevelRevisionIds: [] as number[],
+    baselineTopLevelRevisionIds: null as number[] | null,
     createdRevisionId: null as number | null,
-    baselineNestedRevisionIds: [] as number[],
+    baselineNestedRevisionIds: null as number[] | null,
     createdNestedRevisionId: null as number | null,
 });
 
@@ -119,9 +120,9 @@ function setSection(section: SectionKey, checked: boolean) {
 
 function resetNestedGuideState() {
     nestedGuideState = {
-        baselineTopLevelRevisionIds: [],
+        baselineTopLevelRevisionIds: null,
         createdRevisionId: null,
-        baselineNestedRevisionIds: [],
+        baselineNestedRevisionIds: null,
         createdNestedRevisionId: null,
     };
 }
@@ -425,23 +426,24 @@ $effect(() => {
 
     if (
         nestedGuideState.createdRevisionId === null &&
-        nestedGuideState.baselineTopLevelRevisionIds.length > 0
+        nestedGuideState.baselineTopLevelRevisionIds !== null
     ) {
+        const baseline = nestedGuideState.baselineTopLevelRevisionIds;
         const newRevision = getTopLevelRevisions().find(
-            (revision) => !nestedGuideState.baselineTopLevelRevisionIds.includes(revision.id),
+            (revision) => !baseline.includes(revision.id),
         );
         if (newRevision) nestedGuideState.createdRevisionId = newRevision.id;
     }
 
     if (
         nestedGuideState.createdRevisionId !== null &&
-        nestedGuideState.createdNestedRevisionId === null
+        nestedGuideState.createdNestedRevisionId === null &&
+        nestedGuideState.baselineNestedRevisionIds !== null
     ) {
         const revision = getRevisionById(nestedGuideState.createdRevisionId);
+        const nestedBaseline = nestedGuideState.baselineNestedRevisionIds;
         const nestedIds = getNestedRevisionIds(revision);
-        const newNestedRevisionId = nestedIds.find(
-            (id) => !nestedGuideState.baselineNestedRevisionIds.includes(id),
-        );
+        const newNestedRevisionId = nestedIds.find((id) => !nestedBaseline.includes(id));
         if (newNestedRevisionId !== undefined)
             nestedGuideState.createdNestedRevisionId = newNestedRevisionId;
     }
