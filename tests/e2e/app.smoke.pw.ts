@@ -162,6 +162,9 @@ test("tutorial opens from status bar", async ({ page }) => {
 
 test("AI sidebar can open chat and feedback panels", async ({ page }) => {
     await installTauriMock(page, { apiKey: "test-api-key" });
+    await page.addInitScript(() => {
+        localStorage.setItem("quillium-app-settings", JSON.stringify({ aiEnabled: true }));
+    });
     await page.goto("/");
 
     await page.locator("#ai-tab-chat").click();
