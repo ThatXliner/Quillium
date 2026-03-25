@@ -573,6 +573,15 @@ $effect(() => {
 onDestroy(() => {
     destroyEditor();
     modalAnnotationStores.remove(stackIndex);
+    // Notify Revision.svelte cards that a modal flushed annotations
+    // back to the parent version blob. The inline editor needs to
+    // rebuild from the flushed state. We emit this AFTER destroyEditor()
+    // so the version blob is already updated when the listener fires.
+    annotationEventBus.emit({
+        type: "revision-modal-flushed",
+        revisionId,
+        sourceView: view,
+    });
 });
 
 // Publish this modal's nested editor annotations to the global

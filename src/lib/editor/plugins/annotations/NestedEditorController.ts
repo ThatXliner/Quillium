@@ -125,13 +125,22 @@ export class NestedEditorController {
     }
 
     /**
-     * Destroy the nested editor. If flushBehavior is "flush", serializes
-     * nested state back to the parent version blob first.
+     * Destroy the nested editor. If flushBehavior is "flush" or
+     * "flush-on-destroy", serializes nested state back to the parent
+     * version blob first — unless `skipFlush` is true.
+     *
+     * Pass `skipFlush: true` when a modal holds the authoritative state
+     * for this revision (the modal will flush on its own destroy).
+     * Without this, the inline editor's stale flush would overwrite
+     * the modal's annotations with an empty blob.
      */
-    destroy(): void {
+    destroy(options?: { skipFlush?: boolean }): void {
         if (!this._editor) return;
 
-        if (this.flushBehavior === "flush" || this.flushBehavior === "flush-on-destroy") {
+        if (
+            !options?.skipFlush &&
+            (this.flushBehavior === "flush" || this.flushBehavior === "flush-on-destroy")
+        ) {
             this.flushToParent();
         }
 
@@ -306,9 +315,6 @@ export class NestedEditorController {
         }
     }
 
-    /**
-     * Flush nested editor state back to the parent revision's version blob.
-     */
     private flushToParent(): void {
         if (!this._editor) return;
 
