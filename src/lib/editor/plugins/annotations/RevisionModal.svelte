@@ -553,7 +553,8 @@ $effect(() => {
             fsmState !== "ready" ||
             !isTop ||
             !controller.editor ||
-            event.command.revisionId !== revisionId
+            event.command.revisionId !== revisionId ||
+            event.sourceView !== view
         )
             return;
         send({ type: "NESTED_ANNOTATION_EVENT", cmd: event.command });

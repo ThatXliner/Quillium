@@ -34,6 +34,10 @@ Version pills are the primary navigation control. Switching versions replaces th
 
 A revision version can itself contain annotations — comments, sub-revisions, etc. Each nested editor has its own `annotationField`, independent from the parent. Annotation IDs are scoped to their editor level (not globally unique).
 
+### Event routing across nesting levels
+
+The `annotationEventBus` is a global singleton, but annotation IDs are per-editor. When a nested editor emits `nested-annotation-create`, the event includes `sourceView` — the `EditorView` that *contains* the annotation being targeted. Each listener checks `event.sourceView` against its own editor reference to avoid handling events meant for a different nesting level. Without this, ID collisions across levels (e.g. both parent and child having annotation ID 0) cause events to route to the wrong handler.
+
 ### Creating sub-annotations
 
 When the user selects text inside a revision and invokes the annotation shortcut:

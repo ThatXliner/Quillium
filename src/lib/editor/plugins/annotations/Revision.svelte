@@ -179,11 +179,17 @@ $effect(() => {
 
 $effect(() => {
     return annotationEventBus.on("nested-annotation-create", (event) => {
-        if (event.command.revisionId !== revision.id) return;
-        // If a modal is already open for this revision, let that modal handle the event.
+        if (event.command.revisionId !== revision.id || event.sourceView !== view)
+            return;
+        // If a modal is already open for this exact revision (same ID + same parent view),
+        // let that modal handle the event. Must check parentView to avoid ID collisions
+        // across nesting levels.
         if (
             $modalStack.some(
-                (entry) => entry.type === "revision" && entry.revisionId === revision.id,
+                (entry) =>
+                    entry.type === "revision" &&
+                    entry.revisionId === revision.id &&
+                    entry.parentView === view,
             )
         )
             return;
