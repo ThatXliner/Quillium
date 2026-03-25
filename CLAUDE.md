@@ -61,6 +61,10 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 - Persistence: event log, snapshots, crash-safety matrix (§ Persistence)
 - AutoAI: engine, settings, widget (§ AutoAI)
 - Dictionary & thesaurus popover (§ Dictionary & Thesaurus)
+- Settings: app preferences, font system, why localStorage vs SQLite (§ Settings)
+- Error guard and crash recovery: suspicious change detection, backups, restore (§ Error guard and crash recovery)
+- Library and document management: data model, navigation, trash (§ Library and document management)
+- Comment modals, revision modal keyguard, keychain, PostHog, auto-updater
 - Common flows: creating comments/revisions, version switching, nested editing, undo (§ Common Flows)
 - Keybindings (§ Keybindings)
 - PostHog event catalog (§ PostHog Events)
@@ -72,16 +76,7 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 
 Two routes: `/` (editor) and `/library` (document grid). Page transitions via `src/lib/navigation.ts`.
 
-Key files not covered in ARCHITECTURE.md:
-- `src/lib/settings.svelte.ts` — App settings (fonts, zoom, feature toggles, analytics opt-out), persisted to localStorage
-- `src/lib/settings/SettingsModal.svelte`, `FontGuideModal.svelte` — Settings UI
-- `src/lib/errorGuard.ts` — Suspicious change detection + crash backups to localStorage
-- `src/lib/posthog.ts` — PostHog analytics init (opt-out via settings, disabled in dev)
-- `src/lib/ui/UpdateBanner.svelte` — In-app auto-updater via `@tauri-apps/plugin-updater`
-- `src/lib/editor/plugins/annotations/commentAi.ts` — AI-powered comment features
-- `src/lib/editor/plugins/annotations/revisionModalKeyguard.ts` — Keyboard handling in revision modals
-- `src/lib/editor/plugins/annotations/CommentModal.svelte` — Full-screen comment modal overlay
-- `src-tauri/src/keychain.rs` — Secure API key storage via OS keychain
+All systems are documented in ARCHITECTURE.md.
 
 ## Code Style
 - 4-space indentation (2-space for JSON)

@@ -40,6 +40,7 @@ Modal overlays (revision editors, diff views) are rendered on top via `modalStac
 
 ```
 src/
+├── hooks.client.ts            # Global error handlers, crash backup, PostHog exception capture
 ├── lib/
 │   ├── ai/
 │   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise)
@@ -49,17 +50,30 @@ src/
 │   │   ├── Feedback.svelte    # AI feedback on document or selection
 │   │   ├── Revise.svelte      # AI-powered revision generation
 │   │   ├── chatFactory.ts     # Shared AI request/streaming helpers
-│   │   ├── clientStreams.ts   # Streaming response handling
+│   │   ├── clientStreams.ts    # Streaming response handling
 │   │   ├── provider.ts        # Provider-agnostic client setup
 │   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
 │   │   └── utils.ts           # Shared AI utilities
+│   ├── autoai/
+│   │   ├── AutoAIWidget.svelte  # Bubble + expanded panel UI
+│   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
+│   │   └── settings.svelte.ts   # AutoAI settings store (reactive, persisted)
+│   ├── db/
+│   │   ├── index.ts           # Typed invoke() wrappers for all Rust DB commands
+│   │   ├── types.ts           # TypeScript mirrors of Rust structs (DocumentMeta, DraftMeta, etc.)
+│   │   └── events.ts          # Event payload types and builders
 │   ├── debug/
-│   │   └── DebugPanel.svelte  # Development-only debug overlay
+│   │   ├── DebugPanel.svelte  # Development-only debug overlay
+│   │   ├── scenarios.ts       # Canned test scenarios for debug panel
+│   │   └── store.svelte.ts    # Debug panel visibility state
 │   ├── editor/
 │   │   ├── Editor.svelte      # CodeMirror mount point + state sync
 │   │   ├── extensions.ts      # Full CodeMirror extension stack
 │   │   ├── listeners.ts       # Persistence + change listeners
 │   │   ├── replay.ts          # Event log replay for state reconstruction
+│   │   ├── restore.ts         # Backup restore with annotation re-anchoring
+│   │   ├── dictionaryPlugin.ts # Mod-B keymap for dictionary popover trigger
+│   │   ├── DictionaryPopover.svelte # Floating dictionary/thesaurus UI
 │   │   ├── StatusBar.svelte   # Word count, WPM, character count
 │   │   └── plugins/
 │   │       └── annotations/
@@ -68,9 +82,14 @@ src/
 │   │           ├── utils.ts           # Range mapping, active annotation queries
 │   │           ├── diff.ts            # Diff computation for suggestions
 │   │           ├── nestedEditor.ts    # Nested editor lifecycle helpers
+│   │           ├── commentAi.ts       # Shared AI prompt/stream helpers for comment threads
+│   │           ├── revisionModalKeyguard.ts # Prevents modal shortcuts when CM editor has focus
+│   │           ├── eventBus.ts        # Typed pub/sub bus decoupling plugins from components
+│   │           ├── NestedEditorController.ts # Shared lifecycle/sync for nested editors
 │   │           ├── index.ts           # Keybindings, ViewPlugins, public API
 │   │           ├── Annotations.svelte # Right panel container + card positioning
 │   │           ├── Comment.svelte     # Comment card
+│   │           ├── CommentModal.svelte # Full-screen comment thread modal
 │   │           ├── DiffModal.svelte   # Full-screen diff view overlay
 │   │           ├── PreComment.svelte  # Draft form for empty-thread comment
 │   │           ├── Revision.svelte    # Revision card + inline nested editor
@@ -88,21 +107,35 @@ src/
 │   │   ├── LibraryTopBar.svelte # Library page header + actions
 │   │   └── PreviewPanel.svelte  # Document preview sidebar
 │   ├── save/
-│   │   └── Save.svelte        # Save indicator (separated for future extension)
+│   │   └── Save.svelte          # Save indicator
 │   ├── settings/
-│   │   └── SettingsModal.svelte # App-level settings overlay
+│   │   ├── SettingsModal.svelte # App-level settings overlay
+│   │   ├── FontGuideModal.svelte # Font guide with descriptions and samples
+│   │   └── fonts.ts             # Canonical font list with metadata
 │   ├── tutorial/
-│   │   ├── Tutorial.svelte    # Onboarding tutorial overlay
-│   │   └── steps.ts           # Tutorial step definitions
-│   ├── autoai/
-│   │   ├── AutoAIWidget.svelte  # Bubble + expanded panel UI
-│   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
-│   │   └── settings.svelte.ts  # AutoAI settings store (reactive, persisted)
-│   ├── stores.ts              # Global Svelte stores
-│   └── settings.svelte.ts     # App settings (reactive, persisted)
-└── routes/
-    ├── +page.svelte           # Root layout: three panels + modal stack renderer
-    └── library/               # Library page (document list, trash/restore)
+│   │   ├── Tutorial.svelte      # Onboarding tutorial overlay
+│   │   └── steps.ts             # Tutorial step definitions
+│   ├── ui/
+│   │   ├── Kbd.svelte           # Keyboard shortcut display component
+│   │   └── UpdateBanner.svelte  # In-app auto-update notification
+│   ├── constants.ts             # App-wide constants (feedback form URL, etc.)
+│   ├── errorGuard.ts            # Suspicious change detection + crash backups
+│   ├── ErrorBanner.svelte       # Error/recovery banner UI
+│   ├── navigation.ts            # Page transitions between editor and library
+│   ├── posthog.ts               # PostHog analytics init + opt-out sync
+│   ├── stores.ts                # Global Svelte stores
+│   └── settings.svelte.ts       # App settings (reactive, persisted to localStorage)
+├── routes/
+│   ├── +layout.svelte           # Root layout
+│   ├── +layout.ts               # SvelteKit layout config
+│   ├── +page.svelte             # Editor page: three panels + modal stack renderer
+│   └── library/
+│       └── +page.svelte         # Library page (document list, trash/restore)
+src-tauri/src/
+├── lib.rs                       # Tauri command registration
+├── main.rs                      # Entry point
+├── keychain.rs                  # OS keychain for API key storage
+└── db/                          # SQLite persistence (WAL mode)
 ```
 
 ---
@@ -865,6 +898,131 @@ Both carry the complete annotation object (not just an ID). This lets the undo i
 - **`addSuggestion` inversion uses `Math.max` on IDs.** Assumes IDs are sequential and increasing; works until suggestions are added in bulk.
 - **`queueMicrotask` in `collapsedRevisionResolver`.** Necessary to avoid dispatching inside a `ViewPlugin.update`, but ordering relative to other queued microtasks is not guaranteed under rapid undo.
 - **Deeply nested modal external-sync relies on `modalAnnotationStores`.** Each RevisionModal publishes its nested editor's annotations to a global per-level store (`modalAnnotationStores`). Child modals read from `modalAnnotationStores[stackIndex - 1]` instead of `$annotationsStore`. This chains correctly for undo cascades but adds a global store dependency that could be replaced with a more direct parent-child signal in the future.
+
+---
+
+## Settings
+
+### App settings (`settings.svelte.ts`)
+
+User preferences live in a Svelte 5 `$state` proxy (`appSettings`) persisted to localStorage under `"quillium-app-settings"`. Changes are applied immediately via `applySettings()` (which sets CSS custom properties on `document.documentElement`) and saved explicitly via `persistSettings()`.
+
+| Setting | Type | Default | What it controls |
+|---|---|---|---|
+| `docFontFamily` | string | `"Georgia, serif"` | Editor body font (CSS custom property `--doc-font-family`) |
+| `docFontSize` | number | `18` | Editor body font size (`--doc-font-size`) |
+| `uiFontFamily` | string | `"system-ui, ..."` | UI chrome font (`--ui-font-family`) |
+| `uiZoom` | number | `1` | `document.documentElement.zoom` |
+| `selectTextInNestedEditor` | boolean | `true` | Auto-select text when opening a nested editor |
+| `showNestedEditor` | boolean | `true` | Show inline nested editor in revision cards |
+| `atomicRevisions` | boolean | `true` | Block direct editing of revision ranges in the main doc |
+| `customQuickActions` | array | `[]` | User-defined quick actions for the AI sidebar |
+| `titleVisibility` | enum | `"hover"` | Document title display: `"hover"`, `"always"`, `"never"` |
+| `analyticsEnabled` | boolean | `true` | PostHog opt-in/out |
+| `aiEnabled` | boolean | `false` | Whether AI features are active |
+| `showShortcutHints` | boolean | `true` | Keyboard shortcut hints in the annotation panel |
+
+Font settings are separate from AI settings (`src/lib/ai/settings.svelte.ts`), which store provider, model, and API key selection.
+
+### Why localStorage instead of SQLite
+
+App settings are presentation preferences, not document data. They need to be available before the Tauri backend finishes loading (fonts and zoom affect initial render), and they're per-device rather than per-document. localStorage is synchronous and available immediately, while SQLite requires an async `invoke()` round-trip. API keys are the exception: they go through the OS keychain via `src-tauri/src/keychain.rs` because localStorage is readable by any code in the webview.
+
+### Font system (`settings/fonts.ts`)
+
+`FONTS` is the single source of truth for font metadata: CSS families, categories, picker groups, "Our Pick" status, samples, and guide descriptions. Both `SettingsModal.svelte` and `FontGuideModal.svelte` derive their data from this array. Two runtime-resolved entries (system sans-serif, system monospace) are injected by `SettingsModal` at mount time using `document.fonts.check()` to detect what's installed.
+
+### Settings UI
+
+`SettingsModal.svelte` opens as a `<dialog>`. Changes apply live but aren't persisted until the user clicks Save. Closing without saving triggers a shake + red ring animation (same pattern as annotation alerts) and reverts to the last saved state. `FontGuideModal.svelte` is a sub-modal with font descriptions, categories, and samples.
+
+---
+
+## Error guard and crash recovery
+
+### Why this exists
+
+A writing app that loses user text is a catastrophic failure. The event log in SQLite is crash-safe for normal operations, but two scenarios can still cause data loss: (1) a bug that silently deletes large chunks of text in a single transaction, and (2) a JavaScript crash that prevents the persistence layer from running. The error guard addresses both.
+
+### Suspicious change detection (`errorGuard.ts`)
+
+`checkForSuspiciousChange(oldText, newText)` runs in `listeners.ts` *before* a transaction is persisted. If a single transaction batch deletes >= 20% of the document AND >= 100 characters, the pre-deletion text is saved to localStorage as a plain-text backup under `"quillium_backup_auto"`. The thresholds are intentionally conservative: false positives just mean an extra backup, while false negatives mean lost text.
+
+### Crash backup
+
+`saveEmergencyBackup(reason)` captures whatever text is in `$documentContent` at the moment of the crash. Called from three places in `hooks.client.ts`:
+- `window.addEventListener("error", ...)` — uncaught errors
+- `window.addEventListener("unhandledrejection", ...)` — unhandled promise rejections (skips Svelte's benign `effect_orphan` error)
+- `handleError` — SvelteKit's route-level error handler
+
+Backup goes to `"quillium_backup_crash"` in localStorage.
+
+### Restoration (`restore.ts`)
+
+When the user clicks "Restore previous" in the error banner, `restoreBackup(view, documentText)` replaces the entire document with the backup text. Existing annotations aren't just discarded: each annotation's anchor text is extracted before the swap, then re-matched in the restored document using `SearchCursor`. If found, the annotation is placed at the match position. If not found, it's placed at position 0 with a console warning. Nested annotations inside revision `VersionState` blobs are also healed the same way.
+
+The restore transaction is tagged with `userEvent: "input.restore"` so the persistence layer's suspicious-change detector skips it (otherwise it would trigger another backup of the pre-restore state).
+
+### Why localStorage for backups
+
+Backups must survive the crash that triggered them. SQLite writes go through Tauri's IPC, which may not complete if the JavaScript runtime is in a bad state. localStorage writes are synchronous and handled by the webview engine, making them more likely to succeed during a crash.
+
+---
+
+## Library and document management
+
+### Data model
+
+The library uses a `documents` + `drafts` schema in SQLite:
+- Each document has metadata (title, word count, preview text, tags, timestamps, `deletedAt` for soft-delete)
+- Each document has one or more drafts (default one, created automatically)
+- Document state (text + annotations) lives in the `events` + `snapshots` tables, keyed by draft
+
+### Library page (`routes/library/+page.svelte`)
+
+Two tabs: Library and Trash. Documents are displayed as cards in a grid with a search bar and a preview panel. The `ContinuePill` component shows a shortcut to the most recently edited document.
+
+Operations: create, open, rename (via preview panel), trash (soft-delete), restore from trash, permanent delete. Trash has a configurable auto-empty period (`getTrashRetention`/`setTrashRetention` Rust commands).
+
+### Navigation (`navigation.ts`)
+
+Two functions: `goToLibrary()` and `goToEditor()`. Both set a `data-direction` attribute on `<html>` before calling SvelteKit's `goto()`, which CSS transitions use to animate the page slide direction (left for library, right for editor).
+
+---
+
+## Comment modals
+
+`CommentModal.svelte` is the full-screen overlay for comment threads, parallel to `RevisionModal` and `DiffModal`. It uses the same `modalStack` and `modalAnnotationStores` pattern: root-level modals read from `$annotationsStore`, deeper modals read from `modalAnnotationStores[stackIndex - 1]`.
+
+The modal includes an AI suggestion feature: the user can ask the AI to analyze the thread + selected text and suggest a response. Prompt building and streaming are extracted to `commentAi.ts` so both `Comment.svelte` (inline card) and `CommentModal.svelte` share the same logic.
+
+---
+
+## Revision modal keyguard
+
+`revisionModalKeyguard.ts` exports `shouldHandleRevisionModalKeydown(event)`. The revision modal listens for `Ctrl-[`, `Ctrl-]` (version navigation) and `Mod+Enter` at the `<dialog>` level. But if a CodeMirror editor inside the dialog already handled the key (e.g. the nested editor consumed `Ctrl-[` for its own version navigation), the modal should not also handle it. The keyguard checks `event.defaultPrevented` and whether the target is inside a `.cm-editor` or is an `<input>`/`<textarea>`. This prevents double-handling of keyboard shortcuts.
+
+---
+
+## Keychain (`keychain.rs`)
+
+API keys are stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) via the `keyring` crate, keyed by `("com.bryanhu.quillium", provider_name)`. Three Tauri commands: `set_api_key`, `get_api_key`, `delete_api_key`.
+
+This is intentionally separate from localStorage. API keys are secrets; localStorage is readable by any JavaScript in the webview (including potential XSS). The OS keychain requires user-level authentication and is not accessible from the web layer without going through the Tauri command bridge.
+
+---
+
+## PostHog analytics (`posthog.ts`)
+
+Initialized on app load in production only (skipped in dev mode and when env vars are missing). Respects `appSettings.analyticsEnabled`: if the user disables analytics in settings, `posthog.opt_out_capturing()` is called immediately and persists across sessions. `syncAnalyticsOptOut()` is called from the settings modal when the toggle changes.
+
+Events are captured throughout the app (see PostHog Events table below). Exception capture is wired into the crash handlers in `hooks.client.ts`.
+
+---
+
+## Auto-updater
+
+Uses `@tauri-apps/plugin-updater` to check for updates on app launch. If an update is available, `UpdateBanner.svelte` renders a toast-style notification in the bottom-right corner with the version number and an "Update" button. Clicking it downloads and installs the update, then triggers `relaunch()` from `@tauri-apps/plugin-process`. The banner can be dismissed.
 
 ---
 
