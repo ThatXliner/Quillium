@@ -906,7 +906,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
       <!-- Right sidebar: context + annotations -->
       {#if contextLayers.length > 0 || (modalAnnotations && Object.keys(modalAnnotations).length > 0)}
-        <div class="w-56 shrink-0 border-l border-purple-100/60 flex flex-col min-h-0 bg-purple-50/20">
+        <div class="w-72 shrink-0 border-l border-purple-100/60 flex flex-col min-h-0 bg-purple-50/20 overflow-x-hidden">
 
           <!-- Context panel -->
           {#if contextLayers.length > 0}
@@ -962,7 +962,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
           <!-- Annotations -->
           {#if modalAnnotations && Object.keys(modalAnnotations).length > 0}
-            <div class="flex-1 min-h-0 overflow-y-auto px-2 py-3">
+            <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div class="text-[9px] font-medium text-black/35 uppercase tracking-wider mb-2 px-1">
                 Annotations
               </div>
@@ -1006,7 +1006,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   .revision-modal-inner {
     display: flex;
     flex-direction: column;
-    width: 1060px;
+    width: 1160px;
     height: 72vh;
     background: white;
     border-radius: 1rem;
