@@ -96,7 +96,15 @@ const deck = $derived(
 );
 const deckIndex = $derived(deck.findIndex((n) => n.doc.id === currentDocId));
 
-const ghosts = $derived(ancestors.slice(0, 3));
+// Show up to 2 nearest ancestors + the root, so the root is always reachable.
+// Dedup in case the root is already within the first 2.
+const ghosts = $derived.by(() => {
+    if (ancestors.length === 0) return [];
+    const near = ancestors.slice(0, 2);
+    const root = ancestors[ancestors.length - 1];
+    const ids = new Set(near.map((n) => n.doc.id));
+    return ids.has(root.doc.id) ? near : [...near, root];
+});
 const flatRows = $derived(tree ? flattenTree(tree) : []);
 const branched = $derived(tree ? hasBranching(tree) : false);
 
@@ -192,7 +200,7 @@ function navigateWithSwipe(targetId: string) {
                        border border-black/[0.07]"
                 style="
                     top: {ty}px;
-                    right: calc(100% + {-tx + 12}px);
+                    left: {tx - 240 - 12}px;
                     width: 240px;
                     height: 320px;
                     z-index: 50;
