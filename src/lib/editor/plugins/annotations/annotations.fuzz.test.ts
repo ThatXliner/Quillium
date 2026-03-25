@@ -530,7 +530,7 @@ describe("canCreateRevision", () => {
                     ]);
                     // new range ends at existingFrom - 1, so strictly before
                     const newEnd = existingFrom - 1;
-                    if (newEnd <= 0 || newEnd - newLen < 0) return;
+                    fc.pre(newEnd > 0 && newEnd - newLen >= 0);
                     const newSel = EditorSelection.create([
                         EditorSelection.range(newEnd - newLen, newEnd),
                     ]);
@@ -618,7 +618,7 @@ describe("canCreateRevision", () => {
 
     // ── property: non-overlap implies canCreateRevision ──────────────────────
 
-    it("returns true iff the new main range does not intersect any revision range (property)", () => {
+    it("returns true iff no range in the new selection intersects any revision range (property)", () => {
         const arbRange = fc
             .tuple(arbNonNegInt, fc.integer({ min: 1, max: 500 }))
             .map(([from, len]) => ({ from, to: from + len }));
@@ -640,6 +640,42 @@ describe("canCreateRevision", () => {
                 },
             ),
         );
+    });
+
+    // ── multi-range selections ────────────────────────────────────────────────
+
+    it("returns false when a non-main range in the new selection overlaps an existing revision", () => {
+        // existing revision at [20, 30]; new selection has main at [0, 5] (safe) but
+        // a secondary range at [25, 35] that overlaps
+        const existing = EditorSelection.create([EditorSelection.range(20, 30)]);
+        const newSel = EditorSelection.create(
+            [EditorSelection.range(0, 5), EditorSelection.range(25, 35)],
+            0, // main is index 0 — the safe range
+        );
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(false);
+    });
+
+    it("returns false when all ranges in the new multi-range selection overlap an existing revision", () => {
+        // existing revision at [10, 50]; new selection has two ranges both inside it
+        const existing = EditorSelection.create([EditorSelection.range(10, 50)]);
+        const newSel = EditorSelection.create([
+            EditorSelection.range(15, 20),
+            EditorSelection.range(30, 40),
+        ]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(false);
+    });
+
+    it("returns true when all ranges in the new multi-range selection avoid an existing revision", () => {
+        // existing revision at [20, 30]; new selection has two ranges both outside it
+        const existing = EditorSelection.create([EditorSelection.range(20, 30)]);
+        const newSel = EditorSelection.create([
+            EditorSelection.range(0, 10),
+            EditorSelection.range(35, 45),
+        ]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(true);
     });
 
     // ── idempotency ───────────────────────────────────────────────────────────
