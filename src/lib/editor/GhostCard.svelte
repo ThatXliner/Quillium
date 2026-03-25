@@ -1,10 +1,3 @@
-<!--
-    GhostCard.svelte — A scaled-down read-only CodeMirror preview of a draft.
-
-    Mounts a real EditorView (read-only, no listeners, no persistence) inside
-    a fixed-size container, then CSS-scales it down so it looks like a
-    miniature version of the actual document — same font, same decorations.
--->
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
 import { EditorState } from "@codemirror/state";
@@ -14,25 +7,26 @@ import { replayEvents } from "./replay";
 import { loadDocumentState, listDrafts } from "$lib/db";
 import "./plugins/annotations/default.css";
 
-const { docId } = $props<{ docId: string }>();
+const { docId, width = 240 } = $props<{ docId: string; width?: number }>();
+
+// The CM view renders at this full width, then gets scaled down.
+const FULL_WIDTH = 816;
+const scale = width / FULL_WIDTH;
 
 let container = $state<HTMLDivElement>();
 let view: EditorView | null = null;
 
 const previewExtensions = [
-    ...getExtensions(), // no listeners, no persistence
+    ...getExtensions(),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
 ];
 
 async function buildPreview() {
     if (!container) return;
-
-    // Resolve the active draft.
     const drafts = await listDrafts(docId);
     if (drafts.length === 0) return;
     const draft = drafts.find((d) => d.isActive) ?? drafts[0];
-
     const loaded = await loadDocumentState(docId, draft.id);
 
     let state: EditorState;
@@ -62,11 +56,18 @@ onDestroy(() => { view?.destroy(); view = null; });
 </script>
 
 <!--
-    The ghost card is the same width as the main editor card (816px), just
-    physically offset behind it. We mount a full-size EditorView and let
-    overflow:hidden clip it — the visible sliver matches the main card's layout.
+    Outer div is the visible box (width x whatever height the parent sets).
+    Inner div is full FULL_WIDTH, scaled down with transform-origin top-left.
+    overflow:hidden clips the scaled content cleanly.
 -->
-<!-- py-3 px-1 matches the main editor card's wrapper padding -->
-<div class="absolute inset-0 overflow-hidden rounded-lg pointer-events-none py-3 px-1">
-    <div bind:this={container} class="w-full h-full"></div>
+<div class="absolute inset-0 overflow-hidden rounded-lg pointer-events-none">
+    <div
+        bind:this={container}
+        class="py-3 px-1"
+        style="
+            width: {FULL_WIDTH}px;
+            transform: scale({scale});
+            transform-origin: top left;
+        "
+    ></div>
 </div>
