@@ -15,7 +15,7 @@ pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
                 parent_document_id, branched_from_snapshot_id
-         FROM documents WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+         FROM documents WHERE deleted_at IS NULL AND parent_document_id IS NULL ORDER BY updated_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(DocumentMeta {
