@@ -167,6 +167,7 @@ function navigateWithSwipe(targetId: string) {
               layer 3: x = -30, w = 10  → covers -30..-20
             Perfectly adjacent, zero overlap.
         -->
+        {@const isLast = i === ghosts.length - 1}
         <button
             onmouseenter={() => (hoveredGhostId = ghost.doc.id)}
             onmouseleave={() => (hoveredGhostId = null)}
@@ -176,8 +177,8 @@ function navigateWithSwipe(targetId: string) {
             style="
                 top: {ty}px;
                 bottom: 0;
-                left: {baseX}px;
-                width: {HIT_W}px;
+                left: {baseX - (isLast ? 22 : 0)}px;
+                width: {isLast ? HIT_W + 22 : HIT_W}px;
                 z-index: {isHovered ? 9 : 9 - i};
                 background: transparent;
                 border: none;
@@ -185,24 +186,24 @@ function navigateWithSwipe(targetId: string) {
             "
         ></button>
 
-        <!-- Preview popover: thin sliver to the left of the pulled sheet -->
+        <!-- Preview popover: sits just left of the hovered sheet's pulled edge -->
         {#if isHovered}
-            {@const POP_W = 160}
+            {@const POP_W = 200}
             <div
                 class="absolute pointer-events-none overflow-hidden rounded-lg bg-white
                        border border-black/[0.07]"
                 style="
                     top: {ty}px;
-                    left: {tx - POP_W - 8}px;
+                    right: calc(100% + {-tx + 8}px);
                     width: {POP_W}px;
-                    bottom: 0;
+                    height: 280px;
                     z-index: 50;
                     box-shadow: -4px 4px 20px rgba(0,0,0,0.12);
                     animation: popover-in 150ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
                 "
             >
                 <GhostCard docId={ghost.doc.id} width={POP_W} />
-                <div class="absolute bottom-0 inset-x-0 h-12 pointer-events-none"
+                <div class="absolute bottom-0 inset-x-0 h-10 pointer-events-none"
                      style="background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.97));"></div>
                 <span class="absolute bottom-2 left-2 right-2 text-[9px] font-medium text-black/40 select-none truncate">
                     {ghost.doc.title}
