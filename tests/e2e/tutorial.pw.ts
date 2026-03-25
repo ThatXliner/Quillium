@@ -110,7 +110,7 @@ test.describe("tutorial interactive revision detection", () => {
         await startTour(page);
 
         // Navigate through non-interactive steps to reach "createRevision"
-        // Steps: welcome, writing-space, [then nested-create-revision which is interactive]
+        // Steps: welcome → writing-space → nested-create-revision
         for (let i = 0; i < 2; i++) {
             await clickNext(page);
         }

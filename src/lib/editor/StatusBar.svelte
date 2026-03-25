@@ -21,8 +21,8 @@
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { tutorialActive, saveStatus } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
-import { goToLibrary } from "$lib/navigation";
-import { Settings2, LayoutGrid } from "lucide-svelte";
+import { goToLibrary, goToHistory } from "$lib/navigation";
+import { Settings2, LayoutGrid, History } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 const {
@@ -103,6 +103,14 @@ $effect(() => {
         >
             <LayoutGrid size={20} />
             <Kbd keys={[modKey, "O"]} />
+        </button>
+        <button
+            onclick={goToHistory}
+            aria-label="Version history"
+            title="Version History"
+            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
+        >
+            <History size={20} />
         </button>
         <button
             onclick={() => (settingsOpen = !settingsOpen)}

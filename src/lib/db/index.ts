@@ -7,7 +7,7 @@
  * @tauri-apps/plugin-sql directly.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult } from "./types";
+import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta } from "./types";
 
 // ── Reset ─────────────────────────────────────────────────────────
 
@@ -117,5 +117,63 @@ export async function loadDocumentState(
     return invoke<LoadResult>("cmd_load_document_state", {
         docId,
         draftId: draftId ?? null,
+    });
+}
+
+// ── Version history ───────────────────────────────────────────────
+
+export async function listSnapshots(draftId: string): Promise<SnapshotMeta[]> {
+    return invoke<SnapshotMeta[]>("cmd_list_snapshots", { draftId });
+}
+
+/** Returns the state_json blob for a specific snapshot, or null if not found. */
+export async function loadSnapshotState(snapshotId: number): Promise<string | null> {
+    return invoke<string | null>("cmd_load_snapshot_state", { snapshotId });
+}
+
+export async function labelSnapshot(snapshotId: number, label: string): Promise<void> {
+    return invoke<void>("cmd_label_snapshot", { snapshotId, label });
+}
+
+export async function restoreToSnapshot(draftId: string, snapshotId: number): Promise<void> {
+    return invoke<void>("cmd_restore_to_snapshot", { draftId, snapshotId });
+}
+
+/** Returns the auto-prune retention in days, or null if disabled. */
+export async function getSnapshotRetention(): Promise<number | null> {
+    return invoke<number | null>("cmd_get_snapshot_retention");
+}
+
+/** Saves the snapshot auto-prune retention. Pass null to disable. */
+export async function setSnapshotRetention(days: number | null): Promise<void> {
+    return invoke<void>("cmd_set_snapshot_retention", { days });
+}
+
+/** Returns total bytes of state_json for all snapshots of a draft. */
+export async function getSnapshotStorageSize(draftId: string): Promise<number> {
+    return invoke<number>("cmd_get_snapshot_storage_size", { draftId });
+}
+
+/** Deletes unlabeled autosaves beyond the most recent keepN. Returns deleted count. */
+export async function pruneSnapshotsKeepLastN(draftId: string, keepN: number): Promise<number> {
+    return invoke<number>("cmd_prune_snapshots_keep_last_n", { draftId, keepN });
+}
+
+/** Deletes unlabeled autosaves older than olderThanDays days. Returns deleted count. */
+export async function pruneSnapshotsOlderThan(draftId: string, olderThanDays: number): Promise<number> {
+    return invoke<number>("cmd_prune_snapshots_older_than", { draftId, olderThanDays });
+}
+
+export async function createNamedSnapshot(
+    draftId: string,
+    stateJson: string,
+    upToEventId: number,
+    label: string,
+): Promise<number> {
+    return invoke<number>("cmd_create_named_snapshot", {
+        draftId,
+        stateJson,
+        upToEventId,
+        label,
     });
 }

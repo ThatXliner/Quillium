@@ -5,6 +5,11 @@ export function goToLibrary(): Promise<void> {
     return goto("/library");
 }
 
+export function goToHistory(): Promise<void> {
+    document.documentElement.setAttribute("data-direction", "left");
+    return goto("/history");
+}
+
 export function goToEditor(): Promise<void> {
     document.documentElement.setAttribute("data-direction", "right");
     return goto("/");

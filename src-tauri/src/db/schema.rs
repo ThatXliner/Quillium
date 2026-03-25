@@ -7,6 +7,20 @@ pub fn open_db(path: &Path) -> Result<Connection> {
         "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;",
     )?;
     init_schema(&conn)?;
+    // Migration: add label column to snapshots if it doesn't exist yet.
+    let label_exists = {
+        let mut stmt = conn.prepare("PRAGMA table_info(snapshots)")?;
+        let result = stmt.query_map([], |row| row.get::<_, String>(1))?
+            .filter_map(|res| res.ok())
+            .any(|name| name == "label");
+        result
+    };
+    if !label_exists {
+        conn.execute(
+            "ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL",
+            [],
+        )?;
+    }
     Ok(conn)
 }
 
@@ -45,7 +59,8 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             draft_id         TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
             up_to_event_id   INTEGER NOT NULL,
             state_json       TEXT NOT NULL,
-            created_at       INTEGER NOT NULL
+            created_at       INTEGER NOT NULL,
+            label            TEXT DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS _meta (

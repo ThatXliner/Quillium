@@ -325,12 +325,13 @@ $effect(() => {
 });
 
 // When the modal closes, it flushes nested annotations back into the
-// version blob. Detect the flush by watching for a new annotationField
-// blob on activeVersion and rebuild the inline editor from it.
+// version blob. Detect the flush by comparing annotationGeneration —
+// incremented by the flush, so this fires only when annotations actually changed.
 $effect(() => {
     if (!controller.editor || !isEditorOpen || !activeVersion) return;
-    const incomingBlob = (activeVersion as { annotationField?: unknown }).annotationField;
-    if (!controller.needsAnnotationRebuild(incomingBlob)) return;
+    const generation =
+        (activeVersion as { annotationGeneration?: number }).annotationGeneration ?? 0;
+    if (!controller.needsAnnotationRebuild(generation)) return;
     destroyNestedEditor();
     createNestedEditor(activeVersion);
 });

@@ -200,7 +200,7 @@ test.describe("keyboard shortcuts", () => {
     });
 
     test("Escape closes AI sidebar", async ({ page }) => {
-        const q = new QuilliumPage(page, { apiKey: "test-key" });
+        const q = new QuilliumPage(page, { apiKey: "test-key", settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true } });
         await q.init();
 
         await page.locator("#ai-tab-chat").click();

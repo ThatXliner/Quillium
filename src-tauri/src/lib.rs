@@ -10,10 +10,10 @@ use db::{
         list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
         set_trash_retention, trash_document, update_document_meta,
     },
-    events::{append_event, create_snapshot},
+    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state, get_snapshot_storage_size, prune_snapshots_keep_last_n, prune_snapshots_older_than, get_snapshot_retention, set_snapshot_retention},
     load::load_document_state,
     schema::open_db,
-    AppendEventResult, DocumentMeta, DraftMeta, LoadResult,
+    AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 
@@ -129,6 +129,109 @@ fn cmd_load_document_state(
     load_document_state(&conn, &doc_id, draft_id.as_deref()).map_err(|e| e.to_string())
 }
 
+// ── Version history commands ──────────────────────────────────────
+
+#[tauri::command]
+fn cmd_list_snapshots(
+    state: tauri::State<DbState>,
+    draft_id: String,
+) -> Result<Vec<SnapshotMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_snapshots(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_load_snapshot_state(
+    state: tauri::State<DbState>,
+    snapshot_id: i64,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    load_snapshot_state(&conn, snapshot_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_label_snapshot(
+    state: tauri::State<DbState>,
+    snapshot_id: i64,
+    label: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    label_snapshot(&conn, snapshot_id, &label).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_restore_to_snapshot(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    snapshot_id: i64,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    restore_to_snapshot(&conn, &draft_id, snapshot_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_named_snapshot(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    state_json: String,
+    up_to_event_id: i64,
+    label: String,
+) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_named_snapshot(&conn, &draft_id, &state_json, up_to_event_id, &label)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_snapshot_retention(state: tauri::State<DbState>) -> Result<Option<i64>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_snapshot_retention(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_snapshot_retention(
+    state: tauri::State<DbState>,
+    days: Option<i64>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_snapshot_retention(&conn, days).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_snapshot_storage_size(
+    state: tauri::State<DbState>,
+    draft_id: String,
+) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_snapshot_storage_size(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_prune_snapshots_keep_last_n(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    keep_n: i64,
+) -> Result<u64, String> {
+    if keep_n < 0 {
+        return Err("keep_n must be >= 0".to_string());
+    }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    prune_snapshots_keep_last_n(&conn, &draft_id, keep_n).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_prune_snapshots_older_than(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    older_than_days: i64,
+) -> Result<u64, String> {
+    if older_than_days < 1 {
+        return Err("older_than_days must be >= 1".to_string());
+    }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    prune_snapshots_older_than(&conn, &draft_id, older_than_days).map_err(|e| e.to_string())
+}
+
 // ── Trash retention commands ──────────────────────────────────────
 
 /// Returns the trash auto-empty setting in days, or null if "never".
@@ -217,6 +320,18 @@ pub fn run() {
             if let Ok(Some(days)) = get_trash_retention(&conn) {
                 let _ = purge_expired_trash(&conn, days);
             }
+            // Auto-prune old snapshots on startup per retention policy.
+            if let Ok(Some(days)) = get_snapshot_retention(&conn) {
+                // Prune across all drafts.
+                if let Ok(mut stmt) = conn.prepare("SELECT DISTINCT draft_id FROM snapshots") {
+                    if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
+                        let draft_ids: Vec<String> = rows.filter_map(|r| r.ok()).collect();
+                        for draft_id in draft_ids {
+                            let _ = prune_snapshots_older_than(&conn, &draft_id, days);
+                        }
+                    }
+                }
+            }
             app.manage(DbState(Mutex::new(conn)));
             Ok(())
         })
@@ -239,6 +354,16 @@ pub fn run() {
             cmd_append_event,
             cmd_create_snapshot,
             cmd_load_document_state,
+            cmd_list_snapshots,
+            cmd_load_snapshot_state,
+            cmd_label_snapshot,
+            cmd_restore_to_snapshot,
+            cmd_create_named_snapshot,
+            cmd_get_snapshot_retention,
+            cmd_set_snapshot_retention,
+            cmd_get_snapshot_storage_size,
+            cmd_prune_snapshots_keep_last_n,
+            cmd_prune_snapshots_older_than,
             set_api_key,
             get_api_key,
             delete_api_key,

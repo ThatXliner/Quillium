@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { get } from "svelte/store";
 import { EditorView } from "@codemirror/view";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -11,7 +12,7 @@ import {
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { history } from "@codemirror/commands";
-import { currentDocumentId, currentDraftId } from "$lib/stores";
+import { currentDocumentId, currentDraftId, lastPersistedEventId, lastSavedAt } from "$lib/stores";
 
 function makeView(options: Parameters<typeof listeners>[0] = {}) {
     const state = EditorState.create({
@@ -43,6 +44,8 @@ afterEach(() => {
     consoleErrorSpy.mockRestore();
     currentDocumentId.set(null);
     currentDraftId.set(null);
+    lastPersistedEventId.set(-1);
+    lastSavedAt.set(null);
 });
 
 describe("listeners integration", () => {
@@ -188,6 +191,38 @@ describe("listeners integration", () => {
         await flushMicrotasks();
 
         expect(consoleErrorSpy).toHaveBeenCalled();
+    });
+
+    it("updates lastPersistedEventId store after a successful append", async () => {
+        mockIPC((cmd) => {
+            if (cmd === "cmd_append_event") return { eventId: 42, needsSnapshot: false };
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Hi " } });
+        await flushMicrotasks();
+
+        expect(get(lastPersistedEventId)).toBe(42);
+    });
+
+    it("triggers cmd_create_snapshot when needsSnapshot is true", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 50, needsSnapshot: true };
+            return null;
+        });
+
+        view = makeView();
+        view.dispatch({ changes: { from: 0, insert: "Hi " } });
+        await flushMicrotasks();
+
+        expect(invoked.some((call) => call.cmd === "cmd_create_snapshot")).toBe(true);
+        const snapshotCall = invoked.find((call) => call.cmd === "cmd_create_snapshot");
+        const args = snapshotCall?.args as { draftId: string; upToEventId: number };
+        expect(args.draftId).toBe("draft-1");
+        expect(args.upToEventId).toBe(50);
     });
 
     it("skips persisting when no document or draft is set", async () => {

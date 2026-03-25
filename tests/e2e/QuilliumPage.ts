@@ -10,6 +10,16 @@ import { expect, type Page, type Locator } from "@playwright/test";
 
 // ── Tauri mock configuration ────────────────────────────────────────────────
 
+export type MockSnapshot = {
+    id: number;
+    draftId: string;
+    upToEventId: number;
+    createdAt: number;
+    label: string | null;
+    /** The plain-text doc content stored in this snapshot. */
+    doc: string;
+};
+
 export type TauriMockOptions = {
     /** Return value for `get_api_key`. null = no key configured. */
     apiKey: string | null;
@@ -24,6 +34,11 @@ export type TauriMockOptions = {
      * a snapshot so the editor opens with content.
      */
     initialDoc: string | null;
+    /**
+     * Pre-seeded version history snapshots returned by cmd_list_snapshots.
+     * cmd_load_snapshot_state returns a minimal state blob from each snapshot's doc.
+     */
+    snapshots: MockSnapshot[];
 };
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
@@ -32,6 +47,7 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
     skipTutorial: true,
     settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
     initialDoc: null,
+    snapshots: [],
 };
 
 // ── Page object ─────────────────────────────────────────────────────────────
@@ -80,12 +96,16 @@ export class QuilliumPage {
                 skipTutorial: boolean;
                 settings: Record<string, unknown>;
                 initialDoc: string | null;
+                snapshots: MockSnapshot[];
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
                 }
                 if (Object.keys(payload.settings).length > 0) {
                     localStorage.setItem("quillium-app-settings", JSON.stringify(payload.settings));
+                }
+                if (payload.apiKey) {
+                    localStorage.setItem("quillium-has-api-key", "1");
                 }
 
                 let nextCallbackId = 1;
@@ -141,10 +161,76 @@ export class QuilliumPage {
                             };
                         }
 
-                        if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
+                        if (cmd === "cmd_append_event") return { eventId: 1, needsSnapshot: false };
                         if (cmd === "cmd_create_snapshot") return null;
                         if (cmd === "cmd_update_document_meta") return null;
                         if (cmd === "get_api_key") return payload.apiKey;
+
+                        // Version history
+                        if (cmd === "cmd_list_snapshots")
+                            return payload.snapshots.map((s) => ({
+                                id: s.id,
+                                draftId: s.draftId,
+                                upToEventId: s.upToEventId,
+                                createdAt: s.createdAt,
+                                label: s.label,
+                            }));
+                        if (cmd === "cmd_load_snapshot_state") {
+                            const a = args as { snapshotId: number };
+                            const snap = payload.snapshots.find((s) => s.id === a.snapshotId);
+                            if (!snap) return null;
+                            return JSON.stringify({
+                                doc: snap.doc,
+                                selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+                            });
+                        }
+                        if (cmd === "cmd_label_snapshot") {
+                            const a = args as { snapshotId: number; label: string };
+                            const snap = payload.snapshots.find((s) => s.id === a.snapshotId);
+                            if (snap) snap.label = a.label;
+                            return null;
+                        }
+                        if (cmd === "cmd_restore_to_snapshot") return null;
+                        if (cmd === "cmd_get_snapshot_storage_size") {
+                            // Return sum of state_json byte lengths for mock snapshots
+                            return payload.snapshots.reduce(
+                                (sum, s) => sum + JSON.stringify({ doc: s.doc, annotations: {} }).length,
+                                0,
+                            );
+                        }
+                        if (cmd === "cmd_prune_snapshots_keep_last_n") {
+                            const a = args as { draftId: string; keepN: number };
+                            const unlabeled = payload.snapshots
+                                .filter((s) => s.draftId === a.draftId && s.label === null)
+                                .sort((x, y) => y.createdAt - x.createdAt);
+                            const toDelete = unlabeled.slice(a.keepN);
+                            const deleteIds = new Set(toDelete.map((s) => s.id));
+                            const before = payload.snapshots.length;
+                            payload.snapshots = payload.snapshots.filter((s) => !deleteIds.has(s.id));
+                            return before - payload.snapshots.length;
+                        }
+                        if (cmd === "cmd_prune_snapshots_older_than") {
+                            const a = args as { draftId: string; olderThanDays: number };
+                            const cutoff = Date.now() - a.olderThanDays * 86_400_000;
+                            const before = payload.snapshots.length;
+                            payload.snapshots = payload.snapshots.filter(
+                                (s) => s.label !== null || s.createdAt >= cutoff,
+                            );
+                            return before - payload.snapshots.length;
+                        }
+                        if (cmd === "cmd_create_named_snapshot") {
+                            const a = args as { label: string; upToEventId: number };
+                            const newId = payload.snapshots.length + 100;
+                            payload.snapshots.unshift({
+                                id: newId,
+                                draftId: "draft-test-1",
+                                upToEventId: a.upToEventId,
+                                createdAt: Date.now(),
+                                label: a.label,
+                                doc: "",
+                            });
+                            return newId;
+                        }
 
                         // Updater plugin
                         if (cmd === "plugin:updater|check") {
@@ -190,6 +276,7 @@ export class QuilliumPage {
                 skipTutorial: opts.skipTutorial,
                 settings: opts.settings,
                 initialDoc: opts.initialDoc,
+                snapshots: opts.snapshots,
             },
         );
     }
@@ -204,6 +291,24 @@ export class QuilliumPage {
     async init(): Promise<void> {
         await this.setup();
         await this.goto();
+    }
+
+    /** Navigate to "/history" and wait for the Versions panel to render. */
+    async gotoHistory(): Promise<void> {
+        await this.page.goto("/history");
+        await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });
+    }
+
+    /** setup() + gotoHistory() */
+    async initHistory(): Promise<void> {
+        await this.setup();
+        await this.gotoHistory();
+    }
+
+    /** Click the History button in the status bar to navigate to /history. */
+    async openHistoryFromStatusBar(): Promise<void> {
+        await this.page.locator("#status-bar button[aria-label='Version history']").click();
+        await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });
     }
 
     // ── Tauri mock introspection ────────────────────────────────────────

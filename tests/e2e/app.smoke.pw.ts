@@ -10,6 +10,10 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
     await page.addInitScript(
         (payload: { apiKey: string | null }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            if (payload.apiKey) {
+                localStorage.setItem("quillium-has-api-key", "1");
+                localStorage.setItem("quillium-app-settings", JSON.stringify({ aiEnabled: true }));
+            }
 
             let nextCallbackId = 1;
             const callbacks = new Map<number, (...args: unknown[]) => unknown>();
@@ -168,7 +172,6 @@ test("AI sidebar can open chat and feedback panels", async ({ page }) => {
     await page.goto("/");
 
     await page.locator("#ai-tab-chat").click();
-    await expect(page.locator("#ai-sidebar")).toContainText("AI Settings");
     await expect(page.locator("#ai-sidebar")).toContainText("Start a conversation");
 
     const feedbackButton = page.locator(

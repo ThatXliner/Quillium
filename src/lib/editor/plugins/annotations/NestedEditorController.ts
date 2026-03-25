@@ -52,7 +52,7 @@ export type FlushBehavior = "flush" | "flush-on-destroy" | "no-flush";
 export class NestedEditorController {
     private _editor: EditorView | undefined;
     private _mountedVersionIndex = -1;
-    private _mountedAnnotationFieldBlob: unknown = undefined;
+    private _mountedAnnotationGeneration = -1;
     private _lastDispatchedDoc = "";
     private _editorVersionIndex = 0;
 
@@ -74,9 +74,9 @@ export class NestedEditorController {
         return this._mountedVersionIndex;
     }
 
-    /** The annotationField blob the editor was built from. */
-    get mountedAnnotationFieldBlob(): unknown {
-        return this._mountedAnnotationFieldBlob;
+    /** The annotationGeneration the editor was built from. */
+    get mountedAnnotationGeneration(): number {
+        return this._mountedAnnotationGeneration;
     }
 
     /**
@@ -101,9 +101,8 @@ export class NestedEditorController {
         this._editor = new EditorView({ state, parent: host });
         this._mountedVersionIndex = versionIndex;
         this._editorVersionIndex = versionIndex;
-        this._mountedAnnotationFieldBlob = (
-            version as { annotationField?: unknown }
-        ).annotationField;
+        this._mountedAnnotationGeneration =
+            (version as { annotationGeneration?: number }).annotationGeneration ?? 0;
         this._lastDispatchedDoc = this._editor.state.doc.toString();
 
         // Fire initial callback
@@ -156,7 +155,7 @@ export class NestedEditorController {
         this._editor.destroy();
         this._editor = undefined;
         this._mountedVersionIndex = -1;
-        this._mountedAnnotationFieldBlob = undefined;
+        this._mountedAnnotationGeneration = -1;
     }
 
     /**
@@ -208,9 +207,9 @@ export class NestedEditorController {
         return this._editor !== undefined && newVersionIndex !== this._mountedVersionIndex;
     }
 
-    /** Whether the annotationField blob changed (modal flush detection). */
-    needsAnnotationRebuild(newBlob: unknown): boolean {
-        return this._editor !== undefined && newBlob !== this._mountedAnnotationFieldBlob;
+    /** Whether sub-annotations changed since mount (modal flush detection). */
+    needsAnnotationRebuild(newGeneration: number): boolean {
+        return this._editor !== undefined && newGeneration !== this._mountedAnnotationGeneration;
     }
 
     /**
@@ -311,7 +310,16 @@ export class NestedEditorController {
             | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            const blob = this._editor.state.toJSON(nestedSavedFields) as VersionState;
+            // _editorVersionIndex is stable here: version switches are driven
+            // by Svelte effects which can't interleave with a synchronous
+            // dispatch in the same JS task.
+            const existing = rev.versions[this._editorVersionIndex];
+            const prevGen =
+                (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
+            const blob = {
+                ...(this._editor.state.toJSON(nestedSavedFields) as VersionState),
+                annotationGeneration: prevGen + 1,
+            };
             this.parentView.dispatch(
                 updateRevisionVersionState(
                     this.parentView.state,
@@ -343,37 +351,37 @@ export class NestedEditorController {
         ] as AnnotationType<"revision"> | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            const blob = this._editor.state.toJSON(
-                nestedSavedFields,
-            ) as VersionState;
+            // _editorVersionIndex is stable here: version switches are driven
+            // by Svelte effects which can't interleave with a synchronous
+            // dispatch in the same JS task.
+            const existing = rev.versions[this._editorVersionIndex];
+            const prevGen =
+                (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
+            const blob = {
+                ...(this._editor.state.toJSON(nestedSavedFields) as VersionState),
+                annotationGeneration: prevGen + 1,
+            };
 
             // Compare against what the parent already has to detect
             // whether this flush actually contributes new state.
-            const existing = rev.versions[this._editorVersionIndex];
-            const parentDoc = existing?.doc ?? "";
-            const nestedDoc =
-                (blob as { doc?: string }).doc ?? "";
+            const parentDoc = (existing as { doc?: string })?.doc ?? "";
+            const nestedDoc = (blob as { doc?: string }).doc ?? "";
             const docDiffers = parentDoc !== nestedDoc;
             const parentAnns = JSON.stringify(
-                (existing as { annotationField?: unknown })
-                    ?.annotationField ?? null,
+                (existing as { annotationField?: unknown })?.annotationField ?? null,
             );
             const nestedAnns = JSON.stringify(
-                (blob as { annotationField?: unknown })
-                    .annotationField ?? null,
+                (blob as { annotationField?: unknown }).annotationField ?? null,
             );
             const annsDiffer = parentAnns !== nestedAnns;
 
             if (docDiffers || annsDiffer) {
-                posthog.capture(
-                    "nested_editor_flush_to_parent_meaningful",
-                    {
-                        revisionId: this.revisionId,
-                        versionIndex: this._editorVersionIndex,
-                        docDiffers,
-                        annsDiffer,
-                    },
-                );
+                posthog.capture("nested_editor_flush_to_parent_meaningful", {
+                    revisionId: this.revisionId,
+                    versionIndex: this._editorVersionIndex,
+                    docDiffers,
+                    annsDiffer,
+                });
             }
 
             this.parentView.dispatch(
