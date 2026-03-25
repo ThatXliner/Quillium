@@ -117,14 +117,14 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
                 });
                 applied++;
             } else if (ann.type === "revision") {
-                createRevision({
+                const created = createRevision({
                     targetText: ann.targetText,
                     versions: [{ label: ann.versionLabel, text: ann.versionText }],
                     threadMessage: ann.threadMessage,
                     author: autoAISettings.persona,
                     view,
                 });
-                applied++;
+                if (created) applied++;
             }
         } catch {
             // targetText lookup failed (e.g. doc changed mid-review) — skip.

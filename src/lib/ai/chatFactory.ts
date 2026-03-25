@@ -91,11 +91,13 @@ function handleToolCall(toolCall: ToolCall) {
         }
         case "createRevision": {
             const { targetText, versions, threadMessage } = toolCall.input;
-            createRevision({ targetText, versions, threadMessage, view });
-            posthog.capture("annotation_created", {
-                type: "revision",
-                version_count: versions.length,
-            });
+            const created = createRevision({ targetText, versions, threadMessage, view });
+            if (created) {
+                posthog.capture("annotation_created", {
+                    type: "revision",
+                    version_count: versions.length,
+                });
+            }
             break;
         }
     }

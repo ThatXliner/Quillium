@@ -611,7 +611,7 @@ export function createRevision({
         targetText,
         document: state.doc,
     });
-    if (!canCreateRevision(state.field(annotationField), selection)) return;
+    if (!canCreateRevision(state.field(annotationField), selection)) return false;
     const originalText = state.sliceDoc(selection.main.from, selection.main.to);
     const originalVersion = {
         doc: originalText,
@@ -635,6 +635,7 @@ export function createRevision({
             annotations: Transaction.addToHistory.of(true),
         }),
     );
+    return true;
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
