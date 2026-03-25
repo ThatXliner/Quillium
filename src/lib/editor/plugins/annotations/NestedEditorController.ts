@@ -28,6 +28,7 @@ import { getActiveAnnotation } from "./utils";
 import { annotationEventBus } from "./eventBus";
 import type { VersionState, Annotation as AnnotationType, Annotations } from "./models";
 import type { GenericAnnotation } from "./models";
+import posthog from "$lib/posthog";
 
 /** Transaction annotation marking a sync from the parent document. */
 const parentSyncEdit = Annotation.define<true>();
@@ -133,6 +134,14 @@ export class NestedEditorController {
      * for this revision (the modal will flush on its own destroy).
      * Without this, the inline editor's stale flush would overwrite
      * the modal's annotations with an empty blob.
+     *
+     * NOTE: The flush on destroy is believed to be redundant.
+     * `translateAndDispatch` syncs doc text per-keystroke, and
+     * `flushAnnotationStateToParent` syncs sub-annotations per-effect.
+     * By the time destroy() runs, the parent should already have all
+     * state. This flush is kept as a defensive safety net and is
+     * instrumented with PostHog to verify it's never the sole writer.
+     * If telemetry confirms zero meaningful flushes, remove it.
      */
     destroy(options?: { skipFlush?: boolean }): void {
         if (!this._editor) return;
@@ -315,15 +324,58 @@ export class NestedEditorController {
         }
     }
 
+    /**
+     * SAFETY NET — believed redundant. Doc text is already synced
+     * per-keystroke by `translateAndDispatch`, and sub-annotations
+     * are synced per-effect by `flushAnnotationStateToParent`.
+     * This only fires on destroy as a belt-and-suspenders guard.
+     *
+     * Instrumented with PostHog to track whether it ever writes
+     * state that differs from what the parent already has. If
+     * telemetry shows zero meaningful flushes over ~1 month,
+     * this method and the destroy-time call should be removed.
+     */
     private flushToParent(): void {
         if (!this._editor) return;
 
-        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
-            | AnnotationType<"revision">
-            | undefined;
+        const rev = this.parentView.state.field(annotationField)[
+            this.revisionId
+        ] as AnnotationType<"revision"> | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            const blob = this._editor.state.toJSON(nestedSavedFields) as VersionState;
+            const blob = this._editor.state.toJSON(
+                nestedSavedFields,
+            ) as VersionState;
+
+            // Compare against what the parent already has to detect
+            // whether this flush actually contributes new state.
+            const existing = rev.versions[this._editorVersionIndex];
+            const parentDoc = existing?.doc ?? "";
+            const nestedDoc =
+                (blob as { doc?: string }).doc ?? "";
+            const docDiffers = parentDoc !== nestedDoc;
+            const parentAnns = JSON.stringify(
+                (existing as { annotationField?: unknown })
+                    ?.annotationField ?? null,
+            );
+            const nestedAnns = JSON.stringify(
+                (blob as { annotationField?: unknown })
+                    .annotationField ?? null,
+            );
+            const annsDiffer = parentAnns !== nestedAnns;
+
+            if (docDiffers || annsDiffer) {
+                posthog.capture(
+                    "nested_editor_flush_to_parent_meaningful",
+                    {
+                        revisionId: this.revisionId,
+                        versionIndex: this._editorVersionIndex,
+                        docDiffers,
+                        annsDiffer,
+                    },
+                );
+            }
+
             this.parentView.dispatch(
                 updateRevisionVersionState(
                     this.parentView.state,
