@@ -1,22 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <filter id="emboss" x="-25%" y="-25%" width="150%" height="150%">
-      <feDropShadow dx="5" dy="5" stdDeviation="8" flood-color="#8a90a0" flood-opacity="0.55"/>
-      <feDropShadow dx="-4" dy="-4" stdDeviation="8" flood-color="#fff" flood-opacity="0.85"/>
+      <feDropShadow dx="2.5" dy="2.5" stdDeviation="4" flood-color="#8a90a0" flood-opacity="0.55"/>
+      <feDropShadow dx="-2" dy="-2" stdDeviation="4" flood-color="#fff" flood-opacity="0.85"/>
     </filter>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#eaecf0"/>
       <stop offset="100%" stop-color="#cdd1da"/>
     </linearGradient>
     <filter id="bgShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="12" dy="12" stdDeviation="24" flood-color="#8a90a0" flood-opacity="0.5"/>
-      <feDropShadow dx="-8" dy="-8" stdDeviation="20" flood-color="#fff" flood-opacity="0.8"/>
+      <feDropShadow dx="6" dy="6" stdDeviation="12" flood-color="#8a90a0" flood-opacity="0.5"/>
+      <feDropShadow dx="-4" dy="-4" stdDeviation="10" flood-color="#fff" flood-opacity="0.8"/>
     </filter>
   </defs>
-  <!-- Neumorphic background (scaled 2x: 40->80 padding, 432->864 size, rx 80->160) -->
-  <rect x="80" y="80" width="864" height="864" rx="160" ry="160" fill="url(#bg)" filter="url(#bgShadow)"/>
-  <!-- Quill mark scaled to fit (scale 2.4->4.8, translate center 256->512, y 240->480) -->
-  <g transform="translate(512, 480) rotate(19) scale(4.8) translate(-100, -100)" filter="url(#emboss)">
+  <!-- Neumorphic background -->
+  <rect x="40" y="40" width="432" height="432" rx="80" ry="80" fill="url(#bg)" filter="url(#bgShadow)"/>
+  <!-- Quill mark scaled to fit -->
+  <g transform="translate(256, 240) rotate(19) scale(2.4) translate(-100, -100)" filter="url(#emboss)">
     <!-- Dark stroke -->
     <path d="M140,28 C128,42 110,55 90,68 C74,80 62,96 56,116 C52,132 52,150 56,168 L60,174 C60,152 64,134 72,118 C82,100 96,88 112,76 C126,65 136,50 140,36Z"
           fill="none" stroke="#8a90a0" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
