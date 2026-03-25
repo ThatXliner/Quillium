@@ -152,7 +152,7 @@ function navigateWithSwipe(targetId: string) {
                 transform: translate({tx}px, {ty}px) rotate({isHovered ? -2.5 : 0}deg);
                 transform-origin: bottom right;
                 z-index: {isHovered ? 8 : 8 - i};
-                box-shadow: -2px -2px 12px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.06);
+                box-shadow: -3px -3px 16px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.14);
                 transition: transform 180ms cubic-bezier(0.25, 1, 0.5, 1);
             "
         ></div>
@@ -186,26 +186,20 @@ function navigateWithSwipe(targetId: string) {
             "
         ></button>
 
-        <!-- Preview popover: sits just left of the hovered sheet's pulled edge -->
+        <!-- Draft title tooltip: floats above the hit strip -->
         {#if isHovered}
-            {@const POP_W = 200}
             <div
-                class="absolute pointer-events-none overflow-hidden rounded-lg bg-white
-                       border border-black/[0.07]"
+                class="absolute pointer-events-none rounded-md bg-white/90 border border-black/[0.08]
+                       flex items-center px-2 py-1 whitespace-nowrap backdrop-blur-sm"
                 style="
-                    top: {ty}px;
-                    right: calc(100% + {-tx + 8}px);
-                    width: {POP_W}px;
-                    height: 280px;
+                    top: {ty - 28}px;
+                    left: {baseX}px;
                     z-index: 50;
-                    box-shadow: -4px 4px 20px rgba(0,0,0,0.12);
-                    animation: popover-in 150ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                    animation: popover-in 120ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
                 "
             >
-                <GhostCard docId={ghost.doc.id} width={POP_W} />
-                <div class="absolute bottom-0 inset-x-0 h-10 pointer-events-none"
-                     style="background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.97));"></div>
-                <span class="absolute bottom-2 left-2 right-2 text-[9px] font-medium text-black/40 select-none truncate">
+                <span class="text-[11px] font-medium text-black/60 select-none">
                     {ghost.doc.title}
                 </span>
             </div>

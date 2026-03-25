@@ -490,33 +490,6 @@ onMount(() => {
                 {forking ? "Branching…" : "New Draft"}
             </button>
 
-            {#if isLocked || tempUnlocked}
-                <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px]
-                            bg-white/60 backdrop-blur-sm border border-black/[0.07] shadow-sm">
-                    {#if tempUnlocked}
-                        <LockOpen size={11} class="text-amber-500 shrink-0" />
-                        <span class="text-black/50 font-medium">Unlocked</span>
-                        <button
-                            onclick={() => { tempUnlocked = false; }}
-                            class="text-black/35 hover:text-black/60 transition-colors ml-0.5"
-                        >relock</button>
-                    {:else}
-                        <Lock size={11} class="text-black/30 shrink-0" />
-                        <span class="text-black/40 font-medium">Older draft</span>
-                        <span class="text-black/20 mx-0.5">·</span>
-                        <button
-                            onclick={() => { tempUnlocked = true; }}
-                            class="text-black/45 hover:text-black/70 transition-colors font-medium"
-                        >edit</button>
-                        <span class="text-black/20 mx-0.5">·</span>
-                        <button
-                            onclick={forkDraft}
-                            disabled={forking}
-                            class="text-blue-500 hover:text-blue-700 transition-colors font-medium disabled:opacity-40"
-                        >branch</button>
-                    {/if}
-                </div>
-            {/if}
         </div>
         <div class="pointer-events-auto">
             <StatusBar {...stats} titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
@@ -632,6 +605,37 @@ onMount(() => {
                     transition: background 250ms ease;
                 "
             ></div>
+
+            <!-- Lock banner: top-centered on the card -->
+            {#if isLocked || tempUnlocked}
+                <div class="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-auto
+                            flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px]
+                            bg-white/80 backdrop-blur-sm border border-black/[0.08] shadow-sm">
+                    {#if tempUnlocked}
+                        <LockOpen size={11} class="text-amber-500 shrink-0" />
+                        <span class="text-black/50 font-medium">Unlocked</span>
+                        <span class="text-black/20 mx-0.5">·</span>
+                        <button
+                            onclick={() => { tempUnlocked = false; }}
+                            class="text-black/40 hover:text-black/70 transition-colors"
+                        >relock</button>
+                    {:else}
+                        <Lock size={11} class="text-black/30 shrink-0" />
+                        <span class="text-black/40 font-medium">Older draft</span>
+                        <span class="text-black/20 mx-0.5">·</span>
+                        <button
+                            onclick={() => { tempUnlocked = true; }}
+                            class="text-black/50 hover:text-black/80 transition-colors font-medium"
+                        >edit</button>
+                        <span class="text-black/20 mx-0.5">·</span>
+                        <button
+                            onclick={forkDraft}
+                            disabled={forking}
+                            class="text-blue-500 hover:text-blue-700 transition-colors font-medium disabled:opacity-40"
+                        >branch</button>
+                    {/if}
+                </div>
+            {/if}
         </div>
     {/await}
 
