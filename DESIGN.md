@@ -8,13 +8,13 @@ A revision annotation marks a span and keeps the inactive versions off to the si
 
 ## Nested editors
 
-When you edit a revision, you use a nested editor -- the inline card or the full-screen modal. Both are viewports onto the same span in the main document. Editing in either one is editing the main document, just scoped to the revision range.
+When you edit a revision, you use a nested editor—the inline card or the full-screen modal. Both are viewports onto the same span in the main document. Editing in either one is editing the main document, just scoped to the revision range.
 
 Inline and modal are functionally identical for history and sync. The only difference is space: inline is lightweight and in-context, the modal gives more room and shows nested annotations.
 
 ## Undo is global and linear
 
-Cmd-Z anywhere -- main document, inline editor, modal -- walks back through one shared history. Typing in a nested editor, switching versions, creating versions: all one timeline. Closing the modal doesn't lose undo history. There is no "modal-only undo."
+Cmd-Z anywhere—main document, inline editor, modal—walks back through one shared history. Typing in a nested editor, switching versions, creating versions: all one timeline. Closing the modal doesn't lose undo history. There is no "modal-only undo."
 
 From the user's perspective it just works like normal undo, except some steps happen to affect text inside a revision.
 
@@ -32,7 +32,7 @@ Version pills are the primary control. Switching versions replaces the text at t
 
 ## Nested annotations (annotations inside revisions)
 
-A revision version can contain its own annotations -- comments, sub-revisions, whatever. Each nested editor has its own annotation state, independent from the parent. Annotation IDs are scoped per editor level, not global.
+A revision version can contain its own annotations—comments, sub-revisions, whatever. Each nested editor has its own annotation state, independent from the parent. Annotation IDs are scoped per editor level, not global.
 
 ### Event routing across nesting levels
 
@@ -43,7 +43,7 @@ The event bus is global but annotation IDs are per-editor, so events include `so
 When the user selects text inside a revision and invokes the annotation shortcut:
 
 - **From the sidebar** (inline card): the sub-annotation is created inline. The user sees it in the annotation panel and can expand it into a modal.
-- **From within a modal**: the sub-annotation opens immediately in its own modal (pushed onto the stack). No intermediate inline step -- you're already in a focused context, so modal-to-modal is the natural flow.
+- **From within a modal**: the sub-annotation opens immediately in its own modal (pushed onto the stack). No intermediate inline step—you're already in a focused context, so modal-to-modal is the natural flow.
 
 ### Undo across nesting levels
 
@@ -67,4 +67,4 @@ Root-level modals (`stackIndex === 0`) watch `$annotationsStore` (which reflects
 
 ## AI
 
-AI suggestions are just another annotation type. They show up in the same flow as comments and revisions, not in a separate UI. The AI sidebar has three modes -- Chat, Feedback, and Revise -- so you can switch without losing your place in the document. AutoAI can also create annotations automatically in the background based on document content.
+AI suggestions are just another annotation type. They show up in the same flow as comments and revisions, not in a separate UI. The AI sidebar has three modes—Chat, Feedback, and Revise—so you can switch without losing your place in the document. AutoAI can also create annotations automatically in the background based on document content.
