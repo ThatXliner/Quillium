@@ -38,10 +38,13 @@ const STORAGE_WARN_BYTES = 1_073_741_824; // 1 GB
 let storageBytes = $state<number | null>(null);
 // null = not yet loaded, undefined = disabled
 let snapshotRetention = $state<number | null | undefined>(undefined);
+let showStoragePanel = $state(false);
 let pruneKeepN = $state(50);
+let pruneOlderThanDays = $state(90);
 let pruning = $state(false);
 let pruneResult = $state<number | null>(null);
-let confirmingPrune = $state(false);
+let confirmingPruneKeepN = $state(false);
+let confirmingPruneOlderThan = $state(false);
 
 // Loaded state JSON for the selected snapshot — set async, consumed by $effect
 let previewStateJson = $state<string | null>(null);
@@ -109,6 +112,14 @@ async function loadSnapshots() {
     try {
         snapshots = await listSnapshots(draftId);
         await refreshStorageSize();
+        // Reconcile selection: if selected snapshot no longer exists, pick the most recent.
+        if (selectedSnapshot !== null) {
+            const stillExists = snapshots.find((s) => s.id === selectedSnapshot!.id);
+            if (!stillExists) {
+                selectedSnapshot = snapshots.length > 0 ? snapshots[0] : null;
+                if (selectedSnapshot) await selectSnapshot(selectedSnapshot);
+            }
+        }
     } finally {
         loading = false;
     }
@@ -183,9 +194,10 @@ async function commitLabelEdit(snapshot: SnapshotMeta) {
 }
 
 // ── Storage pruning ─────────────────────────────────────────────
-async function handlePruneNow() {
-    if (!confirmingPrune) {
-        confirmingPrune = true;
+async function handlePruneKeepN() {
+    if (!confirmingPruneKeepN) {
+        confirmingPruneKeepN = true;
+        confirmingPruneOlderThan = false;
         return;
     }
     const draftId = get(currentDraftId);
@@ -195,7 +207,27 @@ async function handlePruneNow() {
     try {
         const deleted = await pruneSnapshotsKeepLastN(draftId, pruneKeepN);
         pruneResult = deleted;
-        confirmingPrune = false;
+        confirmingPruneKeepN = false;
+        await loadSnapshots();
+    } finally {
+        pruning = false;
+    }
+}
+
+async function handlePruneOlderThan() {
+    if (!confirmingPruneOlderThan) {
+        confirmingPruneOlderThan = true;
+        confirmingPruneKeepN = false;
+        return;
+    }
+    const draftId = get(currentDraftId);
+    if (!draftId) return;
+    pruning = true;
+    pruneResult = null;
+    try {
+        const deleted = await pruneSnapshotsOlderThan(draftId, pruneOlderThanDays);
+        pruneResult = deleted;
+        confirmingPruneOlderThan = false;
         await loadSnapshots();
     } finally {
         pruning = false;
@@ -356,9 +388,16 @@ function handleKeydown(e: KeyboardEvent) {
                 <div class="flex items-center justify-between">
                     <h2 class="text-sm font-semibold text-black/70">Versions</h2>
                     {#if storageBytes !== null}
-                        <span class="text-xs {storageBytes >= STORAGE_WARN_BYTES ? 'text-amber-600 font-medium' : 'text-black/35'}">
+                        <button
+                            title="Manage storage"
+                            onclick={() => { showStoragePanel = !showStoragePanel; }}
+                            class="text-xs px-1.5 py-0.5 rounded transition-colors
+                                   {storageBytes >= STORAGE_WARN_BYTES
+                                       ? 'text-amber-600 font-medium hover:bg-amber-50'
+                                       : 'text-black/35 hover:text-black/60 hover:bg-black/[0.05]'}"
+                        >
                             {formatBytes(storageBytes)}
-                        </span>
+                        </button>
                     {/if}
                 </div>
 
@@ -368,54 +407,86 @@ function handleKeydown(e: KeyboardEvent) {
                     </p>
                 {/if}
 
-                <!-- Auto-retention -->
-                <div class="flex items-center justify-between gap-2">
-                    <span class="text-xs text-black/45 shrink-0">Auto-prune</span>
-                    <select
-                        value={snapshotRetention ?? "never"}
-                        onchange={handleRetentionChange}
-                        class="text-xs text-black/60 bg-black/4 hover:bg-black/[0.07]
-                               rounded-full px-2.5 pr-0 py-1 border-0 cursor-pointer appearance-none
-                               focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
-                    >
-                        <option value="never">Never</option>
-                        <option value="30">30 days</option>
-                        <option value="60">60 days</option>
-                        <option value="90">90 days</option>
-                        <option value="180">180 days</option>
-                        <option value="365">1 year</option>
-                    </select>
-                </div>
+                {#if showStoragePanel}
+                    <div class="border border-black/[0.08] rounded-lg p-3 space-y-2.5 bg-black/[0.015]">
+                        <p class="text-xs font-semibold text-black/60">Manage storage</p>
 
-                <!-- Manual prune -->
-                <div class="flex items-center justify-between gap-2">
-                    <div class="flex items-center gap-1.5">
-                        <span class="text-xs text-black/45 shrink-0">Keep last</span>
-                        <input
-                            type="number"
-                            min="1"
-                            bind:value={pruneKeepN}
-                            class="w-14 text-xs px-2 py-0.5 rounded border border-black/[0.12]
-                                   bg-white focus:outline-none focus:ring-1 focus:ring-blue-400/50"
-                        />
+                        <!-- Auto-retention -->
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs text-black/45 shrink-0">Auto-prune</span>
+                            <select
+                                value={snapshotRetention ?? "never"}
+                                onchange={handleRetentionChange}
+                                class="text-xs text-black/60 bg-black/4 hover:bg-black/[0.07]
+                                       rounded-full px-2.5 pr-0 py-1 border-0 cursor-pointer appearance-none
+                                       focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
+                            >
+                                <option value="never">Never</option>
+                                <option value="30">30 days</option>
+                                <option value="60">60 days</option>
+                                <option value="90">90 days</option>
+                                <option value="180">180 days</option>
+                                <option value="365">1 year</option>
+                            </select>
+                        </div>
+
+                        <!-- Keep last N -->
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-xs text-black/45 shrink-0">Keep last</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    bind:value={pruneKeepN}
+                                    class="w-14 text-xs px-2 py-0.5 rounded border border-black/[0.12]
+                                           bg-white focus:outline-none focus:ring-1 focus:ring-blue-400/50"
+                                />
+                            </div>
+                            <button
+                                onclick={handlePruneKeepN}
+                                disabled={pruning}
+                                class="text-xs px-2.5 py-1 rounded-full transition-colors shrink-0
+                                       disabled:opacity-40
+                                       {confirmingPruneKeepN
+                                           ? 'bg-red-500 text-white hover:bg-red-600'
+                                           : 'bg-black/[0.06] text-black/60 hover:bg-black/[0.1]'}"
+                            >
+                                {confirmingPruneKeepN ? "Confirm?" : "Prune"}
+                            </button>
+                        </div>
+
+                        <!-- Older than N days -->
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-xs text-black/45 shrink-0">Older than</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    bind:value={pruneOlderThanDays}
+                                    class="w-14 text-xs px-2 py-0.5 rounded border border-black/[0.12]
+                                           bg-white focus:outline-none focus:ring-1 focus:ring-blue-400/50"
+                                />
+                                <span class="text-xs text-black/35">days</span>
+                            </div>
+                            <button
+                                onclick={handlePruneOlderThan}
+                                disabled={pruning}
+                                class="text-xs px-2.5 py-1 rounded-full transition-colors shrink-0
+                                       disabled:opacity-40
+                                       {confirmingPruneOlderThan
+                                           ? 'bg-red-500 text-white hover:bg-red-600'
+                                           : 'bg-black/[0.06] text-black/60 hover:bg-black/[0.1]'}"
+                            >
+                                {confirmingPruneOlderThan ? "Confirm?" : "Prune"}
+                            </button>
+                        </div>
+
+                        {#if pruneResult !== null}
+                            <p class="text-[11px] text-green-700">
+                                Deleted {pruneResult} snapshot{pruneResult === 1 ? "" : "s"}.
+                            </p>
+                        {/if}
                     </div>
-                    <button
-                        onclick={handlePruneNow}
-                        disabled={pruning}
-                        class="text-xs px-2.5 py-1 rounded-full transition-colors shrink-0
-                               disabled:opacity-40
-                               {confirmingPrune
-                                   ? 'bg-red-500 text-white hover:bg-red-600'
-                                   : 'bg-black/[0.06] text-black/60 hover:bg-black/[0.1]'}"
-                    >
-                        {confirmingPrune ? "Confirm?" : "Prune now"}
-                    </button>
-                </div>
-
-                {#if pruneResult !== null}
-                    <p class="text-[11px] text-green-700">
-                        Deleted {pruneResult} snapshot{pruneResult === 1 ? "" : "s"}.
-                    </p>
                 {/if}
             </div>
 

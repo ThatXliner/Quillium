@@ -212,6 +212,9 @@ fn cmd_prune_snapshots_keep_last_n(
     draft_id: String,
     keep_n: i64,
 ) -> Result<u64, String> {
+    if keep_n < 0 {
+        return Err("keep_n must be >= 0".to_string());
+    }
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     prune_snapshots_keep_last_n(&conn, &draft_id, keep_n).map_err(|e| e.to_string())
 }
@@ -222,6 +225,9 @@ fn cmd_prune_snapshots_older_than(
     draft_id: String,
     older_than_days: i64,
 ) -> Result<u64, String> {
+    if older_than_days < 1 {
+        return Err("older_than_days must be >= 1".to_string());
+    }
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     prune_snapshots_older_than(&conn, &draft_id, older_than_days).map_err(|e| e.to_string())
 }
