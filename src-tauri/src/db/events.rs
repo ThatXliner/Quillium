@@ -245,6 +245,12 @@ pub fn restore_to_snapshot(
         params![snapshot_id, draft_id],
         |row| row.get(0),
     )?;
+    // SAFETY: `transaction()` requires `&mut Connection`, but the whole db
+    // layer takes `&Connection` because `DbState` wraps a `Mutex<Connection>`
+    // and `MutexGuard<Connection>` only derefs to a shared ref. This is the
+    // standard rusqlite workaround for that pattern. Nested transactions are
+    // impossible here because the `DbState` mutex serializes all Tauri
+    // commands — only one command can hold the connection at a time.
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "DELETE FROM events WHERE draft_id = ?1 AND id > ?2",
