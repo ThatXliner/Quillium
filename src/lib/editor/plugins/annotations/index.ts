@@ -84,7 +84,7 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
 } from "./models";
-import { canCreateNewComment, getActiveAnnotation } from "./utils";
+import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./utils";
 import {
     annotationField,
     addAnnotation,
@@ -611,6 +611,7 @@ export function createRevision({
         targetText,
         document: state.doc,
     });
+    if (!canCreateRevision(state.field(annotationField), selection)) return;
     const originalText = state.sliceDoc(selection.main.from, selection.main.to);
     const originalVersion = {
         doc: originalText,
@@ -661,6 +662,11 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 };
 // QUESTION: Should we have some sort of global annotation mutex
 const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+    if (state.selection.main.empty) return false;
+    if (!canCreateRevision(state.field(annotationField), state.selection)) {
+        annotationEventBus.emit({ type: "overlapping-revision-alert" });
+        return true;
+    }
     const sel = state.selection.main;
     const newAnnotation = createNewAnnotation(
         state.field(annotationField),

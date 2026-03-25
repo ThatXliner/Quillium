@@ -29,6 +29,7 @@ export type AnnotationEvent =
           sourceView: EditorView;
       }
     | { type: "pending-comment-alert" }
+    | { type: "overlapping-revision-alert" }
     | {
           type: "pending-nested-editor-selection";
           annotationId: number;

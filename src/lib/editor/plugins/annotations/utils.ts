@@ -170,6 +170,19 @@ export function getActiveAnnotation<T extends AnnotationType>(
 //     ?.map((x) => x.associatedAnnotation);
 // }
 
+// Returns true if the given selection does not overlap any existing revision.
+// Revisions must not overlap because their nested-editor state and version
+// switching logic assumes non-intersecting ranges — overlapping revisions
+// produce undefined behaviour.
+export function canCreateRevision(annotations: Annotations, selection: EditorSelection) {
+    const newRange = selection.main;
+    return !Object.values(annotations).some((annotation) => {
+        if (!isAnnotationOfType(annotation, "revision")) return false;
+        return annotation.selection.ranges.some(
+            (r) => newRange.from < r.to && newRange.to > r.from,
+        );
+    });
+}
 // Returns true if a new comment can be created. Enforces
 // that at most one "pending" comment (thread.length === 0)
 // exists at a time, preventing orphaned comment highlights.

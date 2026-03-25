@@ -21,7 +21,7 @@ import {
     type Annotations,
     type GenericAnnotation,
 } from "./models";
-import { canCreateNewComment, cleanRangesOf, positionIntersects } from "./utils";
+import { canCreateNewComment, canCreateRevision, cleanRangesOf, positionIntersects } from "./utils";
 
 // ── Arbitraries ─────────────────────────────────────────────────────────────
 
@@ -420,6 +420,236 @@ describe("canCreateNewComment", () => {
                 if (!hasPending) {
                     expect(canCreateNewComment(withFilled)).toBe(true);
                 }
+            }),
+        );
+    });
+});
+
+// ── RawAnnotationSchema / Zod round-trip ─────────────────────────────────────
+
+// ── canCreateRevision ────────────────────────────────────────────────────────
+
+describe("canCreateRevision", () => {
+    // ── baseline ─────────────────────────────────────────────────────────────
+
+    it("returns true for empty annotations map", () => {
+        fc.assert(
+            fc.property(arbSelection, (sel) => {
+                expect(canCreateRevision({}, sel)).toBe(true);
+            }),
+        );
+    });
+
+    it("returns true when annotations contain only comments and suggestions", () => {
+        fc.assert(
+            fc.property(arbSelection, arbSelection, arbSelection, (sel, sel2, newSel) => {
+                const commentId = 0;
+                const suggestionId = 1;
+                const annotations: Annotations = {
+                    [commentId]: makeAnnotation(commentId, sel, "comment"),
+                    [suggestionId]: makeAnnotation(suggestionId, sel2, "suggestion"),
+                };
+                expect(canCreateRevision(annotations, newSel)).toBe(true);
+            }),
+        );
+    });
+
+    // ── overlap cases ─────────────────────────────────────────────────────────
+
+    it("returns false when new selection is identical to an existing revision", () => {
+        fc.assert(
+            fc.property(fc.integer({ min: 0, max: 9_000 }), fc.integer({ min: 1, max: 1000 }), (from, len) => {
+                const sel = EditorSelection.create([EditorSelection.range(from, from + len)]);
+                const annotations: Annotations = {
+                    0: makeAnnotation(0, sel, "revision"),
+                };
+                expect(canCreateRevision(annotations, sel)).toBe(false);
+            }),
+        );
+    });
+
+    it("returns false when new range is strictly inside an existing revision", () => {
+        // existing: [10, 20], new: [12, 18]
+        const existing = EditorSelection.create([EditorSelection.range(10, 20)]);
+        const newSel = EditorSelection.create([EditorSelection.range(12, 18)]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(false);
+    });
+
+    it("returns false when existing revision is strictly inside the new range", () => {
+        // existing: [12, 18], new: [10, 20]
+        const existing = EditorSelection.create([EditorSelection.range(12, 18)]);
+        const newSel = EditorSelection.create([EditorSelection.range(10, 20)]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(false);
+    });
+
+    it("returns false when new range partially overlaps from the left", () => {
+        // existing: [10, 20], new: [5, 15]
+        const existing = EditorSelection.create([EditorSelection.range(10, 20)]);
+        const newSel = EditorSelection.create([EditorSelection.range(5, 15)]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(false);
+    });
+
+    it("returns false when new range partially overlaps from the right", () => {
+        // existing: [10, 20], new: [15, 25]
+        const existing = EditorSelection.create([EditorSelection.range(10, 20)]);
+        const newSel = EditorSelection.create([EditorSelection.range(15, 25)]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(false);
+    });
+
+    // ── adjacency: touching edges are NOT overlapping ─────────────────────────
+
+    it("returns true when new range ends exactly where existing revision starts", () => {
+        // existing: [10, 20], new: [0, 10] — touching at 10 but not overlapping
+        const existing = EditorSelection.create([EditorSelection.range(10, 20)]);
+        const newSel = EditorSelection.create([EditorSelection.range(0, 10)]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(true);
+    });
+
+    it("returns true when new range starts exactly where existing revision ends", () => {
+        // existing: [10, 20], new: [20, 30] — touching at 20 but not overlapping
+        const existing = EditorSelection.create([EditorSelection.range(10, 20)]);
+        const newSel = EditorSelection.create([EditorSelection.range(20, 30)]);
+        const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+        expect(canCreateRevision(annotations, newSel)).toBe(true);
+    });
+
+    it("returns true when new range is entirely before any existing revision", () => {
+        fc.assert(
+            fc.property(
+                fc.integer({ min: 50, max: 9_000 }),
+                fc.integer({ min: 1, max: 40 }),
+                fc.integer({ min: 1, max: 40 }),
+                (existingFrom, existingLen, newLen) => {
+                    const existing = EditorSelection.create([
+                        EditorSelection.range(existingFrom, existingFrom + existingLen),
+                    ]);
+                    // new range ends at existingFrom - 1, so strictly before
+                    const newEnd = existingFrom - 1;
+                    if (newEnd <= 0 || newEnd - newLen < 0) return;
+                    const newSel = EditorSelection.create([
+                        EditorSelection.range(newEnd - newLen, newEnd),
+                    ]);
+                    const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+                    expect(canCreateRevision(annotations, newSel)).toBe(true);
+                },
+            ),
+        );
+    });
+
+    it("returns true when new range is entirely after any existing revision", () => {
+        fc.assert(
+            fc.property(
+                fc.integer({ min: 0, max: 5_000 }),
+                fc.integer({ min: 1, max: 40 }),
+                fc.integer({ min: 1, max: 40 }),
+                (existingFrom, existingLen, newLen) => {
+                    const existingTo = existingFrom + existingLen;
+                    const existing = EditorSelection.create([
+                        EditorSelection.range(existingFrom, existingTo),
+                    ]);
+                    // new range starts at existingTo + 1, so strictly after
+                    const newStart = existingTo + 1;
+                    const newSel = EditorSelection.create([
+                        EditorSelection.range(newStart, newStart + newLen),
+                    ]);
+                    const annotations: Annotations = { 0: makeAnnotation(0, existing, "revision") };
+                    expect(canCreateRevision(annotations, newSel)).toBe(true);
+                },
+            ),
+        );
+    });
+
+    // ── multiple revisions ────────────────────────────────────────────────────
+
+    it("returns false when overlapping any one of several non-overlapping revisions", () => {
+        // Revisions at [0,10], [20,30], [40,50]. New overlaps the middle one.
+        const annotations: Annotations = {
+            0: makeAnnotation(0, EditorSelection.create([EditorSelection.range(0, 10)]), "revision"),
+            1: makeAnnotation(1, EditorSelection.create([EditorSelection.range(20, 30)]), "revision"),
+            2: makeAnnotation(2, EditorSelection.create([EditorSelection.range(40, 50)]), "revision"),
+        };
+        const overlapsMiddle = EditorSelection.create([EditorSelection.range(25, 35)]);
+        expect(canCreateRevision(annotations, overlapsMiddle)).toBe(false);
+    });
+
+    it("returns true when fitting in a gap between two existing revisions", () => {
+        // Revisions at [0,10] and [20,30]. New range [11,19] fits in gap.
+        const annotations: Annotations = {
+            0: makeAnnotation(0, EditorSelection.create([EditorSelection.range(0, 10)]), "revision"),
+            1: makeAnnotation(1, EditorSelection.create([EditorSelection.range(20, 30)]), "revision"),
+        };
+        const inGap = EditorSelection.create([EditorSelection.range(11, 19)]);
+        expect(canCreateRevision(annotations, inGap)).toBe(true);
+    });
+
+    it("returns false when spanning across two existing revisions", () => {
+        // Revisions at [0,10] and [20,30]. New range [5,25] spans both.
+        const annotations: Annotations = {
+            0: makeAnnotation(0, EditorSelection.create([EditorSelection.range(0, 10)]), "revision"),
+            1: makeAnnotation(1, EditorSelection.create([EditorSelection.range(20, 30)]), "revision"),
+        };
+        const spanning = EditorSelection.create([EditorSelection.range(5, 25)]);
+        expect(canCreateRevision(annotations, spanning)).toBe(false);
+    });
+
+    // ── comments/suggestions don't block revision creation ───────────────────
+
+    it("returns true even when a comment or suggestion occupies the same range", () => {
+        fc.assert(
+            fc.property(
+                fc.integer({ min: 0, max: 9_000 }),
+                fc.integer({ min: 1, max: 1000 }),
+                (from, len) => {
+                    const sel = EditorSelection.create([EditorSelection.range(from, from + len)]);
+                    const annotations: Annotations = {
+                        0: makeAnnotation(0, sel, "comment"),
+                        1: makeAnnotation(1, sel, "suggestion"),
+                    };
+                    expect(canCreateRevision(annotations, sel)).toBe(true);
+                },
+            ),
+        );
+    });
+
+    // ── property: non-overlap implies canCreateRevision ──────────────────────
+
+    it("returns true iff the new main range does not intersect any revision range (property)", () => {
+        const arbRange = fc
+            .tuple(arbNonNegInt, fc.integer({ min: 1, max: 500 }))
+            .map(([from, len]) => ({ from, to: from + len }));
+
+        fc.assert(
+            fc.property(
+                // one existing revision range
+                arbRange,
+                // the new selection's main range
+                arbRange,
+                ({ from: ef, to: et }, { from: nf, to: nt }) => {
+                    const existing = EditorSelection.create([EditorSelection.range(ef, et)]);
+                    const newSel = EditorSelection.create([EditorSelection.range(nf, nt)]);
+                    const annotations: Annotations = {
+                        0: makeAnnotation(0, existing, "revision"),
+                    };
+                    const overlaps = nf < et && nt > ef;
+                    expect(canCreateRevision(annotations, newSel)).toBe(!overlaps);
+                },
+            ),
+        );
+    });
+
+    // ── idempotency ───────────────────────────────────────────────────────────
+
+    it("does not mutate the annotations map", () => {
+        fc.assert(
+            fc.property(arbAnnotations, arbSelection, (annotations, sel) => {
+                const before = JSON.stringify(annotations);
+                canCreateRevision(annotations, sel);
+                expect(JSON.stringify(annotations)).toBe(before);
             }),
         );
     });
