@@ -10,9 +10,9 @@
     </linearGradient>
   </defs>
   <!-- Neumorphic background -->
-  <rect x="40" y="40" width="432" height="432" rx="80" ry="80" fill="url(#bg)"/>
-  <!-- Quill mark scaled to fit -->
-  <g transform="translate(256, 240) rotate(19) scale(2.4) translate(-100, -100)" filter="url(#emboss)">
+  <rect x="50" y="50" width="412" height="412" rx="93" ry="93" fill="url(#bg)"/>
+  <!-- Quill mark scaled to fit (412/432 = 0.9537 scale adjustment) -->
+  <g transform="translate(256, 240) rotate(19) scale(2.29) translate(-100, -100)" filter="url(#emboss)">
     <!-- Dark stroke -->
     <path d="M140,28 C128,42 110,55 90,68 C74,80 62,96 56,116 C52,132 52,150 56,168 L60,174 C60,152 64,134 72,118 C82,100 96,88 112,76 C126,65 136,50 140,36Z"
           fill="none" stroke="#8a90a0" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
