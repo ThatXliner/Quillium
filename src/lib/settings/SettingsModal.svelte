@@ -605,6 +605,40 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
+            <!-- Shortcut hints toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Shortcut hints</div>
+                    <div class="setting-desc">Show keyboard shortcut hints when text is selected</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showShortcutHints}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showShortcutHints = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.showShortcutHints}
+                    aria-label="Toggle shortcut hints"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showShortcutHints ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showShortcutHints = !draft.showShortcutHints;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showShortcutHints ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
             <div class="section-divider"></div>
 
             <!-- PRIVACY section -->

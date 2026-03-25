@@ -25,6 +25,7 @@ type AppSettings = {
     uiZoom: number;
     analyticsEnabled: boolean;
     aiEnabled: boolean;
+    showShortcutHints: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -39,6 +40,7 @@ const DEFAULTS: AppSettings = {
     uiZoom: 1,
     analyticsEnabled: true,
     aiEnabled: false,
+    showShortcutHints: true,
 };
 
 function loadSettings(): AppSettings {
