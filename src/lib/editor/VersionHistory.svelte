@@ -8,8 +8,6 @@ import { currentDraftId, editorView, lastPersistedEventId, lastSavedAt } from "$
 import {
     listDocuments,
     listDrafts,
-    createDocument,
-    createDraft,
     listSnapshots,
     labelSnapshot,
     restoreToSnapshot,
@@ -94,18 +92,10 @@ $effect(() => {
 async function bootstrapDraftId() {
     if (get(currentDraftId)) return;
     const docs = await listDocuments();
-    if (docs.length > 0) {
-        const drafts = await listDrafts(docs[0].id);
-        const active = drafts.find((d) => d.isActive) ?? drafts[0];
-        if (active) {
-            currentDraftId.set(active.id);
-            return;
-        }
-    }
-    // No document yet — create one.
-    const docId = await createDocument("Untitled");
-    const draftId = await createDraft(docId, "Draft");
-    currentDraftId.set(draftId);
+    if (docs.length === 0) return; // No document yet — show empty state.
+    const drafts = await listDrafts(docs[0].id);
+    const active = drafts.find((d) => d.isActive) ?? drafts[0];
+    if (active) currentDraftId.set(active.id);
 }
 
 onMount(async () => {
@@ -187,7 +177,13 @@ async function handleRestore() {
     }
     const draftId = get(currentDraftId);
     if (!draftId) return;
-    await restoreToSnapshot(draftId, selectedSnapshot.id);
+    try {
+        await restoreToSnapshot(draftId, selectedSnapshot.id);
+    } catch (e) {
+        confirmingRestoreId = null;
+        console.error("Restore failed:", e);
+        return;
+    }
     goToEditor();
 }
 
@@ -310,6 +306,12 @@ function formatTimeShort(ms: number): string {
 
 const groups = $derived(groupByDate(snapshots));
 
+// Use the most recent snapshot's createdAt as a fallback when lastSavedAt
+// is null (direct nav to /history before any save in this session).
+const displayLastSavedAt = $derived(
+    $lastSavedAt ?? (snapshots.length > 0 ? snapshots[0].createdAt : null),
+);
+
 function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
         if (checkpointLabel.trim()) {
@@ -349,9 +351,9 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
         <!-- Save named checkpoint -->
         <div class="flex items-center gap-2">
-            {#if $lastSavedAt}
+            {#if displayLastSavedAt}
                 <span class="text-xs text-black/35">
-                    Last saved {formatTimeShort($lastSavedAt)}
+                    Last saved {formatTimeShort(displayLastSavedAt)}
                 </span>
             {/if}
             <div class="checkpoint-shake-wrapper {checkpointAlerting ? 'checkpoint-shaking' : ''} flex items-center gap-2">

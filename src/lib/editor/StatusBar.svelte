@@ -62,7 +62,6 @@ $effect(() => {
     <SettingsModal onclose={() => (settingsOpen = false)} />
 {/if}
 
-
 <div
     id="status-bar"
     role="region"

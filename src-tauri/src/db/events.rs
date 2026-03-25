@@ -211,11 +211,12 @@ pub fn prune_snapshots_keep_last_n(conn: &Connection, draft_id: &str, keep_n: i6
 }
 
 pub fn prune_snapshots_older_than(conn: &Connection, draft_id: &str, older_than_days: i64) -> Result<u64> {
-    let offset_ms = older_than_days
+    // Overflow safety: if the multiplication or subtraction overflows,
+    // clamp to now_ms() so we never get cutoff_ms = 0 and delete everything.
+    let cutoff_ms = older_than_days
         .checked_mul(86_400_000)
         .and_then(|o| now_ms().checked_sub(o))
-        .unwrap_or(0);
-    let cutoff_ms = offset_ms;
+        .unwrap_or_else(now_ms);
     let deleted = conn.execute(
         "DELETE FROM snapshots
          WHERE draft_id = ?1

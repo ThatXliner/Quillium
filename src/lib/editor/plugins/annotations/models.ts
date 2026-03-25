@@ -95,7 +95,13 @@ type SuggestionAnnotation = BaseAnnotation & {
 };
 // Serialized EditorState blob produced by EditorState.toJSON(savedFields).
 // Stored as an opaque object — use versionText() to extract the doc string.
-export type VersionState = object & { doc: string; label?: string };
+// annotationGeneration is incremented each time sub-annotations are flushed
+// into this version, allowing identity-independent change detection.
+export type VersionState = object & {
+    doc: string;
+    label?: string;
+    annotationGeneration?: number;
+};
 
 export function versionText(version: VersionState): string {
     return version.doc;
@@ -139,6 +145,7 @@ export const VersionStateSchema = z
     .object({
         doc: z.string(),
         label: z.string().optional(),
+        annotationGeneration: z.number().optional(),
     })
     .passthrough();
 const RawBaseSchema = z.object({
