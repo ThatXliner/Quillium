@@ -102,6 +102,14 @@ const branched = $derived(tree ? hasBranching(tree) : false);
 
 const SWIPE_MS = 300;
 
+function clickOutside(node: HTMLElement, cb: () => void) {
+    function handle(e: MouseEvent) {
+        if (!node.contains(e.target as Node)) cb();
+    }
+    document.addEventListener("mousedown", handle, true);
+    return { destroy() { document.removeEventListener("mousedown", handle, true); } };
+}
+
 // Per-layer offset: how far each sheet peeks out from the one above
 // Layer 1 = closest ancestor (just behind the active card)
 const OFFSET_X = 10; // px left per layer (collapsed)
@@ -141,7 +149,8 @@ function navigateWithSwipe(targetId: string) {
             aria-hidden="true"
             class="absolute inset-0 bg-white rounded-lg pointer-events-none"
             style="
-                transform: translate({tx}px, {ty}px);
+                transform: translate({tx}px, {ty}px) rotate({isHovered ? -2.5 : 0}deg);
+                transform-origin: bottom right;
                 z-index: {isHovered ? 8 : 8 - i};
                 box-shadow: -2px -2px 12px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.06);
                 transition: transform 180ms cubic-bezier(0.25, 1, 0.5, 1);
@@ -202,7 +211,10 @@ function navigateWithSwipe(targetId: string) {
     {/each}
 
     <!-- Badge -->
-    <div class="absolute -top-7 left-0 pointer-events-auto z-20">
+    <div
+        class="absolute -top-7 left-0 pointer-events-auto z-20"
+        use:clickOutside={() => (showTree = false)}
+    >
         {#if branched}
             <button
                 onclick={() => (showTree = !showTree)}
