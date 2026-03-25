@@ -8,13 +8,9 @@
       <stop offset="0%" stop-color="#eaecf0"/>
       <stop offset="100%" stop-color="#cdd1da"/>
     </linearGradient>
-    <filter id="bgShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="6" dy="6" stdDeviation="12" flood-color="#8a90a0" flood-opacity="0.5"/>
-      <feDropShadow dx="-4" dy="-4" stdDeviation="10" flood-color="#fff" flood-opacity="0.8"/>
-    </filter>
   </defs>
   <!-- Neumorphic background -->
-  <rect x="40" y="40" width="432" height="432" rx="80" ry="80" fill="url(#bg)" filter="url(#bgShadow)"/>
+  <rect x="40" y="40" width="432" height="432" rx="80" ry="80" fill="url(#bg)"/>
   <!-- Quill mark scaled to fit -->
   <g transform="translate(256, 240) rotate(19) scale(2.4) translate(-100, -100)" filter="url(#emboss)">
     <!-- Dark stroke -->
