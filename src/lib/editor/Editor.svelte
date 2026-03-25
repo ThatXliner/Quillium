@@ -79,6 +79,16 @@ let titleSuggesting = $state(false);
 let forking = $state(false);
 // Whether the current doc has a parent (it's a branch) — used to show DraftStack.
 let hasParent = $state(false);
+// Exit transform applied to the editor card during a swipe animation.
+let cardExitTransform = $state("none");
+let cardExitDuration = $state(300);
+
+function handleSwipe(exitTransform: string, durationMs: number) {
+    cardExitDuration = durationMs;
+    cardExitTransform = exitTransform;
+    // Reset after navigation lands (the $effect on currentDocId will load the new doc)
+    setTimeout(() => { cardExitTransform = "none"; }, durationMs + 50);
+}
 // Whether the current doc has children (non-leaf) — locked by default.
 let hasChildren = $state(false);
 // Temporarily unlocked for in-place editing; resets when navigating away.
@@ -464,8 +474,8 @@ onMount(() => {
 
 <div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
-        <!-- New Draft button — absolutely pinned left, same height as the status bar (h-12) -->
-        <div class="pointer-events-auto absolute left-4 top-0">
+        <!-- Left controls: New Draft + lock status -->
+        <div class="pointer-events-auto absolute left-4 top-0 flex flex-col items-start gap-2">
             <button
                 onclick={forkDraft}
                 disabled={forking}
@@ -479,6 +489,34 @@ onMount(() => {
                 <GitBranch size={16} />
                 {forking ? "Branching…" : "New Draft"}
             </button>
+
+            {#if isLocked || tempUnlocked}
+                <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px]
+                            bg-white/60 backdrop-blur-sm border border-black/[0.07] shadow-sm">
+                    {#if tempUnlocked}
+                        <LockOpen size={11} class="text-amber-500 shrink-0" />
+                        <span class="text-black/50 font-medium">Unlocked</span>
+                        <button
+                            onclick={() => { tempUnlocked = false; }}
+                            class="text-black/35 hover:text-black/60 transition-colors ml-0.5"
+                        >relock</button>
+                    {:else}
+                        <Lock size={11} class="text-black/30 shrink-0" />
+                        <span class="text-black/40 font-medium">Older draft</span>
+                        <span class="text-black/20 mx-0.5">·</span>
+                        <button
+                            onclick={() => { tempUnlocked = true; }}
+                            class="text-black/45 hover:text-black/70 transition-colors font-medium"
+                        >edit</button>
+                        <span class="text-black/20 mx-0.5">·</span>
+                        <button
+                            onclick={forkDraft}
+                            disabled={forking}
+                            class="text-blue-500 hover:text-blue-700 transition-colors font-medium disabled:opacity-40"
+                        >branch</button>
+                    {/if}
+                </div>
+            {/if}
         </div>
         <div class="pointer-events-auto">
             <StatusBar {...stats} titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
@@ -542,6 +580,7 @@ onMount(() => {
                 <DraftStack
                     currentDocId={$currentDocumentId}
                     onNavigate={(id) => { currentDocumentId.set(id); }}
+                    onSwipe={handleSwipe}
                 />
             {/if}
 
@@ -577,44 +616,22 @@ onMount(() => {
                 id="editor-document"
                 class="relative z-10 min-h-[calc(100vh-4rem)] bg-white rounded-lg shadow-xl py-3 px-1"
                 bind:this={element}
+                style="
+                    transform: {cardExitTransform};
+                    transition: transform {cardExitDuration}ms cubic-bezier(0.4, 0, 0.8, 0.2),
+                                opacity {cardExitDuration}ms ease;
+                    opacity: {cardExitTransform === 'none' ? 1 : 0};
+                "
             ></div>
 
-            <!-- Lock overlay: dark tint + small action bar, document stays readable -->
+            <!-- Lock tint: very subtle, just enough to signal read-only -->
             <div
                 class="absolute inset-0 z-20 rounded-lg pointer-events-none"
                 style="
-                    background: rgba(0,0,0,{isLocked ? 0.18 : 0});
+                    background: rgba(0,0,0,{isLocked ? 0.06 : 0});
                     transition: background 250ms ease;
                 "
             ></div>
-            {#if isLocked}
-                <div class="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
-                    <div class="flex items-center gap-2 px-3 py-2 rounded-full
-                                bg-white/85 backdrop-blur-md border border-black/[0.08] shadow-lg">
-                        <Lock size={11} class="text-black/40 shrink-0" />
-                        <span class="text-[11px] text-black/50 font-medium">Older draft</span>
-                        <div class="w-px h-3.5 bg-black/15 shrink-0"></div>
-                        <button
-                            onclick={() => { tempUnlocked = true; }}
-                            class="flex items-center gap-1 text-[11px] font-medium text-black/55
-                                   hover:text-black/80 transition-colors px-1"
-                        >
-                            <LockOpen size={11} />
-                            Unlock to edit
-                        </button>
-                        <div class="w-px h-3.5 bg-black/15 shrink-0"></div>
-                        <button
-                            onclick={forkDraft}
-                            disabled={forking}
-                            class="flex items-center gap-1 text-[11px] font-medium text-blue-600
-                                   hover:text-blue-800 transition-colors px-1 disabled:opacity-50"
-                        >
-                            <GitBranch size={11} />
-                            {forking ? "Branching…" : "Branch from here"}
-                        </button>
-                    </div>
-                </div>
-            {/if}
         </div>
     {/await}
 
