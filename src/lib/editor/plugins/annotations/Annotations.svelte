@@ -480,7 +480,7 @@ $effect(() => {
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
-    {#if isFloating && appSettings.showShortcutHints && hasSelection && selectionY !== null && (!hasComments || !hasRevisions || isSingleWordSelection)}
+    {#if isFloating && appSettings.showShortcutHints && hasSelection && selectionY !== null && !resolvedActiveAnnotation && (!hasComments || !hasRevisions || isSingleWordSelection)}
         {@const leftPx = getAnnotationLeft()}
         {@const hintsAtTop = hasComments || hasRevisions}
         <div
