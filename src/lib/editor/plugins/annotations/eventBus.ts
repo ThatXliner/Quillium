@@ -37,7 +37,8 @@ export type AnnotationEvent =
       }
     | { type: "annotation-focus-reply"; annotationId: number }
     | { type: "annotation-add-version"; annotationId: number }
-    | { type: "annotation-enter-editor"; annotationId: number };
+    | { type: "annotation-enter-editor"; annotationId: number }
+    | { type: "revision-modal-flushed"; revisionId: number; sourceView: EditorView };
 
 type EventType = AnnotationEvent["type"];
 

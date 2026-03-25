@@ -165,8 +165,8 @@ is sized for sustained reading, not scanning.
 
 | Property | Value |
 |----------|-------|
-| Font stack | `SF Pro Text, Arial, Helvetica, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, Open Sans, Helvetica Neue, sans-serif` |
-| Size | `18px` |
+| Font stack | `Georgia, serif` (default; user-configurable in settings from a curated list including Inter, Lora, EB Garamond, iA Writer Quattro, Courier Prime, and others) |
+| Size | `18px` (default; user-configurable) |
 | Text indent | `2em` (paragraph indent, no block margin) |
 | Line treatment | CodeMirror default (generous) |
 
@@ -188,8 +188,9 @@ legibility.
    body type except for explicit formatting features (headings, etc.).
 2. **UI type stays small.** Chrome should not compete with content. Use
    `text-xs` and `text-sm` for all UI labels.
-3. **No decorative fonts.** Quillium uses system fonts everywhere. This is
-   intentional — it feels native, fast, and trusted.
+3. **No decorative fonts in chrome.** UI chrome uses the system font stack.
+   The editor body font is user-configurable from a curated list of reading
+   fonts (Georgia, Lora, EB Garamond, Inter, iA Writer Quattro, etc.).
 
 ---
 
@@ -477,7 +478,7 @@ Suggestion green (on):  #dbf9e2
 
 Typography
 ----------
-Editor body:            SF Pro Text, system-ui stack, 18px
+Editor body:            Georgia, serif (default; user-configurable), 18px
 UI labels:              text-xs / text-sm
 UI label weight:        font-semibold (titles), regular (stats)
 

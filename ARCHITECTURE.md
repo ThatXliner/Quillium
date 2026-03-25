@@ -14,7 +14,7 @@ Quillium is built as a modern web application using SvelteKit, packaged as a cro
 | Styling | Tailwind CSS v4 | Utility-first, co-located styles |
 | State management | CodeMirror StateFields + Svelte stores | Hybrid: editor state lives in CM, UI state in Svelte |
 | AI integration | Universal AI SDK | Provider-agnostic, streaming |
-| Linting/formatting | Biome | 4-space indent, 80-char line width |
+| Linting/formatting | Biome | 4-space indent, 100-char line width |
 
 ---
 
@@ -395,7 +395,7 @@ Replacing the whole buffer is the tradeoff we accepted for this reactive path: t
 
 Annotation IDs are scoped per-editor and can collide across nesting levels, so deeply nested modals must never read from `$annotationsStore` directly.
 
-On destroy, the controller flushes nested editor state into the parent revision’s version blob using the `editorVersionIndex` tracked at creation time (not `rev.activeVersionIndex`, which may have changed).
+On destroy, the controller flushes nested editor state into the parent revision’s version blob using the `editorVersionIndex` tracked at creation time (not `rev.activeVersionIndex`, which may have changed). **This flush is believed to be redundant**: `translateAndDispatch` already syncs doc text per-keystroke, and `flushAnnotationStateToParent` syncs sub-annotations per-effect, so by the time `destroy()` runs the parent should already have all state. The flush is kept as a defensive safety net and is instrumented with PostHog (`nested_editor_flush_to_parent_meaningful`) to verify. If telemetry confirms zero meaningful flushes over ~1 month, remove `flushToParent` and the destroy-time call.
 
 #### RevisionModal FSM
 

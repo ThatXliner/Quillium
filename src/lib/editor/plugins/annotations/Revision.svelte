@@ -279,7 +279,16 @@ function createNestedEditor(version: VersionState) {
 }
 
 function destroyNestedEditor() {
-    controller.destroy();
+    // If a modal is open for this revision, it holds the authoritative
+    // annotation state. Skip the inline editor's flush to avoid
+    // overwriting the modal's annotations with stale (empty) data.
+    const modalHasAuthority = $modalStack.some(
+        (entry) =>
+            entry.type === "revision" &&
+            entry.revisionId === revision.id &&
+            entry.parentView === view,
+    );
+    controller.destroy({ skipFlush: modalHasAuthority });
     activeAnnotation = undefined;
 }
 
@@ -325,6 +334,33 @@ $effect(() => {
     if (!controller.needsAnnotationRebuild(generation)) return;
     destroyNestedEditor();
     createNestedEditor(activeVersion);
+});
+
+// When a modal for this revision closes and flushes, rebuild the inline
+// editor from the flushed version blob. The event fires synchronously
+// from onDestroy after the flush dispatch, so view.state already
+// contains the flushed data. We skip the inline editor's own flush
+// (skipFlush: true) because the modal just wrote the authoritative
+// state — flushing the stale inline editor would overwrite it.
+$effect(() => {
+    return annotationEventBus.on("revision-modal-flushed", (event) => {
+        if (event.revisionId !== revision.id || event.sourceView !== view) return;
+        if (!controller.editor || !isEditorOpen) return;
+        // Read the latest version directly from the parent editor state
+        // (already updated by the modal's flush dispatch).
+        const rev = view.state.field(annotationField)[revision.id] as
+            | import("./models").Annotation<"revision">
+            | undefined;
+        if (!rev) return;
+        const latestVersion = rev.versions[rev.activeVersionIndex];
+        if (!latestVersion) return;
+        const incomingBlob = (latestVersion as { annotationField?: unknown }).annotationField;
+        if (!controller.needsAnnotationRebuild(incomingBlob)) return;
+        // Destroy WITHOUT flushing — the modal already wrote the correct state.
+        controller.destroy({ skipFlush: true });
+        activeAnnotation = undefined;
+        createNestedEditor(latestVersion);
+    });
 });
 
 // When the version doc changes externally (undo, parent typing), patch
