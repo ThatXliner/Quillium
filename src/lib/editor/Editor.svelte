@@ -61,10 +61,11 @@ import { appSettings } from "$lib/settings.svelte";
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { createModel } from "$lib/ai/provider";
 import { generateText } from "ai";
-import { Pencil, SparklesIcon, GitBranch } from "lucide-svelte";
+import { Pencil, SparklesIcon, GitBranch, Lock, LockOpen } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import DraftStack from "./DraftStack.svelte";
-import { forkDocument, getDocumentMeta } from "$lib/db";
+import { forkDocument, getDocumentMeta, getDocumentChildren } from "$lib/db";
+import { computeForkStateJson } from "./forkState";
 
 // ── Local UI state ──────────────────────────────────────────────
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -78,6 +79,24 @@ let titleSuggesting = $state(false);
 let forking = $state(false);
 // Whether the current doc has a parent (it's a branch) — used to show DraftStack.
 let hasParent = $state(false);
+// Whether the current doc has children (non-leaf) — locked by default.
+let hasChildren = $state(false);
+// Temporarily unlocked for in-place editing; resets when navigating away.
+let tempUnlocked = $state(false);
+
+const isLocked = $derived(hasChildren && !tempUnlocked);
+
+// Most recent leaf document in this draft tree — used as the "home" card.
+let latestLeafDocId = $state<string | null>(null);
+let latestLeafTitle = $state<string>("Latest draft");
+
+async function findLatestLeaf(docId: string): Promise<string> {
+    const children = await getDocumentChildren(docId);
+    if (children.length === 0) return docId;
+    // Follow the most recently created child recursively.
+    const latest = children[children.length - 1];
+    return findLatestLeaf(latest.id);
+}
 
 export function startEditingTitle() {
     titleDraft = $currentDocumentTitle;
@@ -140,34 +159,25 @@ async function forkDraft() {
     forking = true;
 
     try {
-        const eventId = get(lastPersistedEventId);
-        let snapshotStateJson: string | null = null;
-
-        if (appSettings.draftForkMode === "duplicate") {
-            // Copy current state including annotations.
-            snapshotStateJson = JSON.stringify(view.state.toJSON(savedFields));
-        } else if (appSettings.draftForkMode === "duplicate_without_annotations") {
-            // Copy doc text only — create a clean state with just the text.
-            const text = view.state.doc.toString();
-            const cleanState = EditorState.create({
-                doc: text,
-                extensions: getExtensions(getExtensionOptions),
-            });
-            snapshotStateJson = JSON.stringify(cleanState.toJSON(savedFields));
-        }
-        // "blank" leaves snapshotStateJson as null.
+        const snapshotStateJson = computeForkStateJson(
+            view.state,
+            savedFields,
+            getExtensions(getExtensionOptions),
+            appSettings.draftForkMode,
+        );
 
         const title = get(currentDocumentTitle);
-        const parentSnapshotId = eventId >= 0 ? null : null; // no snapshot ref needed for now
-        const result = await forkDocument(docId, parentSnapshotId, title, snapshotStateJson);
+        const result = await forkDocument(docId, null, title, snapshotStateJson);
 
         posthog.capture("draft_fork_created", { fork_mode: appSettings.draftForkMode });
 
-        // Navigate to the new document — Editor's currentDocumentId subscriber handles reload.
         currentDocumentId.set(result.docId);
         currentDraftId.set(result.draftId);
         currentDocumentTitle.set(title);
         hasParent = true;
+        hasChildren = false;
+        tempUnlocked = false;
+        await loadDocument(result.docId);
     } catch (e) {
         console.error("[forkDraft] failed:", e);
     } finally {
@@ -410,17 +420,39 @@ onMount(() => {
 
     // Watch for document switches (e.g. navigating from library to a new/different doc).
     // fromSave only runs once at init, so we need to reload when currentDocumentId changes.
+    async function refreshDocState(id: string) {
+        const [meta, children] = await Promise.all([
+            getDocumentMeta(id),
+            getDocumentChildren(id),
+        ]);
+        hasParent = !!meta?.parentDocumentId;
+        hasChildren = children.length > 0;
+        if (children.length > 0) {
+            // Find the tip (latest leaf) descending from this doc.
+            const leaf = await findLatestLeaf(id).catch(() => id);
+            if (leaf !== id) {
+                latestLeafDocId = leaf;
+                const leafMeta = await getDocumentMeta(leaf).catch(() => null);
+                latestLeafTitle = leafMeta?.title ?? "Latest draft";
+            } else {
+                latestLeafDocId = null;
+            }
+        } else {
+            latestLeafDocId = null;
+        }
+    }
+
     let initialised = false;
     const unsubscribe = currentDocumentId.subscribe((id) => {
         if (!initialised) {
             initialised = true;
-            // Check parent status for initial document.
-            if (id) getDocumentMeta(id).then((meta) => { hasParent = !!meta?.parentDocumentId; }).catch(() => {});
+            if (id) refreshDocState(id).catch(() => {});
             return;
         }
         if (id) {
+            tempUnlocked = false;
             fromSave.then(() => setTimeout(() => loadDocument(id)));
-            getDocumentMeta(id).then((meta) => { hasParent = !!meta?.parentDocumentId; }).catch(() => {});
+            refreshDocState(id).catch(() => {});
         }
     });
 
@@ -432,30 +464,21 @@ onMount(() => {
 
 <div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
-        <!-- New Draft button — top-left, outside the status bar -->
-        <div class="pointer-events-auto absolute left-4 top-0 flex flex-col items-start gap-2">
+        <!-- New Draft button — absolutely pinned left, same height as the status bar (h-12) -->
+        <div class="pointer-events-auto absolute left-4 top-0">
             <button
                 onclick={forkDraft}
                 disabled={forking}
                 title="New Draft — branch from current document"
                 aria-label="New Draft"
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
-                       bg-blue-500 text-white shadow-md hover:bg-blue-600 active:bg-blue-700
-                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="flex items-center gap-2 px-4 h-12 rounded-lg text-sm font-medium
+                       bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md
+                       text-blue-600 hover:bg-blue-50/60 active:bg-blue-100/60
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-white/30"
             >
-                <GitBranch size={14} />
+                <GitBranch size={16} />
                 {forking ? "Branching…" : "New Draft"}
             </button>
-            {#if hasParent || $currentDocumentId}
-                {#await fromSave then}
-                    {#if $currentDocumentId}
-                        <DraftStack
-                            currentDocId={$currentDocumentId}
-                            onNavigate={(id) => { currentDocumentId.set(id); }}
-                        />
-                    {/if}
-                {/await}
-            {/if}
         </div>
         <div class="pointer-events-auto">
             <StatusBar {...stats} titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
@@ -503,11 +526,96 @@ onMount(() => {
     </div>
 
     {#await fromSave then}
+        <!--
+            Outer wrapper shifts left when the home card is visible,
+            making room without the editor card changing width.
+        -->
         <div
-            id="editor-document"
-            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-12 mb-12 bg-white rounded-lg shadow-xl py-3 px-1"
-            bind:this={element}
-        ></div>
+            class="relative mx-auto mt-12 mb-12"
+            style="
+                width: 816px;
+                transform: translateX({latestLeafDocId ? '-92px' : '0'});
+                transition: transform 380ms cubic-bezier(0.34, 1.1, 0.64, 1);
+            "
+        >
+            {#if $currentDocumentId}
+                <DraftStack
+                    currentDocId={$currentDocumentId}
+                    onNavigate={(id) => { currentDocumentId.set(id); }}
+                />
+            {/if}
+
+            <!-- Home card: slides in from the right when browsing an older draft -->
+            <button
+                onclick={() => { if (latestLeafDocId) currentDocumentId.set(latestLeafDocId); }}
+                title="Return to latest draft"
+                aria-label="Return to latest draft"
+                class="absolute bg-white/70 rounded-lg shadow-lg cursor-pointer
+                       border border-black/[0.06] backdrop-blur-sm
+                       hover:bg-white/90 transition-colors"
+                style="
+                    top: 0; bottom: 0;
+                    left: calc(100% + 16px);
+                    width: 160px;
+                    z-index: 0;
+                    opacity: {latestLeafDocId ? 1 : 0};
+                    pointer-events: {latestLeafDocId ? 'auto' : 'none'};
+                    transform: translateX({latestLeafDocId ? '0' : '24px'});
+                    transition: transform 380ms cubic-bezier(0.34, 1.1, 0.64, 1),
+                                opacity 280ms ease;
+                "
+            >
+                <span class="absolute top-3 left-3 text-[10px] font-medium text-black/35 select-none">
+                    Latest draft
+                </span>
+                <span class="absolute bottom-3 left-3 right-3 text-[11px] font-medium text-black/50 truncate text-left select-none">
+                    {latestLeafTitle}
+                </span>
+            </button>
+
+            <div
+                id="editor-document"
+                class="relative z-10 min-h-[calc(100vh-4rem)] bg-white rounded-lg shadow-xl py-3 px-1"
+                bind:this={element}
+            ></div>
+
+            <!-- Lock overlay: dark tint + small action bar, document stays readable -->
+            <div
+                class="absolute inset-0 z-20 rounded-lg pointer-events-none"
+                style="
+                    background: rgba(0,0,0,{isLocked ? 0.18 : 0});
+                    transition: background 250ms ease;
+                "
+            ></div>
+            {#if isLocked}
+                <div class="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
+                    <div class="flex items-center gap-2 px-3 py-2 rounded-full
+                                bg-white/85 backdrop-blur-md border border-black/[0.08] shadow-lg">
+                        <Lock size={11} class="text-black/40 shrink-0" />
+                        <span class="text-[11px] text-black/50 font-medium">Older draft</span>
+                        <div class="w-px h-3.5 bg-black/15 shrink-0"></div>
+                        <button
+                            onclick={() => { tempUnlocked = true; }}
+                            class="flex items-center gap-1 text-[11px] font-medium text-black/55
+                                   hover:text-black/80 transition-colors px-1"
+                        >
+                            <LockOpen size={11} />
+                            Unlock to edit
+                        </button>
+                        <div class="w-px h-3.5 bg-black/15 shrink-0"></div>
+                        <button
+                            onclick={forkDraft}
+                            disabled={forking}
+                            class="flex items-center gap-1 text-[11px] font-medium text-blue-600
+                                   hover:text-blue-800 transition-colors px-1 disabled:opacity-50"
+                        >
+                            <GitBranch size={11} />
+                            {forking ? "Branching…" : "Branch from here"}
+                        </button>
+                    </div>
+                </div>
+            {/if}
+        </div>
     {/await}
 
     <Annotations />
