@@ -14,7 +14,7 @@ Quillium is built as a modern web application using SvelteKit, packaged as a cro
 | Styling | Tailwind CSS v4 | Utility-first, co-located styles |
 | State management | CodeMirror StateFields + Svelte stores | Hybrid: editor state lives in CM, UI state in Svelte |
 | AI integration | Universal AI SDK | Provider-agnostic, streaming |
-| Linting/formatting | Biome | 4-space indent, 80-char line width |
+| Linting/formatting | Biome | 4-space indent, 100-char line width |
 
 ---
 
