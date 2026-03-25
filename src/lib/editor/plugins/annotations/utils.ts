@@ -175,11 +175,12 @@ export function getActiveAnnotation<T extends AnnotationType>(
 // switching logic assumes non-intersecting ranges — overlapping revisions
 // produce undefined behaviour.
 export function canCreateRevision(annotations: Annotations, selection: EditorSelection) {
-    const newRange = selection.main;
     return !Object.values(annotations).some((annotation) => {
         if (!isAnnotationOfType(annotation, "revision")) return false;
-        return annotation.selection.ranges.some(
-            (r) => newRange.from < r.to && newRange.to > r.from,
+        return selection.ranges.some((newRange) =>
+            annotation.selection.ranges.some(
+                (r) => newRange.from < r.to && newRange.to > r.from,
+            ),
         );
     });
 }
