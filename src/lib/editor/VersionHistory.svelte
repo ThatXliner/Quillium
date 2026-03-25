@@ -36,6 +36,7 @@ let editingLabelId = $state<number | null>(null);
 let editingLabelText = $state("");
 let checkpointLabel = $state("");
 let savingCheckpoint = $state(false);
+let checkpointAlerting = $state(false);
 
 // ── Storage management ──────────────────────────────────────────
 const STORAGE_WARN_BYTES = 1_073_741_824; // 1 GB
@@ -311,8 +312,11 @@ const groups = $derived(groupByDate(snapshots));
 
 function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+        if (checkpointLabel.trim()) {
+            checkpointAlerting = true;
+            setTimeout(() => { checkpointAlerting = false; }, 450);
+            return;
+        }
         goToEditor();
     }
 }
@@ -350,25 +354,30 @@ function handleKeydown(e: KeyboardEvent) {
                     Last saved {formatTimeShort($lastSavedAt)}
                 </span>
             {/if}
-            <input
-                type="text"
-                bind:value={checkpointLabel}
-                placeholder="Name this version…"
-                onkeydown={(e) => e.key === "Enter" && saveCheckpoint()}
-                class="text-sm px-3 py-1.5 rounded-lg border border-black/[0.12] bg-white
-                       placeholder:text-black/30 focus:outline-none focus:ring-2
-                       focus:ring-blue-400/40 w-48"
-            />
-            <button
-                onclick={saveCheckpoint}
-                disabled={savingCheckpoint || !checkpointLabel.trim() || !$editorView || $lastPersistedEventId < 0}
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-                       bg-blue-500 text-white hover:bg-blue-600 transition-colors
-                       disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-                <BookmarkPlus size={13} />
-                Save
-            </button>
+            <div class="checkpoint-shake-wrapper {checkpointAlerting ? 'checkpoint-shaking' : ''} flex items-center gap-2">
+                <input
+                    type="text"
+                    bind:value={checkpointLabel}
+                    placeholder="Name this version…"
+                    onkeydown={(e) => e.key === "Enter" && saveCheckpoint()}
+                    class="text-sm px-3 py-1.5 rounded-lg border bg-white
+                           placeholder:text-black/30 focus:outline-none focus:ring-2
+                           focus:ring-blue-400/40 w-48 transition-colors
+                           {checkpointAlerting
+                               ? 'border-red-400 ring-2 ring-red-300/50'
+                               : 'border-black/[0.12]'}"
+                />
+                <button
+                    onclick={saveCheckpoint}
+                    disabled={savingCheckpoint || !checkpointLabel.trim() || !$editorView || $lastPersistedEventId < 0}
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                           bg-blue-500 text-white hover:bg-blue-600 transition-colors
+                           disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    <BookmarkPlus size={13} />
+                    Save
+                </button>
+            </div>
         </div>
         {#if selectedSnapshot}
             <div class="w-px h-5 bg-black/15"></div>
@@ -628,6 +637,26 @@ function handleKeydown(e: KeyboardEvent) {
 </div>
 
 <style>
+    @keyframes checkpoint-shake {
+        0%   { transform: translateX(0); }
+        10%  { transform: translateX(-5px); }
+        25%  { transform: translateX(5px); }
+        40%  { transform: translateX(-4px); }
+        55%  { transform: translateX(4px); }
+        70%  { transform: translateX(-2px); }
+        85%  { transform: translateX(2px); }
+        100% { transform: translateX(0); }
+    }
+
+    .checkpoint-shake-wrapper {
+        display: flex;
+        align-items: center;
+    }
+
+    .checkpoint-shaking {
+        animation: checkpoint-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
     :global(.version-preview .cm-editor) {
         pointer-events: none;
     }
