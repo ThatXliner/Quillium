@@ -26,6 +26,13 @@ type AppSettings = {
     analyticsEnabled: boolean;
     aiEnabled: boolean;
     showShortcutHints: boolean;
+    /**
+     * Controls what content a new draft starts with when "New Draft" is pressed.
+     * - "duplicate": copy the current document content and annotations
+     * - "duplicate_without_annotations": copy content only, drop annotations
+     * - "blank": start with an empty document
+     */
+    draftForkMode: "duplicate" | "duplicate_without_annotations" | "blank";
 };
 
 const DEFAULTS: AppSettings = {
@@ -41,6 +48,7 @@ const DEFAULTS: AppSettings = {
     analyticsEnabled: true,
     aiEnabled: false,
     showShortcutHints: true,
+    draftForkMode: "duplicate",
 };
 
 function loadSettings(): AppSettings {

@@ -16,6 +16,15 @@ pub struct DocumentMeta {
     pub preview_text: String,
     pub tags: String,
     pub deleted_at: Option<i64>,
+    pub parent_document_id: Option<String>,
+    pub branched_from_snapshot_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForkResult {
+    pub doc_id: String,
+    pub draft_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

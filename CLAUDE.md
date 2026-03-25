@@ -63,6 +63,7 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 - Dictionary & thesaurus popover (§ Dictionary & Thesaurus)
 - Settings: app preferences, font system, why localStorage vs SQLite (§ Settings)
 - Error guard and crash recovery: suspicious change detection, backups, restore (§ Error guard and crash recovery)
+- Draft branching: fork model, DraftStack UI, draftForkMode setting, data model (§ Draft branching)
 - Library and document management: data model, navigation, trash (§ Library and document management)
 - Comment modals, revision modal keyguard, keychain, PostHog, auto-updater
 - Common flows: creating comments/revisions, version switching, nested editing, undo (§ Common Flows)

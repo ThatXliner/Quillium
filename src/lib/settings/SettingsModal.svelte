@@ -639,6 +639,28 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
+            <!-- New Draft behavior -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">New Draft content</div>
+                    <div class="setting-desc">What to start with when you create a new draft branch</div>
+                </div>
+                <select
+                    value={draft.draftForkMode}
+                    onchange={(e) => {
+                        draft.draftForkMode = (e.target as HTMLSelectElement).value as typeof draft.draftForkMode;
+                        handleChange();
+                    }}
+                    class="text-sm text-black/70 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg
+                           px-3 py-1.5 border-0 cursor-pointer focus:outline-none focus:ring-2
+                           focus:ring-blue-400/40 transition-colors shrink-0"
+                >
+                    <option value="duplicate">Copy content &amp; annotations</option>
+                    <option value="duplicate_without_annotations">Copy content only</option>
+                    <option value="blank">Blank document</option>
+                </select>
+            </div>
+
             <div class="section-divider"></div>
 
             <!-- PRIVACY section -->

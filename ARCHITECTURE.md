@@ -969,9 +969,58 @@ Backups must survive the crash that triggered them. SQLite writes go through Tau
 
 ---
 
-## Library and document management
+## Draft branching
+
+Quillium supports a draft branching system that models the familiar `draft1.docx / draft2.docx` workflow natively, without disrupting the linear version history.
+
+### Mental model
+
+**Version history is strictly linear.** It records everything: prose edits, draft creation events, branching actions. It is a full audit log of a document's life.
+
+**Drafts form a tree.** Each document can optionally be a branch of another document. The normal "New Draft" workflow creates a linear chain (`draft 1 → draft 2 → draft 3`). Branching off an older draft creates a tree. Writers never need to think about this — the pile-of-papers UI handles it naturally.
+
+**The active draft** is always whichever document was most recently created or switched to. No ambiguity.
+
+**No merging or promoting.** The writer simply picks the leaf they want to keep writing from. The full tree persists as their work history.
 
 ### Data model
+
+Two new columns on the `documents` table:
+- `parent_document_id TEXT DEFAULT NULL` — set when this document was forked from another. References `documents(id)` with `ON DELETE SET NULL`.
+- `branched_from_snapshot_id INTEGER DEFAULT NULL` — the snapshot in the parent document at the time of the fork (informational; used for display).
+
+A root document has both as `NULL`. A draft branch has `parent_document_id` set. Existing databases are migrated in `open_db()` via `ALTER TABLE`.
+
+### Forking (`fork_document` Rust command)
+
+`cmd_fork_document(parentDocId, parentSnapshotId, title, snapshotStateJson)`:
+1. Creates a new document row with `parent_document_id` and `branched_from_snapshot_id` set.
+2. Creates an initial draft for it.
+3. If `snapshotStateJson` is provided, inserts an initial snapshot labelled "Branch start" so the editor loads the correct content immediately.
+
+The fork mode is controlled by `appSettings.draftForkMode` (persisted to `localStorage`):
+- `"duplicate"` — copies the current `EditorState` (text + annotations)
+- `"duplicate_without_annotations"` — copies text only, creates a clean state
+- `"blank"` — starts with an empty document
+
+### DraftStack UI (`editor/DraftStack.svelte`)
+
+Mounted inside `Editor.svelte` when the current document has a parent or children. Shows:
+- **Stack view** (default): layered paper edges peeking behind the editor card, one per ancestor. Clicking an edge navigates to that draft.
+- **Tree view**: shown automatically when branching has occurred (any node has >1 child). Renders the full parent/child graph as an inline tree.
+
+The toggle between stack and tree view is a small button that appears when branching is detected.
+
+Pure tree logic is extracted to `editor/draftTree.ts` (`hasBranching`, `linearChain`, `treeSize`) so it can be unit-tested without a DOM.
+
+### "New Draft" button
+
+A blue "New Draft" button (with `GitBranch` icon) is mounted at the top-left of the editor, outside the status bar pill. Pressing it:
+1. Serialises current editor state according to `draftForkMode`.
+2. Calls `forkDocument(currentDocId, ...)`.
+3. Sets `currentDocumentId` to the new doc — the existing `currentDocumentId` subscriber in `Editor.svelte` reloads the editor automatically.
+
+### Library and document management
 
 The library uses a `documents` + `drafts` schema in SQLite:
 - Each document has metadata (title, word count, preview text, tags, timestamps, `deletedAt` for soft-delete)

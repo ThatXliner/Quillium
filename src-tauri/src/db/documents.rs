@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use super::{DocumentMeta, DraftMeta};
+use super::{DocumentMeta, DraftMeta, ForkResult};
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -13,7 +13,8 @@ fn now_ms() -> i64 {
 
 pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
+                parent_document_id, branched_from_snapshot_id
          FROM documents WHERE deleted_at IS NULL ORDER BY updated_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
@@ -26,6 +27,8 @@ pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
             preview_text: row.get(5)?,
             tags: row.get(6)?,
             deleted_at: row.get(7)?,
+            parent_document_id: row.get(8)?,
+            branched_from_snapshot_id: row.get(9)?,
         })
     })?;
     rows.collect()
@@ -33,7 +36,8 @@ pub fn list_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
 
 pub fn list_trashed_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
+                parent_document_id, branched_from_snapshot_id
          FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
@@ -46,6 +50,8 @@ pub fn list_trashed_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
             preview_text: row.get(5)?,
             tags: row.get(6)?,
             deleted_at: row.get(7)?,
+            parent_document_id: row.get(8)?,
+            branched_from_snapshot_id: row.get(9)?,
         })
     })?;
     rows.collect()
@@ -53,7 +59,8 @@ pub fn list_trashed_documents(conn: &Connection) -> Result<Vec<DocumentMeta>> {
 
 pub fn get_document(conn: &Connection, id: &str) -> Result<Option<DocumentMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
+                parent_document_id, branched_from_snapshot_id
          FROM documents WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| {
@@ -66,6 +73,8 @@ pub fn get_document(conn: &Connection, id: &str) -> Result<Option<DocumentMeta>>
             preview_text: row.get(5)?,
             tags: row.get(6)?,
             deleted_at: row.get(7)?,
+            parent_document_id: row.get(8)?,
+            branched_from_snapshot_id: row.get(9)?,
         })
     })?;
     match rows.next() {
@@ -78,8 +87,9 @@ pub fn create_document(conn: &Connection, title: &str) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
     conn.execute(
-        "INSERT INTO documents (id, title, created_at, updated_at, word_count, preview_text, tags)
-         VALUES (?1, ?2, ?3, ?4, 0, '', '[]')",
+        "INSERT INTO documents (id, title, created_at, updated_at, word_count, preview_text, tags,
+                                parent_document_id, branched_from_snapshot_id)
+         VALUES (?1, ?2, ?3, ?4, 0, '', '[]', NULL, NULL)",
         params![id, title, now, now],
     )?;
     Ok(id)
@@ -166,6 +176,75 @@ pub fn purge_expired_trash(conn: &Connection, days: i64) -> Result<u64> {
         params![cutoff],
     )?;
     Ok(count as u64)
+}
+
+/// Returns the list of documents that have `parent_document_id = doc_id`.
+pub fn get_document_children(conn: &Connection, doc_id: &str) -> Result<Vec<DocumentMeta>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, created_at, updated_at, word_count, preview_text, tags, deleted_at,
+                parent_document_id, branched_from_snapshot_id
+         FROM documents WHERE parent_document_id = ?1 AND deleted_at IS NULL
+         ORDER BY created_at ASC",
+    )?;
+    let rows = stmt.query_map(params![doc_id], |row| {
+        Ok(DocumentMeta {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            created_at: row.get(2)?,
+            updated_at: row.get(3)?,
+            word_count: row.get(4)?,
+            preview_text: row.get(5)?,
+            tags: row.get(6)?,
+            deleted_at: row.get(7)?,
+            parent_document_id: row.get(8)?,
+            branched_from_snapshot_id: row.get(9)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Creates a new document as a child of `parent_doc_id`, seeded with the
+/// content of `snapshot_state_json` (may be None for a blank draft).
+/// Also creates an initial draft and snapshot for the new document.
+/// Returns the new document id and new draft id.
+pub fn fork_document(
+    conn: &Connection,
+    parent_doc_id: &str,
+    parent_snapshot_id: Option<i64>,
+    title: &str,
+    snapshot_state_json: Option<&str>,
+) -> Result<ForkResult> {
+    let doc_id = Uuid::new_v4().to_string();
+    let draft_id = Uuid::new_v4().to_string();
+    let now = now_ms();
+
+    let tx = conn.unchecked_transaction()?;
+
+    tx.execute(
+        "INSERT INTO documents (id, title, created_at, updated_at, word_count, preview_text, tags,
+                                parent_document_id, branched_from_snapshot_id)
+         VALUES (?1, ?2, ?3, ?4, 0, '', '[]', ?5, ?6)",
+        params![doc_id, title, now, now, parent_doc_id, parent_snapshot_id],
+    )?;
+
+    tx.execute(
+        "INSERT INTO drafts (id, document_id, label, created_at, is_active)
+         VALUES (?1, ?2, 'Draft', ?3, 1)",
+        params![draft_id, doc_id, now],
+    )?;
+
+    // Seed an initial snapshot if we have state to copy.
+    if let Some(state_json) = snapshot_state_json {
+        tx.execute(
+            "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
+             VALUES (?1, -1, ?2, ?3, 'Branch start')",
+            params![draft_id, state_json, now],
+        )?;
+    }
+
+    tx.commit()?;
+
+    Ok(ForkResult { doc_id, draft_id })
 }
 
 pub fn list_drafts(conn: &Connection, doc_id: &str) -> Result<Vec<DraftMeta>> {

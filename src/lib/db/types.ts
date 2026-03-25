@@ -16,6 +16,15 @@ export type DocumentMeta = {
     /** JSON-encoded string array, e.g. '["fiction","novel"]' */
     tags: string;
     deletedAt: number | null;
+    /** Set when this document is a draft branch of another document. */
+    parentDocumentId: string | null;
+    /** The snapshot in the parent document that this branch forked from. */
+    branchedFromSnapshotId: number | null;
+};
+
+export type ForkResult = {
+    docId: string;
+    draftId: string;
 };
 
 export type DraftMeta = {

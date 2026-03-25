@@ -61,8 +61,10 @@ import { appSettings } from "$lib/settings.svelte";
 import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
 import { createModel } from "$lib/ai/provider";
 import { generateText } from "ai";
-import { Pencil, SparklesIcon } from "lucide-svelte";
+import { Pencil, SparklesIcon, GitBranch } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import DraftStack from "./DraftStack.svelte";
+import { forkDocument, getDocumentMeta } from "$lib/db";
 
 // ── Local UI state ──────────────────────────────────────────────
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -73,6 +75,9 @@ let titleEditing = $state(false);
 let titleInputEl = $state<HTMLInputElement | undefined>();
 let titleDraft = $state("");
 let titleSuggesting = $state(false);
+let forking = $state(false);
+// Whether the current doc has a parent (it's a branch) — used to show DraftStack.
+let hasParent = $state(false);
 
 export function startEditingTitle() {
     titleDraft = $currentDocumentTitle;
@@ -124,6 +129,52 @@ async function commitTitle() {
         );
     }
 }
+/**
+ * Creates a new draft document branched from the current document,
+ * seeded according to the user's draftForkMode setting, then navigates to it.
+ */
+async function forkDraft() {
+    const docId = get(currentDocumentId);
+    const view = $editorView;
+    if (!docId || !view || forking) return;
+    forking = true;
+
+    try {
+        const eventId = get(lastPersistedEventId);
+        let snapshotStateJson: string | null = null;
+
+        if (appSettings.draftForkMode === "duplicate") {
+            // Copy current state including annotations.
+            snapshotStateJson = JSON.stringify(view.state.toJSON(savedFields));
+        } else if (appSettings.draftForkMode === "duplicate_without_annotations") {
+            // Copy doc text only — create a clean state with just the text.
+            const text = view.state.doc.toString();
+            const cleanState = EditorState.create({
+                doc: text,
+                extensions: getExtensions(getExtensionOptions),
+            });
+            snapshotStateJson = JSON.stringify(cleanState.toJSON(savedFields));
+        }
+        // "blank" leaves snapshotStateJson as null.
+
+        const title = get(currentDocumentTitle);
+        const parentSnapshotId = eventId >= 0 ? null : null; // no snapshot ref needed for now
+        const result = await forkDocument(docId, parentSnapshotId, title, snapshotStateJson);
+
+        posthog.capture("draft_fork_created", { fork_mode: appSettings.draftForkMode });
+
+        // Navigate to the new document — Editor's currentDocumentId subscriber handles reload.
+        currentDocumentId.set(result.docId);
+        currentDraftId.set(result.draftId);
+        currentDocumentTitle.set(title);
+        hasParent = true;
+    } catch (e) {
+        console.error("[forkDraft] failed:", e);
+    } finally {
+        forking = false;
+    }
+}
+
 let stats = $state<{
     words: number;
     chars: number;
@@ -363,10 +414,13 @@ onMount(() => {
     const unsubscribe = currentDocumentId.subscribe((id) => {
         if (!initialised) {
             initialised = true;
-            return; // skip the initial value — fromSave already handles it
+            // Check parent status for initial document.
+            if (id) getDocumentMeta(id).then((meta) => { hasParent = !!meta?.parentDocumentId; }).catch(() => {});
+            return;
         }
         if (id) {
             fromSave.then(() => setTimeout(() => loadDocument(id)));
+            getDocumentMeta(id).then((meta) => { hasParent = !!meta?.parentDocumentId; }).catch(() => {});
         }
     });
 
@@ -378,6 +432,31 @@ onMount(() => {
 
 <div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        <!-- New Draft button — top-left, outside the status bar -->
+        <div class="pointer-events-auto absolute left-4 top-0 flex flex-col items-start gap-2">
+            <button
+                onclick={forkDraft}
+                disabled={forking}
+                title="New Draft — branch from current document"
+                aria-label="New Draft"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
+                       bg-blue-500 text-white shadow-md hover:bg-blue-600 active:bg-blue-700
+                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <GitBranch size={14} />
+                {forking ? "Branching…" : "New Draft"}
+            </button>
+            {#if hasParent || $currentDocumentId}
+                {#await fromSave then}
+                    {#if $currentDocumentId}
+                        <DraftStack
+                            currentDocId={$currentDocumentId}
+                            onNavigate={(id) => { currentDocumentId.set(id); }}
+                        />
+                    {/if}
+                {/await}
+            {/if}
+        </div>
         <div class="pointer-events-auto">
             <StatusBar {...stats} titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
                 {#snippet children()}

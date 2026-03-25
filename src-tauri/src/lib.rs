@@ -6,14 +6,15 @@ use tauri::Manager;
 
 use db::{
     documents::{
-        create_document, create_draft, delete_document, get_document, get_trash_retention,
-        list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
-        set_trash_retention, trash_document, update_document_meta,
+        create_document, create_draft, delete_document, fork_document, get_document,
+        get_document_children, get_trash_retention, list_documents, list_drafts,
+        list_trashed_documents, purge_expired_trash, restore_document, set_trash_retention,
+        trash_document, update_document_meta,
     },
     events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state, get_snapshot_storage_size, prune_snapshots_keep_last_n, prune_snapshots_older_than, get_snapshot_retention, set_snapshot_retention},
     load::load_document_state,
     schema::open_db,
-    AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
+    AppendEventResult, DocumentMeta, DraftMeta, ForkResult, LoadResult, SnapshotMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 
@@ -94,6 +95,39 @@ fn cmd_create_draft(
 ) -> Result<String, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     create_draft(&conn, &doc_id, &label).map_err(|e| e.to_string())
+}
+
+/// Returns all non-deleted documents that are direct children of `doc_id`.
+#[tauri::command]
+fn cmd_get_document_children(
+    state: tauri::State<DbState>,
+    doc_id: String,
+) -> Result<Vec<DocumentMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_document_children(&conn, &doc_id).map_err(|e| e.to_string())
+}
+
+/// Creates a new document that branches from `parent_doc_id`.
+/// `snapshot_state_json` is the serialised EditorState to seed the new draft with
+/// (pass None for a blank draft).
+/// `parent_snapshot_id` records which snapshot this fork originated from (may be None).
+#[tauri::command]
+fn cmd_fork_document(
+    state: tauri::State<DbState>,
+    parent_doc_id: String,
+    parent_snapshot_id: Option<i64>,
+    title: String,
+    snapshot_state_json: Option<String>,
+) -> Result<ForkResult, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    fork_document(
+        &conn,
+        &parent_doc_id,
+        parent_snapshot_id,
+        &title,
+        snapshot_state_json.as_deref(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 // ── Event/snapshot commands ───────────────────────────────────────
@@ -351,6 +385,8 @@ pub fn run() {
             cmd_list_trashed_documents,
             cmd_list_drafts,
             cmd_create_draft,
+            cmd_get_document_children,
+            cmd_fork_document,
             cmd_append_event,
             cmd_create_snapshot,
             cmd_load_document_state,

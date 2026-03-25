@@ -7,7 +7,7 @@
  * @tauri-apps/plugin-sql directly.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta } from "./types";
+import type { AppendEventResult, DocumentMeta, DraftMeta, ForkResult, LoadResult, SnapshotMeta } from "./types";
 
 // ── Reset ─────────────────────────────────────────────────────────
 
@@ -91,6 +91,32 @@ export async function listDrafts(docId: string): Promise<DraftMeta[]> {
 
 export async function createDraft(docId: string, label: string): Promise<string> {
     return invoke<string>("cmd_create_draft", { docId, label });
+}
+
+// ── Draft branching ───────────────────────────────────────────────
+
+/** Returns all non-deleted documents that are direct children of docId. */
+export async function getDocumentChildren(docId: string): Promise<DocumentMeta[]> {
+    return invoke<DocumentMeta[]>("cmd_get_document_children", { docId });
+}
+
+/**
+ * Creates a new document as a child of parentDocId.
+ * Pass snapshotStateJson to seed the new draft from an existing snapshot,
+ * or null for a blank draft.
+ */
+export async function forkDocument(
+    parentDocId: string,
+    parentSnapshotId: number | null,
+    title: string,
+    snapshotStateJson: string | null,
+): Promise<ForkResult> {
+    return invoke<ForkResult>("cmd_fork_document", {
+        parentDocId,
+        parentSnapshotId,
+        title,
+        snapshotStateJson,
+    });
 }
 
 // ── Events & snapshots ────────────────────────────────────────────
