@@ -230,7 +230,8 @@ export type ModalEntry =
           parentView: EditorView;
           label: string;
           pendingNestedCommand?: PendingNestedCommand;
-      };
+      }
+    | { type: "comment"; commentId: number; parentView: EditorView; label: string };
 
 // ── Modal stack store ────────────────────────────────────────
 
@@ -290,13 +291,17 @@ export const modalStack = {
                         existing.revisionId === entry.revisionId) ||
                         (existing.type === "diff" &&
                             entry.type === "diff" &&
-                            existing.suggestionId === entry.suggestionId)),
+                            existing.suggestionId === entry.suggestionId) ||
+                        (existing.type === "comment" &&
+                            entry.type === "comment" &&
+                            existing.commentId === entry.commentId)),
             );
             if (isDuplicate) {
                 posthog.capture("modal_stack_duplicate_push", {
                     entry_type: entry.type,
                     revision_id: entry.type === "revision" ? entry.revisionId : undefined,
                     suggestion_id: entry.type === "diff" ? entry.suggestionId : undefined,
+                    comment_id: entry.type === "comment" ? entry.commentId : undefined,
                 });
                 return s;
             }

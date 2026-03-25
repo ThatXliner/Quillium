@@ -14,7 +14,9 @@
       {
         "title": "quillium",
         "width": 1373,
-        "height": 1170
+        "height": 1170,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {

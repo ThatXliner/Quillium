@@ -198,6 +198,7 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
             if (sel.empty) return false;
             annotationEventBus.emit({
                 type: "nested-annotation-create",
+                sourceView: parentView,
                 command: {
                     revisionId,
                     type,

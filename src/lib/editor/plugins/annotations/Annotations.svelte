@@ -46,6 +46,7 @@ import Suggestion from "./Suggestion.svelte";
 import type { Action } from "svelte/action";
 import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -479,11 +480,12 @@ $effect(() => {
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
-    {#if isFloating && hasSelection && selectionY !== null && (!hasComments || !hasRevisions || isSingleWordSelection)}
+    {#if isFloating && appSettings.showShortcutHints && hasSelection && selectionY !== null && !resolvedActiveAnnotation && (!hasComments || !hasRevisions || isSingleWordSelection)}
         {@const leftPx = getAnnotationLeft()}
+        {@const hintsAtTop = hasComments || hasRevisions}
         <div
-            class="fixed z-40 flex flex-col gap-2 pointer-events-none -translate-y-1/2"
-            style="left: {leftPx}px; top: {selectionY}px"
+            class="fixed z-40 flex flex-col gap-2"
+            style="{hintsAtTop ? 'left: 56px; top: 80px;' : `left: ${leftPx}px; top: ${selectionY}px; transform: translateY(-50%);`}"
         >
             {#if !hasComments}
                 <div class="flex items-center gap-2 text-black/40">
@@ -503,6 +505,14 @@ $effect(() => {
                     <span class="text-sm font-medium text-black/35">dictionary</span>
                 </div>
             {/if}
+            <button
+                type="button"
+                class="mt-1 text-[11px] text-black/30 hover:text-black/50 transition-colors text-left cursor-pointer"
+                onclick={() => {
+                    appSettings.showShortcutHints = false;
+                    persistSettings();
+                }}
+            >Hide hints</button>
         </div>
     {/if}
     {#if isFloating}

@@ -167,6 +167,11 @@ test.describe("dictionary popover", () => {
             apiKey: "test-key",
             settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
         });
+        // Set the has-api-key flag so hasApiKey() returns true immediately
+        // without waiting for the lazy keychain load.
+        await page.addInitScript(() => {
+            localStorage.setItem("quillium-has-api-key", "1");
+        });
         await q.init();
 
         await openDictionaryOn(q, "helpful");

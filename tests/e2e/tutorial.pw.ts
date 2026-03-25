@@ -97,7 +97,7 @@ test.describe("tutorial interactive revision detection", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true }),
+                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, aiEnabled: true }),
             );
         });
         await page.goto("/");

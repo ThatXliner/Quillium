@@ -20,7 +20,7 @@ import type { NestedEditorCommand } from "$lib/stores";
 
 export type AnnotationEvent =
     | { type: "revision-boundary-nudge"; revisionId: number }
-    | { type: "nested-annotation-create"; command: NestedEditorCommand }
+    | { type: "nested-annotation-create"; command: NestedEditorCommand; sourceView: EditorView }
     | { type: "revision-request-modal"; command: NestedEditorCommand }
     | {
           type: "revision-focus-request";

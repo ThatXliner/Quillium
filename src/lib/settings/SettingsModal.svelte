@@ -18,6 +18,7 @@ import { appSettings, applySettings, persistSettings } from "$lib/settings.svelt
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { syncAnalyticsOptOut } from "$lib/posthog";
+import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
 
@@ -172,6 +173,18 @@ function save() {
     if (analyticsChanged) {
         syncAnalyticsOptOut(draft.analyticsEnabled);
     }
+    posthog.capture("settings_saved", {
+        ai_enabled: draft.aiEnabled,
+        select_text_in_nested_editor: draft.selectTextInNestedEditor,
+        show_nested_editor: draft.showNestedEditor,
+        atomic_revisions: draft.atomicRevisions,
+        doc_font_family: draft.docFontFamily,
+        doc_font_size: draft.docFontSize,
+        ui_font_family: draft.uiFontFamily,
+        title_visibility: draft.titleVisibility,
+        ui_zoom: draft.uiZoom,
+        custom_quick_actions_count: draft.customQuickActions.length,
+    });
     onclose();
 }
 
@@ -587,6 +600,40 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
                             transition-transform duration-200
                             {draft.selectTextInNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <!-- Shortcut hints toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Shortcut hints</div>
+                    <div class="setting-desc">Show keyboard shortcut hints when text is selected</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showShortcutHints}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showShortcutHints = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.showShortcutHints}
+                    aria-label="Toggle shortcut hints"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showShortcutHints ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showShortcutHints = !draft.showShortcutHints;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showShortcutHints ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
                 </div>

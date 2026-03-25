@@ -9,17 +9,15 @@
  *   bun run screenshots --no-server  # use already-running server on :1420 (tauri dev)
  *
  * Output: screenshots/
- *   01-editor.png           — clean editor with the AI sidebar pill
- *   02-feedback.png         — feedback panel open with quick-action chips
+ *   01-editor.png           — clean editor, focused writing environment
  *   03-annotations.png      — all three annotation types collapsed beside the doc
  *   04-comment-active.png   — comment card active: full thread + reply input visible
  *   05-revision-active.png  — revision card active: version pills + nested editor open
  *   06-library.png          — document library with multiple documents and preview panel
  *   07-revision-modal.png   — revision full-screen modal editor open
- *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   09-update-banner.png    — update notification banner in bottom-right
- *   10-autoai-bubble.png   — AutoAI collaborator bubble in active state (rainbow border)
- *   11-autoai-card.png     — AutoAI settings card morphed open from the bubble
+ *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
+ *   12-nested-revision.png  — doubly-nested revision: outer modal with inner revision open
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
@@ -406,38 +404,6 @@ async function scenarioEditor(ctx: BrowserContext): Promise<void> {
 }
 
 /**
- * 02. feedback — The Feedback panel open with quick-action chips visible.
- *    Shows the AI assistance UI before any session starts.
- */
-async function scenarioFeedback(ctx: BrowserContext): Promise<void> {
-    const page = await ctx.newPage();
-    await page.setViewportSize(VIEWPORT);
-    await installTauriMock(page, { fakeApiKey: true });
-    await page.goto(BASE_URL);
-    await waitForEditor(page);
-    await setEditorText(page, PROSE_SHORT);
-    // Wait for the async loadApiKeyForProvider() call to resolve — without
-    // this, hasApiKey() returns false and the click redirects to "settings".
-    // The aria-label changes from "…add API key…" to "…⌘⇧2…" once resolved.
-    await page.locator("#ai-tab-feedback").waitFor({ state: "visible" });
-    await page
-        .waitForFunction(
-            () =>
-                document
-                    .querySelector("#ai-tab-feedback")
-                    ?.getAttribute("aria-label")
-                    ?.includes("⌘") ?? false,
-            { timeout: 5000 },
-        )
-        .catch(() => {});
-    await page.locator("#ai-tab-feedback").click({ force: true });
-    await page.locator("#ai-sidebar").waitFor({ state: "visible" });
-    await page.waitForTimeout(500);
-    await shot(page, "02-feedback");
-    await page.close();
-}
-
-/**
  * 03. annotations — All three annotation types (comment, suggestion,
  *    revision) beside the document in their collapsed/resting state.
  *    Shows the annotation panel at a glance.
@@ -578,121 +544,87 @@ async function scenarioRevisionModal(ctx: BrowserContext): Promise<void> {
 }
 
 /**
- * 08. full-ui — Hero marketing screenshot: all three annotation types visible
- *    beside an original short prose passage, the AI Chat sidebar open with
- *    a context snippet, and the last comment card active (showing thread +
- *    reply input + Suggest button).
+ * 12. nested-revision — A revision modal open over the main editor, with a
+ *    second inner revision created inside it — showing the doubly-nested
+ *    editing capability.
  */
-async function scenarioFullUi(ctx: BrowserContext): Promise<void> {
+async function scenarioNestedRevision(ctx: BrowserContext): Promise<void> {
     const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
-    await installTauriMock(page, { fakeApiKey: true });
+    await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
-
-    const applied = await applyDebugScenario(page, "screenshot-full-ui");
+    const applied = await applyDebugScenario(page, "screenshot-nested-revision");
     if (!applied) {
-        // Fallback: no scenario bridge in this build — skip
         await page.close();
         return;
     }
-
-    // Open the AI Chat sidebar so it appears in the screenshot
-    await page.locator("#ai-tab-chat").waitFor({ state: "visible" });
-    await page
-        .waitForFunction(
-            () =>
-                document.querySelector("#ai-tab-chat")?.getAttribute("aria-label")?.includes("⌘") ??
-                false,
-            { timeout: 5000 },
-        )
-        .catch(() => {});
-    await page.locator("#ai-tab-chat").click({ force: true });
-    await page.locator("#ai-sidebar").waitFor({ state: "visible" });
-
-    // Select "The letter stayed where it was." as a range — this both activates
-    // the comment card AND populates $selectedText so the Context box appears.
+    // Activate the outer revision card
+    await activateAnnotation(page, "running his fingers along the brass gears");
+    await page.waitForTimeout(400);
+    // Push the outer revision modal, with a pending nested revision command
+    // that selects "the way a pianist runs scales before the hall fills" inside
+    // the Extended version text.
     await page.evaluate(() => {
         const w = window as unknown as Record<string, unknown>;
+        const stack = w.__modalStack__ as { push(entry: object): void } | undefined;
         const editorViewStore = w.__editorView__ as
             | { subscribe(fn: (v: unknown) => void): () => void }
             | undefined;
-        if (!editorViewStore) return;
+        if (!stack || !editorViewStore) return;
         let view: unknown;
         const unsub = editorViewStore.subscribe((v) => {
             view = v;
         });
         unsub();
         if (!view) return;
-        const v = view as {
-            state: { doc: { toString(): string } };
-            dispatch(tr: object): void;
-            focus(): void;
-        };
-        const doc = v.state.doc.toString();
-        const target = "The letter stayed where it was.";
-        const from = doc.indexOf(target);
-        if (from === -1) return;
-        const to = from + target.length;
-        v.focus();
-        v.dispatch({ selection: { anchor: from, head: to } });
+        const revCard = document.querySelector("[data-tutorial-role='revision-card']");
+        const revisionIdStr = revCard?.getAttribute("data-revision-id");
+        if (!revisionIdStr) return;
+        const revisionId = Number.parseInt(revisionIdStr, 10);
+        if (Number.isNaN(revisionId)) return;
+        const versionText =
+            "running his fingers along the brass gears, feeling each tooth engage with the precision of something built to outlast its maker — the way a pianist runs scales before the hall fills";
+        const innerTarget = "the way a pianist runs scales before the hall fills";
+        const from = versionText.indexOf(innerTarget);
+        const to = from + innerTarget.length;
+        stack.push({
+            type: "revision",
+            revisionId,
+            parentView: view,
+            label: "Extended",
+            pendingNestedCommand: { type: "revision", selectionFrom: from, selectionTo: to },
+        });
     });
-    await page.waitForTimeout(400);
-
-    await shot(page, "08-full-ui");
-    await page.close();
-}
-
-/** Shared setup for AutoAI screenshots — enables AutoAI via localStorage. */
-async function setupAutoAIPage(ctx: BrowserContext): Promise<Page> {
-    const page = await ctx.newPage();
-    await page.setViewportSize(VIEWPORT);
-    await installTauriMock(page, { fakeApiKey: true });
-    await page.addInitScript(() => {
-        localStorage.setItem(
-            "quillium-autoai-settings",
-            JSON.stringify({
-                enabled: true,
-                mode: "continuous",
-                debounceMs: 10000,
-                persona: "Auto",
-                annotationTypes: ["comment", "suggestion", "revision"],
-                conservativeness: "conservative",
-            }),
-        );
+    // Wait for the outer modal to mount and create the inner nested revision
+    await page.waitForTimeout(800);
+    // Push a second modal for the inner nested revision.
+    // __modalEditors__[0] is the outer modal's nested EditorView, exposed by
+    // RevisionModal's DEV bridge. The inner revision card's id comes from the DOM.
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const stack = w.__modalStack__ as { push(entry: object): void } | undefined;
+        const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
+        if (!stack || !modalEditors) return;
+        const nestedView = modalEditors[0];
+        if (!nestedView) return;
+        // The inner revision card is the last one in the document
+        const revCards = document.querySelectorAll("[data-tutorial-role='revision-card']");
+        const innerCard = revCards[revCards.length - 1];
+        if (!innerCard) return;
+        const revisionIdStr = innerCard.getAttribute("data-revision-id");
+        if (!revisionIdStr) return;
+        const revisionId = Number.parseInt(revisionIdStr, 10);
+        if (Number.isNaN(revisionId)) return;
+        stack.push({
+            type: "revision",
+            revisionId,
+            parentView: nestedView,
+            label: "Pianist image",
+        });
     });
-    await page.goto(BASE_URL);
-    await waitForEditor(page);
-    const applied = await applyDebugScenario(page, "screenshot-autoai-widget");
-    if (!applied) await setEditorText(page, PROSE_SHORT);
-    // Click away so no annotation is active
-    await page.mouse.click(720, 700);
-    await page.waitForTimeout(300);
-    return page;
-}
-
-/**
- * 10. autoai-bubble — The AutoAI collaborator bubble in its active state:
- *    rainbow conic-gradient border showing AutoAI is enabled and watching.
- */
-async function scenarioAutoAIBubble(ctx: BrowserContext): Promise<void> {
-    const page = await setupAutoAIPage(ctx);
-    await shot(page, "10-autoai-bubble");
-    await page.close();
-}
-
-/**
- * 11. autoai-card — The AutoAI settings card morphed open from the bubble,
- *    showing the persona name, toggle, mode, delay, focus, and annotation
- *    type controls.
- */
-async function scenarioAutoAICard(ctx: BrowserContext): Promise<void> {
-    const page = await setupAutoAIPage(ctx);
-    // Click the bubble to open the settings card
-    await page.locator("button[aria-label*='AutoAI']").first().click();
-    // Wait for the morph transition to complete (340ms) + panel fade-in (80ms delay)
     await page.waitForTimeout(600);
-    await shot(page, "11-autoai-card");
+    await shot(page, "12-nested-revision");
     await page.close();
 }
 
@@ -704,7 +636,7 @@ async function scenarioAutoAICard(ctx: BrowserContext): Promise<void> {
 async function scenarioDictionary(ctx: BrowserContext): Promise<void> {
     const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
-    await installTauriMock(page, { fakeApiKey: true });
+    await installTauriMock(page);
     await page.goto(BASE_URL);
     await waitForEditor(page);
     await setEditorText(page, PROSE_SHORT);
@@ -807,17 +739,14 @@ async function main(): Promise<void> {
     try {
         console.log("\nCapturing screenshots…\n");
         await scenarioEditor(context);
-        await scenarioFeedback(context);
         await scenarioAnnotations(context);
         await scenarioCommentActive(context);
         await scenarioRevisionActive(context);
         await scenarioLibrary(context);
         await scenarioRevisionModal(context);
-        await scenarioFullUi(context);
-        await scenarioDictionary(context);
+        await scenarioNestedRevision(context);
         await scenarioUpdateBanner(context);
-        await scenarioAutoAIBubble(context);
-        await scenarioAutoAICard(context);
+        await scenarioDictionary(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {

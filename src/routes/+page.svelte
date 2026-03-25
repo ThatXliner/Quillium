@@ -27,6 +27,7 @@ import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import { tutorialActive, modalStack, editorView } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
+import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
@@ -264,6 +265,8 @@ if (import.meta.env.DEV) {
         <DiffModal suggestionId={entry.suggestionId} parentView={entry.parentView} stackIndex={i} />
     {:else if entry.type === "revision"}
         <RevisionModal revisionId={entry.revisionId} view={entry.parentView} stackIndex={i} />
+    {:else if entry.type === "comment"}
+        <CommentModal commentId={entry.commentId} parentView={entry.parentView} stackIndex={i} />
     {/if}
 {/each}
 

@@ -37,10 +37,11 @@ function addRevision(view: EditorView, from: number, to: number, doc: string) {
     return annotation.id;
 }
 
-function publishNestedCommand(command: NestedEditorCommand) {
+function publishNestedCommand(command: NestedEditorCommand, sourceView: EditorView) {
     annotationEventBus.emit({
         type: "nested-annotation-create",
         command,
+        sourceView,
     });
 }
 
@@ -90,7 +91,7 @@ describe.skip("nested annotation creation routing", () => {
             type: "revision",
             selectionFrom: 1,
             selectionTo: 3,
-        });
+        }, view);
 
         await Promise.resolve();
 
@@ -134,7 +135,7 @@ describe.skip("nested annotation creation routing", () => {
             type: "revision",
             selectionFrom: 0,
             selectionTo: 2,
-        });
+        }, view);
 
         await Promise.resolve();
 
@@ -169,7 +170,7 @@ describe.skip("nested annotation creation routing", () => {
             type: "revision",
             selectionFrom: 0,
             selectionTo: 2,
-        });
+        }, view);
 
         await Promise.resolve();
 
