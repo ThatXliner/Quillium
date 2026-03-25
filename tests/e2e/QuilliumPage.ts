@@ -104,6 +104,9 @@ export class QuilliumPage {
                 if (Object.keys(payload.settings).length > 0) {
                     localStorage.setItem("quillium-app-settings", JSON.stringify(payload.settings));
                 }
+                if (payload.apiKey) {
+                    localStorage.setItem("quillium-has-api-key", "1");
+                }
 
                 let nextCallbackId = 1;
                 const callbacks = new Map<number, (...args: unknown[]) => unknown>();
@@ -176,7 +179,10 @@ export class QuilliumPage {
                             const a = args as { snapshotId: number };
                             const snap = payload.snapshots.find((s) => s.id === a.snapshotId);
                             if (!snap) return null;
-                            return JSON.stringify({ doc: snap.doc, annotations: {} });
+                            return JSON.stringify({
+                                doc: snap.doc,
+                                selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+                            });
                         }
                         if (cmd === "cmd_label_snapshot") {
                             const a = args as { snapshotId: number; label: string };

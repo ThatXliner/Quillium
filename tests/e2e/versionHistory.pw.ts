@@ -51,9 +51,10 @@ test("history page renders version list with date groups", async ({ page }) => {
     await expect(page.getByText("Today")).toBeVisible();
     await expect(page.getByText("Yesterday")).toBeVisible();
 
-    // Named snapshots show their labels
-    await expect(page.getByText("Before refactor")).toBeVisible();
-    await expect(page.getByText("Initial draft")).toBeVisible();
+    // Named snapshots show their labels (scoped to the list to avoid breadcrumb matches)
+    const list = page.locator("#versions-panel");
+    await expect(list.getByText("Before refactor")).toBeVisible();
+    await expect(list.getByText("Initial draft")).toBeVisible();
 });
 
 test("history page navigates here from status bar History button", async ({ page }) => {
@@ -171,7 +172,7 @@ test("inline label editing calls cmd_label_snapshot", async ({ page }) => {
     await labelInput.press("Enter");
 
     await expect.poll(() => qp.getInvokedCommands()).toContain("cmd_label_snapshot");
-    await expect(page.getByText("Renamed checkpoint")).toBeVisible();
+    await expect(page.locator("#versions-panel").getByText("Renamed checkpoint")).toBeVisible();
 });
 
 test("cmd_list_snapshots is called on page load", async ({ page }) => {
@@ -286,7 +287,8 @@ test("named checkpoints are never deleted by keep-last-N prune", async ({ page }
 
     await expect.poll(() => qp.getInvokedCommands()).toContain("cmd_prune_snapshots_keep_last_n");
 
-    // Labeled snapshots should still be in the list
-    await expect(page.getByText("Before refactor")).toBeVisible();
-    await expect(page.getByText("Initial draft")).toBeVisible();
+    // Labeled snapshots should still be in the list (scoped to avoid breadcrumb matches)
+    const list = page.locator("#versions-panel");
+    await expect(list.getByText("Before refactor")).toBeVisible();
+    await expect(list.getByText("Initial draft")).toBeVisible();
 });

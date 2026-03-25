@@ -132,8 +132,8 @@ test.describe("dictionary popover", () => {
         await openDictionaryOn(q, "helpful");
         await expectPopoverVisible(page);
 
-        // Click far away from the popover
-        await page.mouse.click(10, 10);
+        // Click the backdrop directly to dismiss
+        await page.locator(".dictionary-backdrop").click({ position: { x: 10, y: 10 } });
         await expectPopoverHidden(page);
     });
 
@@ -151,7 +151,7 @@ test.describe("dictionary popover", () => {
 
     test("open in chat disabled without API key", async ({ page }) => {
         await mockDictionaryApi(page);
-        const q = new QuilliumPage(page); // no apiKey
+        const q = new QuilliumPage(page, { settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true } }); // no apiKey
         await q.init();
 
         await openDictionaryOn(q, "helpful");
@@ -165,12 +165,7 @@ test.describe("dictionary popover", () => {
         await mockDictionaryApi(page);
         const q = new QuilliumPage(page, {
             apiKey: "test-key",
-            settings: { showNestedEditor: true, atomicRevisions: true },
-        });
-        // Set the has-api-key flag so hasApiKey() returns true immediately
-        // without waiting for the lazy keychain load.
-        await page.addInitScript(() => {
-            localStorage.setItem("quillium-has-api-key", "1");
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
         });
         await q.init();
 

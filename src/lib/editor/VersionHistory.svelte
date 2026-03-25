@@ -6,6 +6,10 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { currentDraftId, editorView, lastPersistedEventId, lastSavedAt } from "$lib/stores";
 import {
+    listDocuments,
+    listDrafts,
+    createDocument,
+    createDraft,
     listSnapshots,
     labelSnapshot,
     restoreToSnapshot,
@@ -84,7 +88,27 @@ $effect(() => {
 });
 
 // ── Lifecycle ───────────────────────────────────────────────────
+
+/** Ensure currentDraftId is set — needed when navigating directly to /history. */
+async function bootstrapDraftId() {
+    if (get(currentDraftId)) return;
+    const docs = await listDocuments();
+    if (docs.length > 0) {
+        const drafts = await listDrafts(docs[0].id);
+        const active = drafts.find((d) => d.isActive) ?? drafts[0];
+        if (active) {
+            currentDraftId.set(active.id);
+            return;
+        }
+    }
+    // No document yet — create one.
+    const docId = await createDocument("Untitled");
+    const draftId = await createDraft(docId, "Draft");
+    currentDraftId.set(draftId);
+}
+
 onMount(async () => {
+    await bootstrapDraftId();
     await Promise.all([loadSnapshots(), loadRetention()]);
     if (snapshots.length > 0) {
         await selectSnapshot(snapshots[0]);
