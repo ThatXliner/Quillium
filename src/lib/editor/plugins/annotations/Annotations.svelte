@@ -433,6 +433,7 @@ $effect(() => {
 
 $effect(() => {
     return annotationEventBus.on("overlapping-revision-alert", () => {
+        if (!isFloating) return;
         toast.error("Overlapping revision regions are not supported.");
     });
 });
