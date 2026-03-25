@@ -12,7 +12,7 @@ import {
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { history } from "@codemirror/commands";
-import { currentDocumentId, currentDraftId, lastPersistedEventId } from "$lib/stores";
+import { currentDocumentId, currentDraftId, lastPersistedEventId, lastSavedAt } from "$lib/stores";
 
 function makeView(options: Parameters<typeof listeners>[0] = {}) {
     const state = EditorState.create({
@@ -45,6 +45,7 @@ afterEach(() => {
     currentDocumentId.set(null);
     currentDraftId.set(null);
     lastPersistedEventId.set(-1);
+    lastSavedAt.set(null);
 });
 
 describe("listeners integration", () => {

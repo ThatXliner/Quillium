@@ -128,7 +128,7 @@ pub fn list_snapshots(conn: &Connection, draft_id: &str) -> Result<Vec<SnapshotM
     let mut stmt = conn.prepare(
         "SELECT id, draft_id, up_to_event_id, created_at, label
          FROM snapshots WHERE draft_id = ?1
-         ORDER BY up_to_event_id DESC",
+         ORDER BY created_at DESC, id DESC",
     )?;
     let rows = stmt.query_map(params![draft_id], |row| {
         Ok(SnapshotMeta {
@@ -211,7 +211,11 @@ pub fn prune_snapshots_keep_last_n(conn: &Connection, draft_id: &str, keep_n: i6
 }
 
 pub fn prune_snapshots_older_than(conn: &Connection, draft_id: &str, older_than_days: i64) -> Result<u64> {
-    let cutoff_ms = now_ms() - older_than_days * 86_400_000;
+    let offset_ms = older_than_days
+        .checked_mul(86_400_000)
+        .and_then(|o| now_ms().checked_sub(o))
+        .unwrap_or(0);
+    let cutoff_ms = offset_ms;
     let deleted = conn.execute(
         "DELETE FROM snapshots
          WHERE draft_id = ?1

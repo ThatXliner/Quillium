@@ -330,6 +330,16 @@ export async function loadDocument(id: string) {
         loaded.snapshotStateJson ? extractTitleFromStateJson(loaded.snapshotStateJson) : "Untitled",
     );
 
+    // Seed lastPersistedEventId from the loaded state so named checkpoints
+    // can be created immediately without requiring a new edit first.
+    const latestEventId =
+        loaded.eventsSince.length > 0
+            ? loaded.eventsSince[loaded.eventsSince.length - 1].id
+            : loaded.snapshotEventId >= 0
+              ? loaded.snapshotEventId
+              : -1;
+    lastPersistedEventId.set(latestEventId);
+
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
     $editorView.setState(state);
     const text = state.doc.toString();

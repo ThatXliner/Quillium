@@ -251,16 +251,16 @@ test("prune older-than requires confirmation then calls cmd_prune_snapshots_olde
 });
 
 test("prune shows deleted count and refreshes the snapshot list", async ({ page }) => {
-    // Seed with one unlabeled snapshot that will be pruned (keepN=0 effectively)
+    // makeSnapshots() has one unlabeled snapshot (id=2). Setting keepN=0 will delete it.
     const snaps = makeSnapshots();
     const qp = new QuilliumPage(page, { snapshots: snaps });
     await qp.initHistory();
 
     await page.locator("#versions-panel button[title='Manage storage']").click();
 
-    // Set keepN to 1 — only one unlabeled snapshot exists (id=2), so nothing is pruned
+    // Set keepN to 0 to delete the one unlabeled snapshot
     const keepNInput = page.locator("input[type='number']").first();
-    await keepNInput.fill("1");
+    await keepNInput.fill("0");
 
     await page.locator("button", { hasText: /^Prune$/ }).first().click();
     await page.locator("button", { hasText: /confirm\?/i }).first().click();

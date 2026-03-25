@@ -310,7 +310,11 @@ function formatTimeShort(ms: number): string {
 const groups = $derived(groupByDate(snapshots));
 
 function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") goToEditor();
+    if (e.key === "Escape") {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+        goToEditor();
+    }
 }
 </script>
 
