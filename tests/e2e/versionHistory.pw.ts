@@ -257,7 +257,7 @@ test("prune shows deleted count and refreshes the snapshot list", async ({ page 
 
     await page.locator("#versions-panel button[title='Manage storage']").click();
 
-    // Set keepN to 1 — should prune the oldest unlabeled snapshot (id=2)
+    // Set keepN to 1 — only one unlabeled snapshot exists (id=2), so nothing is pruned
     const keepNInput = page.locator("input[type='number']").first();
     await keepNInput.fill("1");
 

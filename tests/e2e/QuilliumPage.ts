@@ -194,9 +194,9 @@ export class QuilliumPage {
                         }
                         if (cmd === "cmd_prune_snapshots_keep_last_n") {
                             const a = args as { draftId: string; keepN: number };
-                            const unlabeled = payload.snapshots.filter(
-                                (s) => s.draftId === a.draftId && s.label === null,
-                            );
+                            const unlabeled = payload.snapshots
+                                .filter((s) => s.draftId === a.draftId && s.label === null)
+                                .sort((x, y) => y.createdAt - x.createdAt);
                             const toDelete = unlabeled.slice(a.keepN);
                             const deleteIds = new Set(toDelete.map((s) => s.id));
                             const before = payload.snapshots.length;

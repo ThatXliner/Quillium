@@ -59,7 +59,8 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             draft_id         TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
             up_to_event_id   INTEGER NOT NULL,
             state_json       TEXT NOT NULL,
-            created_at       INTEGER NOT NULL
+            created_at       INTEGER NOT NULL,
+            label            TEXT DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS _meta (
