@@ -96,15 +96,7 @@ const deck = $derived(
 );
 const deckIndex = $derived(deck.findIndex((n) => n.doc.id === currentDocId));
 
-// Show up to 2 nearest ancestors + the root, so the root is always reachable.
-// Dedup in case the root is already within the first 2.
-const ghosts = $derived.by(() => {
-    if (ancestors.length === 0) return [];
-    const near = ancestors.slice(0, 2);
-    const root = ancestors[ancestors.length - 1];
-    const ids = new Set(near.map((n) => n.doc.id));
-    return ids.has(root.doc.id) ? near : [...near, root];
-});
+const ghosts = $derived(ancestors);
 const flatRows = $derived(tree ? flattenTree(tree) : []);
 const branched = $derived(tree ? hasBranching(tree) : false);
 
@@ -193,25 +185,26 @@ function navigateWithSwipe(targetId: string) {
             "
         ></button>
 
-        <!-- Preview popover: appears to the left of the pulled sheet -->
+        <!-- Preview popover: thin sliver to the left of the pulled sheet -->
         {#if isHovered}
+            {@const POP_W = 160}
             <div
-                class="absolute pointer-events-none overflow-hidden rounded-xl bg-white
+                class="absolute pointer-events-none overflow-hidden rounded-lg bg-white
                        border border-black/[0.07]"
                 style="
                     top: {ty}px;
-                    left: {tx - 240 - 12}px;
-                    width: 240px;
-                    height: 320px;
+                    left: {tx - POP_W - 8}px;
+                    width: {POP_W}px;
+                    bottom: 0;
                     z-index: 50;
-                    box-shadow: -4px 4px 28px rgba(0,0,0,0.14);
+                    box-shadow: -4px 4px 20px rgba(0,0,0,0.12);
                     animation: popover-in 150ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
                 "
             >
-                <GhostCard docId={ghost.doc.id} />
-                <div class="absolute bottom-0 inset-x-0 h-10 pointer-events-none"
-                     style="background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.95));"></div>
-                <span class="absolute bottom-2 left-3 text-[10px] font-medium text-black/35 select-none">
+                <GhostCard docId={ghost.doc.id} width={POP_W} />
+                <div class="absolute bottom-0 inset-x-0 h-12 pointer-events-none"
+                     style="background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.97));"></div>
+                <span class="absolute bottom-2 left-2 right-2 text-[9px] font-medium text-black/40 select-none truncate">
                     {ghost.doc.title}
                 </span>
             </div>
