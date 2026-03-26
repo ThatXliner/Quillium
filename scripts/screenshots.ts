@@ -10,6 +10,7 @@
  *
  * Output: screenshots/
  *   01-editor.png           — clean editor, focused writing environment
+ *   03b-annotations-no-ai.png — comment and revision only (no AI suggestion)
  *   03-annotations.png      — all three annotation types collapsed beside the doc
  *   04-comment-active.png   — comment card active: full thread + reply input visible
  *   05-revision-active.png  — revision card active: version pills + nested editor open
@@ -404,6 +405,26 @@ async function scenarioEditor(ctx: BrowserContext): Promise<void> {
 }
 
 /**
+ * 03b. annotations-no-ai — Comment and revision only (no AI suggestion),
+ *    beside the document in their collapsed/resting state.
+ */
+async function scenarioAnnotationsNoAi(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-annotations-no-ai");
+    if (!applied) {
+        await setEditorText(page, PROSE_SHORT);
+    }
+    await page.mouse.click(720, 800);
+    await page.waitForTimeout(400);
+    await shot(page, "03b-annotations-no-ai");
+    await page.close();
+}
+
+/**
  * 03. annotations — All three annotation types (comment, suggestion,
  *    revision) beside the document in their collapsed/resting state.
  *    Shows the annotation panel at a glance.
@@ -719,10 +740,23 @@ async function main(): Promise<void> {
         try {
             const res = await fetch(BASE_URL);
             if (res.ok || res.status === 304 || res.status === 200) {
+                // Verify it's a Vite dev server, not `vite preview`. The preview
+                // build strips import.meta.env.DEV so __runScenario__ is never
+                // exposed and annotation scenarios silently fall back to plain text.
+                // /@vite/client is injected only by the dev server, not preview.
+                const devCheck = await fetch(`${BASE_URL}/@vite/client`).catch(() => null);
+                if (!devCheck || !devCheck.ok) {
+                    throw new Error(
+                        `A server is running at ${BASE_URL} but it does not appear to be a Vite dev server (/@vite/client returned ${devCheck?.status ?? "network error"}). ` +
+                        `This is likely \`vite preview\`, which runs the production build where __runScenario__ is unavailable. ` +
+                        `Stop it and re-run, or use --no-server to point at a running tauri dev instance on port 1420.`,
+                    );
+                }
                 serverAlreadyRunning = true;
-                console.log(`Using existing server at ${BASE_URL}`);
+                console.log(`Using existing dev server at ${BASE_URL}`);
             }
-        } catch {
+        } catch (e) {
+            if (e instanceof Error && e.message.includes("/@vite/client")) throw e;
             /* need to start one */
         }
 
@@ -739,6 +773,7 @@ async function main(): Promise<void> {
     try {
         console.log("\nCapturing screenshots…\n");
         await scenarioEditor(context);
+        await scenarioAnnotationsNoAi(context);
         await scenarioAnnotations(context);
         await scenarioCommentActive(context);
         await scenarioRevisionActive(context);

@@ -1059,6 +1059,41 @@ export const scenarios: Scenario[] = [
         },
     },
     {
+        id: "screenshot-annotations-no-ai",
+        label: "Screenshot: annotations without AI (Dickens)",
+        description:
+            "Comment and revision only — no AI suggestion — used by the screenshot script",
+        category: "debug",
+        doc: DICKENS_DOC,
+        setup(view) {
+            createComment({
+                targetText: "it was the age of wisdom, it was the age of foolishness",
+                comment:
+                    "The parallelism is relentless here — intentional, but consider whether one more beat pushes it past the tipping point into self-parody.",
+                author: "Editor",
+                view,
+            });
+            createRevision({
+                targetText:
+                    "Spiritual revelations were conceded to England at that favoured period, as at this.",
+                versions: [
+                    {
+                        label: "Active",
+                        text: "England received its spiritual revelations at that favoured period, as it does now.",
+                    },
+                    {
+                        label: "Compressed",
+                        text: "Spiritual revelations visited England then, as now.",
+                    },
+                ],
+                threadMessage:
+                    "The passive voice feels period-appropriate but distances the reader. Two alternatives: activate the grammar, or compress ruthlessly.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
+    {
         id: "screenshot-annotations",
         label: "Screenshot: annotations (Dickens)",
         description:
