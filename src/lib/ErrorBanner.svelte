@@ -9,6 +9,8 @@ import {
     RefreshCw,
     ChevronDown,
     ChevronUp,
+    Copy,
+    Check,
 } from "lucide-svelte";
 import { errorBanner } from "./stores";
 import { readBackup, clearBackup } from "./errorGuard";
@@ -18,6 +20,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { goToHistory } from "./navigation";
 
 let showDetails = $state(false);
+let copied = $state(false);
+
+async function copyDetails() {
+    if (!$errorBanner?.details) return;
+    await navigator.clipboard.writeText($errorBanner.details);
+    copied = true;
+    setTimeout(() => (copied = false), 2000);
+}
 
 function dismiss() {
     $errorBanner = null;
@@ -181,9 +191,22 @@ function reportIssue() {
         </div>
 
         {#if $errorBanner.details && showDetails}
-            <div class="px-4 pb-3">
+            <div class="px-4 pb-3 relative">
+                <button
+                    onclick={copyDetails}
+                    title="Copy details to clipboard"
+                    class="absolute top-1.5 right-5.5 p-1 rounded transition-colors {isCrash
+                        ? 'text-red-600 hover:text-red-900 hover:bg-red-200/60'
+                        : 'text-amber-600 hover:text-amber-900 hover:bg-amber-200/60'}"
+                >
+                    {#if copied}
+                        <Check size={12} />
+                    {:else}
+                        <Copy size={12} />
+                    {/if}
+                </button>
                 <pre
-                    class="text-[11px] leading-relaxed {isCrash
+                    class="text-[11px] leading-relaxed select-text {isCrash
                         ? 'text-red-800 bg-red-100/60 border-red-200'
                         : 'text-amber-800 bg-amber-100/60 border-amber-200'} border rounded-md p-2.5 overflow-x-auto whitespace-pre-wrap break-all max-h-40 overflow-y-auto font-mono">{$errorBanner.details}</pre>
             </div>
