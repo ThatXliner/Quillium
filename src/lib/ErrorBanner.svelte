@@ -141,6 +141,14 @@ function reportIssue() {
                         </button>
                     {/if}
                     <button
+                        onclick={viewHistory}
+                        title="Browse snapshots to restore a previous version"
+                        class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 border border-red-300 rounded-md transition-colors"
+                    >
+                        <History size={12} />
+                        Version history
+                    </button>
+                    <button
                         onclick={reloadApp}
                         title="Reload the app"
                         class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 border border-red-300 rounded-md transition-colors"
