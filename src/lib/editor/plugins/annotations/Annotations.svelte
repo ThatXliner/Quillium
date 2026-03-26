@@ -433,6 +433,9 @@ $effect(() => {
 
 $effect(() => {
     return annotationEventBus.on("overlapping-revision-alert", () => {
+        // Annotations.svelte is mounted once per editor instance (including nested
+        // editors), so the event bus fires this handler N times. Guard on isFloating
+        // so only the top-level panel shows the toast — not every nested instance.
         if (!isFloating) return;
         toast.error("Overlapping revision regions are not supported.");
     });
