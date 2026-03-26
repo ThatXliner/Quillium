@@ -32,6 +32,8 @@ import { debugPanelActive } from "$lib/debug/store.svelte";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
 import { goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
+import type { BackupEntry } from "$lib/errorGuard";
+import { restoreBackup } from "$lib/editor/restore";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -137,12 +139,22 @@ onMount(() => {
         }
     });
 
+    // Handle crash-restore events dispatched by ErrorBanner.svelte.
+    function handleRestoreBackup(e: Event) {
+        const view = $editorView;
+        if (!view) return;
+        const { documentText } = (e as CustomEvent<BackupEntry>).detail;
+        restoreBackup(view, documentText);
+    }
+
     function handleManualReviewEvent() {
         if (appSettings.aiEnabled && autoAISettings.enabled) triggerManualReview();
     }
 
+    window.addEventListener("quillium:restore-backup", handleRestoreBackup);
     window.addEventListener("quillium:manual-review", handleManualReviewEvent);
     return () => {
+        window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
         unlisten.then((fn) => fn());
     };

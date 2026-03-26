@@ -71,6 +71,7 @@ src/
 │   │   ├── extensions.ts      # Full CodeMirror extension stack
 │   │   ├── listeners.ts       # Persistence + change listeners
 │   │   ├── replay.ts          # Event log replay for state reconstruction
+│   │   ├── restore.ts         # Crash-recovery restore with annotation re-anchoring
 │   │   ├── dictionaryPlugin.ts # Mod-B keymap for dictionary popover trigger
 │   │   ├── DictionaryPopover.svelte # Floating dictionary/thesaurus UI
 │   │   ├── StatusBar.svelte   # Word count, WPM, character count
@@ -956,11 +957,23 @@ A writing app that loses user text is a catastrophic failure. The event log in S
 - `window.addEventListener("unhandledrejection", ...)` — unhandled promise rejections (skips Svelte's benign `effect_orphan` error)
 - `handleError` — SvelteKit's route-level error handler
 
-Backup goes to `"quillium_backup_crash"` in localStorage. The error banner offers a "Save copy" button to download this backup as a plain text file, plus a "View version history" button to navigate to `/history`.
+Backup goes to `"quillium_backup_crash"` in localStorage. The crash banner (red) offers "Restore previous" to push the backup text back into the live editor, "Save copy" to download as plain text, and "Reload app".
+
+### Crash restoration (`restore.ts`)
+
+When the user clicks "Restore previous" in the crash banner, `restoreBackup(view, documentText)` replaces the entire document with the backup text. Existing annotations aren't just discarded: each annotation's anchor text is extracted before the swap, then re-matched in the restored document using `SearchCursor`. If found, the annotation is placed at the match position. If not found, it's placed at position 0 with a console warning. Nested annotations inside revision `VersionState` blobs are also healed the same way.
+
+The restore transaction is tagged with `userEvent: "input.restore"` so the persistence layer's suspicious-change detector skips it (otherwise it would trigger another backup of the pre-restore state).
 
 ### Why localStorage for crash backups
 
 Crash backups must survive the crash that triggered them. SQLite writes go through Tauri's IPC, which may not complete if the JavaScript runtime is in a bad state. localStorage writes are synchronous and handled by the webview engine, making them more likely to succeed during a crash. For non-crash scenarios (suspicious deletions), the SQLite snapshot system is sufficient since the persistence layer is still functional.
+
+### Banner differentiation
+
+The error banner has two distinct appearances:
+- **Crash** (red, `OctagonAlert` icon): "Restore previous" + "Save copy" + "Reload app". Stack trace shown via "Show details".
+- **Suspicious deletion** (amber, `AlertTriangle` icon): "View version history" navigates to `/history` where the user can restore from a named snapshot created automatically before the deletion.
 
 ---
 

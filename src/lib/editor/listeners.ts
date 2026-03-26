@@ -222,12 +222,11 @@ async function doAppend(update: ViewUpdate) {
     // Guard: check for suspiciously large deletions before writing to DB.
     // If suspicious, snapshot the pre-deletion state so version history
     // has a guaranteed recovery point. Skip if every doc-changing
-    // transaction is an explicit user delete (i.e. the user deliberately
-    // selected and deleted text).
+    // transaction is an explicit user delete or a crash-restore operation.
     if (update.docChanged) {
         const allUserInitiated = update.transactions
             .filter((tr) => tr.docChanged)
-            .every((tr) => tr.isUserEvent("delete"));
+            .every((tr) => tr.isUserEvent("delete") || tr.isUserEvent("input.restore"));
         if (!allUserInitiated) {
             const oldText = update.startState.doc.toString();
             const newText = update.state.doc.toString();
