@@ -3,18 +3,17 @@
  *
  * Two responsibilities:
  *
- * 1. **Pre-change backup**: Before any transaction is persisted,
- *    `checkForSuspiciousChange` compares the old and new document text.
- *    If the change looks unintentional (e.g. a large deletion not caused by
- *    the user explicitly selecting and deleting), it saves a plain-text
- *    backup to localStorage *before* the write lands in the DB.
+ * 1. **Suspicious-change detection**: `isSuspiciousDeletion` is a pure
+ *    function that compares old and new document text and returns true if
+ *    the change looks unintentional (e.g. a large deletion not caused by
+ *    the user explicitly selecting and deleting). When detected, the UI
+ *    directs the user to the version history page to restore a snapshot.
  *
  * 2. **Crash recovery**: `saveEmergencyBackup` is called from the global
  *    error handler and from window.onerror / unhandledrejection to capture
  *    whatever text was in the editor at the moment of the crash.
  *
- * Backups live in localStorage under two keys:
- *   - "quillium_backup_auto"   — latest suspicious-change snapshot
+ * Crash backups live in localStorage under:
  *   - "quillium_backup_crash"  — latest crash snapshot
  *
  * Each value is a JSON string:
@@ -36,7 +35,6 @@ export type BackupEntry = {
     reason: string;
 };
 
-const AUTO_BACKUP_KEY = "quillium_backup_auto";
 const CRASH_BACKUP_KEY = "quillium_backup_crash";
 
 /**
@@ -61,10 +59,9 @@ function writeBackup(key: string, entry: BackupEntry): boolean {
     }
 }
 
-export function readBackup(key: "auto" | "crash"): BackupEntry | null {
-    const storageKey = key === "auto" ? AUTO_BACKUP_KEY : CRASH_BACKUP_KEY;
+export function readBackup(key: "crash"): BackupEntry | null {
     try {
-        const raw = localStorage.getItem(storageKey);
+        const raw = localStorage.getItem(CRASH_BACKUP_KEY);
         if (!raw) return null;
         return JSON.parse(raw) as BackupEntry;
     } catch {
@@ -72,36 +69,25 @@ export function readBackup(key: "auto" | "crash"): BackupEntry | null {
     }
 }
 
-export function clearBackup(key: "auto" | "crash"): void {
-    const storageKey = key === "auto" ? AUTO_BACKUP_KEY : CRASH_BACKUP_KEY;
+export function clearBackup(key: "crash"): void {
     try {
-        localStorage.removeItem(storageKey);
+        localStorage.removeItem(CRASH_BACKUP_KEY);
     } catch {
         // ignore
     }
 }
 
 /**
- * Called from the listeners updateListener *before* a transaction is
- * persisted. Compares old and new document length to detect suspiciously
- * large deletions.
- *
- * @param oldText - document text before the transaction batch
- * @param newText - document text after the transaction batch
- * @returns true if a backup was saved (change was suspicious)
+ * Pure detection function: returns true if the change from oldText to
+ * newText looks like a suspiciously large unintentional deletion.
+ * Does NOT write any backup — the version history snapshots serve as
+ * the recovery mechanism.
  */
-export function checkForSuspiciousChange(oldText: string, newText: string): boolean {
+export function isSuspiciousDeletion(oldText: string, newText: string): boolean {
     const deleted = oldText.length - newText.length;
     if (deleted < SUSPICIOUS_DELETION_MIN_CHARS) return false;
     if (deleted / oldText.length < SUSPICIOUS_DELETION_RATIO) return false;
-
-    const title = get(currentDocumentTitle);
-    return writeBackup(AUTO_BACKUP_KEY, {
-        timestamp: Date.now(),
-        documentTitle: title,
-        documentText: oldText,
-        reason: `Large deletion detected: ${deleted} characters removed (${Math.round((deleted / oldText.length) * 100)}% of document)`,
-    });
+    return true;
 }
 
 /**
@@ -122,4 +108,11 @@ export function saveEmergencyBackup(reason: string): boolean {
         documentText: text,
         reason,
     });
+}
+
+// Clean up stale auto-backup key from previous versions
+try {
+    localStorage.removeItem("quillium_backup_auto");
+} catch {
+    // ignore
 }
