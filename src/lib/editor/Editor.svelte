@@ -366,7 +366,7 @@ onMount(() => {
             return; // skip the initial value — fromSave already handles it
         }
         if (id) {
-            fromSave.then(() => setTimeout(() => loadDocument(id)));
+            fromSave.then(() => loadDocument(id));
         }
     });
 
