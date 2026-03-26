@@ -47,6 +47,7 @@ import type { Action } from "svelte/action";
 import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { toast } from "svelte-sonner";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -427,6 +428,16 @@ $effect(() => {
         el.classList.remove("pending-shake");
         void el.offsetWidth; // force reflow to restart animation
         el.classList.add("pending-shake");
+    });
+});
+
+$effect(() => {
+    return annotationEventBus.on("overlapping-revision-alert", () => {
+        // Annotations.svelte is mounted once per editor instance (including nested
+        // editors), so the event bus fires this handler N times. Guard on isFloating
+        // so only the top-level panel shows the toast — not every nested instance.
+        if (!isFloating) return;
+        toast.error("Overlapping revision regions are not supported.");
     });
 });
 

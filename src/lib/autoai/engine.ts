@@ -108,23 +108,49 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
                 });
                 applied++;
             } else if (ann.type === "suggestion") {
-                createSuggestion({
+                const created = createSuggestion({
                     targetText: ann.targetText,
                     replacements: [{ text: ann.replacement, rationale: ann.rationale }],
                     author: autoAISettings.persona,
                     state: view.state,
                     dispatch: view.dispatch.bind(view),
                 });
-                applied++;
+                if (created) {
+                    applied++;
+                } else {
+                    // Suggestion overlaps an existing one — fall back to a comment so
+                    // the AI's feedback is not silently lost.
+                    toast.warning("A suggestion overlapped an existing one — added as a comment instead.");
+                    createComment({
+                        targetText: ann.targetText,
+                        comment: `${ann.rationale ?? "Suggested replacement"}: "${ann.replacement}"`,
+                        author: autoAISettings.persona,
+                        view,
+                    });
+                    applied++;
+                }
             } else if (ann.type === "revision") {
-                createRevision({
+                const created = createRevision({
                     targetText: ann.targetText,
                     versions: [{ label: ann.versionLabel, text: ann.versionText }],
                     threadMessage: ann.threadMessage,
                     author: autoAISettings.persona,
                     view,
                 });
-                applied++;
+                if (created) {
+                    applied++;
+                } else {
+                    // Revision overlaps an existing one — fall back to a comment so
+                    // the AI's feedback is not silently lost.
+                    toast.warning("A revision overlapped an existing one — added as a comment instead.");
+                    createComment({
+                        targetText: ann.targetText,
+                        comment: `${ann.threadMessage} (suggested version: "${ann.versionLabel}" — ${ann.versionText})`,
+                        author: autoAISettings.persona,
+                        view,
+                    });
+                    applied++;
+                }
             }
         } catch {
             // targetText lookup failed (e.g. doc changed mid-review) — skip.

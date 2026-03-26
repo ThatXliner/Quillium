@@ -84,7 +84,7 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
 } from "./models";
-import { canCreateNewComment, getActiveAnnotation } from "./utils";
+import { canCreateNewComment, canCreateRevision, canCreateSuggestion, getActiveAnnotation } from "./utils";
 import {
     annotationField,
     addAnnotation,
@@ -566,7 +566,7 @@ export function createSuggestion({
     editorSelection?: EditorSelection;
     author?: string;
     comment?: string;
-}) {
+}): boolean {
     // Normalize string shorthand to full shape
     const normalizedReplacements = replacements.map((r) =>
         typeof r === "string" ? { text: r } : r,
@@ -576,6 +576,7 @@ export function createSuggestion({
         targetText,
         document: state.doc,
     });
+    if (!canCreateSuggestion(state.field(annotationField), selection)) return false;
     dispatch(
         state.update({
             effects: [
@@ -588,6 +589,7 @@ export function createSuggestion({
             annotations: Transaction.addToHistory.of(true),
         }),
     );
+    return true;
 }
 
 export function createRevision({
@@ -611,6 +613,7 @@ export function createRevision({
         targetText,
         document: state.doc,
     });
+    if (!canCreateRevision(state.field(annotationField), selection)) return false;
     const originalText = state.sliceDoc(selection.main.from, selection.main.to);
     const originalVersion = {
         doc: originalText,
@@ -634,6 +637,7 @@ export function createRevision({
             annotations: Transaction.addToHistory.of(true),
         }),
     );
+    return true;
 }
 
 const createCommentCommand: StateCommand = ({ state, dispatch }) => {
@@ -661,6 +665,11 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 };
 // QUESTION: Should we have some sort of global annotation mutex
 const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+    if (state.selection.main.empty) return false;
+    if (!canCreateRevision(state.field(annotationField), state.selection)) {
+        annotationEventBus.emit({ type: "overlapping-revision-alert" });
+        return true;
+    }
     const sel = state.selection.main;
     const newAnnotation = createNewAnnotation(
         state.field(annotationField),
