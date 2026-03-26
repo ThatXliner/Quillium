@@ -150,33 +150,35 @@ $effect(() => {
             >
                 <Download size={20} />
             </button>
-            {#if exportOpen}
-                <div
-                    class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white backdrop-blur-md rounded-xl shadow-lg border border-white/40 overflow-hidden min-w-[10rem] z-50"
-                    role="menu"
-                >
+            <div
+                class="absolute top-0 left-1/2 -translate-x-1/2 bg-white backdrop-blur-md shadow-lg border border-white/40 overflow-hidden z-50
+                    transition-[width,height,border-radius,opacity] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
+                    {exportOpen ? 'w-[11rem] h-[11.5rem] rounded-[14px] opacity-100' : 'w-12 h-12 rounded-[24px] opacity-0 pointer-events-none'}"
+                role="menu"
+            >
+                <div class="flex flex-col py-1 transition-opacity duration-150 {exportOpen ? 'opacity-100 delay-100' : 'opacity-0'}">
                     <button
                         onclick={() => doExport("txt")}
                         role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
                     >Plain Text (.txt)</button>
                     <button
                         onclick={() => doExport("txt+json")}
                         role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
-                    >Text with Annotations (.txt)</button>
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
+                    >Text + Annotations (.txt)</button>
                     <button
                         onclick={() => doExport("json")}
                         role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
                     >JSON (.json)</button>
                     <button
                         onclick={() => doExport("md")}
                         role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
                     >Markdown (.md)</button>
                 </div>
-            {/if}
+            </div>
         </div>
         <div class="w-px h-8 bg-black/20"></div>
         <button
