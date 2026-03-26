@@ -3,6 +3,7 @@
 -->
 <script lang="ts">
 import { BookOpen, Plus } from "lucide-svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 
 interface Props {
     onNew: () => void;
@@ -23,9 +24,10 @@ const { onNew }: Props = $props();
     </div>
     <button
         onclick={onNew}
-        class="flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+        class="group flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
     >
         <Plus size={16} />
         Create first document
+        <Kbd variant="fullWhite" keys="N" />
     </button>
 </div>

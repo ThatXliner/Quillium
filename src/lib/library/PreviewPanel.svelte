@@ -92,10 +92,11 @@ function handleDeletePermanent() {
             {#if trashMode}
                 <button
                     onclick={onRestore}
-                    class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
                 >
                     <RotateCcw size={16} />
                     Restore {selectedCount} documents
+                    <Kbd variant="fullWhite" keys="Z" />
                 </button>
                 <button
                     onclick={onDeletePermanent}
@@ -174,14 +175,15 @@ function handleDeletePermanent() {
             {#if trashMode}
                 <button
                     onclick={onRestore}
-                    class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
                 >
                     <RotateCcw size={16} />
                     Restore document
+                    <Kbd variant="fullWhite" keys="Z" />
                 </button>
                 <button
                     onclick={handleDeletePermanent}
-                    class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-medium transition-colors
+                    class="group w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-medium transition-colors
                         {confirmingDelete
                             ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm'
                             : 'text-red-400 hover:bg-red-50'}"

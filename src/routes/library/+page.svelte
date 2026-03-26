@@ -297,6 +297,17 @@ function handleKeydown(e: KeyboardEvent) {
         return;
     }
 
+    // Z — restore selected document(s) from trash
+    if (e.key === "z" && !inInput && !e.metaKey && !e.ctrlKey && trashMode && selectedIds.size > 0) {
+        e.preventDefault();
+        if (selectedIds.size === 1) {
+            handleRestore([...selectedIds][0]);
+        } else {
+            handleRestoreSelected();
+        }
+        return;
+    }
+
     // R — rename selected document (only single selection)
     if (e.key === "r" && !inInput && selectedIds.size === 1 && !trashMode) {
         e.preventDefault();
