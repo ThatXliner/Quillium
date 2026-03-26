@@ -129,8 +129,10 @@ src/
 │   ├── +layout.svelte           # Root layout
 │   ├── +layout.ts               # SvelteKit layout config
 │   ├── +page.svelte             # Editor page: three panels + modal stack renderer
-│   └── library/
-│       └── +page.svelte         # Library page (document list, trash/restore)
+│   ├── library/
+│   │   └── +page.svelte         # Library page (document list, trash/restore)
+│   └── history/
+│       └── +page.svelte         # Version history browser (thin wrapper around VersionHistory.svelte)
 src-tauri/src/
 ├── lib.rs                       # Tauri command registration
 ├── main.rs                      # Entry point
@@ -610,7 +612,7 @@ Each event has a `type` field that determines its shape:
 
 ### Snapshot pruning
 
-`create_snapshot` (Rust) keeps only the latest 3 snapshots per draft. After inserting, it deletes all older snapshots for that draft.
+`create_snapshot` (Rust) keeps only the latest 3 snapshots per draft for auto-snapshots. After inserting, it deletes all older auto-snapshots for that draft. Named snapshots (created by the user via the Version History UI) are exempt from this automatic pruning and persist until explicitly deleted by the user.
 
 `VersionState` blobs (nested editor state) are also serialized inside `annotationField.toJSON()` — they're stored as opaque objects within the `versions` array and round-trip correctly because they're already JSON-safe.
 
@@ -987,6 +989,51 @@ Operations: create, open, rename (via preview panel), trash (soft-delete), resto
 ### Navigation (`navigation.ts`)
 
 Two functions: `goToLibrary()` and `goToEditor()`. Both set a `data-direction` attribute on `<html>` before calling SvelteKit's `goto()`, which CSS transitions use to animate the page slide direction (left for library, right for editor).
+
+---
+
+## Version History
+
+`src/lib/editor/VersionHistory.svelte` is a full-screen snapshot browser. The route `routes/history/+page.svelte` is a thin wrapper that renders it directly.
+
+### Layout
+
+Two-panel layout: a read-only CodeMirror preview on the left, and a timeline sidebar on the right listing all snapshots grouped by date (Today / Yesterday / day-of-week / This month / month + year).
+
+### Snapshot types
+
+- **Auto-saved** — created automatically by the persistence layer every 50 events or 120 seconds (same thresholds as the event log). Pruned automatically: only the latest 3 auto-snapshots per draft are kept.
+- **Named checkpoints** — created by the user via the "Name this version…" input in the top bar. Named snapshots are exempt from the 3-snapshot auto-prune limit and persist until explicitly deleted by the user.
+
+### Snapshot preview
+
+Selecting a snapshot calls `loadSnapshotState(snapshot.id)` to fetch the state JSON blob, then reconstructs a read-only CodeMirror instance (`EditorState.readOnly.of(true)`) from that blob using `EditorState.fromJSON`. The preview editor is rebuilt via a Svelte `$effect` whenever the target DOM element or the loaded state JSON changes — no `tick()` needed.
+
+### Restore
+
+Clicking "Restore this version" requires a two-click confirmation (first click arms it, second click calls `restoreToSnapshot(draftId, snapshotId)`). After a successful restore the user is sent back to the editor via `goToEditor()`.
+
+### Named checkpoint creation
+
+The top bar has a text input and "Save" button. Saving calls `createNamedSnapshot(draftId, stateJson, eventId, label)` with the current editor state serialized via `view.state.toJSON(savedFields)`. Pressing Escape with unsaved label text triggers a shake animation rather than navigating away.
+
+### Storage management
+
+The sidebar shows the total snapshot storage size for the current draft. If it exceeds 1 GB (`STORAGE_WARN_BYTES`), a warning is displayed. Clicking the size badge opens a collapsible storage panel with:
+
+- **Auto-prune retention** — a select dropdown that configures `setSnapshotRetention(days)` (options: Never, 30/60/90/180/365 days, or null for never).
+- **Keep last N** — prune all but the most recent N snapshots via `pruneSnapshotsKeepLastN(draftId, n)`.
+- **Older than N days** — prune all snapshots older than N days via `pruneSnapshotsOlderThan(draftId, days)`.
+
+Both prune actions require a two-click confirmation.
+
+### Tauri commands used
+
+`listSnapshots`, `loadSnapshotState`, `labelSnapshot`, `createNamedSnapshot`, `restoreToSnapshot`, `getSnapshotStorageSize`, `getSnapshotRetention`, `setSnapshotRetention`, `pruneSnapshotsKeepLastN`, `pruneSnapshotsOlderThan`.
+
+### Bootstrap
+
+Navigating directly to `/history` (bypassing the editor) may leave `currentDraftId` unset. `bootstrapDraftId()` handles this by loading the first document's active draft so the snapshot list can populate correctly.
 
 ---
 
