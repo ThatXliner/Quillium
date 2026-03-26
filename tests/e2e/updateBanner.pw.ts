@@ -17,6 +17,10 @@ async function installTauriMock(page: Page, options: { updateVersion?: string } 
             const callbacks = new Map<number, (...args: unknown[]) => unknown>();
 
             (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+                metadata: {
+                    currentWindow: { label: "main" },
+                    currentWebview: { label: "main", windowLabel: "main" },
+                },
                 invoke: async (cmd: string, _args: unknown) => {
                     // Document stubs so the editor loads
                     if (cmd === "cmd_list_documents")
@@ -62,8 +66,15 @@ async function installTauriMock(page: Page, options: { updateVersion?: string } 
                         }
                         return null;
                     }
+                    if (cmd === "plugin:updater|download") {
+                        // Simulate a slow download so we can see the Downloading state
+                        await new Promise((r) => setTimeout(r, 60_000));
+                        return null;
+                    }
+                    if (cmd === "plugin:updater|install") {
+                        return null;
+                    }
                     if (cmd === "plugin:updater|download_and_install") {
-                        // Simulate a slow download so we can see the Installing state
                         await new Promise((r) => setTimeout(r, 60_000));
                         return null;
                     }
@@ -122,13 +133,13 @@ test("dismiss button hides the update banner", async ({ page }) => {
     await expect(page.locator("text=is available")).not.toBeVisible();
 });
 
-test("clicking Update shows Installing state", async ({ page }) => {
+test("clicking Update shows Downloading state", async ({ page }) => {
     await installTauriMock(page, { updateVersion: "1.0.0" });
     await page.goto("/");
 
     await expect(page.getByRole("button", { name: "Update" })).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Update" }).click();
-    await expect(page.locator("text=Installing")).toBeVisible();
+    await expect(page.locator("text=Downloading")).toBeVisible();
 });
 
 test.describe("screenshots", () => {
@@ -143,13 +154,13 @@ test.describe("screenshots", () => {
         });
     });
 
-    test("installing state", async ({ page }) => {
+    test("downloading state", async ({ page }) => {
         await installTauriMock(page, { updateVersion: "1.0.0" });
         await page.goto("/");
 
         await expect(page.getByRole("button", { name: "Update" })).toBeVisible({ timeout: 10_000 });
         await page.getByRole("button", { name: "Update" }).click();
-        await expect(page.locator("text=Installing")).toBeVisible();
+        await expect(page.locator("text=Downloading")).toBeVisible();
         await page.screenshot({
             path: "tests/e2e/screenshots/update-banner-installing.png",
             fullPage: true,
