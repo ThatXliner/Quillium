@@ -3,16 +3,17 @@ import {
     X,
     AlertTriangle,
     Download,
-    RotateCcw,
+    History,
     RefreshCw,
     ChevronDown,
     ChevronUp,
 } from "lucide-svelte";
 import { errorBanner } from "./stores";
-import { readBackup, clearBackup } from "./errorGuard";
+import { readBackup } from "./errorGuard";
 import type { BackupEntry } from "./errorGuard";
 import { FEEDBACK_FORM_URL } from "./constants";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { goToHistory } from "./navigation";
 
 let showDetails = $state(false);
 
@@ -24,7 +25,7 @@ function dismiss() {
 function downloadBackup() {
     const banner = $errorBanner;
     if (!banner) return;
-    const backup: BackupEntry | null = readBackup(banner.backupType);
+    const backup: BackupEntry | null = readBackup("crash");
     if (!backup) return;
 
     const blob = new Blob([backup.documentText], { type: "text/plain" });
@@ -43,16 +44,10 @@ function downloadBackup() {
     }, 0);
 }
 
-function restoreBackup() {
-    const banner = $errorBanner;
-    if (!banner) return;
-    const backup: BackupEntry | null = readBackup(banner.backupType);
-    if (!backup) return;
-
-    // Dispatch a custom event that Editor.svelte listens for
-    window.dispatchEvent(new CustomEvent("quillium:restore-backup", { detail: backup }));
-    clearBackup(banner.backupType);
+function viewHistory() {
     $errorBanner = null;
+    showDetails = false;
+    goToHistory();
 }
 
 function reloadApp() {
@@ -114,15 +109,15 @@ function reportIssue() {
                         <Download size={12} />
                         Save copy
                     </button>
-                    <button
-                        onclick={restoreBackup}
-                        title="Restore to the version before the problem occurred"
-                        class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
-                    >
-                        <RotateCcw size={12} />
-                        Restore previous
-                    </button>
                 {/if}
+                <button
+                    onclick={viewHistory}
+                    title="Browse snapshots to restore a previous version"
+                    class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
+                >
+                    <History size={12} />
+                    View version history
+                </button>
                 <button
                     onclick={reloadApp}
                     title="Reload the app"

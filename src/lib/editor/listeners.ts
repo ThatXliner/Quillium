@@ -28,7 +28,7 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
-import { checkForSuspiciousChange, readBackup } from "$lib/errorGuard";
+import { isSuspiciousDeletion } from "$lib/errorGuard";
 import {
     addAnnotation,
     removeAnnotation,
@@ -220,29 +220,24 @@ async function doAppend(update: ViewUpdate) {
     if (!payload) return;
 
     // Guard: check for suspiciously large deletions before writing to DB.
-    // The backup is saved *before* the write so the user can always recover.
-    // Skip if every doc-changing transaction is an explicit user delete or a
-    // restore operation — i.e. the user deliberately deleted text or invoked restore.
+    // Skip if every doc-changing transaction is an explicit user delete —
+    // i.e. the user deliberately selected and deleted text.
     if (update.docChanged) {
-        const allUserInitiatedOrRestore = update.transactions
+        const allUserInitiated = update.transactions
             .filter((tr) => tr.docChanged)
-            .every((tr) => tr.isUserEvent("delete") || tr.isUserEvent("input.restore"));
-        if (!allUserInitiatedOrRestore) {
+            .every((tr) => tr.isUserEvent("delete"));
+        if (!allUserInitiated) {
             const oldText = update.startState.doc.toString();
             const newText = update.state.doc.toString();
-            const suspicious = checkForSuspiciousChange(oldText, newText);
-            if (suspicious) {
-                const backup = readBackup("auto");
-                if (backup) {
-                    setTimeout(() => {
-                        errorBanner.set({
-                            message:
-                                "A large deletion was detected. A backup was saved in case this was unintentional.",
-                            hasBackup: true,
-                            backupType: "auto",
-                        });
-                    }, 0);
-                }
+            if (isSuspiciousDeletion(oldText, newText)) {
+                setTimeout(() => {
+                    errorBanner.set({
+                        message:
+                            "A large deletion was detected. You can review your version history to recover previous text.",
+                        hasBackup: false,
+                        backupType: "auto",
+                    });
+                }, 0);
             }
         }
     }
