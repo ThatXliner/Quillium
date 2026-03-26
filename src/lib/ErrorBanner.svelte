@@ -18,6 +18,7 @@ import type { BackupEntry } from "./errorGuard";
 import { FEEDBACK_FORM_URL } from "./constants";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { goToHistory } from "./navigation";
+import { page } from "$app/stores";
 
 let showDetails = $state(false);
 let copied = $state(false);
@@ -103,6 +104,8 @@ function reportIssue() {
 
 {#if $errorBanner}
     {@const isCrash = $errorBanner.backupType === "crash"}
+    {@const isEditor = $page.url.pathname === "/"}
+    {@const isHistory = $page.url.pathname === "/history"}
     <div
         class="fixed top-0 left-0 right-0 z-[9999] flex flex-col {isCrash
             ? 'bg-red-50 border-b border-red-200'
@@ -155,7 +158,7 @@ function reportIssue() {
             <div class="flex items-center gap-2 shrink-0">
                 {#if isCrash}
                     <!-- Crash: restore from localStorage backup + download + reload -->
-                    {#if $errorBanner.hasBackup}
+                    {#if $errorBanner.hasBackup && isEditor}
                         <button
                             onclick={restoreFromBackup}
                             title="Restore to the version before the crash"
@@ -164,6 +167,8 @@ function reportIssue() {
                             <RotateCcw size={12} />
                             Restore previous
                         </button>
+                    {/if}
+                    {#if $errorBanner.hasBackup}
                         <button
                             onclick={downloadBackupAsText}
                             title="Download your writing as plain text (without annotations or revisions)"
@@ -181,14 +186,16 @@ function reportIssue() {
                             Save as .json
                         </button>
                     {/if}
-                    <button
-                        onclick={viewHistory}
-                        title="Browse snapshots to restore a previous version"
-                        class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 border border-red-300 rounded-md transition-colors"
-                    >
-                        <History size={12} />
-                        Version history
-                    </button>
+                    {#if !isHistory}
+                        <button
+                            onclick={viewHistory}
+                            title="Browse snapshots to restore a previous version"
+                            class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 border border-red-300 rounded-md transition-colors"
+                        >
+                            <History size={12} />
+                            Version history
+                        </button>
+                    {/if}
                     <button
                         onclick={reloadApp}
                         title="Reload the app"
@@ -198,15 +205,17 @@ function reportIssue() {
                         Reload app
                     </button>
                 {:else}
-                    <!-- Suspicious deletion: point to version history -->
-                    <button
-                        onclick={viewHistory}
-                        title="Browse snapshots to restore a previous version"
-                        class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
-                    >
-                        <History size={12} />
-                        View version history
-                    </button>
+                    <!-- Suspicious deletion: point to version history (only when not already there) -->
+                    {#if !isHistory}
+                        <button
+                            onclick={viewHistory}
+                            title="Browse snapshots to restore a previous version"
+                            class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
+                        >
+                            <History size={12} />
+                            View version history
+                        </button>
+                    {/if}
                 {/if}
                 <button
                     onclick={dismiss}
