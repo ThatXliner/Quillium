@@ -16,11 +16,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { history, undo } from "@codemirror/commands";
 import {
     annotationKeymap,
     annotations as annotationExtensions,
 } from "$lib/editor/plugins/annotations";
-import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    addAnnotation,
+    annotationField,
+    createNewRevision,
+} from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation, type VersionState } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
@@ -151,6 +156,40 @@ describe("Mod-Enter in nested editor still creates version", () => {
                 annotationId: revisionId,
             }),
         );
+    });
+
+    it("annotation-add-version event results in a new version when wired to createNewRevision", () => {
+        // Simulate what Revision.svelte does: subscribe to annotation-add-version
+        // and call createNewRevision on the parent view. This verifies the full
+        // contract from keypress → event → state mutation.
+        const parentState = EditorState.create({
+            doc: "Alpha Beta Gamma",
+            extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
+        });
+        const parentEl = document.createElement("div");
+        document.body.appendChild(parentEl);
+        view = new EditorView({ state: parentState, parent: parentEl });
+        const revisionId = addRevision(view, 6, 10);
+
+        // Wire the event to createNewRevision (mirrors Revision.svelte)
+        unsubs.push(
+            annotationEventBus.on("annotation-add-version", (event) => {
+                view!.dispatch(createNewRevision(view!.state, event.annotationId));
+            }),
+        );
+
+        // Fire the event (as Mod-Enter would)
+        annotationEventBus.emit({ type: "annotation-add-version", annotationId: revisionId });
+
+        const rev = view.state.field(annotationField)[revisionId];
+        expect(rev?.versions).toHaveLength(2);
+        expect(rev?.activeVersionIndex).toBe(1);
+
+        // Undo should revert to one version
+        undo(view);
+        const revAfterUndo = view.state.field(annotationField)[revisionId];
+        expect(revAfterUndo?.versions).toHaveLength(1);
+        expect(revAfterUndo?.activeVersionIndex).toBe(0);
     });
 });
 
