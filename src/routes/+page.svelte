@@ -38,7 +38,6 @@ import { exportDocument } from "$lib/export";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 import { toast, Toaster } from "svelte-sonner";
@@ -99,12 +98,11 @@ async function installUpdate() {
     updateInstalling = true;
     try {
         if (updateReady) {
-            // Already downloaded — just install and relaunch.
-            await pendingUpdate.install();
+            // Already installed — just relaunch.
             await relaunch();
         } else {
-            // Download, then show "Relaunch" button instead of auto-relaunching.
-            await pendingUpdate.download();
+            // Download and install atomically, then show "Relaunch" button.
+            await pendingUpdate.downloadAndInstall();
             updateReady = true;
             updateInstalling = false;
         }
@@ -112,12 +110,6 @@ async function installUpdate() {
         console.error("Update install failed:", e);
         updateInstalling = false;
     }
-}
-
-/** If the user dismisses the banner after download, install on quit. */
-async function installOnQuit() {
-    if (!pendingUpdate || !updateReady) return;
-    await pendingUpdate.install();
 }
 
 onMount(() => {
@@ -139,15 +131,6 @@ onMount(() => {
             });
         });
 
-    // If the user quits with a downloaded (but not installed) update, install it.
-    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
-        if (pendingUpdate && updateReady) {
-            event.preventDefault();
-            await installOnQuit();
-            getCurrentWindow().destroy();
-        }
-    });
-
     // Handle crash-restore events dispatched by ErrorBanner.svelte.
     function handleRestoreBackup(e: Event) {
         const view = $editorView;
@@ -165,7 +148,6 @@ onMount(() => {
     return () => {
         window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
-        unlisten.then((fn) => fn());
     };
 });
 
