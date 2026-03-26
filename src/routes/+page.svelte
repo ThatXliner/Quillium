@@ -41,7 +41,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
-import { Toaster } from "svelte-sonner";
+import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
 
@@ -133,7 +133,10 @@ onMount(() => {
             }
         })
         .catch(() => {
-            // Ignore — no network or endpoint not set up yet.
+            toast.error("Unable to check for updates", {
+                description:
+                    "https://github.com/ThatXliner/quillium-releases could not be reached",
+            });
         });
 
     // If the user quits with a downloaded (but not installed) update, install it.
