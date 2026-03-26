@@ -84,7 +84,7 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
 } from "./models";
-import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./utils";
+import { canCreateNewComment, canCreateRevision, canCreateSuggestion, getActiveAnnotation } from "./utils";
 import {
     annotationField,
     addAnnotation,
@@ -566,7 +566,7 @@ export function createSuggestion({
     editorSelection?: EditorSelection;
     author?: string;
     comment?: string;
-}) {
+}): boolean {
     // Normalize string shorthand to full shape
     const normalizedReplacements = replacements.map((r) =>
         typeof r === "string" ? { text: r } : r,
@@ -576,6 +576,7 @@ export function createSuggestion({
         targetText,
         document: state.doc,
     });
+    if (!canCreateSuggestion(state.field(annotationField), selection)) return false;
     dispatch(
         state.update({
             effects: [
@@ -588,6 +589,7 @@ export function createSuggestion({
             annotations: Transaction.addToHistory.of(true),
         }),
     );
+    return true;
 }
 
 export function createRevision({

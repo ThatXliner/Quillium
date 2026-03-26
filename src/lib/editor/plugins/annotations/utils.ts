@@ -184,6 +184,17 @@ export function canCreateRevision(annotations: Annotations, selection: EditorSel
         );
     });
 }
+// Returns true if the given selection does not overlap any existing suggestion.
+export function canCreateSuggestion(annotations: Annotations, selection: EditorSelection) {
+    return !Object.values(annotations).some((annotation) => {
+        if (!isAnnotationOfType(annotation, "suggestion")) return false;
+        return selection.ranges.some((newRange) =>
+            annotation.selection.ranges.some(
+                (r) => newRange.from < r.to && newRange.to > r.from,
+            ),
+        );
+    });
+}
 // Returns true if a new comment can be created. Enforces
 // that at most one "pending" comment (thread.length === 0)
 // exists at a time, preventing orphaned comment highlights.
