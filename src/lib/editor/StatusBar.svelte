@@ -152,7 +152,7 @@ $effect(() => {
             </button>
             {#if exportOpen}
                 <div
-                    class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md rounded-xl shadow-lg border border-white/40 overflow-hidden min-w-[10rem] z-50"
+                    class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white backdrop-blur-md rounded-xl shadow-lg border border-white/40 overflow-hidden min-w-[10rem] z-50"
                     role="menu"
                 >
                     <button
