@@ -34,6 +34,7 @@ import { goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
 import type { BackupEntry } from "$lib/errorGuard";
 import { restoreBackup } from "$lib/editor/restore";
+import { exportDocument } from "$lib/export";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -67,6 +68,11 @@ function handleKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === "l") {
         e.preventDefault();
         editorComponent?.startEditingTitle();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "e") {
+        e.preventDefault();
+        const view = $editorView;
+        if (view) exportDocument(view, "txt");
     }
     if (e.metaKey || e.ctrlKey) {
         if (e.key === "=" || e.key === "+") {

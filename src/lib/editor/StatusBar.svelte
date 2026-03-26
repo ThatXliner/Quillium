@@ -19,11 +19,12 @@
 -->
 <script lang="ts">
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { tutorialActive, saveStatus } from "$lib/stores";
+import { tutorialActive, saveStatus, editorView } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToLibrary, goToHistory } from "$lib/navigation";
-import { Settings2, LayoutGrid, History } from "lucide-svelte";
+import { Settings2, LayoutGrid, History, Download } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { exportDocument, type ExportFormat } from "$lib/export";
 
 const {
     words,
@@ -38,9 +39,25 @@ const {
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
 let settingsOpen = $state(false);
+let exportOpen = $state(false);
 let hovered = $state(false);
 let titleLinger = $state(false);
 let lingerTimer: ReturnType<typeof setTimeout> | undefined;
+
+function doExport(format: ExportFormat) {
+    const view = $editorView;
+    if (!view) return;
+    exportDocument(view, format);
+    exportOpen = false;
+}
+
+let exportButtonEl = $state<HTMLDivElement>();
+
+function handleWindowClick(e: MouseEvent) {
+    if (exportOpen && exportButtonEl && !exportButtonEl.contains(e.target as Node)) {
+        exportOpen = false;
+    }
+}
 
 $effect(() => {
     if (!titleForced) {
@@ -58,6 +75,8 @@ $effect(() => {
 });
 </script>
 
+<svelte:window onclick={handleWindowClick} />
+
 {#if settingsOpen}
     <SettingsModal onclose={() => (settingsOpen = false)} />
 {/if}
@@ -66,7 +85,7 @@ $effect(() => {
     id="status-bar"
     role="region"
     aria-label="Status bar"
-    class="relative w-fit mx-auto backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg overflow-hidden"
+    class="relative w-fit mx-auto backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg"
     onmouseenter={() => (hovered = true)}
     onmouseleave={() => (hovered = false)}
 >
@@ -121,6 +140,39 @@ $effect(() => {
         >
             <Settings2 size={20} />
         </button>
+        <div class="relative" bind:this={exportButtonEl}>
+            <button
+                onclick={() => (exportOpen = !exportOpen)}
+                aria-label="Export document"
+                title="Export ({modKey}Shift+E)"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
+                    {exportOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+            >
+                <Download size={20} />
+            </button>
+            {#if exportOpen}
+                <div
+                    class="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md rounded-xl shadow-lg border border-white/40 overflow-hidden min-w-[10rem] z-50"
+                    role="menu"
+                >
+                    <button
+                        onclick={() => doExport("txt")}
+                        role="menuitem"
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
+                    >Plain Text (.txt)</button>
+                    <button
+                        onclick={() => doExport("json")}
+                        role="menuitem"
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
+                    >JSON (.json)</button>
+                    <button
+                        onclick={() => doExport("md")}
+                        role="menuitem"
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
+                    >Markdown (.md)</button>
+                </div>
+            {/if}
+        </div>
         <div class="w-px h-8 bg-black/20"></div>
         <button
             onclick={() => ($tutorialActive = true)}
