@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
     isSuspiciousDeletion,
+    isSuspiciousAnnotationChange,
     saveEmergencyBackup,
     readBackup,
     clearBackup,
@@ -68,6 +69,40 @@ describe("isSuspiciousDeletion", () => {
         const next = "a".repeat(750);
         isSuspiciousDeletion(old, next);
         expect(Object.keys(store)).toHaveLength(0);
+    });
+});
+
+// ── isSuspiciousAnnotationChange ──────────────────────────────────
+
+describe("isSuspiciousAnnotationChange", () => {
+    it("returns false when only 1-2 annotations are removed", () => {
+        expect(isSuspiciousAnnotationChange(4, 2)).toBe(false); // 2 removed, 50% — but below min=3
+    });
+
+    it("returns false when removal count is high but ratio is low", () => {
+        // 3 removed from 20 = 15% — below 25% ratio
+        expect(isSuspiciousAnnotationChange(20, 17)).toBe(false);
+    });
+
+    it("returns false when annotations are added (count grew)", () => {
+        expect(isSuspiciousAnnotationChange(2, 5)).toBe(false);
+    });
+
+    it("returns false when count is unchanged", () => {
+        expect(isSuspiciousAnnotationChange(5, 5)).toBe(false);
+    });
+
+    it("returns true when 3+ annotations removed and ratio >= 25%", () => {
+        // 3 removed from 10 = 30%
+        expect(isSuspiciousAnnotationChange(10, 7)).toBe(true);
+    });
+
+    it("returns true when all annotations are removed from a large set", () => {
+        expect(isSuspiciousAnnotationChange(10, 0)).toBe(true);
+    });
+
+    it("returns false when starting from 0 annotations", () => {
+        expect(isSuspiciousAnnotationChange(0, 0)).toBe(false);
     });
 });
 

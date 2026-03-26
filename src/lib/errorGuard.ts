@@ -1,13 +1,17 @@
 /**
  * errorGuard.ts — Safety net for suspicious or catastrophic state changes.
  *
- * Two responsibilities:
+ * Three responsibilities:
  *
  * 1. **Suspicious-change detection**: `isSuspiciousDeletion` is a pure
  *    function that compares old and new document text and returns true if
  *    the change looks unintentional (e.g. a large deletion not caused by
  *    the user explicitly selecting and deleting). When detected, the UI
  *    directs the user to the version history page to restore a snapshot.
+ *
+ *    `isSuspiciousAnnotationChange` performs the analogous check for
+ *    annotations: returns true if a large number of annotations were
+ *    removed or modified in a single transaction batch.
  *
  * 2. **Crash recovery**: `saveEmergencyBackup` is called from the global
  *    error handler and from window.onerror / unhandledrejection to capture
@@ -87,6 +91,33 @@ export function isSuspiciousDeletion(oldText: string, newText: string): boolean 
     const deleted = oldText.length - newText.length;
     if (deleted < SUSPICIOUS_DELETION_MIN_CHARS) return false;
     if (deleted / oldText.length < SUSPICIOUS_DELETION_RATIO) return false;
+    return true;
+}
+
+/**
+ * Minimum number of annotations that must be removed in a single
+ * transaction batch before we consider it suspicious.
+ */
+const SUSPICIOUS_ANNOTATION_REMOVAL_MIN = 3;
+
+/**
+ * Minimum fraction of annotations that must be removed in a single
+ * transaction batch before we consider it suspicious.
+ * e.g. 0.25 = 25% of annotations removed at once.
+ */
+const SUSPICIOUS_ANNOTATION_REMOVAL_RATIO = 0.25;
+
+/**
+ * Pure detection function: returns true if annotations were suspiciously
+ * mass-removed or mass-modified in a single transaction batch.
+ *
+ * @param oldCount - number of annotations before the transaction
+ * @param newCount - number of annotations after the transaction
+ */
+export function isSuspiciousAnnotationChange(oldCount: number, newCount: number): boolean {
+    const removed = oldCount - newCount;
+    if (removed < SUSPICIOUS_ANNOTATION_REMOVAL_MIN) return false;
+    if (removed / oldCount < SUSPICIOUS_ANNOTATION_REMOVAL_RATIO) return false;
     return true;
 }
 

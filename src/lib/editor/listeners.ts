@@ -28,7 +28,7 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import { appendEvent, createSnapshot, createNamedSnapshot, updateDocumentMeta } from "$lib/db";
-import { isSuspiciousDeletion } from "$lib/errorGuard";
+import { isSuspiciousDeletion, isSuspiciousAnnotationChange } from "$lib/errorGuard";
 import {
     addAnnotation,
     removeAnnotation,
@@ -245,6 +245,39 @@ async function doAppend(update: ViewUpdate) {
                     errorBanner.set({
                         message:
                             "A large deletion was detected. A recovery snapshot has been saved to your version history.",
+                        hasBackup: false,
+                        backupType: "auto",
+                    });
+                }, 0);
+            }
+        }
+    }
+
+    // Guard: check for suspiciously large annotation removals.
+    // Skip restore operations (they intentionally remove-then-re-add annotations).
+    {
+        const isRestore = update.transactions.some((tr) => tr.isUserEvent("input.restore"));
+        if (!isRestore) {
+            const oldCount = Object.keys(
+                update.startState.field(savedFields.annotationField),
+            ).length;
+            const newCount = Object.keys(
+                update.state.field(savedFields.annotationField),
+            ).length;
+            if (isSuspiciousAnnotationChange(oldCount, newCount)) {
+                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
+                const eventId = get(lastPersistedEventId);
+                createNamedSnapshot(
+                    draftId,
+                    preStateJson,
+                    eventId,
+                    "Before mass annotation removal (auto)",
+                ).catch(console.error);
+
+                setTimeout(() => {
+                    errorBanner.set({
+                        message:
+                            "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
                         hasBackup: false,
                         backupType: "auto",
                     });
