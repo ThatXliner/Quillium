@@ -2,20 +2,31 @@
 interface Props {
     version: string;
     installing?: boolean;
+    ready?: boolean;
     oninstall: () => void;
     ondismiss: () => void;
 }
 
-let { version, installing = false, oninstall, ondismiss }: Props = $props();
+let { version, installing = false, ready = false, oninstall, ondismiss }: Props = $props();
+
+let label = $derived(
+    installing
+        ? ready
+            ? "Relaunching\u2026"
+            : "Downloading\u2026"
+        : ready
+            ? "Relaunch"
+            : "Update",
+);
 </script>
 
 <div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 bg-white rounded-xl shadow-xl border border-black/[0.07] text-[13px]">
-    <span class="text-black/60">Quillium <span class="font-semibold text-black/80">{version}</span> is available</span>
+    <span class="text-black/60">Quillium <span class="font-semibold text-black/80">{version}</span> {ready ? "is ready — relaunch to finish" : "is available"}</span>
     <button
         onclick={oninstall}
         disabled={installing}
         class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-full text-[12px] font-medium transition-colors disabled:opacity-50"
-    >{installing ? "Installing…" : "Update"}</button>
+    >{label}</button>
     <button
         onclick={ondismiss}
         class="text-black/25 hover:text-black/50 transition-colors"

@@ -2971,7 +2971,7 @@ dependencies = [
 
 [[package]]
 name = "quillium"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "keyring",
  "rusqlite",

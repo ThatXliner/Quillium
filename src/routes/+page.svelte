@@ -35,17 +35,20 @@ import type { EventPayload } from "$lib/db/events";
 import type { BackupEntry } from "$lib/errorGuard";
 import { restoreBackup } from "$lib/editor/restore";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
-import { check } from "@tauri-apps/plugin-updater";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 import { Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
 
+let pendingUpdate = $state<Update | null>(null);
 let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
+let updateReady = $state(false);
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -86,17 +89,29 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 async function installUpdate() {
+    if (!pendingUpdate) return;
     updateInstalling = true;
     try {
-        const update = await check();
-        if (update) {
-            await update.downloadAndInstall();
+        if (updateReady) {
+            // Already downloaded — just install and relaunch.
+            await pendingUpdate.install();
             await relaunch();
+        } else {
+            // Download, then show "Relaunch" button instead of auto-relaunching.
+            await pendingUpdate.download();
+            updateReady = true;
+            updateInstalling = false;
         }
     } catch (e) {
         console.error("Update install failed:", e);
         updateInstalling = false;
     }
+}
+
+/** If the user dismisses the banner after download, install on quit. */
+async function installOnQuit() {
+    if (!pendingUpdate || !updateReady) return;
+    await pendingUpdate.install();
 }
 
 onMount(() => {
@@ -105,7 +120,8 @@ onMount(() => {
     // Check for updates silently in the background.
     check()
         .then((update) => {
-            if (update?.available) {
+            if (update) {
+                pendingUpdate = update;
                 updateAvailable = true;
                 updateVersion = update.version;
             }
@@ -113,6 +129,15 @@ onMount(() => {
         .catch(() => {
             // Ignore — no network or endpoint not set up yet.
         });
+
+    // If the user quits with a downloaded (but not installed) update, install it.
+    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
+        if (pendingUpdate && updateReady) {
+            event.preventDefault();
+            await installOnQuit();
+            getCurrentWindow().destroy();
+        }
+    });
 
     // Handle restore-backup events dispatched by ErrorBanner.svelte.
     function handleRestoreBackup(e: Event) {
@@ -131,6 +156,7 @@ onMount(() => {
     return () => {
         window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
+        unlisten.then((fn) => fn());
     };
 });
 
@@ -236,6 +262,7 @@ if (import.meta.env.DEV) {
     <UpdateBanner
         version={updateVersion}
         installing={updateInstalling}
+        ready={updateReady}
         oninstall={installUpdate}
         ondismiss={() => updateAvailable = false}
     />
