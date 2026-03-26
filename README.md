@@ -1,5 +1,7 @@
 # Quillium
 
+[![codecov](https://codecov.io/gh/ThatXliner/Quillium/graph/badge.svg?token=S85cfZRfBi)](https://codecov.io/gh/ThatXliner/Quillium)
+
 > Next Generation Prose.
 
 <!--Most writing tools force you to think linearly, but human creativity is inherently non-linear. Editing itself (which writers will be spending most of their time on) is a process... -->
