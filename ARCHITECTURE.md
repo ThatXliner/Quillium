@@ -947,7 +947,7 @@ A writing app that loses user text is a catastrophic failure. The event log in S
 
 ### Suspicious change detection (`errorGuard.ts`)
 
-`isSuspiciousDeletion(oldText, newText)` runs in `listeners.ts` *before* a transaction is persisted. If a single transaction batch deletes >= 20% of the document AND >= 100 characters, an error banner directs the user to the version history page (`/history`) where they can restore from a SQLite snapshot. The thresholds are intentionally conservative: false positives just mean an extra warning, while false negatives mean lost text.
+`isSuspiciousDeletion(oldText, newText)` runs in `listeners.ts` *before* a transaction is persisted. If a single transaction batch deletes >= 20% of the document AND >= 100 characters, the pre-deletion editor state is saved as a named snapshot ("Before large deletion (auto)") via `createNamedSnapshot`, and an error banner directs the user to the version history page (`/history`) where they can restore from it. The thresholds are intentionally conservative: false positives just mean an extra snapshot, while false negatives mean lost text.
 
 ### Crash backup
 

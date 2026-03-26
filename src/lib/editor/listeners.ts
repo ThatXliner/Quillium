@@ -27,7 +27,7 @@ import {
     lastPersistedEventId,
     lastSavedAt,
 } from "$lib/stores";
-import { appendEvent, createSnapshot, updateDocumentMeta } from "$lib/db";
+import { appendEvent, createSnapshot, createNamedSnapshot, updateDocumentMeta } from "$lib/db";
 import { isSuspiciousDeletion } from "$lib/errorGuard";
 import {
     addAnnotation,
@@ -220,8 +220,10 @@ async function doAppend(update: ViewUpdate) {
     if (!payload) return;
 
     // Guard: check for suspiciously large deletions before writing to DB.
-    // Skip if every doc-changing transaction is an explicit user delete —
-    // i.e. the user deliberately selected and deleted text.
+    // If suspicious, snapshot the pre-deletion state so version history
+    // has a guaranteed recovery point. Skip if every doc-changing
+    // transaction is an explicit user delete (i.e. the user deliberately
+    // selected and deleted text).
     if (update.docChanged) {
         const allUserInitiated = update.transactions
             .filter((tr) => tr.docChanged)
@@ -230,10 +232,20 @@ async function doAppend(update: ViewUpdate) {
             const oldText = update.startState.doc.toString();
             const newText = update.state.doc.toString();
             if (isSuspiciousDeletion(oldText, newText)) {
+                // Snapshot the pre-deletion state so /history has a recovery point.
+                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
+                const eventId = get(lastPersistedEventId);
+                createNamedSnapshot(
+                    draftId,
+                    preStateJson,
+                    eventId,
+                    "Before large deletion (auto)",
+                ).catch(console.error);
+
                 setTimeout(() => {
                     errorBanner.set({
                         message:
-                            "A large deletion was detected. You can review your version history to recover previous text.",
+                            "A large deletion was detected. A recovery snapshot has been saved to your version history.",
                         hasBackup: false,
                         backupType: "auto",
                     });
