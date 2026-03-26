@@ -647,7 +647,17 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- Analytics toggle -->
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">Usage analytics</div>
+                    <div class="setting-title flex items-center gap-1.5">
+                        Usage analytics
+                        <button
+                            onclick={() => openUrl("https://quillium.bryanhu.com/privacy")}
+                            aria-label="Privacy policy and your data rights"
+                            title="Privacy policy and your data rights"
+                            class="text-black/25 hover:text-black/50 transition-colors"
+                        >
+                            <HelpCircle size={13} />
+                        </button>
+                    </div>
                     <div class="setting-desc">Help improve Quillium by sending anonymous usage data</div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
