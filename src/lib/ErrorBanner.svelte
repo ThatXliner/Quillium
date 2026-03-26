@@ -133,11 +133,11 @@ function reportIssue() {
                         </button>
                         <button
                             onclick={downloadBackup}
-                            title="Download your writing as plain text"
+                            title="Download your writing as plain text (without annotations or revisions)"
                             class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 border border-red-300 rounded-md transition-colors"
                         >
                             <Download size={12} />
-                            Save copy
+                            Save as plain text
                         </button>
                     {/if}
                     <button
