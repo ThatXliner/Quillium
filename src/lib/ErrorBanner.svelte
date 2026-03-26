@@ -34,24 +34,47 @@ function dismiss() {
     showDetails = false;
 }
 
-function downloadBackup() {
-    const backup: BackupEntry | null = readBackup("crash");
-    if (!backup) return;
-
-    const blob = new Blob([backup.documentText], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const date = new Date(backup.timestamp)
+function backupDateStr(timestamp: number): string {
+    return new Date(timestamp)
         .toISOString()
         .slice(0, 19)
         .replace("T", "_")
         .replace(/:/g, "-");
-    a.download = `${backup.documentTitle || "document"}_backup_${date}.txt`;
+}
+
+function triggerDownload(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
     a.click();
-    setTimeout(() => {
-        URL.revokeObjectURL(url);
-    }, 0);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadBackupAsText() {
+    const backup: BackupEntry | null = readBackup("crash");
+    if (!backup) return;
+    const title = backup.documentTitle || "document";
+    triggerDownload(backup.documentText, `${title}_backup_${backupDateStr(backup.timestamp)}.txt`, "text/plain");
+}
+
+function downloadBackupAsJSON() {
+    const backup: BackupEntry | null = readBackup("crash");
+    if (!backup) return;
+    const title = backup.documentTitle || "document";
+    const json = JSON.stringify(
+        {
+            title: backup.documentTitle,
+            exportedAt: new Date().toISOString(),
+            backupTimestamp: new Date(backup.timestamp).toISOString(),
+            reason: backup.reason,
+            text: backup.documentText,
+        },
+        null,
+        2,
+    );
+    triggerDownload(json, `${title}_backup_${backupDateStr(backup.timestamp)}.json`, "application/json");
 }
 
 function restoreFromBackup() {
@@ -142,12 +165,20 @@ function reportIssue() {
                             Restore previous
                         </button>
                         <button
-                            onclick={downloadBackup}
+                            onclick={downloadBackupAsText}
                             title="Download your writing as plain text (without annotations or revisions)"
                             class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 border border-red-300 rounded-md transition-colors"
                         >
                             <Download size={12} />
-                            Save as plain text
+                            Save as .txt
+                        </button>
+                        <button
+                            onclick={downloadBackupAsJSON}
+                            title="Download your writing as JSON with backup metadata"
+                            class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 border border-red-300 rounded-md transition-colors"
+                        >
+                            <Download size={12} />
+                            Save as .json
                         </button>
                     {/if}
                     <button
