@@ -115,6 +115,10 @@ export class QuilliumPage {
                 (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
 
                 (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+                    metadata: {
+                        currentWindow: { label: "main" },
+                        currentWebview: { label: "main", windowLabel: "main" },
+                    },
                     invoke: async (cmd: string, args: unknown) => {
                         invokeCalls.push({ cmd, args });
 

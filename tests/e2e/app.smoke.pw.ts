@@ -24,6 +24,10 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
             };
 
             (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+                metadata: {
+                    currentWindow: { label: "main" },
+                    currentWebview: { label: "main", windowLabel: "main" },
+                },
                 invoke: async (cmd: string, args: unknown) => {
                     invokeCalls.push({ cmd, args });
 
