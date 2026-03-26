@@ -220,9 +220,6 @@ if (import.meta.env.DEV) {
                 await resetDb();
                 const docId = await createDocument(scenario.label);
                 const draftId = await createDraft(docId, "Draft");
-                currentDocumentId.set(docId);
-                currentDocumentTitle.set(scenario.label);
-                currentDraftId.set(draftId);
 
                 let lastEventId = -1;
                 for (const payload of collectedPayloads) {
@@ -242,6 +239,12 @@ if (import.meta.env.DEV) {
                     docText.slice(0, 200),
                     "[]",
                 );
+
+                // Set stores after snapshot is written to avoid a race
+                // where the Editor subscription loads an empty state.
+                currentDocumentId.set(docId);
+                currentDocumentTitle.set(scenario.label);
+                currentDraftId.set(draftId);
 
                 await editorComponent?.reload();
                 return true;

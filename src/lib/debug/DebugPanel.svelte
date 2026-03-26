@@ -98,9 +98,6 @@ async function runScenario(scenario: Scenario) {
         await resetDb();
         const docId = await createDocument(scenario.label);
         const draftId = await createDraft(docId, "Draft");
-        currentDocumentId.set(docId);
-        currentDocumentTitle.set(scenario.label);
-        currentDraftId.set(draftId);
 
         // 4. Replay events into the event log — this is the "real history".
         let lastEventId = -1;
@@ -120,7 +117,16 @@ async function runScenario(scenario: Scenario) {
         const previewText = docText.slice(0, 200);
         await updateDocumentMeta(docId, title, wordCount, previewText, "[]");
 
-        // 6. Reload the editor via the normal snapshot + replay path.
+        // 6. Set stores AFTER snapshot is written. Setting currentDocumentId
+        //    triggers Editor.svelte's subscription which calls loadDocument —
+        //    if set too early (before the snapshot exists), it would load an
+        //    empty state and cause a RangeError when annotations are mapped
+        //    through a zero-length changeset.
+        currentDocumentId.set(docId);
+        currentDocumentTitle.set(scenario.label);
+        currentDraftId.set(draftId);
+
+        // 7. Reload the editor via the normal snapshot + replay path.
         await reloadEditor();
 
         lastLoaded = scenario.id;
