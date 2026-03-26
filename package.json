@@ -23,8 +23,7 @@
     "bump:major": "bash scripts/bump.sh major",
     "screenshots": "bun scripts/screenshots.ts",
     "screenshots:no-server": "bun scripts/screenshots.ts --no-server",
-    "icons": "bun scripts/icons.ts",
-    "tauri:dev:updater": "bash scripts/tauri-dev-updater.sh"
+    "icons": "bun scripts/icons.ts"
   },
   "license": "MIT",
   "dependencies": {
