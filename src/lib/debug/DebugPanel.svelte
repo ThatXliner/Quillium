@@ -19,7 +19,8 @@
     Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
-import { editorView, currentDocumentId, currentDocumentTitle, currentDraftId } from "$lib/stores";
+import { editorView, currentDocumentId, currentDocumentTitle, currentDraftId, errorBanner } from "$lib/stores";
+import { saveEmergencyBackup } from "$lib/errorGuard";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
 import { EditorState } from "@codemirror/state";
@@ -49,6 +50,7 @@ let lastLoaded = $state<string | null>(null);
 let error = $state<string | null>(null);
 let historyCleared = $state(false);
 let historyClearTimer: ReturnType<typeof setTimeout> | undefined;
+let pendingSimulation = $state<string | null>(null);
 
 const debugScenarios = scenarios.filter((s) => s.category === "debug");
 const demoScenarios = scenarios.filter((s) => s.category === "demo");
@@ -142,6 +144,43 @@ function clearUndoHistory() {
     historyClearTimer = setTimeout(() => {
         historyCleared = false;
     }, 2000);
+}
+
+// ── App-level simulations ─────────────────────────────────────────
+
+function triggerUpdateBanner() {
+    if (!simulateUpdate) return;
+    simulateUpdate("99.0.0");
+    close();
+}
+
+function triggerCrashBanner() {
+    pendingSimulation = "crash";
+    close();
+    setTimeout(() => {
+        saveEmergencyBackup("Simulated crash from debug panel");
+        errorBanner.set({
+            message: "Something went wrong. Your work has been backed up.",
+            hasBackup: true,
+            backupType: "crash",
+            details: "Error: Simulated crash from debug panel\n    at DebugPanel.triggerCrashBanner",
+        });
+        pendingSimulation = null;
+    }, 5000);
+}
+
+function triggerSuspiciousRemoval() {
+    pendingSimulation = "removal";
+    close();
+    setTimeout(() => {
+        errorBanner.set({
+            message:
+                "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
+            hasBackup: false,
+            backupType: "auto",
+        });
+        pendingSimulation = null;
+    }, 5000);
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -283,16 +322,31 @@ function handleKeydown(e: KeyboardEvent) {
 
         </div>
 
+        <!-- Simulate section -->
+        <div class="px-5 py-3 border-t border-black/10 flex items-center gap-2">
+            <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest mr-1">Simulate</span>
+            {#if simulateUpdate}
+                <button
+                    onclick={triggerUpdateBanner}
+                    class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
+                >Update available</button>
+            {/if}
+            <button
+                onclick={triggerCrashBanner}
+                disabled={pendingSimulation !== null}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors disabled:opacity-40"
+            >{pendingSimulation === "crash" ? "Firing in 5s…" : "Crash"}</button>
+            <button
+                onclick={triggerSuspiciousRemoval}
+                disabled={pendingSimulation !== null}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-600 transition-colors disabled:opacity-40"
+            >{pendingSimulation === "removal" ? "Firing in 5s…" : "Mass annotation removal"}</button>
+        </div>
+
         <!-- Footer -->
         <div class="px-5 py-3 border-t border-black/10 text-[10px] text-black/35 flex items-center justify-between">
             <span>Press <kbd class="font-mono bg-black/10 px-1 rounded">Esc</kbd> to close</span>
             <div class="flex items-center gap-3">
-                {#if simulateUpdate}
-                    <button
-                        onclick={() => { simulateUpdate("99.0.0"); close(); }}
-                        class="text-[10px] font-medium px-2 py-1 rounded-md bg-black/6 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                    >Simulate update</button>
-                {/if}
                 <button
                     onclick={clearUndoHistory}
                     class="text-[10px] font-medium px-2 py-1 rounded-md transition-colors
