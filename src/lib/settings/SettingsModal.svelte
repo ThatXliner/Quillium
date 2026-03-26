@@ -13,10 +13,11 @@
       - onclose: () => void — called when the modal is fully dismissed.
 -->
 <script lang="ts">
-import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle } from "lucide-svelte";
+import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle, MessageSquare } from "lucide-svelte";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { syncAnalyticsOptOut } from "$lib/posthog";
 import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
@@ -806,9 +807,18 @@ function fontLabel(fonts: FontOption[], value: string) {
 
         <!-- Footer -->
         <div class="flex items-center justify-between gap-2 px-5 py-3 border-t border-black/[0.06] shrink-0">
-            <span class="text-[11px] text-rose-400/80 transition-opacity duration-200 {isDirty ? 'opacity-100' : 'opacity-0'}">
-                Unsaved
-            </span>
+            <div class="flex items-center gap-3">
+                <button
+                    onclick={() => openUrl(FEEDBACK_FORM_URL)}
+                    class="flex items-center gap-1.5 text-[11px] text-black/30 hover:text-black/55 transition-colors"
+                >
+                    <MessageSquare size={12} />
+                    Send Feedback
+                </button>
+                <span class="text-[11px] text-rose-400/80 transition-opacity duration-200 {isDirty ? 'opacity-100' : 'opacity-0'}">
+                    Unsaved
+                </span>
+            </div>
             <div class="flex items-center gap-2">
                 <button
                     onclick={discard}
