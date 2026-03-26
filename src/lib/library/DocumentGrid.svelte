@@ -7,10 +7,10 @@ import DocumentCard from "./DocumentCard.svelte";
 
 interface Props {
     documents: DocumentMeta[];
-    selectedId: string | null;
+    selectedIds: Set<string>;
     viewMode: "grid" | "list";
     trashMode: boolean;
-    onSelect: (id: string) => void;
+    onSelect: (id: string, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
     onOpen: (id: string) => void;
     onTrash: (id: string) => void;
     onRestore: (id: string) => void;
@@ -19,7 +19,7 @@ interface Props {
 
 const {
     documents,
-    selectedId,
+    selectedIds,
     viewMode,
     trashMode,
     onSelect,
@@ -37,8 +37,8 @@ const {
                 {doc}
                 {viewMode}
                 {trashMode}
-                selected={selectedId === doc.id}
-                onSelect={() => onSelect(doc.id)}
+                selected={selectedIds.has(doc.id)}
+                onSelect={(e) => onSelect(doc.id, e)}
                 onOpen={() => onOpen(doc.id)}
                 onTrash={() => onTrash(doc.id)}
                 onRestore={() => onRestore(doc.id)}
@@ -53,8 +53,8 @@ const {
                 {doc}
                 {viewMode}
                 {trashMode}
-                selected={selectedId === doc.id}
-                onSelect={() => onSelect(doc.id)}
+                selected={selectedIds.has(doc.id)}
+                onSelect={(e) => onSelect(doc.id, e)}
                 onOpen={() => onOpen(doc.id)}
                 onTrash={() => onTrash(doc.id)}
                 onRestore={() => onRestore(doc.id)}

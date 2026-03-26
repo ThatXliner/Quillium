@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
-import { FileText, ExternalLink, Trash2, RotateCcw, Pencil } from "lucide-svelte";
+import { FileText, ExternalLink, Trash2, RotateCcw, Pencil, CheckSquare } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -12,6 +12,7 @@ const modKey = isMac ? "⌘" : "Ctrl";
 
 interface Props {
     doc: DocumentMeta | null;
+    selectedCount: number;
     trashMode: boolean;
     onOpen: () => void;
     onTrash: () => void;
@@ -20,8 +21,10 @@ interface Props {
     onRenameTitle: (id: string, newTitle: string) => void;
 }
 
-const { doc, trashMode, onOpen, onTrash, onRestore, onDeletePermanent, onRenameTitle }: Props =
+const { doc, selectedCount, trashMode, onOpen, onTrash, onRestore, onDeletePermanent, onRenameTitle }: Props =
     $props();
+
+const multiSelect = $derived(selectedCount > 1);
 
 let confirmingDelete = $derived.by(() => {
     void doc;
@@ -68,7 +71,51 @@ function handleDeletePermanent() {
 </script>
 
 <div class="h-full flex flex-col bg-white/50 border-l border-black/8">
-    {#if doc}
+    {#if multiSelect}
+        <!-- Multi-select summary -->
+        <div class="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
+            <div class="w-14 h-14 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center">
+                <CheckSquare size={24} class="text-blue-500" />
+            </div>
+            <div>
+                <p class="text-lg font-semibold text-black/70">{selectedCount} documents selected</p>
+                <p class="text-sm text-black/40 mt-1">
+                    {#if trashMode}
+                        Restore or permanently delete all selected documents.
+                    {:else}
+                        Use <kbd class="px-1.5 py-0.5 rounded bg-black/5 text-xs font-mono">{modKey}+⌫</kbd> or the button below to trash them.
+                    {/if}
+                </p>
+            </div>
+        </div>
+        <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-black/5 flex flex-col gap-2">
+            {#if trashMode}
+                <button
+                    onclick={onRestore}
+                    class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                >
+                    <RotateCcw size={16} />
+                    Restore {selectedCount} documents
+                </button>
+                <button
+                    onclick={onDeletePermanent}
+                    class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-medium text-red-400 hover:bg-red-50 transition-colors"
+                >
+                    <Trash2 size={16} />
+                    Delete {selectedCount} permanently
+                </button>
+            {:else}
+                <button
+                    onclick={onTrash}
+                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium shadow-sm transition-colors"
+                >
+                    <Trash2 size={16} />
+                    Move {selectedCount} to trash
+                    <Kbd variant="fullWhite" keys={[modKey, "⌫"]} />
+                </button>
+            {/if}
+        </div>
+    {:else if doc}
         <div class="flex-shrink-0 px-8 pt-8 pb-5 border-b border-black/5">
             {#if titleEditing}
                 <input

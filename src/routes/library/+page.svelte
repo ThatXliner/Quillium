@@ -29,7 +29,8 @@ let previewPanel = $state<ReturnType<typeof PreviewPanel> | null>(null);
 
 let documents = $state<DocumentMeta[]>([]);
 let trashedDocuments = $state<DocumentMeta[]>([]);
-let selectedId = $state<string | null>(null);
+let selectedIds = $state<Set<string>>(new Set());
+let lastClickedId = $state<string | null>(null);
 let viewMode = $state<"grid" | "list">("grid");
 let query = $state("");
 let loading = $state(true);
@@ -50,8 +51,42 @@ const filtered = $derived(
         : activeDocuments,
 );
 
-const selectedDoc = $derived(filtered.find((d) => d.id === selectedId) ?? null);
+/** When exactly one document is selected, show its preview. */
+const selectedDoc = $derived(
+    selectedIds.size === 1
+        ? (filtered.find((d) => selectedIds.has(d.id)) ?? null)
+        : null,
+);
+const selectedCount = $derived(selectedIds.size);
 const hasContinue = $derived($currentDocumentId !== null);
+
+function handleSelect(id: string, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) {
+    if (e.shiftKey && lastClickedId) {
+        // Range select: select everything between lastClickedId and id
+        const ids = filtered.map((d) => d.id);
+        const a = ids.indexOf(lastClickedId);
+        const b = ids.indexOf(id);
+        if (a !== -1 && b !== -1) {
+            const [start, end] = a < b ? [a, b] : [b, a];
+            const rangeIds = ids.slice(start, end + 1);
+            selectedIds = new Set([...selectedIds, ...rangeIds]);
+        }
+    } else if (e.metaKey || e.ctrlKey) {
+        // Toggle select
+        const next = new Set(selectedIds);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        selectedIds = next;
+        lastClickedId = id;
+    } else {
+        // Plain click — single select
+        selectedIds = new Set([id]);
+        lastClickedId = id;
+    }
+}
 
 async function load() {
     loading = true;
@@ -60,8 +95,9 @@ async function load() {
         listTrashedDocuments(),
         getTrashRetention(),
     ]);
-    if (!selectedId && documents.length > 0) {
-        selectedId = documents[0].id;
+    if (selectedIds.size === 0 && documents.length > 0) {
+        selectedIds = new Set([documents[0].id]);
+        lastClickedId = documents[0].id;
     }
     loading = false;
 }
@@ -96,37 +132,86 @@ async function handleRenameTitle(id: string, newTitle: string) {
 
 async function handleTrash(id: string) {
     await trashDocument(id);
-    if (selectedId === id) {
-        const remaining = documents.filter((d) => d.id !== id);
-        selectedId = remaining.length > 0 ? remaining[0].id : null;
-    }
+    const next = new Set(selectedIds);
+    next.delete(id);
+    selectedIds = next;
     [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
+    if (selectedIds.size === 0 && documents.length > 0) {
+        selectedIds = new Set([documents[0].id]);
+        lastClickedId = documents[0].id;
+    }
+}
+
+async function handleTrashSelected() {
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => trashDocument(id)));
+    selectedIds = new Set();
+    lastClickedId = null;
+    [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
+    if (documents.length > 0) {
+        selectedIds = new Set([documents[0].id]);
+        lastClickedId = documents[0].id;
+    }
 }
 
 async function handleRestore(id: string) {
     await restoreDocument(id);
-    if (selectedId === id) {
-        const remaining = trashedDocuments.filter((d) => d.id !== id);
-        selectedId = remaining.length > 0 ? remaining[0].id : null;
-    }
+    const next = new Set(selectedIds);
+    next.delete(id);
+    selectedIds = next;
     [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
+    if (selectedIds.size === 0 && trashedDocuments.length > 0) {
+        selectedIds = new Set([trashedDocuments[0].id]);
+        lastClickedId = trashedDocuments[0].id;
+    }
+}
+
+async function handleRestoreSelected() {
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => restoreDocument(id)));
+    selectedIds = new Set();
+    lastClickedId = null;
+    [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
+    if (trashedDocuments.length > 0) {
+        selectedIds = new Set([trashedDocuments[0].id]);
+        lastClickedId = trashedDocuments[0].id;
+    }
 }
 
 async function handleDeletePermanent(id: string) {
     await deleteDocument(id);
-    if (selectedId === id) {
-        const remaining = trashedDocuments.filter((d) => d.id !== id);
-        selectedId = remaining.length > 0 ? remaining[0].id : null;
-    }
+    const next = new Set(selectedIds);
+    next.delete(id);
+    selectedIds = next;
     trashedDocuments = await listTrashedDocuments();
+    if (selectedIds.size === 0 && trashedDocuments.length > 0) {
+        selectedIds = new Set([trashedDocuments[0].id]);
+        lastClickedId = trashedDocuments[0].id;
+    }
+}
+
+async function handleDeletePermanentSelected() {
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => deleteDocument(id)));
+    selectedIds = new Set();
+    lastClickedId = null;
+    trashedDocuments = await listTrashedDocuments();
+    if (trashedDocuments.length > 0) {
+        selectedIds = new Set([trashedDocuments[0].id]);
+        lastClickedId = trashedDocuments[0].id;
+    }
 }
 
 function handleTabChange(newTab: "library" | "trash") {
     tab = newTab;
     query = "";
-    selectedId = null;
+    selectedIds = new Set();
+    lastClickedId = null;
     const list = newTab === "trash" ? trashedDocuments : documents;
-    if (list.length > 0) selectedId = list[0].id;
+    if (list.length > 0) {
+        selectedIds = new Set([list[0].id]);
+        lastClickedId = list[0].id;
+    }
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -134,9 +219,24 @@ function handleKeydown(e: KeyboardEvent) {
     const inInput =
         target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 
-    // Esc — back to editor (when a document is open)
-    if (e.key === "Escape" && hasContinue && !inInput) {
-        goToEditor();
+    // Esc — clear multi-select (or back to editor if single/no selection)
+    if (e.key === "Escape" && !inInput) {
+        if (selectedIds.size > 1) {
+            // Collapse to just the last-clicked item
+            selectedIds = lastClickedId ? new Set([lastClickedId]) : new Set();
+            return;
+        }
+        if (hasContinue) {
+            goToEditor();
+            return;
+        }
+        return;
+    }
+
+    // Cmd/Ctrl+A — select all visible documents
+    if ((e.metaKey || e.ctrlKey) && e.key === "a" && !inInput) {
+        e.preventDefault();
+        selectedIds = new Set(filtered.map((d) => d.id));
         return;
     }
 
@@ -160,43 +260,45 @@ function handleKeydown(e: KeyboardEvent) {
         return;
     }
 
-    // ↑ / ↓ — navigate document list
+    // ↑ / ↓ — navigate document list (always single-step, replaces selection)
     if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !inInput) {
         e.preventDefault();
-        const list = tab === "trash" ? trashedDocuments : documents;
-        const currentFiltered = query.trim()
-            ? list.filter(
-                  (d) =>
-                      d.title.toLowerCase().includes(query.toLowerCase()) ||
-                      d.previewText.toLowerCase().includes(query.toLowerCase()),
-              )
-            : list;
-        if (currentFiltered.length === 0) return;
-        const idx = currentFiltered.findIndex((d) => d.id === selectedId);
+        if (filtered.length === 0) return;
+        // Find the cursor position based on lastClickedId
+        const cursorId = lastClickedId ?? [...selectedIds][0] ?? null;
+        const idx = cursorId ? filtered.findIndex((d) => d.id === cursorId) : -1;
+        let nextIdx: number;
         if (e.key === "ArrowUp") {
-            selectedId = currentFiltered[Math.max(0, idx - 1)].id;
+            nextIdx = idx <= 0 ? 0 : idx - 1;
         } else {
-            selectedId = currentFiltered[Math.min(currentFiltered.length - 1, idx + 1)].id;
+            nextIdx = idx >= filtered.length - 1 ? filtered.length - 1 : idx + 1;
+        }
+        const nextId = filtered[nextIdx].id;
+        selectedIds = new Set([nextId]);
+        lastClickedId = nextId;
+        return;
+    }
+
+    // Enter — open selected document (only if single selection)
+    if (e.key === "Enter" && !inInput && selectedIds.size === 1 && !trashMode) {
+        e.preventDefault();
+        handleOpen([...selectedIds][0]);
+        return;
+    }
+
+    // Cmd/Ctrl+Backspace — trash selected document(s)
+    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && !inInput && selectedIds.size > 0 && !trashMode) {
+        e.preventDefault();
+        if (selectedIds.size === 1) {
+            handleTrash([...selectedIds][0]);
+        } else {
+            handleTrashSelected();
         }
         return;
     }
 
-    // Enter — open selected document
-    if (e.key === "Enter" && !inInput && selectedId && !trashMode) {
-        e.preventDefault();
-        handleOpen(selectedId);
-        return;
-    }
-
-    // Cmd/Ctrl+Backspace — trash selected document
-    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && !inInput && selectedId && !trashMode) {
-        e.preventDefault();
-        handleTrash(selectedId);
-        return;
-    }
-
-    // R — rename selected document
-    if (e.key === "r" && !inInput && selectedId && !trashMode) {
+    // R — rename selected document (only single selection)
+    if (e.key === "r" && !inInput && selectedIds.size === 1 && !trashMode) {
         e.preventDefault();
         previewPanel?.startEditing();
         return;
@@ -227,7 +329,9 @@ onMount(load);
             <div class="mb-5">
                 <h1 class="text-2xl font-semibold text-black/75">Your Library</h1>
                 <p class="text-sm text-black/40 mt-0.5">
-                    {#if trashMode}
+                    {#if selectedCount > 1}
+                        {selectedCount} selected
+                    {:else if trashMode}
                         {trashedDocuments.length} {trashedDocuments.length === 1 ? "document" : "documents"} in trash
                     {:else}
                         {documents.length} {documents.length === 1 ? "document" : "documents"}
@@ -266,10 +370,10 @@ onMount(load);
             {:else}
                 <DocumentGrid
                     documents={filtered}
-                    {selectedId}
+                    {selectedIds}
                     {viewMode}
                     {trashMode}
-                    onSelect={(id) => (selectedId = id)}
+                    onSelect={handleSelect}
                     onOpen={handleOpen}
                     onTrash={handleTrash}
                     onRestore={handleRestore}
@@ -284,11 +388,21 @@ onMount(load);
         <PreviewPanel
             bind:this={previewPanel}
             doc={selectedDoc}
+            {selectedCount}
             {trashMode}
-            onOpen={() => selectedId && handleOpen(selectedId)}
-            onTrash={() => selectedId && handleTrash(selectedId)}
-            onRestore={() => selectedId && handleRestore(selectedId)}
-            onDeletePermanent={() => selectedId && handleDeletePermanent(selectedId)}
+            onOpen={() => selectedIds.size === 1 && handleOpen([...selectedIds][0])}
+            onTrash={() => {
+                if (selectedIds.size === 1) handleTrash([...selectedIds][0]);
+                else if (selectedIds.size > 1) handleTrashSelected();
+            }}
+            onRestore={() => {
+                if (selectedIds.size === 1) handleRestore([...selectedIds][0]);
+                else if (selectedIds.size > 1) handleRestoreSelected();
+            }}
+            onDeletePermanent={() => {
+                if (selectedIds.size === 1) handleDeletePermanent([...selectedIds][0]);
+                else if (selectedIds.size > 1) handleDeletePermanentSelected();
+            }}
             onRenameTitle={handleRenameTitle}
         />
     </div>

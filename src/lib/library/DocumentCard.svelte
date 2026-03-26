@@ -10,7 +10,7 @@ interface Props {
     selected: boolean;
     viewMode: "grid" | "list";
     trashMode: boolean;
-    onSelect: () => void;
+    onSelect: (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
     onOpen: () => void;
     onTrash: () => void;
     onRestore: () => void;
@@ -53,14 +53,14 @@ function formatDate(ms: number): string {
                 : trashMode
                   ? 'bg-white/60 border-white/60 shadow-sm hover:shadow-md hover:border-red-200/60'
                   : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"
-        onclick={onSelect}
+        onclick={(e) => onSelect(e)}
         ondblclick={trashMode ? undefined : onOpen}
         onkeydown={(e) => {
             if (e.key === "Enter") {
-                trashMode ? onSelect() : onOpen();
+                trashMode ? onSelect(e) : onOpen();
             } else if (e.key === " " || e.key === "Spacebar") {
                 e.preventDefault();
-                trashMode ? onSelect() : onOpen();
+                trashMode ? onSelect(e) : onOpen();
             }
         }}
         role="button"
@@ -119,12 +119,12 @@ function formatDate(ms: number): string {
                 : trashMode
                   ? 'bg-white/60 border-white/60 shadow-sm hover:shadow-md hover:border-red-200/60'
                   : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"
-        onclick={trashMode ? onSelect : onSelect}
+        onclick={(e) => onSelect(e)}
         ondblclick={trashMode ? undefined : onOpen}
         onkeydown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                trashMode ? onSelect() : onOpen();
+                trashMode ? onSelect(e) : onOpen();
             }
         }}
         role="button"
