@@ -161,6 +161,11 @@ $effect(() => {
                         class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
                     >Plain Text (.txt)</button>
                     <button
+                        onclick={() => doExport("txt+json")}
+                        role="menuitem"
+                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"
+                    >Text with Annotations (.txt)</button>
+                    <button
                         onclick={() => doExport("json")}
                         role="menuitem"
                         class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors"

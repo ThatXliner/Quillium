@@ -3,6 +3,7 @@
  *
  * Supports exporting the current document as:
  *   - Plain text (.txt) — just the document content
+ *   - Text with annotations (.txt) — document content + annotations as JSON after a separator
  *   - JSON (.json) — document content + all annotations
  *   - Markdown (.md) — document text with annotations as footnotes
  *
@@ -19,7 +20,7 @@ import {
 } from "./editor/plugins/annotations/models";
 import { currentDocumentTitle } from "./stores";
 
-export type ExportFormat = "txt" | "json" | "md";
+export type ExportFormat = "txt" | "json" | "md" | "txt+json";
 
 function triggerDownload(content: string, filename: string, mimeType: string) {
     const blob = new Blob([content], { type: mimeType });
@@ -45,10 +46,23 @@ function buildPlainText(view: EditorView): string {
 }
 
 function buildJSON(view: EditorView): string {
+    return JSON.stringify(
+        {
+            title: get(currentDocumentTitle),
+            exportedAt: new Date().toISOString(),
+            text: view.state.doc.toString(),
+            annotations: buildAnnotationsJSON(view),
+        },
+        null,
+        2,
+    );
+}
+
+function buildAnnotationsJSON(view: EditorView): object[] {
     const doc = view.state.doc.toString();
     const annots = view.state.field(annotationField);
 
-    const exportAnnotations = Object.values(annots).map((a) => {
+    return Object.values(annots).map((a) => {
         const { from, to } = annotationRange(a);
         const selectedText = doc.slice(from, to);
         const base = {
@@ -76,17 +90,13 @@ function buildJSON(view: EditorView): string {
         }
         return base;
     });
+}
 
-    return JSON.stringify(
-        {
-            title: get(currentDocumentTitle),
-            exportedAt: new Date().toISOString(),
-            text: doc,
-            annotations: exportAnnotations,
-        },
-        null,
-        2,
-    );
+function buildPlainTextWithAnnotations(view: EditorView): string {
+    const doc = view.state.doc.toString();
+    const annotations = buildAnnotationsJSON(view);
+    if (annotations.length === 0) return doc;
+    return `${doc}\n\n---\n\n${JSON.stringify(annotations, null, 2)}`;
 }
 
 function buildMarkdown(view: EditorView): string {
@@ -144,16 +154,25 @@ const formatBuilders: Record<ExportFormat, (view: EditorView) => string> = {
     txt: buildPlainText,
     json: buildJSON,
     md: buildMarkdown,
+    "txt+json": buildPlainTextWithAnnotations,
 };
 
 const mimeTypes: Record<ExportFormat, string> = {
     txt: "text/plain",
     json: "application/json",
     md: "text/markdown",
+    "txt+json": "text/plain",
+};
+
+const fileExtensions: Record<ExportFormat, string> = {
+    txt: "txt",
+    json: "json",
+    md: "md",
+    "txt+json": "txt",
 };
 
 export function exportDocument(view: EditorView, format: ExportFormat) {
     const title = sanitizeFilename(get(currentDocumentTitle));
     const content = formatBuilders[format](view);
-    triggerDownload(content, `${title}.${format}`, mimeTypes[format]);
+    triggerDownload(content, `${title}.${fileExtensions[format]}`, mimeTypes[format]);
 }
