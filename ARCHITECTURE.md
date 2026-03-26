@@ -71,7 +71,6 @@ src/
 │   │   ├── extensions.ts      # Full CodeMirror extension stack
 │   │   ├── listeners.ts       # Persistence + change listeners
 │   │   ├── replay.ts          # Event log replay for state reconstruction
-│   │   ├── restore.ts         # Backup restore with annotation re-anchoring
 │   │   ├── dictionaryPlugin.ts # Mod-B keymap for dictionary popover trigger
 │   │   ├── DictionaryPopover.svelte # Floating dictionary/thesaurus UI
 │   │   ├── StatusBar.svelte   # Word count, WPM, character count
@@ -948,7 +947,7 @@ A writing app that loses user text is a catastrophic failure. The event log in S
 
 ### Suspicious change detection (`errorGuard.ts`)
 
-`checkForSuspiciousChange(oldText, newText)` runs in `listeners.ts` *before* a transaction is persisted. If a single transaction batch deletes >= 20% of the document AND >= 100 characters, the pre-deletion text is saved to localStorage as a plain-text backup under `"quillium_backup_auto"`. The thresholds are intentionally conservative: false positives just mean an extra backup, while false negatives mean lost text.
+`isSuspiciousDeletion(oldText, newText)` runs in `listeners.ts` *before* a transaction is persisted. If a single transaction batch deletes >= 20% of the document AND >= 100 characters, an error banner directs the user to the version history page (`/history`) where they can restore from a SQLite snapshot. The thresholds are intentionally conservative: false positives just mean an extra warning, while false negatives mean lost text.
 
 ### Crash backup
 
@@ -957,17 +956,11 @@ A writing app that loses user text is a catastrophic failure. The event log in S
 - `window.addEventListener("unhandledrejection", ...)` — unhandled promise rejections (skips Svelte's benign `effect_orphan` error)
 - `handleError` — SvelteKit's route-level error handler
 
-Backup goes to `"quillium_backup_crash"` in localStorage.
+Backup goes to `"quillium_backup_crash"` in localStorage. The error banner offers a "Save copy" button to download this backup as a plain text file, plus a "View version history" button to navigate to `/history`.
 
-### Restoration (`restore.ts`)
+### Why localStorage for crash backups
 
-When the user clicks "Restore previous" in the error banner, `restoreBackup(view, documentText)` replaces the entire document with the backup text. Existing annotations aren't just discarded: each annotation's anchor text is extracted before the swap, then re-matched in the restored document using `SearchCursor`. If found, the annotation is placed at the match position. If not found, it's placed at position 0 with a console warning. Nested annotations inside revision `VersionState` blobs are also healed the same way.
-
-The restore transaction is tagged with `userEvent: "input.restore"` so the persistence layer's suspicious-change detector skips it (otherwise it would trigger another backup of the pre-restore state).
-
-### Why localStorage for backups
-
-Backups must survive the crash that triggered them. SQLite writes go through Tauri's IPC, which may not complete if the JavaScript runtime is in a bad state. localStorage writes are synchronous and handled by the webview engine, making them more likely to succeed during a crash.
+Crash backups must survive the crash that triggered them. SQLite writes go through Tauri's IPC, which may not complete if the JavaScript runtime is in a bad state. localStorage writes are synchronous and handled by the webview engine, making them more likely to succeed during a crash. For non-crash scenarios (suspicious deletions), the SQLite snapshot system is sufficient since the persistence layer is still functional.
 
 ---
 
