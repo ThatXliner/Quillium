@@ -18,29 +18,12 @@ import { Transaction } from "@codemirror/state";
 import { ExternalLinkIcon, XIcon } from "lucide-svelte";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-
-// ── Types ──────────────────────────────────────────────────────
-
-interface Definition {
-    definition: string;
-    example?: string;
-    synonyms: string[];
-    antonyms: string[];
-}
-
-interface Meaning {
-    partOfSpeech: string;
-    definitions: Definition[];
-    synonyms: string[];
-    antonyms: string[];
-}
-
-interface DictEntry {
-    word: string;
-    phonetic?: string;
-    phonetics: { text?: string }[];
-    meanings: Meaning[];
-}
+import {
+    getPhonetic,
+    collectSynonyms,
+    collectAntonyms,
+    type DictEntry,
+} from "./dictionaryUtils";
 
 // ── State ──────────────────────────────────────────────────────
 
@@ -168,37 +151,6 @@ async function lookupWord(w: string) {
             lookupLoading = false;
         }
     }
-}
-
-function getPhonetic(entry: DictEntry): string {
-    if (entry.phonetic) return entry.phonetic;
-    return entry.phonetics.find((p) => p.text)?.text ?? "";
-}
-
-function collectSynonyms(entries: DictEntry[]): string[] {
-    const all = new Set<string>();
-    for (const entry of entries) {
-        for (const meaning of entry.meanings) {
-            for (const s of meaning.synonyms) all.add(s);
-            for (const def of meaning.definitions) {
-                for (const s of def.synonyms) all.add(s);
-            }
-        }
-    }
-    return [...all].slice(0, 10);
-}
-
-function collectAntonyms(entries: DictEntry[]): string[] {
-    const all = new Set<string>();
-    for (const entry of entries) {
-        for (const meaning of entry.meanings) {
-            for (const a of meaning.antonyms) all.add(a);
-            for (const def of meaning.definitions) {
-                for (const a of def.antonyms) all.add(a);
-            }
-        }
-    }
-    return [...all].slice(0, 6);
 }
 
 // ── Actions ────────────────────────────────────────────────────
