@@ -39,8 +39,6 @@ jobs:
           version: 1.0
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          cache: true
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
