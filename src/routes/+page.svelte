@@ -49,6 +49,7 @@ let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
 let updateReady = $state(false);
+let updateMock = $state(false);
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -94,15 +95,31 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 async function installUpdate() {
-    if (!pendingUpdate) return;
+    if (!pendingUpdate && !updateMock) return;
     updateInstalling = true;
     try {
         if (updateReady) {
+            if (updateMock) {
+                // Mock: just dismiss the banner.
+                console.log("[UpdateMock] relaunch() would fire here");
+                updateAvailable = false;
+                updateInstalling = false;
+                updateReady = false;
+                updateMock = false;
+                return;
+            }
             // Already installed — just relaunch.
             await relaunch();
         } else {
+            if (updateMock) {
+                // Mock: simulate a brief download delay.
+                await new Promise((r) => setTimeout(r, 1500));
+                updateReady = true;
+                updateInstalling = false;
+                return;
+            }
             // Download and install atomically, then show "Relaunch" button.
-            await pendingUpdate.downloadAndInstall();
+            await pendingUpdate!.downloadAndInstall();
             updateReady = true;
             updateInstalling = false;
         }
@@ -266,7 +283,17 @@ if (import.meta.env.DEV) {
 
 <!-- Debug panel — DEV only, never rendered in production builds -->
 {#if import.meta.env.DEV && $debugPanelActive}
-    <DebugPanel reloadEditor={() => editorComponent?.reload()} />
+    <DebugPanel
+        reloadEditor={() => editorComponent?.reload()}
+        simulateUpdate={(version) => {
+            updateAvailable = true;
+            updateVersion = version;
+            updateInstalling = false;
+            updateReady = false;
+            updateMock = true;
+            pendingUpdate = null;
+        }}
+    />
 {/if}
 
 <!-- AutoAI collaborator widget — fixed bottom-right bubble -->

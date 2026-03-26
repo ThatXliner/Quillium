@@ -36,7 +36,13 @@ import {
 import type { EventPayload } from "$lib/db/events";
 import { buildEventPayload } from "$lib/editor/listeners";
 
-const { reloadEditor }: { reloadEditor: () => Promise<void> | void } = $props();
+const {
+    reloadEditor,
+    simulateUpdate,
+}: {
+    reloadEditor: () => Promise<void> | void;
+    simulateUpdate?: (version: string) => void;
+} = $props();
 
 let loading = $state<string | null>(null);
 let lastLoaded = $state<string | null>(null);
@@ -281,6 +287,12 @@ function handleKeydown(e: KeyboardEvent) {
         <div class="px-5 py-3 border-t border-black/10 text-[10px] text-black/35 flex items-center justify-between">
             <span>Press <kbd class="font-mono bg-black/10 px-1 rounded">Esc</kbd> to close</span>
             <div class="flex items-center gap-3">
+                {#if simulateUpdate}
+                    <button
+                        onclick={() => { simulateUpdate("99.0.0"); close(); }}
+                        class="text-[10px] font-medium px-2 py-1 rounded-md bg-black/6 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                    >Simulate update</button>
+                {/if}
                 <button
                     onclick={clearUndoHistory}
                     class="text-[10px] font-medium px-2 py-1 rounded-md transition-colors
