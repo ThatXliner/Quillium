@@ -21,6 +21,7 @@ import {
     type AutoAIMode,
 } from "./settings.svelte";
 import { startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
+import posthog from "$lib/posthog";
 
 let open = $state(false);
 let editingName = $state(false);
@@ -50,6 +51,7 @@ const focusIndex = $derived(focusLevels.indexOf(autoAISettings.conservativeness)
 function handleFocusSlider(e: Event) {
     const idx = Number.parseInt((e.target as HTMLInputElement).value, 10);
     autoAISettings.conservativeness = focusLevels[idx];
+    posthog.capture("autoai_settings_changed", { setting: "depth", value: focusLevels[idx] });
     persistAutoAISettings();
 }
 
@@ -62,18 +64,21 @@ function toggleEnabled() {
     if (noApiKey) return;
     autoAISettings.enabled = !autoAISettings.enabled;
     autoAIRunning = autoAISettings.enabled;
+    posthog.capture("autoai_toggled", { enabled: autoAISettings.enabled });
     persistAutoAISettings();
     if (autoAISettings.enabled) startAutoAI();
     else stopAutoAI();
 }
 
 function handleManualReview() {
+    posthog.capture("autoai_manual_review_triggered");
     open = false;
     triggerManualReview();
 }
 
 function setMode(mode: AutoAIMode) {
     autoAISettings.mode = mode;
+    posthog.capture("autoai_mode_changed", { mode });
     persistAutoAISettings();
 }
 
@@ -85,6 +90,7 @@ function toggleAnnotationType(type: AutoAIAnnotationType) {
         if (autoAISettings.annotationTypes.length === 1) return; // keep at least one
         autoAISettings.annotationTypes = autoAISettings.annotationTypes.filter((t) => t !== type);
     }
+    posthog.capture("autoai_settings_changed", { setting: "annotation_types", value: autoAISettings.annotationTypes });
     persistAutoAISettings();
 }
 
