@@ -23,8 +23,6 @@ export type MockSnapshot = {
 export type TauriMockOptions = {
     /** Return value for `get_api_key`. null = no key configured. */
     apiKey: string | null;
-    /** When set, `plugin:updater|check` returns an available update. */
-    updateVersion: string | null;
     /** When false, the tutorial overlay appears on load. */
     skipTutorial: boolean;
     /** Merged into localStorage `quillium-app-settings`. */
@@ -43,7 +41,6 @@ export type TauriMockOptions = {
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
     apiKey: null,
-    updateVersion: null,
     skipTutorial: true,
     settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
     initialDoc: null,
@@ -92,7 +89,6 @@ export class QuilliumPage {
         await this.page.addInitScript(
             (payload: {
                 apiKey: string | null;
-                updateVersion: string | null;
                 skipTutorial: boolean;
                 settings: Record<string, unknown>;
                 initialDoc: string | null;
@@ -236,23 +232,6 @@ export class QuilliumPage {
                             return newId;
                         }
 
-                        // Updater plugin
-                        if (cmd === "plugin:updater|check") {
-                            if (payload.updateVersion) {
-                                return {
-                                    available: true,
-                                    version: payload.updateVersion,
-                                    date: new Date().toISOString(),
-                                    body: "Release notes",
-                                };
-                            }
-                            return null;
-                        }
-                        if (cmd === "plugin:updater|download_and_install") {
-                            await new Promise((r) => setTimeout(r, 60_000));
-                            return null;
-                        }
-
                         // Tauri event plumbing
                         if (cmd === "plugin:event|listen") return 1;
                         if (cmd === "plugin:event|unlisten") return null;
@@ -276,7 +255,6 @@ export class QuilliumPage {
             },
             {
                 apiKey: opts.apiKey,
-                updateVersion: opts.updateVersion,
                 skipTutorial: opts.skipTutorial,
                 settings: opts.settings,
                 initialDoc: opts.initialDoc,

@@ -39,10 +39,8 @@ import { buildEventPayload } from "$lib/editor/listeners";
 
 const {
     reloadEditor,
-    simulateUpdate,
 }: {
     reloadEditor: () => Promise<void> | void;
-    simulateUpdate?: (version: string) => void;
 } = $props();
 
 let loading = $state<string | null>(null);
@@ -153,12 +151,6 @@ function clearUndoHistory() {
 }
 
 // ── App-level simulations ─────────────────────────────────────────
-
-function triggerUpdateBanner() {
-    if (!simulateUpdate) return;
-    simulateUpdate("99.0.0");
-    close();
-}
 
 function triggerCrashBanner() {
     pendingSimulation = "crash";
@@ -331,12 +323,6 @@ function handleKeydown(e: KeyboardEvent) {
         <!-- Simulate section -->
         <div class="px-5 py-3 border-t border-black/10 flex items-center gap-2">
             <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest mr-1">Simulate</span>
-            {#if simulateUpdate}
-                <button
-                    onclick={triggerUpdateBanner}
-                    class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
-                >Update available</button>
-            {/if}
             <button
                 onclick={triggerCrashBanner}
                 disabled={pendingSimulation !== null}

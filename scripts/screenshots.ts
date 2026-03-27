@@ -16,7 +16,6 @@
  *   05-revision-active.png  — revision card active: version pills + nested editor open
  *   06-library.png          — document library with multiple documents and preview panel
  *   07-revision-modal.png   — revision full-screen modal editor open
- *   09-update-banner.png    — update notification banner in bottom-right
  *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   12-nested-revision.png  — doubly-nested revision: outer modal with inner revision open
  */
@@ -105,7 +104,6 @@ type TauriMockOptions = {
     loadResponse: string | null;
     fakeApiKey: boolean;
     libraryMode: boolean;
-    updateVersion: string | null;
 };
 
 async function installTauriMock(
@@ -115,7 +113,6 @@ async function installTauriMock(
     const loadResponse = options.loadResponse ?? null;
     const fakeApiKey = options.fakeApiKey ?? false;
     const libraryMode = options.libraryMode ?? false;
-    const updateVersion = options.updateVersion ?? null;
 
     await page.addInitScript(
         (payload: {
@@ -123,7 +120,6 @@ async function installTauriMock(
             fakeApiKey: boolean;
             libraryMode: boolean;
             libraryDocs: typeof LIBRARY_DOCUMENTS;
-            updateVersion: string | null;
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
             // Signal that an API key has been saved so the settings module
@@ -170,22 +166,6 @@ async function installTauriMock(
                     if (cmd === "set_api_key") return null;
                     if (cmd === "plugin:event|listen") return 1;
                     if (cmd === "plugin:event|unlisten") return null;
-                    // Updater plugin
-                    if (cmd === "plugin:updater|check") {
-                        if (payload.updateVersion) {
-                            return {
-                                available: true,
-                                version: payload.updateVersion,
-                                date: new Date().toISOString(),
-                                body: "Release notes",
-                            };
-                        }
-                        return null;
-                    }
-                    if (cmd === "plugin:updater|download_and_install") {
-                        await new Promise((r) => setTimeout(r, 60_000));
-                        return null;
-                    }
                     // Document library commands
                     if (cmd === "cmd_migrate_from_state_json")
                         return { migrated: false, documentId: null };
@@ -236,7 +216,7 @@ async function installTauriMock(
                 unregisterListener: () => {},
             };
         },
-        { loadResponse, fakeApiKey, libraryMode, libraryDocs: LIBRARY_DOCUMENTS, updateVersion },
+        { loadResponse, fakeApiKey, libraryMode, libraryDocs: LIBRARY_DOCUMENTS },
     );
 }
 
@@ -699,25 +679,6 @@ async function scenarioDictionary(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
-/**
- * 09. update-banner — The update notification banner in the bottom-right
- *    corner, showing an available version with Update and Dismiss buttons.
- */
-async function scenarioUpdateBanner(ctx: BrowserContext): Promise<void> {
-    const page = await ctx.newPage();
-    await page.setViewportSize(VIEWPORT);
-    await installTauriMock(page, { updateVersion: "1.0.0" });
-    await page.goto(BASE_URL);
-    await waitForEditor(page);
-    await setEditorText(page, PROSE_SHORT);
-    // Wait for the update banner to appear
-    await page.locator("text=is available").waitFor({ state: "visible", timeout: 10_000 });
-    await page.mouse.click(720, 400);
-    await page.waitForTimeout(200);
-    await shot(page, "09-update-banner");
-    await page.close();
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -780,7 +741,6 @@ async function main(): Promise<void> {
         await scenarioLibrary(context);
         await scenarioRevisionModal(context);
         await scenarioNestedRevision(context);
-        await scenarioUpdateBanner(context);
         await scenarioDictionary(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
