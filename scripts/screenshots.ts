@@ -709,8 +709,8 @@ async function main(): Promise<void> {
                 if (!devCheck || !devCheck.ok) {
                     throw new Error(
                         `A server is running at ${BASE_URL} but it does not appear to be a Vite dev server (/@vite/client returned ${devCheck?.status ?? "network error"}). ` +
-                        `This is likely \`vite preview\`, which runs the production build where __runScenario__ is unavailable. ` +
-                        `Stop it and re-run, or use --no-server to point at a running tauri dev instance on port 1420.`,
+                            `This is likely \`vite preview\`, which runs the production build where __runScenario__ is unavailable. ` +
+                            `Stop it and re-run, or use --no-server to point at a running tauri dev instance on port 1420.`,
                     );
                 }
                 serverAlreadyRunning = true;

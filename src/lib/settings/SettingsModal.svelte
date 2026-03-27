@@ -13,7 +13,16 @@
       - onclose: () => void — called when the modal is fully dismissed.
 -->
 <script lang="ts">
-import { X, Settings2, Check, ChevronDown, Plus, Trash2, HelpCircle, MessageSquare } from "lucide-svelte";
+import {
+    X,
+    Settings2,
+    Check,
+    ChevronDown,
+    Plus,
+    Trash2,
+    HelpCircle,
+    MessageSquare,
+} from "lucide-svelte";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";

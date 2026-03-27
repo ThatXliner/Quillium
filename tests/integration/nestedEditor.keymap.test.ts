@@ -13,10 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
-import {
-    annotationField,
-    addAnnotation,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation, type VersionState } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
@@ -236,7 +233,12 @@ function addMultiVersionRevision(view: EditorView, from: number, to: number) {
     return revision.id;
 }
 
-function runNavKey(nestedView: EditorView, parentView: EditorView, revisionId: number, key: string) {
+function runNavKey(
+    nestedView: EditorView,
+    parentView: EditorView,
+    revisionId: number,
+    key: string,
+) {
     const ext = makeParentRevisionNavKeymap(parentView, revisionId);
     const bindings = extractBindings(ext);
     for (const binding of bindings) {

@@ -62,9 +62,7 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         // The level-2 modal should show the sub-revision's full text "Doleres"
         // (not the parent's text "Ipsum Doleres?" — that would mean the event
         // was handled by the wrong level).
-        const level2Modal = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const level2Modal = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(level2Modal).toBeVisible({ timeout: 8_000 });
         const level2Text = await q.cmText(level2Modal);
         expect(level2Text).toBe("Doleres");
@@ -107,9 +105,7 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         await expect(q.modalAnnotationCards.first()).toBeVisible({ timeout: 5_000 });
 
         // The inline editor should show "cdefgh"
-        const inline1 = page
-            .locator("dialog[open] .revision-inline-editor .cm-content")
-            .first();
+        const inline1 = page.locator("dialog[open] .revision-inline-editor .cm-content").first();
         await expect(inline1).toBeVisible({ timeout: 3_000 });
         const inline1Text = await q.cmText(inline1);
         expect(inline1Text).toBe("cdefgh");
@@ -123,9 +119,7 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         await q.createRevision();
         await page.waitForTimeout(500);
 
-        const modal2 = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const modal2 = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(modal2).toBeVisible({ timeout: 8_000 });
         // Level-2 modal shows the sub-revision's full text
         const modal2Text = await q.cmText(modal2);
@@ -136,9 +130,7 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         await expect(level2Cards.first()).toBeVisible({ timeout: 5_000 });
 
         // The inline editor in level-2 should show "def"
-        const inline2 = page
-            .locator("dialog[open] .revision-inline-editor .cm-content")
-            .first();
+        const inline2 = page.locator("dialog[open] .revision-inline-editor .cm-content").first();
         await expect(inline2).toBeVisible({ timeout: 3_000 });
         const inline2Text = await q.cmText(inline2);
         expect(inline2Text).toBe("def");
@@ -151,9 +143,7 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         await q.createRevision();
         await page.waitForTimeout(500);
 
-        const modal3 = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const modal3 = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(modal3).toBeVisible({ timeout: 8_000 });
         // Level-3 modal shows the sub-sub-revision's full text
         const modal3Text = await q.cmText(modal3);
@@ -195,9 +185,7 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         await page.waitForTimeout(500);
         await expect(q.modalAnnotationCards.first()).toBeVisible({ timeout: 5_000 });
 
-        const inline = page
-            .locator("dialog[open] .revision-inline-editor .cm-content")
-            .first();
+        const inline = page.locator("dialog[open] .revision-inline-editor .cm-content").first();
         await expect(inline).toBeVisible({ timeout: 3_000 });
         expect(await q.cmText(inline)).toBe("Beta");
 
@@ -209,9 +197,7 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         await q.createRevision();
         await page.waitForTimeout(500);
 
-        const modal2 = page
-            .locator("dialog[open] .revision-modal-editor .cm-content")
-            .first();
+        const modal2 = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(modal2).toBeVisible({ timeout: 8_000 });
 
         // The key assertion: level-2 modal shows the sub-revision text "Beta",

@@ -316,7 +316,9 @@ function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
         if (checkpointLabel.trim()) {
             checkpointAlerting = true;
-            setTimeout(() => { checkpointAlerting = false; }, 450);
+            setTimeout(() => {
+                checkpointAlerting = false;
+            }, 450);
             return;
         }
         goToEditor();

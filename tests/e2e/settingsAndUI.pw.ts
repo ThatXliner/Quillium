@@ -39,7 +39,10 @@ test.describe("settings modal", () => {
 
 test.describe("AI sidebar", () => {
     test("opens chat panel via button", async ({ page }) => {
-        const q = new QuilliumPage(page, { apiKey: "test-key", settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true } });
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
@@ -47,7 +50,10 @@ test.describe("AI sidebar", () => {
     });
 
     test("switches between AI tabs", async ({ page }) => {
-        const q = new QuilliumPage(page, { apiKey: "test-key", settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true } });
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
         await q.init();
 
         // Open chat
@@ -63,7 +69,10 @@ test.describe("AI sidebar", () => {
     });
 
     test("escape closes sidebar", async ({ page }) => {
-        const q = new QuilliumPage(page, { apiKey: "test-key", settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true } });
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
         await q.init();
 
         await page.locator("#ai-tab-chat").click();

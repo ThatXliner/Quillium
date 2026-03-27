@@ -18,7 +18,14 @@
  * Parent: rendered by the modal layer in +page.svelte
  * Children: Thread.svelte
  */
-import { ChevronRight, ChevronDown, ChevronUp, MessageSquare, SparklesIcon, X } from "lucide-svelte";
+import {
+    ChevronRight,
+    ChevronDown,
+    ChevronUp,
+    MessageSquare,
+    SparklesIcon,
+    X,
+} from "lucide-svelte";
 import { slide } from "svelte/transition";
 import type { EditorView } from "@codemirror/view";
 import { modalStack, annotations as annotationsStore, modalAnnotationStores } from "$lib/stores";
@@ -45,18 +52,14 @@ let dialogEl = $state<HTMLDialogElement>();
 // - stackIndex 0 → main editor's global annotations store
 // - stackIndex N → parent modal's nested annotation store (index N-1)
 const comment = $derived(
-    (stackIndex === 0
-        ? $annotationsStore
-        : $modalAnnotationStores[stackIndex - 1]
-    )?.[commentId] as Annotation<"comment"> | undefined,
+    (stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[commentId] as
+        | Annotation<"comment">
+        | undefined,
 );
 
 const selectedText = $derived(
     comment
-        ? parentView.state.sliceDoc(
-              comment.selection.main.from,
-              comment.selection.main.to,
-          )
+        ? parentView.state.sliceDoc(comment.selection.main.from, comment.selection.main.to)
         : "",
 );
 
@@ -226,7 +229,11 @@ async function aiSuggestion() {
     } catch {
         handleUpdateThread([
             ...currentThread,
-            { message: "Sorry, I encountered an error generating a suggestion.", author: "AI", time: Date.now() },
+            {
+                message: "Sorry, I encountered an error generating a suggestion.",
+                author: "AI",
+                time: Date.now(),
+            },
         ]);
     }
 }

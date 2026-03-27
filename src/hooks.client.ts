@@ -22,7 +22,9 @@ if (typeof window !== "undefined") {
         saveEmergencyBackup(`Uncaught error: ${event.message}`);
         const err = event.error instanceof Error ? event.error : new Error(event.message);
         const stack = err.stack ?? err.message;
-        const details = stack.startsWith(err.name) ? stack : `${err.name}: ${err.message}\n${stack}`;
+        const details = stack.startsWith(err.name)
+            ? stack
+            : `${err.name}: ${err.message}\n${stack}`;
         showCrashBanner("Something went wrong. Your work has been backed up.", details);
         posthog.captureException(err);
     });
@@ -36,7 +38,9 @@ if (typeof window !== "undefined") {
         if (err.message?.includes("effect_orphan")) return;
         saveEmergencyBackup(`Unhandled promise rejection: ${err.message}`);
         const stack = err.stack ?? err.message;
-        const details = stack.startsWith(err.name) ? stack : `${err.name}: ${err.message}\n${stack}`;
+        const details = stack.startsWith(err.name)
+            ? stack
+            : `${err.name}: ${err.message}\n${stack}`;
         showCrashBanner("Something went wrong. Your work has been backed up.", details);
         posthog.captureException(err);
     });

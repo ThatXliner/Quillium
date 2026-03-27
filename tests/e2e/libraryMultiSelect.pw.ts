@@ -296,7 +296,11 @@ test.describe("library keyboard shortcuts", () => {
         await expect(page.getByText("Your Library")).toBeVisible({ timeout: 10_000 });
 
         // Switch to trash tab using the exact tab button text
-        await page.locator("button").filter({ hasText: /^.*Trash$/ }).first().click();
+        await page
+            .locator("button")
+            .filter({ hasText: /^.*Trash$/ })
+            .first()
+            .click();
         await expect(page.getByRole("heading", { name: "Deleted One" })).toBeVisible({
             timeout: 5_000,
         });

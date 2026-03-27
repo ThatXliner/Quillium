@@ -15,8 +15,8 @@ let label = $derived(
             ? "Relaunching\u2026"
             : "Downloading\u2026"
         : ready
-            ? "Relaunch"
-            : "Update",
+          ? "Relaunch"
+          : "Update",
 );
 </script>
 

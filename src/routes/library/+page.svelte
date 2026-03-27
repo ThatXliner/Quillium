@@ -53,9 +53,7 @@ const filtered = $derived(
 
 /** When exactly one document is selected, show its preview. */
 const selectedDoc = $derived(
-    selectedIds.size === 1
-        ? (filtered.find((d) => selectedIds.has(d.id)) ?? null)
-        : null,
+    selectedIds.size === 1 ? (filtered.find((d) => selectedIds.has(d.id)) ?? null) : null,
 );
 const selectedCount = $derived(selectedIds.size);
 const hasContinue = $derived($currentDocumentId !== null);
@@ -287,7 +285,13 @@ function handleKeydown(e: KeyboardEvent) {
     }
 
     // Cmd/Ctrl+Backspace — trash selected document(s)
-    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && !inInput && selectedIds.size > 0 && !trashMode) {
+    if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key === "Backspace" &&
+        !inInput &&
+        selectedIds.size > 0 &&
+        !trashMode
+    ) {
         e.preventDefault();
         if (selectedIds.size === 1) {
             handleTrash([...selectedIds][0]);
@@ -298,7 +302,14 @@ function handleKeydown(e: KeyboardEvent) {
     }
 
     // Z — restore selected document(s) from trash
-    if (e.key === "z" && !inInput && !e.metaKey && !e.ctrlKey && trashMode && selectedIds.size > 0) {
+    if (
+        e.key === "z" &&
+        !inInput &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        trashMode &&
+        selectedIds.size > 0
+    ) {
         e.preventDefault();
         if (selectedIds.size === 1) {
             handleRestore([...selectedIds][0]);

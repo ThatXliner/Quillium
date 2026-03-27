@@ -21,8 +21,16 @@ interface Props {
     onRenameTitle: (id: string, newTitle: string) => void;
 }
 
-const { doc, selectedCount, trashMode, onOpen, onTrash, onRestore, onDeletePermanent, onRenameTitle }: Props =
-    $props();
+const {
+    doc,
+    selectedCount,
+    trashMode,
+    onOpen,
+    onTrash,
+    onRestore,
+    onDeletePermanent,
+    onRenameTitle,
+}: Props = $props();
 
 const multiSelect = $derived(selectedCount > 1);
 

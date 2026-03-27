@@ -194,7 +194,8 @@ export class QuilliumPage {
                         if (cmd === "cmd_get_snapshot_storage_size") {
                             // Return sum of state_json byte lengths for mock snapshots
                             return payload.snapshots.reduce(
-                                (sum, s) => sum + JSON.stringify({ doc: s.doc, annotations: {} }).length,
+                                (sum, s) =>
+                                    sum + JSON.stringify({ doc: s.doc, annotations: {} }).length,
                                 0,
                             );
                         }
@@ -206,7 +207,9 @@ export class QuilliumPage {
                             const toDelete = unlabeled.slice(a.keepN);
                             const deleteIds = new Set(toDelete.map((s) => s.id));
                             const before = payload.snapshots.length;
-                            payload.snapshots = payload.snapshots.filter((s) => !deleteIds.has(s.id));
+                            payload.snapshots = payload.snapshots.filter(
+                                (s) => !deleteIds.has(s.id),
+                            );
                             return before - payload.snapshots.length;
                         }
                         if (cmd === "cmd_prune_snapshots_older_than") {

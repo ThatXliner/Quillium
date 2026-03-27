@@ -84,7 +84,12 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
 } from "./models";
-import { canCreateNewComment, canCreateRevision, canCreateSuggestion, getActiveAnnotation } from "./utils";
+import {
+    canCreateNewComment,
+    canCreateRevision,
+    canCreateSuggestion,
+    getActiveAnnotation,
+} from "./utils";
 import {
     annotationField,
     addAnnotation,

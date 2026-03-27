@@ -346,9 +346,9 @@ export class NestedEditorController {
     private flushToParent(): void {
         if (!this._editor) return;
 
-        const rev = this.parentView.state.field(annotationField)[
-            this.revisionId
-        ] as AnnotationType<"revision"> | undefined;
+        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
+            | AnnotationType<"revision">
+            | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
             // _editorVersionIndex is stable here: version switches are driven

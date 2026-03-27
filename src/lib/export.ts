@@ -108,9 +108,7 @@ function buildMarkdown(view: EditorView): string {
 
     // Sort annotations by position (descending) so we can insert markers
     // without shifting earlier offsets.
-    const sorted = [...annotList].sort(
-        (a, b) => annotationRange(b).from - annotationRange(a).from,
-    );
+    const sorted = [...annotList].sort((a, b) => annotationRange(b).from - annotationRange(a).from);
 
     let result = doc;
     const footnotes: string[] = [];

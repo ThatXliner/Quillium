@@ -151,7 +151,9 @@ test.describe("dictionary popover", () => {
 
     test("open in chat disabled without API key", async ({ page }) => {
         await mockDictionaryApi(page);
-        const q = new QuilliumPage(page, { settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true } }); // no apiKey
+        const q = new QuilliumPage(page, {
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        }); // no apiKey
         await q.init();
 
         await openDictionaryOn(q, "helpful");

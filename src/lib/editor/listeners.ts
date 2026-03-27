@@ -261,9 +261,7 @@ async function doAppend(update: ViewUpdate) {
             const oldCount = Object.keys(
                 update.startState.field(savedFields.annotationField),
             ).length;
-            const newCount = Object.keys(
-                update.state.field(savedFields.annotationField),
-            ).length;
+            const newCount = Object.keys(update.state.field(savedFields.annotationField)).length;
             if (isSuspiciousAnnotationChange(oldCount, newCount)) {
                 const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
                 const eventId = get(lastPersistedEventId);

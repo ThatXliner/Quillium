@@ -36,11 +36,7 @@ function dismiss() {
 }
 
 function backupDateStr(timestamp: number): string {
-    return new Date(timestamp)
-        .toISOString()
-        .slice(0, 19)
-        .replace("T", "_")
-        .replace(/:/g, "-");
+    return new Date(timestamp).toISOString().slice(0, 19).replace("T", "_").replace(/:/g, "-");
 }
 
 function triggerDownload(content: string, filename: string, mimeType: string) {
@@ -57,7 +53,11 @@ function downloadBackupAsText() {
     const backup: BackupEntry | null = readBackup("crash");
     if (!backup) return;
     const title = backup.documentTitle || "document";
-    triggerDownload(backup.documentText, `${title}_backup_${backupDateStr(backup.timestamp)}.txt`, "text/plain");
+    triggerDownload(
+        backup.documentText,
+        `${title}_backup_${backupDateStr(backup.timestamp)}.txt`,
+        "text/plain",
+    );
 }
 
 function downloadBackupAsJSON() {
@@ -75,7 +75,11 @@ function downloadBackupAsJSON() {
         null,
         2,
     );
-    triggerDownload(json, `${title}_backup_${backupDateStr(backup.timestamp)}.json`, "application/json");
+    triggerDownload(
+        json,
+        `${title}_backup_${backupDateStr(backup.timestamp)}.json`,
+        "application/json",
+    );
 }
 
 function restoreFromBackup() {

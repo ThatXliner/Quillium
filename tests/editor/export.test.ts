@@ -113,10 +113,7 @@ describe("exportDocument", () => {
             const parsed = JSON.parse(downloadedContent);
             expect(parsed.annotations).toHaveLength(1);
             expect(parsed.annotations[0].type).toBe("suggestion");
-            expect(parsed.annotations[0].replacements).toEqual([
-                { text: "Hi" },
-                { text: "Hey" },
-            ]);
+            expect(parsed.annotations[0].replacements).toEqual([{ text: "Hi" }, { text: "Hey" }]);
         });
 
         it("exports revisions with version data", async () => {

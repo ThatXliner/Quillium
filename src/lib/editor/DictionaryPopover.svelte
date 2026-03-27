@@ -18,12 +18,7 @@ import { Transaction } from "@codemirror/state";
 import { ExternalLinkIcon, XIcon } from "lucide-svelte";
 import posthog from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import {
-    getPhonetic,
-    collectSynonyms,
-    collectAntonyms,
-    type DictEntry,
-} from "./dictionaryUtils";
+import { getPhonetic, collectSynonyms, collectAntonyms, type DictEntry } from "./dictionaryUtils";
 
 // ── State ──────────────────────────────────────────────────────
 

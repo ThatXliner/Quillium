@@ -178,9 +178,7 @@ export function canCreateRevision(annotations: Annotations, selection: EditorSel
     return !Object.values(annotations).some((annotation) => {
         if (!isAnnotationOfType(annotation, "revision")) return false;
         return selection.ranges.some((newRange) =>
-            annotation.selection.ranges.some(
-                (r) => newRange.from < r.to && newRange.to > r.from,
-            ),
+            annotation.selection.ranges.some((r) => newRange.from < r.to && newRange.to > r.from),
         );
     });
 }
@@ -189,9 +187,7 @@ export function canCreateSuggestion(annotations: Annotations, selection: EditorS
     return !Object.values(annotations).some((annotation) => {
         if (!isAnnotationOfType(annotation, "suggestion")) return false;
         return selection.ranges.some((newRange) =>
-            annotation.selection.ranges.some(
-                (r) => newRange.from < r.to && newRange.to > r.from,
-            ),
+            annotation.selection.ranges.some((r) => newRange.from < r.to && newRange.to > r.from),
         );
     });
 }

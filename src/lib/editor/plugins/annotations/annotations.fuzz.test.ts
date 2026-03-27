@@ -458,13 +458,17 @@ describe("canCreateRevision", () => {
 
     it("returns false when new selection is identical to an existing revision", () => {
         fc.assert(
-            fc.property(fc.integer({ min: 0, max: 9_000 }), fc.integer({ min: 1, max: 1000 }), (from, len) => {
-                const sel = EditorSelection.create([EditorSelection.range(from, from + len)]);
-                const annotations: Annotations = {
-                    0: makeAnnotation(0, sel, "revision"),
-                };
-                expect(canCreateRevision(annotations, sel)).toBe(false);
-            }),
+            fc.property(
+                fc.integer({ min: 0, max: 9_000 }),
+                fc.integer({ min: 1, max: 1000 }),
+                (from, len) => {
+                    const sel = EditorSelection.create([EditorSelection.range(from, from + len)]);
+                    const annotations: Annotations = {
+                        0: makeAnnotation(0, sel, "revision"),
+                    };
+                    expect(canCreateRevision(annotations, sel)).toBe(false);
+                },
+            ),
         );
     });
 
@@ -569,9 +573,21 @@ describe("canCreateRevision", () => {
     it("returns false when overlapping any one of several non-overlapping revisions", () => {
         // Revisions at [0,10], [20,30], [40,50]. New overlaps the middle one.
         const annotations: Annotations = {
-            0: makeAnnotation(0, EditorSelection.create([EditorSelection.range(0, 10)]), "revision"),
-            1: makeAnnotation(1, EditorSelection.create([EditorSelection.range(20, 30)]), "revision"),
-            2: makeAnnotation(2, EditorSelection.create([EditorSelection.range(40, 50)]), "revision"),
+            0: makeAnnotation(
+                0,
+                EditorSelection.create([EditorSelection.range(0, 10)]),
+                "revision",
+            ),
+            1: makeAnnotation(
+                1,
+                EditorSelection.create([EditorSelection.range(20, 30)]),
+                "revision",
+            ),
+            2: makeAnnotation(
+                2,
+                EditorSelection.create([EditorSelection.range(40, 50)]),
+                "revision",
+            ),
         };
         const overlapsMiddle = EditorSelection.create([EditorSelection.range(25, 35)]);
         expect(canCreateRevision(annotations, overlapsMiddle)).toBe(false);
@@ -580,8 +596,16 @@ describe("canCreateRevision", () => {
     it("returns true when fitting in a gap between two existing revisions", () => {
         // Revisions at [0,10] and [20,30]. New range [11,19] fits in gap.
         const annotations: Annotations = {
-            0: makeAnnotation(0, EditorSelection.create([EditorSelection.range(0, 10)]), "revision"),
-            1: makeAnnotation(1, EditorSelection.create([EditorSelection.range(20, 30)]), "revision"),
+            0: makeAnnotation(
+                0,
+                EditorSelection.create([EditorSelection.range(0, 10)]),
+                "revision",
+            ),
+            1: makeAnnotation(
+                1,
+                EditorSelection.create([EditorSelection.range(20, 30)]),
+                "revision",
+            ),
         };
         const inGap = EditorSelection.create([EditorSelection.range(11, 19)]);
         expect(canCreateRevision(annotations, inGap)).toBe(true);
@@ -590,8 +614,16 @@ describe("canCreateRevision", () => {
     it("returns false when spanning across two existing revisions", () => {
         // Revisions at [0,10] and [20,30]. New range [5,25] spans both.
         const annotations: Annotations = {
-            0: makeAnnotation(0, EditorSelection.create([EditorSelection.range(0, 10)]), "revision"),
-            1: makeAnnotation(1, EditorSelection.create([EditorSelection.range(20, 30)]), "revision"),
+            0: makeAnnotation(
+                0,
+                EditorSelection.create([EditorSelection.range(0, 10)]),
+                "revision",
+            ),
+            1: makeAnnotation(
+                1,
+                EditorSelection.create([EditorSelection.range(20, 30)]),
+                "revision",
+            ),
         };
         const spanning = EditorSelection.create([EditorSelection.range(5, 25)]);
         expect(canCreateRevision(annotations, spanning)).toBe(false);

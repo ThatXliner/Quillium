@@ -19,7 +19,13 @@
     Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
-import { editorView, currentDocumentId, currentDocumentTitle, currentDraftId, errorBanner } from "$lib/stores";
+import {
+    editorView,
+    currentDocumentId,
+    currentDocumentTitle,
+    currentDraftId,
+    errorBanner,
+} from "$lib/stores";
 import { saveEmergencyBackup } from "$lib/errorGuard";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
@@ -161,7 +167,8 @@ function triggerCrashBanner() {
             message: "Something went wrong. Your work has been backed up.",
             hasBackup: true,
             backupType: "crash",
-            details: "Error: Simulated crash from debug panel\n    at DebugPanel.triggerCrashBanner",
+            details:
+                "Error: Simulated crash from debug panel\n    at DebugPanel.triggerCrashBanner",
         });
         pendingSimulation = null;
     }, 5000);

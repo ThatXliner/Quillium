@@ -151,7 +151,9 @@ describe("getPhonetic", () => {
 
 describe("collectSynonyms", () => {
     it("collects meaning-level synonyms", () => {
-        const entry = makeEntry("happy", [makeMeaning("adjective", { synonyms: ["glad", "joyful"] })]);
+        const entry = makeEntry("happy", [
+            makeMeaning("adjective", { synonyms: ["glad", "joyful"] }),
+        ]);
         expect(collectSynonyms([entry])).toEqual(["glad", "joyful"]);
     });
 
@@ -204,7 +206,9 @@ describe("collectSynonyms", () => {
 
 describe("collectAntonyms", () => {
     it("collects meaning-level antonyms", () => {
-        const entry = makeEntry("happy", [makeMeaning("adjective", { antonyms: ["sad", "unhappy"] })]);
+        const entry = makeEntry("happy", [
+            makeMeaning("adjective", { antonyms: ["sad", "unhappy"] }),
+        ]);
         expect(collectAntonyms([entry])).toEqual(["sad", "unhappy"]);
     });
 

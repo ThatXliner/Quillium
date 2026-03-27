@@ -71,17 +71,21 @@ test("selecting a snapshot loads its document text in the preview", async ({ pag
     await qp.initHistory();
 
     // First snapshot (most recent) is selected by default — its doc should appear
-    await expect.poll(() =>
-        page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? "")
-    ).toContain("Third version");
+    await expect
+        .poll(() =>
+            page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? ""),
+        )
+        .toContain("Third version");
 
     // Click the auto-saved entry (snapshot id=2, no label) in the Today group
     const unselected = page.locator("[aria-selected='false']").first();
     await unselected.click();
 
-    await expect.poll(() =>
-        page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? "")
-    ).toContain("Second version");
+    await expect
+        .poll(() =>
+            page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? ""),
+        )
+        .toContain("Second version");
 });
 
 test("most recent snapshot is selected by default", async ({ page }) => {
@@ -121,7 +125,9 @@ test("Escape key navigates back to the editor", async ({ page }) => {
     expect(page.url()).not.toContain("/history");
 });
 
-test("Restore button requires confirmation before calling cmd_restore_to_snapshot", async ({ page }) => {
+test("Restore button requires confirmation before calling cmd_restore_to_snapshot", async ({
+    page,
+}) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     await qp.initHistory();
 
@@ -142,7 +148,9 @@ test("Restore button requires confirmation before calling cmd_restore_to_snapsho
     await expect(qp.editor).toBeVisible({ timeout: 10_000 });
 });
 
-test("saving a named checkpoint calls cmd_create_named_snapshot and adds it to the list", async ({ page }) => {
+test("saving a named checkpoint calls cmd_create_named_snapshot and adds it to the list", async ({
+    page,
+}) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     // Type in the editor first so lastPersistedEventId > -1, enabling the Save button
     await qp.init();
@@ -211,7 +219,9 @@ test("clicking the storage size button toggles the manage storage panel", async 
     await expect(page.getByText("Manage storage")).not.toBeVisible();
 });
 
-test("prune keep-last-N requires confirmation then calls cmd_prune_snapshots_keep_last_n", async ({ page }) => {
+test("prune keep-last-N requires confirmation then calls cmd_prune_snapshots_keep_last_n", async ({
+    page,
+}) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     await qp.initHistory();
 
@@ -227,11 +237,16 @@ test("prune keep-last-N requires confirmation then calls cmd_prune_snapshots_kee
     expect(cmdsBefore).not.toContain("cmd_prune_snapshots_keep_last_n");
 
     // Second click confirms and calls the command
-    await page.locator("button", { hasText: /confirm\?/i }).first().click();
+    await page
+        .locator("button", { hasText: /confirm\?/i })
+        .first()
+        .click();
     await expect.poll(() => qp.getInvokedCommands()).toContain("cmd_prune_snapshots_keep_last_n");
 });
 
-test("prune older-than requires confirmation then calls cmd_prune_snapshots_older_than", async ({ page }) => {
+test("prune older-than requires confirmation then calls cmd_prune_snapshots_older_than", async ({
+    page,
+}) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     await qp.initHistory();
 
@@ -246,7 +261,10 @@ test("prune older-than requires confirmation then calls cmd_prune_snapshots_olde
     const cmdsBefore = await qp.getInvokedCommands();
     expect(cmdsBefore).not.toContain("cmd_prune_snapshots_older_than");
 
-    await page.locator("button", { hasText: /confirm\?/i }).first().click();
+    await page
+        .locator("button", { hasText: /confirm\?/i })
+        .first()
+        .click();
     await expect.poll(() => qp.getInvokedCommands()).toContain("cmd_prune_snapshots_older_than");
 });
 
@@ -262,8 +280,14 @@ test("prune shows deleted count and refreshes the snapshot list", async ({ page 
     const keepNInput = page.locator("input[type='number']").first();
     await keepNInput.fill("0");
 
-    await page.locator("button", { hasText: /^Prune$/ }).first().click();
-    await page.locator("button", { hasText: /confirm\?/i }).first().click();
+    await page
+        .locator("button", { hasText: /^Prune$/ })
+        .first()
+        .click();
+    await page
+        .locator("button", { hasText: /confirm\?/i })
+        .first()
+        .click();
 
     // Deleted count feedback appears
     await expect(page.getByText(/deleted \d+ snapshot/i)).toBeVisible({ timeout: 5_000 });
@@ -282,8 +306,14 @@ test("named checkpoints are never deleted by keep-last-N prune", async ({ page }
     const keepNInput = page.locator("input[type='number']").first();
     await keepNInput.fill("0");
 
-    await page.locator("button", { hasText: /^Prune$/ }).first().click();
-    await page.locator("button", { hasText: /confirm\?/i }).first().click();
+    await page
+        .locator("button", { hasText: /^Prune$/ })
+        .first()
+        .click();
+    await page
+        .locator("button", { hasText: /confirm\?/i })
+        .first()
+        .click();
 
     await expect.poll(() => qp.getInvokedCommands()).toContain("cmd_prune_snapshots_keep_last_n");
 

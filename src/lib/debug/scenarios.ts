@@ -1061,8 +1061,7 @@ export const scenarios: Scenario[] = [
     {
         id: "screenshot-annotations-no-ai",
         label: "Screenshot: annotations without AI (Dickens)",
-        description:
-            "Comment and revision only — no AI suggestion — used by the screenshot script",
+        description: "Comment and revision only — no AI suggestion — used by the screenshot script",
         category: "debug",
         doc: DICKENS_DOC,
         setup(view) {

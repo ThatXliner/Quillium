@@ -86,12 +86,15 @@ describe.skip("nested annotation creation routing", () => {
         });
         components.push({ destroy: () => comp.$destroy() });
 
-        publishNestedCommand({
-            revisionId,
-            type: "revision",
-            selectionFrom: 1,
-            selectionTo: 3,
-        }, view);
+        publishNestedCommand(
+            {
+                revisionId,
+                type: "revision",
+                selectionFrom: 1,
+                selectionTo: 3,
+            },
+            view,
+        );
 
         await Promise.resolve();
 
@@ -130,12 +133,15 @@ describe.skip("nested annotation creation routing", () => {
         });
         components.push({ destroy: () => modal.$destroy() });
 
-        publishNestedCommand({
-            revisionId,
-            type: "revision",
-            selectionFrom: 0,
-            selectionTo: 2,
-        }, view);
+        publishNestedCommand(
+            {
+                revisionId,
+                type: "revision",
+                selectionFrom: 0,
+                selectionTo: 2,
+            },
+            view,
+        );
 
         await Promise.resolve();
 
@@ -165,12 +171,15 @@ describe.skip("nested annotation creation routing", () => {
         });
         components.push({ destroy: () => modal.$destroy() });
 
-        publishNestedCommand({
-            revisionId,
-            type: "revision",
-            selectionFrom: 0,
-            selectionTo: 2,
-        }, view);
+        publishNestedCommand(
+            {
+                revisionId,
+                type: "revision",
+                selectionFrom: 0,
+                selectionTo: 2,
+            },
+            view,
+        );
 
         await Promise.resolve();
 

@@ -160,7 +160,10 @@ export async function pruneSnapshotsKeepLastN(draftId: string, keepN: number): P
 }
 
 /** Deletes unlabeled autosaves older than olderThanDays days. Returns deleted count. */
-export async function pruneSnapshotsOlderThan(draftId: string, olderThanDays: number): Promise<number> {
+export async function pruneSnapshotsOlderThan(
+    draftId: string,
+    olderThanDays: number,
+): Promise<number> {
     return invoke<number>("cmd_prune_snapshots_older_than", { draftId, olderThanDays });
 }
 
