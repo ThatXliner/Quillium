@@ -359,8 +359,9 @@ $effect(() => {
         if (!rev) return;
         const latestVersion = rev.versions[rev.activeVersionIndex];
         if (!latestVersion) return;
-        const incomingBlob = (latestVersion as { annotationField?: unknown }).annotationField;
-        if (!controller.needsAnnotationRebuild(incomingBlob)) return;
+        const incomingGeneration =
+            (latestVersion as { annotationGeneration?: number }).annotationGeneration ?? 0;
+        if (!controller.needsAnnotationRebuild(incomingGeneration)) return;
         // Destroy WITHOUT flushing — the modal already wrote the correct state.
         controller.destroy({ skipFlush: true });
         activeAnnotation = undefined;

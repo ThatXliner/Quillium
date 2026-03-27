@@ -257,15 +257,19 @@ export class NestedEditorController {
             this._lastDispatchedDoc = this._editor.state.doc.toString();
         }
 
-        // For modal editors (flushBehavior: "flush"), detect annotation-only
-        // mutations (add/remove/update effects) and propagate them to the
-        // parent's version blob so they enter the parent's undo history.
-        // Inline editors (flushBehavior: "no-flush") skip this — their
-        // annotation state is ephemeral, and flushing here would trigger
-        // the annotation-rebuild $effect in Revision.svelte, which tears
-        // down and recreates the inline editor on every annotation change.
+        // Detect annotation-only mutations (add/remove/update effects) and
+        // propagate them to the parent's version blob so they enter the
+        // parent's undo history. Both "flush" and "flush-on-destroy" editors
+        // sync per-effect now — without this, nested annotations created in
+        // an inline editor would be lost on any destroy/recreate cycle
+        // because they were never written to the parent's version blob.
+        //
+        // After flushing, _mountedAnnotationGeneration is updated to match
+        // the new generation, so the annotation-rebuild $effect in
+        // Revision.svelte does NOT trigger a destroy/recreate cycle for
+        // our own flushes.
         if (
-            this.flushBehavior === "flush" &&
+            this.flushBehavior !== "no-flush" &&
             !isParentSync &&
             this.hasAnnotationMutationEffect(update)
         ) {
@@ -316,9 +320,10 @@ export class NestedEditorController {
             const existing = rev.versions[this._editorVersionIndex];
             const prevGen =
                 (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
+            const newGen = prevGen + 1;
             const blob = {
                 ...(this._editor.state.toJSON(nestedSavedFields) as VersionState),
-                annotationGeneration: prevGen + 1,
+                annotationGeneration: newGen,
             };
             this.parentView.dispatch(
                 updateRevisionVersionState(
@@ -329,6 +334,10 @@ export class NestedEditorController {
                     { addToHistory: true },
                 ),
             );
+            // Update the mounted generation so Revision.svelte's
+            // annotation-rebuild $effect does not see this flush as an
+            // external change and trigger a needless destroy/recreate cycle.
+            this._mountedAnnotationGeneration = newGen;
         }
     }
 
