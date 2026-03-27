@@ -24,19 +24,20 @@ import Editor from "$lib/editor/Editor.svelte";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
-import { tutorialActive, modalStack, editorView } from "$lib/stores";
+import { tutorialActive, modalStack, editorView, settingsOpen } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import DebugPanel from "$lib/debug/DebugPanel.svelte";
-import { goToLibrary } from "$lib/navigation";
+import { goToHistory, goToLibrary } from "$lib/navigation";
 import type { EventPayload } from "$lib/db/events";
 import type { BackupEntry } from "$lib/errorGuard";
 import { restoreBackup } from "$lib/editor/restore";
 import { exportDocument } from "$lib/export";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
@@ -44,12 +45,10 @@ import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
 
-let pendingUpdate = $state<Update | null>(null);
 let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
 let updateReady = $state(false);
-let updateMock = $state(false);
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -74,6 +73,14 @@ function handleKeydown(e: KeyboardEvent) {
         const view = $editorView;
         if (view) exportDocument(view, "txt");
     }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "h") {
+        e.preventDefault();
+        goToHistory();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        $settingsOpen = !$settingsOpen;
+    }
     if (e.metaKey || e.ctrlKey) {
         if (e.key === "=" || e.key === "+") {
             e.preventDefault();
@@ -95,32 +102,16 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 async function installUpdate() {
-    if (!pendingUpdate && !updateMock) return;
     updateInstalling = true;
     try {
         if (updateReady) {
-            if (updateMock) {
-                // Mock: just dismiss the banner.
-                console.log("[UpdateMock] relaunch() would fire here");
-                updateAvailable = false;
-                updateInstalling = false;
-                updateReady = false;
-                updateMock = false;
-                return;
-            }
-            // Already installed — just relaunch.
             await relaunch();
         } else {
-            if (updateMock) {
-                // Mock: simulate a brief download delay.
-                await new Promise((r) => setTimeout(r, 1500));
+            const update = await check();
+            if (update) {
+                await update.downloadAndInstall();
                 updateReady = true;
-                updateInstalling = false;
-                return;
             }
-            // Download and install atomically, then show "Relaunch" button.
-            await pendingUpdate!.downloadAndInstall();
-            updateReady = true;
             updateInstalling = false;
         }
     } catch (e) {
@@ -136,7 +127,6 @@ onMount(() => {
     check()
         .then((update) => {
             if (update) {
-                pendingUpdate = update;
                 updateAvailable = true;
                 updateVersion = update.version;
             }
@@ -162,9 +152,23 @@ onMount(() => {
 
     window.addEventListener("quillium:restore-backup", handleRestoreBackup);
     window.addEventListener("quillium:manual-review", handleManualReviewEvent);
+
+    // Listen for Tauri menu events
+    const menuUnlisteners: UnlistenFn[] = [];
+    listen("menu:settings", () => ($settingsOpen = !$settingsOpen)).then((u) =>
+        menuUnlisteners.push(u),
+    );
+    listen("menu:history", () => goToHistory()).then((u) => menuUnlisteners.push(u));
+    listen("menu:library", () => goToLibrary()).then((u) => menuUnlisteners.push(u));
+    listen("menu:export", () => {
+        const view = $editorView;
+        if (view) exportDocument(view, "txt");
+    }).then((u) => menuUnlisteners.push(u));
+
     return () => {
         window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
+        for (const unlisten of menuUnlisteners) unlisten();
     };
 });
 
@@ -288,14 +292,6 @@ if (import.meta.env.DEV) {
 {#if import.meta.env.DEV && $debugPanelActive}
     <DebugPanel
         reloadEditor={() => editorComponent?.reload()}
-        simulateUpdate={(version) => {
-            updateAvailable = true;
-            updateVersion = version;
-            updateInstalling = false;
-            updateReady = false;
-            updateMock = true;
-            pendingUpdate = null;
-        }}
     />
 {/if}
 
