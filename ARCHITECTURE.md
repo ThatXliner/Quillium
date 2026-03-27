@@ -1177,3 +1177,25 @@ The `settingsOpen` store is exported from `stores.ts` so that both the native me
 | `ai_settings_provider_changed` | User changes AI provider | `AISettings.svelte` |
 | `ai_settings_model_changed` | User changes AI model | `AISettings.svelte` |
 | `draft_scrapped` | User scraps current draft | `Save.svelte` |
+| `library_viewed` | User navigates to the library page | `library/+page.svelte` |
+| `document_created` | User creates a new document | `library/+page.svelte` |
+| `document_opened` | User opens a document from library | `library/+page.svelte` |
+| `document_renamed` | User renames a document | `library/+page.svelte` |
+| `document_trashed` | User moves document(s) to trash | `library/+page.svelte` |
+| `document_restored` | User restores document(s) from trash | `library/+page.svelte` |
+| `document_deleted_permanently` | User permanently deletes document(s) | `library/+page.svelte` |
+| `document_exported` | User exports a document | `export.ts` |
+| `autoai_toggled` | User enables/disables AutoAI | `AutoAIWidget.svelte` |
+| `autoai_mode_changed` | User switches auto/manual mode | `AutoAIWidget.svelte` |
+| `autoai_manual_review_triggered` | User clicks "Review now" | `AutoAIWidget.svelte` |
+| `autoai_settings_changed` | User changes AutoAI depth or annotation types | `AutoAIWidget.svelte` |
+| `crash_backup_restored` | User restores from crash backup | `ErrorBanner.svelte` |
+| `crash_backup_downloaded` | User downloads crash backup | `ErrorBanner.svelte` |
+| `crash_banner_dismissed` | User dismisses the error banner | `ErrorBanner.svelte` |
+| `crash_app_reloaded` | User clicks "Reload app" after crash | `ErrorBanner.svelte` |
+| `update_available` | App detects a new version on launch | `+page.svelte` |
+| `update_started` | User clicks "Update" to begin download | `+page.svelte` |
+| `update_ready` | Download completes, relaunch offered | `+page.svelte` |
+| `update_relaunched` | User clicks "Relaunch" | `+page.svelte` |
+| `update_dismissed` | User dismisses the update banner | `+page.svelte` |
+| `update_failed` | Update download/install fails | `+page.svelte` |
