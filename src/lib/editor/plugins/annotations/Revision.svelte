@@ -304,11 +304,17 @@ $effect(() => {
 });
 
 // When the selected version changes, destroy and recreate.
+// Skip flush on destroy: the version switch transaction already captured
+// the old version's doc via Phase 3, and Svelte's syncFromParent $effect
+// may have already patched the nested editor with the NEW version's text
+// (effect ordering is not guaranteed). Flushing here would overwrite the
+// old version's content with the new version's text.
 $effect(() => {
     if (!controller.editor || !isEditorOpen) return;
     if (!controller.needsVersionSwitch(revision.activeVersionIndex)) return;
 
-    destroyNestedEditor();
+    controller.destroy({ skipFlush: true });
+    activeAnnotation = undefined;
     tick().then(() => {
         if (!isEditorOpen || !activeVersion) return;
         createNestedEditor(activeVersion);
