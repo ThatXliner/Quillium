@@ -18,6 +18,7 @@ import {
 import type { DocumentMeta } from "$lib/db/types";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
 import { goToEditor } from "$lib/navigation";
+import posthog from "$lib/posthog";
 import LibraryTopBar from "$lib/library/LibraryTopBar.svelte";
 import DocumentGrid from "$lib/library/DocumentGrid.svelte";
 import PreviewPanel from "$lib/library/PreviewPanel.svelte";
@@ -107,12 +108,14 @@ async function handleTrashRetentionChange(days: number | null) {
 
 async function handleNew() {
     const id = await createDocument();
+    posthog.capture("document_created");
     $currentDocumentId = id;
     $currentDocumentTitle = "Untitled";
     goToEditor();
 }
 
 function handleOpen(id: string) {
+    posthog.capture("document_opened");
     $currentDocumentId = id;
     const doc = documents.find((d) => d.id === id);
     if (doc) $currentDocumentTitle = doc.title;
@@ -123,6 +126,7 @@ async function handleRenameTitle(id: string, newTitle: string) {
     const meta = await getDocumentMeta(id);
     if (!meta) return;
     await updateDocumentMeta(id, newTitle, meta.wordCount, meta.previewText, meta.tags);
+    posthog.capture("document_renamed");
     documents = await listDocuments();
     // Keep the store in sync if this is the currently open document
     if ($currentDocumentId === id) $currentDocumentTitle = newTitle;
@@ -130,6 +134,7 @@ async function handleRenameTitle(id: string, newTitle: string) {
 
 async function handleTrash(id: string) {
     await trashDocument(id);
+    posthog.capture("document_trashed", { count: 1 });
     const next = new Set(selectedIds);
     next.delete(id);
     selectedIds = next;
@@ -143,6 +148,7 @@ async function handleTrash(id: string) {
 async function handleTrashSelected() {
     const ids = [...selectedIds];
     await Promise.all(ids.map((id) => trashDocument(id)));
+    posthog.capture("document_trashed", { count: ids.length });
     selectedIds = new Set();
     lastClickedId = null;
     [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
@@ -154,6 +160,7 @@ async function handleTrashSelected() {
 
 async function handleRestore(id: string) {
     await restoreDocument(id);
+    posthog.capture("document_restored", { count: 1 });
     const next = new Set(selectedIds);
     next.delete(id);
     selectedIds = next;
@@ -167,6 +174,7 @@ async function handleRestore(id: string) {
 async function handleRestoreSelected() {
     const ids = [...selectedIds];
     await Promise.all(ids.map((id) => restoreDocument(id)));
+    posthog.capture("document_restored", { count: ids.length });
     selectedIds = new Set();
     lastClickedId = null;
     [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
@@ -178,6 +186,7 @@ async function handleRestoreSelected() {
 
 async function handleDeletePermanent(id: string) {
     await deleteDocument(id);
+    posthog.capture("document_deleted_permanently", { count: 1 });
     const next = new Set(selectedIds);
     next.delete(id);
     selectedIds = next;
@@ -191,6 +200,7 @@ async function handleDeletePermanent(id: string) {
 async function handleDeletePermanentSelected() {
     const ids = [...selectedIds];
     await Promise.all(ids.map((id) => deleteDocument(id)));
+    posthog.capture("document_deleted_permanently", { count: ids.length });
     selectedIds = new Set();
     lastClickedId = null;
     trashedDocuments = await listTrashedDocuments();
@@ -337,7 +347,10 @@ function handleKeydown(e: KeyboardEvent) {
     }
 }
 
-onMount(load);
+onMount(() => {
+    posthog.capture("library_viewed");
+    load();
+});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
