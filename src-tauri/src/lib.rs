@@ -362,12 +362,6 @@ pub fn run() {
                         .accelerator("CmdOrCtrl+O")
                         .build(app)?,
                 )
-                .separator()
-                .item(
-                    &MenuItemBuilder::with_id("export", "Export…")
-                        .accelerator("CmdOrCtrl+Shift+E")
-                        .build(app)?,
-                )
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -403,7 +397,7 @@ pub fn run() {
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().as_ref();
                 match id {
-                    "settings" | "history" | "library" | "export" => {
+                    "settings" | "history" | "library" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.emit(&format!("menu:{id}"), ());
                         }

@@ -159,10 +159,6 @@ onMount(() => {
     }).then((u) => menuUnlisteners.push(u));
     listen("menu:history", () => goToHistory()).then((u) => menuUnlisteners.push(u));
     listen("menu:library", () => goToLibrary()).then((u) => menuUnlisteners.push(u));
-    listen("menu:export", () => {
-        const view = $editorView;
-        if (view) exportDocument(view, "txt");
-    }).then((u) => menuUnlisteners.push(u));
 
     return () => {
         window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
