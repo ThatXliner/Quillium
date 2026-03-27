@@ -276,6 +276,13 @@ export type ErrorBannerState = {
 
 export const errorBanner = writable<ErrorBannerState | null>(null);
 
+/**
+ * Controls settings modal visibility globally.
+ * Written by: +page.svelte (Cmd+,), StatusBar.svelte (gear button), Tauri menu.
+ * Read by: StatusBar.svelte to render <SettingsModal>.
+ */
+export const settingsOpen = writable(false);
+
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>

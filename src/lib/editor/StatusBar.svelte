@@ -23,7 +23,7 @@ import { type ExportFormat, exportDocument } from "$lib/export";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { editorView, saveStatus, tutorialActive } from "$lib/stores";
+import { editorView, saveStatus, settingsOpen, tutorialActive } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
 
@@ -39,7 +39,7 @@ const {
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
-let settingsOpen = $state(false);
+// settingsOpen is a shared store (see $lib/stores.ts)
 let exportOpen = $state(false);
 let hovered = $state(false);
 let hoverDelayed = $state(false);
@@ -117,8 +117,8 @@ $effect(() => {
 
 <svelte:window onclick={handleWindowClick} />
 
-{#if settingsOpen}
-    <SettingsModal onclose={() => (settingsOpen = false)} />
+{#if $settingsOpen}
+    <SettingsModal onclose={() => ($settingsOpen = false)} />
 {/if}
 
 <div
@@ -172,11 +172,11 @@ $effect(() => {
             <History size={20} />
         </button>
         <button
-            onclick={() => (settingsOpen = !settingsOpen)}
+            onclick={() => ($settingsOpen = !$settingsOpen)}
             aria-label="Open settings"
             title="Settings"
             class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
-                {settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+                {$settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
         >
             <Settings2 size={20} />
         </button>
