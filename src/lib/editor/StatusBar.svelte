@@ -106,7 +106,7 @@ $effect(() => {
         clearTimeout(lingerTimer);
         lingerTimer = setTimeout(() => {
             titleLinger = false;
-        }, 3000);
+        }, appSettings.titleLingerDuration);
     } else {
         // editing started again — cancel any pending linger
         clearTimeout(lingerTimer);
@@ -189,7 +189,7 @@ $effect(() => {
                 title="Export ({modKey}Shift+E)"
                 class="absolute top-0 left-1/2 -translate-x-1/2 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md overflow-hidden cursor-pointer z-50
                     transition-[width,height,border-radius,background-color] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
-                    {exportOpen ? 'w-[11rem] h-[11.5rem] rounded-[14px] bg-white' : 'w-12 h-12 rounded-[24px] bg-white/50 hover:bg-gray-50/30'}"
+                    {exportOpen ? 'w-[11rem] h-fit rounded-[14px] py-1 px-2 bg-[color-mix(in_srgb,theme(colors.gray.300),white_30%)]' : 'w-12 h-12 rounded-[24px] bg-[color-mix(in_srgb,white,theme(colors.gray.300)_50%)]'}"
             >
                 <!-- Icon (visible when collapsed) -->
                 <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150
@@ -203,7 +203,10 @@ $effect(() => {
                     class="relative flex flex-col py-1 transition-opacity duration-150 {exportOpen ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'}"
                     onmouseleave={() => (hoveredExportIdx = -1)}
                 >
-                    <div class="export-pill" style={exportPillStyle}></div>
+                    <div
+                        class="absolute inset-x-0 rounded-lg bg-white/70 backdrop-blur-sm shadow-[0_1px_3px_rgba(0,0,0,0.12)] inset-shadow-[0_1px_0_rgba(255,255,255,0.9)] pointer-events-none transition-[top,height] duration-250 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
+                        style={exportPillStyle}
+                    ></div>
                     {#each [
                         { format: "txt", label: "Plain Text (.txt)" },
                         { format: "txt+json", label: "Text + Annotations (.txt)" },
@@ -214,7 +217,7 @@ $effect(() => {
                             onclick={() => doExport(item.format)}
                             onmouseenter={() => (hoveredExportIdx = i)}
                             role="menuitem"
-                            class="export-item relative z-[1] w-full text-left px-4 py-2.5 text-sm text-black/80 whitespace-nowrap"
+                            class="export-item relative z-[1] px-1 w-full text-left py-2.5 text-sm text-black/80 whitespace-nowrap"
                         >{item.label}</button>
                     {/each}
                 </div>
@@ -239,7 +242,7 @@ $effect(() => {
     {#if titleVisibility !== "never"}
     <div
         class="overflow-hidden transition-all duration-300 ease-in-out"
-        style="max-height: {titleVisibility === 'always' || hoverDelayed || titleForced || titleLinger ? '4rem' : '0'}; opacity: {titleVisibility === 'always' || hoverDelayed || titleForced || titleLinger ? '1' : '0'};"
+        style="max-height: {titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger ? '4rem' : '0'}; opacity: {titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger ? '1' : '0'};"
     >
         {@render children?.()}
     </div>
