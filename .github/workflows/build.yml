@@ -151,24 +151,28 @@ jobs:
                   print(f"WARNING: {sig_file} not found, skipping {key}")
 
           # macOS ARM (M1+)
-          add_platform("darwin-aarch64",
-              "quillium_aarch64.app.tar.gz",
-              "quillium_aarch64.app.tar.gz.sig")
+          macos_arm_sigs = glob.glob("assets/*_aarch64.app.tar.gz.sig")
+          if macos_arm_sigs:
+              sig_name = os.path.basename(macos_arm_sigs[0])
+              artifact_name = sig_name.removesuffix(".sig")
+              add_platform("darwin-aarch64", artifact_name, sig_name)
 
           # macOS Intel
-          add_platform("darwin-x86_64",
-              "quillium_x64.app.tar.gz",
-              "quillium_x64.app.tar.gz.sig")
+          macos_x64_sigs = glob.glob("assets/*_x64.app.tar.gz.sig")
+          if macos_x64_sigs:
+              sig_name = os.path.basename(macos_x64_sigs[0])
+              artifact_name = sig_name.removesuffix(".sig")
+              add_platform("darwin-x86_64", artifact_name, sig_name)
 
-          # Linux x86_64 (version in filename)
-          linux_sigs = glob.glob("assets/quillium_*_amd64.AppImage.sig")
+          # Linux x86_64
+          linux_sigs = glob.glob("assets/*_amd64.AppImage.sig")
           if linux_sigs:
               sig_name = os.path.basename(linux_sigs[0])
               artifact_name = sig_name.removesuffix(".sig")
               add_platform("linux-x86_64", artifact_name, sig_name)
 
-          # Windows x86_64 (version in filename)
-          win_sigs = glob.glob("assets/quillium_*_x64-setup.exe.sig")
+          # Windows x86_64
+          win_sigs = glob.glob("assets/*_x64-setup.exe.sig")
           if win_sigs:
               sig_name = os.path.basename(win_sigs[0])
               artifact_name = sig_name.removesuffix(".sig")
