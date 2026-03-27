@@ -194,8 +194,11 @@ if (import.meta.env.DEV) {
             "$lib/stores"
         );
 
+        const { createRevision } = await import("$lib/editor/plugins/annotations");
+
         (window as unknown as Record<string, unknown>).__modalStack__ = modalStack;
         (window as unknown as Record<string, unknown>).__editorView__ = editorView;
+        (window as unknown as Record<string, unknown>).__createRevision__ = createRevision;
 
         (window as unknown as Record<string, unknown>).__runScenario__ = async (id: string) => {
             const scenario = scenarios.find((s) => s.id === id);

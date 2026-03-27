@@ -275,6 +275,13 @@ function createNestedEditor(version: VersionState) {
         placeCursorInEditor(controller.editor, pendingFocusPos);
         pendingFocusPos = undefined;
     }
+    // DEV bridge: expose inline nested EditorViews by revision ID so the
+    // screenshot script can retrieve them via window.__inlineEditors__[revisionId].
+    if (import.meta.env.DEV && controller.editor) {
+        const w = window as unknown as Record<string, unknown>;
+        if (!w.__inlineEditors__) w.__inlineEditors__ = {};
+        (w.__inlineEditors__ as Record<number, unknown>)[revision.id] = controller.editor;
+    }
 }
 
 function destroyNestedEditor() {
@@ -289,6 +296,12 @@ function destroyNestedEditor() {
     );
     controller.destroy({ skipFlush: modalHasAuthority });
     activeAnnotation = undefined;
+    // Clean up DEV bridge
+    if (import.meta.env.DEV) {
+        const w = window as unknown as Record<string, unknown>;
+        const editors = w.__inlineEditors__ as Record<number, unknown> | undefined;
+        if (editors) delete editors[revision.id];
+    }
 }
 
 // Create or destroy the nested editor when the toggle changes.

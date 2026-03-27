@@ -18,6 +18,7 @@
  *   07-revision-modal.png   — revision full-screen modal editor open
  *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   12-nested-revision.png  — doubly-nested revision: outer modal with inner revision open
+ *   13-inline-nested-revision.png — revision modal with an inline sub-revision open
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
@@ -630,6 +631,123 @@ async function scenarioNestedRevision(ctx: BrowserContext): Promise<void> {
 }
 
 /**
+ * 13. inline-nested-revision — A revision modal open with a sub-revision
+ *    annotation inside it, whose inline nested editor is expanded —
+ *    demonstrating nested annotations within the modal editing view.
+ */
+async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-inline-nested-revision");
+    if (!applied) {
+        await page.close();
+        return;
+    }
+    // Activate the outer revision card
+    await activateAnnotation(page, "running his fingers along the brass gears");
+    await page.waitForTimeout(400);
+    // Switch to the "Extended" version (index 1) before opening the modal
+    await page.evaluate(() => {
+        const revCard = document.querySelector("[data-tutorial-role='revision-card']");
+        if (!revCard) return;
+        const pills = revCard.querySelectorAll("button");
+        for (const btn of pills) {
+            if (btn.textContent?.trim() === "Extended") {
+                btn.click();
+                break;
+            }
+        }
+    });
+    await page.waitForTimeout(600);
+    // Push the outer revision into a modal
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const stack = w.__modalStack__ as { push(entry: object): void } | undefined;
+        const editorViewStore = w.__editorView__ as
+            | { subscribe(fn: (v: unknown) => void): () => void }
+            | undefined;
+        if (!stack || !editorViewStore) return;
+        let view: unknown;
+        const unsub = editorViewStore.subscribe((v) => {
+            view = v;
+        });
+        unsub();
+        if (!view) return;
+        const revCard = document.querySelector("[data-tutorial-role='revision-card']");
+        const revisionIdStr = revCard?.getAttribute("data-revision-id");
+        if (!revisionIdStr) return;
+        const revisionId = Number.parseInt(revisionIdStr, 10);
+        if (Number.isNaN(revisionId)) return;
+        stack.push({
+            type: "revision",
+            revisionId,
+            parentView: view,
+            label: "Extended",
+        });
+    });
+    await page.waitForTimeout(800); // wait for modal to mount
+    // Switch to the "Extended" version inside the modal by clicking its pill
+    // Create a sub-revision inside the modal's nested editor using the
+    // __createRevision__ DEV bridge.
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
+        const createRevision = w.__createRevision__ as
+            | ((opts: {
+                  targetText: string;
+                  versions: Array<{ label: string; text: string }>;
+                  threadMessage: string;
+                  author: string;
+                  view: unknown;
+              }) => boolean)
+            | undefined;
+        if (!modalEditors || !createRevision) return;
+        const modalView = modalEditors[0];
+        if (!modalView) return;
+        createRevision({
+            targetText: "the way a pianist runs scales before the hall fills",
+            versions: [
+                {
+                    label: "Alternate image",
+                    text: "the way a watchmaker tests springs before the shop opens",
+                },
+            ],
+            threadMessage:
+                "The pianist image recurs from the outer version — try a different trade to avoid repetition.",
+            author: "Editor",
+            view: modalView,
+        });
+    });
+    await page.waitForTimeout(600);
+    // Activate the inner revision by placing the cursor inside its range
+    // within the modal's nested editor, which opens the inline editor.
+    await page.evaluate(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const modalEditors = w.__modalEditors__ as Record<number, unknown> | undefined;
+        if (!modalEditors) return;
+        const modalView = modalEditors[0] as {
+            state: { doc: { toString(): string } };
+            dispatch(tr: object): void;
+            focus(): void;
+        };
+        if (!modalView) return;
+        const target = "the way a pianist runs scales before the hall fills";
+        const pos = modalView.state.doc.toString().indexOf(target);
+        if (pos === -1) return;
+        modalView.focus();
+        modalView.dispatch({
+            selection: { anchor: pos + Math.floor(target.length / 2) },
+        });
+    });
+    await page.waitForTimeout(600);
+    await shot(page, "13-inline-nested-revision");
+    await page.close();
+}
+
+/**
  * 10. dictionary — The floating Dictionary & Thesaurus popover open in
  *    "Look up word" mode, with "wisdom" selected in the editor and
  *    auto-populated into the popover via the keyboard shortcut (⌘B / Ctrl+B).
@@ -741,6 +859,7 @@ async function main(): Promise<void> {
         await scenarioLibrary(context);
         await scenarioRevisionModal(context);
         await scenarioNestedRevision(context);
+        await scenarioInlineNestedRevision(context);
         await scenarioDictionary(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);

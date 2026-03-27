@@ -1058,6 +1058,38 @@ export const scenarios: Scenario[] = [
             });
         },
     },
+    // ── Screenshot: inline nested editor with sub-revision ──────────────────
+    // Used by scripts/screenshots.ts to show the inline nested editor open
+    // inside a revision card, with a second revision annotation visible inside
+    // the nested editor — demonstrating infinite nesting in the inline view.
+    {
+        id: "screenshot-inline-nested-revision",
+        label: "Screenshot: inline nested revision (Lighthouse Keeper)",
+        description:
+            "Revision with long version text ready for a sub-revision inside the inline nested editor — used by the screenshot script",
+        category: "debug",
+        doc: DOC_LIGHTHOUSE_KEEPER,
+        setup(view) {
+            createRevision({
+                targetText:
+                    "running his fingers along the brass gears the way a pianist touches keys before a concert. Everything had to work tonight.",
+                versions: [
+                    {
+                        label: "Extended",
+                        text: "running his fingers along the brass gears, feeling each tooth engage with the precision of something built to outlast its maker — the way a pianist runs scales before the hall fills. Everything had to work tonight.",
+                    },
+                    {
+                        label: "Spare",
+                        text: "running his fingers along the brass gears one final time. Everything had to work tonight.",
+                    },
+                ],
+                threadMessage:
+                    "The original simile is evocative but could go further. 'Extended' builds out the tactile detail and earns the pianist comparison; 'Spare' strips back to pure function.",
+                author: "Editor",
+                view,
+            });
+        },
+    },
     {
         id: "screenshot-annotations-no-ai",
         label: "Screenshot: annotations without AI (Dickens)",
