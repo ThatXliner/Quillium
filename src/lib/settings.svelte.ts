@@ -23,6 +23,7 @@ type AppSettings = {
     customQuickActions: CustomQuickAction[];
     titleVisibility: "hover" | "always" | "never";
     titleHoverDelay: number;
+    titleLingerDuration: number;
     uiZoom: number;
     analyticsEnabled: boolean;
     aiEnabled: boolean;
@@ -38,7 +39,8 @@ const DEFAULTS: AppSettings = {
     uiFontFamily: "system-ui, -apple-system, sans-serif",
     customQuickActions: [],
     titleVisibility: "hover",
-    titleHoverDelay: 500,
+    titleHoverDelay: 350,
+    titleLingerDuration: 3000,
     uiZoom: 1,
     analyticsEnabled: true,
     aiEnabled: false,

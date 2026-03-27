@@ -184,6 +184,7 @@ function save() {
         ui_font_family: draft.uiFontFamily,
         title_visibility: draft.titleVisibility,
         title_hover_delay: draft.titleHoverDelay,
+        title_linger_duration: draft.titleLingerDuration,
         ui_zoom: draft.uiZoom,
         custom_quick_actions_count: draft.customQuickActions.length,
     });
@@ -522,10 +523,37 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="w-28 accent-blue-500 cursor-pointer"
                     />
                     <span class="text-[12px] text-black/50 w-10 text-right tabular-nums">{draft.titleHoverDelay}ms</span>
-                    {#if draft.titleHoverDelay !== 500}
+                    {#if draft.titleHoverDelay !== 350}
                         <button
                             type="button"
-                            onclick={() => { draft.titleHoverDelay = 500; handleChange(); }}
+                            onclick={() => { draft.titleHoverDelay = 350; handleChange(); }}
+                            class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                        >Reset</button>
+                    {/if}
+                </div>
+            </div>
+
+            <!-- Title linger duration -->
+            <div class="setting-row {draft.titleVisibility !== 'hover' ? 'opacity-40 pointer-events-none' : ''}">
+                <div class="setting-meta">
+                    <div class="setting-title">Title linger duration</div>
+                    <div class="setting-desc">How long the title stays visible after editing stops (ms)</div>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                    <input
+                        type="range"
+                        min="500"
+                        max="10000"
+                        step="500"
+                        bind:value={draft.titleLingerDuration}
+                        oninput={handleChange}
+                        class="w-28 accent-blue-500 cursor-pointer"
+                    />
+                    <span class="text-[12px] text-black/50 w-10 text-right tabular-nums">{draft.titleLingerDuration >= 1000 ? `${draft.titleLingerDuration / 1000}s` : `${draft.titleLingerDuration}ms`}</span>
+                    {#if draft.titleLingerDuration !== 3000}
+                        <button
+                            type="button"
+                            onclick={() => { draft.titleLingerDuration = 3000; handleChange(); }}
                             class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
                         >Reset</button>
                     {/if}
