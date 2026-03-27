@@ -19,6 +19,7 @@ import { FEEDBACK_FORM_URL } from "./constants";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { goToHistory } from "./navigation";
 import { page } from "$app/stores";
+import posthog from "$lib/posthog";
 
 let showDetails = $state(false);
 let copied = $state(false);
@@ -31,6 +32,7 @@ async function copyDetails() {
 }
 
 function dismiss() {
+    posthog.capture("crash_banner_dismissed", { type: $errorBanner?.backupType });
     $errorBanner = null;
     showDetails = false;
 }
@@ -52,6 +54,7 @@ function triggerDownload(content: string, filename: string, mimeType: string) {
 function downloadBackupAsText() {
     const backup: BackupEntry | null = readBackup("crash");
     if (!backup) return;
+    posthog.capture("crash_backup_downloaded", { format: "txt" });
     const title = backup.documentTitle || "document";
     triggerDownload(
         backup.documentText,
@@ -63,6 +66,7 @@ function downloadBackupAsText() {
 function downloadBackupAsJSON() {
     const backup: BackupEntry | null = readBackup("crash");
     if (!backup) return;
+    posthog.capture("crash_backup_downloaded", { format: "json" });
     const title = backup.documentTitle || "document";
     const json = JSON.stringify(
         {
@@ -86,6 +90,7 @@ function restoreFromBackup() {
     const backup: BackupEntry | null = readBackup("crash");
     if (!backup) return;
 
+    posthog.capture("crash_backup_restored");
     window.dispatchEvent(new CustomEvent("quillium:restore-backup", { detail: backup }));
     clearBackup("crash");
     $errorBanner = null;
@@ -98,6 +103,7 @@ function viewHistory() {
 }
 
 function reloadApp() {
+    posthog.capture("crash_app_reloaded");
     window.location.reload();
 }
 

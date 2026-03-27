@@ -19,6 +19,7 @@ import {
     type GenericAnnotation,
 } from "./editor/plugins/annotations/models";
 import { currentDocumentTitle } from "./stores";
+import posthog from "./posthog";
 
 export type ExportFormat = "txt" | "json" | "md" | "txt+json";
 
@@ -173,4 +174,5 @@ export function exportDocument(view: EditorView, format: ExportFormat) {
     const title = sanitizeFilename(get(currentDocumentTitle));
     const content = formatBuilders[format](view);
     triggerDownload(content, `${title}.${fileExtensions[format]}`, mimeTypes[format]);
+    posthog.capture("document_exported", { format });
 }
