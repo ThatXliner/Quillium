@@ -44,6 +44,7 @@ import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
+import posthog from "$lib/posthog";
 
 let updateAvailable = $state(false);
 let updateVersion = $state("");
@@ -105,17 +106,21 @@ async function installUpdate() {
     updateInstalling = true;
     try {
         if (updateReady) {
+            posthog.capture("update_relaunched", { version: updateVersion });
             await relaunch();
         } else {
+            posthog.capture("update_started", { version: updateVersion });
             const update = await check();
             if (update) {
                 await update.downloadAndInstall();
                 updateReady = true;
+                posthog.capture("update_ready", { version: updateVersion });
             }
             updateInstalling = false;
         }
     } catch (e) {
         console.error("Update install failed:", e);
+        posthog.capture("update_failed", { version: updateVersion, error: String(e) });
         updateInstalling = false;
     }
 }
@@ -129,6 +134,7 @@ onMount(() => {
             if (update) {
                 updateAvailable = true;
                 updateVersion = update.version;
+                posthog.capture("update_available", { version: update.version });
             }
         })
         .catch(() => {
@@ -274,7 +280,7 @@ if (import.meta.env.DEV) {
         installing={updateInstalling}
         ready={updateReady}
         oninstall={installUpdate}
-        ondismiss={() => updateAvailable = false}
+        ondismiss={() => { posthog.capture("update_dismissed", { version: updateVersion }); updateAvailable = false; }}
     />
 {/if}
 
