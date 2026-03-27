@@ -18,13 +18,14 @@
         button is clicked to jump directly to the shortcuts tutorial step.
 -->
 <script lang="ts">
-import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { tutorialActive, saveStatus, editorView } from "$lib/stores";
 import { debugPanelActive } from "$lib/debug/store.svelte";
-import { goToLibrary, goToHistory } from "$lib/navigation";
-import { Settings2, LayoutGrid, History, Download } from "lucide-svelte";
+import { type ExportFormat, exportDocument } from "$lib/export";
+import { goToHistory, goToLibrary } from "$lib/navigation";
+import { appSettings } from "$lib/settings.svelte";
+import SettingsModal from "$lib/settings/SettingsModal.svelte";
+import { editorView, saveStatus, tutorialActive } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { exportDocument, type ExportFormat } from "$lib/export";
+import { Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
 
 const {
     words,
@@ -41,8 +42,29 @@ const modKey = isMac ? "⌘" : "Ctrl";
 let settingsOpen = $state(false);
 let exportOpen = $state(false);
 let hovered = $state(false);
+let hoverDelayed = $state(false);
+let hoverDelayTimer: ReturnType<typeof setTimeout> | undefined;
 let titleLinger = $state(false);
 let lingerTimer: ReturnType<typeof setTimeout> | undefined;
+
+function onMouseEnter() {
+    hovered = true;
+    clearTimeout(hoverDelayTimer);
+    const delay = appSettings.titleHoverDelay;
+    if (delay <= 0) {
+        hoverDelayed = true;
+    } else {
+        hoverDelayTimer = setTimeout(() => {
+            hoverDelayed = true;
+        }, delay);
+    }
+}
+
+function onMouseLeave() {
+    hovered = false;
+    clearTimeout(hoverDelayTimer);
+    hoverDelayed = false;
+}
 
 function doExport(format: ExportFormat) {
     const view = $editorView;
@@ -52,12 +74,30 @@ function doExport(format: ExportFormat) {
 }
 
 let exportButtonEl = $state<HTMLDivElement>();
+let exportMenuEl = $state<HTMLDivElement>();
+let exportPillStyle = $state("");
+let hoveredExportIdx = $state(-1);
 
 function handleWindowClick(e: MouseEvent) {
     if (exportOpen && exportButtonEl && !exportButtonEl.contains(e.target as Node)) {
         exportOpen = false;
+        hoveredExportIdx = -1;
     }
 }
+
+$effect(() => {
+    if (!exportMenuEl || hoveredExportIdx < 0) {
+        exportPillStyle = "opacity: 0;";
+        return;
+    }
+    const buttons = exportMenuEl.querySelectorAll<HTMLButtonElement>(".export-item");
+    const btn = buttons[hoveredExportIdx];
+    if (!btn) {
+        exportPillStyle = "opacity: 0;";
+        return;
+    }
+    exportPillStyle = `opacity: 1; top: ${btn.offsetTop}px; height: ${btn.offsetHeight}px;`;
+});
 
 $effect(() => {
     if (!titleForced) {
@@ -86,8 +126,8 @@ $effect(() => {
     role="region"
     aria-label="Status bar"
     class="relative w-fit mx-auto backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg"
-    onmouseenter={() => (hovered = true)}
-    onmouseleave={() => (hovered = false)}
+    onmouseenter={onMouseEnter}
+    onmouseleave={onMouseLeave}
 >
     <div class="flex gap-4 items-center py-2 px-8">
         <!-- <div class="w-px h-8 bg-black/20"></div> -->
@@ -140,43 +180,43 @@ $effect(() => {
         >
             <Settings2 size={20} />
         </button>
-        <div class="relative" bind:this={exportButtonEl}>
-            <button
+        <div class="relative w-12 h-12" bind:this={exportButtonEl}>
+            <div
                 onclick={() => (exportOpen = !exportOpen)}
+                role="menu"
+                tabindex="0"
                 aria-label="Export document"
                 title="Export ({modKey}Shift+E)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
-                    {exportOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+                class="absolute top-0 left-1/2 -translate-x-1/2 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md overflow-hidden cursor-pointer z-50
+                    transition-[width,height,border-radius,background-color] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
+                    {exportOpen ? 'w-[11rem] h-[11.5rem] rounded-[14px] bg-white' : 'w-12 h-12 rounded-[24px] bg-white/50 hover:bg-gray-50/30'}"
             >
-                <Download size={20} />
-            </button>
-            <div
-                class="absolute top-0 left-1/2 -translate-x-1/2 bg-white backdrop-blur-md shadow-lg border border-white/40 overflow-hidden z-50
-                    transition-[width,height,border-radius,opacity] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
-                    {exportOpen ? 'w-[11rem] h-[11.5rem] rounded-[14px] opacity-100' : 'w-12 h-12 rounded-[24px] opacity-0 pointer-events-none'}"
-                role="menu"
-            >
-                <div class="flex flex-col py-1 transition-opacity duration-150 {exportOpen ? 'opacity-100 delay-100' : 'opacity-0'}">
-                    <button
-                        onclick={() => doExport("txt")}
-                        role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
-                    >Plain Text (.txt)</button>
-                    <button
-                        onclick={() => doExport("txt+json")}
-                        role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
-                    >Text + Annotations (.txt)</button>
-                    <button
-                        onclick={() => doExport("json")}
-                        role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
-                    >JSON (.json)</button>
-                    <button
-                        onclick={() => doExport("md")}
-                        role="menuitem"
-                        class="w-full text-left px-4 py-2.5 text-sm text-black/80 hover:bg-black/5 transition-colors whitespace-nowrap"
-                    >Markdown (.md)</button>
+                <!-- Icon (visible when collapsed) -->
+                <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150
+                    {exportOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 text-black/50 hover:text-black/70'}">
+                    <Download size={20} />
+                </div>
+                <!-- Menu items (visible when expanded) -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                    bind:this={exportMenuEl}
+                    class="relative flex flex-col py-1 transition-opacity duration-150 {exportOpen ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'}"
+                    onmouseleave={() => (hoveredExportIdx = -1)}
+                >
+                    <div class="export-pill" style={exportPillStyle}></div>
+                    {#each [
+                        { format: "txt", label: "Plain Text (.txt)" },
+                        { format: "txt+json", label: "Text + Annotations (.txt)" },
+                        { format: "json", label: "JSON (.json)" },
+                        { format: "md", label: "Markdown (.md)" },
+                    ] as item, i}
+                        <button
+                            onclick={() => doExport(item.format)}
+                            onmouseenter={() => (hoveredExportIdx = i)}
+                            role="menuitem"
+                            class="export-item relative z-[1] w-full text-left px-4 py-2.5 text-sm text-black/80 whitespace-nowrap"
+                        >{item.label}</button>
+                    {/each}
                 </div>
             </div>
         </div>
@@ -199,7 +239,7 @@ $effect(() => {
     {#if titleVisibility !== "never"}
     <div
         class="overflow-hidden transition-all duration-300 ease-in-out"
-        style="max-height: {titleVisibility === 'always' || hovered || titleForced || titleLinger ? '4rem' : '0'}; opacity: {titleVisibility === 'always' || hovered || titleForced || titleLinger ? '1' : '0'};"
+        style="max-height: {titleVisibility === 'always' || hoverDelayed || titleForced || titleLinger ? '4rem' : '0'}; opacity: {titleVisibility === 'always' || hoverDelayed || titleForced || titleLinger ? '1' : '0'};"
     >
         {@render children?.()}
     </div>

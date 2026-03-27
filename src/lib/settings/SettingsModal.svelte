@@ -183,6 +183,7 @@ function save() {
         doc_font_size: draft.docFontSize,
         ui_font_family: draft.uiFontFamily,
         title_visibility: draft.titleVisibility,
+        title_hover_delay: draft.titleHoverDelay,
         ui_zoom: draft.uiZoom,
         custom_quick_actions_count: draft.customQuickActions.length,
     });
@@ -471,6 +472,11 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
+            <div class="section-divider"></div>
+
+            <!-- UI TWEAKS section -->
+            <div class="section-label">UI Tweaks</div>
+
             <!-- Title visibility -->
             <div class="setting-row">
                 <div class="setting-meta">
@@ -496,6 +502,33 @@ function fontLabel(fonts: FontOption[], value: string) {
                         >{label}</button>
                     {/each}
                 </div>
+                </div>
+            </div>
+
+            <!-- Title hover delay -->
+            <div class="setting-row {draft.titleVisibility !== 'hover' ? 'opacity-40 pointer-events-none' : ''}">
+                <div class="setting-meta">
+                    <div class="setting-title">Title hover delay</div>
+                    <div class="setting-desc">How long to hover before the title appears (ms)</div>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                    <input
+                        type="range"
+                        min="0"
+                        max="3000"
+                        step="100"
+                        bind:value={draft.titleHoverDelay}
+                        oninput={handleChange}
+                        class="w-28 accent-blue-500 cursor-pointer"
+                    />
+                    <span class="text-[12px] text-black/50 w-10 text-right tabular-nums">{draft.titleHoverDelay}ms</span>
+                    {#if draft.titleHoverDelay !== 500}
+                        <button
+                            type="button"
+                            onclick={() => { draft.titleHoverDelay = 500; handleChange(); }}
+                            class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                        >Reset</button>
+                    {/if}
                 </div>
             </div>
 
