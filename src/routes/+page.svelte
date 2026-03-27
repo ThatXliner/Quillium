@@ -133,8 +133,7 @@ onMount(() => {
         })
         .catch(() => {
             toast.error("Unable to check for updates", {
-                description:
-                    "https://github.com/ThatXliner/quillium-releases could not be reached",
+                description: "https://github.com/ThatXliner/quillium-releases could not be reached",
             });
         });
 
@@ -155,9 +154,9 @@ onMount(() => {
 
     // Listen for Tauri menu events
     const menuUnlisteners: UnlistenFn[] = [];
-    listen("menu:settings", () => ($settingsOpen = !$settingsOpen)).then((u) =>
-        menuUnlisteners.push(u),
-    );
+    listen("menu:settings", () => {
+        $settingsOpen = !$settingsOpen;
+    }).then((u) => menuUnlisteners.push(u));
     listen("menu:history", () => goToHistory()).then((u) => menuUnlisteners.push(u));
     listen("menu:library", () => goToLibrary()).then((u) => menuUnlisteners.push(u));
     listen("menu:export", () => {

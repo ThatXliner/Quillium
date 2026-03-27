@@ -2,7 +2,10 @@ pub mod db;
 mod keychain;
 
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{
+    menu::{Menu, MenuItemBuilder, SubmenuBuilder},
+    Emitter, Manager,
+};
 
 use db::{
     documents::{
@@ -333,6 +336,82 @@ pub fn run() {
                 }
             }
             app.manage(DbState(Mutex::new(conn)));
+
+            // ── App menu ──────────────────────────────────────────────
+            let app_menu = SubmenuBuilder::new(app, "Quillium")
+                .about(None)
+                .separator()
+                .item(
+                    &MenuItemBuilder::with_id("settings", "Settings…")
+                        .accelerator("CmdOrCtrl+,")
+                        .build(app)?,
+                )
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
+            let file_menu = SubmenuBuilder::new(app, "File")
+                .item(
+                    &MenuItemBuilder::with_id("library", "Library")
+                        .accelerator("CmdOrCtrl+O")
+                        .build(app)?,
+                )
+                .separator()
+                .item(
+                    &MenuItemBuilder::with_id("export", "Export…")
+                        .accelerator("CmdOrCtrl+Shift+E")
+                        .build(app)?,
+                )
+                .build()?;
+
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let view_menu = SubmenuBuilder::new(app, "View")
+                .item(
+                    &MenuItemBuilder::with_id("history", "Version History")
+                        .accelerator("CmdOrCtrl+Shift+H")
+                        .build(app)?,
+                )
+                .separator()
+                .fullscreen()
+                .build()?;
+
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .maximize()
+                .close_window()
+                .build()?;
+
+            let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])?;
+            app.set_menu(menu)?;
+
+            // Handle custom menu events by emitting them to the frontend.
+            app.on_menu_event(move |app_handle, event| {
+                let id = event.id().as_ref();
+                match id {
+                    "settings" | "history" | "library" | "export" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.emit(&format!("menu:{id}"), ());
+                        }
+                    }
+                    _ => {}
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
