@@ -73,8 +73,10 @@ src/
 │   │   ├── replay.ts          # Event log replay for state reconstruction
 │   │   ├── restore.ts         # Crash-recovery restore with annotation re-anchoring
 │   │   ├── dictionaryPlugin.ts # Mod-B keymap for dictionary popover trigger
+│   │   ├── dictionaryUtils.ts # Pure helper functions for dictionary (extracted for testing)
 │   │   ├── DictionaryPopover.svelte # Floating dictionary/thesaurus UI
 │   │   ├── StatusBar.svelte   # Word count, WPM, character count
+│   │   ├── VersionHistory.svelte # Full-screen snapshot browser
 │   │   └── plugins/
 │   │       └── annotations/
 │   │           ├── models.ts          # Type defs, factory helpers, type guards
@@ -121,9 +123,10 @@ src/
 │   ├── constants.ts             # App-wide constants (feedback form URL, etc.)
 │   ├── errorGuard.ts            # Suspicious change detection + crash backups
 │   ├── ErrorBanner.svelte       # Error/recovery banner UI
+│   ├── export.ts                # Document export (txt, json, md, txt+json)
 │   ├── navigation.ts            # Page transitions between editor and library
 │   ├── posthog.ts               # PostHog analytics init + opt-out sync
-│   ├── stores.ts                # Global Svelte stores
+│   ├── stores.ts                # Global Svelte stores (includes settingsOpen for native menu)
 │   └── settings.svelte.ts       # App settings (reactive, persisted to localStorage)
 ├── routes/
 │   ├── +layout.svelte           # Root layout
@@ -134,10 +137,15 @@ src/
 │   └── history/
 │       └── +page.svelte         # Version history browser (thin wrapper around VersionHistory.svelte)
 src-tauri/src/
-├── lib.rs                       # Tauri command registration
+├── lib.rs                       # Tauri command registration + native app menu
 ├── main.rs                      # Entry point
 ├── keychain.rs                  # OS keychain for API key storage
-└── db/                          # SQLite persistence (WAL mode)
+└── db/
+    ├── mod.rs                   # Re-exports and shared types (AppendEventResult, LoadResult, etc.)
+    ├── schema.rs                # SQLite schema creation + migrations (WAL mode)
+    ├── documents.rs             # Document CRUD, trash, drafts, trash retention
+    ├── events.rs                # Event log append, snapshot CRUD, pruning, retention
+    └── load.rs                  # Document state reconstruction (latest snapshot + replay)
 ```
 
 ---
@@ -651,6 +659,14 @@ The annotation keymap (installed at `Prec.high`) intercepts before default CodeM
 
 Each handler returns `false` to fall through to the next binding if it doesn't apply. `redirectToNestedEditor` returns `true` (swallowing the keypress) only when the cursor is inside an active revision — otherwise it returns `false` and the real create command runs.
 
+The native app menu (see § Native App Menu) also registers accelerators that are handled outside of CodeMirror:
+
+| Key | Action |
+|---|---|
+| `Mod-,` | Toggle settings modal |
+| `Mod-O` | Navigate to library |
+| `Mod-Shift-H` | Navigate to version history |
+
 ---
 
 ## AutoAI
@@ -920,6 +936,8 @@ User preferences live in a Svelte 5 `$state` proxy (`appSettings`) persisted to 
 | `atomicRevisions` | boolean | `true` | Block direct editing of revision ranges in the main doc |
 | `customQuickActions` | array | `[]` | User-defined quick actions for the AI sidebar |
 | `titleVisibility` | enum | `"hover"` | Document title display: `"hover"`, `"always"`, `"never"` |
+| `titleHoverDelay` | number | `350` | Milliseconds before title appears on hover |
+| `titleLingerDuration` | number | `3000` | Milliseconds title stays visible after mouse leaves |
 | `analyticsEnabled` | boolean | `true` | PostHog opt-in/out |
 | `aiEnabled` | boolean | `false` | Whether AI features are active |
 | `showShortcutHints` | boolean | `true` | Keyboard shortcut hints in the annotation panel |
@@ -1075,7 +1093,47 @@ Events are captured throughout the app (see PostHog Events table below). Excepti
 
 ## Auto-updater
 
-Uses `@tauri-apps/plugin-updater` to check for updates on app launch. If an update is available, `UpdateBanner.svelte` renders a toast-style notification in the bottom-right corner with the version number and an "Update" button. Clicking it downloads and installs the update, then triggers `relaunch()` from `@tauri-apps/plugin-process`. The banner can be dismissed.
+Uses `@tauri-apps/plugin-updater` to check for updates on app launch. If an update is available, `UpdateBanner.svelte` renders a toast-style notification in the bottom-right corner with the version number and an "Update" button.
+
+The update flow has three states:
+1. **Available** — banner shows version number + "Update" button.
+2. **Downloading** — button changes to "Downloading…" (disabled) after the user clicks. Uses `downloadAndInstall()` to reliably apply updates.
+3. **Ready** — banner changes to "is ready — relaunch to finish" + "Relaunch" button. Clicking it calls `relaunch()` from `@tauri-apps/plugin-process`.
+
+The banner can be dismissed at any point. If the update check fails, an error toast is shown.
+
+---
+
+## Native App Menu
+
+`lib.rs` builds a native application menu with five submenus: Quillium, File, Edit, View, and Window.
+
+| Submenu | Custom items | Accelerator |
+|---|---|---|
+| Quillium | Settings… | `Cmd+,` / `Ctrl+,` |
+| File | Library | `Cmd+O` / `Ctrl+O` |
+| Edit | (standard: Undo, Redo, Cut, Copy, Paste, Select All) | — |
+| View | Version History | `Cmd+Shift+H` / `Ctrl+Shift+H` |
+| Window | (standard: Minimize, Maximize, Close) | — |
+
+Custom menu items emit Tauri events (`menu:settings`, `menu:library`, `menu:history`) to the frontend webview. `+page.svelte` listens for these events via `@tauri-apps/api/event` and dispatches the appropriate action (toggle `$settingsOpen`, call `goToLibrary()`, or call `goToHistory()`).
+
+The `settingsOpen` store is exported from `stores.ts` so that both the native menu handler and in-app UI (StatusBar gear button, `Cmd+,` keydown) can toggle it.
+
+---
+
+## Document Export
+
+`export.ts` provides document export in four formats:
+
+| Format | Extension | Contents |
+|---|---|---|
+| Plain text | `.txt` | Document text only |
+| Text + annotations | `.txt` | Document text + annotations as JSON after a `---` separator |
+| JSON | `.json` | Structured object with title, timestamp, text, and annotations |
+| Markdown | `.md` | Document text with annotations as footnotes |
+
+`exportDocument(view, format)` serializes the current editor state, derives the filename from the document title, and triggers a browser download via `Blob` + `<a>` click.
 
 ---
 
@@ -1084,6 +1142,9 @@ Uses `@tauri-apps/plugin-updater` to check for updates on app launch. If an upda
 | Event | When | File |
 |---|---|---|
 | `app_session_started` | Editor mounts with a document | `Editor.svelte` |
+| `editor_undo` | User triggers undo from native menu | `Editor.svelte` |
+| `editor_redo` | User triggers redo from native menu | `Editor.svelte` |
+| `editor_select_all` | User triggers select all from native menu | `Editor.svelte` |
 | `ai_sidebar_opened` | User opens AI sidebar to a mode | `AISidebar.svelte` |
 | `ai_message_sent` | Any AI request is dispatched | `chatFactory.ts` |
 | `ai_chat_message_sent` | User sends AI chat message | `Chat.svelte` |
@@ -1096,13 +1157,21 @@ Uses `@tauri-apps/plugin-updater` to check for updates on app launch. If an upda
 | `context_cleared` | User clears document context | `DocumentContext.svelte` |
 | `annotation_created` | AI creates a comment, suggestion, or revision | `chatFactory.ts` |
 | `comment_created` | User submits a new comment | `PreComment.svelte` |
-| `comment_ai_suggestion_requested` | User requests AI suggestion in thread | `Comment.svelte` |
+| `comment_ai_suggestion_requested` | User requests AI suggestion in thread | `Comment.svelte`, `CommentModal.svelte` |
+| `comment_modal_opened` | User opens full-screen comment modal | `Comment.svelte` |
 | `suggestion_applied` | User applies an AI suggestion | `Suggestion.svelte` |
 | `suggestion_branched` | User converts suggestion to revision | `Suggestion.svelte` |
 | `suggestion_diff_viewed` | User views a suggestion diff inline | `Suggestion.svelte` |
 | `suggestion_diff_modal_opened` | User opens the full-screen diff modal | `Suggestion.svelte` |
 | `revision_version_created` | User creates a new revision version | `Revision.svelte` |
 | `annotation_deleted` | User deletes a comment, suggestion, or revision | `Comment.svelte`, `Suggestion.svelte`, `Revision.svelte` |
+| `nested_editor_flush_to_parent_meaningful` | Nested editor syncs a meaningful change to parent | `NestedEditorController.ts` |
+| `dictionary_synonym_replaced` | User replaces word with synonym | `DictionaryPopover.svelte` |
+| `dictionary_chip_lookup` | User clicks a synonym/antonym chip to look it up | `DictionaryPopover.svelte` |
+| `dictionary_open_in_chat` | User sends word to AI chat from dictionary | `DictionaryPopover.svelte` |
+| `dictionary_describe_lookup` | User looks up a custom description in dictionary | `DictionaryPopover.svelte` |
+| `modal_stack_duplicate_push` | Duplicate modal push was prevented | `stores.ts` |
+| `settings_saved` | User saves settings | `SettingsModal.svelte` |
 | `tutorial_completed` | User completes onboarding | `Tutorial.svelte` |
 | `tutorial_skipped` | User skips onboarding | `Tutorial.svelte` |
 | `ai_settings_provider_changed` | User changes AI provider | `AISettings.svelte` |
