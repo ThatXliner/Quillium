@@ -90,7 +90,10 @@ function toggleAnnotationType(type: AutoAIAnnotationType) {
         if (autoAISettings.annotationTypes.length === 1) return; // keep at least one
         autoAISettings.annotationTypes = autoAISettings.annotationTypes.filter((t) => t !== type);
     }
-    posthog.capture("autoai_settings_changed", { setting: "annotation_types", value: autoAISettings.annotationTypes });
+    posthog.capture("autoai_settings_changed", {
+        setting: "annotation_types",
+        value: autoAISettings.annotationTypes,
+    });
     persistAutoAISettings();
 }
 
