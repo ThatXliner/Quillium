@@ -166,7 +166,7 @@ $effect(() => {
         <button
             onclick={goToHistory}
             aria-label="Version history"
-            title="Version History"
+            title="Version History ({modKey}Shift+H)"
             class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
         >
             <History size={20} />
@@ -174,7 +174,7 @@ $effect(() => {
         <button
             onclick={() => ($settingsOpen = !$settingsOpen)}
             aria-label="Open settings"
-            title="Settings"
+            title="Settings ({modKey},)"
             class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
                 {$settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
         >
@@ -186,7 +186,7 @@ $effect(() => {
                 role="menu"
                 tabindex="0"
                 aria-label="Export document"
-                title="Export ({modKey}Shift+E)"
+                title="Export"
                 class="absolute top-0 left-1/2 -translate-x-1/2 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md overflow-hidden cursor-pointer z-50
                     transition-[width,height,border-radius,background-color] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
                     {exportOpen ? 'w-[11rem] h-fit rounded-[14px] py-1 px-2 bg-[color-mix(in_srgb,theme(colors.gray.300),white_30%)]' : 'w-12 h-12 rounded-[24px] bg-[color-mix(in_srgb,white,theme(colors.gray.300)_50%)]'}"
