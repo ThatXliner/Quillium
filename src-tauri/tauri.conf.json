@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "quillium",
+  "productName": "Quillium",
   "version": "0.10.0",
   "identifier": "com.bryanhu.quillium",
   "build": {
