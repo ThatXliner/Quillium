@@ -24,7 +24,6 @@ import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { editorView, saveStatus, settingsOpen, tutorialActive } from "$lib/stores";
-import Kbd from "$lib/ui/Kbd.svelte";
 import { Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
 
 const {
@@ -158,10 +157,9 @@ $effect(() => {
             onclick={goToLibrary}
             title="Library ({modKey}O)"
             aria-label="Open library"
-            class="group h-12 px-3 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center gap-2 hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
+            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
         >
             <LayoutGrid size={20} />
-            <Kbd keys={[modKey, "O"]} />
         </button>
         <button
             onclick={goToHistory}
