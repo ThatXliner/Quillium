@@ -65,6 +65,8 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 - Error guard and crash recovery: suspicious change detection, backups, restore (§ Error guard and crash recovery)
 - Library and document management: data model, navigation, trash (§ Library and document management)
 - Comment modals, revision modal keyguard, keychain, PostHog, auto-updater
+- Native app menu: submenus, accelerators, Tauri→frontend event bridge (§ Native App Menu)
+- Document export: txt, json, md, txt+json formats (§ Document Export)
 - Common flows: creating comments/revisions, version switching, nested editing, undo (§ Common Flows)
 - Keybindings (§ Keybindings)
 - PostHog event catalog (§ PostHog Events)
