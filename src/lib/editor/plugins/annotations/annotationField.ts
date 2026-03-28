@@ -621,7 +621,7 @@ export const annotationField = StateField.define<Annotations>({
             } else if (e.is(updateThread)) {
                 const annotation = annotations[e.value.annotationId];
                 if (!annotation) continue;
-                annotation.thread = e.value.newThread;
+                annotations[e.value.annotationId] = { ...annotation, thread: e.value.newThread };
             } else if (
                 e.is(_addVersionToRevision) ||
                 e.is(_deleteVersionFromRevision) ||
@@ -855,11 +855,13 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 );
             }
         } else if (effect.is(addSuggestion)) {
-            const keys = Object.keys(oldAnnotations).map(Number);
-            if (keys.length === 0) continue;
-            const oldAnnotation = oldAnnotations[Math.max(...keys)];
-            if (!oldAnnotation) continue;
-            effects.push(removeAnnotation.of(oldAnnotation));
+            const newAnnotations = transaction.state.field(annotationField);
+            const oldKeys = new Set(Object.keys(oldAnnotations).map(Number));
+            for (const [idStr, ann] of Object.entries(newAnnotations)) {
+                if (!oldKeys.has(Number(idStr)) && isAnnotationOfType(ann, "suggestion")) {
+                    effects.push(removeAnnotation.of(ann));
+                }
+            }
         } else if (
             effect.is(_addVersionToRevision) ||
             effect.is(_deleteVersionFromRevision) ||
