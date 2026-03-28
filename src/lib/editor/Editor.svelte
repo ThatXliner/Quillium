@@ -324,6 +324,7 @@ export async function loadDocument(id: string) {
     lastSavedAt.set(null);
 
     if (!draftId) {
+        currentDocumentTitle.set("Untitled");
         const state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
         $editorView.setState(state);
         return;
