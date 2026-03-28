@@ -30,6 +30,15 @@ type AppSettings = {
     showShortcutHints: boolean;
     showWordCount: boolean;
     wordCountDisplayMode: "words" | "chars" | "both";
+    persistResizeSizes: boolean;
+    revisionModalWidth?: number;
+    revisionModalHeight?: number;
+    commentModalWidth?: number;
+    commentModalHeight?: number;
+    settingsModalWidth?: number;
+    settingsModalHeight?: number;
+    aiSidebarWidth?: number;
+    aiSidebarHeight?: number;
 };
 
 const DEFAULTS: AppSettings = {
@@ -49,6 +58,7 @@ const DEFAULTS: AppSettings = {
     showShortcutHints: true,
     showWordCount: true,
     wordCountDisplayMode: "both",
+    persistResizeSizes: false,
 };
 
 function loadSettings(): AppSettings {
