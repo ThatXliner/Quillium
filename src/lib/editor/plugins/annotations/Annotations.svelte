@@ -529,7 +529,7 @@ $effect(() => {
     {#if isFloating}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
             <div class="annotation-scroll-inner">
-                {#each sortedAnnotations as c}
+                {#each sortedAnnotations as c (c.id)}
                     {@const i = c.id}
                     {@const isActive = resolvedActiveAnnotation?.id === c.id}
                     {@const isPendingComment = pendingComment?.id === c.id}
@@ -608,7 +608,7 @@ $effect(() => {
         </div>
     {:else}
         <div class="annotation-inline-list">
-            {#each sortedAnnotations as c}
+            {#each sortedAnnotations as c (c.id)}
                 {@const i = c.id}
                 {@const isActive = resolvedActiveAnnotation?.id === c.id}
                 {@const isPendingComment = pendingComment?.id === c.id}
