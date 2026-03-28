@@ -118,15 +118,15 @@ test("typing updates stats and triggers cmd_append_event", async ({ page }) => {
     await page.goto("/");
 
     const editor = page.locator("#editor-document .cm-content");
-    const status = page.locator("#status-bar");
+    const wordCount = page.getByRole("button", { name: /Word count/ });
 
     await expect(editor).toBeVisible();
     await editor.click();
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type("One two three four");
 
-    await expect(status).toContainText("Words: 4");
-    await expect(status).toContainText("Characters: 18");
+    await expect(wordCount).toContainText("4 words");
+    await expect(wordCount).toContainText("18 chars");
 
     await expect
         .poll(async () => {
@@ -142,22 +142,20 @@ test("typing updates stats and triggers cmd_append_event", async ({ page }) => {
         .toBeGreaterThan(0);
 });
 
-test("selection updates status bar to show selected counts", async ({ page }) => {
+test("selection updates word count overlay to show selected counts", async ({ page }) => {
     await installTauriMock(page);
     await page.goto("/");
 
     const editor = page.locator("#editor-document .cm-content");
-    const status = page.locator("#status-bar");
+    const wordCount = page.getByRole("button", { name: /Word count/ });
 
     await expect(editor).toBeVisible();
     await editor.click();
     await page.keyboard.type("Hello World");
     await page.keyboard.press("ControlOrMeta+a");
 
-    await expect(status).toContainText("Words: 2");
-    await expect(status).toContainText("2 total");
-    await expect(status).toContainText("Characters: 11");
-    await expect(status).toContainText("11 total");
+    await expect(wordCount).toContainText("2 / 2 words");
+    await expect(wordCount).toContainText("11 / 11 chars");
 });
 
 test("tutorial opens from status bar", async ({ page }) => {

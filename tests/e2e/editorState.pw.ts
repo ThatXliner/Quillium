@@ -115,19 +115,17 @@ test.describe("selection behavior", () => {
         await q.init();
         await q.typeInEditor("hello world");
         await q.selectAll();
-        await expect(q.statusBar).toContainText("11 total");
+        await expect(q.wordCountOverlay).toContainText("11 / 11 chars");
     });
 
-    test("status bar shows selection word and char count", async ({ page }) => {
+    test("word count overlay shows selection word and char count", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
         await q.typeInEditor("one two three");
         await q.selectAll();
 
-        await expect(q.statusBar).toContainText("Words: 3");
-        await expect(q.statusBar).toContainText("Characters: 13");
-        await expect(q.statusBar).toContainText("3 total");
-        await expect(q.statusBar).toContainText("13 total");
+        await expect(q.wordCountOverlay).toContainText("3 / 3 words");
+        await expect(q.wordCountOverlay).toContainText("13 / 13 chars");
     });
 
     test("partial selection shows selected vs total counts", async ({ page }) => {
@@ -137,8 +135,7 @@ test.describe("selection behavior", () => {
         // Select "world foo" (chars 6-15)
         await q.selectRange(6, 15);
 
-        await expect(q.statusBar).toContainText("Words: 2");
-        await expect(q.statusBar).toContainText("4 total");
+        await expect(q.wordCountOverlay).toContainText("2 / 4 words");
     });
 });
 

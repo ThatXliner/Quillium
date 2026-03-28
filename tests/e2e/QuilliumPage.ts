@@ -60,6 +60,9 @@ export class QuilliumPage {
     get statusBar(): Locator {
         return this.page.locator("#status-bar");
     }
+    get wordCountOverlay(): Locator {
+        return this.page.getByRole("button", { name: /Word count/ });
+    }
     get inlineEditor(): Locator {
         return this.page.locator(".revision-inline-editor .cm-content").first();
     }
@@ -577,10 +580,10 @@ export class QuilliumPage {
     // ── Status bar assertions ───────────────────────────────────────────
 
     async expectWordCount(n: number): Promise<void> {
-        await expect(this.statusBar).toContainText(`Words: ${n}`);
+        await expect(this.wordCountOverlay).toContainText(`${n} words`);
     }
 
     async expectCharCount(n: number): Promise<void> {
-        await expect(this.statusBar).toContainText(`Characters: ${n}`);
+        await expect(this.wordCountOverlay).toContainText(`${n} chars`);
     }
 }
