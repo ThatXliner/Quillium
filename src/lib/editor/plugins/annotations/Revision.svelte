@@ -161,7 +161,7 @@ $effect(() => {
 
 $effect(() => {
     return annotationEventBus.on("revision-request-modal", (event) => {
-        if (event.command.revisionId !== revision.id) return;
+        if (event.command.revisionId !== revision.id || event.sourceView !== view) return;
         const cmd = event.command;
         modalStack.push({
             type: "revision",
@@ -311,7 +311,7 @@ $effect(() => {
         return;
     }
     tick().then(() => {
-        if (!isEditorOpen || !activeVersion) return;
+        if (!isEditorOpen || !activeVersion || !nestedEditorHost?.isConnected) return;
         createNestedEditor(activeVersion);
     });
 });
@@ -324,7 +324,7 @@ $effect(() => {
     destroyNestedEditor();
 
     tick().then(() => {
-        if (!isEditorOpen || !activeVersion) return;
+        if (!isEditorOpen || !activeVersion || !nestedEditorHost?.isConnected) return;
         createNestedEditor(activeVersion);
         if (controller.editor) {
             const end = controller.editor.state.doc.length;
@@ -342,6 +342,7 @@ $effect(() => {
 // incremented by the flush, so this fires only when annotations actually changed.
 $effect(() => {
     if (!controller.editor || !isEditorOpen || !activeVersion) return;
+    if (controller.needsVersionSwitch(revision.activeVersionIndex)) return;
     const generation =
         (activeVersion as { annotationGeneration?: number }).annotationGeneration ?? 0;
     if (!controller.needsAnnotationRebuild(generation)) return;

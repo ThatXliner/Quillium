@@ -79,6 +79,7 @@ describe("annotation keymap integration", () => {
         expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-request-modal",
+                sourceView: view,
                 command: {
                     revisionId,
                     type: "revision",
@@ -102,6 +103,7 @@ describe("annotation keymap integration", () => {
         expect(spy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "revision-request-modal",
+                sourceView: view,
                 command: {
                     revisionId,
                     type: "comment",

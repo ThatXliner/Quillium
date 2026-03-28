@@ -225,6 +225,7 @@ function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand
         const sel = view.state.selection.main;
         annotationEventBus.emit({
             type: "revision-request-modal",
+            sourceView: view,
             command: {
                 revisionId: activeRevision.id,
                 type,
