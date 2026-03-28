@@ -710,6 +710,40 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
+            <!-- Word count overlay toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Word count overlay</div>
+                    <div class="setting-desc">Show a floating word/character count pill (click it to change display mode)</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showWordCount}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showWordCount = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.showWordCount}
+                    aria-label="Toggle word count overlay"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showWordCount ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showWordCount = !draft.showWordCount;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showWordCount ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
             <div class="section-divider"></div>
 
             <!-- PRIVACY section -->

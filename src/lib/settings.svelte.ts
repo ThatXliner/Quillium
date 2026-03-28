@@ -28,6 +28,8 @@ type AppSettings = {
     analyticsEnabled: boolean;
     aiEnabled: boolean;
     showShortcutHints: boolean;
+    showWordCount: boolean;
+    wordCountDisplayMode: "words" | "chars" | "both";
 };
 
 const DEFAULTS: AppSettings = {
@@ -45,6 +47,8 @@ const DEFAULTS: AppSettings = {
     analyticsEnabled: true,
     aiEnabled: false,
     showShortcutHints: true,
+    showWordCount: true,
+    wordCountDisplayMode: "both",
 };
 
 function loadSettings(): AppSettings {

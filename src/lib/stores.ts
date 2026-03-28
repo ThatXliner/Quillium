@@ -188,6 +188,12 @@ export const lastPersistedEventId = writable<number>(-1);
 export const lastSavedAt = writable<number | null>(null);
 
 /**
+ * Real-time writing statistics, synced from Editor.svelte on every transaction.
+ * Read by WordCountOverlay.svelte.
+ */
+export const writingStats = writable({ words: 0, chars: 0, selWords: 0, selChars: 0 });
+
+/**
  * Command payload dispatched when the user triggers an annotation
  * command (comment/revision) while the cursor is inside an active
  * revision in the main document. Carries the revision ID, command
