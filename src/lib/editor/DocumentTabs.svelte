@@ -1,0 +1,124 @@
+<!--
+    DocumentTabs.svelte — Browser-style tab bar for document tabs.
+
+    Props:
+      tabs        — ordered list of TabMeta
+      activeTabId — id of the currently active tab
+      ontabselect — called with (tabId) when user clicks a tab
+      ontabcreate — called when user clicks +
+      ontabrename — called with (tabId, newLabel) after inline rename
+      ontabdelete — called with (tabId) when user clicks ×
+
+    Notes:
+      - × is hidden when tabs.length === 1 (can't close last tab)
+      - Double-click on label enters rename mode
+      - Rename commits on Enter or blur, cancels on Escape
+-->
+<script lang="ts">
+import type { TabMeta } from "$lib/db/types";
+import { PlusIcon } from "lucide-svelte";
+
+const {
+    tabs,
+    activeTabId,
+    ontabselect,
+    ontabcreate,
+    ontabrename,
+    ontabdelete,
+}: {
+    tabs: TabMeta[];
+    activeTabId: string | null;
+    ontabselect: (tabId: string) => void;
+    ontabcreate: () => void;
+    ontabrename: (tabId: string, label: string) => void;
+    ontabdelete: (tabId: string) => void;
+} = $props();
+
+let renamingTabId = $state<string | null>(null);
+let renameValue = $state("");
+let renameInputEl = $state<HTMLInputElement | undefined>();
+
+function startRename(tab: TabMeta) {
+    renamingTabId = tab.id;
+    renameValue = tab.label;
+    setTimeout(() => renameInputEl?.select(), 0);
+}
+
+function commitRename(tabId: string) {
+    const trimmed = renameValue.trim() || "Tab";
+    renamingTabId = null;
+    ontabrename(tabId, trimmed);
+}
+
+function cancelRename() {
+    renamingTabId = null;
+}
+</script>
+
+<div
+    class="w-[816px] mx-auto flex items-end gap-0 select-none pt-2"
+    role="tablist"
+    aria-label="Document tabs"
+>
+    {#each tabs as tab (tab.id)}
+        {@const isActive = tab.id === activeTabId}
+        {@const isRenaming = renamingTabId === tab.id}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div
+            role="tab"
+            aria-selected={isActive}
+            tabindex={isActive ? 0 : -1}
+            onclick={() => ontabselect(tab.id)}
+            ondblclick={() => startRename(tab)}
+            class="
+                group relative flex items-center gap-1 px-3 py-1.5 text-sm cursor-pointer
+                border-b-2 transition-colors duration-100 rounded-t-md
+                {isActive
+                    ? 'border-black/70 text-black/90 bg-white/60 backdrop-blur-sm'
+                    : 'border-transparent text-black/40 hover:text-black/70 hover:bg-white/30'}
+            "
+        >
+            {#if isRenaming}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <input
+                    bind:this={renameInputEl}
+                    bind:value={renameValue}
+                    onclick={(e) => e.stopPropagation()}
+                    onblur={() => commitRename(tab.id)}
+                    onkeydown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); commitRename(tab.id); }
+                        if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
+                    }}
+                    class="bg-transparent border-none outline-none w-24 text-sm text-black/90 text-center"
+                    aria-label="Rename tab"
+                />
+            {:else}
+                <span class="max-w-[8rem] truncate">{tab.label}</span>
+            {/if}
+
+            {#if tabs.length > 1}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <span
+                    role="button"
+                    tabindex="-1"
+                    aria-label="Close tab"
+                    onclick={(e) => { e.stopPropagation(); ontabdelete(tab.id); }}
+                    class="
+                        ml-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px]
+                        opacity-0 group-hover:opacity-100 transition-opacity
+                        hover:bg-black/10 text-black/50
+                    "
+                >×</span>
+            {/if}
+        </div>
+    {/each}
+
+    <button
+        onclick={ontabcreate}
+        aria-label="New tab"
+        title="New tab"
+        class="mb-0.5 ml-1 p-1 rounded text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
+    >
+        <PlusIcon size={14} />
+    </button>
+</div>
