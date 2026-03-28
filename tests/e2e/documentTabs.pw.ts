@@ -41,7 +41,9 @@ test.describe("DocumentTabs", () => {
         await expect(page.getByRole("tab")).toHaveCount(2, { timeout: 5_000 });
 
         // Click the second tab
-        await page.getByRole("tab").nth(1).click();
+        const tabs = page.getByRole("tab");
+        await tabs.nth(1).click();
+        await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
 
         const count = await q.countInvocations("cmd_set_active_tab");
         expect(count).toBeGreaterThanOrEqual(1);
@@ -53,14 +55,8 @@ test.describe("DocumentTabs", () => {
 
         const tab = page.getByRole("tab", { name: "Tab 1" });
 
-        // Try double-clicking the tab directly; fall back to the inner span
         await tab.dblclick();
         const renameInput = page.locator('input[aria-label="Rename tab"]');
-        const inputVisible = await renameInput.isVisible({ timeout: 2_000 }).catch(() => false);
-        if (!inputVisible) {
-            await tab.locator("span").first().dblclick();
-        }
-
         await expect(renameInput).toBeVisible({ timeout: 5_000 });
         await renameInput.fill("My Doc");
         await page.keyboard.press("Enter");
@@ -82,7 +78,9 @@ test.describe("DocumentTabs", () => {
         // Hover the first tab to reveal the close button, then click it
         const firstTab = page.getByRole("tab").first();
         await firstTab.hover();
-        await page.locator('[aria-label="Close tab"]').first().click();
+        const closeBtn = page.locator('[aria-label="Close tab"]').first();
+        await expect(closeBtn).toBeVisible({ timeout: 2_000 });
+        await closeBtn.click();
 
         await expect(page.getByRole("tab")).toHaveCount(1, { timeout: 5_000 });
 
