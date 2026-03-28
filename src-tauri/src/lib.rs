@@ -327,6 +327,7 @@ fn cmd_reset_db(state: tauri::State<DbState>) -> Result<(), String> {
     conn.execute_batch(
         "DELETE FROM snapshots;
          DELETE FROM events;
+         DELETE FROM tabs;
          DELETE FROM drafts;
          DELETE FROM documents;
          DELETE FROM _meta;",
