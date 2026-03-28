@@ -170,19 +170,23 @@ $effect(() => {
         keyLoading = false;
         return;
     }
+    let cancelled = false;
     keyLoading = true;
     invoke<string | null>("get_api_key", { provider })
         .then((key) => {
+            if (cancelled) return;
             apiKey = key ?? "";
             aiSettings.apiKey = apiKey;
         })
         .catch((e) => {
+            if (cancelled) return;
             console.error("get_api_key error:", e);
             apiKey = "";
         })
         .finally(() => {
-            keyLoading = false;
+            if (!cancelled) keyLoading = false;
         });
+    return () => { cancelled = true; };
 });
 
 /**
@@ -204,11 +208,6 @@ function selectProvider(id: Provider) {
     aiSettings.provider = effectiveId;
     aiSettings.model = first.id;
     posthog.capture("ai_settings_provider_changed", { provider: effectiveId });
-    if (effectiveId !== "openai-codex") {
-        loadApiKeyForProvider(id).then(() => {
-            apiKey = aiSettings.apiKey;
-        });
-    }
 }
 
 function toggleCodex(enabled: boolean) {
