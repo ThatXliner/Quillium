@@ -70,8 +70,13 @@ $effect(() => {
         pendingComment &&
         pendingComment.id !== focusedPendingId
     ) {
-        focusedPendingId = pendingComment.id;
-        tick().then(() => textarea?.focus());
+        const targetId = pendingComment.id;
+        tick().then(() => {
+            if (resolvePendingComment()?.id === targetId) {
+                focusedPendingId = targetId;
+                textarea?.focus();
+            }
+        });
     }
 });
 
