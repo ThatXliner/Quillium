@@ -141,7 +141,9 @@ export class QuilliumPage {
                 const callbacks = new Map<number, (...args: unknown[]) => unknown>();
                 const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
                 let tabs = payload.initialTabs.map((t) => ({ ...t }));
-                let activeTabId: string | null = tabs[0]?.id ?? null;
+                let nextTabIndex = tabs.length + 1;
+                const activeTabByDoc = new Map<string, string | null>();
+                activeTabByDoc.set("doc-test-1", tabs[0]?.id ?? null);
 
                 (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
 
@@ -276,24 +278,29 @@ export class QuilliumPage {
                             return tabs.filter((t) => t.documentId === a.docId);
                         }
                         if (cmd === "cmd_get_active_tab") {
-                            return activeTabId;
+                            const a = args as { docId: string };
+                            return activeTabByDoc.get(a.docId) ?? null;
                         }
                         if (cmd === "cmd_set_active_tab") {
                             const a = args as { docId: string; tabId: string };
-                            activeTabId = a.tabId;
+                            activeTabByDoc.set(a.docId, a.tabId);
                             return null;
                         }
                         if (cmd === "cmd_create_tab") {
                             const a = args as { docId: string; label: string };
                             const newTab = {
-                                id: `tab-test-${tabs.length + 1}`,
+                                id: `tab-test-${nextTabIndex}`,
                                 documentId: a.docId,
                                 label: a.label,
-                                draftId: `draft-test-${tabs.length + 1}`,
+                                draftId: `draft-test-${nextTabIndex}`,
                                 position: tabs.length,
                                 createdAt: Date.now(),
                             };
                             tabs.push(newTab);
+                            nextTabIndex += 1;
+                            if (!activeTabByDoc.has(a.docId)) {
+                                activeTabByDoc.set(a.docId, newTab.id);
+                            }
                             return newTab;
                         }
                         if (cmd === "cmd_rename_tab") {
