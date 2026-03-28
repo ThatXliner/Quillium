@@ -165,7 +165,6 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
 
 async function runReview(content: string, manual = false) {
     if (!content.trim()) return;
-    lastReviewedContent = content;
 
     setAiProcessing(true);
     try {
@@ -177,6 +176,7 @@ async function runReview(content: string, manual = false) {
             system: buildSystemPrompt(),
             prompt: `Review this document:\n\n${content}`,
         });
+        lastReviewedContent = content;
         const applied = applyAnnotations(object, content);
         if (manual && applied === 0) {
             toast("No issues found — your writing looks good.");
