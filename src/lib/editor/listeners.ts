@@ -47,7 +47,7 @@ export interface ListenerOptions {
 }
 
 // ── Debounce timers ───────────────────────────────────────────────
-let metaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const metaDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // Only show "Saving…" if the write takes longer than this threshold.
 // This keeps the indicator on "Saved" during normal fast writes.
 let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -208,13 +208,16 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
  * order rather than DB completion order.
  */
 function persistTransaction(update: ViewUpdate): void {
-    persistQueue = persistQueue.then(() => doAppend(update)).catch(() => {});
+    const enqueueDocId = get(currentDocumentId);
+    const enqueueDraftId = get(currentDraftId);
+    persistQueue = persistQueue.then(() => doAppend(update, enqueueDocId, enqueueDraftId)).catch(() => {});
 }
 
-async function doAppend(update: ViewUpdate) {
-    const docId = get(currentDocumentId);
-    const draftId = get(currentDraftId);
-    if (!docId || !draftId) return;
+async function doAppend(update: ViewUpdate, enqueueDocId: string | null, enqueueDraftId: string | null) {
+    if (!enqueueDocId || !enqueueDraftId) return;
+    if (get(currentDocumentId) !== enqueueDocId) return;
+    const docId = enqueueDocId;
+    const draftId = enqueueDraftId;
 
     const payload = buildEventPayload(update);
     if (!payload) return;
@@ -336,8 +339,9 @@ async function doAppend(update: ViewUpdate) {
     const docText = update.state.doc.toString();
     const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
     const previewText = docText.slice(0, 200);
-    if (metaDebounceTimer !== null) clearTimeout(metaDebounceTimer);
-    metaDebounceTimer = setTimeout(() => {
+    const prevTimer = metaDebounceTimers.get(docId);
+    if (prevTimer !== undefined) clearTimeout(prevTimer);
+    metaDebounceTimers.set(docId, setTimeout(() => {
         try {
             // Guard: abort if the user has navigated to a different document.
             if (get(currentDocumentId) !== docId) return;
@@ -358,9 +362,9 @@ async function doAppend(update: ViewUpdate) {
             }
             updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
         } finally {
-            metaDebounceTimer = null;
+            metaDebounceTimers.delete(docId);
         }
-    }, 500);
+    }, 500));
 }
 
 // ── Auto-save listener ────────────────────────────────────────────
