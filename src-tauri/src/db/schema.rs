@@ -68,6 +68,17 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             value TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS tabs (
+            id          TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            label       TEXT NOT NULL DEFAULT 'Tab',
+            position    INTEGER NOT NULL DEFAULT 0,
+            draft_id    TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+            created_at  INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tabs_document ON tabs(document_id, position ASC);
+
         CREATE INDEX IF NOT EXISTS idx_events_draft ON events(draft_id, id);
         CREATE INDEX IF NOT EXISTS idx_snapshots_draft ON snapshots(draft_id, up_to_event_id DESC);
         ",
