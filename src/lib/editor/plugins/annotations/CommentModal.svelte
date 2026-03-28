@@ -25,7 +25,9 @@ import {
     MessageSquare,
     SparklesIcon,
     X,
+    Minimize2 as Minimize2Icon,
 } from "lucide-svelte";
+import { useResize } from "$lib/ui/resize";
 import { slide } from "svelte/transition";
 import type { EditorView } from "@codemirror/view";
 import { modalStack, annotations as annotationsStore, modalAnnotationStores } from "$lib/stores";
@@ -47,6 +49,9 @@ const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 const isTop = $derived(stackIndex === $modalStack.length - 1);
 
 let dialogEl = $state<HTMLDialogElement>();
+let isCustomSize = $state(false);
+let resizeAction: ReturnType<typeof useResize> | null = null;
+let innerEl = $state<HTMLDivElement | undefined>(undefined);
 
 // Read comment from the correct annotation source:
 // - stackIndex 0 → main editor's global annotations store
@@ -203,6 +208,28 @@ $effect(() => {
     }
 });
 
+$effect(() => {
+    if (!innerEl) return;
+    resizeAction = useResize(innerEl, {
+        minWidth: 600,
+        maxWidth: 1400,
+        minHeight: 400,
+        maxHeight: 900,
+        defaultWidth: 1060,
+        defaultHeight: Math.round(window.innerHeight * 0.72),
+        symmetric: true,
+        persistKey: "commentModal",
+    });
+    const handler = (e: Event) => {
+        isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
+    };
+    innerEl.addEventListener("resizechange", handler);
+    return () => {
+        resizeAction?.destroy?.();
+        innerEl?.removeEventListener("resizechange", handler);
+    };
+});
+
 // ── Thread mutations ─────────────────────────────────────────
 function handleUpdateThread(newThread: ThreadType) {
     if (!comment) return;
@@ -248,7 +275,7 @@ async function aiSuggestion() {
     onclick={(e) => { if (e.target === dialogEl) close(); }}
     oncancel={(e) => { e.preventDefault(); close(); }}
 >
-    <div class="comment-modal-inner">
+    <div class="comment-modal-inner" bind:this={innerEl}>
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3 border-b border-blue-100/80 shrink-0 gap-3 min-w-0">
             <div class="flex items-center gap-2 min-w-0 flex-1">
@@ -269,6 +296,16 @@ async function aiSuggestion() {
                     {/each}
                 </nav>
             </div>
+            {#if isCustomSize}
+                <button
+                    onclick={() => resizeAction?.reset()}
+                    aria-label="Reset to default size"
+                    title="Reset size"
+                    class="p-1.5 rounded-full text-blue-400/50 hover:text-blue-600/70 hover:bg-blue-50 transition-colors shrink-0"
+                >
+                    <Minimize2Icon size={14} />
+                </button>
+            {/if}
             <button
                 class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors shrink-0"
                 onclick={close}
@@ -431,8 +468,6 @@ async function aiSuggestion() {
     .comment-modal-inner {
         display: flex;
         flex-direction: column;
-        width: 1060px;
-        height: 72vh;
         background: white;
         border-radius: 1rem;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
