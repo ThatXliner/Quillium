@@ -60,7 +60,8 @@ export function cleanRangesOf(selection: EditorSelection, allowEmpty = false) {
     const newRanges = selection.ranges.filter(
         (range) => range.from <= range.to && (allowEmpty || range.from !== range.to),
     );
-    return newRanges.length > 0 ? EditorSelection.create(newRanges, selection.mainIndex) : null;
+    const clampedMain = Math.min(selection.mainIndex, newRanges.length - 1);
+    return newRanges.length > 0 ? EditorSelection.create(newRanges, clampedMain) : null;
 }
 
 // Equal type and selection
@@ -213,8 +214,7 @@ export function mapRange(range: GenericAnnotation, change: ChangeDesc) {
     try {
         const newRanges = cleanRangesOf(range.selection.map(change), allowEmpty);
         if (newRanges) {
-            range.selection = newRanges;
-            return range;
+            return { ...range, selection: newRanges };
         }
     } catch {
         // Position out of range for this changeset (e.g. a resolver dispatch
