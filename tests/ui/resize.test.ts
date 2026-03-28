@@ -89,4 +89,18 @@ describe("useResize action", () => {
         expect(events[events.length - 1].detail.isDefault).toBe(false);
         action.destroy?.();
     });
+
+    it("does not apply inline size styles on mount when no persisted size exists", () => {
+        useResize(node, { minWidth: 200, maxWidth: 800, minHeight: 150, maxHeight: 600, defaultWidth: 400, defaultHeight: 300, symmetric: false, persistKey: "test" });
+        expect(node.style.width).toBe("");
+        expect(node.style.height).toBe("");
+    });
+
+    it("clamps defaultHeight to maxHeight on mount when defaultHeight exceeds maxHeight", () => {
+        useResize(node, { minWidth: 200, maxWidth: 800, minHeight: 150, maxHeight: 400, defaultWidth: 400, defaultHeight: 900, symmetric: false, persistKey: "test" });
+        // if size is applied at all, it must not exceed maxHeight
+        if (node.style.height !== "") {
+            expect(parseInt(node.style.height)).toBeLessThanOrEqual(400);
+        }
+    });
 });

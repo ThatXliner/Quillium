@@ -19,17 +19,20 @@ export function useResize(node: HTMLElement, options: ResizeOptions) {
 
     const widthKey = (options.persistKey + "Width") as keyof typeof appSettings;
     const heightKey = (options.persistKey + "Height") as keyof typeof appSettings;
+    let hasPersistedSize = false;
     if (appSettings.persistResizeSizes) {
         const pw = appSettings[widthKey] as number | undefined;
         const ph = appSettings[heightKey] as number | undefined;
-        if (pw != null) currentWidth = pw;
-        if (ph != null) currentHeight = ph;
+        if (pw != null) { currentWidth = clamp(pw, options.minWidth, options.maxWidth); hasPersistedSize = true; }
+        if (ph != null) { currentHeight = clamp(ph, options.minHeight, options.maxHeight); hasPersistedSize = true; }
     }
 
-    applySize(currentWidth, currentHeight);
-    // Dispatch initial state so host knows if a persisted custom size is active
-    if (currentWidth !== options.defaultWidth || currentHeight !== options.defaultHeight) {
-        // Use setTimeout to let the host's event listener bind first
+    // Only apply inline size on mount if there is a persisted custom size to restore.
+    // This avoids overriding CSS classes (e.g. Tailwind collapsed-state classes) when
+    // the element starts at its default size.
+    if (hasPersistedSize) {
+        applySize(currentWidth, currentHeight);
+        // Dispatch initial state so host knows a persisted custom size is active
         setTimeout(() => dispatch(false), 0);
     }
 
