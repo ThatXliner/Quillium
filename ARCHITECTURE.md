@@ -465,18 +465,19 @@ unmounted ──────────► mounting ─────────
 | `DIALOG_BOUND` | Sensor Effect A detects `dialogEl` is bound |
 | `TICK_RESOLVED` | `tick().then(...)` resolves after a state transition |
 | `REBUILD_REQUESTED` | Sensor Effect A detects a new `rebuildToken` on the modal stack entry (set by `popToAndRebuild` when a child modal switches the parent's active version) |
-| `VERSION_SWITCHED` | User picks a different version from the breadcrumb dropdown, or Sensor Effect B detects the parent's `activeVersionIndex` changed |
+| `VERSION_SWITCHED` | User picks a different version from the breadcrumb dropdown, Sensor Effect C-0 handles `annotation-add-version` from the nested editor's ⌘Enter, or Sensor Effect B detects the parent's `activeVersionIndex` changed |
 | `EXTERNAL_DOC_CHANGED` | Sensor Effect B detects the parent's version doc text changed (undo, typing in parent) |
 | `NESTED_ANNOTATION_EVENT` | Sensor Effect C receives a `revision-open-nested-editor` UI event targeting this modal's revision |
 
 #### Sensor effects
 
-The FSM is driven by four reactive sensor effects that translate external signals into FSM events:
+The FSM is driven by five reactive sensor effects that translate external signals into FSM events:
 
 | Effect | Watches | Sends |
 |---|---|---|
 | **A: Dialog bind + rebuild token** | `dialogEl`, `$modalStack[stackIndex].rebuildToken` | `DIALOG_BOUND`, `REBUILD_REQUESTED` |
 | **B: External sync** | `$annotationsStore` (root) or `$modalAnnotationStores[stackIndex-1]` (nested) | `VERSION_SWITCHED`, `EXTERNAL_DOC_CHANGED` |
+| **C-0: Add-version from nested editor** | `annotationEventBus` `"annotation-add-version"` event where `annotationId === revisionId` and modal is top | Calls `addVersion()` which dispatches `createNewRevision` + sends `VERSION_SWITCHED` synchronously |
 | **C: Nested annotation event** | `annotationEventBus` `"nested-annotation-create"` event where `command.revisionId === revisionId` | `NESTED_ANNOTATION_EVENT` |
 | **D: Nested revision click** | `annotationEventBus` `"revision-focus-request"` event — handled by `Revision.svelte` cards in the modal's sidebar | Pushes a new modal onto `modalStack` directly (no FSM event needed) |
 
@@ -553,7 +554,7 @@ Components subscribe via `annotationEventBus.on(type, handler)` inside `$effect`
 | `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
 | `pending-nested-editor-selection` | `createRevisionCommand` | Stored in bus, consumed by `controller.applyPendingSelection()` on mount |
 | `annotation-focus-reply` | Keyboard shortcut (Cmd+/) | `Thread.svelte` (focuses reply textarea) |
-| `annotation-add-version` | `addRevisionVersionCommand`, keyboard shortcuts | `Revision.svelte` (creates new version) |
+| `annotation-add-version` | `addRevisionVersionCommand`, keyboard shortcuts | `RevisionModal.svelte` (creates new version + synchronous FSM transition when modal is open), `Revision.svelte` (creates new version when no modal is open) |
 
 **Pattern for consuming events in Svelte:**
 ```typescript
@@ -1163,7 +1164,7 @@ The `settingsOpen` store is exported from `stores.ts` so that both the native me
 | `suggestion_branched` | User converts suggestion to revision | `Suggestion.svelte` |
 | `suggestion_diff_viewed` | User views a suggestion diff inline | `Suggestion.svelte` |
 | `suggestion_diff_modal_opened` | User opens the full-screen diff modal | `Suggestion.svelte` |
-| `revision_version_created` | User creates a new revision version | `Revision.svelte` |
+| `revision_version_created` | User creates a new revision version | `Revision.svelte`, `RevisionModal.svelte` |
 | `annotation_deleted` | User deletes a comment, suggestion, or revision | `Comment.svelte`, `Suggestion.svelte`, `Revision.svelte` |
 | `nested_editor_flush_to_parent_meaningful` | Nested editor syncs a meaningful change to parent | `NestedEditorController.ts` |
 | `dictionary_synonym_replaced` | User replaces word with synonym | `DictionaryPopover.svelte` |
