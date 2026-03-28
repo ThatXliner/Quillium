@@ -163,9 +163,13 @@ onMount(() => {
     const menuUnlisteners: UnlistenFn[] = [];
     listen("menu:settings", () => {
         if (!destroyed) $settingsOpen = !$settingsOpen;
-    }).then((u) => destroyed ? u() : menuUnlisteners.push(u));
-    listen("menu:history", () => { if (!destroyed) goToHistory(); }).then((u) => destroyed ? u() : menuUnlisteners.push(u));
-    listen("menu:library", () => { if (!destroyed) goToLibrary(); }).then((u) => destroyed ? u() : menuUnlisteners.push(u));
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:history", () => {
+        if (!destroyed) goToHistory();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:library", () => {
+        if (!destroyed) goToLibrary();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
 
     return () => {
         destroyed = true;

@@ -210,10 +210,16 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
 function persistTransaction(update: ViewUpdate): void {
     const enqueueDocId = get(currentDocumentId);
     const enqueueDraftId = get(currentDraftId);
-    persistQueue = persistQueue.then(() => doAppend(update, enqueueDocId, enqueueDraftId)).catch(() => {});
+    persistQueue = persistQueue
+        .then(() => doAppend(update, enqueueDocId, enqueueDraftId))
+        .catch(() => {});
 }
 
-async function doAppend(update: ViewUpdate, enqueueDocId: string | null, enqueueDraftId: string | null) {
+async function doAppend(
+    update: ViewUpdate,
+    enqueueDocId: string | null,
+    enqueueDraftId: string | null,
+) {
     if (!enqueueDocId || !enqueueDraftId) return;
     if (get(currentDocumentId) !== enqueueDocId) return;
     const docId = enqueueDocId;
@@ -341,30 +347,33 @@ async function doAppend(update: ViewUpdate, enqueueDocId: string | null, enqueue
     const previewText = docText.slice(0, 200);
     const prevTimer = metaDebounceTimers.get(docId);
     if (prevTimer !== undefined) clearTimeout(prevTimer);
-    metaDebounceTimers.set(docId, setTimeout(() => {
-        try {
-            // Guard: abort if the user has navigated to a different document.
-            if (get(currentDocumentId) !== docId) return;
-            // Auto-derive title once from the first line, but only while the
-            // title is still "Untitled" and the first line looks ready:
-            //   - user pressed Enter (first line ends / second line exists), OR
-            //   - first line has at least 4 words (enough to be a real title)
-            // After this fires once, the title is owned by the user/AI.
-            let title = get(currentDocumentTitle);
-            if (title === "Untitled") {
-                const firstLine = docText.split("\n")[0].trim();
-                const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
-                const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
-                if (firstLineComplete && firstLine) {
-                    title = firstLine.slice(0, 80);
-                    currentDocumentTitle.set(title);
+    metaDebounceTimers.set(
+        docId,
+        setTimeout(() => {
+            try {
+                // Guard: abort if the user has navigated to a different document.
+                if (get(currentDocumentId) !== docId) return;
+                // Auto-derive title once from the first line, but only while the
+                // title is still "Untitled" and the first line looks ready:
+                //   - user pressed Enter (first line ends / second line exists), OR
+                //   - first line has at least 4 words (enough to be a real title)
+                // After this fires once, the title is owned by the user/AI.
+                let title = get(currentDocumentTitle);
+                if (title === "Untitled") {
+                    const firstLine = docText.split("\n")[0].trim();
+                    const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
+                    const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
+                    if (firstLineComplete && firstLine) {
+                        title = firstLine.slice(0, 80);
+                        currentDocumentTitle.set(title);
+                    }
                 }
+                updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
+            } finally {
+                metaDebounceTimers.delete(docId);
             }
-            updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
-        } finally {
-            metaDebounceTimers.delete(docId);
-        }
-    }, 500));
+        }, 500),
+    );
 }
 
 // ── Auto-save listener ────────────────────────────────────────────

@@ -286,7 +286,9 @@ const fromSave = (async () => {
 function extractTitleFromStateJson(stateJson: string): string {
     try {
         const parsed = JSON.parse(stateJson) as { doc?: string | string[] };
-        const firstLine = Array.isArray(parsed.doc) ? (parsed.doc[0] ?? "") : String(parsed.doc ?? "");
+        const firstLine = Array.isArray(parsed.doc)
+            ? (parsed.doc[0] ?? "")
+            : String(parsed.doc ?? "");
         return firstLine.trim().slice(0, 80) || "Untitled";
     } catch {
         return "Unknown";

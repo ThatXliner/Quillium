@@ -186,7 +186,9 @@ $effect(() => {
         .finally(() => {
             if (!cancelled) keyLoading = false;
         });
-    return () => { cancelled = true; };
+    return () => {
+        cancelled = true;
+    };
 });
 
 /**
