@@ -48,7 +48,13 @@ import {
 } from ".";
 
 import { canCreateNewComment, getActiveAnnotation } from "./utils";
-import { createNewAnnotation, isAnnotationOfType, versionText, type VersionState } from "./models";
+import {
+    createNewAnnotation,
+    getLastId,
+    isAnnotationOfType,
+    versionText,
+    type VersionState,
+} from "./models";
 import { EditorSelection, Transaction } from "@codemirror/state";
 import {
     annotations as annotationsStore,
@@ -308,7 +314,8 @@ function send(event: FsmEvent) {
                 executePendingNestedCommand(editor, event.cmd);
                 if (event.cmd.type === "revision" && !appSettings.showNestedEditor) {
                     const nestedAnns = editor.state.field(annotationField);
-                    const newId = Math.max(...Object.keys(nestedAnns).map(Number));
+                    const newId = getLastId(nestedAnns);
+                    if (newId < 0) break;
                     const newAnn = nestedAnns[newId];
                     if (newAnn && isAnnotationOfType(newAnn, "revision")) {
                         modalStack.push({
@@ -454,11 +461,19 @@ $effect(() => {
     } else {
         const parentLevel = $modalAnnotationStores;
         ann = parentLevel[stackIndex - 1];
+        if (!ann) return;
     }
-    if (fsmState !== "ready" || !controller.editor || !ann) return;
+    if (!ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
     if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex])
         return;
+
+    // Always track the latest version index, even during rebuilds,
+    // so the rebuild completes with the most recent version.
+    if (fsmState !== "ready" || !controller.editor) {
+        lastSyncedVersionIndex = rev.activeVersionIndex;
+        return;
+    }
 
     // Version switches rebuild the editor, which would destroy it while
     // a child modal depends on it. Only process when we're the top modal.
@@ -468,6 +483,8 @@ $effect(() => {
     if (lastSyncedVersionIndex >= 0 && rev.activeVersionIndex !== lastSyncedVersionIndex) {
         if (isTop) {
             lastSyncedVersionIndex = rev.activeVersionIndex;
+            const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
+            if (entry?.rebuildToken) lastRebuildToken = entry.rebuildToken;
             send({ type: "VERSION_SWITCHED" });
         }
         return;
