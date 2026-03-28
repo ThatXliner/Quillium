@@ -19,11 +19,9 @@ export function useResize(node: HTMLElement, options: ResizeOptions) {
 
     const widthKey = (options.persistKey + "Width") as keyof typeof appSettings;
     const heightKey = (options.persistKey + "Height") as keyof typeof appSettings;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settings = appSettings as any;
-    if (settings.persistResizeSizes) {
-        const pw = settings[widthKey] as number | undefined;
-        const ph = settings[heightKey] as number | undefined;
+    if (appSettings.persistResizeSizes) {
+        const pw = appSettings[widthKey] as number | undefined;
+        const ph = appSettings[heightKey] as number | undefined;
         if (pw != null) currentWidth = pw;
         if (ph != null) currentHeight = ph;
     }
@@ -89,9 +87,9 @@ export function useResize(node: HTMLElement, options: ResizeOptions) {
         document.body.style.userSelect = "";
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
-        if (settings.persistResizeSizes) {
-            settings[widthKey] = currentWidth;
-            settings[heightKey] = currentHeight;
+        if (appSettings.persistResizeSizes) {
+            (appSettings as Record<string, unknown>)[widthKey] = currentWidth;
+            (appSettings as Record<string, unknown>)[heightKey] = currentHeight;
             persistSettings();
         }
     }
@@ -117,9 +115,9 @@ export function useResize(node: HTMLElement, options: ResizeOptions) {
         currentWidth = options.defaultWidth;
         currentHeight = options.defaultHeight;
         applySize(currentWidth, currentHeight);
-        if (settings.persistResizeSizes) {
-            settings[widthKey] = undefined;
-            settings[heightKey] = undefined;
+        if (appSettings.persistResizeSizes) {
+            (appSettings as Record<string, unknown>)[widthKey] = undefined;
+            (appSettings as Record<string, unknown>)[heightKey] = undefined;
             persistSettings();
         }
         dispatch(true);
