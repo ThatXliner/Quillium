@@ -43,9 +43,7 @@ import {
 import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import {
     listDocuments,
-    listDrafts,
     createDocument,
-    createDraft,
     loadDocumentState,
     updateDocumentMeta,
 } from "$lib/db";
@@ -64,6 +62,9 @@ import { createModel } from "$lib/ai/provider";
 import { generateText } from "ai";
 import { Pencil, SparklesIcon } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import DocumentTabs from "./DocumentTabs.svelte";
+import { listTabs, createTab, renameTab, deleteTab, getActiveTab, setActiveTab } from "$lib/db";
+import type { TabMeta } from "$lib/db/types";
 
 // ── Local UI state ──────────────────────────────────────────────
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -74,6 +75,9 @@ let titleEditing = $state(false);
 let titleInputEl = $state<HTMLInputElement | undefined>();
 let titleDraft = $state("");
 let titleSuggesting = $state(false);
+
+let tabs = $state<TabMeta[]>([]);
+let activeTabId = $state<string | null>(null);
 
 export function startEditingTitle() {
     titleDraft = $currentDocumentTitle;
@@ -124,6 +128,27 @@ async function commitTitle() {
             console.error,
         );
     }
+}
+
+async function loadTabs(docId: string) {
+    let loaded = await listTabs(docId);
+
+    if (loaded.length === 0) {
+        const newTab = await createTab(docId, "Tab 1");
+        loaded = [newTab];
+    }
+
+    const persistedActiveTabId = await getActiveTab(docId);
+    const validActive = loaded.find((t) => t.id === persistedActiveTabId) ?? loaded[0];
+
+    tabs = loaded;
+    activeTabId = validActive.id;
+    // Persist the resolved active tab so future cold loads skip the fallback.
+    const docIdForPersist = loaded[0]?.documentId;
+    if (docIdForPersist) {
+        setActiveTab(docIdForPersist, validActive.id).catch(console.error);
+    }
+    return validActive;
 }
 
 function getWordCount(doc: string): number {
@@ -189,20 +214,6 @@ const getExtensionOptions: ListenerOptions = {
 // ── Helpers ─────────────────────────────────────────────────────
 
 /**
- * Resolves the active draft for a document. If no drafts exist,
- * creates one. Returns the draft ID.
- */
-async function resolveActiveDraft(docId: string): Promise<string | null> {
-    const drafts = await listDrafts(docId);
-    if (drafts.length > 0) {
-        const active = drafts.find((d) => d.isActive) ?? drafts[0];
-        return active.id;
-    }
-    // Create a default draft for new documents
-    return createDraft(docId, "Draft");
-}
-
-/**
  * Builds an EditorState from a LoadResult, restoring from the
  * latest snapshot and replaying any events that occurred after it.
  */
@@ -233,43 +244,36 @@ const fromSave = (async () => {
     const docId = get(currentDocumentId);
 
     if (docId) {
-        // Document already set (e.g. navigated from library)
-        const draftId = await resolveActiveDraft(docId);
-        currentDraftId.set(draftId);
-        if (draftId) {
-            const loaded = await loadDocumentState(docId, draftId);
-            currentDocumentTitle.set(
-                loaded.snapshotStateJson
-                    ? extractTitleFromStateJson(loaded.snapshotStateJson)
-                    : "Untitled",
-            );
-            return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
-        }
+        const activeTab = await loadTabs(docId);
+        currentDraftId.set(activeTab.draftId);
+        const loaded = await loadDocumentState(docId, activeTab.draftId);
+        currentDocumentTitle.set(
+            loaded.snapshotStateJson
+                ? extractTitleFromStateJson(loaded.snapshotStateJson)
+                : "Untitled",
+        );
+        return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
     } else {
-        // No document set — load the most-recently-updated document
         const docs = await listDocuments();
         if (docs.length > 0) {
             const doc = docs[0];
             currentDocumentId.set(doc.id);
             currentDocumentTitle.set(doc.title);
-
-            const draftId = await resolveActiveDraft(doc.id);
-            currentDraftId.set(draftId);
-            if (draftId) {
-                const loaded = await loadDocumentState(doc.id, draftId);
-                return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
-            }
+            const activeTab = await loadTabs(doc.id);
+            currentDraftId.set(activeTab.draftId);
+            const loaded = await loadDocumentState(doc.id, activeTab.draftId);
+            return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
         }
     }
 
-    // Blank editor (new installation).
-    // Create an initial document + draft so the event log can record
-    // edits immediately without waiting for the user to visit the library.
+    // Blank editor — new installation.
     const newDocId = await createDocument("Untitled");
-    const newDraftId = await createDraft(newDocId, "Draft");
     currentDocumentId.set(newDocId);
     currentDocumentTitle.set("Untitled");
-    currentDraftId.set(newDraftId);
+    const newTab = await createTab(newDocId, "Tab 1");
+    tabs = [newTab];
+    activeTabId = newTab.id;
+    currentDraftId.set(newTab.draftId);
     return EditorState.create({ extensions: getExtensions(getExtensionOptions) });
 })();
 
@@ -304,32 +308,23 @@ export async function loadDocument(id: string) {
     if (!$editorView) return;
 
     const gen = ++loadGeneration;
-
-    // Clear stale pending selections from the previous document so they
-    // can't be consumed by a new document whose annotations share the same IDs.
     annotationEventBus.clearPendingSelections();
 
-    const draftId = await resolveActiveDraft(id);
+    const activeTab = await loadTabs(id);
     if (gen !== loadGeneration) return;
-    currentDraftId.set(draftId);
+
+    currentDocumentId.set(id);
+    currentDraftId.set(activeTab.draftId);
     lastPersistedEventId.set(-1);
     lastSavedAt.set(null);
 
-    if (!draftId) {
-        currentDocumentTitle.set("Untitled");
-        const state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
-        $editorView.setState(state);
-        return;
-    }
-
-    const loaded = await loadDocumentState(id, draftId);
+    const loaded = await loadDocumentState(id, activeTab.draftId);
     if (gen !== loadGeneration) return;
+
     currentDocumentTitle.set(
         loaded.snapshotStateJson ? extractTitleFromStateJson(loaded.snapshotStateJson) : "Untitled",
     );
 
-    // Seed lastPersistedEventId from the loaded state so named checkpoints
-    // can be created immediately without requiring a new edit first.
     const latestEventId =
         loaded.eventsSince.length > 0
             ? loaded.eventsSince[loaded.eventsSince.length - 1].id
@@ -342,6 +337,61 @@ export async function loadDocument(id: string) {
     $editorView.setState(state);
     const text = state.doc.toString();
     writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
+}
+
+async function handleTabSelect(tabId: string) {
+    const docId = get(currentDocumentId);
+    if (!docId || !$editorView || tabId === activeTabId) return;
+
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    await setActiveTab(docId, tabId);
+    activeTabId = tabId;
+
+    currentDraftId.set(tab.draftId);
+    lastPersistedEventId.set(-1);
+    lastSavedAt.set(null);
+    annotationEventBus.clearPendingSelections();
+
+    const loaded = await loadDocumentState(docId, tab.draftId);
+    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
+    $editorView.setState(state);
+    const text = state.doc.toString();
+    writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
+}
+
+async function handleTabCreate() {
+    const docId = get(currentDocumentId);
+    if (!docId) return;
+    const label = `Tab ${tabs.length + 1}`;
+    const newTab = await createTab(docId, label);
+    tabs = [...tabs, newTab];
+    await handleTabSelect(newTab.id);
+}
+
+async function handleTabRename(tabId: string, label: string) {
+    await renameTab(tabId, label);
+    tabs = tabs.map((t) => (t.id === tabId ? { ...t, label } : t));
+}
+
+async function handleTabDelete(tabId: string) {
+    if (tabs.length <= 1) return;
+    const docId = get(currentDocumentId);
+    if (!docId) return;
+
+    const idx = tabs.findIndex((t) => t.id === tabId);
+    const nextTab = tabs[idx + 1] ?? tabs[idx - 1];
+
+    // Remove from local state and delete from DB first, while currentDraftId
+    // still points at this tab's draft (safe — no switch has happened yet).
+    tabs = tabs.filter((t) => t.id !== tabId);
+    await deleteTab(tabId);
+
+    // Now switch to an adjacent tab (only if we deleted the active one).
+    if (nextTab && tabId === activeTabId) {
+        await handleTabSelect(nextTab.id);
+    }
 }
 
 onMount(() => {
@@ -422,9 +472,17 @@ onMount(() => {
     </div>
 
     {#await fromSave then}
+        <DocumentTabs
+            {tabs}
+            {activeTabId}
+            ontabselect={handleTabSelect}
+            ontabcreate={handleTabCreate}
+            ontabrename={handleTabRename}
+            ontabdelete={handleTabDelete}
+        />
         <div
             id="editor-document"
-            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-12 mb-12 bg-white rounded-lg shadow-xl py-3 px-1"
+            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-4 mb-12 bg-white rounded-lg shadow-xl py-3 px-1"
             bind:this={element}
         ></div>
     {/await}
