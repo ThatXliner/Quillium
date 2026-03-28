@@ -264,16 +264,24 @@ export class NestedEditorController {
         // an inline editor would be lost on any destroy/recreate cycle
         // because they were never written to the parent's version blob.
         //
+        // Also flush on doc changes when the nested editor has sub-annotations.
+        // Without this, the version blob's annotationField positions become
+        // stale after Phase 3 updates version.doc — a subsequent version
+        // switch would salvage-drop annotations whose positions exceed the
+        // new doc length. Flushing here keeps positions in sync with doc.
+        //
         // After flushing, _mountedAnnotationGeneration is updated to match
         // the new generation, so the annotation-rebuild $effect in
         // Revision.svelte does NOT trigger a destroy/recreate cycle for
         // our own flushes.
-        if (
-            this.flushBehavior !== "no-flush" &&
-            !isParentSync &&
-            this.hasAnnotationMutationEffect(update)
-        ) {
-            this.flushAnnotationStateToParent();
+        if (this.flushBehavior !== "no-flush" && !isParentSync) {
+            if (this.hasAnnotationMutationEffect(update)) {
+                this.flushAnnotationStateToParent(true);
+            } else if (update.docChanged && this.hasNestedAnnotations()) {
+                // Bookkeeping flush: keep blob positions in sync with doc.
+                // Not a user-initiated mutation, so skip undo history.
+                this.flushAnnotationStateToParent(false);
+            }
         }
 
         this.callbacks.onUpdate?.(
@@ -288,9 +296,9 @@ export class NestedEditorController {
      *
      * This deliberately ignores position remapping through doc changes
      * (Phase 1), which happens on every doc-changing transaction but
-     * doesn't represent a user-initiated annotation mutation. Without
-     * this distinction, every keystroke in the nested editor would
-     * trigger an extra _updateRevisionVersionState dispatch.
+     * doesn't represent a user-initiated annotation mutation.
+     * Doc-change flushes are handled separately (with addToHistory:
+     * false) and only when the nested editor has sub-annotations.
      */
     private hasAnnotationMutationEffect(update: ViewUpdate): boolean {
         return update.transactions.some((tr) =>
@@ -301,12 +309,26 @@ export class NestedEditorController {
     }
 
     /**
-     * Serialize the nested editor's annotationField state to the parent's
-     * version blob with addToHistory: true. This is the upward path for
-     * annotation mutations — the complement to translateAndDispatch for
-     * doc changes.
+     * Whether the nested editor currently has any sub-annotations.
+     * Used to decide if doc changes need an annotation-state flush
+     * to keep the parent blob's positions in sync.
      */
-    private flushAnnotationStateToParent(): void {
+    private hasNestedAnnotations(): boolean {
+        if (!this._editor) return false;
+        return Object.keys(this._editor.state.field(annotationField)).length > 0;
+    }
+
+    /**
+     * Serialize the nested editor's annotationField state to the parent's
+     * version blob. This is the upward path for annotation mutations — the
+     * complement to translateAndDispatch for doc changes.
+     *
+     * @param addToHistory — whether the parent dispatch enters the undo
+     *   history. `true` for user-initiated annotation mutations (add, remove,
+     *   updateThread); `false` for bookkeeping flushes that keep blob
+     *   positions in sync with doc changes.
+     */
+    private flushAnnotationStateToParent(addToHistory = true): void {
         if (!this._editor) return;
 
         const rev = this.parentView.state.field(annotationField)[this.revisionId] as
@@ -344,7 +366,7 @@ export class NestedEditorController {
                     this.revisionId,
                     this._editorVersionIndex,
                     blob,
-                    { addToHistory: true },
+                    { addToHistory },
                 ),
             );
             // Update the mounted generation so Revision.svelte's
