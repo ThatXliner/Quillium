@@ -135,6 +135,10 @@ async function handleRenameTitle(id: string, newTitle: string) {
 async function handleTrash(id: string) {
     await trashDocument(id);
     posthog.capture("document_trashed", { count: 1 });
+    if ($currentDocumentId === id) {
+        $currentDocumentId = null;
+        $currentDocumentTitle = "Untitled";
+    }
     const next = new Set(selectedIds);
     next.delete(id);
     selectedIds = next;
@@ -149,6 +153,10 @@ async function handleTrashSelected() {
     const ids = [...selectedIds];
     await Promise.all(ids.map((id) => trashDocument(id)));
     posthog.capture("document_trashed", { count: ids.length });
+    if ($currentDocumentId && ids.includes($currentDocumentId)) {
+        $currentDocumentId = null;
+        $currentDocumentTitle = "Untitled";
+    }
     selectedIds = new Set();
     lastClickedId = null;
     [documents, trashedDocuments] = await Promise.all([listDocuments(), listTrashedDocuments()]);
@@ -187,6 +195,10 @@ async function handleRestoreSelected() {
 async function handleDeletePermanent(id: string) {
     await deleteDocument(id);
     posthog.capture("document_deleted_permanently", { count: 1 });
+    if ($currentDocumentId === id) {
+        $currentDocumentId = null;
+        $currentDocumentTitle = "Untitled";
+    }
     const next = new Set(selectedIds);
     next.delete(id);
     selectedIds = next;
@@ -201,6 +213,10 @@ async function handleDeletePermanentSelected() {
     const ids = [...selectedIds];
     await Promise.all(ids.map((id) => deleteDocument(id)));
     posthog.capture("document_deleted_permanently", { count: ids.length });
+    if ($currentDocumentId && ids.includes($currentDocumentId)) {
+        $currentDocumentId = null;
+        $currentDocumentTitle = "Untitled";
+    }
     selectedIds = new Set();
     lastClickedId = null;
     trashedDocuments = await listTrashedDocuments();
