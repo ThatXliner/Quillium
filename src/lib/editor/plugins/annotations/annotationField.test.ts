@@ -809,6 +809,36 @@ describe("edge cases", () => {
         expect(state.doc.toString()).toBe("");
     });
 
+    it("flushToParent after version switch does not overwrite versions", () => {
+        // Models the exact sequence that happens in the real app when:
+        // 1. Modal is open for a revision (with nested editor running)
+        // 2. Version is switched (from pill or keyboard)
+        // 3. Modal's destroyEditor() calls flushToParent() with old content
+        //
+        // flushToParent uses updateRevisionVersionState with addToHistory: false
+        // targeting the OLD version index. If the blob's doc is contaminated
+        // (e.g. contains the NEW version's text), it overwrites the old version.
+        let state = makeState("hello");
+        state = addRevision(state, 0, 5, ["hello", "world"]);
+
+        // Step 1: Switch from version 0 ("hello") to version 1 ("world")
+        state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
+        expect(state.doc.toString()).toBe("world");
+        expect(getRevision(state, 0).activeVersionIndex).toBe(1);
+
+        // Step 2: flushToParent fires with OLD version's content to OLD index
+        // (this is the correct case — modal editor wasn't synced yet)
+        const correctBlob: VersionState = { doc: "hello", annotationGeneration: 1 };
+        state = state.update(
+            updateRevisionVersionState(state, 0, 0, correctBlob, { addToHistory: false }),
+        ).state;
+
+        const rev = getRevision(state, 0);
+        expect(rev.versions[0].doc).toBe("hello"); // old version preserved
+        expect(rev.versions[1].doc).toBe("world"); // new version preserved
+        expect(rev.activeVersionIndex).toBe(1);
+    });
+
     it("Phase 3 does not pull into collapsed (empty) revisions for non-nested edits", () => {
         let state = makeState("abc");
         state = addRevision(state, 1, 2, ["b"]);
