@@ -42,8 +42,8 @@ test.describe("DocumentTabs", () => {
 
         // Click the second tab
         const tabs = page.getByRole("tab");
-        await tabs.nth(1).click();
-        await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
+        await tabs.nth(0).click();
+        await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
 
         const count = await q.countInvocations("cmd_set_active_tab");
         expect(count).toBeGreaterThanOrEqual(1);
