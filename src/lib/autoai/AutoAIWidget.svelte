@@ -323,10 +323,6 @@ const annotationPills = [
 <style>
     /* ── Container ── */
     .autoai-container {
-        position: fixed;
-        bottom: 24px;
-        left: 24px;
-        z-index: 40;
         overflow: hidden;
         background: #faf8f5;
         border: 2px solid #d6b87a;

@@ -41,6 +41,8 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
+import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
+import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
 import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
@@ -305,10 +307,13 @@ if (import.meta.env.DEV) {
     />
 {/if}
 
-<!-- AutoAI collaborator widget — fixed bottom-right bubble -->
-{#if appSettings.aiEnabled}
-    <AutoAIWidget />
-{/if}
+<!-- Bottom-left corner stack — word count + AutoAI pushed up from corner -->
+<BottomLeftStack>
+    {#if appSettings.aiEnabled}
+        <AutoAIWidget />
+    {/if}
+    <WordCountOverlay />
+</BottomLeftStack>
 <Toaster position="bottom-right" />
 
 <!-- Modal stack — render all entries so parent editors stay alive when a

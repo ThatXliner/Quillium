@@ -38,6 +38,7 @@ import {
     currentDraftId,
     lastPersistedEventId,
     lastSavedAt,
+    writingStats,
 } from "$lib/stores";
 import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import {
@@ -124,17 +125,6 @@ async function commitTitle() {
         );
     }
 }
-let stats = $state<{
-    words: number;
-    chars: number;
-    selWords: number;
-    selChars: number;
-}>({
-    words: 0,
-    chars: 0,
-    selWords: 0,
-    selChars: 0,
-});
 
 function getWordCount(doc: string): number {
     return doc.trim().split(/\s+/).filter(Boolean).length;
@@ -190,7 +180,7 @@ const getExtensionOptions: ListenerOptions = {
         const doc = update.state.doc.toString();
         const selText = extractSelectedText(update);
 
-        stats = computeWritingStats(doc, selText);
+        writingStats.set(computeWritingStats(doc, selText));
         syncStoresToEditorState(update, doc, selText);
         trackKeyboardActions(update);
     },
@@ -351,7 +341,7 @@ export async function loadDocument(id: string) {
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
     $editorView.setState(state);
     const text = state.doc.toString();
-    stats = { words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 };
+    writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
 }
 
 onMount(() => {
@@ -387,7 +377,7 @@ onMount(() => {
 <div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
         <div class="pointer-events-auto">
-            <StatusBar {...stats} titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
+            <StatusBar titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
                 {#snippet children()}
                     <div class="flex items-center justify-center py-1.5 px-4 w-fit mx-auto mb-3 rounded-full">
                         {#if titleEditing}

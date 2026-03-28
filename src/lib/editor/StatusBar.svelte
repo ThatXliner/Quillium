@@ -27,10 +27,6 @@ import { editorView, saveStatus, settingsOpen, tutorialActive } from "$lib/store
 import { Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
 
 const {
-    words,
-    chars,
-    selWords,
-    selChars,
     children,
     titleVisibility = "hover",
     titleForced = false,
@@ -143,9 +139,6 @@ $effect(() => {
                 >
             {/if} -->
         </div>
-        <div class="w-px h-8 bg-black/20"></div>
-        <span class="text-sm text-black/90 tabular-nums">{selWords > 0 ? `${selWords} / ${words}` : words} words</span>
-        <span class="text-sm text-black/90 tabular-nums">{selChars > 0 ? `${selChars} / ${chars}` : chars} chars</span>
         <div class="w-px h-8 bg-black/20"></div>
         <button
             onclick={goToLibrary}
