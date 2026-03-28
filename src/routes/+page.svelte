@@ -159,14 +159,16 @@ onMount(() => {
     window.addEventListener("quillium:manual-review", handleManualReviewEvent);
 
     // Listen for Tauri menu events
+    let destroyed = false;
     const menuUnlisteners: UnlistenFn[] = [];
     listen("menu:settings", () => {
-        $settingsOpen = !$settingsOpen;
-    }).then((u) => menuUnlisteners.push(u));
-    listen("menu:history", () => goToHistory()).then((u) => menuUnlisteners.push(u));
-    listen("menu:library", () => goToLibrary()).then((u) => menuUnlisteners.push(u));
+        if (!destroyed) $settingsOpen = !$settingsOpen;
+    }).then((u) => destroyed ? u() : menuUnlisteners.push(u));
+    listen("menu:history", () => { if (!destroyed) goToHistory(); }).then((u) => destroyed ? u() : menuUnlisteners.push(u));
+    listen("menu:library", () => { if (!destroyed) goToLibrary(); }).then((u) => destroyed ? u() : menuUnlisteners.push(u));
 
     return () => {
+        destroyed = true;
         window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
         for (const unlisten of menuUnlisteners) unlisten();
