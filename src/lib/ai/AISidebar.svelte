@@ -72,6 +72,7 @@ import {
     Minimize2Icon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
+import { useResize } from "$lib/ui/resize";
 import posthog from "$lib/posthog";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
@@ -135,53 +136,17 @@ const panelTitles: Record<NonNullable<Action>, string> = {
 };
 
 const expanded = $derived(action !== null);
-// Remember to also update the CSS style on line 212
-const DEFAULT_WIDTH = 320;
-const DEFAULT_HEIGHT = 520;
-const MIN_WIDTH = 240;
-const MAX_WIDTH = 600;
-const MIN_HEIGHT = 400;
-const MAX_HEIGHT = 800;
 
-let customWidth = $state<number | null>(null);
-let customHeight = $state<number | null>(null);
-let isResizing = $state(false);
+let isCustomSize = $state(false);
+let resizeAction: ReturnType<typeof useResize> | null = null;
 
-// Plain vars — not reactive, only used inside handlers
-let resizeStartX = 0;
-let resizeStartY = 0;
-let resizeStartWidth = 0;
-let resizeStartHeight = 0;
-let activeHandle: "right" | "bottom" | "corner" | null = null;
-let justResized = false;
+const transitionClass = "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]";
 
-const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
-const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
-const isCustomSize = $derived(customWidth !== null || customHeight !== null);
-
-// Inline style only when expanded AND user has resized (overrides Tailwind)
-const containerSizeStyle = $derived(
-    expanded && (customWidth !== null || customHeight !== null)
-        ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
-        : "",
-);
-
-// Disable transition during active drag; keep it for expand/collapse
-const transitionClass = $derived(
-    isResizing
-        ? ""
-        : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
-);
-
-let container: HTMLDivElement;
+let container = $state<HTMLDivElement | undefined>(undefined);
 let iconStrip = $state<HTMLDivElement>();
 let iconEls = $state<HTMLButtonElement[]>([]);
 
 function handleClickOutside(e: MouseEvent) {
-    if (justResized) {
-        justResized = false;
-        return;
-    }
     const target = e.target as Node;
     if (
         expanded &&
@@ -223,46 +188,7 @@ function scrollActiveIntoCenter(id: NonNullable<Action>) {
 }
 
 function resetSize() {
-    customWidth = null;
-    customHeight = null;
-}
-
-function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
-    e.preventDefault();
-    e.stopPropagation();
-    activeHandle = handle;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    resizeStartWidth = effectiveWidth;
-    resizeStartHeight = effectiveHeight;
-    isResizing = true;
-    window.addEventListener("mousemove", onResizeMove);
-    window.addEventListener("mouseup", onResizeEnd);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor =
-        handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
-}
-
-function onResizeMove(e: MouseEvent) {
-    if (!activeHandle) return;
-    const dx = e.clientX - resizeStartX;
-    const dy = e.clientY - resizeStartY;
-    if (activeHandle === "right" || activeHandle === "corner") {
-        customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
-    }
-    if (activeHandle === "bottom" || activeHandle === "corner") {
-        customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
-    }
-}
-
-function onResizeEnd() {
-    isResizing = false;
-    activeHandle = null;
-    justResized = true;
-    window.removeEventListener("mousemove", onResizeMove);
-    window.removeEventListener("mouseup", onResizeEnd);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
+    resizeAction?.reset();
 }
 
 // Center the active icon whenever the panel opens
@@ -281,13 +207,26 @@ $effect(() => {
     return () => window.removeEventListener("quillium:open-ai-settings", handleOpenAiSettings);
 });
 
-// Cleanup resize listeners on unmount
+// Mount the resize action on the container
 $effect(() => {
+    if (!container) return;
+    resizeAction = useResize(container, {
+        minWidth: 240,
+        maxWidth: 600,
+        minHeight: 400,
+        maxHeight: 800,
+        defaultWidth: 320,
+        defaultHeight: 520,
+        symmetric: false,
+        persistKey: "aiSidebar",
+    });
+    function onResizeChange(e: Event) {
+        isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
+    }
+    container.addEventListener("resizechange", onResizeChange);
     return () => {
-        window.removeEventListener("mousemove", onResizeMove);
-        window.removeEventListener("mouseup", onResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
+        resizeAction?.destroy?.();
+        container?.removeEventListener("resizechange", onResizeChange);
     };
 });
 
@@ -339,7 +278,6 @@ function handleKeydown(e: KeyboardEvent) {
     id="ai-sidebar"
     bind:this={container}
     onclick={(e) => e.stopPropagation()}
-    style={containerSizeStyle}
     class="
         fixed left-4 top-1/2 -translate-y-1/2 z-50
         backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
@@ -469,31 +407,6 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
     </div>
 
-    {#if expanded}
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-            role="separator"
-            aria-label="Resize width"
-            aria-orientation="vertical"
-            class="resize-handle resize-handle-right"
-            onmousedown={(e) => startResize(e, "right")}
-        ></div>
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-            role="separator"
-            aria-label="Resize height"
-            aria-orientation="horizontal"
-            class="resize-handle resize-handle-bottom"
-            onmousedown={(e) => startResize(e, "bottom")}
-        ></div>
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-            role="separator"
-            aria-label="Resize panel"
-            class="resize-handle resize-handle-corner"
-            onmousedown={(e) => startResize(e, "corner")}
-        ></div>
-    {/if}
 </div>
 
 <style>
