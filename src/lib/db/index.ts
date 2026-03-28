@@ -7,7 +7,7 @@
  * @tauri-apps/plugin-sql directly.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta } from "./types";
+import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta, TabMeta } from "./types";
 
 // ── Reset ─────────────────────────────────────────────────────────
 
@@ -179,4 +179,30 @@ export async function createNamedSnapshot(
         upToEventId,
         label,
     });
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────
+
+export async function listTabs(docId: string): Promise<TabMeta[]> {
+    return invoke<TabMeta[]>("cmd_list_tabs", { docId });
+}
+
+export async function createTab(docId: string, label: string): Promise<TabMeta> {
+    return invoke<TabMeta>("cmd_create_tab", { docId, label });
+}
+
+export async function renameTab(tabId: string, label: string): Promise<void> {
+    return invoke<void>("cmd_rename_tab", { tabId, label });
+}
+
+export async function deleteTab(tabId: string): Promise<void> {
+    return invoke<void>("cmd_delete_tab", { tabId });
+}
+
+export async function getActiveTab(docId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_active_tab", { docId });
+}
+
+export async function setActiveTab(docId: string, tabId: string): Promise<void> {
+    return invoke<void>("cmd_set_active_tab", { docId, tabId });
 }

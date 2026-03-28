@@ -51,3 +51,12 @@ export type SnapshotMeta = {
     createdAt: number;
     label: string | null;
 };
+
+export type TabMeta = {
+    id: string;
+    documentId: string;
+    label: string;
+    position: number;
+    draftId: string;
+    createdAt: number;
+};
