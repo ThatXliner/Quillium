@@ -285,9 +285,9 @@ const fromSave = (async () => {
 
 function extractTitleFromStateJson(stateJson: string): string {
     try {
-        const parsed = JSON.parse(stateJson) as EditorState;
-        const doc = parsed.doc.toString();
-        return doc.split("\n")[0].trim().slice(0, 80) || "Untitled";
+        const parsed = JSON.parse(stateJson) as { doc?: string | string[] };
+        const firstLine = Array.isArray(parsed.doc) ? (parsed.doc[0] ?? "") : String(parsed.doc ?? "");
+        return firstLine.trim().slice(0, 80) || "Untitled";
     } catch {
         return "Unknown";
     }
@@ -307,14 +307,18 @@ export async function reload() {
  * Loads a specific document from SQLite into the editor.
  * Called by the library when the user opens a document.
  */
+let loadGeneration = 0;
 export async function loadDocument(id: string) {
     if (!$editorView) return;
+
+    const gen = ++loadGeneration;
 
     // Clear stale pending selections from the previous document so they
     // can't be consumed by a new document whose annotations share the same IDs.
     annotationEventBus.clearPendingSelections();
 
     const draftId = await resolveActiveDraft(id);
+    if (gen !== loadGeneration) return;
     currentDraftId.set(draftId);
     lastPersistedEventId.set(-1);
     lastSavedAt.set(null);
@@ -326,6 +330,7 @@ export async function loadDocument(id: string) {
     }
 
     const loaded = await loadDocumentState(id, draftId);
+    if (gen !== loadGeneration) return;
     currentDocumentTitle.set(
         loaded.snapshotStateJson ? extractTitleFromStateJson(loaded.snapshotStateJson) : "Untitled",
     );
