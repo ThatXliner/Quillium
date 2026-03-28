@@ -314,21 +314,23 @@ export class NestedEditorController {
             | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            // If the parent already switched to a different version, this
-            // controller's content may be contaminated by syncFromParent.
-            // The version switch transaction captured the old version via
-            // Phase 3, so a flush here is at best redundant and at worst
-            // writes the new version's text into the old version's slot.
-            if (rev.activeVersionIndex !== this._editorVersionIndex) return;
-
             const existing = rev.versions[this._editorVersionIndex];
             const prevGen =
                 (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
             const newGen = prevGen + 1;
+            // Merge nested editor's sub-annotation state into the parent's
+            // existing version blob, preserving the parent's authoritative
+            // `doc` (kept current by translateAndDispatch + Phase 3).
+            const nestedState = this._editor.state.toJSON(nestedSavedFields) as Record<
+                string,
+                unknown
+            >;
             const blob = {
-                ...(this._editor.state.toJSON(nestedSavedFields) as VersionState),
+                ...existing,
+                annotationField: nestedState.annotationField,
+                selection: nestedState.selection,
                 annotationGeneration: newGen,
-            };
+            } as VersionState;
             this.parentView.dispatch(
                 updateRevisionVersionState(
                     this.parentView.state,
@@ -364,39 +366,35 @@ export class NestedEditorController {
             | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            // If the parent already switched to a different version, this
-            // controller's content may be contaminated by syncFromParent.
-            // The version switch transaction captured the old version via
-            // Phase 3, so a flush here is at best redundant and at worst
-            // writes the new version's text into the old version's slot.
-            if (rev.activeVersionIndex !== this._editorVersionIndex) return;
-
             const existing = rev.versions[this._editorVersionIndex];
             const prevGen =
                 (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
+            // Merge nested editor's sub-annotation state into the parent's
+            // existing version blob, preserving the parent's authoritative
+            // `doc` (kept current by translateAndDispatch + Phase 3).
+            const nestedState = this._editor.state.toJSON(nestedSavedFields) as Record<
+                string,
+                unknown
+            >;
             const blob = {
-                ...(this._editor.state.toJSON(nestedSavedFields) as VersionState),
+                ...existing,
+                annotationField: nestedState.annotationField,
+                selection: nestedState.selection,
                 annotationGeneration: prevGen + 1,
-            };
+            } as VersionState;
 
             // Compare against what the parent already has to detect
             // whether this flush actually contributes new state.
-            const parentDoc = (existing as { doc?: string })?.doc ?? "";
-            const nestedDoc = (blob as { doc?: string }).doc ?? "";
-            const docDiffers = parentDoc !== nestedDoc;
             const parentAnns = JSON.stringify(
                 (existing as { annotationField?: unknown })?.annotationField ?? null,
             );
-            const nestedAnns = JSON.stringify(
-                (blob as { annotationField?: unknown }).annotationField ?? null,
-            );
+            const nestedAnns = JSON.stringify(nestedState.annotationField ?? null);
             const annsDiffer = parentAnns !== nestedAnns;
 
-            if (docDiffers || annsDiffer) {
+            if (annsDiffer) {
                 posthog.capture("nested_editor_flush_to_parent_meaningful", {
                     revisionId: this.revisionId,
                     versionIndex: this._editorVersionIndex,
-                    docDiffers,
                     annsDiffer,
                 });
             }
