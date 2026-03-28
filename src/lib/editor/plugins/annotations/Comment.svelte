@@ -29,6 +29,7 @@ import posthog from "$lib/posthog";
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import type { Annotation, Thread as ThreadType } from ".";
+import { annotationField } from ".";
 import Thread from "./Thread.svelte";
 import { modalStack } from "$lib/stores";
 
@@ -58,11 +59,14 @@ async function aiSuggestion() {
         thread_length: thread.length,
         has_selection: !!selectedText,
     });
+    const annotationId = comment.id;
     const prompt = buildCommentAiPrompt(thread, selectedText);
     try {
         const aiResponse = await streamCommentAiResponse(prompt, selectedText, aiSettings);
+        if (!view.state.field(annotationField)[annotationId]) return;
         updateThread([...thread, { message: aiResponse, author: "AI", time: Date.now() }]);
     } catch {
+        if (!view.state.field(annotationField)[annotationId]) return;
         updateThread([
             ...thread,
             {

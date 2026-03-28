@@ -29,7 +29,7 @@ import {
 import { slide } from "svelte/transition";
 import type { EditorView } from "@codemirror/view";
 import { modalStack, annotations as annotationsStore, modalAnnotationStores } from "$lib/stores";
-import { updateThread } from "./annotationField";
+import { updateThread, annotationField } from "./annotationField";
 import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -222,11 +222,13 @@ async function aiSuggestion() {
     const prompt = buildCommentAiPrompt(currentThread, selectedText);
     try {
         const aiResponse = await streamCommentAiResponse(prompt, selectedText, aiSettings);
+        if (!parentView.state.field(annotationField)[commentId]) return;
         handleUpdateThread([
             ...currentThread,
             { message: aiResponse, author: "AI", time: Date.now() },
         ]);
     } catch {
+        if (!parentView.state.field(annotationField)[commentId]) return;
         handleUpdateThread([
             ...currentThread,
             {
