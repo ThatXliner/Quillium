@@ -468,6 +468,7 @@ async function aiSuggestion() {
     }
 
     .comment-modal-inner {
+        position: relative;
         display: flex;
         flex-direction: column;
         background: white;

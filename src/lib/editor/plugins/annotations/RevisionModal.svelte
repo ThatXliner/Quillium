@@ -1088,6 +1088,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   }
 
   .revision-modal-inner {
+    position: relative;
     display: flex;
     flex-direction: column;
     background: white;
