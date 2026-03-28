@@ -222,18 +222,23 @@ $effect(() => {
         symmetric: false,
         persistKey: "aiSidebar",
     });
+    let dragActive = false;
     function onResizeChange(e: Event) {
         isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
+        dragActive = true;
     }
-    function onResizeEnd() {
-        justResized = true;
+    function onMouseUp() {
+        if (dragActive) {
+            justResized = true;
+            dragActive = false;
+        }
     }
     container.addEventListener("resizechange", onResizeChange);
-    window.addEventListener("mouseup", onResizeEnd);
+    window.addEventListener("mouseup", onMouseUp);
     return () => {
         resizeAction?.destroy?.();
         container?.removeEventListener("resizechange", onResizeChange);
-        window.removeEventListener("mouseup", onResizeEnd);
+        window.removeEventListener("mouseup", onMouseUp);
     };
 });
 
