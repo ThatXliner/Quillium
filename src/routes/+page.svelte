@@ -280,7 +280,10 @@ if (import.meta.env.DEV) {
 {/if}
 <DictionaryPopover />
 
-<div class="h-screen w-full">
+<div
+    class="h-screen w-full transition-[padding] duration-300"
+    style={appSettings.aiEnabled ? 'padding-left: 72px' : 'padding-left: max(2rem, calc((100vw - 1140px) / 2)); padding-right: max(2rem, calc((100vw - 1140px) / 2))'}
+>
     <Editor bind:this={editorComponent} />
 </div>
 
