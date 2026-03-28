@@ -98,8 +98,7 @@ describe("DocumentTabs", () => {
         await new Promise((r) => setTimeout(r, 0));
 
         const input = getByRole("textbox", { name: "Rename tab" }) as HTMLInputElement;
-        input.value = "  New Name  ";
-        await fireEvent.input(input);
+        await fireEvent.input(input, { target: { value: "  New Name  " } });
         await fireEvent.keyDown(input, { key: "Enter" });
 
         expect(ontabrename).toHaveBeenCalledWith("a", "New Name");
@@ -134,8 +133,7 @@ describe("DocumentTabs", () => {
         await new Promise((r) => setTimeout(r, 0));
 
         const input = getByRole("textbox", { name: "Rename tab" }) as HTMLInputElement;
-        input.value = "   ";
-        await fireEvent.input(input);
+        await fireEvent.input(input, { target: { value: "   " } });
         await fireEvent.keyDown(input, { key: "Enter" });
 
         expect(ontabrename).toHaveBeenCalledWith("a", "Tab");
@@ -152,8 +150,7 @@ describe("DocumentTabs", () => {
         await new Promise((r) => setTimeout(r, 0));
 
         const input = getByRole("textbox", { name: "Rename tab" }) as HTMLInputElement;
-        input.value = "Blurred Name";
-        await fireEvent.input(input);
+        await fireEvent.input(input, { target: { value: "Blurred Name" } });
         await fireEvent.blur(input);
 
         expect(ontabrename).toHaveBeenCalledWith("a", "Blurred Name");

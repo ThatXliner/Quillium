@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, vi } from "vitest";
 import { clearMocks } from "@tauri-apps/api/mocks";
+import { cleanup } from "@testing-library/svelte";
 import { randomFillSync } from "node:crypto";
 
 // jsdom does not ship with WebCrypto; @tauri-apps/api uses crypto.getRandomValues
@@ -17,6 +18,12 @@ beforeAll(() => {
 // bleed into the next.
 afterEach(() => {
     clearMocks();
+});
+
+// Clean up rendered Svelte components between tests. @testing-library/svelte
+// auto-cleanup is suppressed when globals: true is set in vitest config.
+afterEach(() => {
+    cleanup();
 });
 
 const mockAppSettings = {
