@@ -137,6 +137,11 @@ $effect(() => {
             <span class="text-sm text-black/90"
                 >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
             >
+            <!-- {#if $saveStatus !== "saved"}
+                <span class="text-sm text-black/90"
+                    >{$saveStatus === "error" ? "Error" : "Saving..."}</span
+                >
+            {/if} -->
         </div>
         <div class="w-px h-8 bg-black/20"></div>
         <span class="text-sm text-black/90 tabular-nums">{selWords > 0 ? `${selWords} / ${words}` : words} words</span>
