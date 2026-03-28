@@ -37,6 +37,18 @@ export type TauriMockOptions = {
      * cmd_load_snapshot_state returns a minimal state blob from each snapshot's doc.
      */
     snapshots: MockSnapshot[];
+    /**
+     * Pre-seeded tabs for cmd_list_tabs.
+     * Defaults to one tab wired to draft-test-1.
+     */
+    initialTabs?: Array<{
+        id: string;
+        documentId: string;
+        label: string;
+        draftId: string;
+        position: number;
+        createdAt: number;
+    }>;
 };
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
@@ -45,6 +57,16 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
     settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
     initialDoc: null,
     snapshots: [],
+    initialTabs: [
+        {
+            id: "tab-test-1",
+            documentId: "doc-test-1",
+            label: "Tab 1",
+            draftId: "draft-test-1",
+            position: 0,
+            createdAt: 0,
+        },
+    ],
 };
 
 // ── Page object ─────────────────────────────────────────────────────────────
@@ -96,6 +118,14 @@ export class QuilliumPage {
                 settings: Record<string, unknown>;
                 initialDoc: string | null;
                 snapshots: MockSnapshot[];
+                initialTabs: Array<{
+                    id: string;
+                    documentId: string;
+                    label: string;
+                    draftId: string;
+                    position: number;
+                    createdAt: number;
+                }>;
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
@@ -110,6 +140,8 @@ export class QuilliumPage {
                 let nextCallbackId = 1;
                 const callbacks = new Map<number, (...args: unknown[]) => unknown>();
                 const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
+                let tabs = payload.initialTabs.map((t) => ({ ...t }));
+                let activeTabId: string | null = tabs[0]?.id ?? null;
 
                 (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
 
@@ -238,6 +270,44 @@ export class QuilliumPage {
                             return newId;
                         }
 
+                        // Tabs
+                        if (cmd === "cmd_list_tabs") {
+                            const a = args as { docId: string };
+                            return tabs.filter((t) => t.documentId === a.docId);
+                        }
+                        if (cmd === "cmd_get_active_tab") {
+                            return activeTabId;
+                        }
+                        if (cmd === "cmd_set_active_tab") {
+                            const a = args as { docId: string; tabId: string };
+                            activeTabId = a.tabId;
+                            return null;
+                        }
+                        if (cmd === "cmd_create_tab") {
+                            const a = args as { docId: string; label: string };
+                            const newTab = {
+                                id: `tab-test-${tabs.length + 1}`,
+                                documentId: a.docId,
+                                label: a.label,
+                                draftId: `draft-test-${tabs.length + 1}`,
+                                position: tabs.length,
+                                createdAt: Date.now(),
+                            };
+                            tabs.push(newTab);
+                            return newTab;
+                        }
+                        if (cmd === "cmd_rename_tab") {
+                            const a = args as { tabId: string; label: string };
+                            const t = tabs.find((x) => x.id === a.tabId);
+                            if (t) t.label = a.label;
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_tab") {
+                            const a = args as { tabId: string };
+                            tabs = tabs.filter((x) => x.id !== a.tabId);
+                            return null;
+                        }
+
                         // Tauri event plumbing
                         if (cmd === "plugin:event|listen") return 1;
                         if (cmd === "plugin:event|unlisten") return null;
@@ -265,6 +335,7 @@ export class QuilliumPage {
                 settings: opts.settings,
                 initialDoc: opts.initialDoc,
                 snapshots: opts.snapshots,
+                initialTabs: opts.initialTabs ?? DEFAULT_OPTIONS.initialTabs!,
             },
         );
     }
