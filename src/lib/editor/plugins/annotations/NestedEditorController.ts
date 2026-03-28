@@ -314,6 +314,13 @@ export class NestedEditorController {
             | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
+            // If the parent already switched to a different version,
+            // syncFromParent may have contaminated this editor with the
+            // NEW version's text, collapsing sub-annotation ranges.
+            // Flushing now would overwrite the old version's annotations
+            // with the corrupted (empty) state.
+            if (rev.activeVersionIndex !== this._editorVersionIndex) return;
+
             const existing = rev.versions[this._editorVersionIndex];
             const prevGen =
                 (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
@@ -366,6 +373,17 @@ export class NestedEditorController {
             | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
+            // If the parent already switched to a different version,
+            // syncFromParent may have contaminated this editor with the
+            // NEW version's text, collapsing sub-annotation ranges.
+            // Flushing now would overwrite the old version's annotations
+            // with the corrupted (empty) state. The version switch
+            // transaction already captured the old version's doc via
+            // Phase 3, and flushAnnotationStateToParent synced
+            // sub-annotations on each prior mutation, so this flush
+            // is redundant after a version switch.
+            if (rev.activeVersionIndex !== this._editorVersionIndex) return;
+
             const existing = rev.versions[this._editorVersionIndex];
             const prevGen =
                 (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;

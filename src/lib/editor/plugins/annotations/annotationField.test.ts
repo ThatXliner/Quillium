@@ -839,6 +839,209 @@ describe("edge cases", () => {
         expect(rev.activeVersionIndex).toBe(1);
     });
 
+    it("version switch does not drop comment annotations outside the revision", () => {
+        // doc: "AAA hello BBB"
+        //       0123456789012
+        // Revision covers "hello" at [4, 9]
+        // Comment covers "BBB" at [10, 13] — entirely outside the revision
+        let state = makeState("AAA hello BBB");
+        state = addRevision(state, 4, 9, ["hello", "world"]);
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 1,
+                    _type: "comment",
+                    selection: EditorSelection.single(10, 13),
+                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                }),
+            ],
+        }).state;
+
+        // Both annotations should exist before the switch
+        expect(Object.keys(getAnnotations(state))).toHaveLength(2);
+
+        // Switch to version 1 ("world") — replaces "hello" with "world"
+        state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
+
+        // Comment should still exist — it's outside the revision range
+        const anns = getAnnotations(state);
+        expect(Object.keys(anns)).toHaveLength(2);
+        const comment = anns[1];
+        expect(comment).toBeDefined();
+        expect(isAnnotationOfType(comment, "comment")).toBe(true);
+        // Comment positions should be remapped correctly
+        // "AAA world BBB" — "BBB" is still at [10, 13]
+        expect(comment.selection.main.from).toBe(10);
+        expect(comment.selection.main.to).toBe(13);
+    });
+
+    it("version switch does not drop comment annotations before the revision", () => {
+        // doc: "AAA hello BBB"
+        // Comment covers "AAA" at [0, 3] — before the revision
+        let state = makeState("AAA hello BBB");
+        state = addRevision(state, 4, 9, ["hello", "world"]);
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 1,
+                    _type: "comment",
+                    selection: EditorSelection.single(0, 3),
+                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                }),
+            ],
+        }).state;
+
+        state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
+
+        const anns = getAnnotations(state);
+        expect(Object.keys(anns)).toHaveLength(2);
+        expect(anns[1]).toBeDefined();
+        expect(anns[1].selection.main.from).toBe(0);
+        expect(anns[1].selection.main.to).toBe(3);
+    });
+
+    it("version switch to different-length text preserves comment after revision", () => {
+        // doc: "XX YYY"
+        //       012345
+        // Revision covers "XX" at [0, 2], versions ["XX", "XXXXX"]
+        // Comment covers "YYY" at [3, 6]
+        let state = makeState("XX YYY");
+        state = addRevision(state, 0, 2, ["XX", "XXXXX"]);
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 1,
+                    _type: "comment",
+                    selection: EditorSelection.single(3, 6),
+                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                }),
+            ],
+        }).state;
+
+        // Switch to version 1 ("XXXXX") — doc becomes "XXXXX YYY"
+        state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
+
+        const anns = getAnnotations(state);
+        expect(Object.keys(anns)).toHaveLength(2);
+        const comment = anns[1];
+        expect(comment).toBeDefined();
+        // "XXXXX YYY" — "YYY" shifted to [6, 9]
+        expect(state.doc.toString()).toBe("XXXXX YYY");
+        expect(comment.selection.main.from).toBe(6);
+        expect(comment.selection.main.to).toBe(9);
+    });
+
+    it("version switch between different-length versions preserves second revision", () => {
+        // doc: "AAA BBB"
+        //       0123456
+        // Revision 0 covers "AAA" at [0, 3], versions ["AAA", "A"]
+        // Revision 1 covers "BBB" at [4, 7]
+        let state = makeState("AAA BBB");
+        state = addRevision(state, 0, 3, ["AAA", "A"]);
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 1,
+                    _type: "revision",
+                    selection: EditorSelection.single(4, 7),
+                    thread: [],
+                    activeVersionIndex: 0,
+                    versions: [{ doc: "BBB" }],
+                }),
+            ],
+        }).state;
+
+        // Switch revision 0 to version 1 ("A") — doc becomes "A BBB"
+        state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
+
+        const anns = getAnnotations(state);
+        expect(Object.keys(anns)).toHaveLength(2);
+        expect(state.doc.toString()).toBe("A BBB");
+        // Revision 1 should be remapped: "BBB" at [2, 5]
+        const rev1 = anns[1];
+        expect(rev1).toBeDefined();
+        expect(rev1.selection.main.from).toBe(2);
+        expect(rev1.selection.main.to).toBe(5);
+    });
+
+    it("version switch drops comment whose range is inside the revision", () => {
+        // doc: "AAA hello BBB"
+        //       0123456789012
+        // Revision covers "hello" at [4, 9]
+        // Comment covers "ell" at [5, 8] — inside the revision
+        let state = makeState("AAA hello BBB");
+        state = addRevision(state, 4, 9, ["hello", "world"]);
+        state = state.update({
+            effects: [
+                addAnnotation.of({
+                    id: 1,
+                    _type: "comment",
+                    selection: EditorSelection.single(5, 8),
+                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                }),
+            ],
+        }).state;
+
+        expect(Object.keys(getAnnotations(state))).toHaveLength(2);
+
+        // Switch to version 1 ("world") — the text "hello" is replaced with "world"
+        // The comment at [5, 8] gets its range mapped through the replacement.
+        // Since the entire range [4, 9] is replaced, positions 5 and 8 both map
+        // to position 4 (start of replacement), creating an empty range.
+        // cleanRangesOf drops empty non-revision ranges.
+        state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
+
+        // The comment should be dropped (its range collapsed)
+        const anns = getAnnotations(state);
+        expect(Object.keys(anns)).toHaveLength(1); // only revision remains
+    });
+
+    it("flush with contaminated annotations overwrites old version's sub-annotations", () => {
+        // Demonstrates the data-loss scenario that the activeVersionIndex guard
+        // in flushToParent/flushAnnotationStateToParent prevents:
+        //
+        // 1. Version 0 has sub-annotations (annotationField blob)
+        // 2. Version switch fires
+        // 3. syncFromParent patches the nested editor with new version's text
+        // 4. The doc change in step 3 collapses/drops sub-annotations
+        // 5. flushToParent writes the now-empty annotationField to version 0's blob
+        // 6. Switching back to version 0 shows no sub-annotations
+        let state = makeState("hello");
+        const subAnnotations = {
+            0: {
+                id: 0,
+                _type: "comment",
+                selection: { ranges: [{ anchor: 1, head: 4 }], main: 0 },
+                thread: [{ author: "user", text: "note" }],
+            },
+        };
+        state = addRevision(state, 0, 5, [
+            { doc: "hello", annotationField: subAnnotations } as unknown as string,
+            "world",
+        ]);
+
+        // Switch to version 1
+        state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
+        expect(state.doc.toString()).toBe("world");
+
+        // Simulate a contaminated flush: the nested editor was synced to "world"
+        // which collapsed the sub-annotations, then flushed to version 0's blob.
+        // This is the BAD path the guard prevents.
+        const contaminatedBlob: VersionState = {
+            doc: "hello", // doc is preserved by merge-only flush
+            annotationField: {}, // but annotations were collapsed/dropped
+            annotationGeneration: 1,
+        };
+        state = state.update(
+            updateRevisionVersionState(state, 0, 0, contaminatedBlob, { addToHistory: false }),
+        ).state;
+
+        // Version 0's sub-annotations are now gone — this is the bug.
+        const rev = getRevision(state, 0);
+        const v0Anns = (rev.versions[0] as { annotationField?: unknown }).annotationField;
+        expect(v0Anns).toEqual({}); // contaminated — sub-annotations lost
+    });
+
     it("Phase 3 does not pull into collapsed (empty) revisions for non-nested edits", () => {
         let state = makeState("abc");
         state = addRevision(state, 1, 2, ["b"]);
