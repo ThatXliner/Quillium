@@ -22,7 +22,9 @@ import {
     Trash2,
     HelpCircle,
     MessageSquare,
+    Minimize2 as Minimize2Icon,
 } from "lucide-svelte";
+import { useResize } from "$lib/ui/resize";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -145,6 +147,9 @@ function removeQuickAction(index: number) {
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let innerEl = $state<HTMLDivElement | undefined>(undefined);
+let modalInnerEl = $state<HTMLDivElement | undefined>(undefined);
+let isCustomSize = $state(false);
+let resizeAction: ReturnType<typeof useResize> | null = null;
 
 // Shake + ring state — key increments each trigger so CSS animation replays
 let alertKey = $state(0);
@@ -170,6 +175,28 @@ $effect(() => {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+});
+
+$effect(() => {
+    if (!modalInnerEl) return;
+    resizeAction = useResize(modalInnerEl, {
+        minWidth: 480,
+        maxWidth: 900,
+        minHeight: 400,
+        maxHeight: 860,
+        defaultWidth: 640,
+        defaultHeight: Math.round(window.innerHeight * 0.72),
+        symmetric: true,
+        persistKey: "settingsModal",
+    });
+    const handler = (e: Event) => {
+        isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
+    };
+    modalInnerEl.addEventListener("resizechange", handler);
+    return () => {
+        resizeAction?.destroy?.();
+        modalInnerEl?.removeEventListener("resizechange", handler);
+    };
 });
 
 function handleChange() {
@@ -245,7 +272,7 @@ function fontLabel(fonts: FontOption[], value: string) {
     class="settings-modal"
     onclick={handleBackdropClick}
 >
-    <div bind:this={innerEl} class="settings-modal-inner">
+    <div bind:this={modalInnerEl} class="settings-modal-inner">
         <!-- Shake wrapper -->
         <div class="settings-shake-wrapper {alerting ? 'settings-shaking' : ''}">
 
@@ -255,14 +282,26 @@ function fontLabel(fonts: FontOption[], value: string) {
                 <Settings2 size={14} class="text-black/35" />
                 <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
             </div>
-            <button
-                onclick={tryClose}
-                aria-label="Close settings"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1">
+                {#if isCustomSize}
+                    <button
+                        onclick={() => resizeAction?.reset()}
+                        aria-label="Reset to default size"
+                        title="Reset size"
+                        class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                    >
+                        <Minimize2Icon size={14} />
+                    </button>
+                {/if}
+                <button
+                    onclick={tryClose}
+                    aria-label="Close settings"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <!-- Body -->
@@ -907,6 +946,30 @@ function fontLabel(fonts: FontOption[], value: string) {
             </div>
             {/if}
 
+            <div class="section-divider"></div>
+
+            <!-- INTERFACE section -->
+            <div class="section-label">Interface</div>
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Remember panel sizes</div>
+                    <div class="setting-desc">Save custom sizes for resizable panels across sessions</div>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={draft.persistResizeSizes}
+                    aria-label="Toggle remember panel sizes"
+                    onclick={() => { draft.persistResizeSizes = !draft.persistResizeSizes; handleChange(); }}
+                    class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200
+                        {draft.persistResizeSizes ? 'bg-blue-500' : 'bg-black/15'}"
+                >
+                    <span
+                        class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200
+                            {draft.persistResizeSizes ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+
         </div>
 
         <!-- Footer -->
@@ -966,9 +1029,6 @@ function fontLabel(fonts: FontOption[], value: string) {
 
     .settings-modal-inner {
         position: relative;
-        width: 640px;
-        height: 72vh;
-        max-height: 82vh;
         background: white;
         border-radius: 1rem;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
