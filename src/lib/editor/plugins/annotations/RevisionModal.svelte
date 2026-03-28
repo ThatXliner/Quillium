@@ -30,7 +30,8 @@
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView } from "@codemirror/view";
-import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon } from "lucide-svelte";
+import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon, Minimize2 as Minimize2Icon } from "lucide-svelte";
+import { useResize } from "$lib/ui/resize";
 import { onDestroy } from "svelte";
 import { scale, slide } from "svelte/transition";
 import {
@@ -626,6 +627,10 @@ $effect(() => {
     }
 });
 
+let isCustomSize = $state(false);
+let resizeAction: ReturnType<typeof useResize> | null = null;
+let innerEl = $state<HTMLDivElement | undefined>(undefined);
+
 // Label editing state for the current crumb's version dropdown
 let editingVersionLabel = $state(false);
 let labelInputValue = $state("");
@@ -642,6 +647,28 @@ $effect(() => {
     if (editingVersionLabel && labelInputEl) {
         labelInputEl.focus();
     }
+});
+
+$effect(() => {
+    if (!innerEl) return;
+    resizeAction = useResize(innerEl, {
+        minWidth: 700,
+        maxWidth: 1600,
+        minHeight: 400,
+        maxHeight: 900,
+        defaultWidth: 1160,
+        defaultHeight: Math.round(window.innerHeight * 0.72),
+        symmetric: true,
+        persistKey: "revisionModal",
+    });
+    const handler = (e: Event) => {
+        isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
+    };
+    innerEl.addEventListener("resizechange", handler);
+    return () => {
+        resizeAction?.destroy?.();
+        innerEl?.removeEventListener("resizechange", handler);
+    };
 });
 
 function commitLabelEdit() {
@@ -748,7 +775,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   }}
   onkeydown={onDialogKeydown}
 >
-  <div class="revision-modal-inner">
+  <div class="revision-modal-inner" bind:this={innerEl}>
     <!-- Header -->
     <div
       class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0"
@@ -903,6 +930,16 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <span>New version</span>
           <Kbd keys={[modKey, "↵"]} />
         </button>
+        {#if isCustomSize}
+          <button
+            onclick={() => resizeAction?.reset()}
+            aria-label="Reset to default size"
+            title="Reset size"
+            class="p-1.5 rounded-full text-purple-400/50 hover:text-purple-600/70 hover:bg-purple-50 transition-colors shrink-0"
+          >
+            <Minimize2Icon size={14} />
+          </button>
+        {/if}
         <button
           class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
           onclick={close}
@@ -1051,8 +1088,6 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   .revision-modal-inner {
     display: flex;
     flex-direction: column;
-    width: 1160px;
-    height: 72vh;
     background: white;
     border-radius: 1rem;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
