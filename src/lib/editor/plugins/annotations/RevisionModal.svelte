@@ -296,7 +296,12 @@ function send(event: FsmEvent) {
         case "ready": {
             if (event.type === "REBUILD_REQUESTED" || event.type === "VERSION_SWITCHED") {
                 fsmState = "rebuilding";
-                destroyEditor();
+                // Skip flush on version switch: the version switch transaction
+                // already captured the old version's doc via Phase 3, and
+                // syncFromParent may have already contaminated the modal editor
+                // with the new version's text. Flushing would overwrite the old
+                // version's content.
+                destroyEditor(event.type === "VERSION_SWITCHED" ? { skipFlush: true } : undefined);
                 if (event.type === "VERSION_SWITCHED") {
                     modalStack.popTo(stackIndex);
                 }
@@ -435,8 +440,8 @@ function moveCursorToEnd(activeEditor: EditorView) {
     activeEditor.focus();
 }
 
-function destroyEditor() {
-    controller.destroy();
+function destroyEditor(options?: { skipFlush?: boolean }) {
+    controller.destroy(options);
     modalAnnotations = undefined;
     modalActiveAnnotation = undefined;
 }

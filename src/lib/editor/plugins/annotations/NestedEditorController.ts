@@ -314,9 +314,13 @@ export class NestedEditorController {
             | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            // _editorVersionIndex is stable here: version switches are driven
-            // by Svelte effects which can't interleave with a synchronous
-            // dispatch in the same JS task.
+            // If the parent already switched to a different version, this
+            // controller's content may be contaminated by syncFromParent.
+            // The version switch transaction captured the old version via
+            // Phase 3, so a flush here is at best redundant and at worst
+            // writes the new version's text into the old version's slot.
+            if (rev.activeVersionIndex !== this._editorVersionIndex) return;
+
             const existing = rev.versions[this._editorVersionIndex];
             const prevGen =
                 (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
@@ -360,9 +364,13 @@ export class NestedEditorController {
             | undefined;
 
         if (rev && this._editorVersionIndex < rev.versions.length) {
-            // _editorVersionIndex is stable here: version switches are driven
-            // by Svelte effects which can't interleave with a synchronous
-            // dispatch in the same JS task.
+            // If the parent already switched to a different version, this
+            // controller's content may be contaminated by syncFromParent.
+            // The version switch transaction captured the old version via
+            // Phase 3, so a flush here is at best redundant and at worst
+            // writes the new version's text into the old version's slot.
+            if (rev.activeVersionIndex !== this._editorVersionIndex) return;
+
             const existing = rev.versions[this._editorVersionIndex];
             const prevGen =
                 (existing as { annotationGeneration?: number }).annotationGeneration ?? 0;
