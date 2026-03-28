@@ -11,10 +11,8 @@
         header row of icon tabs, title bar, and close/settings controls.
 
     State variables:
-      `action`         — which panel is active (null = collapsed).
-      `customWidth/Height` — user-resized dimensions (null = defaults).
-      `isResizing`     — true during a drag-resize (disables CSS
-                         transitions so the panel tracks the cursor).
+      `action`        — which panel is active (null = collapsed).
+      `isCustomSize`  — true when the user has resized away from defaults.
 
     The sidebar reads `aiProcessing.active` from settings.svelte.ts to
     show a rainbow glow animation while any AI request is in flight.
@@ -50,11 +48,10 @@
  *   visibility to avoid re-mount jank on tab switches.
  *
  * Resize system:
- *   - `startResize` attaches window-level mousemove/mouseup listeners.
- *   - `onResizeMove` clamps deltas to [MIN, MAX] width/height.
- *   - `onResizeEnd` cleans up listeners and resets cursor overrides.
- *   - `isResizing` disables CSS transitions so the panel tracks the
- *     cursor without animation lag.
+ *   - `useResize` action (src/lib/ui/resize.ts) mounts drag handles on
+ *     the container and manages clamped width/height deltas.
+ *   - Persists size via appSettings when persistResizeSizes is enabled.
+ *   - `isCustomSize` tracks whether the user has resized from defaults.
  */
 import { tick } from "svelte";
 import Chat from "./Chat.svelte";
@@ -139,6 +136,7 @@ const expanded = $derived(action !== null);
 
 let isCustomSize = $state(false);
 let resizeAction: ReturnType<typeof useResize> | null = null;
+let justResized = false;
 
 const transitionClass = "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]";
 
@@ -147,6 +145,10 @@ let iconStrip = $state<HTMLDivElement>();
 let iconEls = $state<HTMLButtonElement[]>([]);
 
 function handleClickOutside(e: MouseEvent) {
+    if (justResized) {
+        justResized = false;
+        return;
+    }
     const target = e.target as Node;
     if (
         expanded &&
@@ -223,10 +225,15 @@ $effect(() => {
     function onResizeChange(e: Event) {
         isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
     }
+    function onResizeEnd() {
+        justResized = true;
+    }
     container.addEventListener("resizechange", onResizeChange);
+    window.addEventListener("mouseup", onResizeEnd);
     return () => {
         resizeAction?.destroy?.();
         container?.removeEventListener("resizechange", onResizeChange);
+        window.removeEventListener("mouseup", onResizeEnd);
     };
 });
 

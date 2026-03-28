@@ -146,7 +146,6 @@ function removeQuickAction(index: number) {
 }
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
-let innerEl = $state<HTMLDivElement | undefined>(undefined);
 let modalInnerEl = $state<HTMLDivElement | undefined>(undefined);
 let isCustomSize = $state(false);
 let resizeAction: ReturnType<typeof useResize> | null = null;
@@ -179,7 +178,7 @@ $effect(() => {
 
 $effect(() => {
     if (!modalInnerEl) return;
-    resizeAction = useResize(modalInnerEl, {
+    const action = useResize(modalInnerEl, {
         minWidth: 480,
         maxWidth: 900,
         minHeight: 400,
@@ -189,13 +188,15 @@ $effect(() => {
         symmetric: true,
         persistKey: "settingsModal",
     });
+    resizeAction = action;
     const handler = (e: Event) => {
         isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
     };
-    modalInnerEl.addEventListener("resizechange", handler);
+    const el = modalInnerEl;
+    el.addEventListener("resizechange", handler);
     return () => {
-        resizeAction?.destroy?.();
-        modalInnerEl?.removeEventListener("resizechange", handler);
+        action.destroy?.();
+        el.removeEventListener("resizechange", handler);
     };
 });
 

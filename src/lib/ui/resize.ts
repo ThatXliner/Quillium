@@ -27,6 +27,11 @@ export function useResize(node: HTMLElement, options: ResizeOptions) {
     }
 
     applySize(currentWidth, currentHeight);
+    // Dispatch initial state so host knows if a persisted custom size is active
+    if (currentWidth !== options.defaultWidth || currentHeight !== options.defaultHeight) {
+        // Use setTimeout to let the host's event listener bind first
+        setTimeout(() => dispatch(false), 0);
+    }
 
     const handles: HTMLDivElement[] = [];
 
@@ -55,6 +60,7 @@ export function useResize(node: HTMLElement, options: ResizeOptions) {
         startX = e.clientX; startY = e.clientY;
         startWidth = currentWidth; startHeight = currentHeight;
         document.body.style.userSelect = "none";
+        node.classList.add("is-resizing");
         window.addEventListener("mousemove", onMouseMove);
         window.addEventListener("mouseup", onMouseUp);
     }
@@ -84,6 +90,7 @@ export function useResize(node: HTMLElement, options: ResizeOptions) {
 
     function onMouseUp() {
         activeHandle = null;
+        node.classList.remove("is-resizing");
         document.body.style.userSelect = "";
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);

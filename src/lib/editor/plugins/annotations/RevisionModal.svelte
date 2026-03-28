@@ -651,7 +651,7 @@ $effect(() => {
 
 $effect(() => {
     if (!innerEl) return;
-    resizeAction = useResize(innerEl, {
+    const action = useResize(innerEl, {
         minWidth: 700,
         maxWidth: 1600,
         minHeight: 400,
@@ -661,13 +661,15 @@ $effect(() => {
         symmetric: true,
         persistKey: "revisionModal",
     });
+    resizeAction = action;
     const handler = (e: Event) => {
         isCustomSize = !(e as CustomEvent<{ isDefault: boolean }>).detail.isDefault;
     };
-    innerEl.addEventListener("resizechange", handler);
+    const el = innerEl;
+    el.addEventListener("resizechange", handler);
     return () => {
-        resizeAction?.destroy?.();
-        innerEl?.removeEventListener("resizechange", handler);
+        action.destroy?.();
+        el.removeEventListener("resizechange", handler);
     };
 });
 

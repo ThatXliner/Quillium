@@ -267,3 +267,21 @@ body {
 .resize-handle-corner-nw:hover::after {
     opacity: 1;
 }
+
+.is-resizing {
+    transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .resize-handle-right::after,
+    .resize-handle-left::after,
+    .resize-handle-top::after,
+    .resize-handle-bottom::after,
+    .resize-handle-corner::after,
+    .resize-handle-corner-se::after,
+    .resize-handle-corner-sw::after,
+    .resize-handle-corner-ne::after,
+    .resize-handle-corner-nw::after {
+        transition-duration: 0.01ms;
+    }
+}
