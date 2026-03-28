@@ -61,3 +61,14 @@ pub struct SnapshotMeta {
     pub created_at: i64,
     pub label: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabMeta {
+    pub id: String,
+    pub document_id: String,
+    pub label: String,
+    pub position: i64,
+    pub draft_id: String,
+    pub created_at: i64,
+}

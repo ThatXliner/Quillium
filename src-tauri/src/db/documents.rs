@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use super::{DocumentMeta, DraftMeta};
+use super::{DocumentMeta, DraftMeta, TabMeta};
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -194,4 +194,116 @@ pub fn create_draft(conn: &Connection, doc_id: &str, label: &str) -> Result<Stri
         params![id, doc_id, label, now],
     )?;
     Ok(id)
+}
+
+pub fn list_tabs(conn: &Connection, doc_id: &str) -> Result<Vec<TabMeta>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, document_id, label, position, draft_id, created_at
+         FROM tabs WHERE document_id = ?1 ORDER BY position ASC",
+    )?;
+    let rows = stmt.query_map(params![doc_id], |row| {
+        Ok(TabMeta {
+            id: row.get(0)?,
+            document_id: row.get(1)?,
+            label: row.get(2)?,
+            position: row.get(3)?,
+            draft_id: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Creates a tab and its backing draft atomically. Returns the new TabMeta.
+pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMeta> {
+    let now = now_ms();
+    let position: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM tabs WHERE document_id = ?1",
+            params![doc_id],
+            |row| row.get(0),
+        )?;
+
+    let draft_id = Uuid::new_v4().to_string();
+    let tab_id = Uuid::new_v4().to_string();
+
+    conn.execute_batch("BEGIN")?;
+    let result = (|| -> Result<()> {
+        conn.execute(
+            "INSERT INTO drafts (id, document_id, label, created_at, is_active)
+             VALUES (?1, ?2, ?3, ?4, 1)",
+            params![draft_id, doc_id, label, now],
+        )?;
+        conn.execute(
+            "INSERT INTO tabs (id, document_id, label, position, draft_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![tab_id, doc_id, label, position, draft_id, now],
+        )?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => { conn.execute_batch("COMMIT")?; }
+        Err(e) => { let _ = conn.execute_batch("ROLLBACK"); return Err(e); }
+    }
+
+    Ok(TabMeta {
+        id: tab_id,
+        document_id: doc_id.to_string(),
+        label: label.to_string(),
+        position,
+        draft_id,
+        created_at: now,
+    })
+}
+
+pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tabs SET label = ?1 WHERE id = ?2",
+        params![label, tab_id],
+    )?;
+    Ok(())
+}
+
+/// Deletes a tab and its backing draft (cascade deletes events + snapshots).
+pub fn delete_tab(conn: &Connection, tab_id: &str) -> Result<()> {
+    conn.execute_batch("BEGIN")?;
+    let result = (|| -> Result<()> {
+        conn.execute(
+            "DELETE FROM drafts WHERE id = (SELECT draft_id FROM tabs WHERE id = ?1)",
+            params![tab_id],
+        )?;
+        conn.execute("DELETE FROM tabs WHERE id = ?1", params![tab_id])?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => { conn.execute_batch("COMMIT")?; }
+        Err(e) => { let _ = conn.execute_batch("ROLLBACK"); return Err(e); }
+    }
+    Ok(())
+}
+
+/// Returns the active tab id for a document from _meta, or None.
+pub fn get_active_tab(conn: &Connection, doc_id: &str) -> Result<Option<String>> {
+    let key = format!("active_tab_{}", doc_id);
+    let result: rusqlite::Result<String> = conn.query_row(
+        "SELECT value FROM _meta WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(val) => Ok(Some(val)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Persists the active tab id for a document in _meta.
+pub fn set_active_tab(conn: &Connection, doc_id: &str, tab_id: &str) -> Result<()> {
+    let key = format!("active_tab_{}", doc_id);
+    conn.execute(
+        "INSERT INTO _meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, tab_id],
+    )?;
+    Ok(())
 }
