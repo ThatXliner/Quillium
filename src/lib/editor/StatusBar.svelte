@@ -139,19 +139,8 @@ $effect(() => {
             >
         </div>
         <div class="w-px h-8 bg-black/20"></div>
-        <div class="flex flex-col items-center leading-tight">
-            <span class="text-sm text-black/90">Words: {selWords > 0 ? selWords : words}</span>
-            {#if selWords > 0}
-                <span class="text-[10px] text-black/50">{words} total</span>
-            {/if}
-        </div>
-        <!-- <div class="w-px h-4 bg-black/20"></div> -->
-        <div class="flex flex-col items-center leading-tight">
-            <span class="text-sm text-black/90">Characters: {selChars > 0 ? selChars : chars}</span>
-            {#if selChars > 0}
-                <span class="text-[10px] text-black/50">{chars} total</span>
-            {/if}
-        </div>
+        <span class="text-sm text-black/90 tabular-nums">{selWords > 0 ? `${selWords} / ${words}` : words} words</span>
+        <span class="text-sm text-black/90 tabular-nums">{selChars > 0 ? `${selChars} / ${chars}` : chars} chars</span>
         <div class="w-px h-8 bg-black/20"></div>
         <button
             onclick={goToLibrary}
