@@ -387,9 +387,19 @@ $effect(() => {
 });
 
 // ⌘Enter when this revision is active → create a new version
+// When a modal is open for this revision, RevisionModal handles the
+// event directly so it can synchronously transition its FSM. Letting
+// both handle it would double-dispatch createNewRevision.
 $effect(() => {
     return annotationEventBus.on("annotation-add-version", (event) => {
         if (event.annotationId !== revision.id) return;
+        const modalOpen = $modalStack.some(
+            (entry) =>
+                entry.type === "revision" &&
+                entry.revisionId === revision.id &&
+                entry.parentView === view,
+        );
+        if (modalOpen) return;
         posthog.capture("revision_version_created", { version_count: revision.versions.length });
         view.dispatch(createNewRevision(view.state, revision.id));
         tick().then(() => {

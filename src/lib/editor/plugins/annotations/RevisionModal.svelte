@@ -66,6 +66,7 @@ import { annotationEventBus } from "./eventBus";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { appSettings } from "$lib/settings.svelte";
+import posthog from "$lib/posthog";
 import Annotations from "./Annotations.svelte";
 import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
@@ -483,7 +484,9 @@ $effect(() => {
     if (lastSyncedVersionIndex >= 0 && rev.activeVersionIndex !== lastSyncedVersionIndex) {
         if (isTop) {
             lastSyncedVersionIndex = rev.activeVersionIndex;
-            const entry = $modalStack[stackIndex] as (ModalEntry & { rebuildToken?: number }) | undefined;
+            const entry = $modalStack[stackIndex] as
+                | (ModalEntry & { rebuildToken?: number })
+                | undefined;
             if (entry?.rebuildToken) lastRebuildToken = entry.rebuildToken;
             send({ type: "VERSION_SWITCHED" });
         }
@@ -562,6 +565,20 @@ function executePendingNestedCommand(
         }
     }
 }
+
+// ─── Sensor Effect C-0: ⌘Enter add-version from nested editor ─────
+// When the nested editor's keymap fires annotation-add-version, handle
+// it here synchronously so the FSM transitions to "rebuilding" in the
+// same microtask as the dispatch — matching what addVersion() does.
+// Without this, Revision.svelte handles the event and the modal relies
+// on Sensor Effect B to detect the version change reactively, which
+// races with other Svelte effects and can read stale state.
+$effect(() => {
+    return annotationEventBus.on("annotation-add-version", (event) => {
+        if (event.annotationId !== revisionId || !isTop) return;
+        addVersion();
+    });
+});
 
 // ─── Sensor Effect C: Nested annotation event ──────────────────────
 $effect(() => {
@@ -650,6 +667,7 @@ function cancelLabelEdit() {
 
 function addVersion() {
     if (!revision) return;
+    posthog.capture("revision_version_created", { version_count: revision.versions.length });
     view.dispatch(createNewRevision(view.state, revisionId));
     // FSM handles destroyEditor + popTo + tick + createEditor
     send({ type: "VERSION_SWITCHED" });
