@@ -253,10 +253,7 @@ export class NestedEditorController {
             (tr) => tr.annotation(parentSyncEdit) === true,
         );
 
-        const rev = this.parentView.state.field(annotationField)[this.revisionId] as
-            | AnnotationType<"revision">
-            | undefined;
-        if (!isParentSync && rev && rev.activeVersionIndex === this._editorVersionIndex && translateAndDispatch(update, this.parentView, this.revisionId)) {
+        if (!isParentSync && translateAndDispatch(update, this.parentView, this.revisionId)) {
             this._lastDispatchedDoc = this._editor.state.doc.toString();
         }
 
