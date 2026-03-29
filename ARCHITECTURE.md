@@ -579,7 +579,7 @@ Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodi
 | `documents` | Document metadata (title, word count, preview, tags) |
 | `drafts` | Named drafts per document (default one per document) |
 | `events` | Append-only log of CM transactions, one row per update |
-| `snapshots` | Full `EditorState.toJSON()` blobs, kept at most 3 per draft |
+| `snapshots` | Full `EditorState.toJSON()` blobs; auto-pruned on startup per retention policy, or manually via the Version History storage panel |
 | `_meta` | Key/value flags (active draft pointers) |
 
 The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
@@ -621,7 +621,7 @@ Each event has a `type` field that determines its shape:
 
 ### Snapshot pruning
 
-`create_snapshot` (Rust) keeps only the latest 3 snapshots per draft for auto-snapshots. After inserting, it deletes all older auto-snapshots for that draft. Named snapshots (created by the user via the Version History UI) are exempt from this automatic pruning and persist until explicitly deleted by the user.
+`create_snapshot` (Rust) inserts the snapshot with no inline pruning. Automatic pruning happens on app startup: if a snapshot retention policy is configured (via `setSnapshotRetention`), all unlabeled snapshots older than that many days are pruned across all drafts. Named snapshots (distinguished by a non-null `label` column) are never auto-pruned and persist until explicitly deleted by the user.
 
 `VersionState` blobs (nested editor state) are also serialized inside `annotationField.toJSON()` — they're stored as opaque objects within the `versions` array and round-trip correctly because they're already JSON-safe.
 
@@ -1027,8 +1027,8 @@ Two-panel layout: a read-only CodeMirror preview on the left, and a timeline sid
 
 ### Snapshot types
 
-- **Auto-saved** — created automatically by the persistence layer every 50 events or 120 seconds (same thresholds as the event log). Pruned automatically: only the latest 3 auto-snapshots per draft are kept.
-- **Named checkpoints** — created by the user via the "Name this version…" input in the top bar. Named snapshots are exempt from the 3-snapshot auto-prune limit and persist until explicitly deleted by the user.
+- **Auto-saved** — created automatically by the persistence layer every 50 events or 120 seconds. Accumulate indefinitely unless a retention policy is configured, in which case snapshots older than the policy threshold are pruned on app startup.
+- **Named checkpoints** — created by the user via the "Name this version…" input in the top bar. Distinguished by a non-null `label` column. Persist until explicitly deleted by the user.
 
 ### Snapshot preview
 
