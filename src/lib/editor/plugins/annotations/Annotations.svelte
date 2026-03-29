@@ -38,7 +38,7 @@ import {
     type GenericAnnotation,
     type Thread,
 } from "$lib/editor/plugins/annotations";
-import { activeAnnotation, annotations, editorView, selectedText } from "$lib/stores";
+import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
 import { annotationEventBus } from "./eventBus";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
@@ -71,6 +71,69 @@ const resolvedView = $derived(view ?? $editorView);
 const resolvedAnnotations = $derived(annotationsData ?? $annotations);
 const resolvedActiveAnnotation = $derived(activeAnnotationData ?? $activeAnnotation);
 const isFloating = $derived(layout === "floating");
+
+/**
+ * True when the viewport is too narrow to show floating annotation
+ * cards beside the document. In this mode, clicking an annotation
+ * decoration opens a modal instead of the floating card.
+ */
+const MIN_ANNOTATION_WIDTH = 150;
+let narrowMode = $state(false);
+
+$effect(() => {
+    void resolvedView; // re-run when the view becomes available
+    function checkWidth() {
+        if (!resolvedView) return;
+        narrowMode = window.innerWidth - getAnnotationLeft() - 32 < MIN_ANNOTATION_WIDTH;
+    }
+    checkWidth();
+    window.addEventListener("resize", checkWidth);
+    return () => window.removeEventListener("resize", checkWidth);
+});
+
+/**
+ * In narrow mode, when an annotation becomes active (cursor moved into
+ * its range), auto-open the appropriate modal. Once dismissed, don't
+ * reopen until the cursor leaves and re-enters the annotation range.
+ */
+let lastNarrowModalId: number | undefined;
+$effect(() => {
+    if (!isFloating || !narrowMode) return;
+    const active = resolvedActiveAnnotation;
+    // Reset when cursor leaves all annotations
+    if (!active) {
+        lastNarrowModalId = undefined;
+        return;
+    }
+    // Reset when cursor moves to a different annotation
+    if (lastNarrowModalId !== undefined && active.id !== lastNarrowModalId) {
+        lastNarrowModalId = undefined;
+    }
+    if (!resolvedView || active.id === lastNarrowModalId) return;
+    lastNarrowModalId = active.id;
+    if (isAnnotationOfType(active, "comment")) {
+        modalStack.push({
+            type: "comment",
+            commentId: active.id,
+            parentView: resolvedView,
+            label: resolvedView.state.sliceDoc(active.selection.main.from, active.selection.main.to).slice(0, 40) || "Comment",
+        });
+    } else if (isAnnotationOfType(active, "revision")) {
+        modalStack.push({
+            type: "revision",
+            revisionId: active.id,
+            parentView: resolvedView,
+            label: "Revision",
+        });
+    } else if (isAnnotationOfType(active, "suggestion")) {
+        modalStack.push({
+            type: "diff",
+            suggestionId: active.id,
+            parentView: resolvedView,
+            label: "AI Suggestion",
+        });
+    }
+});
 
 /**
  * Remove an annotation by its ID from the CodeMirror state.
@@ -496,7 +559,7 @@ $effect(() => {
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
-    {#if isFloating && appSettings.showShortcutHints && hasSelection && selectionY !== null && !resolvedActiveAnnotation && (!hasComments || !hasRevisions || isSingleWordSelection)}
+    {#if isFloating && !narrowMode && appSettings.showShortcutHints && hasSelection && selectionY !== null && !resolvedActiveAnnotation && (!hasComments || !hasRevisions || isSingleWordSelection)}
         {@const leftPx = getAnnotationLeft()}
         {@const hintsAtTop = hasComments || hasRevisions}
         <div
@@ -531,7 +594,7 @@ $effect(() => {
             >Hide hints</button>
         </div>
     {/if}
-    {#if isFloating}
+    {#if isFloating && !narrowMode}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
             <div class="annotation-scroll-inner">
                 {#each sortedAnnotations as c (c.id)}
@@ -611,7 +674,7 @@ $effect(() => {
                 {/each}
             </div>
         </div>
-    {:else}
+    {:else if !isFloating}
         <div class="annotation-inline-list">
             {#each sortedAnnotations as c (c.id)}
                 {@const i = c.id}
