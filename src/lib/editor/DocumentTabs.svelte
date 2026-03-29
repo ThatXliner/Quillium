@@ -56,7 +56,7 @@ function cancelRename() {
 </script>
 
 <div
-    class="w-[816px] mx-auto flex items-end gap-0 select-none pt-2"
+    class="w-[816px] mx-auto flex items-end gap-0.5 select-none pl-3"
     role="tablist"
     aria-label="Document tabs"
 >
@@ -71,11 +71,11 @@ function cancelRename() {
             onclick={() => ontabselect(tab.id)}
             ondblclick={() => startRename(tab)}
             class="
-                group relative flex items-center gap-1 px-3 py-1.5 text-sm cursor-pointer
-                border-b-2 transition-colors duration-100 rounded-t-md
+                group relative flex items-center gap-1 px-3 text-sm cursor-pointer
+                rounded-t-lg transition-colors duration-100
                 {isActive
-                    ? 'border-black/70 text-black/90 bg-white/60 backdrop-blur-sm'
-                    : 'border-transparent text-black/40 hover:text-black/70 hover:bg-white/30'}
+                    ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
+                    : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
             "
         >
             {#if isRenaming}
@@ -117,7 +117,7 @@ function cancelRename() {
         onclick={ontabcreate}
         aria-label="New tab"
         title="New tab"
-        class="mb-0.5 ml-1 p-1 rounded text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
+        class="mb-1 ml-1 p-1 rounded text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
     >
         <PlusIcon size={14} />
     </button>
