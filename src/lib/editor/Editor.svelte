@@ -482,7 +482,7 @@ onMount(() => {
         />
         <div
             id="editor-document"
-            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-4 mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1"
+            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1"
             bind:this={element}
         ></div>
     {/await}

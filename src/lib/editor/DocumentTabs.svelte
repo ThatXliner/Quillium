@@ -56,7 +56,7 @@ function cancelRename() {
 </script>
 
 <div
-    class="w-[816px] mx-auto flex items-end gap-0.5 select-none pl-3"
+    class="w-[816px] mx-auto flex items-end gap-0.5 select-none pl-3 mt-8"
     role="tablist"
     aria-label="Document tabs"
 >
