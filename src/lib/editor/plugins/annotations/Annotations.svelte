@@ -375,7 +375,12 @@ function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     const inner = scrollContainer.firstElementChild as HTMLElement | null;
     if (inner) inner.style.height = `${lastBottom + 24}px`;
     scrollContainer.style.left = `${leftPx}px`;
-    const availableWidth = Math.max(0, window.innerWidth - leftPx - 24);
+    const RIGHT_MARGIN = 32;
+    const MAX_CARD_WIDTH = 280;
+    const availableWidth = Math.min(
+        MAX_CARD_WIDTH,
+        Math.max(0, window.innerWidth - leftPx - RIGHT_MARGIN),
+    );
     scrollContainer.style.width = `${availableWidth}px`;
 }
 
