@@ -424,7 +424,7 @@ onMount(() => {
 });
 </script>
 
-<div class="w-full h-full overflow-y-auto relative">
+<div class="w-full h-full relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
         <div class="pointer-events-auto">
             <StatusBar titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
@@ -482,7 +482,7 @@ onMount(() => {
         />
         <div
             id="editor-document"
-            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-4 mb-12 bg-white rounded-lg shadow-xl py-3 px-1"
+            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-4 mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1"
             bind:this={element}
         ></div>
     {/await}
