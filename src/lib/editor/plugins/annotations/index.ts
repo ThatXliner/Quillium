@@ -694,9 +694,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     // same transaction. Effects within a transaction are NOT remapped through
     // that transaction's changes, so the annotation must carry post-change
     // positions (collapsed at sel.from) to avoid stale out-of-range positions.
-    const annotationSelection = autoVersion
-        ? EditorSelection.single(sel.from)
-        : state.selection;
+    const annotationSelection = autoVersion ? EditorSelection.single(sel.from) : state.selection;
     const newAnnotation = createNewAnnotation(
         state.field(annotationField),
         annotationSelection,
