@@ -614,6 +614,9 @@ export const annotationField = StateField.define<Annotations>({
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
                 annotations[e.value.id] = e.value;
+                if (isAnnotationOfType(e.value, "revision")) {
+                    revisionsWithExplicitEffect.add(e.value.id);
+                }
             } else if (e.is(_restoreAnnotation)) {
                 annotations[e.value.id] = e.value;
             } else if (e.is(removeAnnotation)) {

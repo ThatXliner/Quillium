@@ -687,15 +687,20 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     const versions = autoVersion
         ? [{ doc: originalText } as VersionState, { doc: "" } as VersionState]
         : [{ doc: originalText } as VersionState];
+    // When auto-version is on, the doc change deletes sel.from..sel.to, so the
+    // annotation must use post-change coordinates (collapsed to sel.from) to
+    // stay consistent with the new document state.
+    const annotationForEffect = autoVersion
+        ? {
+              ...newAnnotation,
+              selection: EditorSelection.single(sel.from, sel.from),
+              activeVersionIndex: 1,
+              versions,
+          }
+        : { ...newAnnotation, activeVersionIndex: 0, versions };
     dispatch(
         state.update({
-            effects: [
-                addAnnotation.of({
-                    ...newAnnotation,
-                    activeVersionIndex: autoVersion ? 1 : 0,
-                    versions,
-                }),
-            ],
+            effects: [addAnnotation.of(annotationForEffect)],
             ...(autoVersion
                 ? {
                       changes: state.changes({ from: sel.from, to: sel.to, insert: "" }),
