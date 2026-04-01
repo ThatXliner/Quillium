@@ -15,13 +15,14 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo, redo } from "@codemirror/commands";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     addAnnotation,
     annotationField,
+    revisionInternalEdit,
     updateRevisionVersionState,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
@@ -29,6 +30,7 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
     versionText,
+    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -329,6 +331,94 @@ describe("undo of version state update interleaved with main-doc edits", () => {
 
         // Undo the textarea edit
         undo(view);
+        expect(activeVersionText(view, id)).toBe("Hello");
+    });
+});
+
+// ── 7. Auto-version on revision creation ────────────────────────────────────
+
+describe("auto-version on revision creation (addAnnotation + doc change in same transaction)", () => {
+    it("Phase 3 does not overwrite version docs when revision is added with doc change", () => {
+        // Simulates what createRevisionCommand does when autoVersionOnRevisionCreate is on:
+        // adds a revision with two versions (original + empty) and simultaneously
+        // replaces the selected text with "" in the same transaction.
+        // The annotation must use post-change coordinates (collapsed range).
+        view = createView("Hello world");
+        const sel = { from: 0, to: 5 }; // "Hello"
+        const originalText = view.state.sliceDoc(sel.from, sel.to);
+
+        const annotation = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(sel.from, sel.from), // post-change: collapsed
+                "revision",
+            ),
+            activeVersionIndex: 1,
+            versions: [
+                { doc: originalText } as VersionState,
+                { doc: "" } as VersionState,
+            ],
+        };
+
+        view.dispatch(
+            view.state.update({
+                effects: [addAnnotation.of(annotation)],
+                changes: view.state.changes({ from: sel.from, to: sel.to, insert: "" }),
+                selection: EditorSelection.cursor(sel.from),
+                annotations: [
+                    revisionInternalEdit.of(true),
+                    Transaction.addToHistory.of(true),
+                ],
+            }),
+        );
+
+        const id = annotation.id;
+        const rev = getRevision(view, id)!;
+        expect(rev).toBeDefined();
+        expect(rev.versions).toHaveLength(2);
+        expect(versionText(rev.versions[0])).toBe("Hello");
+        expect(versionText(rev.versions[1])).toBe("");
+        expect(rev.activeVersionIndex).toBe(1);
+        // Parent doc should have the selected text removed
+        expect(view.state.doc.toString()).toBe(" world");
+    });
+
+    it("switching to version 0 restores original text in parent doc", () => {
+        view = createView("Hello world");
+        const sel = { from: 0, to: 5 };
+        const originalText = view.state.sliceDoc(sel.from, sel.to);
+
+        const annotation = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(sel.from, sel.from), // post-change: collapsed
+                "revision",
+            ),
+            activeVersionIndex: 1,
+            versions: [
+                { doc: originalText } as VersionState,
+                { doc: "" } as VersionState,
+            ],
+        };
+
+        view.dispatch(
+            view.state.update({
+                effects: [addAnnotation.of(annotation)],
+                changes: view.state.changes({ from: sel.from, to: sel.to, insert: "" }),
+                selection: EditorSelection.cursor(sel.from),
+                annotations: [
+                    revisionInternalEdit.of(true),
+                    Transaction.addToHistory.of(true),
+                ],
+            }),
+        );
+
+        const id = annotation.id;
+
+        // Switch to version 0 (original text)
+        view.dispatch(setActiveRevisionVersion(view.state, id, 0));
+
+        expect(view.state.doc.toString()).toBe("Hello world");
         expect(activeVersionText(view, id)).toBe("Hello");
     });
 });
