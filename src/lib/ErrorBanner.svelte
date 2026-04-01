@@ -17,7 +17,6 @@ import { readBackup, clearBackup } from "./errorGuard";
 import type { BackupEntry } from "./errorGuard";
 import { FEEDBACK_FORM_URL } from "./constants";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { goToHistory } from "./navigation";
 import { page } from "$app/stores";
 import posthog from "$lib/posthog";
 
@@ -99,7 +98,12 @@ function restoreFromBackup() {
 function viewHistory() {
     $errorBanner = null;
     showDetails = false;
-    goToHistory();
+    // After a crash, the <svelte:boundary> in the root layout may have
+    // destroyed the SvelteKit page router (no {#snippet failed} to
+    // recover from). goto() would silently fail because there's no
+    // render target. Use a full navigation instead, which resets the
+    // app state cleanly and mounts /history from scratch.
+    window.location.href = "/history";
 }
 
 function reloadApp() {
