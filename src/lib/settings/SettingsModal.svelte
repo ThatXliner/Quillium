@@ -196,6 +196,7 @@ function save() {
         title_linger_duration: draft.titleLingerDuration,
         ui_zoom: draft.uiZoom,
         custom_quick_actions_count: draft.customQuickActions.length,
+        auto_version_on_revision_create: draft.autoVersionOnRevisionCreate,
     });
     onclose();
 }
@@ -671,6 +672,40 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
                             transition-transform duration-200
                             {draft.selectTextInNestedEditor ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <!-- Auto version on revision creation toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Auto-create version on revision</div>
+                    <div class="setting-desc">Automatically add a new empty version when creating a revision</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.autoVersionOnRevisionCreate}
+                    <button
+                        type="button"
+                        onclick={() => { draft.autoVersionOnRevisionCreate = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.autoVersionOnRevisionCreate}
+                    aria-label="Toggle auto-create version on revision"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.autoVersionOnRevisionCreate ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.autoVersionOnRevisionCreate = !draft.autoVersionOnRevisionCreate;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.autoVersionOnRevisionCreate ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
                 </div>

@@ -30,6 +30,7 @@ type AppSettings = {
     showShortcutHints: boolean;
     showWordCount: boolean;
     wordCountDisplayMode: "words" | "chars" | "both";
+    autoVersionOnRevisionCreate: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -49,6 +50,7 @@ const DEFAULTS: AppSettings = {
     showShortcutHints: true,
     showWordCount: true,
     wordCountDisplayMode: "both",
+    autoVersionOnRevisionCreate: true,
 };
 
 function loadSettings(): AppSettings {

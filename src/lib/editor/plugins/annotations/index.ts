@@ -682,25 +682,34 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
         state.selection,
         "revision",
     );
+    const originalText = state.sliceDoc(sel.from, sel.to);
+    const autoVersion = appSettings.autoVersionOnRevisionCreate;
+    const versions = autoVersion
+        ? [{ doc: originalText } as VersionState, { doc: "" } as VersionState]
+        : [{ doc: originalText } as VersionState];
     dispatch(
         state.update({
             effects: [
                 addAnnotation.of({
                     ...newAnnotation,
-                    activeVersionIndex: 0,
-                    versions: [
-                        {
-                            doc: state.sliceDoc(sel.from, sel.to),
-                        } as VersionState,
-                    ],
+                    activeVersionIndex: autoVersion ? 1 : 0,
+                    versions,
                 }),
             ],
-            annotations: Transaction.addToHistory.of(true),
+            ...(autoVersion
+                ? {
+                      changes: state.changes({ from: sel.from, to: sel.to, insert: "" }),
+                      selection: EditorSelection.cursor(sel.from),
+                  }
+                : {}),
+            annotations: autoVersion
+                ? [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)]
+                : Transaction.addToHistory.of(true),
         }),
     );
     // When the setting is on and there is an actual selection, signal
     // the nested editor to select all text on mount.
-    if (appSettings.selectTextInNestedEditor && !sel.empty) {
+    if (appSettings.selectTextInNestedEditor && !sel.empty && !autoVersion) {
         annotationEventBus.emit({
             type: "pending-nested-editor-selection",
             annotationId: newAnnotation.id,
