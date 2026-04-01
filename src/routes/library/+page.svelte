@@ -403,7 +403,7 @@ onMount(() => {
             />
         </header>
 
-        <div class="flex-1 overflow-y-auto px-8 pb-8">
+        <div class="flex-1 overflow-y-auto px-8 pb-8 pt-1">
             {#if loading}
                 <div class="flex items-center justify-center h-40">
                     <div class="w-6 h-6 rounded-full border-2 border-blue-400 border-t-transparent animate-spin"></div>
