@@ -295,8 +295,16 @@ const collapsedRevisionResolver = ViewPlugin.fromClass(
             if (update.transactions.some((tr) => tr.annotation(nestedEditorEdit) !== undefined))
                 return;
             const annotations = update.state.field(annotationField);
+            const prevAnnotations = update.startState.field(annotationField);
+            // Only remove revisions that *became* collapsed in this update,
+            // not ones that were already collapsed (e.g. auto-version revisions
+            // intentionally created with an empty range).
             const collapsed = Object.values(annotations).filter(
-                (a) => isAnnotationOfType(a, "revision") && a.selection.main.empty,
+                (a) =>
+                    isAnnotationOfType(a, "revision") &&
+                    a.selection.main.empty &&
+                    prevAnnotations[a.id] !== undefined &&
+                    !prevAnnotations[a.id].selection.main.empty,
             );
             if (collapsed.length === 0) return;
             // Remove all collapsed revisions in one transaction without creating a
@@ -677,16 +685,23 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
         return true;
     }
     const sel = state.selection.main;
-    const newAnnotation = createNewAnnotation(
-        state.field(annotationField),
-        state.selection,
-        "revision",
-    );
     const originalText = state.sliceDoc(sel.from, sel.to);
     const autoVersion = appSettings.autoVersionOnRevisionCreate;
     const versions = autoVersion
         ? [{ doc: originalText } as VersionState, { doc: "" } as VersionState]
         : [{ doc: originalText } as VersionState];
+    // When autoVersion is on, the text under the revision is deleted in the
+    // same transaction. Effects within a transaction are NOT remapped through
+    // that transaction's changes, so the annotation must carry post-change
+    // positions (collapsed at sel.from) to avoid stale out-of-range positions.
+    const annotationSelection = autoVersion
+        ? EditorSelection.single(sel.from)
+        : state.selection;
+    const newAnnotation = createNewAnnotation(
+        state.field(annotationField),
+        annotationSelection,
+        "revision",
+    );
     dispatch(
         state.update({
             effects: [

@@ -28,6 +28,7 @@ const mockAppSettings = {
     uiFontFamily: "",
     customQuickActions: [],
     titleVisibility: "hover",
+    autoVersionOnRevisionCreate: true,
 };
 
 vi.mock("$lib/settings.svelte", () => ({ appSettings: mockAppSettings }));
