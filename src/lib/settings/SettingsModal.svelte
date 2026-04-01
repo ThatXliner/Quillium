@@ -680,7 +680,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">Shortcut hints</div>
-                    <div class="setting-desc">Show keyboard shortcut hints when text is selected</div>
+                    <div class="setting-desc">Show a floating cheat-sheet of annotation shortcuts (comment, revision, dictionary) next to your text selection</div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                 {#if !draft.showShortcutHints}
