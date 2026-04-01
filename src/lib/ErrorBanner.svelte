@@ -102,8 +102,9 @@ function viewHistory() {
     // destroyed the SvelteKit page router (no {#snippet failed} to
     // recover from). goto() would silently fail because there's no
     // render target. Use a full navigation instead, which resets the
-    // app state cleanly and mounts /history from scratch.
-    window.location.href = "/history";
+    // app state cleanly and mounts /history from scratch, without
+    // keeping the crashed page in the history stack.
+    window.location.replace("/history");
 }
 
 function reloadApp() {
