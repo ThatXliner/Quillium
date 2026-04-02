@@ -26,6 +26,7 @@ type AppSettings = {
     titleLingerDuration: number;
     uiZoom: number;
     analyticsEnabled: boolean;
+    privateDocumentAnalytics: boolean;
     aiEnabled: boolean;
     showShortcutHints: boolean;
     showWordCount: boolean;
@@ -46,6 +47,7 @@ const DEFAULTS: AppSettings = {
     titleLingerDuration: 3000,
     uiZoom: 1,
     analyticsEnabled: true,
+    privateDocumentAnalytics: true,
     aiEnabled: false,
     showShortcutHints: true,
     showWordCount: true,
