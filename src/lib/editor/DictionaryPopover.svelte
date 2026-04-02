@@ -16,7 +16,7 @@ import { renderMarkdown } from "$lib/ai/utils";
 import { hasApiKey } from "$lib/ai/settings.svelte";
 import { Transaction } from "@codemirror/state";
 import { ExternalLinkIcon, XIcon } from "lucide-svelte";
-import posthog from "$lib/posthog";
+import { capture } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
 import { getPhonetic, collectSynonyms, collectAntonyms, type DictEntry } from "./dictionaryUtils";
 
@@ -158,14 +158,14 @@ function replaceWith(synonym: string) {
         selection: { anchor: selFrom + synonym.length },
         annotations: Transaction.addToHistory.of(true),
     });
-    posthog.capture("dictionary_synonym_replaced", { synonym });
+    capture("dictionary_synonym_replaced", { synonym });
     dismiss();
 }
 
 function lookupChip(w: string) {
     word = w;
     lookupWord(w);
-    posthog.capture("dictionary_chip_lookup", { word: w });
+    capture("dictionary_chip_lookup", { word: w });
 }
 
 function openInChat() {
@@ -188,7 +188,7 @@ function openInChat() {
     }
     pendingChatMessage.set(msg);
     window.dispatchEvent(new CustomEvent("quillium:open-chat"));
-    posthog.capture("dictionary_open_in_chat", {
+    capture("dictionary_open_in_chat", {
         word,
         has_describe_history: chat.messages.length > 0,
     });
@@ -199,7 +199,7 @@ async function handleDescribeSubmit(e: Event) {
     e.preventDefault();
     const trimmed = describeInput.trim();
     if (!trimmed || chat.status !== "ready") return;
-    posthog.capture("dictionary_describe_lookup", { input_length: trimmed.length });
+    capture("dictionary_describe_lookup", { input_length: trimmed.length });
     chat.sendMessage({ text: `I'm looking for a word that means: ${trimmed}` });
     describeInput = "";
 }
