@@ -27,7 +27,7 @@ import { appSettings, applySettings, persistSettings } from "$lib/settings.svelt
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
-import { syncAnalyticsOptOut } from "$lib/posthog";
+import { syncAnalyticsOptOut, syncPrivateAnalytics } from "$lib/posthog";
 import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
@@ -178,10 +178,15 @@ function handleChange() {
 
 function save() {
     const analyticsChanged = appSettings.analyticsEnabled !== draft.analyticsEnabled;
+    const privateAnalyticsChanged =
+        appSettings.privateDocumentAnalytics !== draft.privateDocumentAnalytics;
     Object.assign(appSettings, draft);
     persistSettings();
     if (analyticsChanged) {
         syncAnalyticsOptOut(draft.analyticsEnabled);
+    }
+    if (privateAnalyticsChanged) {
+        syncPrivateAnalytics(draft.privateDocumentAnalytics);
     }
     posthog.capture("settings_saved", {
         ai_enabled: draft.aiEnabled,
@@ -197,6 +202,7 @@ function save() {
         ui_zoom: draft.uiZoom,
         custom_quick_actions_count: draft.customQuickActions.length,
         auto_version_on_revision_create: draft.autoVersionOnRevisionCreate,
+        private_document_analytics: draft.privateDocumentAnalytics,
     });
     onclose();
 }
@@ -827,6 +833,42 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </button>
                 </div>
             </div>
+
+            <!-- Document-private analytics toggle (only relevant when analytics are on) -->
+            {#if draft.analyticsEnabled}
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Document-private analytics</div>
+                    <div class="setting-desc">Keeps your document contents hidden from analytics. Disable temporarily to share document details when making a bug report.</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.privateDocumentAnalytics}
+                    <button
+                        type="button"
+                        onclick={() => { draft.privateDocumentAnalytics = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.privateDocumentAnalytics}
+                    aria-label="Toggle document-private analytics"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.privateDocumentAnalytics ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.privateDocumentAnalytics = !draft.privateDocumentAnalytics;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.privateDocumentAnalytics ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+            {/if}
 
             <div class="section-divider"></div>
 
