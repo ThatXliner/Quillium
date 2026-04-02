@@ -6,12 +6,11 @@
     full terms on the website. Persists acceptance to localStorage.
 -->
 <script lang="ts">
-import { FlaskConical, ShieldOff, MessageCircle, Ban } from "lucide-svelte";
 import posthog from "$lib/posthog";
 
 const { onaccept }: { onaccept: () => void } = $props();
 
-const TERMS_URL = "https://quillium.bryanhu.com/";
+const TERMS_URL = "https://quillium.bryanhu.com/terms";
 
 function accept() {
     localStorage.setItem("quillium_beta_accepted", "true");
@@ -35,50 +34,17 @@ function accept() {
         <div>
             <h3 class="text-sm font-semibold text-black/80 mb-1">Welcome to the Quillium Beta</h3>
             <p class="text-xs text-black/60 leading-relaxed">
-                By continuing, you agree to the following terms.
+                By continuing, you agree to the
+                <a
+                    href={TERMS_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-blue-500 hover:text-blue-600 underline transition-colors"
+                >beta terms</a>.
             </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-            <div class="rounded-lg bg-white/45 border border-white/40 p-2.5 flex gap-2.5 items-start">
-                <FlaskConical size={14} class="text-black/40 shrink-0 mt-0.5" />
-                <div>
-                    <h4 class="text-[11px] font-semibold text-black/75">Beta Status</h4>
-                    <p class="text-[10px] text-black/50 leading-snug">Unstable. Features may change. Anonymous analytics; opt out anytime.</p>
-                </div>
-            </div>
-            <div class="rounded-lg bg-white/45 border border-white/40 p-2.5 flex gap-2.5 items-start">
-                <ShieldOff size={14} class="text-black/40 shrink-0 mt-0.5" />
-                <div>
-                    <h4 class="text-[11px] font-semibold text-black/75">No Liability</h4>
-                    <p class="text-[10px] text-black/50 leading-snug">The software is provided as-is, no warranties. Data loss is possible, so back up your work.</p>
-                </div>
-            </div>
-            <div class="rounded-lg bg-white/45 border border-white/40 p-2.5 flex gap-2.5 items-start">
-                <MessageCircle size={14} class="text-black/40 shrink-0 mt-0.5" />
-                <div>
-                    <h4 class="text-[11px] font-semibold text-black/75">Feedback</h4>
-                    <p class="text-[10px] text-black/50 leading-snug">Your feedback will be used to improve the app. No ownership rights granted.</p>
-                </div>
-            </div>
-            <div class="rounded-lg bg-white/45 border border-white/40 p-2.5 flex gap-2.5 items-start">
-                <Ban size={14} class="text-black/40 shrink-0 mt-0.5" />
-                <div>
-                    <h4 class="text-[11px] font-semibold text-black/75">No Replication</h4>
-                    <p class="text-[10px] text-black/50 leading-snug">You may not use insights from this beta to build competing products.</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="flex items-center justify-between pt-1">
-            <a
-                href={TERMS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors"
-            >
-                Full terms &rarr;
-            </a>
+        <div class="flex items-center justify-end pt-1">
             <button
                 onclick={accept}
                 class="text-xs px-4 py-1.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-colors font-medium"
