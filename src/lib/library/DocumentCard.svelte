@@ -4,6 +4,7 @@
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
 import { Trash2, RotateCcw, X } from "lucide-svelte";
+import { onDestroy } from "svelte";
 
 interface Props {
     doc: DocumentMeta;
@@ -31,6 +32,8 @@ const {
 
 let confirmingDelete = $state(false);
 let confirmTimeout: ReturnType<typeof setTimeout> | undefined;
+
+onDestroy(() => clearTimeout(confirmTimeout));
 
 function handleDeletePermanent(e: MouseEvent) {
     e.stopPropagation();
