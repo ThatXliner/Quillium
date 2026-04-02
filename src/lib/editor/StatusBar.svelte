@@ -26,11 +26,7 @@ import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { editorView, saveStatus, settingsOpen, tutorialActive } from "$lib/stores";
 import { Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
 
-const {
-    children,
-    titleVisibility = "hover",
-    titleForced = false,
-} = $props();
+const { children, titleVisibility = "hover", titleForced = false } = $props();
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";

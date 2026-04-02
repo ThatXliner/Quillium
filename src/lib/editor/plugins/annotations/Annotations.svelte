@@ -116,7 +116,10 @@ $effect(() => {
             type: "comment",
             commentId: active.id,
             parentView: resolvedView,
-            label: resolvedView.state.sliceDoc(active.selection.main.from, active.selection.main.to).slice(0, 40) || "Comment",
+            label:
+                resolvedView.state
+                    .sliceDoc(active.selection.main.from, active.selection.main.to)
+                    .slice(0, 40) || "Comment",
         });
     } else if (isAnnotationOfType(active, "revision")) {
         modalStack.push({
