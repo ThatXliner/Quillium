@@ -46,8 +46,10 @@ import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
 import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
+import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import posthog from "$lib/posthog";
 
+let showBetaDisclaimer = $state(false);
 let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
@@ -55,10 +57,22 @@ let updateReady = $state(false);
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
+const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
+
 /** Show the tutorial on first visit if the user hasn't seen it. */
 function showTutorialOnFirstVisit() {
     if (!localStorage.getItem("quillium_tutorial_seen")) {
         $tutorialActive = true;
+    } else if (!betaAccepted()) {
+        // Tutorial already seen (e.g. returning user from private beta),
+        // but beta terms not yet accepted — show disclaimer directly.
+        showBetaDisclaimer = true;
+    }
+}
+
+function handleTutorialComplete() {
+    if (!betaAccepted()) {
+        showBetaDisclaimer = true;
     }
 }
 
@@ -297,7 +311,12 @@ if (import.meta.env.DEV) {
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
 {#if $tutorialActive}
-    <Tutorial onComplete={() => {}} />
+    <Tutorial onComplete={handleTutorialComplete} />
+{/if}
+
+<!-- Beta disclaimer — shown once after tutorial or on first visit for returning users -->
+{#if showBetaDisclaimer}
+    <BetaDisclaimer onaccept={() => { showBetaDisclaimer = false; }} />
 {/if}
 
 <!-- Debug panel — DEV only, never rendered in production builds -->

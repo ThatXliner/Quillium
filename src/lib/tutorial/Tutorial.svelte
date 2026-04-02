@@ -40,6 +40,14 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 const mod = isMac ? "⌘" : "Ctrl";
 const opt = isMac ? "⌥" : "Alt";
 
+function resolveKeys(keys: string[]): string[] {
+    return keys.map((k) => {
+        if (k === "mod") return mod;
+        if (k === "alt") return opt;
+        return k;
+    });
+}
+
 const shortcutGroups = [
     {
         title: "Navigation",
@@ -256,7 +264,7 @@ function getRequirementState(currentStep: Step | undefined): { met: boolean; hin
     if (currentStep.requirement === "createRevision") {
         return {
             met: nestedGuideState.createdRevisionId !== null,
-            hint: "Action required: create a revision with Ctrl/Cmd + Alt + K on selected text.",
+            hint: `Action required: create a revision with ${mod}+${opt}+K on selected text.`,
         };
     }
 
@@ -279,7 +287,7 @@ function getRequirementState(currentStep: Step | undefined): { met: boolean; hin
     if (currentStep.requirement === "createNestedRevision") {
         return {
             met: nestedGuideState.createdNestedRevisionId !== null,
-            hint: "Action required: in the modal editor, select text and press Ctrl/Cmd + Alt + K.",
+            hint: `Action required: in the modal editor, select text and press ${mod}+${opt}+K.`,
         };
     }
 
@@ -690,6 +698,14 @@ onDestroy(() => {
                     <p class="text-xs text-black/60 leading-relaxed">
                         {step.body}
                     </p>
+                    {#if step.shortcutHint}
+                        <div class="flex items-center gap-1.5 mt-1.5">
+                            {#if step.shortcutHint.prefix}
+                                <span class="text-[11px] text-black/50">{step.shortcutHint.prefix}</span>
+                            {/if}
+                            <Kbd keys={resolveKeys(step.shortcutHint.keys)} />
+                        </div>
+                    {/if}
                 </div>
 
                 {#if step.showShortcuts}
