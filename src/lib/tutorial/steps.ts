@@ -20,6 +20,8 @@ export type Step = {
     position: "right" | "left" | "top" | "bottom" | "center";
     /** If true, the tooltip renders an inline keyboard shortcuts reference table. */
     showShortcuts?: boolean;
+    /** Keyboard shortcut hint rendered after the body text using the Kbd component. */
+    shortcutHint?: { prefix?: string; keys: string[] };
     requirement?:
         | "createRevision"
         | "openRevisionModal"
@@ -49,7 +51,8 @@ export const steps: Step[] = [
         section: "nested",
         selector: "#editor-document",
         title: "Create Nested Revisions",
-        body: "Select text in the main editor and press Ctrl (Windows/Linux) or Cmd (macOS) + Alt + K to create your first revision.",
+        body: "Select text in the main editor to create your first revision.",
+        shortcutHint: { keys: ["mod", "alt", "K"] },
         requirement: "createRevision",
         position: "left",
     },
@@ -67,7 +70,8 @@ export const steps: Step[] = [
         section: "nested",
         selector: ".revision-modal .revision-modal-editor",
         title: "Create a Revision Inside the Modal",
-        body: "In the revision modal editor, select text and press Ctrl/Cmd + Alt + K again to create a nested revision.",
+        body: "In the revision modal editor, select text to create a nested revision.",
+        shortcutHint: { keys: ["mod", "alt", "K"] },
         requirement: "createNestedRevision",
         position: "left",
     },

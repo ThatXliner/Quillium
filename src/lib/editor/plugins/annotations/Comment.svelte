@@ -21,7 +21,7 @@
  * message. When active, the full thread, reply input, and "Suggest"
  * button are visible.
  */
-import { Trash2, Expand } from "lucide-svelte";
+import { Trash2, Maximize2 } from "lucide-svelte";
 import { aiSettings } from "$lib/ai/settings.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
 import { appSettings } from "$lib/settings.svelte";
@@ -106,7 +106,7 @@ async function aiSuggestion() {
                 title="Expand thread"
                 aria-label="Expand comment thread"
             >
-                <Expand size={14} />
+                <Maximize2 size={14} />
             </button>
             <button
                 class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"

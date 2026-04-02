@@ -12,9 +12,17 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         ui_host: "https://us.posthog.com",
         defaults: "2026-01-30",
         capture_exceptions: true,
+        session_recording: appSettings.shareDocumentAnalytics
+            ? {}
+            : { maskTextSelector: ".cm-content" },
     });
 
     posthog.register({ app_version: appVersion, app: "desktop" });
+
+    // Register share-document key if sharing is enabled
+    if (appSettings.shareDocumentAnalytics && appSettings.shareDocumentKey.trim()) {
+        posthog.register({ share_document_key: appSettings.shareDocumentKey.trim() });
+    }
 
     // Respect the user's analytics preference
     if (!appSettings.analyticsEnabled) {
@@ -42,6 +50,48 @@ export function syncAnalyticsOptOut(enabled: boolean) {
         posthog.opt_in_capturing();
     } else {
         posthog.opt_out_capturing();
+    }
+}
+
+/**
+ * Keys that contain document content and should be redacted
+ * when the user has not opted in to sharing.
+ */
+export const REDACTED_KEYS: ReadonlySet<string> = new Set(["synonym", "word"]);
+
+/**
+ * Privacy-aware capture wrapper. Strips document-content properties
+ * unless the user has opted in to shareDocumentAnalytics.
+ */
+export function capture(event: string, props?: Record<string, unknown>) {
+    if (!props || appSettings.shareDocumentAnalytics) {
+        posthog.capture(event, props);
+        return;
+    }
+    const hasRedacted = Object.keys(props).some((k) => REDACTED_KEYS.has(k));
+    if (!hasRedacted) {
+        posthog.capture(event, props);
+        return;
+    }
+    const cleaned = { ...props };
+    for (const key of REDACTED_KEYS) {
+        delete cleaned[key];
+    }
+    posthog.capture(event, cleaned);
+}
+
+/**
+ * Sync session recording masking and the share-document super property.
+ * Call after changing `appSettings.shareDocumentAnalytics` or `shareDocumentKey`.
+ */
+export function syncShareDocumentAnalytics(sharing: boolean, key: string) {
+    posthog.set_config({
+        session_recording: sharing ? {} : { maskTextSelector: ".cm-content" },
+    });
+    if (sharing && key.trim()) {
+        posthog.register({ share_document_key: key.trim() });
+    } else {
+        posthog.unregister("share_document_key");
     }
 }
 
