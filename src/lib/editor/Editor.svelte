@@ -403,7 +403,7 @@ onMount(() => {
                                 <Kbd keys={[modKey, "L"]} />
                             </button>
                         {/if}
-                        {#if hasApiKey()}
+                        {#if appSettings.aiEnabled && hasApiKey()}
                             <div class="w-px h-3.5 bg-black/20 shrink-0 mx-1.5"></div>
                             <button
                                 onclick={suggestTitle}
