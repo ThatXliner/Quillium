@@ -86,7 +86,7 @@ export function capture(event: string, props?: Record<string, unknown>) {
  */
 export function syncShareDocumentAnalytics(sharing: boolean, key: string) {
     posthog.set_config({
-        session_recording: { maskTextSelector: sharing ? undefined : ".cm-content" },
+        session_recording: sharing ? {} : { maskTextSelector: ".cm-content" },
     });
     if (sharing && key.trim()) {
         posthog.register({ share_document_key: key.trim() });
