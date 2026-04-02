@@ -221,9 +221,10 @@ $effect(() => {
         {/if}
     </div>
     {#if titleVisibility !== "never"}
+    {@const titleShown = titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger}
     <div
         class="overflow-hidden transition-all duration-300 ease-in-out"
-        style="max-height: {titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger ? '4rem' : '0'}; opacity: {titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger ? '1' : '0'};"
+        style="max-height: {titleShown ? '4rem' : '0'}; max-width: {titleShown ? '80vw' : '0'}; opacity: {titleShown ? '1' : '0'};"
     >
         {@render children?.()}
     </div>
