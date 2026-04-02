@@ -34,6 +34,7 @@ import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { aiSettings } from "$lib/ai/settings.svelte";
+import { appSettings } from "$lib/settings.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
 import posthog from "$lib/posthog";
 
@@ -326,6 +327,7 @@ async function aiSuggestion() {
                             ></textarea>
                             <div class="flex items-center justify-between px-2 pb-1.5">
                                 <div class="flex items-center gap-1">
+                                    {#if appSettings.aiEnabled}
                                     <button
                                         aria-label="Get AI suggestion"
                                         title="Get AI suggestion"
@@ -336,6 +338,7 @@ async function aiSuggestion() {
                                         <SparklesIcon size={11} />
                                         <span>Suggest</span>
                                     </button>
+                                    {/if}
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <button
