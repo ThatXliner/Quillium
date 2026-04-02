@@ -12,6 +12,9 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         ui_host: "https://us.posthog.com",
         defaults: "2026-01-30",
         capture_exceptions: true,
+        session_recording: appSettings.privateDocumentAnalytics
+            ? { maskTextSelector: ".cm-content" }
+            : {},
     });
 
     posthog.register({ app_version: appVersion, app: "desktop" });
@@ -43,6 +46,43 @@ export function syncAnalyticsOptOut(enabled: boolean) {
     } else {
         posthog.opt_out_capturing();
     }
+}
+
+/**
+ * Keys that contain document content and should be redacted
+ * when privateDocumentAnalytics is enabled.
+ */
+export const REDACTED_KEYS: ReadonlySet<string> = new Set(["synonym", "word"]);
+
+/**
+ * Privacy-aware capture wrapper. Strips document-content properties
+ * when the user has privateDocumentAnalytics enabled.
+ */
+export function capture(event: string, props?: Record<string, unknown>) {
+    if (!props || !appSettings.privateDocumentAnalytics) {
+        posthog.capture(event, props);
+        return;
+    }
+    const hasRedacted = Object.keys(props).some((k) => REDACTED_KEYS.has(k));
+    if (!hasRedacted) {
+        posthog.capture(event, props);
+        return;
+    }
+    const cleaned = { ...props };
+    for (const key of REDACTED_KEYS) {
+        delete cleaned[key];
+    }
+    posthog.capture(event, cleaned);
+}
+
+/**
+ * Update session recording text masking at runtime.
+ * Call after changing `appSettings.privateDocumentAnalytics`.
+ */
+export function syncPrivateAnalytics(enabled: boolean) {
+    posthog.set_config({
+        session_recording: { maskTextSelector: enabled ? ".cm-content" : undefined },
+    });
 }
 
 export default posthog;
