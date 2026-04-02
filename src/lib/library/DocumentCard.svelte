@@ -29,6 +29,23 @@ const {
     onDeletePermanent,
 }: Props = $props();
 
+let confirmingDelete = $state(false);
+let confirmTimeout: ReturnType<typeof setTimeout> | undefined;
+
+function handleDeletePermanent(e: MouseEvent) {
+    e.stopPropagation();
+    if (confirmingDelete) {
+        clearTimeout(confirmTimeout);
+        confirmingDelete = false;
+        onDeletePermanent();
+    } else {
+        confirmingDelete = true;
+        confirmTimeout = setTimeout(() => {
+            confirmingDelete = false;
+        }, 3000);
+    }
+}
+
 function formatDate(ms: number): string {
     const d = new Date(ms);
     const now = new Date();
@@ -93,11 +110,18 @@ function formatDate(ms: number): string {
                     <RotateCcw size={12} />
                 </button>
                 <button
-                    onclick={(e) => { e.stopPropagation(); onDeletePermanent(); }}
-                    title="Delete permanently"
-                    class="w-7 h-7 rounded-full bg-white/90 border border-red-200 text-red-400 hover:bg-red-50 flex items-center justify-center shadow-sm"
+                    onclick={handleDeletePermanent}
+                    title={confirmingDelete ? "Click again to confirm" : "Delete permanently"}
+                    class="rounded-full bg-white/90 border flex items-center justify-center shadow-sm transition-all
+                        {confirmingDelete
+                            ? 'px-2 h-7 border-red-400 bg-red-50 text-red-600 text-[10px] font-medium'
+                            : 'w-7 h-7 border-red-200 text-red-400 hover:bg-red-50'}"
                 >
-                    <X size={12} />
+                    {#if confirmingDelete}
+                        Delete?
+                    {:else}
+                        <X size={12} />
+                    {/if}
                 </button>
             </div>
         {:else}
@@ -159,11 +183,18 @@ function formatDate(ms: number): string {
                         <RotateCcw size={12} />
                     </button>
                     <button
-                        onclick={(e) => { e.stopPropagation(); onDeletePermanent(); }}
-                        title="Delete permanently"
-                        class="w-7 h-7 rounded-full bg-white border border-red-200 text-red-400 hover:bg-red-50 flex items-center justify-center shadow-sm"
+                        onclick={handleDeletePermanent}
+                        title={confirmingDelete ? "Click again to confirm" : "Delete permanently"}
+                        class="rounded-full bg-white border flex items-center justify-center shadow-sm transition-all
+                            {confirmingDelete
+                                ? 'px-2 h-7 border-red-400 bg-red-50 text-red-600 text-[10px] font-medium'
+                                : 'w-7 h-7 border-red-200 text-red-400 hover:bg-red-50'}"
                     >
-                        <X size={12} />
+                        {#if confirmingDelete}
+                            Delete?
+                        {:else}
+                            <X size={12} />
+                        {/if}
                     </button>
                 </div>
             {:else}
