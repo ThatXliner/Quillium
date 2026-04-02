@@ -26,7 +26,8 @@ type AppSettings = {
     titleLingerDuration: number;
     uiZoom: number;
     analyticsEnabled: boolean;
-    privateDocumentAnalytics: boolean;
+    shareDocumentAnalytics: boolean;
+    shareDocumentKey: string;
     aiEnabled: boolean;
     showShortcutHints: boolean;
     showWordCount: boolean;
@@ -47,7 +48,8 @@ const DEFAULTS: AppSettings = {
     titleLingerDuration: 3000,
     uiZoom: 1,
     analyticsEnabled: true,
-    privateDocumentAnalytics: true,
+    shareDocumentAnalytics: false,
+    shareDocumentKey: "",
     aiEnabled: false,
     showShortcutHints: true,
     showWordCount: true,

@@ -12,12 +12,17 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         ui_host: "https://us.posthog.com",
         defaults: "2026-01-30",
         capture_exceptions: true,
-        session_recording: appSettings.privateDocumentAnalytics
-            ? { maskTextSelector: ".cm-content" }
-            : {},
+        session_recording: appSettings.shareDocumentAnalytics
+            ? {}
+            : { maskTextSelector: ".cm-content" },
     });
 
     posthog.register({ app_version: appVersion, app: "desktop" });
+
+    // Register share-document key if sharing is enabled
+    if (appSettings.shareDocumentAnalytics && appSettings.shareDocumentKey.trim()) {
+        posthog.register({ share_document_key: appSettings.shareDocumentKey.trim() });
+    }
 
     // Respect the user's analytics preference
     if (!appSettings.analyticsEnabled) {
@@ -50,16 +55,16 @@ export function syncAnalyticsOptOut(enabled: boolean) {
 
 /**
  * Keys that contain document content and should be redacted
- * when privateDocumentAnalytics is enabled.
+ * when the user has not opted in to sharing.
  */
 export const REDACTED_KEYS: ReadonlySet<string> = new Set(["synonym", "word"]);
 
 /**
  * Privacy-aware capture wrapper. Strips document-content properties
- * when the user has privateDocumentAnalytics enabled.
+ * unless the user has opted in to shareDocumentAnalytics.
  */
 export function capture(event: string, props?: Record<string, unknown>) {
-    if (!props || !appSettings.privateDocumentAnalytics) {
+    if (!props || appSettings.shareDocumentAnalytics) {
         posthog.capture(event, props);
         return;
     }
@@ -76,13 +81,18 @@ export function capture(event: string, props?: Record<string, unknown>) {
 }
 
 /**
- * Update session recording text masking at runtime.
- * Call after changing `appSettings.privateDocumentAnalytics`.
+ * Sync session recording masking and the share-document super property.
+ * Call after changing `appSettings.shareDocumentAnalytics` or `shareDocumentKey`.
  */
-export function syncPrivateAnalytics(enabled: boolean) {
+export function syncShareDocumentAnalytics(sharing: boolean, key: string) {
     posthog.set_config({
-        session_recording: { maskTextSelector: enabled ? ".cm-content" : undefined },
+        session_recording: { maskTextSelector: sharing ? undefined : ".cm-content" },
     });
+    if (sharing && key.trim()) {
+        posthog.register({ share_document_key: key.trim() });
+    } else {
+        posthog.unregister("share_document_key");
+    }
 }
 
 export default posthog;
