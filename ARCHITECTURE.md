@@ -1113,13 +1113,54 @@ The banner can be dismissed at any point. If the update check fails, an error to
 |---|---|---|
 | Quillium | Settings… | `Cmd+,` / `Ctrl+,` |
 | File | Library | `Cmd+O` / `Ctrl+O` |
+| File | Open in New Window | `Cmd+Shift+O` / `Ctrl+Shift+O` |
 | Edit | (standard: Undo, Redo, Cut, Copy, Paste, Select All) | — |
 | View | Version History | `Cmd+Shift+H` / `Ctrl+Shift+H` |
 | Window | (standard: Minimize, Maximize, Close) | — |
 
-Custom menu items emit Tauri events (`menu:settings`, `menu:library`, `menu:history`) to the frontend webview. `+page.svelte` listens for these events via `@tauri-apps/api/event` and dispatches the appropriate action (toggle `$settingsOpen`, call `goToLibrary()`, or call `goToHistory()`).
+Custom menu items emit Tauri events (`menu:settings`, `menu:library`, `menu:history`, `menu:open-in-new-window`) to the frontend webview. The event is emitted to the focused window, falling back to `"main"`. `+page.svelte` listens for these events via `@tauri-apps/api/event` and dispatches the appropriate action (toggle `$settingsOpen`, call `goToLibrary()`, or call `goToHistory()`). The library page listens for `menu:open-in-new-window` to open the selected document in a new window.
 
 The `settingsOpen` store is exported from `stores.ts` so that both the native menu handler and in-app UI (StatusBar gear button, `Cmd+,` keydown) can toggle it.
+
+---
+
+## Multi-Window
+
+The app supports opening documents in separate OS windows. Each window is a Tauri `WebviewWindow` running its own SvelteKit instance, so all stores (`currentDocumentId`, `editorView`, `annotations`, etc.) are naturally isolated per window.
+
+### Open-window tracking
+
+`OpenWindows(Arc<Mutex<HashMap<String, String>>>)` in `lib.rs` maps `doc_id → window_label`. This prevents the same document from being open in two windows simultaneously. Four Tauri commands manage the map:
+
+| Command | Purpose |
+|---|---|
+| `cmd_open_in_new_window` | Creates a new `WebviewWindow` with URL `/?doc={id}`, or focuses an existing window if the doc is already open |
+| `cmd_register_open_doc` | Registers a doc→window mapping (called by the frontend on document load) |
+| `cmd_deregister_open_doc` | Removes all entries for a window label (called on navigate-away or window close) |
+| `cmd_is_doc_open_elsewhere` | Checks if a doc is open in a different window; focuses that window if so |
+
+Secondary windows use the label format `editor-{short_uuid}`. On window destroy, an `on_window_event` handler automatically removes the entry from the map.
+
+### Frontend integration
+
+- `+page.svelte` reads a `?doc=` query parameter and sets `$currentDocumentId` before `Editor.svelte` mounts. This is how secondary windows know which document to load.
+- `Editor.svelte` calls `registerOpenDoc` on document load and `deregisterOpenDoc` on cleanup/switch.
+- `navigation.ts` calls `deregisterOpenDoc` in `goToLibrary()` before navigating away.
+- The library page checks `isDocOpenElsewhere` before opening a document in-window. If the doc is open elsewhere, a toast notification is shown and the other window is focused.
+
+### Entry points
+
+1. **Document card button** — an `ExternalLink` icon button appears on hover alongside the trash button (both grid and list views).
+2. **File menu** — "Open in New Window" menu item with `Cmd+Shift+O` / `Ctrl+Shift+O`.
+3. **Keyboard shortcut** — `Cmd+Shift+O` on the library page (when a single document is selected).
+
+### Capabilities
+
+`default.json` and `desktop.json` grant permissions to `["main", "editor-*"]` so dynamically created windows have the same capabilities as the main window.
+
+### DB concurrency
+
+All windows share a single `DbState(Mutex<Connection>)`. Since a document can only be open in one window, there are no conflicting writes to the same draft. Concurrent saves for different documents are serialized by the Mutex — each lock is held for microseconds (a single INSERT), so contention is negligible.
 
 ---
 
