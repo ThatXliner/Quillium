@@ -59,7 +59,31 @@ function writeBackup(key: string, entry: BackupEntry): boolean {
         localStorage.setItem(key, JSON.stringify(entry));
         return true;
     } catch {
-        return false; // localStorage full or not available
+        // localStorage full — try progressively smaller truncations
+        const attempts: Array<{ len: number; label: string }> = [
+            { len: Math.floor(entry.documentText.length * 0.75), label: "75%" },
+            { len: Math.floor(entry.documentText.length * 0.5), label: "50%" },
+            { len: Math.floor(entry.documentText.length * 0.25), label: "25%" },
+            { len: Math.floor(entry.documentText.length * 0.1), label: "10%" },
+            { len: 100_000, label: "100k chars" },
+            { len: 10_000, label: "10k chars" },
+            { len: 1_000, label: "1k chars" },
+        ];
+        for (const { len, label } of attempts) {
+            if (len >= entry.documentText.length) continue; // skip if not actually smaller
+            try {
+                const truncated: BackupEntry = {
+                    ...entry,
+                    documentText: entry.documentText.slice(-len),
+                    reason: entry.reason + ` [truncated to ${label}]`,
+                };
+                localStorage.setItem(key, JSON.stringify(truncated));
+                return true;
+            } catch {
+                continue;
+            }
+        }
+        return false; // localStorage not available or completely full
     }
 }
 

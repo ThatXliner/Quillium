@@ -127,6 +127,81 @@ describe("saveEmergencyBackup", () => {
         expect(backup!.documentTitle).toBe("My doc");
         expect(backup!.reason).toBe("test crash");
     });
+
+    it("truncates backup when localStorage is full", () => {
+        const longText = "x".repeat(10_000);
+        documentContent.set(longText);
+        currentDocumentTitle.set("Big doc");
+
+        // Simulate localStorage quota: first setItem throws, then accept smaller writes
+        let callCount = 0;
+        vi.stubGlobal("localStorage", {
+            getItem: (k: string) => store[k] ?? null,
+            setItem: (k: string, v: string) => {
+                callCount++;
+                if (callCount === 1) {
+                    throw new DOMException("QuotaExceededError");
+                }
+                store[k] = v;
+            },
+            removeItem: (k: string) => {
+                delete store[k];
+            },
+        });
+
+        const result = saveEmergencyBackup("crash");
+        expect(result).toBe(true);
+        const backup = readBackup("crash");
+        expect(backup).not.toBeNull();
+        // Should be truncated to 75% (first retry)
+        expect(backup!.documentText.length).toBe(7_500);
+        expect(backup!.reason).toContain("[truncated to 75%]");
+    });
+
+    it("falls back to absolute size limits when percentage truncations fail", () => {
+        const longText = "y".repeat(200_000);
+        documentContent.set(longText);
+        currentDocumentTitle.set("Huge doc");
+
+        // Reject everything above 10k chars of JSON
+        vi.stubGlobal("localStorage", {
+            getItem: (k: string) => store[k] ?? null,
+            setItem: (k: string, v: string) => {
+                if (v.length > 12_000) {
+                    throw new DOMException("QuotaExceededError");
+                }
+                store[k] = v;
+            },
+            removeItem: (k: string) => {
+                delete store[k];
+            },
+        });
+
+        const result = saveEmergencyBackup("crash");
+        expect(result).toBe(true);
+        const backup = readBackup("crash");
+        expect(backup).not.toBeNull();
+        expect(backup!.documentText.length).toBe(10_000);
+        expect(backup!.reason).toContain("[truncated to 10k chars]");
+    });
+
+    it("returns false when localStorage rejects all truncation attempts", () => {
+        documentContent.set("some text");
+        currentDocumentTitle.set("Doc");
+
+        vi.stubGlobal("localStorage", {
+            getItem: (k: string) => store[k] ?? null,
+            setItem: () => {
+                throw new DOMException("QuotaExceededError");
+            },
+            removeItem: (k: string) => {
+                delete store[k];
+            },
+        });
+
+        const result = saveEmergencyBackup("crash");
+        expect(result).toBe(false);
+    });
 });
 
 // ── readBackup / clearBackup ──────────────────────────────────────
