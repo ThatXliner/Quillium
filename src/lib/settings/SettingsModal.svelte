@@ -30,6 +30,7 @@ import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { syncAnalyticsOptOut, syncShareDocumentAnalytics } from "$lib/posthog";
 import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
+import AccountSection from "./AccountSection.svelte";
 import { FONTS } from "./fonts";
 
 const { onclose }: { onclose: () => void } = $props();
@@ -279,6 +280,12 @@ function fontLabel(fonts: FontOption[], value: string) {
 
         <!-- Body -->
         <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-0">
+
+            <!-- ACCOUNT section -->
+            <div class="section-label">Account</div>
+            <AccountSection />
+
+            <div class="section-divider"></div>
 
             <!-- DOCUMENT section -->
             <div class="section-label">Document</div>
