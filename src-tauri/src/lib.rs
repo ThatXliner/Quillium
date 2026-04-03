@@ -463,6 +463,11 @@ pub fn run() {
                         .accelerator("CmdOrCtrl+O")
                         .build(app)?,
                 )
+                .item(
+                    &MenuItemBuilder::with_id("open-in-new-window", "Open in New Window")
+                        .accelerator("CmdOrCtrl+Shift+O")
+                        .build(app)?,
+                )
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -498,8 +503,13 @@ pub fn run() {
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().as_ref();
                 match id {
-                    "settings" | "history" | "library" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
+                    "settings" | "history" | "library" | "open-in-new-window" => {
+                        let target = app_handle
+                            .webview_windows()
+                            .values()
+                            .find(|w| w.is_focused().unwrap_or(false))
+                            .or_else(|| app_handle.get_webview_window("main"));
+                        if let Some(window) = target {
                             let _ = window.emit(&format!("menu:{id}"), ());
                         }
                     }
