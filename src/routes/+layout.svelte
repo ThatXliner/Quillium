@@ -8,13 +8,19 @@
 -->
 <script>
 import "../app.css";
+import { onMount } from "svelte";
 import { onNavigate } from "$app/navigation";
 import posthog from "$lib/posthog";
 import { saveEmergencyBackup, readBackup } from "$lib/errorGuard";
 import { errorBanner } from "$lib/stores";
+import { restoreSession } from "$lib/sync/auth.svelte";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
 
 const { children } = $props();
+
+onMount(() => {
+    restoreSession();
+});
 
 onNavigate((navigation) => {
     if (!document.startViewTransition) return;
