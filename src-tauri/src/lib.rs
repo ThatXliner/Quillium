@@ -504,10 +504,12 @@ pub fn run() {
                 let id = event.id().as_ref();
                 match id {
                     "settings" | "history" | "library" | "open-in-new-window" => {
-                        let target = app_handle
+                        // Try the focused window first, fall back to main.
+                        let focused = app_handle
                             .webview_windows()
-                            .values()
-                            .find(|w| w.is_focused().unwrap_or(false))
+                            .into_values()
+                            .find(|w| w.is_focused().unwrap_or(false));
+                        let target = focused
                             .or_else(|| app_handle.get_webview_window("main"));
                         if let Some(window) = target {
                             let _ = window.emit(&format!("menu:{id}"), ());
