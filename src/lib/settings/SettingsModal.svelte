@@ -157,6 +157,7 @@ let showFontGuide = $state<"doc" | "ui" | null>(null);
 $effect(() => {
     if (dialogEl && !dialogEl.open) {
         dialogEl.showModal();
+        posthog.capture("settings_opened");
     }
 });
 

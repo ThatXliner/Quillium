@@ -48,6 +48,7 @@ import { tick } from "svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import { toast } from "svelte-sonner";
+import posthog from "$lib/posthog";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -593,6 +594,7 @@ $effect(() => {
                 onclick={() => {
                     appSettings.showShortcutHints = false;
                     persistSettings();
+                    posthog.capture("shortcut_hints_hidden");
                 }}
             >Hide hints</button>
         </div>

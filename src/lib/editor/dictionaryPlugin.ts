@@ -9,6 +9,7 @@ import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { dictionaryTrigger } from "$lib/stores";
 import { extractDictionaryWord } from "./dictionaryUtils";
+import posthog from "$lib/posthog";
 
 function openDictionary(view: EditorView): boolean {
     const sel = view.state.selection.main;
@@ -28,6 +29,7 @@ function openDictionary(view: EditorView): boolean {
     const y = Math.max(fromCoords.bottom, toCoords.bottom) + 8;
 
     dictionaryTrigger.set({ word, selectionFrom, selectionTo, x, y });
+    posthog.capture("dictionary_opened");
     return true;
 }
 

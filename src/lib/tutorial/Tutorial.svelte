@@ -322,6 +322,12 @@ function startTour() {
     } else {
         stepIndex = 0;
     }
+    posthog.capture("tutorial_started", {
+        total_steps: activeSteps.length,
+        include_ai: includeAi,
+        include_nested: includeNested,
+        include_shortcuts: includeShortcuts,
+    });
     setTimeout(positionTooltip, 80);
 }
 
@@ -376,12 +382,24 @@ function advance() {
         complete();
         return;
     }
+    posthog.capture("tutorial_step_advanced", {
+        from_step: step.id,
+        from_step_index: stepIndex + 1,
+        total_steps: activeSteps.length,
+    });
     stepIndex++;
 }
 
 /** Move to the previous step (no-op on the first step). */
 function back() {
-    if (!isFirst) stepIndex--;
+    if (!isFirst) {
+        posthog.capture("tutorial_step_back", {
+            from_step: step.id,
+            from_step_index: stepIndex + 1,
+            total_steps: activeSteps.length,
+        });
+        stepIndex--;
+    }
 }
 
 /**

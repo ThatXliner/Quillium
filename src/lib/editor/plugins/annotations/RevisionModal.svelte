@@ -259,6 +259,10 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
 
     crumbSelectedVersions[ci] = vi;
 
+    posthog.capture("revision_version_switched", {
+        version_index: vi,
+        context: "modal",
+    });
     crumb.parentView.dispatch(
         setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi),
     );

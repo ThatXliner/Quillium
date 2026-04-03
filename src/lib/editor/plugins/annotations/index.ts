@@ -104,6 +104,7 @@ import type { NestedEditorCommand } from "$lib/stores";
 import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import { nestedEditorEdit } from "./annotationField";
+import posthog from "$lib/posthog";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -700,6 +701,7 @@ const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
         annotationSelection,
         "revision",
     );
+    posthog.capture("annotation_created", { type: "revision", auto_version: autoVersion });
     dispatch(
         state.update({
             effects: [

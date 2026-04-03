@@ -503,6 +503,10 @@ onDestroy(() => {
                         title={versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
                         onclick={() => {
                             if (!versionActive) {
+                                posthog.capture("revision_version_switched", {
+                                    version_index: i,
+                                    version_count: revision.versions.length,
+                                });
                                 view.dispatch(
                                     setActiveRevisionVersion(view.state, revision.id, i),
                                 );
