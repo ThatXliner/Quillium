@@ -24,7 +24,8 @@ import Editor from "$lib/editor/Editor.svelte";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
-import { tutorialActive, modalStack, editorView, settingsOpen } from "$lib/stores";
+import { tutorialActive, modalStack, editorView, settingsOpen, currentDocumentId } from "$lib/stores";
+import { page } from "$app/state";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
@@ -48,6 +49,13 @@ import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import posthog from "$lib/posthog";
+
+// If opened as a secondary window with a specific document, set it immediately
+// so Editor.svelte's fromSave picks it up.
+const initialDocId = page.url.searchParams.get("doc");
+if (initialDocId) {
+    $currentDocumentId = initialDocId;
+}
 
 let showBetaDisclaimer = $state(false);
 let updateAvailable = $state(false);

@@ -25,6 +25,8 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { get } from "svelte/store";
 import { onMount } from "svelte";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { registerOpenDoc, deregisterOpenDoc } from "$lib/db";
 import posthog from "$lib/posthog";
 import { getExtensions, savedFields } from "./extensions";
 import {
@@ -64,6 +66,8 @@ import { createModel } from "$lib/ai/provider";
 import { generateText } from "ai";
 import { Pencil, SparklesIcon } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+
+const windowLabel = getCurrentWebviewWindow().label;
 
 // ── Local UI state ──────────────────────────────────────────────
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -361,15 +365,21 @@ onMount(() => {
     const unsubscribe = currentDocumentId.subscribe((id) => {
         if (!initialised) {
             initialised = true;
-            return; // skip the initial value — fromSave already handles it
+            // Register the initial document.
+            if (id) registerOpenDoc(id, windowLabel).catch(console.error);
+            return;
         }
+        // Deregister previous, register new.
+        deregisterOpenDoc(windowLabel).catch(console.error);
         if (id) {
+            registerOpenDoc(id, windowLabel).catch(console.error);
             fromSave.then(() => loadDocument(id));
         }
     });
 
     return () => {
         unsubscribe();
+        deregisterOpenDoc(windowLabel).catch(console.error);
     };
 });
 </script>
