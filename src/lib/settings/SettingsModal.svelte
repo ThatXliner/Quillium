@@ -204,6 +204,9 @@ function save() {
         ui_zoom: draft.uiZoom,
         custom_quick_actions_count: draft.customQuickActions.length,
         auto_version_on_revision_create: draft.autoVersionOnRevisionCreate,
+        show_shortcut_hints: draft.showShortcutHints,
+        show_word_count: draft.showWordCount,
+        analytics_enabled: draft.analyticsEnabled,
         share_document_analytics: draft.shareDocumentAnalytics,
     });
     onclose();
