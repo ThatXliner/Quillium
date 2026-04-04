@@ -43,6 +43,17 @@ export function createModel(provider: Provider, apiKey: string, modelId: string)
             return createOpenAI({
                 apiKey: "oauth",
                 baseURL: CODEX_PROXY_BASE_URL,
+                fetch: (url, init) => {
+                    // The openai-oauth proxy doesn't allow User-Agent in CORS.
+                    // Strip it so the preflight check passes.
+                    let opts = init;
+                    if (opts?.headers) {
+                        const h = new Headers(opts.headers);
+                        h.delete("User-Agent");
+                        opts = { ...opts, headers: h };
+                    }
+                    return globalThis.fetch(url, opts);
+                },
             })(modelId) as LanguageModel;
         case "anthropic":
             return createAnthropic({ apiKey })(modelId) as unknown as LanguageModel;
