@@ -11,3 +11,4 @@ vite.config.ts.timestamp-*
 playwright-report/
 test-results/
 tests/e2e/screenshots/
+.superpowers/

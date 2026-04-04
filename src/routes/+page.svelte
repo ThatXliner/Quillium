@@ -24,7 +24,7 @@ import Editor from "$lib/editor/Editor.svelte";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
-import { tutorialActive, modalStack, editorView, settingsOpen } from "$lib/stores";
+import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
@@ -42,6 +42,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
+import StatsModal from "$lib/stats/StatsModal.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
 import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
@@ -307,6 +308,11 @@ if (import.meta.env.DEV) {
         oninstall={installUpdate}
         ondismiss={() => { posthog.capture("update_dismissed", { version: updateVersion }); updateAvailable = false; }}
     />
+{/if}
+
+<!-- Stats modal -->
+{#if $statsOpen}
+    <StatsModal onclose={() => ($statsOpen = false)} />
 {/if}
 
 <!-- Tutorial overlay — rendered when tutorialActive store is true -->
