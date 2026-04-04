@@ -125,6 +125,10 @@ function formatGradeLevel(grade: number): string {
     bind:this={dialogEl}
     class="stats-modal"
     onclick={handleBackdropClick}
+    oncancel={(event) => {
+        event.preventDefault();
+        onclose();
+    }}
 >
     <div class="stats-modal-inner">
         <!-- Header -->
