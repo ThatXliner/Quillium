@@ -40,7 +40,7 @@ function countSentences(text: string): number {
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
 
-    return Math.max(sentences.length, 1);
+    return sentences.length;
 }
 
 function countParagraphs(text: string): number {
