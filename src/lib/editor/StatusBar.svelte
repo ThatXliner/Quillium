@@ -23,8 +23,8 @@ import { type ExportFormat, exportDocument } from "$lib/export";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { editorView, saveStatus, settingsOpen, tutorialActive } from "$lib/stores";
-import { Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
+import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import { BarChart3, Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -153,6 +153,15 @@ $effect(() => {
             <History size={20} />
         </button>
         <button
+            onclick={() => ($statsOpen = !$statsOpen)}
+            aria-label="Writing statistics"
+            title="Writing Statistics"
+            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
+                {$statsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+        >
+            <BarChart3 size={20} />
+        </button>
+        <button
             onclick={() => ($settingsOpen = !$settingsOpen)}
             aria-label="Open settings"
             title="Settings ({modKey},)"
@@ -223,10 +232,12 @@ $effect(() => {
     {#if titleVisibility !== "never"}
     {@const titleShown = titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger}
     <div
-        class="overflow-hidden transition-all duration-300 ease-in-out"
-        style="max-height: {titleShown ? '4rem' : '0'}; max-width: {titleShown ? '80vw' : '0'}; opacity: {titleShown ? '1' : '0'};"
+        class="grid transition-[grid-template-rows,opacity] duration-300 ease-in-out"
+        style="grid-template-rows: {titleShown ? '1fr' : '0fr'}; opacity: {titleShown ? '1' : '0'};"
     >
-        {@render children?.()}
+        <div class="overflow-hidden">
+            {@render children?.()}
+        </div>
     </div>
     {/if}
 </div>

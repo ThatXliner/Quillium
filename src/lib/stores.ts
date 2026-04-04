@@ -289,6 +289,13 @@ export const errorBanner = writable<ErrorBannerState | null>(null);
  */
 export const settingsOpen = writable(false);
 
+/**
+ * Controls stats modal visibility globally.
+ * Written by: StatusBar.svelte (stats button).
+ * Read by: +page.svelte to render <StatsModal>.
+ */
+export const statsOpen = writable(false);
+
 export const modalStack = {
     subscribe: _modalStack.subscribe,
     push: (entry: ModalEntry) =>

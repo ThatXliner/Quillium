@@ -364,7 +364,7 @@ async function doAppend(
                     const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
                     const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
                     if (firstLineComplete && firstLine) {
-                        title = firstLine.slice(0, 80);
+                        title = firstLine.slice(0, 40);
                         currentDocumentTitle.set(title);
                     }
                 }

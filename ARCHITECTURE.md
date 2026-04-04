@@ -1005,6 +1005,16 @@ The library uses a `documents` + `drafts` schema in SQLite:
 - Each document has one or more drafts (default one, created automatically)
 - Document state (text + annotations) lives in the `events` + `snapshots` tables, keyed by draft
 
+### Auto-derived document title
+
+New documents start with the title "Untitled". On each save, `listeners.ts` checks whether the title is still "Untitled" and, if so, derives one from the first line of the document once either:
+- the user presses Enter (creating a second line), or
+- the first line contains at least 4 words.
+
+The title is set to `firstLine.slice(0, 40)`. Once derived, the title is "owned" — it won't be overwritten automatically again. A separate `extractTitleFromStateJson` helper in `Editor.svelte` does the same extraction when loading a saved document whose title wasn't persisted in metadata.
+
+If AI is enabled, the user can also click "Suggest" in the status bar title area to get an AI-generated title (also capped at 40 characters).
+
 ### Library page (`routes/library/+page.svelte`)
 
 Two tabs: Library and Trash. Documents are displayed as cards in a grid with a search bar and a preview panel. The `ContinuePill` component shows a shortcut to the most recently edited document.
