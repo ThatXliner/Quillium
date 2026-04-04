@@ -33,8 +33,7 @@ function getWords(text: string): string[] {
 function countSentences(text: string): number {
     if (text.trim().length === 0) return 0;
 
-    // Split on sentence-ending punctuation, handling abbreviations roughly
-    // by requiring the punctuation to be followed by whitespace+capital or end of string
+    // Split on sentence-ending punctuation
     const sentences = text
         .split(/[.!?]+/)
         .map((s) => s.trim())

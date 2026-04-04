@@ -46,7 +46,7 @@ const info: Record<string, InfoEntry> = {
         title: "Vocabulary Diversity",
         description: "What fraction of your words are unique (sometimes called type-token ratio).",
         details:
-            "Higher means you're reaching for different words more often. Lower means repetition, which can be intentional (rhetoric, emphasis) or just a habit. This number drops naturally in longer pieces because common words like \"the\" and \"is\" keep piling up.",
+            'Higher means you\'re reaching for different words more often. Lower means repetition, which can be intentional (rhetoric, emphasis) or just a habit. This number drops naturally in longer pieces because common words like "the" and "is" keep piling up.',
         scale: [
             { label: "Very unique", range: "80%+" },
             { label: "Unique", range: "60–79%" },
@@ -63,23 +63,24 @@ const info: Record<string, InfoEntry> = {
             "A rough grade-level estimate based on sentence length and word complexity (Flesch-Kincaid).",
         details:
             "Grade 8 means an 8th grader could follow it. Lower isn't worse, it just means more people can read it without effort. Popular fiction usually lands around grade 6-8. Newspapers, 8-10. Academic papers, 12 and up. The right level depends on who you're writing for.",
-        example:
-            "Hemingway scores around grade 4. Legal filings can hit 14+.",
+        example: "Hemingway scores around grade 4. Legal filings can hit 14+.",
     },
     characterizer: {
         title: "Writing Characterizer",
         description:
             "AI scores your writing across 7 style dimensions, picks out tones, and writes a short summary.",
         details:
-            "Each dimension gets a 1-10 score based on your full text. These are observations, not judgments. Scoring low on Formality is fine if you're going for casual. The tone tags (\"Confident\", \"Analytical\", etc.) try to capture the overall feel. Results can shift between runs since the AI isn't deterministic.",
+            'Each dimension gets a 1-10 score based on your full text. These are observations, not judgments. Scoring low on Formality is fine if you\'re going for casual. The tone tags ("Confident", "Analytical", etc.) try to capture the overall feel. Results can shift between runs since the AI isn\'t deterministic.',
     },
 };
 
-const entry: InfoEntry = $derived(info[topic] ?? {
-    title: topic,
-    description: "No additional information available.",
-    details: "",
-});
+const entry: InfoEntry = $derived(
+    info[topic] ?? {
+        title: topic,
+        description: "No additional information available.",
+        details: "",
+    },
+);
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -87,6 +88,7 @@ const entry: InfoEntry = $derived(info[topic] ?? {
     bind:this={dialogEl}
     class="info-modal"
     onclick={handleBackdropClick}
+    oncancel={(e) => { e.preventDefault(); onclose(); }}
 >
     <div class="info-inner">
         <!-- Header -->
