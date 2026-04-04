@@ -28,6 +28,7 @@
 import {
     convertToModelMessages,
     streamText,
+    generateObject,
     generateText,
     tool,
     type UIMessage,
@@ -312,4 +313,54 @@ export async function generateContext(
         output_length: text.length,
     });
     return text;
+}
+
+// ---------------------------------------------------------------------------
+// Writing style characterizer (non-streaming)
+// ---------------------------------------------------------------------------
+
+const characterizerSchema = z.object({
+    dimensions: z.array(
+        z.object({
+            name: z.enum([
+                "Formality",
+                "Clarity",
+                "Conciseness",
+                "Vocabulary",
+                "Tone",
+                "Pacing",
+                "Descriptiveness",
+            ]),
+            score: z.number().min(1).max(10).describe("Score from 1-10"),
+        }),
+    ),
+    detectedTones: z
+        .array(z.string())
+        .describe("3-5 detected tone descriptors like 'Confident', 'Analytical', 'Warm'"),
+    styleDescription: z.string().describe("2-3 sentence description of the writer's style"),
+});
+
+export type CharacterizerResult = z.infer<typeof characterizerSchema>;
+
+export async function generateCharacterization(
+    opts: BaseOpts & { documentContent: string },
+): Promise<CharacterizerResult> {
+    const llm = createModel(opts.provider, opts.apiKey, opts.model);
+    const { object } = await generateObject({
+        model: llm,
+        schema: characterizerSchema,
+        system: `You are a writing style analyst. Analyze the provided text and characterize the writer's style across fixed dimensions. Be honest and specific — avoid giving everything high scores. Each dimension is scored 1-10:
+
+- Formality (1=Casual, 10=Formal)
+- Clarity (1=Dense/hard to follow, 10=Crystal clear)
+- Conciseness (1=Verbose/wordy, 10=Concise/tight)
+- Vocabulary (1=Simple/basic words, 10=Sophisticated/varied)
+- Tone (1=Detached/neutral, 10=Engaging/passionate)
+- Pacing (1=Slow/methodical, 10=Brisk/fast-moving)
+- Descriptiveness (1=Sparse/minimal detail, 10=Vivid/rich imagery)
+
+Also identify 3-5 tone descriptors (single words like "Confident", "Analytical", "Playful") and write a 2-3 sentence style description.`,
+        prompt: opts.documentContent,
+    });
+    return object;
 }

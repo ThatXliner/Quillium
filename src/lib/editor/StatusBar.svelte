@@ -23,8 +23,8 @@ import { type ExportFormat, exportDocument } from "$lib/export";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { editorView, saveStatus, settingsOpen, tutorialActive } from "$lib/stores";
-import { Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
+import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import { BarChart3, Download, History, LayoutGrid, Settings2 } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -151,6 +151,15 @@ $effect(() => {
             class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
         >
             <History size={20} />
+        </button>
+        <button
+            onclick={() => ($statsOpen = !$statsOpen)}
+            aria-label="Writing statistics"
+            title="Writing Statistics"
+            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
+                {$statsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+        >
+            <BarChart3 size={20} />
         </button>
         <button
             onclick={() => ($settingsOpen = !$settingsOpen)}
