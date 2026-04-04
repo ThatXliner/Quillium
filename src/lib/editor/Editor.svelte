@@ -92,7 +92,7 @@ async function suggestTitle() {
             model,
             prompt: `Suggest a single short, evocative title for this piece of writing. Reply with only the title — no quotes, no explanation, no punctuation at the end.\n\n${text.slice(0, 1000)}`,
         });
-        const newTitle = suggested.trim().slice(0, 80);
+        const newTitle = suggested.trim().slice(0, 40);
         if (newTitle) {
             currentDocumentTitle.set(newTitle);
             const docId = get(currentDocumentId);
@@ -279,7 +279,7 @@ function extractTitleFromStateJson(stateJson: string): string {
         const firstLine = Array.isArray(parsed.doc)
             ? (parsed.doc[0] ?? "")
             : String(parsed.doc ?? "");
-        return firstLine.trim().slice(0, 80) || "Untitled";
+        return firstLine.trim().slice(0, 40) || "Untitled";
     } catch {
         return "Unknown";
     }
