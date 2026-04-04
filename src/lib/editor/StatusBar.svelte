@@ -223,10 +223,12 @@ $effect(() => {
     {#if titleVisibility !== "never"}
     {@const titleShown = titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger}
     <div
-        class="overflow-hidden transition-all duration-300 ease-in-out"
-        style="max-height: {titleShown ? '4rem' : '0'}; max-width: {titleShown ? '80vw' : '0'}; opacity: {titleShown ? '1' : '0'};"
+        class="grid transition-[grid-template-rows,opacity] duration-300 ease-in-out"
+        style="grid-template-rows: {titleShown ? '1fr' : '0fr'}; opacity: {titleShown ? '1' : '0'};"
     >
-        {@render children?.()}
+        <div class="overflow-hidden">
+            {@render children?.()}
+        </div>
     </div>
     {/if}
 </div>

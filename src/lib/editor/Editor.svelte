@@ -379,7 +379,7 @@ onMount(() => {
         <div class="pointer-events-auto">
             <StatusBar titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
                 {#snippet children()}
-                    <div class="flex items-center justify-center py-1.5 px-4 w-fit mx-auto mb-3 rounded-full">
+                    <div class="flex items-center justify-center py-1.5 px-4 mx-auto mb-3 rounded-full {appSettings.titleVisibility !== 'always' ? 'max-w-full' : ''}">
                         {#if titleEditing}
                             <input
                                 bind:this={titleInputEl}
@@ -396,14 +396,14 @@ onMount(() => {
                             <button
                                 onclick={startEditingTitle}
                                 title="Rename title ({modKey}L)"
-                                class="flex items-center gap-2 text-sm font-medium text-black/60 hover:text-black/80 transition-colors max-w-[28rem]"
+                                class="flex items-center gap-2 text-sm font-medium text-black/60 hover:text-black/80 transition-colors {appSettings.titleVisibility !== 'always' ? 'max-w-[28rem]' : ''}"
                             >
-                                <span class="truncate">{$currentDocumentTitle}</span>
+                                <span class={appSettings.titleVisibility !== 'always' ? 'truncate' : ''}>{$currentDocumentTitle}</span>
                                 <Pencil size={14} class="shrink-0 text-black/40" />
                                 <Kbd keys={[modKey, "L"]} />
                             </button>
                         {/if}
-                        {#if hasApiKey()}
+                        {#if appSettings.aiEnabled && hasApiKey()}
                             <div class="w-px h-3.5 bg-black/20 shrink-0 mx-1.5"></div>
                             <button
                                 onclick={suggestTitle}
