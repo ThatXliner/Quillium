@@ -80,7 +80,6 @@ function handleRemove(id: string) {
 }
 
 const chattinessLevels = ["quiet", "normal", "verbose"] as const;
-const chattinessLabels = { quiet: "Brief", normal: "Normal", verbose: "Detailed" } as const;
 </script>
 
 {#snippet personaCard(persona: typeof readersSettings.personas[0], dimmed: boolean)}
@@ -165,15 +164,16 @@ const chattinessLabels = { quiet: "Brief", normal: "Normal", verbose: "Detailed"
         {#if isExpanded}
             <div
                 transition:slide={{ duration: 150 }}
-                class="px-3 pb-3 space-y-2"
+                class="px-3 pb-4 space-y-3"
             >
                 <div class="h-px" style="background: {lightTint(persona.color)};"></div>
+                <div class="text-[10px] text-gray-400 italic">{persona.description}</div>
                 {#if persona.profile}
                     <p class="text-[11px] text-gray-600 leading-relaxed m-0">
                         {persona.profile.about}
                     </p>
                     <div>
-                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Good for</div>
+                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider my-2">Good for</div>
                         <div class="flex flex-wrap gap-1">
                             {#each persona.profile.goodFor as tag}
                                 <span
@@ -184,7 +184,7 @@ const chattinessLabels = { quiet: "Brief", normal: "Normal", verbose: "Detailed"
                         </div>
                     </div>
                     <div>
-                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Example</div>
+                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider my-2">Example</div>
                         <p class="text-[10px] text-gray-500 italic leading-snug m-0">
                             {persona.profile.example}
                         </p>
@@ -194,16 +194,6 @@ const chattinessLabels = { quiet: "Brief", normal: "Normal", verbose: "Detailed"
                         {persona.description}
                     </p>
                 {/if}
-                <div class="flex items-center gap-2" onclick={(e) => e.stopPropagation()}>
-                    <span class="text-[10px] text-gray-400">Detail level:</span>
-                    <button
-                        onclick={() => handleCycleChattiness(persona.id)}
-                        class="text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-pointer border-none transition-colors"
-                        style="background: {lightTint(persona.color)}; color: {persona.color};"
-                    >
-                        {chattinessLabels[persona.chattiness]}
-                    </button>
-                </div>
             </div>
         {/if}
     </div>

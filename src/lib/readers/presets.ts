@@ -35,7 +35,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Finds logical gaps, weak claims, and unsupported arguments.",
         profile: {
             about: "Reads like a critical reviewer who respects you but won't let sloppy thinking slide. Catches reasoning that sounds convincing on first read but falls apart under scrutiny.",
-            goodFor: ["Persuasive essays", "Opinion pieces", "Research arguments"],
+            goodFor: ["Making an argument", "Proving a point", "Grant applications"],
             example:
                 '"This claim about productivity lacks evidence — you\'re asking the reader to take it on faith."',
         },
@@ -53,7 +53,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Hunts for jargon, ambiguity, and readability issues.",
         profile: {
             about: "Asks one question: could a smart person unfamiliar with this topic follow along? Flags jargon that slips in unnoticed and sentences that require re-reading.",
-            goodFor: ["Technical writing", "Explanations", "Cross-audience pieces"],
+            goodFor: ["Writing for non-experts", "Explaining complex ideas", "Docs and guides"],
             example:
                 "\"What does 'leverage synergies' actually mean here? A concrete example would land much better.\"",
         },
@@ -71,7 +71,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Reads as someone encountering the topic for the first time.",
         profile: {
             about: "Has no prior context. Flags every moment where they'd feel lost — missing background, assumed knowledge, and unexplained terms.",
-            goodFor: ["Tutorials", "Introductions", "Onboarding docs"],
+            goodFor: ["Broad audiences", "Introducing new concepts", "How-to guides"],
             example:
                 "\"You mention 'the previous approach' but I have no idea what that refers to — I'm reading this cold.\"",
         },
@@ -89,7 +89,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Focuses on tone, voice, and emotional resonance.",
         profile: {
             about: "Notices what your writing makes people feel. Catches passages where the tone goes flat, corporate, or forced — and flags moments where the emotional register doesn't match your intent.",
-            goodFor: ["Personal essays", "Narratives", "Marketing copy"],
+            goodFor: ["Writing that should move people", "Memoir and personal essays", "Landing pages"],
             example:
                 '"This paragraph about loss reads very clinical — the detached tone undercuts the emotional weight."',
         },
@@ -107,7 +107,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Focuses on pacing, transitions, and narrative momentum.",
         profile: {
             about: "Tracks momentum. Notices when writing drags, rushes, or loses its thread — awkward transitions, sections that outstay their welcome, and moments where attention would wander.",
-            goodFor: ["Long-form writing", "Stories", "Articles"],
+            goodFor: ["Anything over 1,000 words", "Multi-section pieces", "Storytelling"],
             example:
                 '"The jump from your anecdote to the statistics feels abrupt — a bridging sentence would smooth this out."',
         },
@@ -125,7 +125,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Challenges assumptions and stress-tests arguments.",
         profile: {
             about: "Plays counterpoint. Asks: what would a skeptic say? Catches one-sided reasoning, unchallenged premises, and conclusions that only hold if the reader already agrees.",
-            goodFor: ["Debates", "Proposals", "Argumentative writing"],
+            goodFor: ["Controversial takes", "Pitches and proposals", "Preempting objections"],
             example:
                 '"You assume remote work is always more productive — but what about roles that depend on spontaneous collaboration?"',
         },
@@ -143,7 +143,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Reads for depth, accuracy, and intellectual rigor.",
         profile: {
             about: "Holds your writing to a high standard. Catches oversimplifications and missed nuances that a knowledgeable reader would notice. Pushes toward precision without being pedantic.",
-            goodFor: ["Academic writing", "Technical docs", "In-depth analyses"],
+            goodFor: ["Getting the details right", "Writing for specialists", "Nuanced topics"],
             example:
                 '"This oversimplifies the tradeoff — there are well-known cases where the opposite holds true."',
         },
@@ -161,7 +161,7 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Checks if key points are easy to find when scanning quickly.",
         profile: {
             about: "Won't read every word — and that's the point. Checks whether key points jump out, whether structure aids scanning, and whether someone in a hurry would get the main message.",
-            goodFor: ["Blog posts", "Reports", "Documentation"],
+            goodFor: ["Busy readers", "Newsletters and updates", "Executive summaries"],
             example:
                 '"Your main takeaway is buried in paragraph four — most skimmers will miss it entirely."',
         },
