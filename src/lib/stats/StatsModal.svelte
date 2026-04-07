@@ -12,7 +12,12 @@ import { X, BarChart3, HelpCircle } from "lucide-svelte";
 import { computeStats } from "$lib/stats/compute";
 import { documentContent } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
-import { aiSettings, ensureApiKeyLoaded, setAiProcessing } from "$lib/ai/settings.svelte";
+import {
+    aiSettings,
+    ensureApiKeyLoaded,
+    setAiProcessing,
+    getAiAbortSignal,
+} from "$lib/ai/settings.svelte";
 import { generateCharacterization, type CharacterizerResult } from "$lib/ai/clientStreams";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
 
@@ -77,6 +82,7 @@ async function analyze() {
     analyzing = true;
     error = null;
     setAiProcessing(true);
+    const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
         result = await generateCharacterization({
@@ -84,9 +90,10 @@ async function analyze() {
             model: aiSettings.model,
             apiKey: aiSettings.apiKey,
             documentContent: text,
+            abortSignal,
         });
     } catch (e: any) {
-        error = e?.message ?? "Analysis failed";
+        if (!abortSignal.aborted) error = e?.message ?? "Analysis failed";
     } finally {
         analyzing = false;
         setAiProcessing(false);

@@ -14,7 +14,14 @@
 <script lang="ts">
 import { SparklesIcon } from "lucide-svelte";
 import posthog from "$lib/posthog";
-import { documentContext, saveDocumentContext, aiSettings, setAiProcessing, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
+import {
+    documentContext,
+    saveDocumentContext,
+    aiSettings,
+    setAiProcessing,
+    ensureApiKeyLoaded,
+    getAiAbortSignal,
+} from "$lib/ai/settings.svelte";
 import { generateContext } from "$lib/ai/clientStreams";
 
 let promptInput = $state("");
@@ -26,6 +33,7 @@ async function generate() {
     generating = true;
     generateError = "";
     setAiProcessing(true);
+    const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
         documentContext.freeform = await generateContext({
@@ -33,10 +41,11 @@ async function generate() {
             provider: aiSettings.provider,
             model: aiSettings.model,
             apiKey: aiSettings.apiKey,
+            abortSignal,
         });
         saveDocumentContext();
     } catch (e) {
-        generateError = String(e);
+        if (!abortSignal.aborted) generateError = String(e);
     } finally {
         generating = false;
         setAiProcessing(false);

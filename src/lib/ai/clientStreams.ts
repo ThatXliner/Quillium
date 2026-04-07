@@ -47,6 +47,7 @@ interface BaseOpts {
     provider: Provider;
     model: string;
     apiKey: string;
+    abortSignal?: AbortSignal;
 }
 
 interface StreamOpts extends BaseOpts {
@@ -55,7 +56,6 @@ interface StreamOpts extends BaseOpts {
     selectedText: string;
     documentContext?: DocumentContext;
     persona?: ReaderPersona;
-    abortSignal?: AbortSignal;
 }
 
 export type { StreamOpts };
@@ -337,6 +337,7 @@ export async function generateContext(
     const { text } = await generateText({
         model: llm,
         prompt: CONTEXT_PROMPTS[variant](opts.prompt),
+        abortSignal: opts.abortSignal,
     });
     posthog.capture("context_generated", {
         variant,
@@ -380,6 +381,7 @@ export async function generateCharacterization(
     const { object } = await generateObject({
         model: llm,
         schema: characterizerSchema,
+        abortSignal: opts.abortSignal,
         system: `You are a writing style analyst. Analyze the provided text and characterize the writer's style across fixed dimensions. Be honest and specific — avoid giving everything high scores. Each dimension is scored 1-10:
 
 - Formality (1=Casual, 10=Formal)

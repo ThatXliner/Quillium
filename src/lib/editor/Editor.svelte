@@ -59,7 +59,13 @@ import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { replayEvents } from "./replay";
 import type { EventRecord } from "$lib/db/types";
 import { appSettings } from "$lib/settings.svelte";
-import { aiSettings, hasApiKey, setAiProcessing, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
+import {
+    aiSettings,
+    hasApiKey,
+    setAiProcessing,
+    ensureApiKeyLoaded,
+    getAiAbortSignal,
+} from "$lib/ai/settings.svelte";
 import { createModel } from "$lib/ai/provider";
 import { generateText } from "ai";
 import { Pencil, SparklesIcon } from "lucide-svelte";
@@ -87,11 +93,13 @@ async function suggestTitle() {
     if (!text.trim() || titleSuggesting) return;
     titleSuggesting = true;
     setAiProcessing(true);
+    const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { text: suggested } = await generateText({
             model,
+            abortSignal,
             prompt: `Suggest a single short, evocative title for this piece of writing. Reply with only the title — no quotes, no explanation, no punctuation at the end.\n\n${text.slice(0, 1000)}`,
         });
         const newTitle = suggested.trim().slice(0, 40);
@@ -106,7 +114,7 @@ async function suggestTitle() {
             }
         }
     } catch (e) {
-        console.error("[suggestTitle]", e);
+        if (!abortSignal.aborted) console.error("[suggestTitle]", e);
     } finally {
         titleSuggesting = false;
         setAiProcessing(false);

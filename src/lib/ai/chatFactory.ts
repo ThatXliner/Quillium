@@ -149,6 +149,7 @@ export async function runMultiPersonaStreams({
             apiKey: aiSettings.apiKey,
             documentContext: { ...documentContext },
             persona,
+            abortSignal,
         });
 
         const reader = stream.getReader();

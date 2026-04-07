@@ -58,7 +58,12 @@
  */
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
-import { createAiChat, useAiChatEffects, setAiProcessing, runMultiPersonaStreams } from "$lib/ai/chatFactory";
+import {
+    createAiChat,
+    useAiChatEffects,
+    setAiProcessing,
+    runMultiPersonaStreams,
+} from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
 import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
