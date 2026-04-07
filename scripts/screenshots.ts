@@ -125,6 +125,7 @@ async function installTauriMock(
             libraryDocs: typeof LIBRARY_DOCUMENTS;
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            localStorage.setItem("quillium_beta_accepted", "true");
             // Signal that an API key has been saved so the settings module
             // calls loadApiKeyForProvider() on startup. Without this,
             // hasApiKey() always returns false and tab clicks redirect to Settings.
@@ -144,6 +145,7 @@ async function installTauriMock(
                 JSON.stringify({
                     docFontFamily: "Georgia, serif",
                     docFontSize: 18,
+                    ...(payload.fakeApiKey ? { aiEnabled: true } : {}),
                 }),
             );
 
@@ -784,9 +786,9 @@ async function scenarioReadersPanel(ctx: BrowserContext): Promise<void> {
     await page.goto(BASE_URL);
     await waitForEditor(page);
     await setEditorText(page, PROSE_SHORT);
-    // Open the Readers tab via keyboard shortcut
-    await page.keyboard.press("ControlOrMeta+Shift+5");
-    await page.waitForTimeout(400);
+    // Open the Readers tab by clicking the sidebar icon
+    await page.locator("#ai-tab-readers").click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
     await shot(page, "09-readers-panel");
     await page.close();
 }
