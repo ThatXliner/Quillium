@@ -61,6 +61,9 @@ import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
 import posthog from "$lib/posthog";
+import { getEnabledPersonas } from "$lib/readers/settings.svelte";
+import { runMultiPersonaStreams } from "$lib/ai/chatFactory";
+import { streamFeedback } from "$lib/ai/clientStreams";
 
 let input = $state("");
 
@@ -102,6 +105,36 @@ function askForFeedback() {
     chat.sendMessage({ text: context });
 }
 
+async function askForPersonaFeedback() {
+    const personas = getEnabledPersonas();
+    if (personas.length === 0) {
+        askForFeedback();
+        return;
+    }
+
+    const context = $selectedText
+        ? `Please provide feedback on this selected text: "${$selectedText}"`
+        : "Please provide feedback on my document.";
+
+    posthog.capture("ai_feedback_requested", {
+        has_selection: !!$selectedText,
+        trigger: "persona",
+        persona_count: personas.length,
+    });
+
+    setAiProcessing(true);
+    try {
+        await runMultiPersonaStreams({
+            personas,
+            streamFn: streamFeedback,
+            messages: [{ id: "1", role: "user", parts: [{ type: "text", text: context }] }],
+            mode: "feedback",
+        });
+    } finally {
+        setAiProcessing(false);
+    }
+}
+
 const feedbackQuickPrompts = [
     {
         label: "Pacing",
@@ -139,7 +172,7 @@ function useQuickPrompt(prompt: string) {
     <!-- Quick actions -->
     <div class="p-3 border-b border-black/10">
         <button
-            onclick={askForFeedback}
+            onclick={askForPersonaFeedback}
             disabled={chat.status !== "ready" || !$documentContent}
             class="w-full p-2.5 bg-white hover:bg-green-50 rounded-lg border border-green-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
         >
