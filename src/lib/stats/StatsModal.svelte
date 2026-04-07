@@ -12,7 +12,7 @@ import { X, BarChart3, HelpCircle } from "lucide-svelte";
 import { computeStats } from "$lib/stats/compute";
 import { documentContent } from "$lib/stores";
 import { appSettings } from "$lib/settings.svelte";
-import { aiSettings, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
+import { aiSettings, ensureApiKeyLoaded, setAiProcessing } from "$lib/ai/settings.svelte";
 import { generateCharacterization, type CharacterizerResult } from "$lib/ai/clientStreams";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
 
@@ -76,6 +76,7 @@ function handleKeydown(e: KeyboardEvent) {
 async function analyze() {
     analyzing = true;
     error = null;
+    setAiProcessing(true);
     try {
         await ensureApiKeyLoaded();
         result = await generateCharacterization({
@@ -88,6 +89,7 @@ async function analyze() {
         error = e?.message ?? "Analysis failed";
     } finally {
         analyzing = false;
+        setAiProcessing(false);
     }
 }
 

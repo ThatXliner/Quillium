@@ -59,7 +59,7 @@ import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { replayEvents } from "./replay";
 import type { EventRecord } from "$lib/db/types";
 import { appSettings } from "$lib/settings.svelte";
-import { aiSettings, hasApiKey } from "$lib/ai/settings.svelte";
+import { aiSettings, hasApiKey, setAiProcessing } from "$lib/ai/settings.svelte";
 import { createModel } from "$lib/ai/provider";
 import { generateText } from "ai";
 import { Pencil, SparklesIcon } from "lucide-svelte";
@@ -86,6 +86,7 @@ async function suggestTitle() {
     const text = $editorView?.state.doc.toString() ?? "";
     if (!text.trim() || titleSuggesting) return;
     titleSuggesting = true;
+    setAiProcessing(true);
     try {
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { text: suggested } = await generateText({
@@ -107,6 +108,7 @@ async function suggestTitle() {
         console.error("[suggestTitle]", e);
     } finally {
         titleSuggesting = false;
+        setAiProcessing(false);
     }
 }
 

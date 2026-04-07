@@ -52,7 +52,7 @@
  */
 import { selectedText, documentContent, pendingChatMessage } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
-import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
 import posthog from "$lib/posthog";
 
@@ -76,23 +76,8 @@ $effect(() => {
     }
 });
 
-// Sync streaming state to the global AI processing indicator
-// so the sidebar glow activates during chat requests.
-// States: ready -> submitted -> streaming -> ready (or error).
-$effect(() => {
-    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
-});
-
-// Listen for global stop event to abort this chat's stream.
-$effect(() => {
-    function handleStop() {
-        if (chat.status === "submitted" || chat.status === "streaming") {
-            chat.stop();
-        }
-    }
-    window.addEventListener("quillium:stop-ai", handleStop);
-    return () => window.removeEventListener("quillium:stop-ai", handleStop);
-});
+// Wire up processing indicator + global stop listener.
+useAiChatEffects(chat);
 
 /**
  * Extract the user's message from the form, validate it, send it

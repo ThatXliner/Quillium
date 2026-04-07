@@ -14,7 +14,7 @@
 <script lang="ts">
 import { SparklesIcon } from "lucide-svelte";
 import posthog from "$lib/posthog";
-import { documentContext, saveDocumentContext, aiSettings } from "$lib/ai/settings.svelte";
+import { documentContext, saveDocumentContext, aiSettings, setAiProcessing } from "$lib/ai/settings.svelte";
 import { generateContext } from "$lib/ai/clientStreams";
 
 let promptInput = $state("");
@@ -25,6 +25,7 @@ async function generate() {
     if (!promptInput.trim() || generating) return;
     generating = true;
     generateError = "";
+    setAiProcessing(true);
     try {
         documentContext.freeform = await generateContext({
             prompt: promptInput,
@@ -37,6 +38,7 @@ async function generate() {
         generateError = String(e);
     } finally {
         generating = false;
+        setAiProcessing(false);
     }
 }
 

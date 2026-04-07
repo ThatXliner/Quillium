@@ -58,7 +58,7 @@
  */
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
-import { createAiChat, setAiProcessing, runMultiPersonaStreams } from "$lib/ai/chatFactory";
+import { createAiChat, useAiChatEffects, setAiProcessing, runMultiPersonaStreams } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
 import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
@@ -69,18 +69,12 @@ let personaInFlight = $state(false);
 
 const { chat, clearChat } = createAiChat({ mode: "feedback" });
 
-// Sync streaming state to the global AI processing indicator.
-// States: ready -> submitted -> streaming -> ready (or error).
-$effect(() => {
-    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
-});
+// Wire up processing indicator + global stop listener.
+useAiChatEffects(chat);
 
-// Listen for global stop event to abort this chat's stream.
+// Also reset persona state on global stop.
 $effect(() => {
     function handleStop() {
-        if (chat.status === "submitted" || chat.status === "streaming") {
-            chat.stop();
-        }
         personaInFlight = false;
     }
     window.addEventListener("quillium:stop-ai", handleStop);

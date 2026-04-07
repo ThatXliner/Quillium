@@ -5,6 +5,7 @@
  * to build prompts and stream AI responses, ensuring both flows stay in sync.
  */
 import { streamChat } from "$lib/ai/clientStreams";
+import { setAiProcessing } from "$lib/ai/settings.svelte";
 import type { Thread } from ".";
 
 /**
@@ -34,6 +35,7 @@ export async function streamCommentAiResponse(
     selectedText: string,
     settings: { provider: string; model: string; apiKey: string },
 ): Promise<string> {
+    setAiProcessing(true);
     const stream = streamChat({
         messages: [{ id: "1", role: "user", parts: [{ type: "text", text: prompt }] }],
         documentContent: "",
@@ -45,10 +47,14 @@ export async function streamCommentAiResponse(
 
     const reader = stream.getReader();
     let aiResponse = "";
-    while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value?.type === "text-delta") aiResponse += value.delta;
+    try {
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value?.type === "text-delta") aiResponse += value.delta;
+        }
+        return aiResponse;
+    } finally {
+        setAiProcessing(false);
     }
-    return aiResponse;
 }

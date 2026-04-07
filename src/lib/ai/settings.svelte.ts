@@ -68,6 +68,28 @@ export function setAiProcessing(value: boolean) {
 }
 
 /**
+ * Wire up the standard processing-indicator and stop-listener effects
+ * for a Chat instance. Must be called during component initialisation
+ * (i.e. at the top-level of a Svelte component's `<script>` block) so
+ * `$effect` has a valid owner.
+ */
+export function useAiChatEffects(chat: { status: string; stop: () => void }) {
+    $effect(() => {
+        setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+    });
+
+    $effect(() => {
+        function handleStop() {
+            if (chat.status === "submitted" || chat.status === "streaming") {
+                chat.stop();
+            }
+        }
+        window.addEventListener("quillium:stop-ai", handleStop);
+        return () => window.removeEventListener("quillium:stop-ai", handleStop);
+    });
+}
+
+/**
  * Global abort controller for all AI requests. Calling `stopAllAi()`
  * aborts any in-flight streams and fires a window event so each panel
  * can call `chat.stop()` on its own Chat instance.
