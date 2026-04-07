@@ -12,11 +12,11 @@
  * To add a new scenario: append an entry to the `scenarios` array.
  */
 
-import type { EditorView } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
-import { createComment, createSuggestion, createRevision } from "$lib/editor/plugins/annotations";
+import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 
 export type ScenarioCategory = "debug" | "demo";
 
@@ -1298,6 +1298,61 @@ Outside, a man walked his dog in the rain. The dog did not seem to mind.`,
                 targetText: "The letter stayed where it was.",
                 comment: "This is the best line in the chapter.",
                 author: "Elena",
+                view,
+            });
+        },
+    },
+
+    // ── SCREENSHOT — persona-authored annotations ────────────────────────────
+
+    {
+        id: "screenshot-persona-annotations",
+        label: "Screenshot: persona annotations (Dickens)",
+        description:
+            "Annotations authored by different reader personas — used by the screenshot script to show emoji-in-colored-circle avatars",
+        category: "debug",
+        doc: DICKENS_DOC,
+        setup(view) {
+            createComment({
+                targetText: "it was the age of wisdom, it was the age of foolishness",
+                comment:
+                    'The parallelism is effective but you\'re asking the reader to trust that every pair earns its place. Does "foolishness" pull enough weight opposite "wisdom"? It feels like the weaker half.',
+                author: "Skeptical Editor",
+                view,
+            });
+            createComment({
+                targetText: "the season of Light, it was the season of Darkness",
+                comment:
+                    "Capitalising Light and Darkness signals allegory, but the rest of the sentence stays concrete. A first-time reader might wonder whether you've shifted registers mid-sentence.",
+                author: "First-Time Reader",
+                view,
+            });
+            createSuggestion({
+                state: view.state,
+                dispatch: (tr) => view.dispatch(tr),
+                targetText:
+                    "we were all going direct to Heaven, we were all going direct the other way",
+                replacements: [
+                    {
+                        text: "we were all headed straight for Heaven, and equally straight the other way",
+                        rationale:
+                            '"Direct" reads as archaic — modernise without losing the symmetry',
+                    },
+                ],
+                author: "Clarity Coach",
+            });
+            createRevision({
+                targetText:
+                    "Spiritual revelations were conceded to England at that favoured period, as at this.",
+                versions: [
+                    {
+                        label: "Active voice",
+                        text: "England received its spiritual revelations at that favoured period, as it does now.",
+                    },
+                ],
+                threadMessage:
+                    "The passive voice distances the reader emotionally. This sentence should land with more weight — it's setting up the satirical payoff.",
+                author: "Emotional Reader",
                 view,
             });
         },
