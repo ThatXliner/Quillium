@@ -196,6 +196,17 @@ const transitionClass = $derived(
 let container: HTMLDivElement;
 let iconStrip = $state<HTMLDivElement>();
 let iconEls = $state<HTMLButtonElement[]>([]);
+let stripOverflows = $state(false);
+let canScrollLeft = $state(false);
+let canScrollRight = $state(false);
+
+function updateScrollState() {
+    if (!iconStrip) return;
+    const el = iconStrip;
+    stripOverflows = el.scrollWidth > el.clientWidth + 1;
+    canScrollLeft = el.scrollLeft > 2;
+    canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+}
 
 function handleClickOutside(e: MouseEvent) {
     if (justResized) {
@@ -240,6 +251,8 @@ function scrollActiveIntoCenter(id: NonNullable<Action>) {
         const elRect = el.getBoundingClientRect();
         const offset = elRect.left - stripRect.left + elRect.width / 2 - stripRect.width / 2;
         iconStrip.scrollBy({ left: offset, behavior: "smooth" });
+        // Update scroll state after animation settles
+        setTimeout(updateScrollState, 350);
     });
 }
 
@@ -291,6 +304,20 @@ $effect(() => {
     if (expanded && action && action !== "settings") {
         scrollActiveIntoCenter(action);
     }
+});
+
+// Track overflow/scroll state on the icon strip
+$effect(() => {
+    if (!iconStrip) return;
+    const el = iconStrip;
+    updateScrollState();
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => {
+        el.removeEventListener("scroll", updateScrollState);
+        ro.disconnect();
+    };
 });
 
 // Allow external callers (e.g. AutoAIWidget) to open AI settings via event.
@@ -417,20 +444,23 @@ function handleKeydown(e: KeyboardEvent) {
             <div
                 bind:this={iconStrip}
                 class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
-                style="scrollbar-width: none; -ms-overflow-style: none; mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%); -webkit-mask-image: linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%);"
+                style="scrollbar-width: none; -ms-overflow-style: none;{stripOverflows
+                    ? ` mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'});`
+                    : ''}"
             >
                 {#each actions as a, i}
                     {@const activeIdx = actions.findIndex(x => x.id === action)}
-                    {@const dist = Math.abs(i - activeIdx)}
-                    {@const scale = activeIdx < 0 ? 1 : dist === 0 ? 1 : dist === 1 ? 0.88 : 0.76}
-                    {@const opacity = activeIdx < 0 ? 0.5 : dist === 0 ? 1 : dist === 1 ? 0.45 : 0.25}
+                    {@const dist = activeIdx < 0 ? 0 : Math.abs(i - activeIdx)}
+                    {@const maxDist = activeIdx < 0 ? 1 : Math.max(activeIdx, actions.length - 1 - activeIdx)}
+                    {@const t = maxDist === 0 ? 0 : dist / maxDist}
+                    {@const opacity = activeIdx < 0 ? 0.7 : 1 - (1 - 0.45) * Math.sqrt(t)}
                     {@const disabled = a.requiresApiKey && !hasApiKey()}
                     <button
                         bind:this={iconEls[i]}
                         onclick={() => selectAction(a.id)}
                         aria-label={disabled ? `${a.label} (add API key in settings)` : `${a.label} (${a.shortcut})`}
                         title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
-                        style="transform: scale({scale}); opacity: {disabled ? opacity * 0.4 : opacity};"
+                        style="opacity: {disabled ? opacity * 0.4 : opacity};"
                         class="p-2 rounded-full shrink-0 transition-all duration-200
                             {action === a.id
                                 ? a.activeClass
