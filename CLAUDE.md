@@ -60,6 +60,7 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 - ViewPlugins: annotationDecorations, revisionAtomicRanges, collapsedRevisionResolver, boundaryInsertNudge (§ ViewPlugins and Extensions)
 - Persistence: event log, snapshots, crash-safety matrix (§ Persistence)
 - AutoAI: engine, settings, widget (§ AutoAI)
+- Reader Personas: multi-persona parallel feedback, builtin/custom personas, chattiness (§ Reader Personas)
 - Dictionary & thesaurus popover (§ Dictionary & Thesaurus)
 - Settings: app preferences, font system, why localStorage vs SQLite (§ Settings)
 - Error guard and crash recovery: suspicious change detection, backups, restore (§ Error guard and crash recovery)

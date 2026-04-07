@@ -43,11 +43,12 @@ src/
 ├── hooks.client.ts            # Global error handlers, crash backup, PostHog exception capture
 ├── lib/
 │   ├── ai/
-│   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise)
+│   │   ├── AISidebar.svelte   # Tab picker (Chat / Feedback / Revise / Context / Readers / Settings)
 │   │   ├── AISettings.svelte  # Provider/model configuration
 │   │   ├── Chat.svelte        # General AI chat
 │   │   ├── DocumentContext.svelte # Context reference display
-│   │   ├── Feedback.svelte    # AI feedback on document or selection
+│   │   ├── Feedback.svelte    # AI feedback on document or selection (routes through persona streams)
+│   │   ├── Readers.svelte     # Reader persona configuration panel
 │   │   ├── Revise.svelte      # AI-powered revision generation
 │   │   ├── chatFactory.ts     # Shared AI request/streaming helpers
 │   │   ├── clientStreams.ts    # Streaming response handling
@@ -101,6 +102,11 @@ src/
 │   │           ├── ThreadMessage.svelte # Single message (with inline edit)
 │   │           ├── TutorialGuide.svelte # In-editor tutorial callouts
 │   │           └── default.css        # Highlight CSS classes for all annotation types
+│   ├── readers/
+│   │   ├── colors.ts            # Hex → lightTint/mediumTint helpers for persona avatar backgrounds
+│   │   ├── presets.ts           # ReaderPersona type, DEFAULT_PERSONAS (8 builtin personas)
+│   │   ├── prompt.ts            # buildPersonaPrompt() — assembles persona identity + chattiness directive
+│   │   └── settings.svelte.ts   # Reactive persona list store, localStorage persistence, CRUD helpers
 │   ├── library/
 │   │   ├── ContinuePill.svelte  # "Continue writing" shortcut on library page
 │   │   ├── DocumentCard.svelte  # Single document card in the grid
@@ -747,6 +753,100 @@ Closes on outside click or Esc. Controls are dimmed at 40% opacity when no API k
 
 ---
 
+## Reader Personas
+
+Reader personas are configurable AI "readers" that provide feedback from distinct perspectives (e.g., Skeptical Editor, Clarity Coach, First-Time Reader). Each persona has its own lens, chattiness level, and identity. When the user triggers feedback via the Feedback tab, all enabled personas run in parallel — each producing annotations attributed to that persona's name.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/readers/presets.ts` | `ReaderPersona` type definition, `DEFAULT_PERSONAS` (8 builtin personas) |
+| `src/lib/readers/settings.svelte.ts` | `readersSettings` reactive store, localStorage persistence, CRUD helpers |
+| `src/lib/readers/prompt.ts` | `buildPersonaPrompt()` — assembles persona identity block + chattiness directive |
+| `src/lib/readers/colors.ts` | `lightTint()` / `mediumTint()` — hex color helpers for persona avatar styling |
+| `src/lib/ai/Readers.svelte` | Configuration panel UI (persona cards, toggles, chattiness dots, custom creator) |
+
+### Data Model
+
+```ts
+type ReaderPersona = {
+    id: string;          // UUID for custom, slug for builtin (e.g. "skeptical-editor")
+    name: string;        // Display name
+    emoji: string;       // Avatar emoji
+    color: string;       // Hex color for accent/avatar
+    description: string; // Short tagline shown on collapsed cards
+    profile?: {          // Rich profile for builtin cards (expanded view)
+        about: string;
+        goodFor: string[];
+        example: string;
+    };
+    instruction: string; // AI prompt — not shown to users
+    builtin: boolean;
+    enabled: boolean;
+    chattiness: "quiet" | "normal" | "verbose";
+};
+```
+
+### Builtin Personas
+
+| Persona | Focus | Default |
+|---|---|---|
+| Skeptical Editor 🔍 | Logical gaps, weak claims | Enabled |
+| Clarity Coach 💡 | Jargon, ambiguity, readability | Enabled |
+| First-Time Reader 👶 | Missing context, assumed knowledge | Enabled |
+| Emotional Reader 💜 | Tone, voice, emotional resonance | Enabled |
+| Flow Reader 🌊 | Pacing, transitions, momentum | Disabled |
+| Devil's Advocate 😈 | Challenging assumptions, counterpoints | Disabled |
+| Expert Reader 🎓 | Depth, accuracy, intellectual rigor | Disabled |
+| Casual Skimmer ⚡ | Scannability, key points visibility | Disabled |
+
+### Chattiness
+
+Each persona has a 3-level chattiness setting that controls how much feedback it produces:
+
+| Level | Behavior |
+|---|---|
+| `quiet` | Only flag significant issues; say nothing if the passage is solid |
+| `normal` | Comment on issues worth the writer's attention |
+| `verbose` | Be thorough; flag everything, even minor issues |
+
+The chattiness directive is prepended to the persona's system prompt via `buildPersonaPrompt()`.
+
+### Settings Persistence
+
+Persona settings are stored in localStorage under `"quillium-readers-settings"` as a JSON array. On load, saved state is merged with `DEFAULT_PERSONAS` — user toggles and chattiness are preserved, but new builtins are added if the preset list grows. Custom (non-builtin) personas are appended after builtins.
+
+### Multi-Persona Execution
+
+When the user clicks a feedback button in `Feedback.svelte`, the `sendWithPersonas()` helper checks for enabled personas. If any exist, it calls `runMultiPersonaStreams()` in `chatFactory.ts`, which:
+
+1. Gets all enabled personas via `getEnabledPersonas()`
+2. Runs each persona's AI stream **in parallel** (`Promise.all`)
+3. Each stream uses `buildPersonaPrompt(persona)` prepended to the mode's system prompt
+4. Tool-call handlers attribute annotations (comments/suggestions/revisions) to the persona's name
+5. PostHog events are captured per persona completion
+
+If no personas are enabled, Feedback falls back to the standard single-stream behavior.
+
+### UI (`Readers.svelte`)
+
+The Readers panel is the 5th tab in the AI sidebar (key `5`). It displays:
+
+- **Enabled personas** at the top, **disabled personas** below a divider (dimmed at 55% opacity)
+- Each card shows: emoji avatar (colored circle), name, description, chattiness dots (1–3), enable toggle
+- Clicking a builtin card expands it to show: about text, "Good for" tags, example feedback quote
+- **Custom reader form** at the bottom: name, emoji, color swatch picker, instruction textarea
+- Custom personas can be deleted; builtins cannot
+
+### Integration Points
+
+- **Feedback.svelte**: Routes all sends through persona check; sets `personaInFlight` flag to disable UI during multi-persona runs
+- **chatFactory.ts**: `runMultiPersonaStreams()` handles parallel persona execution and annotation attribution
+- **AI sidebar**: Readers is tab index 5 in `AISidebar.svelte`; uses rose theme accent
+
+---
+
 ## Dictionary & Thesaurus
 
 A floating popover triggered by `Mod-B` (⌘B) when a single word is selected. Provides definitions, synonyms/antonyms from the Free Dictionary API, and an AI "describe → find word" mode.
@@ -1196,6 +1296,11 @@ The `settingsOpen` store is exported from `stores.ts` so that both the native me
 | `document_restored` | User restores document(s) from trash | `library/+page.svelte` |
 | `document_deleted_permanently` | User permanently deletes document(s) | `library/+page.svelte` |
 | `document_exported` | User exports a document | `export.ts` |
+| `reader_persona_toggled` | User enables/disables a reader persona | `Readers.svelte` |
+| `reader_chattiness_changed` | User cycles a persona's chattiness level | `Readers.svelte` |
+| `reader_persona_created` | User creates a custom reader persona | `Readers.svelte` |
+| `reader_persona_removed` | User deletes a custom reader persona | `Readers.svelte` |
+| `reader_persona_review_completed` | A single persona finishes its feedback stream | `chatFactory.ts` |
 | `autoai_toggled` | User enables/disables AutoAI | `AutoAIWidget.svelte` |
 | `autoai_mode_changed` | User switches auto/manual mode | `AutoAIWidget.svelte` |
 | `autoai_manual_review_triggered` | User clicks "Review now" | `AutoAIWidget.svelte` |
