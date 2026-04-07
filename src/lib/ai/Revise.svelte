@@ -79,46 +79,20 @@ $effect(() => {
     setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
-function handleSubmit(event: SubmitEvent) {
-    event.preventDefault();
-    if (!input.trim() || chat.status !== "ready") return;
-
-    posthog.capture("ai_revise_requested", {
-        has_selection: !!$selectedText,
-        trigger: "manual",
-    });
-    chat.sendMessage({ text: input });
-    input = "";
-}
-
 /**
- * Build a selection-aware revision prompt and send it as a chat
- * message. If text is selected, targets the selection; otherwise
- * targets the whole document.
+ * Central send helper: routes through persona streams when personas
+ * are enabled, otherwise falls back to the single-stream chat.
  */
-function reviseText() {
-    const context = $selectedText
-        ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
-        : "Please revise my document to improve flow and conciseness.";
-
-    posthog.capture("ai_revise_requested", {
-        has_selection: !!$selectedText,
-        trigger: "quick_action",
-    });
-    input = context;
-    chat.sendMessage({ text: context });
-}
-
-async function revise() {
+async function sendRevise(text: string, trigger: string) {
     const personas = getEnabledPersonas();
     if (personas.length === 0) {
-        reviseText();
+        posthog.capture("ai_revise_requested", {
+            has_selection: !!$selectedText,
+            trigger,
+        });
+        chat.sendMessage({ text });
         return;
     }
-
-    const context = $selectedText
-        ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
-        : "Please revise my document to improve flow and conciseness.";
 
     posthog.capture("ai_revise_requested", {
         has_selection: !!$selectedText,
@@ -132,13 +106,29 @@ async function revise() {
         await runMultiPersonaStreams({
             personas,
             streamFn: streamRevise,
-            messages: [{ id: "1", role: "user", parts: [{ type: "text", text: context }] }],
+            messages: [{ id: "1", role: "user", parts: [{ type: "text", text }] }],
             mode: "revise",
         });
     } finally {
         personaInFlight = false;
         setAiProcessing(false);
     }
+}
+
+function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+    if (!input.trim() || chat.status !== "ready") return;
+    const text = input;
+    input = "";
+    sendRevise(text, "manual");
+}
+
+function revise() {
+    const context = $selectedText
+        ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
+        : "Please revise my document to improve flow and conciseness.";
+    input = context;
+    sendRevise(context, "quick_action");
 }
 
 const defaultQuickPrompts = [
@@ -168,7 +158,7 @@ function useQuickPrompt(prompt: string) {
         has_selection: !!$selectedText,
     });
     input = message;
-    chat.sendMessage({ text: message });
+    sendRevise(message, "quick_prompt");
 }
 </script>
 

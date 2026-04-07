@@ -11,7 +11,9 @@ const CHATTINESS_DIRECTIVES: Record<Chattiness, string> = {
  * Returns the identity block + chattiness directive as a single string.
  */
 export function buildPersonaPrompt(persona: ReaderPersona): string {
-    return `You are the ${persona.name}, a reader who ${persona.instruction} You read from this specific perspective and your feedback reflects this lens.
+    const instruction = persona.instruction.trim();
+    const normalized = /[.!?]$/.test(instruction) ? instruction : `${instruction}.`;
+    return `You are the ${persona.name}, a reader who ${normalized} You read from this specific perspective and your feedback reflects this lens.
 
 ${CHATTINESS_DIRECTIVES[persona.chattiness]}
 

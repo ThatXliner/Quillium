@@ -75,46 +75,20 @@ $effect(() => {
     setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
-function handleSubmit(event: SubmitEvent) {
-    event.preventDefault();
-    if (!input.trim() || chat.status !== "ready") return;
-
-    posthog.capture("ai_feedback_requested", {
-        has_selection: !!$selectedText,
-        trigger: "manual",
-    });
-    chat.sendMessage({ text: input });
-    input = "";
-}
-
 /**
- * Build a selection-aware feedback prompt and send it as a chat
- * message. If text is selected, asks for feedback on the selection;
- * otherwise requests general document feedback.
+ * Central send helper: routes through persona streams when personas
+ * are enabled, otherwise falls back to the single-stream chat.
  */
-function askForFeedback() {
-    const context = $selectedText
-        ? `Please provide feedback on this selected text: "${$selectedText}"`
-        : "Please provide feedback on my document.";
-
-    posthog.capture("ai_feedback_requested", {
-        has_selection: !!$selectedText,
-        trigger: "quick_action",
-    });
-    input = context;
-    chat.sendMessage({ text: context });
-}
-
-async function askForPersonaFeedback() {
+async function sendFeedback(text: string, trigger: string) {
     const personas = getEnabledPersonas();
     if (personas.length === 0) {
-        askForFeedback();
+        posthog.capture("ai_feedback_requested", {
+            has_selection: !!$selectedText,
+            trigger,
+        });
+        chat.sendMessage({ text });
         return;
     }
-
-    const context = $selectedText
-        ? `Please provide feedback on this selected text: "${$selectedText}"`
-        : "Please provide feedback on my document.";
 
     posthog.capture("ai_feedback_requested", {
         has_selection: !!$selectedText,
@@ -128,13 +102,29 @@ async function askForPersonaFeedback() {
         await runMultiPersonaStreams({
             personas,
             streamFn: streamFeedback,
-            messages: [{ id: "1", role: "user", parts: [{ type: "text", text: context }] }],
+            messages: [{ id: "1", role: "user", parts: [{ type: "text", text }] }],
             mode: "feedback",
         });
     } finally {
         personaInFlight = false;
         setAiProcessing(false);
     }
+}
+
+function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+    if (!input.trim() || chat.status !== "ready") return;
+    const text = input;
+    input = "";
+    sendFeedback(text, "manual");
+}
+
+function askForFeedback() {
+    const context = $selectedText
+        ? `Please provide feedback on this selected text: "${$selectedText}"`
+        : "Please provide feedback on my document.";
+    input = context;
+    sendFeedback(context, "quick_action");
 }
 
 const feedbackQuickPrompts = [
@@ -166,7 +156,7 @@ function useQuickPrompt(prompt: string) {
         has_selection: !!$selectedText,
     });
     input = message;
-    chat.sendMessage({ text: message });
+    sendFeedback(message, "quick_prompt");
 }
 </script>
 
@@ -174,7 +164,7 @@ function useQuickPrompt(prompt: string) {
     <!-- Quick actions -->
     <div class="p-3 border-b border-black/10">
         <button
-            onclick={askForPersonaFeedback}
+            onclick={askForFeedback}
             disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
             class="w-full p-2.5 bg-white hover:bg-green-50 rounded-lg border border-green-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
         >
