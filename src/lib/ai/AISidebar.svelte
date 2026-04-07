@@ -89,6 +89,7 @@ const actions: {
     activeClass: string;
     hoverClass: string;
     requiresApiKey: boolean;
+    preferredWidth?: number;
 }[] = [
     {
         id: "chat",
@@ -125,6 +126,7 @@ const actions: {
         activeClass: "text-amber-600 bg-white/60",
         hoverClass: "hover:text-amber-600",
         requiresApiKey: true,
+        preferredWidth: 380,
     },
     {
         id: "readers",
@@ -134,6 +136,7 @@ const actions: {
         activeClass: "text-rose-600 bg-white/60",
         hoverClass: "hover:text-rose-600",
         requiresApiKey: true,
+        preferredWidth: 380,
     },
 ];
 
@@ -167,14 +170,18 @@ let resizeStartHeight = 0;
 let activeHandle: "right" | "bottom" | "corner" | null = null;
 let justResized = false;
 
-const effectiveWidth = $derived(customWidth ?? DEFAULT_WIDTH);
+const defaultWidthForTab = $derived(
+    actions.find((a) => a.id === action)?.preferredWidth ?? DEFAULT_WIDTH,
+);
+const effectiveWidth = $derived(customWidth ?? defaultWidthForTab);
 const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
 const isCustomSize = $derived(customWidth !== null || customHeight !== null);
 
-// Inline style only when expanded AND user has resized (overrides Tailwind)
+// Inline style when expanded: always set width (so tab-based default transitions
+// animate smoothly) and height if user has resized.
 const containerSizeStyle = $derived(
-    expanded && (customWidth !== null || customHeight !== null)
-        ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;`
+    expanded
+        ? `width: ${effectiveWidth}px;${customHeight !== null ? ` height: ${effectiveHeight}px;` : ""}`
         : "",
 );
 
