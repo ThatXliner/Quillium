@@ -55,7 +55,7 @@ const info: Record<string, InfoEntry> = {
             { label: "Very repetitive", range: "< 30%" },
         ],
         example:
-            "500 words with 300 unique ones = 60%. A technical manual with lots of jargon will score lower, and that's expected.",
+            "500 words with 300 unique ones = 60%. Technical writing that repeats the same terms often will have a lower percentage here, and that's expected.",
     },
     readingLevel: {
         title: "Reading Level",
