@@ -49,7 +49,9 @@ import {
     type CommentInput,
     type RevisionInput,
     type SuggestionInput,
+    type StreamOpts,
 } from "./clientStreams";
+import type { ReaderPersona } from "$lib/readers/presets";
 
 type ToolCall =
     | { toolName: "createComment"; input: CommentInput }
@@ -63,15 +65,15 @@ type ToolCall =
  * streaming. Each tool name maps to an annotation-system helper that
  * finds the target text in the editor and attaches the annotation.
  */
-function handleToolCall(toolCall: ToolCall) {
+function handleToolCall(toolCall: ToolCall, author?: string) {
     const view = get(editorView);
     if (!view) return;
 
     switch (toolCall.toolName) {
         case "createComment": {
             const { targetText, comment } = toolCall.input;
-            createComment({ targetText, comment, view });
-            posthog.capture("annotation_created", { type: "comment" });
+            createComment({ targetText, comment, view, author });
+            posthog.capture("annotation_created", { type: "comment", persona: author });
             break;
         }
         case "createSuggestion": {
@@ -82,20 +84,23 @@ function handleToolCall(toolCall: ToolCall) {
                 comment,
                 state: view.state,
                 dispatch: view.dispatch,
+                author,
             });
             posthog.capture("annotation_created", {
                 type: "suggestion",
                 replacement_count: replacements.length,
+                persona: author,
             });
             break;
         }
         case "createRevision": {
             const { targetText, versions, threadMessage } = toolCall.input;
-            const created = createRevision({ targetText, versions, threadMessage, view });
+            const created = createRevision({ targetText, versions, threadMessage, view, author });
             if (created) {
                 posthog.capture("annotation_created", {
                     type: "revision",
                     version_count: versions.length,
+                    persona: author,
                 });
             }
             break;
@@ -103,15 +108,58 @@ function handleToolCall(toolCall: ToolCall) {
     }
 }
 
-type StreamFn = (opts: {
+type StreamFn = (opts: StreamOpts) => ReadableStream<UIMessageChunk>;
+
+/**
+ * Run a stream function through multiple personas in parallel.
+ * Each persona gets its own stream with its own tool-call handler
+ * that attributes annotations to that persona.
+ */
+export async function runMultiPersonaStreams({
+    personas,
+    streamFn,
+    messages,
+    mode,
+}: {
+    personas: ReaderPersona[];
+    streamFn: StreamFn;
     messages: UIMessage[];
-    documentContent: string;
-    selectedText: string;
-    provider: typeof aiSettings.provider;
-    model: string;
-    apiKey: string;
-    documentContext: Record<string, string>;
-}) => ReadableStream<UIMessageChunk>;
+    mode: string;
+}): Promise<void> {
+    await ensureApiKeyLoaded();
+
+    const tasks = personas.map(async (persona) => {
+        const stream = streamFn({
+            messages,
+            documentContent: get(documentContent),
+            selectedText: get(selectedText),
+            provider: aiSettings.provider,
+            model: aiSettings.model,
+            apiKey: aiSettings.apiKey,
+            documentContext: { ...documentContext },
+            persona,
+        });
+
+        const reader = stream.getReader();
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value?.type === "tool-input-available") {
+                handleToolCall(
+                    { toolName: value.toolName, input: value.input } as ToolCall,
+                    persona.name,
+                );
+            }
+        }
+
+        posthog.capture("reader_persona_review_completed", {
+            persona: persona.id,
+            mode,
+        });
+    });
+
+    await Promise.all(tasks);
+}
 
 /**
  * Build a ChatTransport that captures current editor/settings state

@@ -22,6 +22,8 @@
  *   - editMessage: draft text while editing
  */
 import type { Thread, ThreadMessage } from ".";
+import { readersSettings } from "$lib/readers/settings.svelte";
+import { lightTint, mediumTint } from "$lib/readers/colors";
 
 let {
     message,
@@ -36,6 +38,9 @@ let {
     index: number;
     truncate?: boolean;
 } = $props();
+
+/** Look up persona metadata by author name for emoji-in-circle avatar. */
+const persona = $derived(readersSettings.personas.find((p) => p.name === message.author));
 
 let editing = $state(false);
 let editMessage = $state(message.message);
@@ -70,9 +75,18 @@ function formatTime(ts: number) {
 </script>
 
 <div class="flex gap-2.5">
-    <div class="shrink-0 w-7 h-7 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white shadow-sm flex items-center justify-center text-black/70 text-xs font-semibold">
-        {initials(message.author)}
-    </div>
+    {#if persona}
+        <div
+            class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm"
+            style="background: {lightTint(persona.color)}; border: 1.5px solid {mediumTint(persona.color)};"
+        >
+            {persona.emoji}
+        </div>
+    {:else}
+        <div class="shrink-0 w-7 h-7 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white shadow-sm flex items-center justify-center text-black/70 text-xs font-semibold">
+            {initials(message.author)}
+        </div>
+    {/if}
     <div class="flex-1 min-w-0">
         <div class="flex items-baseline gap-1.5">
             <span class="text-xs font-semibold text-black/80">{message.author}</span>

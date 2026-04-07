@@ -16,15 +16,17 @@
  *   05-revision-active.png  — revision card active: version pills + nested editor open
  *   06-library.png          — document library with multiple documents and preview panel
  *   07-revision-modal.png   — revision full-screen modal editor open
+ *   08b-persona-annotations.png — annotations with persona emoji avatars
+ *   09-readers-panel.png    — AI sidebar open on Readers tab showing persona cards
  *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   12-nested-revision.png  — doubly-nested revision: outer modal with inner revision open
  *   13-inline-nested-revision.png — revision modal with an inline sub-revision open
  */
 
-import { chromium, type BrowserContext, type Page } from "@playwright/test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { type BrowserContext, type Page, chromium } from "@playwright/test";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
@@ -123,6 +125,7 @@ async function installTauriMock(
             libraryDocs: typeof LIBRARY_DOCUMENTS;
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            localStorage.setItem("quillium_beta_accepted", "true");
             // Signal that an API key has been saved so the settings module
             // calls loadApiKeyForProvider() on startup. Without this,
             // hasApiKey() always returns false and tab clicks redirect to Settings.
@@ -142,6 +145,7 @@ async function installTauriMock(
                 JSON.stringify({
                     docFontFamily: "Georgia, serif",
                     docFontSize: 18,
+                    ...(payload.fakeApiKey ? { aiEnabled: true } : {}),
                 }),
             );
 
@@ -748,6 +752,48 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
 }
 
 /**
+ * 08b. persona-annotations — Annotations authored by different reader
+ *    personas, showing emoji-in-colored-circle avatars in the annotation
+ *    cards beside the document.
+ */
+async function scenarioPersonaAnnotations(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-persona-annotations");
+    if (!applied) {
+        await page.close();
+        return;
+    }
+    // Click somewhere neutral so no annotation is active — shows all cards at rest
+    await page.mouse.click(720, 800);
+    await page.waitForTimeout(400);
+    await shot(page, "08b-persona-annotations");
+    await page.close();
+}
+
+/**
+ * 09. readers-panel — The AI sidebar open on the Readers tab, showing
+ *    the persona cards with enabled/disabled states, chattiness dots,
+ *    and the "Create custom reader" button.
+ */
+async function scenarioReadersPanel(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    // Open the Readers tab by clicking the sidebar icon
+    await page.locator("#ai-tab-readers").click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "09-readers-panel");
+    await page.close();
+}
+
+/**
  * 10. dictionary — The floating Dictionary & Thesaurus popover open in
  *    "Look up word" mode, with "wisdom" selected in the editor and
  *    auto-populated into the popover via the keyboard shortcut (⌘B / Ctrl+B).
@@ -860,6 +906,8 @@ async function main(): Promise<void> {
         await scenarioRevisionModal(context);
         await scenarioNestedRevision(context);
         await scenarioInlineNestedRevision(context);
+        await scenarioPersonaAnnotations(context);
+        await scenarioReadersPanel(context);
         await scenarioDictionary(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
