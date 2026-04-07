@@ -18,7 +18,7 @@ function load(): ReaderPersona[] {
         });
         // Append any custom (non-builtin) personas the user created.
         for (const p of saved) {
-            if (!p.builtin) merged.push(p);
+            if (!p.builtin) merged.push({ ...p, description: p.description || p.instruction });
         }
         return merged;
     } catch {
