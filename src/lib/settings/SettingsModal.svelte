@@ -32,7 +32,7 @@ import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
 
-const { onclose }: { onclose: () => void } = $props();
+const { onclose, scrollTo }: { onclose: () => void; scrollTo?: string } = $props();
 
 type FontOption = {
     label: string;
@@ -158,6 +158,21 @@ $effect(() => {
     if (dialogEl && !dialogEl.open) {
         dialogEl.showModal();
         posthog.capture("settings_opened");
+
+        if (scrollTo) {
+            // Wait a tick for the dialog layout to settle
+            requestAnimationFrame(() => {
+                const target = dialogEl?.querySelector(`[data-setting-id="${scrollTo}"]`);
+                if (!target) return;
+                target.scrollIntoView({ behavior: "smooth", block: "center" });
+                target.classList.add("setting-flash");
+                target.addEventListener(
+                    "animationend",
+                    () => target.classList.remove("setting-flash"),
+                    { once: true },
+                );
+            });
+        }
     }
 });
 
@@ -205,6 +220,7 @@ function save() {
         custom_quick_actions_count: draft.customQuickActions.length,
         auto_version_on_revision_create: draft.autoVersionOnRevisionCreate,
         show_shortcut_hints: draft.showShortcutHints,
+        show_ai_suggestions: draft.showAiSuggestions,
         show_word_count: draft.showWordCount,
         analytics_enabled: draft.analyticsEnabled,
         share_document_analytics: draft.shareDocumentAnalytics,
@@ -756,6 +772,40 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
+            <!-- AI suggestion decorations toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">AI suggestion underlines</div>
+                    <div class="setting-desc">Show green underlines in the editor for AI suggestions. When hidden, suggestions still appear in the sidebar.</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showAiSuggestions}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showAiSuggestions = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.showAiSuggestions}
+                    aria-label="Toggle AI suggestion underlines"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showAiSuggestions ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showAiSuggestions = !draft.showAiSuggestions;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showAiSuggestions ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
             <!-- Word count overlay toggle -->
             <div class="setting-row">
                 <div class="setting-meta">
@@ -841,7 +891,7 @@ function fontLabel(fonts: FontOption[], value: string) {
 
             <!-- Share document toggle (only relevant when analytics are on) -->
             {#if draft.analyticsEnabled}
-            <div class="setting-row">
+            <div class="setting-row" data-setting-id="share-document-analytics">
                 <div class="setting-meta">
                     <div class="setting-title">Share your document</div>
                     <div class="setting-desc">Enable to share your document contents with analytics when making a bug report.</div>
@@ -1253,5 +1303,15 @@ function fontLabel(fonts: FontOption[], value: string) {
         height: 1px;
         background: rgba(0, 0, 0, 0.06);
         margin: 4px 0;
+    }
+
+    /* Flash animation for scroll-to-setting */
+    @keyframes setting-flash {
+        0%   { background: rgba(59, 130, 246, 0.18); }
+        100% { background: transparent; }
+    }
+    :global(.setting-flash) {
+        animation: setting-flash 1.5s ease-out;
+        border-radius: 6px;
     }
 </style>

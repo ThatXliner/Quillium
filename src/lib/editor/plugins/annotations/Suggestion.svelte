@@ -58,6 +58,15 @@ const thread = $derived(suggestion.thread);
 let selectedIndex = $state<number | null>(suggestion.replacements.length === 1 ? 0 : null);
 
 let diffExpanded = $state(false);
+let flashing = $state(false);
+let cardEl = $state<HTMLDivElement | undefined>(undefined);
+
+$effect(() => {
+    if (isActive) {
+        flashing = true;
+        cardEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+});
 
 /**
  * Compute token-level diff operations between the original
@@ -73,11 +82,14 @@ function getDiffOps(replacementIndex: number) {
 </script>
 
 <div
+  bind:this={cardEl}
   class="border overflow-hidden transition-all duration-200
         {isActive
     ? 'bg-green-50/90 border-green-200/60 shadow-xl rounded-[14px]'
-    : 'bg-green-50/60 border-green-200/40 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
+    : 'bg-green-50/60 border-green-200/40 shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}
+        {flashing ? 'suggestion-flash' : ''}"
   style="backdrop-filter: blur(12px);"
+  onanimationend={() => { flashing = false; }}
 >
   <!-- Header -->
   <div class="flex items-center justify-between px-3 pt-2.5 pb-0">
@@ -253,3 +265,14 @@ function getDiffOps(replacementIndex: number) {
     </div>
   {/if}
 </div>
+
+<style>
+    @keyframes suggestion-flash {
+        0%   { background-color: rgba(187, 247, 208, 0.9); }
+        70%  { background-color: rgba(187, 247, 208, 0.9); }
+        100% { background-color: rgba(240, 253, 244, 0.9); }
+    }
+    .suggestion-flash {
+        animation: suggestion-flash 0.6s ease-out both;
+    }
+</style>

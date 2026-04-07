@@ -222,6 +222,15 @@ const hasSelection = $derived(trimmedSelection.length > 0);
 const isSingleWordSelection = $derived(
     hasSelection && !/\s/.test(trimmedSelection) && trimmedSelection.length <= 60,
 );
+// When showAiSuggestions is off, hide suggestion cards unless active (clicked)
+const visibleAnnotations = $derived(
+    appSettings.showAiSuggestions
+        ? sortedAnnotations
+        : sortedAnnotations.filter(
+              (a) => !isAnnotationOfType(a, "suggestion") || resolvedActiveAnnotation?.id === a.id,
+          ),
+);
+
 const hasComments = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "comment")));
 const hasRevisions = $derived(sortedAnnotations.some((a) => isAnnotationOfType(a, "revision")));
 
@@ -602,7 +611,7 @@ $effect(() => {
     {#if isFloating && !narrowMode}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
             <div class="annotation-scroll-inner">
-                {#each sortedAnnotations as c (c.id)}
+                {#each visibleAnnotations as c (c.id)}
                     {@const i = c.id}
                     {@const isActive = resolvedActiveAnnotation?.id === c.id}
                     {@const isPendingComment = pendingComment?.id === c.id}
@@ -681,7 +690,7 @@ $effect(() => {
         </div>
     {:else if !isFloating}
         <div class="annotation-inline-list">
-            {#each sortedAnnotations as c (c.id)}
+            {#each visibleAnnotations as c (c.id)}
                 {@const i = c.id}
                 {@const isActive = resolvedActiveAnnotation?.id === c.id}
                 {@const isPendingComment = pendingComment?.id === c.id}

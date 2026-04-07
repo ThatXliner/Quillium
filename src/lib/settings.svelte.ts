@@ -33,6 +33,7 @@ type AppSettings = {
     showWordCount: boolean;
     wordCountDisplayMode: "words" | "chars" | "both";
     autoVersionOnRevisionCreate: boolean;
+    showAiSuggestions: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -55,6 +56,7 @@ const DEFAULTS: AppSettings = {
     showWordCount: true,
     wordCountDisplayMode: "both",
     autoVersionOnRevisionCreate: true,
+    showAiSuggestions: true,
 };
 
 function loadSettings(): AppSettings {
