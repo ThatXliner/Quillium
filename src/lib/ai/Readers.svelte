@@ -113,6 +113,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                     </button>
                     <button
                         onclick={() => handleToggle(persona.id)}
+                        aria-label="Disable {persona.name}"
                         class="w-7 h-4 rounded-full relative cursor-pointer border-none bg-amber-400"
                     >
                         <span class="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-white shadow-sm"></span>
@@ -154,6 +155,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                     </div>
                     <button
                         onclick={() => handleToggle(persona.id)}
+                        aria-label="Enable {persona.name}"
                         class="w-7 h-4 rounded-full relative cursor-pointer border-none bg-gray-300"
                     >
                         <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow-sm"></span>
@@ -192,6 +194,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                         {#each colorSwatches as swatch}
                             <button
                                 onclick={() => (newColor = swatch)}
+                                aria-label="Select color {swatch}"
                                 class="w-4 h-4 rounded-full border-2 cursor-pointer"
                                 style="background: {swatch}; border-color: {newColor === swatch ? '#1f2937' : 'transparent'};"
                             ></button>
