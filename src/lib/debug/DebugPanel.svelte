@@ -55,6 +55,22 @@ let error = $state<string | null>(null);
 let historyCleared = $state(false);
 let historyClearTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingSimulation = $state<string | null>(null);
+let countdownSeconds = $state(5);
+let countdownInterval: ReturnType<typeof setInterval> | undefined;
+
+function startCountdown(type: string, callback: () => void) {
+    pendingSimulation = type;
+    countdownSeconds = 5;
+    clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        countdownSeconds--;
+        if (countdownSeconds <= 0) {
+            clearInterval(countdownInterval);
+            callback();
+            pendingSimulation = null;
+        }
+    }, 1000);
+}
 
 const debugScenarios = scenarios.filter((s) => s.category === "debug");
 const demoScenarios = scenarios.filter((s) => s.category === "demo");
@@ -159,9 +175,8 @@ function clearUndoHistory() {
 // ── App-level simulations ─────────────────────────────────────────
 
 function triggerCrashBanner() {
-    pendingSimulation = "crash";
-    close();
-    setTimeout(() => {
+    startCountdown("crash", () => {
+        close();
         saveEmergencyBackup("Simulated crash from debug panel");
         errorBanner.set({
             message: "Something went wrong. Your work has been backed up.",
@@ -170,22 +185,19 @@ function triggerCrashBanner() {
             details:
                 "Error: Simulated crash from debug panel\n    at DebugPanel.triggerCrashBanner",
         });
-        pendingSimulation = null;
-    }, 5000);
+    });
 }
 
 function triggerSuspiciousRemoval() {
-    pendingSimulation = "removal";
-    close();
-    setTimeout(() => {
+    startCountdown("removal", () => {
+        close();
         errorBanner.set({
             message:
                 "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
             hasBackup: false,
             backupType: "auto",
         });
-        pendingSimulation = null;
-    }, 5000);
+    });
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -334,12 +346,12 @@ function handleKeydown(e: KeyboardEvent) {
                 onclick={triggerCrashBanner}
                 disabled={pendingSimulation !== null}
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors disabled:opacity-40"
-            >{pendingSimulation === "crash" ? "Firing in 5s…" : "Crash"}</button>
+            >{pendingSimulation === "crash" ? `Firing in ${countdownSeconds}s…` : "Crash"}</button>
             <button
                 onclick={triggerSuspiciousRemoval}
                 disabled={pendingSimulation !== null}
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-600 transition-colors disabled:opacity-40"
-            >{pendingSimulation === "removal" ? "Firing in 5s…" : "Mass annotation removal"}</button>
+            >{pendingSimulation === "removal" ? `Firing in ${countdownSeconds}s…` : "Mass annotation removal"}</button>
         </div>
 
         <!-- Footer -->
