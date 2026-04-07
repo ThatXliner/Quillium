@@ -505,7 +505,7 @@ const annotationDecorations = ViewPlugin.fromClass(
 // provided. Used by createComment, createSuggestion, and
 // createRevision to support both cursor-based and text-based
 // annotation creation (e.g. from AI suggestions).
-function getSelection({
+export function getSelection({
     editorSelection,
     targetText,
     context,
@@ -525,40 +525,47 @@ function getSelection({
             throw new Error("Must specify at least either targetText or editorSelection");
         }
 
-        // Strip trailing ellipsis the AI may have added when truncating.
-        const stripEllipsis = (s: string) => s.replace(/\s*(?:\.{3}|…)\s*$/, "");
-        const searchTarget = stripEllipsis(targetText) || targetText;
-        if (searchTarget !== targetText) {
-            posthog.capture("ai_target_text_ellipsis_stripped", {
-                original: targetText.slice(0, 80),
-            });
-        }
-
         // When context is provided, find the context first, then search
         // for targetText only within that range to disambiguate duplicate
         // short phrases.
         if (context) {
-            const searchCtx = stripEllipsis(context) || context;
-            const ctxCursor = new SearchCursor(document, searchCtx);
+            const ctxCursor = new SearchCursor(document, context);
             const ctxMatch = ctxCursor.next();
             if (!ctxMatch.done) {
                 const { from: ctxFrom, to: ctxTo } = ctxMatch.value;
                 const ctxSlice = document.sliceString(ctxFrom, ctxTo);
-                const offset = ctxSlice.indexOf(searchTarget);
+                const offset = ctxSlice.indexOf(targetText);
                 if (offset !== -1) {
                     const from = ctxFrom + offset;
-                    const to = from + searchTarget.length;
+                    const to = from + targetText.length;
                     return EditorSelection.create([EditorSelection.range(from, to)]);
                 }
             }
             // Fall through to full-document search if context didn't resolve
         }
 
-        const query = new SearchCursor(document, searchTarget);
+        const query = new SearchCursor(document, targetText);
         const selections = [...query].map(({ from: anchor, to: head }) =>
             EditorSelection.range(anchor, head),
         );
+
+        // If not found, retry after stripping trailing ellipsis the AI
+        // may have added when truncating (but only as a fallback — if
+        // the verbatim text exists, we use it).
         if (selections.length === 0) {
+            const stripEllipsis = (s: string) => s.replace(/\s*(?:\.{3}|…)\s*$/, "");
+            const stripped = stripEllipsis(targetText);
+            if (stripped.length > 0 && stripped !== targetText) {
+                posthog.capture("ai_target_text_ellipsis_stripped", {
+                    original: targetText.slice(0, 80),
+                });
+                const strippedCtx = context ? stripEllipsis(context) || context : undefined;
+                return getSelection({
+                    targetText: stripped,
+                    context: strippedCtx,
+                    document,
+                });
+            }
             throw new Error(`Target text not found in document: "${targetText.slice(0, 60)}…"`);
         }
         selection = EditorSelection.create(selections);
