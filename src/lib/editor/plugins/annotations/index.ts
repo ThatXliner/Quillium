@@ -72,6 +72,7 @@ import {
     type KeyBinding,
     ViewPlugin,
     type ViewUpdate,
+    WidgetType,
 } from "@codemirror/view";
 import { tokenize, diffTokens, SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "./diff";
@@ -79,6 +80,7 @@ export { tokenize, diffTokens } from "./diff";
 
 import { filter, flatMap, isEqual } from "lodash-es";
 import {
+    type Annotation,
     type AnnotationType,
     type VersionState,
     createNewAnnotation,
@@ -104,7 +106,9 @@ import type { NestedEditorCommand } from "$lib/stores";
 import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import { nestedEditorEdit } from "./annotationField";
-import posthog from "$lib/posthog";
+import posthog, { showPrivacyNudge } from "$lib/posthog";
+import { settingsOpen } from "$lib/stores";
+import { readersSettings } from "$lib/readers/settings.svelte";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -389,6 +393,24 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
     },
 );
 
+class PersonaDotWidget extends WidgetType {
+    constructor(readonly color: string) {
+        super();
+    }
+    eq(other: PersonaDotWidget) {
+        return this.color === other.color;
+    }
+    toDOM() {
+        const dot = document.createElement("span");
+        dot.className = "cm-persona-dot";
+        dot.style.backgroundColor = this.color;
+        return dot;
+    }
+    ignoreEvent() {
+        return true;
+    }
+}
+
 // -------------------------------------------------------
 // annotationDecorations ViewPlugin
 //
@@ -411,22 +433,23 @@ const annotationDecorations = ViewPlugin.fromClass(
         decorations: DecorationSet;
 
         constructor(view: EditorView) {
-            this.decorations = RangeSet.join([
-                this.getDecorations(view, "comment", "cm-comment"),
-                this.getDecorations(view, "revision", "cm-revision"),
-                this.getDecorations(view, "suggestion", "cm-suggestion"),
-            ]);
+            this.decorations = this.buildAll(view);
         }
 
         update(update: ViewUpdate) {
             // update.selectionSet also means "if cursor changed"
             if (update.selectionSet || update.docChanged || annotationsChanged(update)) {
-                this.decorations = RangeSet.join([
-                    this.getDecorations(update.view, "comment", "cm-comment"),
-                    this.getDecorations(update.view, "revision", "cm-revision"),
-                    this.getDecorations(update.view, "suggestion", "cm-suggestion"),
-                ]);
+                this.decorations = this.buildAll(update.view);
             }
+        }
+
+        buildAll(view: EditorView): DecorationSet {
+            return RangeSet.join([
+                this.getDecorations(view, "comment", "cm-comment"),
+                this.getDecorations(view, "revision", "cm-revision"),
+                this.getDecorations(view, "suggestion", "cm-suggestion"),
+                this.getPersonaDots(view),
+            ]);
         }
 
         getDecorations(view: EditorView, type: AnnotationType, classPrefix: string): DecorationSet {
@@ -467,6 +490,36 @@ const annotationDecorations = ViewPlugin.fromClass(
                         class: active ? `${classPrefix}-active` : classPrefix,
                         inclusive: true,
                         // inclusive: type === "revision",
+                    }),
+                );
+            }
+            return builder.finish();
+        }
+
+        getPersonaDots(view: EditorView): DecorationSet {
+            const builder = new RangeSetBuilder<Decoration>();
+            const suggestions = filter(Object.values(view.state.field(annotationField)), (a) =>
+                isAnnotationOfType(a, "suggestion"),
+            ) as Array<Annotation<"suggestion">>;
+
+            const dots = suggestions
+                .filter((s) => {
+                    if (!s.author || s.author === "AI") return false;
+                    return readersSettings.personas.some((p) => p.name === s.author);
+                })
+                .map((s) => ({
+                    pos: s.selection.main.to,
+                    color: readersSettings.personas.find((p) => p.name === s.author)!.color,
+                }))
+                .sort((a, b) => a.pos - b.pos);
+
+            for (const { pos, color } of dots) {
+                builder.add(
+                    pos,
+                    pos,
+                    Decoration.widget({
+                        widget: new PersonaDotWidget(color),
+                        side: 1,
                     }),
                 );
             }
@@ -556,9 +609,18 @@ export function getSelection({
             const stripEllipsis = (s: string) => s.replace(/\s*(?:\.{3}|…)\s*$/, "");
             const stripped = stripEllipsis(targetText);
             if (stripped.length > 0 && stripped !== targetText) {
-                posthog.capture("ai_target_text_ellipsis_stripped", {
-                    original: targetText.slice(0, 80),
-                });
+                if (appSettings.shareDocumentAnalytics) {
+                    posthog.capture("ai_target_text_ellipsis_stripped", {
+                        original: targetText.slice(0, 80),
+                    });
+                } else {
+                    const code = showPrivacyNudge("AI text targeting was imprecise.", () =>
+                        settingsOpen.set(true),
+                    );
+                    posthog.capture("ai_target_text_ellipsis_stripped", {
+                        incident_code: code,
+                    });
+                }
                 const strippedCtx = context ? stripEllipsis(context) || context : undefined;
                 return getSelection({
                     targetText: stripped,
@@ -566,7 +628,11 @@ export function getSelection({
                     document,
                 });
             }
-            throw new Error(`Target text not found in document: "${targetText.slice(0, 60)}…"`);
+            throw new Error(
+                appSettings.shareDocumentAnalytics
+                    ? `Target text not found in document: "${targetText.slice(0, 60)}…"`
+                    : "Target text not found in document (content redacted for privacy)",
+            );
         }
         selection = EditorSelection.create(selections);
     }
@@ -643,6 +709,7 @@ export function createSuggestion({
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "suggestion"),
                     replacements: normalizedReplacements,
+                    author,
                     thread: comment ? [{ message: comment, author, time: Date.now() }] : [],
                 }),
             ],

@@ -92,6 +92,7 @@ export type SuggestionReplacement = {
 type SuggestionAnnotation = BaseAnnotation & {
     _type: "suggestion";
     replacements: SuggestionReplacement[];
+    author?: string;
 };
 // Serialized EditorState blob produced by EditorState.toJSON(savedFields).
 // Stored as an opaque object — use versionText() to extract the doc string.
@@ -158,6 +159,7 @@ export const RawAnnotationSchema = z.discriminatedUnion("_type", [
     RawBaseSchema.extend({
         _type: z.literal("suggestion"),
         replacements: z.array(SuggestionReplacementSchema),
+        author: z.string().optional(),
     }),
     RawBaseSchema.extend({
         _type: z.literal("revision"),
