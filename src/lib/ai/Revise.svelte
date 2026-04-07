@@ -62,9 +62,11 @@
  */
 import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
-import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { createAiChat, setAiProcessing, runMultiPersonaStreams } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
 import posthog from "$lib/posthog";
+import { getEnabledPersonas } from "$lib/readers/settings.svelte";
+import { streamRevise } from "$lib/ai/clientStreams";
 
 let input = $state("");
 
@@ -106,6 +108,36 @@ function reviseText() {
     chat.sendMessage({ text: context });
 }
 
+async function reviseWithPersonas() {
+    const personas = getEnabledPersonas();
+    if (personas.length === 0) {
+        reviseText();
+        return;
+    }
+
+    const context = $selectedText
+        ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
+        : "Please revise my document to improve flow and conciseness.";
+
+    posthog.capture("ai_revise_requested", {
+        has_selection: !!$selectedText,
+        trigger: "persona",
+        persona_count: personas.length,
+    });
+
+    setAiProcessing(true);
+    try {
+        await runMultiPersonaStreams({
+            personas,
+            streamFn: streamRevise,
+            messages: [{ id: "1", role: "user", parts: [{ type: "text", text: context }] }],
+            mode: "revise",
+        });
+    } finally {
+        setAiProcessing(false);
+    }
+}
+
 const defaultQuickPrompts = [
     { label: "Make this more concise", prompt: "Make this more concise" },
     { label: "Improve the flow and transitions", prompt: "Improve the flow and transitions" },
@@ -141,7 +173,7 @@ function useQuickPrompt(prompt: string) {
     <!-- Quick actions -->
     <div class="p-3 border-b border-black/10">
         <button
-            onclick={reviseText}
+            onclick={reviseWithPersonas}
             disabled={chat.status !== "ready" || !$documentContent}
             class="w-full p-2.5 bg-white hover:bg-purple-50 rounded-lg border border-purple-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
         >
