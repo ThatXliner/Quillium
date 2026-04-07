@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
     plugins: [sveltekit()],
     test: {
+        exclude: [".worktrees/**", "node_modules/**"],
         environment: "jsdom",
         setupFiles: ["tests/setup.ts"],
         coverage: {
