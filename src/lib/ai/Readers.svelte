@@ -3,13 +3,15 @@
 
     Displays a scrollable list of persona cards (builtin + custom),
     each with an emoji-in-colored-circle avatar, toggle switch,
-    and per-persona chattiness dots. Includes a "Create custom reader"
+    and per-persona chattiness dots. Clicking a card expands it into
+    a personality profile. Includes a "Create custom reader"
     form at the bottom.
 
     Dependencies: readers/settings.svelte.ts, readers/presets.ts, posthog.
 -->
 <script lang="ts">
 import { Plus, Trash2 } from "lucide-svelte";
+import { slide } from "svelte/transition";
 import {
     readersSettings,
     togglePersona,
@@ -21,6 +23,7 @@ import { lightTint, mediumTint } from "$lib/readers/colors";
 import posthog from "$lib/posthog";
 
 let showCreateForm = $state(false);
+let expandedId = $state<string | null>(null);
 let newName = $state("");
 let newEmoji = $state("📝");
 let newColor = $state("#6b7280");
@@ -58,6 +61,7 @@ function handleCreate() {
         name: newName.trim(),
         emoji: newEmoji || "📝",
         color: newColor,
+        description: newInstruction.trim(),
         instruction: newInstruction.trim(),
         enabled: true,
         chattiness: "quiet",
@@ -76,101 +80,157 @@ function handleRemove(id: string) {
 }
 
 const chattinessLevels = ["quiet", "normal", "verbose"] as const;
+const chattinessLabels = { quiet: "Brief", normal: "Normal", verbose: "Detailed" } as const;
 </script>
 
-<div class="flex-1 flex flex-col min-h-0">
-    <!-- Persona list -->
-    <div class="flex-1 overflow-y-auto p-2 space-y-1">
-        <!-- Enabled personas -->
-        {#each enabledPersonas as persona (persona.id)}
-            {@const filledDots = chattinessLevels.indexOf(persona.chattiness) + 1}
+{#snippet personaCard(persona: typeof readersSettings.personas[0], dimmed: boolean)}
+    {@const filledDots = chattinessLevels.indexOf(persona.chattiness) + 1}
+    {@const isExpanded = expandedId === persona.id}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+        class="flex flex-col rounded-lg cursor-pointer transition-all duration-200 bg-white"
+        class:opacity-55={dimmed && !isExpanded}
+        class:hover:opacity-70={dimmed && !isExpanded}
+        class:hover:bg-gray-50={!isExpanded}
+        style="border-left: 3px solid {dimmed && !isExpanded ? '#d1d5db' : persona.color};"
+        onclick={() => (expandedId = isExpanded ? null : persona.id)}
+    >
+        <!-- Collapsed row -->
+        <div class="flex items-center gap-2 p-2.5">
             <div
-                class="flex items-center gap-2 p-2 bg-white rounded-lg"
-                style="border-left: 3px solid {persona.color};"
+                class="shrink-0 rounded-full flex items-center justify-center transition-all duration-200"
+                class:w-7={!isExpanded}
+                class:h-7={!isExpanded}
+                class:text-sm={!isExpanded}
+                class:w-10={isExpanded}
+                class:h-10={isExpanded}
+                class:text-xl={isExpanded}
+                style="background: {lightTint(persona.color)}; border: 1.5px solid {mediumTint(persona.color)};"
             >
+                {persona.emoji}
+            </div>
+            <div class="flex-1 min-w-0">
                 <div
-                    class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm"
-                    style="background: {lightTint(persona.color)}; border: 1.5px solid {mediumTint(persona.color)};"
+                    class="font-semibold text-gray-800 truncate transition-all duration-200"
+                    class:text-xs={!isExpanded}
+                    class:text-sm={isExpanded}
+                >{persona.name}</div>
+                {#if !isExpanded}
+                    <div class="text-[10px] text-gray-400 truncate">{persona.description}</div>
+                {/if}
+            </div>
+            <div class="flex items-center gap-1.5" onclick={(e) => e.stopPropagation()}>
+                <button
+                    onclick={() => handleCycleChattiness(persona.id)}
+                    title="Detail level: {persona.chattiness}"
+                    aria-label="Detail level: {persona.chattiness}"
+                    class="flex gap-0.5 items-center cursor-pointer bg-transparent border-none p-0.5"
                 >
-                    {persona.emoji}
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="text-xs font-semibold text-gray-800 truncate">{persona.name}</div>
-                    <div class="text-[10px] text-gray-400 truncate">{persona.instruction.slice(0, 40)}…</div>
-                </div>
-                <div class="flex items-center gap-1.5">
+                    {#each { length: 3 } as _, i}
+                        <div
+                            class="w-1 h-1 rounded-full transition-colors"
+                            style="background: {i < filledDots
+                                ? (dimmed && !isExpanded ? '#9ca3af' : '#f59e0b')
+                                : '#e5ddd3'};"
+                        ></div>
+                    {/each}
+                </button>
+                <button
+                    onclick={() => handleToggle(persona.id)}
+                    aria-label="{persona.enabled ? 'Disable' : 'Enable'} {persona.name}"
+                    class="w-7 h-4 rounded-full relative cursor-pointer border-none transition-colors"
+                    class:bg-amber-400={persona.enabled}
+                    class:bg-gray-300={!persona.enabled}
+                >
+                    <span
+                        class="absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-all duration-150"
+                        class:right-0.5={persona.enabled}
+                        class:left-0.5={!persona.enabled}
+                    ></span>
+                </button>
+                {#if !persona.builtin}
+                    <button
+                        onclick={() => handleRemove(persona.id)}
+                        class="p-0.5 text-gray-300 hover:text-red-400 transition-colors bg-transparent border-none cursor-pointer"
+                        title="Remove custom reader"
+                    >
+                        <Trash2 size={12} />
+                    </button>
+                {/if}
+            </div>
+        </div>
+
+        <!-- Expanded personality profile -->
+        {#if isExpanded}
+            <div
+                transition:slide={{ duration: 150 }}
+                class="px-3 pb-3 space-y-2"
+            >
+                <div class="h-px" style="background: {lightTint(persona.color)};"></div>
+                {#if persona.profile}
+                    <p class="text-[11px] text-gray-600 leading-relaxed m-0">
+                        {persona.profile.about}
+                    </p>
+                    <div>
+                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Good for</div>
+                        <div class="flex flex-wrap gap-1">
+                            {#each persona.profile.goodFor as tag}
+                                <span
+                                    class="text-[10px] px-1.5 py-0.5 rounded-full"
+                                    style="background: {lightTint(persona.color)}; color: {persona.color};"
+                                >{tag}</span>
+                            {/each}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Example</div>
+                        <p class="text-[10px] text-gray-500 italic leading-snug m-0">
+                            {persona.profile.example}
+                        </p>
+                    </div>
+                {:else}
+                    <p class="text-[11px] text-gray-600 leading-relaxed m-0">
+                        {persona.description}
+                    </p>
+                {/if}
+                <div class="flex items-center gap-2" onclick={(e) => e.stopPropagation()}>
+                    <span class="text-[10px] text-gray-400">Detail level:</span>
                     <button
                         onclick={() => handleCycleChattiness(persona.id)}
-                        title="Chattiness: {persona.chattiness}"
-                        class="flex gap-0.5 items-center cursor-pointer bg-transparent border-none p-0.5"
+                        class="text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-pointer border-none transition-colors"
+                        style="background: {lightTint(persona.color)}; color: {persona.color};"
                     >
-                        {#each { length: 3 } as _, i}
-                            <div
-                                class="w-1 h-1 rounded-full"
-                                style="background: {i < filledDots ? '#f59e0b' : '#e5ddd3'};"
-                            ></div>
-                        {/each}
+                        {chattinessLabels[persona.chattiness]}
                     </button>
-                    <button
-                        onclick={() => handleToggle(persona.id)}
-                        aria-label="Disable {persona.name}"
-                        class="w-7 h-4 rounded-full relative cursor-pointer border-none bg-amber-400"
-                    >
-                        <span class="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-white shadow-sm"></span>
-                    </button>
-                    {#if !persona.builtin}
-                        <button
-                            onclick={() => handleRemove(persona.id)}
-                            class="p-0.5 text-gray-300 hover:text-red-400 transition-colors bg-transparent border-none cursor-pointer"
-                            title="Remove custom reader"
-                        >
-                            <Trash2 size={12} />
-                        </button>
-                    {/if}
                 </div>
             </div>
+        {/if}
+    </div>
+{/snippet}
+
+<div class="flex-1 flex flex-col min-h-0">
+    <div class="px-3 pt-1.5 pb-1 text-[10px] text-gray-400">
+        Dots control how much detail each reader gives in their feedback.
+    </div>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- Persona list -->
+    <div class="flex-1 overflow-y-auto p-2 space-y-1" onclick={(e) => {
+        if (e.target === e.currentTarget) expandedId = null;
+    }}>
+        {#each enabledPersonas as persona (persona.id)}
+            {@render personaCard(persona, false)}
         {/each}
 
         {#if enabledPersonas.length > 0 && disabledPersonas.length > 0}
-            <div class="h-px bg-gray-200 my-1"></div>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="h-px bg-gray-200 my-1" onclick={() => (expandedId = null)}></div>
         {/if}
 
         {#each disabledPersonas as persona (persona.id)}
-            <div class="flex items-center gap-2 p-2 bg-white rounded-lg opacity-55">
-                <div
-                    class="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm"
-                    style="background: {lightTint(persona.color)}; border: 1.5px solid {mediumTint(persona.color)};"
-                >
-                    {persona.emoji}
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="text-xs font-semibold text-gray-800 truncate">{persona.name}</div>
-                    <div class="text-[10px] text-gray-400 truncate">{persona.instruction.slice(0, 40)}…</div>
-                </div>
-                <div class="flex items-center gap-1.5">
-                    <div class="flex gap-0.5 items-center opacity-40 p-0.5">
-                        {#each { length: 3 } as _}
-                            <div class="w-1 h-1 rounded-full bg-gray-300"></div>
-                        {/each}
-                    </div>
-                    <button
-                        onclick={() => handleToggle(persona.id)}
-                        aria-label="Enable {persona.name}"
-                        class="w-7 h-4 rounded-full relative cursor-pointer border-none bg-gray-300"
-                    >
-                        <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow-sm"></span>
-                    </button>
-                    {#if !persona.builtin}
-                        <button
-                            onclick={() => handleRemove(persona.id)}
-                            class="p-0.5 text-gray-300 hover:text-red-400 transition-colors bg-transparent border-none cursor-pointer"
-                            title="Remove custom reader"
-                        >
-                            <Trash2 size={12} />
-                        </button>
-                    {/if}
-                </div>
-            </div>
+            {@render personaCard(persona, true)}
         {/each}
     </div>
 
