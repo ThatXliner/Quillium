@@ -2,6 +2,7 @@ import posthog from "posthog-js";
 import { dev } from "$app/environment";
 import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from "$env/static/public";
 import { appSettings } from "$lib/settings.svelte";
+import { toast } from "svelte-sonner";
 
 declare const __APP_VERSION__: string;
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
@@ -57,7 +58,7 @@ export function syncAnalyticsOptOut(enabled: boolean) {
  * Keys that contain document content and should be redacted
  * when the user has not opted in to sharing.
  */
-export const REDACTED_KEYS: ReadonlySet<string> = new Set(["synonym", "word"]);
+export const REDACTED_KEYS: ReadonlySet<string> = new Set(["synonym", "word", "original"]);
 
 /**
  * Privacy-aware capture wrapper. Strips document-content properties
@@ -93,6 +94,42 @@ export function syncShareDocumentAnalytics(sharing: boolean, key: string) {
     } else {
         posthog.unregister("share_document_key");
     }
+}
+
+/**
+ * Generate a short incident code for privacy-nudge toasts.
+ * Format: QIR-XXXX (Quillium Incident Report).
+ */
+function generateIncidentCode(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O, 1/I
+    let code = "";
+    for (let i = 0; i < 4; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return `QIR-${code}`;
+}
+
+/**
+ * Show a toast nudging the user to enable document analytics so we can
+ * diagnose the issue that just happened. Returns the incident code
+ * so the caller can include it in the (redacted) PostHog event.
+ *
+ * Accepts an optional `openSettings` callback to avoid circular imports
+ * (stores.ts → posthog.ts). Callers should pass `() => settingsOpen.set(true)`.
+ */
+export function showPrivacyNudge(summary: string, openSettings?: () => void): string {
+    const code = generateIncidentCode();
+    toast.info(`${summary}`, {
+        description: `Code: ${code} — Enable "Share your document" in settings to help us fix this.`,
+        duration: 12_000,
+        ...(openSettings && {
+            action: {
+                label: "Open Settings",
+                onClick: openSettings,
+            },
+        }),
+    });
+    return code;
 }
 
 export default posthog;

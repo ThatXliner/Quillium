@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import { Text } from "@codemirror/state";
 import { getSelection } from "$lib/editor/plugins/annotations";
 
-vi.mock("$lib/posthog", () => ({ default: { capture: vi.fn() } }));
+vi.mock("$lib/posthog", () => ({
+    default: { capture: vi.fn() },
+    showPrivacyNudge: vi.fn(() => "QIR-TEST"),
+}));
+vi.mock("$lib/stores", () => ({
+    settingsOpen: { set: vi.fn() },
+}));
 
 const doc = Text.of([
     "The quick brown fox jumps over the lazy dog.",
