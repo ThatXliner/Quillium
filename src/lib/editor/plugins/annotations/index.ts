@@ -525,26 +525,36 @@ function getSelection({
             throw new Error("Must specify at least either targetText or editorSelection");
         }
 
+        // Strip trailing ellipsis the AI may have added when truncating.
+        const stripEllipsis = (s: string) => s.replace(/\s*(?:\.{3}|…)\s*$/, "");
+        const searchTarget = stripEllipsis(targetText) || targetText;
+        if (searchTarget !== targetText) {
+            posthog.capture("ai_target_text_ellipsis_stripped", {
+                original: targetText.slice(0, 80),
+            });
+        }
+
         // When context is provided, find the context first, then search
         // for targetText only within that range to disambiguate duplicate
         // short phrases.
         if (context) {
-            const ctxCursor = new SearchCursor(document, context);
+            const searchCtx = stripEllipsis(context) || context;
+            const ctxCursor = new SearchCursor(document, searchCtx);
             const ctxMatch = ctxCursor.next();
             if (!ctxMatch.done) {
                 const { from: ctxFrom, to: ctxTo } = ctxMatch.value;
                 const ctxSlice = document.sliceString(ctxFrom, ctxTo);
-                const offset = ctxSlice.indexOf(targetText);
+                const offset = ctxSlice.indexOf(searchTarget);
                 if (offset !== -1) {
                     const from = ctxFrom + offset;
-                    const to = from + targetText.length;
+                    const to = from + searchTarget.length;
                     return EditorSelection.create([EditorSelection.range(from, to)]);
                 }
             }
             // Fall through to full-document search if context didn't resolve
         }
 
-        const query = new SearchCursor(document, targetText);
+        const query = new SearchCursor(document, searchTarget);
         const selections = [...query].map(({ from: anchor, to: head }) =>
             EditorSelection.range(anchor, head),
         );

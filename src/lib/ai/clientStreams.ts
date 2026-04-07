@@ -72,7 +72,11 @@ export type GeneratedContext = string;
 
 // Exported so chatFactory can use z.infer on these for typed tool dispatch
 export const commentInputSchema = z.object({
-    targetText: z.string().describe("The exact text to comment on — copy verbatim from the document, NEVER truncate or use ellipsis"),
+    targetText: z
+        .string()
+        .describe(
+            "The exact text to comment on — copy verbatim from the document, NEVER truncate or use ellipsis",
+        ),
     context: z
         .string()
         .optional()
@@ -83,7 +87,11 @@ export const commentInputSchema = z.object({
 });
 
 export const revisionInputSchema = z.object({
-    targetText: z.string().describe("The exact text to revise — copy verbatim from the document, NEVER truncate or use ellipsis"),
+    targetText: z
+        .string()
+        .describe(
+            "The exact text to revise — copy verbatim from the document, NEVER truncate or use ellipsis",
+        ),
     context: z
         .string()
         .optional()
@@ -109,7 +117,11 @@ export const revisionInputSchema = z.object({
 });
 
 export const suggestionInputSchema = z.object({
-    targetText: z.string().describe("The exact text to revise — copy verbatim from the document, NEVER truncate or use ellipsis"),
+    targetText: z
+        .string()
+        .describe(
+            "The exact text to revise — copy verbatim from the document, NEVER truncate or use ellipsis",
+        ),
     context: z
         .string()
         .optional()
