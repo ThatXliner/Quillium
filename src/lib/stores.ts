@@ -284,10 +284,12 @@ export const errorBanner = writable<ErrorBannerState | null>(null);
 
 /**
  * Controls settings modal visibility globally.
+ * `false` = closed, `true` = open, `string` = open and scroll to the
+ * setting with that `data-setting-id`, then flash it.
  * Written by: +page.svelte (Cmd+,), StatusBar.svelte (gear button), Tauri menu.
  * Read by: StatusBar.svelte to render <SettingsModal>.
  */
-export const settingsOpen = writable(false);
+export const settingsOpen = writable<false | true | string>(false);
 
 /**
  * Controls stats modal visibility globally.

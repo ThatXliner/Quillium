@@ -117,6 +117,39 @@ describe("annotation workflows integration", () => {
         expect(after[0].versions[1]?.doc).toBe("Delta");
     });
 
+    it("undo after branchSuggestion restores the original suggestion", () => {
+        view = createView("Alpha Beta Gamma");
+
+        createSuggestion({
+            state: view.state,
+            dispatch: (tr) => view?.dispatch(tr),
+            targetText: "Beta",
+            replacements: [{ text: "Delta" }, { text: "Epsilon" }],
+            comment: "Choose one",
+            author: "AI",
+        });
+
+        const before = getAnnotations(view);
+        expect(before).toHaveLength(1);
+        expect(isAnnotationOfType(before[0], "suggestion")).toBe(true);
+
+        view.dispatch(branchSuggestion(view.state, before[0].id));
+        expect(view.state.doc.toString()).toBe("Alpha Delta Gamma");
+
+        undo(view);
+
+        expect(view.state.doc.toString()).toBe("Alpha Beta Gamma");
+        const afterUndo = getAnnotations(view);
+        expect(afterUndo).toHaveLength(1);
+        expect(isAnnotationOfType(afterUndo[0], "suggestion")).toBe(true);
+        if (isAnnotationOfType(afterUndo[0], "suggestion")) {
+            expect(afterUndo[0].replacements).toEqual([{ text: "Delta" }, { text: "Epsilon" }]);
+            expect(afterUndo[0].thread).toEqual([
+                expect.objectContaining({ message: "Choose one", author: "AI" }),
+            ]);
+        }
+    });
+
     it("collapsed revision resolver removes a one-version revision when its text is deleted", async () => {
         view = createView("Alpha Beta Gamma");
 

@@ -109,7 +109,10 @@ $effect(() => {
 <svelte:window onclick={handleWindowClick} />
 
 {#if $settingsOpen}
-    <SettingsModal onclose={() => ($settingsOpen = false)} />
+    <SettingsModal
+        scrollTo={typeof $settingsOpen === "string" ? $settingsOpen : undefined}
+        onclose={() => ($settingsOpen = false)}
+    />
 {/if}
 
 <div

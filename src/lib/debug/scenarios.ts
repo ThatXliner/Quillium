@@ -1357,4 +1357,28 @@ Outside, a man walked his dog in the rain. The dog did not seem to mind.`,
             });
         },
     },
+
+    // ── DEBUG — privacy nudge for ellipsis stripping ─────────────────────────
+    {
+        id: "ellipsis-privacy-nudge",
+        label: "Ellipsis privacy nudge",
+        description:
+            "Simulates an AI returning truncated targetText (with trailing ellipsis). " +
+            "When shareDocumentAnalytics is OFF, a privacy-nudge toast should appear " +
+            "with an incident code and an 'Open Settings' button.",
+        category: "debug",
+        doc: DOC_LIGHTHOUSE_KEEPER,
+        setup(view) {
+            // The AI returned "the way a pianist touches keys..." but the real
+            // text is "the way a pianist touches keys before a concert" — the
+            // ellipsis-stripping fallback will fire.
+            createComment({
+                targetText: "the way a pianist touches keys...",
+                comment:
+                    "This simile is vivid — consider whether it draws too much attention away from the urgency of the storm.",
+                author: "AI",
+                view,
+            });
+        },
+    },
 ];

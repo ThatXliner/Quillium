@@ -3,6 +3,7 @@ import { dev } from "$app/environment";
 import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from "$env/static/public";
 import { appSettings } from "$lib/settings.svelte";
 import { toast } from "svelte-sonner";
+import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
 
 declare const __APP_VERSION__: string;
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
@@ -110,24 +111,29 @@ function generateIncidentCode(): string {
 }
 
 /**
- * Show a toast nudging the user to enable document analytics so we can
- * diagnose the issue that just happened. Returns the incident code
- * so the caller can include it in the (redacted) PostHog event.
+ * Show a glassmorphism toast nudging the user to enable document analytics.
+ * Returns the incident code so the caller can include it in the (redacted)
+ * PostHog event.
  *
- * Accepts an optional `openSettings` callback to avoid circular imports
- * (stores.ts → posthog.ts). Callers should pass `() => settingsOpen.set(true)`.
+ * `openSettings` receives the setting ID to scroll to. Callers should pass
+ * e.g. `(id) => settingsOpen.set(id)` to avoid circular imports.
  */
-export function showPrivacyNudge(summary: string, openSettings?: () => void): string {
+export function showPrivacyNudge(
+    summary: string,
+    openSettings?: (settingId: string) => void,
+): string {
     const code = generateIncidentCode();
-    toast.info(`${summary}`, {
-        description: `Code: ${code} — Enable "Share your document" in settings to help us fix this.`,
-        duration: 12_000,
-        ...(openSettings && {
-            action: {
-                label: "Open Settings",
-                onClick: openSettings,
+    const toastId = toast.custom(PrivacyNudgeToast, {
+        duration: 15_000,
+        componentProps: {
+            summary,
+            code,
+            onaction: () => {
+                toast.dismiss(toastId);
+                openSettings?.("share-document-analytics");
             },
-        }),
+            ondismiss: () => toast.dismiss(toastId),
+        },
     });
     return code;
 }

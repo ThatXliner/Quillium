@@ -614,8 +614,8 @@ export function getSelection({
                         original: targetText.slice(0, 80),
                     });
                 } else {
-                    const code = showPrivacyNudge("AI text targeting was imprecise.", () =>
-                        settingsOpen.set(true),
+                    const code = showPrivacyNudge("AI text targeting was imprecise.", (id) =>
+                        settingsOpen.set(id),
                     );
                     posthog.capture("ai_target_text_ellipsis_stripped", {
                         incident_code: code,
