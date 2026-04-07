@@ -66,8 +66,9 @@ const selectedText = $derived(
 
 // ── Context panel ────────────────────────────────────────────
 const CHUNK = 300;
-let contextBefore = $state(CHUNK);
-let contextAfter = $state(CHUNK);
+const INITIAL_CHUNK = 1500;
+let contextBefore = $state(INITIAL_CHUNK);
+let contextAfter = $state(INITIAL_CHUNK);
 let contextCollapsed = $state(false);
 let contextScrollEl = $state<HTMLDivElement | undefined>(undefined);
 let contextCommentEl = $state<HTMLSpanElement | undefined>(undefined);
