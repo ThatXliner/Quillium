@@ -2,8 +2,8 @@
     AISidebar.svelte — Top-level container for all AI features.
 
     This component renders a floating, resizable sidebar anchored to the
-    left edge of the viewport. It acts as a shell/router for the five AI
-    panels: Chat, Feedback, Revise, DocumentContext, and AISettings.
+    left edge of the viewport. It acts as a shell/router for the six AI
+    panels: Chat, Feedback, Revise, DocumentContext, Readers, and AISettings.
 
     UI states:
       - Collapsed (pill): a narrow vertical strip of icon buttons.
@@ -22,7 +22,7 @@
     All five sub-panels are mounted eagerly (visibility toggled via CSS)
     to avoid re-mount jank when switching tabs.
 
-    Dependencies: Chat, Feedback, Revise, DocumentContext, AISettings
+    Dependencies: Chat, Feedback, Revise, DocumentContext, Readers, AISettings
     components; aiProcessing from settings.svelte.ts; posthog analytics.
 -->
 <script lang="ts">
@@ -45,8 +45,8 @@
  *
  * Stores written: none.
  *
- * Children: Chat, Feedback, Revise, DocumentContext, AISettings.
- *   All five sub-panels are mounted eagerly and toggled via CSS
+ * Children: Chat, Feedback, Revise, DocumentContext, Readers, AISettings.
+ *   All six sub-panels are mounted eagerly and toggled via CSS
  *   visibility to avoid re-mount jank on tab switches.
  *
  * Resize system:
@@ -62,6 +62,7 @@ import Feedback from "./Feedback.svelte";
 import Revise from "./Revise.svelte";
 import AISettings from "./AISettings.svelte";
 import DocumentContext from "./DocumentContext.svelte";
+import Readers from "./Readers.svelte";
 import {
     MessageCircleIcon,
     ZapIcon,
@@ -70,11 +71,12 @@ import {
     Settings2Icon,
     CompassIcon,
     Minimize2Icon,
+    UsersIcon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
 
-type Action = null | "chat" | "feedback" | "revise" | "context" | "settings";
+type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
 let action = $state<Action>(null);
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -124,6 +126,15 @@ const actions: {
         hoverClass: "hover:text-amber-600",
         requiresApiKey: true,
     },
+    {
+        id: "readers",
+        icon: UsersIcon,
+        label: "Readers",
+        shortcut: isMac ? "⌘⇧5" : "Ctrl+Shift+5",
+        activeClass: "text-rose-600 bg-white/60",
+        hoverClass: "hover:text-rose-600",
+        requiresApiKey: true,
+    },
 ];
 
 const panelTitles: Record<NonNullable<Action>, string> = {
@@ -131,6 +142,7 @@ const panelTitles: Record<NonNullable<Action>, string> = {
     feedback: "Get Feedback",
     revise: "Revise & Rewrite",
     context: "Document Context",
+    readers: "Reader Personas",
     settings: "AI Settings",
 };
 
@@ -306,6 +318,7 @@ const actionKeys: Record<string, NonNullable<Action>> = {
     "2": "feedback",
     "3": "revise",
     "4": "context",
+    "5": "readers",
 };
 
 function handleKeydown(e: KeyboardEvent) {
@@ -344,7 +357,7 @@ function handleKeydown(e: KeyboardEvent) {
         fixed left-4 top-1/2 -translate-y-1/2 z-50
         backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
         overflow-hidden {transitionClass}
-        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[240px] rounded-[100px]'}
+        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[280px] rounded-[100px]'}
         {aiProcessing.active ? 'ai-processing' : ''}
     "
 >
@@ -465,6 +478,7 @@ function handleKeydown(e: KeyboardEvent) {
             <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
             <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
             <div class="absolute inset-0 overflow-y-auto {action === 'context' ? '' : 'hidden'}"><DocumentContext /></div>
+            <div class="absolute inset-0 flex flex-col {action === 'readers' ? '' : 'hidden'}"><Readers /></div>
             {#if action === 'settings'}<div class="absolute inset-0 flex flex-col"><AISettings /></div>{/if}
         </div>
     </div>
