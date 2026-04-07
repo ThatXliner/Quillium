@@ -1,6 +1,7 @@
-import { DEFAULT_PERSONAS, type ReaderPersona } from "./presets";
+import { DEFAULT_PERSONAS, type ReaderPersona, type Chattiness } from "./presets";
 
 const STORAGE_KEY = "quillium-readers-settings";
+const VALID_CHATTINESS: Chattiness[] = ["quiet", "normal", "verbose"];
 
 function load(): ReaderPersona[] {
     try {
@@ -12,13 +13,18 @@ function load(): ReaderPersona[] {
         const savedById = new Map(saved.map((p) => [p.id, p]));
         const merged = DEFAULT_PERSONAS.map((preset) => {
             const existing = savedById.get(preset.id);
-            if (existing)
-                return { ...preset, enabled: existing.enabled, chattiness: existing.chattiness };
+            if (existing) {
+                return {
+                    ...preset,
+                    enabled: typeof existing.enabled === "boolean" ? existing.enabled : preset.enabled,
+                    chattiness: VALID_CHATTINESS.includes(existing.chattiness) ? existing.chattiness : preset.chattiness,
+                };
+            }
             return { ...preset };
         });
         // Append any custom (non-builtin) personas the user created.
         for (const p of saved) {
-            if (!p.builtin) merged.push({ ...p, description: p.description || p.instruction });
+            if (p.builtin === false) merged.push({ ...p, description: p.description || p.instruction });
         }
         return merged;
     } catch {

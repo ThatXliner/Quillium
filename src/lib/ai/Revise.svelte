@@ -69,6 +69,7 @@ import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { streamRevise } from "$lib/ai/clientStreams";
 
 let input = $state("");
+let personaInFlight = $state(false);
 
 const { chat, clearChat } = createAiChat({ mode: "revise" });
 
@@ -108,7 +109,7 @@ function reviseText() {
     chat.sendMessage({ text: context });
 }
 
-async function reviseWithPersonas() {
+async function revise() {
     const personas = getEnabledPersonas();
     if (personas.length === 0) {
         reviseText();
@@ -125,6 +126,7 @@ async function reviseWithPersonas() {
         persona_count: personas.length,
     });
 
+    personaInFlight = true;
     setAiProcessing(true);
     try {
         await runMultiPersonaStreams({
@@ -134,6 +136,7 @@ async function reviseWithPersonas() {
             mode: "revise",
         });
     } finally {
+        personaInFlight = false;
         setAiProcessing(false);
     }
 }
@@ -173,8 +176,8 @@ function useQuickPrompt(prompt: string) {
     <!-- Quick actions -->
     <div class="p-3 border-b border-black/10">
         <button
-            onclick={reviseWithPersonas}
-            disabled={chat.status !== "ready" || !$documentContent}
+            onclick={revise}
+            disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
             class="w-full p-2.5 bg-white hover:bg-purple-50 rounded-lg border border-purple-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
         >
             <div class="text-sm font-medium text-purple-800">
@@ -192,7 +195,7 @@ function useQuickPrompt(prompt: string) {
             {#each allRevisePrompts as { label, prompt }}
                 <button
                     onclick={() => useQuickPrompt(prompt)}
-                    disabled={chat.status !== "ready" || !$documentContent}
+                    disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
                     class="px-2 py-1.5 text-xs bg-white hover:bg-purple-50 rounded border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
                 >
                     {label}
@@ -242,20 +245,20 @@ function useQuickPrompt(prompt: string) {
             {/each}
         {/each}
 
-        {#if chat.status === "streaming" || chat.status === "submitted"}
+        {#if chat.status === "streaming" || chat.status === "submitted" || personaInFlight}
             <div class="flex justify-start">
                 <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
                     <div class="bg-gray-100 text-gray-800 px-3 py-2 rounded-lg">
                         <div class="flex items-center space-x-2">
                             <span class="inline-block animate-pulse">●</span>
-                            <span class="text-sm">Revising...</span>
+                            <span class="text-sm">{personaInFlight ? "Personas revising..." : "Revising..."}</span>
                         </div>
                     </div>
                 </div>
             </div>
         {/if}
 
-        {#if chat.messages.length === 0}
+        {#if chat.messages.length === 0 && !personaInFlight}
             <div
                 class="flex-1 flex items-center justify-center text-gray-400 text-sm"
             >
@@ -284,13 +287,13 @@ function useQuickPrompt(prompt: string) {
                 bind:value={input}
                 name="message"
                 placeholder="Describe how to revise..."
-                disabled={chat.status !== "ready"}
+                disabled={chat.status !== "ready" || personaInFlight}
                 class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button
                 type="submit"
-                disabled={chat.status !== "ready" || !input.trim()}
+                disabled={chat.status !== "ready" || personaInFlight || !input.trim()}
                 class="w-full py-2 bg-purple-500 text-white text-sm font-medium rounded-md hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Revise
