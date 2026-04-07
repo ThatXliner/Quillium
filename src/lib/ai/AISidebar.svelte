@@ -72,8 +72,9 @@ import {
     CompassIcon,
     Minimize2Icon,
     UsersIcon,
+    SquareIcon,
 } from "lucide-svelte";
-import { aiProcessing, hasApiKey, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
+import { aiProcessing, hasApiKey, ensureApiKeyLoaded, stopAllAi } from "$lib/ai/settings.svelte";
 import posthog from "$lib/posthog";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
@@ -517,7 +518,33 @@ function handleKeydown(e: KeyboardEvent) {
     {/if}
 </div>
 
+<!-- Stop button — appears below the sidebar when AI is processing -->
+{#if aiProcessing.active}
+    <button
+        onclick={stopAllAi}
+        aria-label="Stop AI"
+        title="Stop AI request"
+        class="fixed left-4 z-50 flex items-center gap-1.5 px-3 py-1.5
+            backdrop-blur-md bg-red-500/80 hover:bg-red-600/90
+            text-white text-xs font-medium rounded-full
+            shadow-lg transition-all duration-200
+            animate-fade-in"
+        style="top: calc(50% + {expanded ? (customHeight ?? DEFAULT_HEIGHT) / 2 : 280 / 2}px + 8px);"
+    >
+        <SquareIcon size={12} fill="currentColor" />
+        Stop
+    </button>
+{/if}
+
 <style>
+    @keyframes fade-in {
+        from { opacity: 0; transform: scale(0.9); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    .animate-fade-in {
+        animation: fade-in 150ms ease-out;
+    }
     div[style*="scrollbar-width"]::-webkit-scrollbar {
         display: none;
     }

@@ -14,7 +14,7 @@ import { z } from "zod";
 import { documentContent, editorView } from "$lib/stores";
 import { createModel } from "$lib/ai/provider";
 import { aiSettings, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
-import { setAiProcessing } from "$lib/ai/settings.svelte";
+import { setAiProcessing, getAiAbortSignal } from "$lib/ai/settings.svelte";
 import {
     createComment,
     createSuggestion,
@@ -167,6 +167,7 @@ async function runReview(content: string, manual = false) {
     if (!content.trim()) return;
 
     setAiProcessing(true);
+    const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
@@ -175,6 +176,7 @@ async function runReview(content: string, manual = false) {
             schema: AnnotationSchema,
             system: buildSystemPrompt(),
             prompt: `Review this document:\n\n${content}`,
+            abortSignal,
         });
         lastReviewedContent = content;
         const applied = applyAnnotations(object, content);
@@ -182,6 +184,7 @@ async function runReview(content: string, manual = false) {
             toast("No issues found — your writing looks good.");
         }
     } catch (e) {
+        if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
     } finally {
         setAiProcessing(false);
@@ -207,19 +210,28 @@ export function startAutoAI() {
         if (diff < MIN_DIFF_CHARS && lastReviewedContent !== "") return;
         scheduleReview(content);
     });
+
+    // Cancel pending reviews when the global stop event fires.
+    window.addEventListener("quillium:stop-ai", cancelPendingReview);
 }
 
 /** Stop the engine and cancel any pending review. */
 export function stopAutoAI() {
-    if (debounceTimer !== null) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-    }
+    cancelPendingReview();
+    window.removeEventListener("quillium:stop-ai", cancelPendingReview);
     if (unsubscribe) {
         unsubscribe();
         unsubscribe = null;
     }
     lastReviewedContent = "";
+}
+
+/** Cancel any pending debounced review without stopping the engine. */
+export function cancelPendingReview() {
+    if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+    }
 }
 
 /** Trigger an immediate review (used by manual mode / widget click). */

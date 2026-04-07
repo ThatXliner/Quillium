@@ -67,6 +67,27 @@ export function setAiProcessing(value: boolean) {
     aiProcessing.active = value;
 }
 
+/**
+ * Global abort controller for all AI requests. Calling `stopAllAi()`
+ * aborts any in-flight streams and fires a window event so each panel
+ * can call `chat.stop()` on its own Chat instance.
+ */
+let _aiAbortController: AbortController | null = null;
+
+export function getAiAbortSignal(): AbortSignal {
+    if (!_aiAbortController) _aiAbortController = new AbortController();
+    return _aiAbortController.signal;
+}
+
+export function stopAllAi() {
+    if (_aiAbortController) {
+        _aiAbortController.abort();
+        _aiAbortController = null;
+    }
+    window.dispatchEvent(new CustomEvent("quillium:stop-ai"));
+    aiProcessing.active = false;
+}
+
 function loadString(key: string, defaultValue: string): string {
     if (typeof localStorage === "undefined") return defaultValue;
     return localStorage.getItem(key) ?? defaultValue;

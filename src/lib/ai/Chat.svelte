@@ -83,6 +83,17 @@ $effect(() => {
     setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
+// Listen for global stop event to abort this chat's stream.
+$effect(() => {
+    function handleStop() {
+        if (chat.status === "submitted" || chat.status === "streaming") {
+            chat.stop();
+        }
+    }
+    window.addEventListener("quillium:stop-ai", handleStop);
+    return () => window.removeEventListener("quillium:stop-ai", handleStop);
+});
+
 /**
  * Extract the user's message from the form, validate it, send it
  * to the AI chat, and clear the input. Captures a posthog event

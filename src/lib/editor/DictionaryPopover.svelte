@@ -46,6 +46,16 @@ $effect(() => {
     setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
+$effect(() => {
+    function handleStop() {
+        if (chat.status === "submitted" || chat.status === "streaming") {
+            chat.stop();
+        }
+    }
+    window.addEventListener("quillium:stop-ai", handleStop);
+    return () => window.removeEventListener("quillium:stop-ai", handleStop);
+});
+
 // ── React to trigger store ─────────────────────────────────────
 
 $effect(() => {

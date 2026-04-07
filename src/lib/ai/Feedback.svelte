@@ -75,6 +75,18 @@ $effect(() => {
     setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
 });
 
+// Listen for global stop event to abort this chat's stream.
+$effect(() => {
+    function handleStop() {
+        if (chat.status === "submitted" || chat.status === "streaming") {
+            chat.stop();
+        }
+        personaInFlight = false;
+    }
+    window.addEventListener("quillium:stop-ai", handleStop);
+    return () => window.removeEventListener("quillium:stop-ai", handleStop);
+});
+
 /**
  * Central send helper: routes through persona streams when personas
  * are enabled, otherwise falls back to the single-stream chat.
