@@ -137,7 +137,7 @@ const actions: {
         activeClass: "text-rose-600 bg-white/60",
         hoverClass: "hover:text-rose-600",
         requiresApiKey: true,
-        preferredWidth: 380,
+        preferredWidth: 440,
     },
 ];
 
