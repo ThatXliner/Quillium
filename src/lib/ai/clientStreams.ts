@@ -55,6 +55,7 @@ interface StreamOpts extends BaseOpts {
     selectedText: string;
     documentContext?: DocumentContext;
     persona?: ReaderPersona;
+    abortSignal?: AbortSignal;
 }
 
 export type { StreamOpts };
@@ -166,6 +167,7 @@ function buildStream(
         ],
         system: fullSystem,
         tools,
+        abortSignal: opts.abortSignal,
     });
     return result.toUIMessageStream();
 }

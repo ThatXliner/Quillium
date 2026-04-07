@@ -209,7 +209,8 @@ function handleClickOutside(e: MouseEvent) {
         !container.contains(target) &&
         !(target as Element).closest?.(".cm-editor") &&
         !(target as Element).closest?.(".dictionary-popover") &&
-        !(target as Element).closest?.(".dictionary-backdrop")
+        !(target as Element).closest?.(".dictionary-backdrop") &&
+        !(target as Element).closest?.("#ai-stop-button")
     ) {
         action = null;
     }
@@ -521,6 +522,7 @@ function handleKeydown(e: KeyboardEvent) {
 <!-- Stop button — appears below the sidebar when AI is processing -->
 {#if aiProcessing.active}
     <button
+        id="ai-stop-button"
         onclick={stopAllAi}
         aria-label="Stop AI"
         title="Stop AI request"

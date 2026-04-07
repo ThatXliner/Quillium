@@ -191,7 +191,10 @@ export async function runMultiPersonaStreams({
  */
 function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
     return {
-        async sendMessages({ messages }: { messages: UIMessage[] } & Record<string, unknown>) {
+        async sendMessages({
+            messages,
+            abortSignal,
+        }: { messages: UIMessage[]; abortSignal?: AbortSignal } & Record<string, unknown>) {
             await ensureApiKeyLoaded();
             return streamFn({
                 messages,
@@ -201,6 +204,7 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
                 documentContext: { ...documentContext },
+                abortSignal,
             });
         },
         reconnectToStream() {
