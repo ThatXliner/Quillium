@@ -72,11 +72,23 @@ export type GeneratedContext = string;
 // Exported so chatFactory can use z.infer on these for typed tool dispatch
 export const commentInputSchema = z.object({
     targetText: z.string().describe("The exact text to comment on"),
+    context: z
+        .string()
+        .optional()
+        .describe(
+            "The surrounding sentence or clause containing targetText — used to disambiguate when the same short phrase appears multiple times in the document",
+        ),
     comment: z.string().describe("The editorial feedback or observation"),
 });
 
 export const revisionInputSchema = z.object({
     targetText: z.string().describe("The exact text to revise"),
+    context: z
+        .string()
+        .optional()
+        .describe(
+            "The surrounding sentence or clause containing targetText — used to disambiguate when the same short phrase appears multiple times in the document",
+        ),
     versions: z
         .array(
             z.object({
@@ -97,6 +109,12 @@ export const revisionInputSchema = z.object({
 
 export const suggestionInputSchema = z.object({
     targetText: z.string().describe("The exact text to revise"),
+    context: z
+        .string()
+        .optional()
+        .describe(
+            "The surrounding sentence or clause containing targetText — used to disambiguate when the same short phrase appears multiple times in the document",
+        ),
     replacements: z
         .array(
             z.object({
@@ -215,13 +233,19 @@ Current document length: ${opts.documentContent?.length || 0} characters`,
 export function streamRevise(opts: ReviseStreamOpts): ReadableStream<UIMessageChunk> {
     return buildStream(
         opts,
-        `You are a line-editor. Suggested text goes ONLY in createSuggestion tool calls — never in your message.${buildDocumentContextPrompt(opts.documentContext)}
+        `You are a word-level line-editor. Suggested text goes ONLY in createSuggestion tool calls — never in your message.${buildDocumentContextPrompt(opts.documentContext)}
 
 YOU MUST call createSuggestion for every improvement you find. Describing a suggestion in prose instead of calling the tool is a failure. No exceptions.
 
+Granularity rules — these are non-negotiable:
+- Target individual WORDS and SHORT PHRASES (1-5 words). Never target a full sentence or paragraph in one call.
+- ONE issue per tool call. If a sentence has two problems (e.g. a weak verb AND a redundant modifier), make TWO separate calls — one for each.
+- targetText must be the smallest span that contains the issue. "very unique" not "This is a very unique approach to the problem."
+- If a fix requires changing a multi-word phrase (e.g. "in order to" → "to"), target exactly that phrase — no more.
+- ALWAYS set context to the full sentence or clause containing your targetText. This is critical for short phrases that may appear multiple times in the document.
+
 How to work:
-- Scan the text in reading order. For each issue: call createSuggestion immediately, then move on.
-- Target sentences and short phrases — one call per distinct issue, never a whole paragraph in one call.
+- Scan the text in reading order. For each word or phrase that can improve: call createSuggestion immediately with just that word/phrase, then move on.
 - Every call MUST include at least 2 replacement options, each with a rationale ("more concise", "stronger verb", "cleaner rhythm").
 - Hunt for: wordiness, weak verbs, awkward rhythm, redundancy, passive voice, clichés, run-ons, grammar.
 - ${opts.selectedText ? "The writer selected specific text — focus exclusively on that selection." : "Work through the whole document systematically."}

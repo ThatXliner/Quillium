@@ -39,6 +39,7 @@ import {
     documentContext,
     ensureApiKeyLoaded,
     setAiProcessing,
+    getAiAbortSignal,
 } from "./settings.svelte";
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
 import {
@@ -71,15 +72,16 @@ function handleToolCall(toolCall: ToolCall, author?: string) {
 
     switch (toolCall.toolName) {
         case "createComment": {
-            const { targetText, comment } = toolCall.input;
-            createComment({ targetText, comment, view, author });
+            const { targetText, context, comment } = toolCall.input;
+            createComment({ targetText, context, comment, view, author });
             posthog.capture("annotation_created", { type: "comment", persona: author });
             break;
         }
         case "createSuggestion": {
-            const { targetText, replacements, comment } = toolCall.input;
+            const { targetText, context, replacements, comment } = toolCall.input;
             createSuggestion({
                 targetText,
+                context,
                 replacements,
                 comment,
                 state: view.state,
@@ -94,8 +96,15 @@ function handleToolCall(toolCall: ToolCall, author?: string) {
             break;
         }
         case "createRevision": {
-            const { targetText, versions, threadMessage } = toolCall.input;
-            const created = createRevision({ targetText, versions, threadMessage, view, author });
+            const { targetText, context, versions, threadMessage } = toolCall.input;
+            const created = createRevision({
+                targetText,
+                context,
+                versions,
+                threadMessage,
+                view,
+                author,
+            });
             if (created) {
                 posthog.capture("annotation_created", {
                     type: "revision",
@@ -128,6 +137,8 @@ export async function runMultiPersonaStreams({
 }): Promise<void> {
     await ensureApiKeyLoaded();
 
+    const abortSignal = getAiAbortSignal();
+
     const tasks = personas.map(async (persona) => {
         const stream = streamFn({
             messages,
@@ -141,15 +152,24 @@ export async function runMultiPersonaStreams({
         });
 
         const reader = stream.getReader();
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (value?.type === "tool-input-available") {
-                handleToolCall(
-                    { toolName: value.toolName, input: value.input } as ToolCall,
-                    persona.name,
-                );
+        try {
+            while (true) {
+                if (abortSignal.aborted) {
+                    await reader.cancel();
+                    return;
+                }
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value?.type === "tool-input-available") {
+                    handleToolCall(
+                        { toolName: value.toolName, input: value.input } as ToolCall,
+                        persona.name,
+                    );
+                }
             }
+        } catch (e) {
+            if (abortSignal.aborted) return;
+            throw e;
         }
 
         posthog.capture("reader_persona_review_completed", {

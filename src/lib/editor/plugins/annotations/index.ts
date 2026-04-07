@@ -508,10 +508,12 @@ const annotationDecorations = ViewPlugin.fromClass(
 function getSelection({
     editorSelection,
     targetText,
+    context,
     document,
 }: {
     editorSelection?: EditorSelection;
     targetText?: string;
+    context?: string;
     document: Text;
 }) {
     let selection = editorSelection;
@@ -522,6 +524,26 @@ function getSelection({
         if (!targetText) {
             throw new Error("Must specify at least either targetText or editorSelection");
         }
+
+        // When context is provided, find the context first, then search
+        // for targetText only within that range to disambiguate duplicate
+        // short phrases.
+        if (context) {
+            const ctxCursor = new SearchCursor(document, context);
+            const ctxMatch = ctxCursor.next();
+            if (!ctxMatch.done) {
+                const { from: ctxFrom, to: ctxTo } = ctxMatch.value;
+                const ctxSlice = document.sliceString(ctxFrom, ctxTo);
+                const offset = ctxSlice.indexOf(targetText);
+                if (offset !== -1) {
+                    const from = ctxFrom + offset;
+                    const to = from + targetText.length;
+                    return EditorSelection.create([EditorSelection.range(from, to)]);
+                }
+            }
+            // Fall through to full-document search if context didn't resolve
+        }
+
         const query = new SearchCursor(document, targetText);
         const selections = [...query].map(({ from: anchor, to: head }) =>
             EditorSelection.range(anchor, head),
@@ -535,12 +557,14 @@ function getSelection({
 }
 export function createComment({
     targetText,
+    context,
     editorSelection,
     comment,
     author = "AI",
     view,
 }: {
     targetText?: string;
+    context?: string;
     editorSelection?: EditorSelection;
     comment: string;
     author?: string;
@@ -551,6 +575,7 @@ export function createComment({
     const selection = getSelection({
         editorSelection,
         targetText,
+        context,
         document: state.doc,
     });
     view.dispatch(
@@ -567,6 +592,7 @@ export function createComment({
 }
 export function createSuggestion({
     targetText,
+    context,
     editorSelection,
     replacements,
     comment,
@@ -578,6 +604,7 @@ export function createSuggestion({
     dispatch: (transaction: Transaction) => void;
     replacements: Array<{ text: string; rationale?: string } | string>;
     targetText?: string;
+    context?: string;
     editorSelection?: EditorSelection;
     author?: string;
     comment?: string;
@@ -589,6 +616,7 @@ export function createSuggestion({
     const selection = getSelection({
         editorSelection,
         targetText,
+        context,
         document: state.doc,
     });
     if (!canCreateSuggestion(state.field(annotationField), selection)) return false;
@@ -609,6 +637,7 @@ export function createSuggestion({
 
 export function createRevision({
     targetText,
+    context,
     editorSelection,
     versions,
     threadMessage,
@@ -616,6 +645,7 @@ export function createRevision({
     view,
 }: {
     targetText?: string;
+    context?: string;
     editorSelection?: EditorSelection;
     versions: Array<{ label: string; text: string }>;
     threadMessage: string;
@@ -626,6 +656,7 @@ export function createRevision({
     const selection = getSelection({
         editorSelection,
         targetText,
+        context,
         document: state.doc,
     });
     if (!canCreateRevision(state.field(annotationField), selection)) return false;
