@@ -36,6 +36,7 @@ import { scale, slide } from "svelte/transition";
 import {
     addAnnotation,
     annotationField,
+    revisionInternalEdit,
     setActiveRevisionVersion,
     createNewRevision,
     updateRevisionVersionLabel,
@@ -47,7 +48,7 @@ import {
     type Thread as ThreadType,
 } from ".";
 
-import { canCreateNewComment, getActiveAnnotation } from "./utils";
+import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./utils";
 import {
     createNewAnnotation,
     getLastId,
@@ -548,24 +549,57 @@ function executePendingNestedCommand(
         }
     } else if (cmd.type === "revision") {
         const s2 = activeEditor.state;
-        if (!s2.selection.main.empty) {
-            const selectedText = s2.sliceDoc(s2.selection.main.from, s2.selection.main.to);
+        if (
+            !s2.selection.main.empty &&
+            canCreateRevision(s2.field(annotationField), s2.selection)
+        ) {
+            const sel = s2.selection.main;
+            const originalText = s2.sliceDoc(sel.from, sel.to);
+            const autoVersion = appSettings.autoVersionOnRevisionCreate;
+            const versions: VersionState[] = autoVersion
+                ? [{ doc: originalText } as VersionState, { doc: "" } as VersionState]
+                : [{ doc: originalText } as VersionState];
+            const annotationSelection = autoVersion
+                ? EditorSelection.single(sel.from)
+                : s2.selection;
+            const newAnnotation = createNewAnnotation(
+                s2.field(annotationField),
+                annotationSelection,
+                "revision",
+            );
+            posthog.capture("annotation_created", {
+                type: "revision",
+                auto_version: autoVersion,
+                nested: true,
+            });
             activeEditor.dispatch(
                 s2.update({
                     effects: [
                         addAnnotation.of({
-                            ...createNewAnnotation(
-                                s2.field(annotationField),
-                                s2.selection,
-                                "revision",
-                            ),
-                            activeVersionIndex: 0,
-                            versions: [{ doc: selectedText }],
+                            ...newAnnotation,
+                            activeVersionIndex: autoVersion ? 1 : 0,
+                            versions,
                         }),
                     ],
-                    annotations: Transaction.addToHistory.of(true),
+                    ...(autoVersion
+                        ? {
+                              changes: s2.changes({ from: sel.from, to: sel.to, insert: "" }),
+                              selection: EditorSelection.cursor(sel.from),
+                          }
+                        : {}),
+                    annotations: autoVersion
+                        ? [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)]
+                        : Transaction.addToHistory.of(true),
                 }),
             );
+            if (appSettings.selectTextInNestedEditor && !sel.empty) {
+                annotationEventBus.emit({
+                    type: "pending-nested-editor-selection",
+                    annotationId: newAnnotation.id,
+                    from: 0,
+                    to: autoVersion ? 0 : sel.to - sel.from,
+                });
+            }
         }
     }
 }
