@@ -89,7 +89,11 @@ export const DEFAULT_PERSONAS: ReaderPersona[] = [
         description: "Focuses on tone, voice, and emotional resonance.",
         profile: {
             about: "Notices what your writing makes people feel. Catches passages where the tone goes flat, corporate, or forced — and flags moments where the emotional register doesn't match your intent.",
-            goodFor: ["Writing that should move people", "Memoir and personal essays", "Landing pages"],
+            goodFor: [
+                "Writing that should move people",
+                "Memoir and personal essays",
+                "Landing pages",
+            ],
             example:
                 '"This paragraph about loss reads very clinical — the detached tone undercuts the emotional weight."',
         },

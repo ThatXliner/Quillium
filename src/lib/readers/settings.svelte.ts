@@ -16,15 +16,19 @@ function load(): ReaderPersona[] {
             if (existing) {
                 return {
                     ...preset,
-                    enabled: typeof existing.enabled === "boolean" ? existing.enabled : preset.enabled,
-                    chattiness: VALID_CHATTINESS.includes(existing.chattiness) ? existing.chattiness : preset.chattiness,
+                    enabled:
+                        typeof existing.enabled === "boolean" ? existing.enabled : preset.enabled,
+                    chattiness: VALID_CHATTINESS.includes(existing.chattiness)
+                        ? existing.chattiness
+                        : preset.chattiness,
                 };
             }
             return { ...preset };
         });
         // Append any custom (non-builtin) personas the user created.
         for (const p of saved) {
-            if (p.builtin === false) merged.push({ ...p, description: p.description || p.instruction });
+            if (p.builtin === false)
+                merged.push({ ...p, description: p.description || p.instruction });
         }
         return merged;
     } catch {

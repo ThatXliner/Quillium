@@ -3,12 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock Tauri invoke — settings.svelte.ts imports it at module level.
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-import {
-    aiProcessing,
-    setAiProcessing,
-    getAiAbortSignal,
-    stopAllAi,
-} from "./settings.svelte";
+import { aiProcessing, setAiProcessing, getAiAbortSignal, stopAllAi } from "./settings.svelte";
 
 describe("stopAllAi", () => {
     beforeEach(() => {
