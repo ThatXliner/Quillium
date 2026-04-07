@@ -1,3 +1,6 @@
+import posthog from "$lib/posthog";
+import type { ReaderPersona } from "$lib/readers/presets";
+import { buildPersonaPrompt } from "$lib/readers/prompt";
 /**
  * Client-side AI streaming orchestration.
  *
@@ -26,18 +29,17 @@
  * Dependencies: ai SDK, zod (tool schemas), provider.ts, utils.ts.
  */
 import {
-    convertToModelMessages,
-    streamText,
-    generateObject,
-    generateText,
-    tool,
     type UIMessage,
     type UIMessageChunk,
+    convertToModelMessages,
+    generateObject,
+    generateText,
+    streamText,
+    tool,
 } from "ai";
 import { z } from "zod";
-import posthog from "$lib/posthog";
-import { createModel, type Provider } from "./provider";
-import { injectDocumentContext, buildDocumentContextPrompt } from "./utils";
+import { type Provider, createModel } from "./provider";
+import { buildDocumentContextPrompt, injectDocumentContext } from "./utils";
 
 type DocumentContext = Record<string, string> | undefined;
 
@@ -52,8 +54,10 @@ interface StreamOpts extends BaseOpts {
     documentContent: string;
     selectedText: string;
     documentContext?: DocumentContext;
+    persona?: ReaderPersona;
 }
 
+export type { StreamOpts };
 export type ChatStreamOpts = StreamOpts;
 export type FeedbackStreamOpts = StreamOpts;
 export type ReviseStreamOpts = StreamOpts;
@@ -132,6 +136,7 @@ function buildStream(
     tools?: Parameters<typeof streamText>[0]["tools"],
 ): ReadableStream<UIMessageChunk> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model);
+    const fullSystem = opts.persona ? buildPersonaPrompt(opts.persona) + system : system;
     const result = streamText({
         model: llm,
         messages: [
@@ -141,7 +146,7 @@ function buildStream(
                 selectedText: opts.selectedText,
             }),
         ],
-        system,
+        system: fullSystem,
         tools,
     });
     return result.toUIMessageStream();
