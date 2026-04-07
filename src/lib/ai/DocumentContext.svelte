@@ -105,7 +105,7 @@ function clearAll() {
             bind:value={documentContext.freeform}
             onblur={saveDocumentContext}
             placeholder="Describe whatever context is relevant to this piece — what it needs to accomplish, who's reading it, the tone to aim for, what to emphasize or avoid, any constraints. E.g: Goal: … / Audience: … / Tone: …"
-            rows={10}
+            rows={9}
             class="w-full resize-none rounded-lg bg-white/50 border border-black/10 px-2.5 py-2
                 text-xs text-black/70 placeholder:text-black/20 outline-none leading-relaxed
                 focus:border-blue-400/60 transition-colors"
