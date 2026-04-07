@@ -30,9 +30,16 @@ const enabledPersonas = $derived(readersSettings.personas.filter((p) => p.enable
 const disabledPersonas = $derived(readersSettings.personas.filter((p) => !p.enabled));
 
 const colorSwatches = [
-    "#ef4444", "#f59e0b", "#22c55e", "#3b82f6",
-    "#8b5cf6", "#ec4899", "#6366f1", "#f97316",
-    "#6b7280", "#14b8a6",
+    "#ef4444",
+    "#f59e0b",
+    "#22c55e",
+    "#3b82f6",
+    "#8b5cf6",
+    "#ec4899",
+    "#6366f1",
+    "#f97316",
+    "#6b7280",
+    "#14b8a6",
 ];
 
 function handleToggle(id: string) {

@@ -1,12 +1,9 @@
 import type { Chattiness, ReaderPersona } from "./presets";
 
 const CHATTINESS_DIRECTIVES: Record<Chattiness, string> = {
-    quiet:
-        "IMPORTANT: Only comment if you genuinely have something worth saying. Flag only issues that significantly harm the writing. If the passage is solid, say nothing.",
-    normal:
-        "Comment on issues worth the writer's attention. Be selective but don't hold back on meaningful observations.",
-    verbose:
-        "Be thorough. Flag everything you notice from your perspective, even minor issues.",
+    quiet: "IMPORTANT: Only comment if you genuinely have something worth saying. Flag only issues that significantly harm the writing. If the passage is solid, say nothing.",
+    normal: "Comment on issues worth the writer's attention. Be selective but don't hold back on meaningful observations.",
+    verbose: "Be thorough. Flag everything you notice from your perspective, even minor issues.",
 };
 
 /**
