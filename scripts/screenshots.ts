@@ -16,15 +16,16 @@
  *   05-revision-active.png  — revision card active: version pills + nested editor open
  *   06-library.png          — document library with multiple documents and preview panel
  *   07-revision-modal.png   — revision full-screen modal editor open
+ *   09-readers-panel.png    — AI sidebar open on Readers tab showing persona cards
  *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   12-nested-revision.png  — doubly-nested revision: outer modal with inner revision open
  *   13-inline-nested-revision.png — revision modal with an inline sub-revision open
  */
 
-import { chromium, type BrowserContext, type Page } from "@playwright/test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { type BrowserContext, type Page, chromium } from "@playwright/test";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
@@ -748,6 +749,25 @@ async function scenarioInlineNestedRevision(ctx: BrowserContext): Promise<void> 
 }
 
 /**
+ * 09. readers-panel — The AI sidebar open on the Readers tab, showing
+ *    the persona cards with enabled/disabled states, chattiness dots,
+ *    and the "Create custom reader" button.
+ */
+async function scenarioReadersPanel(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    // Open the Readers tab via keyboard shortcut
+    await page.keyboard.press("ControlOrMeta+Shift+5");
+    await page.waitForTimeout(400);
+    await shot(page, "09-readers-panel");
+    await page.close();
+}
+
+/**
  * 10. dictionary — The floating Dictionary & Thesaurus popover open in
  *    "Look up word" mode, with "wisdom" selected in the editor and
  *    auto-populated into the popover via the keyboard shortcut (⌘B / Ctrl+B).
@@ -860,6 +880,7 @@ async function main(): Promise<void> {
         await scenarioRevisionModal(context);
         await scenarioNestedRevision(context);
         await scenarioInlineNestedRevision(context);
+        await scenarioReadersPanel(context);
         await scenarioDictionary(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
