@@ -1,10 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Text } from "@codemirror/state";
 import { getSelection } from "$lib/editor/plugins/annotations";
+import { appSettings } from "$lib/settings.svelte";
+
+const { mockCapture, mockShowPrivacyNudge } = vi.hoisted(() => ({
+    mockCapture: vi.fn(),
+    mockShowPrivacyNudge: vi.fn(() => "QIR-TEST"),
+}));
 
 vi.mock("$lib/posthog", () => ({
-    default: { capture: vi.fn() },
-    showPrivacyNudge: vi.fn(() => "QIR-TEST"),
+    default: { capture: mockCapture },
+    showPrivacyNudge: mockShowPrivacyNudge,
 }));
 vi.mock("$lib/stores", () => ({
     settingsOpen: { set: vi.fn() },
@@ -74,5 +80,47 @@ describe("getSelection", () => {
             document: doc,
         });
         expect(doc.sliceString(sel.main.from, sel.main.to)).toBe("emergency");
+    });
+
+    // ── Privacy: ellipsis telemetry ────────────────────────────────────
+
+    beforeEach(() => {
+        mockCapture.mockClear();
+        mockShowPrivacyNudge.mockClear();
+        // Default: document analytics OFF (the mock doesn't set it)
+        (appSettings as Record<string, unknown>).shareDocumentAnalytics = false;
+    });
+
+    it("shows privacy nudge and redacts content when document analytics is off", () => {
+        getSelection({ targetText: "brown fox...", document: doc });
+        expect(mockShowPrivacyNudge).toHaveBeenCalledOnce();
+        expect(mockCapture).toHaveBeenCalledWith("ai_target_text_ellipsis_stripped", {
+            incident_code: "QIR-TEST",
+        });
+        // Must NOT contain document content
+        const props = mockCapture.mock.calls[0][1];
+        expect(props).not.toHaveProperty("original");
+    });
+
+    it("sends document content when document analytics is on", () => {
+        (appSettings as Record<string, unknown>).shareDocumentAnalytics = true;
+        getSelection({ targetText: "brown fox...", document: doc });
+        expect(mockShowPrivacyNudge).not.toHaveBeenCalled();
+        expect(mockCapture).toHaveBeenCalledWith("ai_target_text_ellipsis_stripped", {
+            original: "brown fox...",
+        });
+    });
+
+    it("redacts error message when document analytics is off", () => {
+        expect(() => getSelection({ targetText: "nonexistent", document: doc })).toThrow(
+            "content redacted for privacy",
+        );
+    });
+
+    it("includes content in error message when document analytics is on", () => {
+        (appSettings as Record<string, unknown>).shareDocumentAnalytics = true;
+        expect(() => getSelection({ targetText: "nonexistent", document: doc })).toThrow(
+            "nonexistent",
+        );
     });
 });
