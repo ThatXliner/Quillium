@@ -11,7 +11,7 @@
 <script lang="ts">
 import { get } from "svelte/store";
 import { editorView, pendingChatMessage, dictionaryTrigger, selectedText } from "$lib/stores";
-import { createAiChat, setAiProcessing } from "$lib/ai/chatFactory";
+import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { renderMarkdown } from "$lib/ai/utils";
 import { hasApiKey } from "$lib/ai/settings.svelte";
 import { Transaction } from "@codemirror/state";
@@ -42,19 +42,8 @@ let lookupLoading = $state(false);
 let describeInput = $state("");
 const { chat, clearChat } = createAiChat({ mode: "dictionary" });
 
-$effect(() => {
-    setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
-});
-
-$effect(() => {
-    function handleStop() {
-        if (chat.status === "submitted" || chat.status === "streaming") {
-            chat.stop();
-        }
-    }
-    window.addEventListener("quillium:stop-ai", handleStop);
-    return () => window.removeEventListener("quillium:stop-ai", handleStop);
-});
+// Wire up processing indicator + global stop listener.
+useAiChatEffects(chat);
 
 // ── React to trigger store ─────────────────────────────────────
 
