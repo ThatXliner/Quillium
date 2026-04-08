@@ -1,6 +1,6 @@
 {
-    "0.12": {
-        "date": "April 2026",
-        "content": "This update brings a new **writing statistics** panel — open it from the toolbar to see word count breakdowns, readability scores, and more about your document.\n\nBehind the scenes, we've strengthened **error recovery** for deeply nested annotations. The app now catches cases where nested content could be silently lost and offers to restore it.\n\nWe've also reworded our **privacy policy** for clarity — nothing functional changed, just better legal language."
-    }
+  "0.12": {
+    "date": "April 2026",
+    "content": "This update brings a new **writing statistics** panel — open it from the toolbar to see word count breakdowns, readability scores, and more about your document.\n\nBehind the scenes, we've strengthened **error recovery** for deeply nested annotations. The app now catches cases where nested content could be silently lost and offers to restore it.\n\nWe've also reworded our **privacy policy** for clarity — nothing functional changed, just better legal language."
+  }
 }
