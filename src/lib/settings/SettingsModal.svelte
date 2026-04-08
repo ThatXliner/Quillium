@@ -15,7 +15,7 @@
 <script lang="ts">
 import {
     X,
-    Settings2,
+    Settings,
     Check,
     ChevronDown,
     Plus,
@@ -295,7 +295,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
             <div class="flex items-center gap-2">
-                <Settings2 size={14} class="text-black/35" />
+                <Settings size={14} class="text-black/35" />
                 <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
             </div>
             <div class="flex items-center gap-1.5">
