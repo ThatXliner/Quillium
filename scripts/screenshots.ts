@@ -126,6 +126,8 @@ async function installTauriMock(
         }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
             localStorage.setItem("quillium_beta_accepted", "true");
+            // Suppress the "What's New" changelog modal so it doesn't block clicks.
+            localStorage.setItem("quillium_changelog_seen", "99.99");
             // Signal that an API key has been saved so the settings module
             // calls loadApiKeyForProvider() on startup. Without this,
             // hasApiKey() always returns false and tab clicks redirect to Settings.
