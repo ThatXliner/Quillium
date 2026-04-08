@@ -1215,6 +1215,26 @@ The banner can be dismissed at any point. If the update check fails, an error to
 
 ---
 
+## Changelog ("What's New")
+
+A Discord-style "What's New" modal shown on startup when the user upgrades to a new **minor** version. Patch-only updates (e.g. `0.12.1` → `0.12.2`) do not trigger it — only a new minor (or major) version does, and only if a matching entry exists in `changelog.json`.
+
+**Data flow:**
+
+1. `+page.svelte` calls `tryShowChangelog()` after the beta disclaimer is accepted.
+2. `minorVersion()` extracts the `"major.minor"` prefix from `__APP_VERSION__` (e.g. `"0.12.3"` → `"0.12"`).
+3. That key is looked up in `src/lib/changelog.json`. If no entry exists, the modal is skipped.
+4. The key is compared against `localStorage("quillium_changelog_seen")` via `isNewerMinor()`. If the current minor isn't newer, the modal is skipped.
+5. On dismiss, the current minor version is saved to `localStorage` so it won't show again.
+
+**Manual trigger:** The settings modal header has a "What's New" button that dispatches a `quillium:show-changelog` event, which calls `forceShowChangelog()` — this always shows the latest entry regardless of version checks.
+
+**Adding a changelog entry:** Add a `"major.minor"` key to `src/lib/changelog.json` with `date` (display string like `"April 2026"`) and `content` (markdown string). The modal renders the markdown via `renderMarkdown()`.
+
+**PostHog:** A `changelog_viewed` event with the version is captured on dismiss.
+
+---
+
 ## Native App Menu
 
 `lib.rs` builds a native application menu with five submenus: Quillium, File, Edit, View, and Window.
