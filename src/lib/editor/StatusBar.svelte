@@ -38,6 +38,33 @@ let hoverDelayTimer: ReturnType<typeof setTimeout> | undefined;
 let titleLinger = $state(false);
 let lingerTimer: ReturnType<typeof setTimeout> | undefined;
 
+// Scrollable secondary strip
+let secondaryStrip = $state<HTMLDivElement>();
+let stripOverflows = $state(false);
+let canScrollLeft = $state(false);
+let canScrollRight = $state(false);
+
+function updateScrollState() {
+    if (!secondaryStrip) return;
+    const el = secondaryStrip;
+    stripOverflows = el.scrollWidth > el.clientWidth + 1;
+    canScrollLeft = el.scrollLeft > 2;
+    canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+}
+
+$effect(() => {
+    if (!secondaryStrip) return;
+    const el = secondaryStrip;
+    updateScrollState();
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => {
+        el.removeEventListener("scroll", updateScrollState);
+        ro.disconnect();
+    };
+});
+
 function onMouseEnter() {
     hovered = true;
     clearTimeout(hoverDelayTimer);
@@ -119,118 +146,125 @@ $effect(() => {
     id="status-bar"
     role="region"
     aria-label="Status bar"
-    class="relative w-fit mx-auto backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg"
+    class="relative max-w-[30rem] mx-auto backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg"
     onmouseenter={onMouseEnter}
     onmouseleave={onMouseLeave}
 >
-    <div class="flex gap-4 items-center py-2 px-8">
-        <!-- <div class="w-px h-8 bg-black/20"></div> -->
-        <div class="flex items-center gap-2">
+    <div class="flex gap-4 items-center py-2 px-8 min-w-0">
+        <!-- Save status (pinned left) -->
+        <div class="flex items-center gap-2 shrink-0">
             <div
                 class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
             ></div>
             <span class="text-sm text-black/90"
                 >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
             >
-            <!-- {#if $saveStatus !== "saved"}
-                <span class="text-sm text-black/90"
-                    >{$saveStatus === "error" ? "Error" : "Saving..."}</span
-                >
-            {/if} -->
         </div>
-        <div class="w-px h-8 bg-black/20"></div>
-        <button
-            onclick={goToLibrary}
-            title="Library ({modKey}O)"
-            aria-label="Open library"
-            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
+        <div class="w-px h-8 bg-black/20 shrink-0"></div>
+        <!-- Middle buttons (scrollable) -->
+        <div
+            bind:this={secondaryStrip}
+            class="status-bar-strip flex items-center gap-4 overflow-x-auto scroll-smooth min-w-0 -my-2 py-2"
+            style="scrollbar-width: none; -ms-overflow-style: none;{stripOverflows
+                ? ` mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 12%' : 'black 0%'}, ${canScrollRight ? 'black 88%, transparent 100%' : 'black 100%'}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 12%' : 'black 0%'}, ${canScrollRight ? 'black 88%, transparent 100%' : 'black 100%'});`
+                : ''}"
         >
-            <LayoutGrid size={20} />
-        </button>
-        <button
-            onclick={goToHistory}
-            aria-label="Version history"
-            title="Version History ({modKey}Shift+H)"
-            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70"
-        >
-            <History size={20} />
-        </button>
-        <button
-            onclick={() => ($statsOpen = !$statsOpen)}
-            aria-label="Writing statistics"
-            title="Writing Statistics"
-            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
-                {$statsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
-        >
-            <BarChart3 size={20} />
-        </button>
-        <button
-            onclick={() => ($settingsOpen = !$settingsOpen)}
-            aria-label="Open settings"
-            title="Settings ({modKey},)"
-            class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
-                {$settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
-        >
-            <Settings size={20} />
-        </button>
-        <div class="relative w-12 h-12" bind:this={exportButtonEl}>
-            <div
-                onclick={() => (exportOpen = !exportOpen)}
-                role="menu"
-                tabindex="0"
-                aria-label="Export document"
-                title="Export"
-                class="absolute top-0 left-1/2 -translate-x-1/2 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md overflow-hidden cursor-pointer z-50
-                    transition-[width,height,border-radius,background-color] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
-                    {exportOpen ? 'w-[11rem] h-fit rounded-[14px] py-1 px-2 bg-[color-mix(in_srgb,theme(colors.gray.300),white_30%)]' : 'w-12 h-12 rounded-[24px] bg-[color-mix(in_srgb,white,theme(colors.gray.300)_50%)]'}"
+            <button
+                onclick={goToLibrary}
+                title="Library ({modKey}O)"
+                aria-label="Open library"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70 shrink-0"
             >
-                <!-- Icon (visible when collapsed) -->
-                <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150
-                    {exportOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 text-black/50 hover:text-black/70'}">
-                    <Download size={20} />
-                </div>
-                <!-- Menu items (visible when expanded) -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <LayoutGrid size={20} />
+            </button>
+            <button
+                onclick={goToHistory}
+                aria-label="Version history"
+                title="Version History ({modKey}Shift+H)"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70 shrink-0"
+            >
+                <History size={20} />
+            </button>
+            <button
+                onclick={() => ($statsOpen = !$statsOpen)}
+                aria-label="Writing statistics"
+                title="Writing Statistics"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                    {$statsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+            >
+                <BarChart3 size={20} />
+            </button>
+            <button
+                onclick={() => ($settingsOpen = !$settingsOpen)}
+                aria-label="Open settings"
+                title="Settings ({modKey},)"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                    {$settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+            >
+                <Settings size={20} />
+            </button>
+            <div class="relative w-12 h-12 shrink-0" bind:this={exportButtonEl}>
                 <div
-                    bind:this={exportMenuEl}
-                    class="relative flex flex-col py-1 transition-opacity duration-150 {exportOpen ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'}"
-                    onmouseleave={() => (hoveredExportIdx = -1)}
+                    onclick={() => (exportOpen = !exportOpen)}
+                    role="menu"
+                    tabindex="0"
+                    aria-label="Export document"
+                    title="Export"
+                    class="absolute top-0 left-1/2 -translate-x-1/2 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md overflow-hidden cursor-pointer z-50
+                        transition-[width,height,border-radius,background-color] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
+                        {exportOpen ? 'w-[11rem] h-fit rounded-[14px] py-1 px-2 bg-[color-mix(in_srgb,theme(colors.gray.300),white_30%)]' : 'w-12 h-12 rounded-[24px] bg-[color-mix(in_srgb,white,theme(colors.gray.300)_50%)]'}"
                 >
+                    <!-- Icon (visible when collapsed) -->
+                    <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150
+                        {exportOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 text-black/50 hover:text-black/70'}">
+                        <Download size={20} />
+                    </div>
+                    <!-- Menu items (visible when expanded) -->
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div
-                        class="absolute inset-x-0 rounded-lg bg-white/70 backdrop-blur-sm shadow-[0_1px_3px_rgba(0,0,0,0.12)] inset-shadow-[0_1px_0_rgba(255,255,255,0.9)] pointer-events-none transition-[top,height] duration-250 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
-                        style={exportPillStyle}
-                    ></div>
-                    {#each [
-                        { format: "txt", label: "Plain Text (.txt)" },
-                        { format: "txt+json", label: "Text + Annotations (.txt)" },
-                        { format: "json", label: "JSON (.json)" },
-                        { format: "md", label: "Markdown (.md)" },
-                    ] as item, i}
-                        <button
-                            onclick={() => doExport(item.format)}
-                            onmouseenter={() => (hoveredExportIdx = i)}
-                            role="menuitem"
-                            class="export-item relative z-[1] px-1 w-full text-left py-2.5 text-sm text-black/80 whitespace-nowrap"
-                        >{item.label}</button>
-                    {/each}
+                        bind:this={exportMenuEl}
+                        class="relative flex flex-col py-1 transition-opacity duration-150 {exportOpen ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'}"
+                        onmouseleave={() => (hoveredExportIdx = -1)}
+                    >
+                        <div
+                            class="absolute inset-x-0 rounded-lg bg-white/70 backdrop-blur-sm shadow-[0_1px_3px_rgba(0,0,0,0.12)] inset-shadow-[0_1px_0_rgba(255,255,255,0.9)] pointer-events-none transition-[top,height] duration-250 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
+                            style={exportPillStyle}
+                        ></div>
+                        {#each [
+                            { format: "txt", label: "Plain Text (.txt)" },
+                            { format: "txt+json", label: "Text + Annotations (.txt)" },
+                            { format: "json", label: "JSON (.json)" },
+                            { format: "md", label: "Markdown (.md)" },
+                        ] as item, i}
+                            <button
+                                onclick={() => doExport(item.format)}
+                                onmouseenter={() => (hoveredExportIdx = i)}
+                                role="menuitem"
+                                class="export-item relative z-[1] px-1 w-full text-left py-2.5 text-sm text-black/80 whitespace-nowrap"
+                            >{item.label}</button>
+                        {/each}
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="w-px h-8 bg-black/20"></div>
-        <button
-            onclick={() => ($tutorialActive = true)}
-            aria-label="Take tour"
-            title="Take tour"
-            class="w-5 h-5 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-[11px] font-semibold leading-none flex items-center justify-center"
-        >?</button>
-        {#if import.meta.env.DEV}
+        <div class="w-px h-8 bg-black/20 shrink-0"></div>
+        <!-- Right side (pinned) -->
+        <div class="flex items-center gap-2 shrink-0">
             <button
-                onclick={() => ($debugPanelActive = true)}
-                aria-label="Open debug panel"
-                title="Debug scenarios"
-                class="w-5 h-5 rounded-full bg-amber-200/60 hover:bg-amber-300/80 text-amber-700 hover:text-amber-900 transition-colors text-[11px] leading-none flex items-center justify-center"
-            >🐛</button>
-        {/if}
+                onclick={() => ($tutorialActive = true)}
+                aria-label="Take tour"
+                title="Take tour"
+                class="w-5 h-5 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-[11px] font-semibold leading-none flex items-center justify-center"
+            >?</button>
+            {#if import.meta.env.DEV}
+                <button
+                    onclick={() => ($debugPanelActive = true)}
+                    aria-label="Open debug panel"
+                    title="Debug scenarios"
+                    class="w-5 h-5 rounded-full bg-amber-200/60 hover:bg-amber-300/80 text-amber-700 hover:text-amber-900 transition-colors text-[11px] leading-none flex items-center justify-center"
+                >🐛</button>
+            {/if}
+        </div>
     </div>
     {#if titleVisibility !== "never"}
     {@const titleShown = titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger}
@@ -244,3 +278,9 @@ $effect(() => {
     </div>
     {/if}
 </div>
+
+<style>
+    .status-bar-strip::-webkit-scrollbar {
+        display: none;
+    }
+</style>
