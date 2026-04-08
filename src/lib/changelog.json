@@ -1,0 +1,6 @@
+{
+  "0.12": {
+    "date": "April 2026",
+    "content": "You can now **hide suggestions** from the annotations panel for a cleaner writing view — check the new toggle in Settings → UI Tweaks.\n\nWe've improved **error recovery** for deeply nested annotations. The app now detects when nested content might be lost and offers to restore it.\n\nOur **privacy policy** has been reworded for clarity. Nothing functional changed — this is just better legal language."
+  }
+}
