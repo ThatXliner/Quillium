@@ -21,6 +21,23 @@
  *   10-dictionary.png       — dictionary/thesaurus panel open with word selected
  *   12-nested-revision.png  — doubly-nested revision: outer modal with inner revision open
  *   13-inline-nested-revision.png — revision modal with an inline sub-revision open
+ *   14-settings.png         — settings modal open
+ *   15-stats.png            — writing statistics modal open
+ *   16-ai-chat.png          — AI sidebar open on Chat tab
+ *   17-ai-feedback.png      — AI sidebar open on Feedback tab
+ *   18-ai-revise.png        — AI sidebar open on Revise tab
+ *   19-ai-context.png       — AI sidebar open on Document Context tab
+ *   20-autoai-widget.png    — AutoAI widget expanded showing config panel
+ *   21-version-history.png  — version history page with snapshot list
+ *   22-full-ui.png          — hero shot: AI sidebar + annotations on original prose
+ *   23-dense-annotations.png — many comments across a longer passage
+ *   24-suggestion-active.png — AI suggestion card in expanded active state
+ *   25-library-empty.png    — library with no documents (empty state)
+ *   26-library-trash.png    — library trash tab with deleted documents
+ *   27-changelog.png        — "What's New" changelog modal
+ *   28-export-menu.png      — status bar with export dropdown expanded
+ *   29-tutorial.png         — tutorial overlay welcome step
+ *   30-error-banner.png     — crash recovery error banner
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -53,6 +70,62 @@ const PROSE_SHORT =
 // ── Tauri mock ────────────────────────────────────────────────────────────────
 
 // ── Library mock data ─────────────────────────────────────────────────────────
+
+const TRASHED_DOCUMENTS = [
+    {
+        id: "doc-trash-1",
+        title: "Untitled Fragment",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 40,
+        updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 7,
+        wordCount: 87,
+        previewText:
+            "He stood at the window and watched the pigeons gather on the sill. There was nothing else to do…",
+        tags: '["fragment"]',
+        deletedAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
+    },
+    {
+        id: "doc-trash-2",
+        title: "Notes on Weather",
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 25,
+        updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 10,
+        wordCount: 156,
+        previewText:
+            "Rain in this city is never just rain. It is punctuation — a comma between errands, a full stop at the end of the day…",
+        tags: '["notes"]',
+        deletedAt: Date.now() - 1000 * 60 * 60 * 24 * 5,
+    },
+];
+
+const MOCK_SNAPSHOTS = [
+    {
+        id: 1,
+        draftId: "draft-1",
+        upToEventId: 10,
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 3,
+        label: null,
+    },
+    {
+        id: 2,
+        draftId: "draft-1",
+        upToEventId: 25,
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
+        label: "After first round of edits",
+    },
+    {
+        id: 3,
+        draftId: "draft-1",
+        upToEventId: 42,
+        createdAt: Date.now() - 1000 * 60 * 60 * 24 * 1,
+        label: null,
+    },
+    {
+        id: 4,
+        draftId: "draft-1",
+        upToEventId: 58,
+        createdAt: Date.now() - 1000 * 60 * 30,
+        label: "Pre-submission draft",
+    },
+];
 
 const LIBRARY_DOCUMENTS = [
     {
@@ -107,6 +180,9 @@ type TauriMockOptions = {
     loadResponse: string | null;
     fakeApiKey: boolean;
     libraryMode: boolean;
+    trashedDocuments: boolean;
+    snapshots: boolean;
+    showTutorial: boolean;
 };
 
 async function installTauriMock(
@@ -116,15 +192,27 @@ async function installTauriMock(
     const loadResponse = options.loadResponse ?? null;
     const fakeApiKey = options.fakeApiKey ?? false;
     const libraryMode = options.libraryMode ?? false;
+    const trashedDocuments = options.trashedDocuments ?? false;
+    const snapshots = options.snapshots ?? false;
+    const showTutorial = options.showTutorial ?? false;
 
     await page.addInitScript(
         (payload: {
             loadResponse: string | null;
             fakeApiKey: boolean;
             libraryMode: boolean;
+            trashedDocuments: boolean;
+            snapshots: boolean;
+            showTutorial: boolean;
             libraryDocs: typeof LIBRARY_DOCUMENTS;
+            trashedDocs: typeof TRASHED_DOCUMENTS;
+            mockSnapshots: typeof MOCK_SNAPSHOTS;
         }) => {
-            localStorage.setItem("quillium_tutorial_seen", "1");
+            if (payload.showTutorial) {
+                localStorage.removeItem("quillium_tutorial_seen");
+            } else {
+                localStorage.setItem("quillium_tutorial_seen", "1");
+            }
             localStorage.setItem("quillium_beta_accepted", "true");
             // Suppress the "What's New" changelog modal so it doesn't block clicks.
             localStorage.setItem("quillium_changelog_seen", "99.99");
@@ -178,7 +266,8 @@ async function installTauriMock(
                         return { migrated: false, documentId: null };
                     if (cmd === "cmd_list_documents")
                         return payload.libraryMode ? payload.libraryDocs : [];
-                    if (cmd === "cmd_list_trashed_documents") return [];
+                    if (cmd === "cmd_list_trashed_documents")
+                        return payload.trashedDocuments ? payload.trashedDocs : [];
                     if (cmd === "cmd_get_trash_retention") return 30;
                     if (cmd === "cmd_set_trash_retention") return null;
                     if (cmd === "cmd_purge_expired_trash") return 0;
@@ -195,7 +284,16 @@ async function installTauriMock(
                         savedState = null;
                         return null;
                     }
-                    if (cmd === "cmd_list_drafts") return [];
+                    if (cmd === "cmd_list_drafts")
+                        return [
+                            {
+                                id: "draft-1",
+                                documentId: (args as { documentId: string }).documentId,
+                                label: "Main",
+                                createdAt: Date.now(),
+                                isActive: true,
+                            },
+                        ];
                     if (cmd === "cmd_create_draft") return "draft-1";
                     if (cmd === "cmd_append_event")
                         return { eventId: Math.floor(Math.random() * 100000) };
@@ -205,6 +303,17 @@ async function installTauriMock(
                     }
                     if (cmd === "cmd_load_document_state")
                         return { snapshotStateJson: savedState, eventsSince: [] };
+                    // Snapshot / version history commands
+                    if (cmd === "cmd_list_snapshots")
+                        return payload.snapshots ? payload.mockSnapshots : [];
+                    if (cmd === "cmd_load_snapshot_state") return savedState;
+                    if (cmd === "cmd_label_snapshot") return null;
+                    if (cmd === "cmd_create_named_snapshot") return 99;
+                    if (cmd === "cmd_get_snapshot_retention") return null;
+                    if (cmd === "cmd_set_snapshot_retention") return null;
+                    if (cmd === "cmd_get_snapshot_storage_size") return 524288;
+                    if (cmd === "cmd_prune_snapshots_keep_last_n") return 0;
+                    if (cmd === "cmd_prune_snapshots_older_than") return 0;
                     return null;
                 },
                 transformCallback: (callback: (...args: unknown[]) => unknown) => {
@@ -223,7 +332,17 @@ async function installTauriMock(
                 unregisterListener: () => {},
             };
         },
-        { loadResponse, fakeApiKey, libraryMode, libraryDocs: LIBRARY_DOCUMENTS },
+        {
+            loadResponse,
+            fakeApiKey,
+            libraryMode,
+            trashedDocuments,
+            snapshots,
+            showTutorial,
+            libraryDocs: LIBRARY_DOCUMENTS,
+            trashedDocs: TRASHED_DOCUMENTS,
+            mockSnapshots: MOCK_SNAPSHOTS,
+        },
     );
 }
 
@@ -845,6 +964,341 @@ async function scenarioDictionary(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
+/**
+ * 14. settings — The settings modal open, showing app preferences
+ *    for font, theme, AI, and editor behavior.
+ */
+async function scenarioSettings(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    // Hover the status bar to reveal buttons, then click settings
+    await page.locator("#status-bar").hover();
+    await page.waitForTimeout(300);
+    await page.locator('[aria-label="Open settings"]').click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "14-settings");
+    await page.close();
+}
+
+/**
+ * 15. stats — The writing statistics modal showing word count,
+ *    writing time, and other metrics.
+ */
+async function scenarioStats(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    // Hover the status bar to reveal buttons, then click stats
+    await page.locator("#status-bar").hover();
+    await page.waitForTimeout(300);
+    await page.locator('[aria-label="Writing statistics"]').click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "15-stats");
+    await page.close();
+}
+
+/**
+ * 16. ai-chat — The AI sidebar open on the Chat tab, showing
+ *    the conversational interface for AI writing assistance.
+ */
+async function scenarioAIChat(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    await page.locator("#ai-tab-chat").click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "16-ai-chat");
+    await page.close();
+}
+
+/**
+ * 17. ai-feedback — The AI sidebar open on the Feedback tab,
+ *    showing the feedback request panel with persona selector.
+ */
+async function scenarioAIFeedback(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    await page.locator("#ai-tab-feedback").click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "17-ai-feedback");
+    await page.close();
+}
+
+/**
+ * 18. ai-revise — The AI sidebar open on the Revise tab,
+ *    showing the revision/rewrite request panel.
+ */
+async function scenarioAIRevise(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    await page.locator("#ai-tab-revise").click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "18-ai-revise");
+    await page.close();
+}
+
+/**
+ * 19. ai-context — The AI sidebar open on the Document Context tab,
+ *    showing the document context management panel.
+ */
+async function scenarioAIContext(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    await page.locator("#ai-tab-context").click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "19-ai-context");
+    await page.close();
+}
+
+/**
+ * 20. autoai-widget — The AutoAI collaborator bubble expanded,
+ *    showing the configuration panel with mode, delay, and
+ *    annotation type settings.
+ */
+async function scenarioAutoAIWidget(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-autoai-widget");
+    if (!applied) {
+        await setEditorText(page, PROSE_SHORT);
+    }
+    // Click the AutoAI bubble to expand it
+    await page.locator('[aria-label*="AutoAI"]').first().click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "20-autoai-widget");
+    await page.close();
+}
+
+/**
+ * 21. version-history — The version history page showing a list
+ *    of snapshots with timestamps and labels.
+ */
+async function scenarioVersionHistory(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { libraryMode: true, snapshots: true });
+    await page.goto(`${BASE_URL}/history`);
+    // Wait for the snapshot list to render
+    await page.locator("text=Version History").first().waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(800);
+    await shot(page, "21-version-history");
+    await page.close();
+}
+
+/**
+ * 22. full-ui — Hero/marketing screenshot showing the AI chat
+ *    sidebar open alongside comment and revision annotations on
+ *    a realistic editorial session.
+ */
+async function scenarioFullUI(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-full-ui");
+    if (!applied) {
+        await setEditorText(page, PROSE_SHORT);
+    }
+    // Open the AI Chat sidebar
+    await page.locator("#ai-tab-chat").click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "22-full-ui");
+    await page.close();
+}
+
+/**
+ * 23. dense-annotations — Several comments spread across a longer
+ *    passage, showing the annotation system at scale.
+ */
+async function scenarioDenseAnnotations(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-dense");
+    if (!applied) {
+        await setEditorText(page, PROSE_SHORT);
+    }
+    // Click somewhere neutral — no annotation active
+    await page.mouse.click(720, 800);
+    await page.waitForTimeout(400);
+    await shot(page, "23-dense-annotations");
+    await page.close();
+}
+
+/**
+ * 24. suggestion-active — An AI suggestion card in its expanded
+ *    active state, showing replacement options and inline diff.
+ */
+async function scenarioSuggestionActive(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { fakeApiKey: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    const applied = await applyDebugScenario(page, "screenshot-annotations");
+    if (!applied) {
+        await setEditorText(page, PROSE_SHORT);
+    }
+    // Activate the suggestion card by placing cursor inside its range
+    await activateAnnotation(
+        page,
+        "we were all going direct to Heaven, we were all going direct the other way",
+    );
+    await shot(page, "24-suggestion-active");
+    await page.close();
+}
+
+/**
+ * 25. library-empty — The document library with no documents,
+ *    showing the empty state illustration and prompt.
+ */
+async function scenarioLibraryEmpty(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    // libraryMode: false means cmd_list_documents returns []
+    await installTauriMock(page, { libraryMode: false });
+    await page.goto(`${BASE_URL}/library`);
+    await page.locator("h1").filter({ hasText: "Your Library" }).waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(800);
+    await shot(page, "25-library-empty");
+    await page.close();
+}
+
+/**
+ * 26. library-trash — The library's trash tab with deleted documents,
+ *    showing the trash management UI with auto-empty settings.
+ */
+async function scenarioLibraryTrash(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { libraryMode: true, trashedDocuments: true });
+    await page.goto(`${BASE_URL}/library`);
+    await page.locator("h1").filter({ hasText: "Your Library" }).waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(400);
+    // Switch to trash tab — use exact text match to avoid "Move to trash" button
+    await page.getByRole("button", { name: "Trash", exact: true }).click({ timeout: 5_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "26-library-trash");
+    await page.close();
+}
+
+/**
+ * 27. changelog — The "What's New" changelog modal overlay,
+ *    showing release notes in a centered card.
+ */
+async function scenarioChangelog(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    // Trigger the changelog modal via the custom event bridge
+    await page.evaluate(() => {
+        window.dispatchEvent(new CustomEvent("quillium:show-changelog"));
+    });
+    await page.waitForTimeout(600);
+    await shot(page, "27-changelog");
+    await page.close();
+}
+
+/**
+ * 28. export-menu — The status bar with the export dropdown expanded,
+ *    showing available export formats (txt, json, md, txt+json).
+ */
+async function scenarioExportMenu(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    // Hover the status bar to reveal buttons, then click export
+    await page.locator("#status-bar").hover();
+    await page.waitForTimeout(300);
+    await page.locator('[aria-label="Export document"]').click({ timeout: 5_000 });
+    await page.waitForTimeout(400);
+    await shot(page, "28-export-menu");
+    await page.close();
+}
+
+/**
+ * 29. tutorial — The tutorial overlay on its welcome step,
+ *    showing the guided onboarding experience.
+ */
+async function scenarioTutorial(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    // showTutorial: true skips setting quillium_tutorial_seen, which
+    // causes showTutorialOnFirstVisit() to activate the tutorial overlay.
+    await installTauriMock(page, { showTutorial: true });
+    await page.goto(BASE_URL);
+    // Wait for the editor to mount first — tutorial needs the DOM ready
+    await page.locator("#editor-document").waitFor({ state: "attached", timeout: 15_000 });
+    // Then wait for the tutorial dialog
+    await page
+        .locator("[role='dialog'][aria-label='Tutorial']")
+        .waitFor({ state: "visible", timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await shot(page, "29-tutorial");
+    await page.close();
+}
+
+/**
+ * 30. error-banner — The crash recovery error banner at the top of
+ *    the app, showing the warning message and restore options.
+ */
+async function scenarioErrorBanner(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(page, PROSE_SHORT);
+    // Import the errorBanner store via Vite's module system and set it
+    await page.evaluate(async () => {
+        const stores = await import("/src/lib/stores.ts");
+        stores.errorBanner.set({
+            message: "Quillium detected a problem and created a backup of your document.",
+            hasBackup: true,
+            backupType: "crash" as const,
+            details:
+                "TypeError: Cannot read properties of undefined (reading 'length')\n    at EditorState.update (editor.js:412)\n    at dispatchTransaction (editor.js:891)",
+        });
+    });
+    await page.waitForTimeout(400);
+    await shot(page, "30-error-banner");
+    await page.close();
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -874,9 +1328,7 @@ async function main(): Promise<void> {
                 const devCheck = await fetch(`${BASE_URL}/@vite/client`).catch(() => null);
                 if (!devCheck || !devCheck.ok) {
                     throw new Error(
-                        `A server is running at ${BASE_URL} but it does not appear to be a Vite dev server (/@vite/client returned ${devCheck?.status ?? "network error"}). ` +
-                            `This is likely \`vite preview\`, which runs the production build where __runScenario__ is unavailable. ` +
-                            `Stop it and re-run, or use --no-server to point at a running tauri dev instance on port 1420.`,
+                        `A server is running at ${BASE_URL} but it does not appear to be a Vite dev server (/@vite/client returned ${devCheck?.status ?? "network error"}). This is likely \`vite preview\`, which runs the production build where __runScenario__ is unavailable. Stop it and re-run, or use --no-server to point at a running tauri dev instance on port 1420.`,
                     );
                 }
                 serverAlreadyRunning = true;
@@ -911,6 +1363,24 @@ async function main(): Promise<void> {
         await scenarioPersonaAnnotations(context);
         await scenarioReadersPanel(context);
         await scenarioDictionary(context);
+        // ── New scenarios ────────────────────────────────────────────
+        await scenarioSettings(context);
+        await scenarioStats(context);
+        await scenarioAIChat(context);
+        await scenarioAIFeedback(context);
+        await scenarioAIRevise(context);
+        await scenarioAIContext(context);
+        await scenarioAutoAIWidget(context);
+        await scenarioVersionHistory(context);
+        await scenarioFullUI(context);
+        await scenarioDenseAnnotations(context);
+        await scenarioSuggestionActive(context);
+        await scenarioLibraryEmpty(context);
+        await scenarioLibraryTrash(context);
+        await scenarioChangelog(context);
+        await scenarioExportMenu(context);
+        await scenarioTutorial(context);
+        await scenarioErrorBanner(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {
