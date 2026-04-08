@@ -438,8 +438,31 @@ Quillium follows semantic versioning:
 
 Maintainers handle releases, but contributors can:
 - **Suggest version bumps** in PRs
-- **Update CHANGELOG.md** with notable changes
+- **Update changelog entries** with notable changes (see below)
 - **Test release candidates** when available
+
+### Writing Changelog Entries
+
+Quillium shows a "What's New" modal on startup after minor version bumps. Changelog entries live in `src/lib/changelog.json`, keyed by `major.minor` version:
+
+```json
+{
+    "0.12": {
+        "date": "April 2026",
+        "content": "Markdown content here..."
+    }
+}
+```
+
+**Content guidelines:**
+
+- **Conversational prose, not bullet points.** Write short paragraphs with **bold keywords** for scannability — think Discord's "What's New" style, not GitHub release notes.
+- **One paragraph per notable change.** Each paragraph should explain what changed and why a writer would care.
+- **Never mention AI features.** Writers are often AI-averse. AI-related changes (new models, persona features, sidebar improvements, prompt changes) should be completely omitted from changelogs.
+- **Say what the user gets, not what we did.** "You can now hide suggestions" not "Added a hide-suggestions toggle to the settings store."
+- **Privacy/legal changes get their own paragraph** noting that nothing functional changed.
+- **Keep it short.** 2–5 paragraphs per release. If you can't summarize a change in one paragraph, the changelog isn't the right place for it.
+- **Only add entries for minor bumps** — patch releases don't get changelog entries.
 
 ## Recognition
 

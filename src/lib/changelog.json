@@ -1,6 +1,6 @@
 {
-  "0.12": {
-    "date": "April 2026",
-    "content": "You can now **hide suggestions** from the annotations panel for a cleaner writing view — check the new toggle in Settings → UI Tweaks.\n\nWe've improved **error recovery** for deeply nested annotations. The app now detects when nested content might be lost and offers to restore it.\n\nOur **privacy policy** has been reworded for clarity. Nothing functional changed — this is just better legal language."
-  }
+    "0.12": {
+        "date": "April 2026",
+        "content": "This update brings a new **writing statistics** panel — open it from the toolbar to see word count breakdowns, readability scores, and more about your document.\n\nIf you've ever found the annotations panel too busy, there's now a **hide suggestions** toggle in Settings → UI Tweaks. You'll also notice a subtle green flash when new annotations appear, so you never miss one.\n\nBehind the scenes, we've strengthened **error recovery** for deeply nested annotations. The app now catches cases where nested content could be silently lost and offers to restore it.\n\nWe've also reworded our **privacy policy** for clarity — nothing functional changed, just better legal language."
+    }
 }
