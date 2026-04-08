@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Copy, Check, Settings2 } from "lucide-svelte";
+import { Copy, Check, Settings } from "lucide-svelte";
 
 interface Props {
     summary: string;
@@ -62,7 +62,7 @@ function copyCode() {
             rounded-lg bg-blue-500/90 hover:bg-blue-500 text-white text-[12px]
             font-medium transition-colors"
     >
-        <Settings2 size={13} />
+        <Settings size={13} />
         Open Settings
     </button>
 </div>

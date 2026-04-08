@@ -68,7 +68,7 @@ import {
     ZapIcon,
     PenLineIcon,
     XIcon,
-    Settings2Icon,
+    SettingsIcon,
     CompassIcon,
     Minimize2Icon,
     UsersIcon,
@@ -427,7 +427,7 @@ function handleKeydown(e: KeyboardEvent) {
             class="relative p-2 rounded-full transition-colors
                 {hasApiKey() ? 'text-black/30 hover:text-black/60' : 'text-amber-600/80 hover:text-amber-700'}"
         >
-            <Settings2Icon size={15} />
+            <SettingsIcon size={15} />
             {#if !hasApiKey()}
                 <span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"></span>
             {/if}
@@ -498,7 +498,7 @@ function handleKeydown(e: KeyboardEvent) {
                         ? 'text-black/60 bg-white/60'
                         : 'text-black/30 hover:text-black/60 hover:bg-white/40'}"
             >
-                <Settings2Icon size={14} />
+                <SettingsIcon size={14} />
             </button>
             <button
                 onclick={() => (action = null)}
