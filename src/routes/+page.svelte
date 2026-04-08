@@ -48,9 +48,13 @@ import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
+import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
+import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
 
 let showBetaDisclaimer = $state(false);
+let showChangelog = $state(false);
+let changelogEntry = $state<{ date: string; content: string; version: string } | null>(null);
 let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
@@ -68,13 +72,62 @@ function showTutorialOnFirstVisit() {
         // Tutorial already seen (e.g. returning user from private beta),
         // but beta terms not yet accepted — show disclaimer directly.
         showBetaDisclaimer = true;
+    } else {
+        tryShowChangelog();
     }
 }
 
 function handleTutorialComplete() {
     if (!betaAccepted()) {
         showBetaDisclaimer = true;
+    } else {
+        tryShowChangelog();
     }
+}
+
+const CHANGELOG_SEEN_KEY = "quillium_changelog_seen";
+
+/**
+ * Extract "major.minor" prefix from a full version string.
+ * "0.12.3" → "0.12", "1.2.0-beta" → "1.2"
+ */
+function minorVersion(version: string): string {
+    const parts = version.split(".");
+    return `${parts[0]}.${parts[1]}`;
+}
+
+/**
+ * Compare two "major.minor" version strings.
+ * Returns true if a > b.
+ */
+function isNewerMinor(a: string, b: string): boolean {
+    const [aMaj, aMin] = a.split(".").map(Number);
+    const [bMaj, bMin] = b.split(".").map(Number);
+    return aMaj > bMaj || (aMaj === bMaj && aMin > bMin);
+}
+
+declare const __APP_VERSION__: string;
+
+function tryShowChangelog() {
+    const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+    if (appVersion === "dev") return;
+
+    const currentMinor = minorVersion(appVersion);
+    const entry = (changelog as Record<string, { date: string; content: string }>)[currentMinor];
+    if (!entry) return;
+
+    const lastSeen = localStorage.getItem(CHANGELOG_SEEN_KEY) ?? "0.0";
+    if (!isNewerMinor(currentMinor, lastSeen)) return;
+
+    changelogEntry = { ...entry, version: currentMinor };
+    showChangelog = true;
+}
+
+function handleChangelogDismiss() {
+    if (changelogEntry) {
+        localStorage.setItem(CHANGELOG_SEEN_KEY, changelogEntry.version);
+    }
+    showChangelog = false;
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -322,7 +375,17 @@ if (import.meta.env.DEV) {
 
 <!-- Beta disclaimer — shown once after tutorial or on first visit for returning users -->
 {#if showBetaDisclaimer}
-    <BetaDisclaimer onaccept={() => { showBetaDisclaimer = false; }} />
+    <BetaDisclaimer onaccept={() => { showBetaDisclaimer = false; tryShowChangelog(); }} />
+{/if}
+
+<!-- What's New changelog — shown after beta disclaimer on minor version bumps -->
+{#if showChangelog && changelogEntry}
+    <ChangelogModal
+        date={changelogEntry.date}
+        content={changelogEntry.content}
+        version={changelogEntry.version}
+        ondismiss={handleChangelogDismiss}
+    />
 {/if}
 
 <!-- Debug panel — DEV only, never rendered in production builds -->
