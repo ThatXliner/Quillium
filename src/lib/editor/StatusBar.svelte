@@ -186,15 +186,6 @@ $effect(() => {
                 <History size={20} />
             </button>
             <button
-                onclick={() => ($statsOpen = !$statsOpen)}
-                aria-label="Writing statistics"
-                title="Writing Statistics"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
-                    {$statsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
-            >
-                <BarChart3 size={20} />
-            </button>
-            <button
                 onclick={() => ($settingsOpen = !$settingsOpen)}
                 aria-label="Open settings"
                 title="Settings ({modKey},)"
@@ -202,6 +193,15 @@ $effect(() => {
                     {$settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
             >
                 <Settings size={20} />
+            </button>
+            <button
+                onclick={() => ($statsOpen = !$statsOpen)}
+                aria-label="Writing statistics"
+                title="Writing Statistics"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                    {$statsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+            >
+                <BarChart3 size={20} />
             </button>
             <div class="relative w-12 h-12 shrink-0" bind:this={exportButtonEl}>
                 <div
