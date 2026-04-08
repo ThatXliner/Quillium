@@ -5,7 +5,6 @@ import { appSettings } from "$lib/settings.svelte";
 import { toast } from "svelte-sonner";
 import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
 
-declare const __APP_VERSION__: string;
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {

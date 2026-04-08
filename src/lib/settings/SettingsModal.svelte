@@ -152,8 +152,6 @@ let innerEl = $state<HTMLDivElement | undefined>(undefined);
 let alertKey = $state(0);
 let alerting = $state(false);
 
-declare const __APP_VERSION__: string;
-
 function getChangelogEntry(): { date: string; content: string; version: string } | null {
     const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
     if (appVersion === "dev") return null;

@@ -106,8 +106,6 @@ function isNewerMinor(a: string, b: string): boolean {
     return aMaj > bMaj || (aMaj === bMaj && aMin > bMin);
 }
 
-declare const __APP_VERSION__: string;
-
 function tryShowChangelog() {
     const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
     if (appVersion === "dev") return;
