@@ -28,6 +28,7 @@
 -->
 <script lang="ts">
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon } from "lucide-svelte";
 import {
     aiSettings,
@@ -469,4 +470,12 @@ async function saveApiKey() {
         {/if}
     </div>
     {/if}
+
+    <!-- Third-party notice -->
+    <p class="text-[10px] text-black/30 leading-relaxed px-0.5">
+        By using AI features, your writing is sent directly to your chosen provider. You agree to their respective terms of service and privacy policies:
+        <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>OpenAI Terms</button> · <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>Privacy</button>,
+        <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/consumer-terms")}>Anthropic Terms</button> · <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/privacy")}>Privacy</button>,
+        <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://ai.google.dev/gemini-api/terms")}>Google Terms</button> · <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://policies.google.com/privacy")}>Privacy</button>.
+    </p>
 </div>
