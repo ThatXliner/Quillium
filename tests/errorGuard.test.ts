@@ -2,11 +2,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
     isSuspiciousDeletion,
     isSuspiciousAnnotationChange,
+    isDeepAnnotationLoss,
     saveEmergencyBackup,
     readBackup,
     clearBackup,
 } from "$lib/errorGuard";
 import { currentDocumentTitle, documentContent } from "$lib/stores";
+import { EditorSelection } from "@codemirror/state";
+import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
 
 // ── localStorage mock ─────────────────────────────────────────────
 const store: Record<string, string> = {};
@@ -103,6 +106,112 @@ describe("isSuspiciousAnnotationChange", () => {
 
     it("returns false when starting from 0 annotations", () => {
         expect(isSuspiciousAnnotationChange(0, 0)).toBe(false);
+    });
+});
+
+// ── isDeepAnnotationLoss ─────────────────────────────────────────
+
+function makeSelection(from: number, to: number) {
+    return EditorSelection.create([EditorSelection.range(from, to)]);
+}
+
+function makeComment(id: number): GenericAnnotation {
+    return { _type: "comment", id, thread: [], selection: makeSelection(0, 5) };
+}
+
+function makeRevision(id: number, versions: object[]): GenericAnnotation {
+    return {
+        _type: "revision",
+        id,
+        thread: [],
+        selection: makeSelection(0, 10),
+        activeVersionIndex: 0,
+        versions,
+    };
+}
+
+describe("isDeepAnnotationLoss", () => {
+    it("returns false when no annotations were removed", () => {
+        const annotations = { 0: makeComment(0), 1: makeComment(1) };
+        expect(isDeepAnnotationLoss(annotations, annotations)).toBe(false);
+    });
+
+    it("returns false when a removed revision has no nested annotations", () => {
+        const old = {
+            0: makeRevision(0, [{ doc: "hello" }]),
+        };
+        expect(isDeepAnnotationLoss(old, {})).toBe(false);
+    });
+
+    it("returns false when a removed revision has <= 3 children and no grandchildren", () => {
+        const old = {
+            0: makeRevision(0, [
+                {
+                    doc: "hello",
+                    annotationField: { 0: { _type: "comment" }, 1: { _type: "comment" } },
+                },
+            ]),
+        };
+        expect(isDeepAnnotationLoss(old, {})).toBe(false);
+    });
+
+    it("returns true when a removed revision has > 3 children across versions", () => {
+        const old = {
+            0: makeRevision(0, [
+                {
+                    doc: "v1",
+                    annotationField: { 0: { _type: "comment" }, 1: { _type: "comment" } },
+                },
+                {
+                    doc: "v2",
+                    annotationField: { 0: { _type: "comment" }, 1: { _type: "comment" } },
+                },
+            ]),
+        };
+        // 4 total children across 2 versions
+        expect(isDeepAnnotationLoss(old, {})).toBe(true);
+    });
+
+    it("returns true when a removed revision has a grandchild", () => {
+        const old = {
+            0: makeRevision(0, [
+                {
+                    doc: "v1",
+                    annotationField: {
+                        0: {
+                            _type: "revision",
+                            versions: [
+                                { doc: "nested", annotationField: { 0: { _type: "comment" } } },
+                            ],
+                        },
+                    },
+                },
+            ]),
+        };
+        // Only 1 child, but it has a grandchild
+        expect(isDeepAnnotationLoss(old, {})).toBe(true);
+    });
+
+    it("returns false when a removed annotation is a comment (not a revision)", () => {
+        const old = { 0: makeComment(0) };
+        expect(isDeepAnnotationLoss(old, {})).toBe(false);
+    });
+
+    it("returns false when the revision still exists (not removed)", () => {
+        const annotations = {
+            0: makeRevision(0, [
+                {
+                    doc: "v1",
+                    annotationField: {
+                        0: { _type: "comment" },
+                        1: { _type: "comment" },
+                        2: { _type: "comment" },
+                        3: { _type: "comment" },
+                    },
+                },
+            ]),
+        };
+        expect(isDeepAnnotationLoss(annotations, annotations)).toBe(false);
     });
 });
 

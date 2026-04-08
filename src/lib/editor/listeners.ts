@@ -28,7 +28,11 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import { appendEvent, createSnapshot, createNamedSnapshot, updateDocumentMeta } from "$lib/db";
-import { isSuspiciousDeletion, isSuspiciousAnnotationChange } from "$lib/errorGuard";
+import {
+    isSuspiciousDeletion,
+    isSuspiciousAnnotationChange,
+    isDeepAnnotationLoss,
+} from "$lib/errorGuard";
 import {
     addAnnotation,
     removeAnnotation,
@@ -267,10 +271,13 @@ async function doAppend(
     {
         const isRestore = update.transactions.some((tr) => tr.isUserEvent("input.restore"));
         if (!isRestore) {
-            const oldCount = Object.keys(
-                update.startState.field(savedFields.annotationField),
-            ).length;
-            const newCount = Object.keys(update.state.field(savedFields.annotationField)).length;
+            const oldAnnotations = update.startState.field(savedFields.annotationField);
+            const newAnnotations = update.state.field(savedFields.annotationField);
+            const oldCount = Object.keys(oldAnnotations).length;
+            const newCount = Object.keys(newAnnotations).length;
+
+            let triggered = false;
+
             if (isSuspiciousAnnotationChange(oldCount, newCount)) {
                 const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
                 const eventId = get(lastPersistedEventId);
@@ -285,6 +292,29 @@ async function doAppend(
                     errorBanner.set({
                         message:
                             "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
+                        hasBackup: false,
+                        backupType: "auto",
+                    });
+                }, 0);
+                triggered = true;
+            }
+
+            // Guard: check for removal of annotations with deep nested content.
+            // A single revision with many sub-annotations represents significant work.
+            if (!triggered && isDeepAnnotationLoss(oldAnnotations, newAnnotations)) {
+                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
+                const eventId = get(lastPersistedEventId);
+                createNamedSnapshot(
+                    draftId,
+                    preStateJson,
+                    eventId,
+                    "Before nested annotation loss (auto)",
+                ).catch(console.error);
+
+                setTimeout(() => {
+                    errorBanner.set({
+                        message:
+                            "An annotation with deeply nested content was removed. A recovery snapshot has been saved to your version history.",
                         hasBackup: false,
                         backupType: "auto",
                     });

@@ -31,6 +31,7 @@
 
 import { get } from "svelte/store";
 import { documentContent, currentDocumentTitle } from "./stores";
+import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
 
 export type BackupEntry = {
     timestamp: number;
@@ -143,6 +144,63 @@ export function isSuspiciousAnnotationChange(oldCount: number, newCount: number)
     if (removed < SUSPICIOUS_ANNOTATION_REMOVAL_MIN) return false;
     if (removed / oldCount < SUSPICIOUS_ANNOTATION_REMOVAL_RATIO) return false;
     return true;
+}
+
+/**
+ * Counts direct children (nested annotations) inside a single VersionState blob.
+ * The blob is an opaque EditorState.toJSON(nestedSavedFields) object, so nested
+ * annotations live under the "annotationField" key as a record of raw annotations.
+ */
+function countNestedAnnotations(version: object): number {
+    const af = (version as Record<string, unknown>)["annotationField"];
+    if (af == null || typeof af !== "object") return 0;
+    return Object.keys(af as object).length;
+}
+
+/**
+ * Checks whether a removed annotation had deep nested content that represents
+ * significant invested work. Returns true if any removed annotation had:
+ *   - More than 3 direct child annotations (across all its versions), OR
+ *   - At least 1 grandchild annotation (a child that itself has nested annotations)
+ *
+ * This catches cases where a single top-level revision is removed but contained
+ * a rich tree of sub-annotations that would be silently lost.
+ */
+export function isDeepAnnotationLoss(
+    oldAnnotations: Record<number, GenericAnnotation>,
+    newAnnotations: Record<number, GenericAnnotation>,
+): boolean {
+    for (const [id, annotation] of Object.entries(oldAnnotations)) {
+        // Only care about annotations that were removed
+        if (id in newAnnotations) continue;
+        // Only revisions can have nested annotations (via VersionState blobs)
+        if (annotation._type !== "revision") continue;
+
+        const versions: object[] = (annotation as { versions: object[] }).versions;
+        let totalChildren = 0;
+
+        for (const version of versions) {
+            const af = (version as Record<string, unknown>)["annotationField"];
+            if (af == null || typeof af !== "object") continue;
+            const children = Object.values(af as Record<string, unknown>);
+            totalChildren += children.length;
+
+            // Check for grandchildren: any child that is itself a revision with nested annotations
+            for (const child of children) {
+                if (child == null || typeof child !== "object") continue;
+                const childObj = child as Record<string, unknown>;
+                if (childObj._type !== "revision") continue;
+                const childVersions = childObj.versions;
+                if (!Array.isArray(childVersions)) continue;
+                for (const cv of childVersions) {
+                    if (countNestedAnnotations(cv as object) > 0) return true;
+                }
+            }
+        }
+
+        if (totalChildren > 3) return true;
+    }
+    return false;
 }
 
 /**
