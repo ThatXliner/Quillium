@@ -1067,10 +1067,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                     layout="inline"
                   />
                 {:else}
-                  <div class="flex flex-col items-center px-2 pt-4 text-center">
+                  <div class="flex flex-col items-center px-2 pt-4 text-center justify-evenly space-y-8">
                     <p class="text-[11px] text-black/30 leading-relaxed">No annotations yet.</p>
                     {#if appSettings.showShortcutHints}
-                      <p class="text-[11px] text-black/25 mt-1.5 mb-3">Create one with:</p>
+                      <p class="text-[11px] text-black/25 mb-3">Create one with:</p>
                       <div class="flex flex-col gap-2">
                         <div class="flex items-center gap-2 text-black/40">
                           <Kbd keys={[modKey, opt, "M"]} />
