@@ -31,6 +31,8 @@ import { syncAnalyticsOptOut, syncShareDocumentAnalytics } from "$lib/posthog";
 import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
+import changelog from "$lib/changelog.json";
+import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 
 const { onclose, scrollTo }: { onclose: () => void; scrollTo?: string } = $props();
 
@@ -149,6 +151,21 @@ let innerEl = $state<HTMLDivElement | undefined>(undefined);
 // Shake + ring state — key increments each trigger so CSS animation replays
 let alertKey = $state(0);
 let alerting = $state(false);
+
+declare const __APP_VERSION__: string;
+
+function getChangelogEntry(): { date: string; content: string; version: string } | null {
+    const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+    if (appVersion === "dev") return null;
+    const parts = appVersion.split(".");
+    const currentMinor = `${parts[0]}.${parts[1]}`;
+    const entry = (changelog as Record<string, { date: string; content: string }>)[currentMinor];
+    if (!entry) return null;
+    return { ...entry, version: currentMinor };
+}
+
+let showChangelogFromSettings = $state(false);
+const currentChangelog = getChangelogEntry();
 
 // Which custom dropdown is open: "doc" | "ui" | null
 let openDropdown = $state<"doc" | "ui" | null>(null);
@@ -283,14 +300,24 @@ function fontLabel(fonts: FontOption[], value: string) {
                 <Settings2 size={14} class="text-black/35" />
                 <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
             </div>
-            <button
-                onclick={tryClose}
-                aria-label="Close settings"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={15} />
-            </button>
+            <div class="flex items-center gap-1.5">
+                {#if currentChangelog}
+                    <button
+                        onclick={() => { showChangelogFromSettings = true; }}
+                        class="text-[10px] font-medium px-2.5 py-1 rounded-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
+                    >
+                        What's New
+                    </button>
+                {/if}
+                <button
+                    onclick={tryClose}
+                    aria-label="Close settings"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={15} />
+                </button>
+            </div>
         </div>
 
         <!-- Body -->
@@ -1093,6 +1120,15 @@ function fontLabel(fonts: FontOption[], value: string) {
 
 {#if showFontGuide}
     <FontGuideModal tab={showFontGuide} onclose={() => showFontGuide = null} />
+{/if}
+
+{#if showChangelogFromSettings && currentChangelog}
+    <ChangelogModal
+        date={currentChangelog.date}
+        content={currentChangelog.content}
+        version={currentChangelog.version}
+        ondismiss={() => { showChangelogFromSettings = false; }}
+    />
 {/if}
 
 <style>
