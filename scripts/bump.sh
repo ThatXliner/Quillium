@@ -49,4 +49,29 @@ fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\
 # src-tauri/Cargo.toml — sed replace the version line
 sed -i '' "s/^version = \"${CURRENT}\"/version = \"${NEXT}\"/" src-tauri/Cargo.toml
 
-echo "Done. All manifests updated to $NEXT."
+# Update Cargo.lock to reflect the new version
+(cd src-tauri && cargo generate-lockfile 2>/dev/null || true)
+
+echo "All manifests updated to $NEXT."
+
+# For minor/major bumps, ask Claude to update the changelog if needed.
+MINOR_KEY=$(echo "$NEXT" | cut -d. -f1-2)
+if [[ "$PART" == "minor" || "$PART" == "major" ]]; then
+    echo ""
+    echo "Minor/major bump detected — checking if changelog needs updating..."
+    claude --print \
+        "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
+
+Check src/lib/changelog.json — if there is no entry for \"$MINOR_KEY\", add one.
+
+To decide what to write:
+1. Run: git log v${CURRENT}..HEAD --oneline  (if the tag exists, otherwise just use recent commits)
+2. Read the changelog guidelines in CONTRIBUTING.md (search for 'Writing Changelog Entries').
+3. Write the entry following those guidelines exactly: conversational prose, bold keywords, no bullets, no mentions of AI features, 2-5 short paragraphs.
+4. Set the date field to $(date -u +%Y-%m-%d).
+
+If an entry for \"$MINOR_KEY\" already exists, say so and do nothing."
+fi
+
+echo ""
+echo "Done."
