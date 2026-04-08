@@ -156,7 +156,7 @@ const annotationPills = [
 <div
     bind:this={widgetEl}
     onclick={(e) => e.stopPropagation()}
-    class="autoai-container {open ? 'w-[360px] h-[220px] rounded-[16px]' : 'w-[67px] h-[67px] rounded-[100px]'}
+    class="autoai-container {open ? 'w-[320px] h-[310px] rounded-[16px]' : 'w-[67px] h-[67px] rounded-[100px]'}
            {autoAIRunning && !locked && !open ? 'rainbow-active' : ''}
            {isReviewing && !open ? 'rainbow-reviewing' : ''}"
 >
@@ -188,12 +188,10 @@ const annotationPills = [
     </div>
 
     <!-- Panel layer -->
-    <div class="layer {open ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}
-                flex">
+    <div class="layer {open ? 'opacity-100 delay-[80ms]' : 'opacity-0 pointer-events-none'}">
 
-        <!-- LEFT PANE -->
-        <div class="left-pane">
-            <!-- Header: icon + name + pencil + toggle + × -->
+        <!-- Header (spans full width) -->
+        <div class="panel-header">
             <div class="flex items-center gap-[6px]">
                 <div class="bubble-icon {autoAIRunning && !locked ? 'bubble-icon-active' : ''}">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -239,12 +237,16 @@ const annotationPills = [
             <p class="status-line">
                 {#if noApiKey}<button class="settings-link" onclick={openSettings} tabindex={open ? 0 : -1}>Add an API key</button> to enable AutoAI.
                 {:else if isReviewing}Reviewing…
-                {:else if autoAIRunning}Active · every {debounceSeconds}s
+                {:else if autoAIRunning && autoAISettings.mode === "continuous"}Active · every {debounceSeconds}s
+                {:else if autoAIRunning}Active · on your call
                 {:else}Paused{/if}
             </p>
 
             <div class="divider"></div>
+        </div>
 
+        <!-- Body (single column) -->
+        <div class="panel-body">
             <!-- Mode + Delay (dimmed when no API key) -->
             <div class="{locked ? 'opacity-40 pointer-events-none' : ''}">
             <div class="field">
@@ -257,12 +259,14 @@ const annotationPills = [
                 </div>
                 {#if autoAISettings.mode === "continuous"}
                     <span class="mode-hint">Reviews as you write</span>
-                {:else}
-                    <div class="mode-hint mode-hint-row mb-2 mt-1">Trigger with <Kbd keys={["⌘", "⇧", "R"]} /></div>
+                {:else if autoAISettings.enabled}
+                    <button class="review-btn" onclick={handleManualReview} tabindex={open ? 0 : -1}>
+                        Review now <Kbd keys={["⌘", "⇧", "R"]} />
+                    </button>
                 {/if}
             </div>
 
-            <!-- Delay or Review now -->
+            <!-- Delay -->
             {#if autoAISettings.mode === "continuous"}
                 <div class="field">
                     <div class="delay-label-row">
@@ -274,23 +278,15 @@ const annotationPills = [
                     <input id="autoai-debounce" class="range" type="range" min="2" max="60"
                         value={debounceSeconds} oninput={handleDebounceInput} tabindex={open ? 0 : -1} />
                 </div>
-            {:else if autoAISettings.enabled}
-                <button class="review-btn" onclick={handleManualReview} tabindex={open ? 0 : -1}>
-                    Review now
-                </button>
             {/if}
             </div>
-        </div>
 
-        <!-- Vertical divider -->
-        <div class="v-divider"></div>
+            <div class="divider"></div>
 
-        <!-- RIGHT PANE -->
-        <div class="right-pane">
-            <!-- Annotation type pills -->
+            <!-- FIND: horizontal pills -->
             <div class="field">
                 <span class="field-label">FIND</span>
-                <div class="flex flex-col gap-[5px]">
+                <div class="flex flex-row gap-[5px]">
                     {#each annotationPills as p}
                         <button
                             class="pill {autoAISettings.annotationTypes.includes(p.type) ? p.cls : 'pill-off'}"
@@ -302,9 +298,7 @@ const annotationPills = [
                 </div>
             </div>
 
-            <div class="divider"></div>
-
-            <!-- Focus 3-stop slider -->
+            <!-- DEPTH slider -->
             <div class="field">
                 <span class="field-label">DEPTH</span>
                 <span class="focus-label">{focusLabels[autoAISettings.conservativeness]}</span>
@@ -323,6 +317,7 @@ const annotationPills = [
 <style>
     /* ── Container ── */
     .autoai-container {
+        position: relative;
         overflow: hidden;
         background: #faf8f5;
         border: 2px solid #d6b87a;
@@ -340,7 +335,7 @@ const annotationPills = [
             box-shadow 200ms ease;
     }
 
-    .autoai-container.w-\[360px\] {
+    .autoai-container.w-\[320px\] {
         border-color: #e8e0d4;
         box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
         backdrop-filter: none;
@@ -367,34 +362,30 @@ const annotationPills = [
     .layer {
         position: absolute;
         inset: 0;
+        display: flex;
+        flex-direction: column;
         transition: opacity 150ms ease;
     }
 
-    /* ── Two-pane layout ── */
-    .left-pane {
-        flex: 1;
+    /* ── Panel header (full-width) ── */
+    .panel-header {
         display: flex;
         flex-direction: column;
+        gap: 8px;
+        padding: 12px 12px 0;
+    }
+
+    /* ── Panel body (single column) ── */
+    .panel-body {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
         gap: 8px;
         padding: 12px;
-        min-width: 0;
+        min-height: 0;
     }
 
-    .v-divider {
-        width: 1px;
-        background: #ede8e0;
-        align-self: stretch;
-        flex-shrink: 0;
-    }
 
-    .right-pane {
-        width: 116px;
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding: 12px 10px;
-    }
 
     /* ── Header elements ── */
     .bubble-icon {
@@ -516,6 +507,7 @@ const annotationPills = [
     /* ── Review now ── */
     .review-btn {
         width: 100%; padding: 5px 0; border-radius: 7px;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
         background: rgba(254, 243, 199, 0.7);
         border: 1px solid rgba(252, 211, 77, 0.4);
         color: #92400e; font-size: 11px; font-weight: 500;
@@ -536,7 +528,7 @@ const annotationPills = [
 
     /* ── Annotation type pills (right pane) ── */
     .pill {
-        width: 100%; padding: 4px 8px;
+        flex: 1; padding: 4px 8px;
         border-radius: 999px; font-size: 11px; font-weight: 500;
         border: 1.5px solid transparent; cursor: pointer;
         transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
