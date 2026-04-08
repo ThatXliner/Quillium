@@ -300,9 +300,13 @@ const annotationPills = [
 
             <!-- DEPTH slider -->
             <div class="field">
-                <span class="field-label">DEPTH</span>
-                <span class="focus-label">{focusLabels[autoAISettings.conservativeness]}</span>
-                <span class="focus-desc">{focusDescriptions[autoAISettings.conservativeness]}</span>
+                <div class="depth-header">
+                    <span class="field-label">DEPTH</span>
+                    <span class="depth-info">
+                        <span class="focus-label">{focusLabels[autoAISettings.conservativeness]}</span>
+                        <span class="focus-desc">{focusDescriptions[autoAISettings.conservativeness]}</span>
+                    </span>
+                </div>
                 <div class="focus-slider-wrap">
                     <span class="focus-stop">○</span>
                     <input class="range focus-range" type="range" min="0" max="2"
@@ -506,7 +510,7 @@ const annotationPills = [
 
     /* ── Review now ── */
     .review-btn {
-        width: 100%; padding: 5px 0; border-radius: 7px;
+        width: 100%; padding: 5px 0; margin: 6px 0; border-radius: 7px;
         display: flex; align-items: center; justify-content: center; gap: 6px;
         background: rgba(254, 243, 199, 0.7);
         border: 1px solid rgba(252, 211, 77, 0.4);
@@ -541,15 +545,18 @@ const annotationPills = [
     .pill-revision   { background: #faf5ff; color: #6b21a8; border-color: #d8b4fe; }
 
     /* ── Focus slider ── */
+    .depth-header {
+        display: flex; align-items: baseline; gap: 8px;
+    }
+    .depth-info {
+        display: flex; align-items: baseline; gap: 5px;
+    }
     .focus-label {
         font-size: 11px; font-weight: 500; color: #6b7280;
-        text-align: center;
         transition: color 0.2s;
     }
     .focus-desc {
         font-size: 10px; color: #a89f96;
-        text-align: center;
-        margin-top: -2px;
     }
     .focus-slider-wrap {
         display: flex; align-items: center; gap: 3px;
