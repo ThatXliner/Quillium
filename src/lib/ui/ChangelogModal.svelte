@@ -52,27 +52,27 @@ function dismiss() {
     ></button>
 
     <div
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] max-h-[70vh] backdrop-blur-md bg-gray-300/85 border border-white/40 shadow-xl rounded-2xl flex flex-col overflow-hidden"
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-h-[75vh] bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-black/[0.06]"
         role="document"
     >
         <!-- Header -->
-        <div class="flex items-start justify-between px-6 pt-6 pb-0 shrink-0">
+        <div class="flex items-start justify-between px-7 pt-7 pb-0 shrink-0">
             <div>
-                <h3 class="text-[15px] font-semibold text-black/80 leading-tight">What's New</h3>
-                <p class="text-[11px] text-black/35 mt-0.5">{date}</p>
+                <h3 class="text-xl font-bold text-black/85 leading-tight">What's New</h3>
+                <p class="text-xs text-black/35 mt-1">{date}</p>
             </div>
             <button
                 onclick={dismiss}
                 aria-label="Close"
-                class="flex items-center justify-center w-7 h-7 rounded-lg bg-black/[0.06] text-black/40 hover:text-black/60 hover:bg-black/[0.1] transition-colors -mt-0.5"
+                class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
             >
-                <X size={15} />
+                <X size={16} />
             </button>
         </div>
 
         <!-- Scrollable content -->
-        <div class="flex-1 overflow-y-auto px-6 pt-4 pb-6">
-            <div class="changelog-content text-xs text-black/55 leading-relaxed">
+        <div class="flex-1 overflow-y-auto px-7 pt-5 pb-7">
+            <div class="changelog-content text-sm text-black/55 leading-relaxed">
                 {@html html}
             </div>
         </div>
@@ -81,8 +81,8 @@ function dismiss() {
 
 <style>
     .changelog-content :global(p) {
-        margin: 0 0 12px 0;
-        line-height: 1.8;
+        margin: 0 0 16px 0;
+        line-height: 1.75;
     }
     .changelog-content :global(p:last-child) {
         margin-bottom: 0;
