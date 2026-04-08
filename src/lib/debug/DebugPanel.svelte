@@ -174,6 +174,13 @@ function clearUndoHistory() {
 
 // ── App-level simulations ─────────────────────────────────────────
 
+function triggerChangelog() {
+    startCountdown("changelog", () => {
+        close();
+        window.dispatchEvent(new CustomEvent("quillium:show-changelog"));
+    });
+}
+
 function triggerCrashBanner() {
     startCountdown("crash", () => {
         close();
@@ -352,6 +359,11 @@ function handleKeydown(e: KeyboardEvent) {
                 disabled={pendingSimulation !== null}
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "removal" ? `Firing in ${countdownSeconds}s…` : "Mass annotation removal"}</button>
+            <button
+                onclick={triggerChangelog}
+                disabled={pendingSimulation !== null}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors disabled:opacity-40"
+            >{pendingSimulation === "changelog" ? `Firing in ${countdownSeconds}s…` : "Changelog"}</button>
         </div>
 
         <!-- Footer -->

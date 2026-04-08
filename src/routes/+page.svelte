@@ -121,6 +121,15 @@ function tryShowChangelog() {
     showChangelog = true;
 }
 
+function forceShowChangelog() {
+    // Find the latest changelog entry regardless of version checks.
+    const entries = Object.entries(changelog as Record<string, { date: string; content: string }>);
+    if (entries.length === 0) return;
+    const [version, entry] = entries[entries.length - 1];
+    changelogEntry = { ...entry, version };
+    showChangelog = true;
+}
+
 function handleChangelogDismiss() {
     if (changelogEntry) {
         localStorage.setItem(CHANGELOG_SEEN_KEY, changelogEntry.version);
@@ -225,6 +234,7 @@ onMount(() => {
 
     window.addEventListener("quillium:restore-backup", handleRestoreBackup);
     window.addEventListener("quillium:manual-review", handleManualReviewEvent);
+    window.addEventListener("quillium:show-changelog", forceShowChangelog);
 
     // Listen for Tauri menu events
     let destroyed = false;
@@ -243,6 +253,7 @@ onMount(() => {
         destroyed = true;
         window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
+        window.removeEventListener("quillium:show-changelog", forceShowChangelog);
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
