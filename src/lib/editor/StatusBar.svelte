@@ -173,7 +173,7 @@ $effect(() => {
                 onclick={goToLibrary}
                 title="Library ({modKey}O)"
                 aria-label="Open library"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70 shrink-0"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-blue-400 hover:text-blue-600 shrink-0"
             >
                 <LayoutGrid size={20} />
             </button>
@@ -181,7 +181,7 @@ $effect(() => {
                 onclick={goToHistory}
                 aria-label="Version history"
                 title="Version History ({modKey}Shift+H)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-black/50 hover:text-black/70 shrink-0"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-amber-400 hover:text-amber-600 shrink-0"
             >
                 <History size={20} />
             </button>
@@ -190,7 +190,7 @@ $effect(() => {
                 aria-label="Open settings"
                 title="Settings ({modKey},)"
                 class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
-                    {$settingsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+                    {$settingsOpen ? 'text-gray-600' : 'text-gray-400 hover:text-gray-600'}"
             >
                 <Settings size={20} />
             </button>
@@ -199,7 +199,7 @@ $effect(() => {
                 aria-label="Writing statistics"
                 title="Writing Statistics"
                 class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
-                    {$statsOpen ? 'text-blue-600' : 'text-black/50 hover:text-black/70'}"
+                    {$statsOpen ? 'text-emerald-600' : 'text-emerald-400 hover:text-emerald-600'}"
             >
                 <BarChart3 size={20} />
             </button>
@@ -216,7 +216,7 @@ $effect(() => {
                 >
                     <!-- Icon (visible when collapsed) -->
                     <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150
-                        {exportOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 text-black/50 hover:text-black/70'}">
+                        {exportOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 text-purple-400 hover:text-purple-600'}">
                         <Download size={20} />
                     </div>
                     <!-- Menu items (visible when expanded) -->
