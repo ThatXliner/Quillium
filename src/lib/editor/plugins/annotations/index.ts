@@ -106,7 +106,7 @@ import type { NestedEditorCommand } from "$lib/stores";
 import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import { nestedEditorEdit } from "./annotationField";
-import posthog, { showPrivacyNudge } from "$lib/posthog";
+import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";
 import { settingsOpen } from "$lib/stores";
 import { readersSettings } from "$lib/readers/settings.svelte";
 
@@ -610,7 +610,9 @@ export function getSelection({
             const stripped = stripEllipsis(targetText);
             if (stripped.length > 0 && stripped !== targetText) {
                 if (appSettings.shareDocumentAnalytics) {
+                    const code = generateIncidentCode();
                     posthog.capture("ai_target_text_ellipsis_stripped", {
+                        incident_code: code,
                         original: targetText.slice(0, 80),
                     });
                 } else {

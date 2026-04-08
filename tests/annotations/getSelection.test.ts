@@ -11,6 +11,7 @@ const { mockCapture, mockShowPrivacyNudge } = vi.hoisted(() => ({
 vi.mock("$lib/posthog", () => ({
     default: { capture: mockCapture },
     showPrivacyNudge: mockShowPrivacyNudge,
+    generateIncidentCode: () => "QIR-TEST",
 }));
 vi.mock("$lib/stores", () => ({
     settingsOpen: { set: vi.fn() },
@@ -102,11 +103,12 @@ describe("getSelection", () => {
         expect(props).not.toHaveProperty("original");
     });
 
-    it("sends document content when document analytics is on", () => {
+    it("sends document content and incident code when document analytics is on", () => {
         (appSettings as Record<string, unknown>).shareDocumentAnalytics = true;
         getSelection({ targetText: "brown fox...", document: doc });
         expect(mockShowPrivacyNudge).not.toHaveBeenCalled();
         expect(mockCapture).toHaveBeenCalledWith("ai_target_text_ellipsis_stripped", {
+            incident_code: "QIR-TEST",
             original: "brown fox...",
         });
     });

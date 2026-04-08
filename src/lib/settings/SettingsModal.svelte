@@ -927,14 +927,14 @@ function fontLabel(fonts: FontOption[], value: string) {
             {#if draft.shareDocumentAnalytics}
             <div class="setting-row">
                 <div class="setting-meta">
-                    <div class="setting-title">Bug report key</div>
-                    <div class="setting-desc">Paste the key from your bug report so we can match your document to the issue.</div>
+                    <div class="setting-title">Incident code</div>
+                    <div class="setting-desc">Paste the code from the notification so we can match your document to the issue.</div>
                 </div>
                 <input
                     type="text"
                     bind:value={draft.shareDocumentKey}
                     oninput={handleChange}
-                    placeholder="e.g. BUG-123"
+                    placeholder="e.g. QIR-7K3P"
                     class="w-40 px-2 py-1 text-sm rounded border border-black/10 bg-white/50
                         focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30
                         placeholder:text-black/30"

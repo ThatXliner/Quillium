@@ -98,10 +98,12 @@ export function syncShareDocumentAnalytics(sharing: boolean, key: string) {
 }
 
 /**
- * Generate a short incident code for privacy-nudge toasts.
+ * Generate a short incident code.
  * Format: QIR-XXXX (Quillium Incident Report).
+ * Exported so callers can attach a code to events even when
+ * document sharing is on (for user-facing correlation).
  */
-function generateIncidentCode(): string {
+export function generateIncidentCode(): string {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O, 1/I
     let code = "";
     for (let i = 0; i < 4; i++) {
