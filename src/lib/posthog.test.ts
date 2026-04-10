@@ -34,7 +34,12 @@ vi.mock("$lib/settings.svelte", () => ({
     appSettings: mockSettings,
 }));
 
-import { capture, REDACTED_KEYS, syncShareDocumentAnalytics } from "$lib/posthog";
+import {
+    capture,
+    DOCUMENT_CONTENT_SELECTOR,
+    REDACTED_KEYS,
+    syncShareDocumentAnalytics,
+} from "$lib/posthog";
 
 describe("capture", () => {
     beforeEach(() => {
@@ -83,7 +88,7 @@ describe("syncShareDocumentAnalytics", () => {
     it("clears masking and registers key when sharing with key", () => {
         syncShareDocumentAnalytics(true, "BUG-123");
         expect(mockSetConfig).toHaveBeenCalledWith({
-            session_recording: { maskTextSelector: undefined },
+            session_recording: { console_log_recording_enabled: true },
         });
         expect(mockRegister).toHaveBeenCalledWith({ share_document_key: "BUG-123" });
     });
@@ -91,7 +96,10 @@ describe("syncShareDocumentAnalytics", () => {
     it("sets masking and unregisters key when not sharing", () => {
         syncShareDocumentAnalytics(false, "");
         expect(mockSetConfig).toHaveBeenCalledWith({
-            session_recording: { maskTextSelector: ".cm-content" },
+            session_recording: {
+                maskTextSelector: DOCUMENT_CONTENT_SELECTOR,
+                console_log_recording_enabled: true,
+            },
         });
         expect(mockUnregister).toHaveBeenCalledWith("share_document_key");
     });

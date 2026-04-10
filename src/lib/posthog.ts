@@ -7,15 +7,34 @@ import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
 
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
+/**
+ * CSS selector matching all elements that contain user document content.
+ * Used by PostHog session recording to mask text when `shareDocumentAnalytics` is off.
+ */
+export const DOCUMENT_CONTENT_SELECTOR = [
+    ".cm-content", // main editor
+    ".annotation-card", // sidebar annotation cards
+    ".annotation-card-inline", // inline annotation cards
+    ".revision-modal", // revision editor modal
+    ".diff-modal", // diff comparison modal
+    "#ai-sidebar", // AI chat/feedback/revise panels
+    ".dictionary-popover", // dictionary lookup results
+    ".autoai-container", // AutoAI feedback widget
+    ".ph-mask-text", // generic mask class for library cards, preview panel, etc.
+].join(", ");
+
 if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
     posthog.init(PUBLIC_POSTHOG_KEY, {
         api_host: PUBLIC_POSTHOG_HOST,
         ui_host: "https://us.posthog.com",
         defaults: "2026-01-30",
         capture_exceptions: true,
-        session_recording: appSettings.shareDocumentAnalytics
-            ? {}
-            : { maskTextSelector: ".cm-content" },
+        session_recording: {
+            ...(appSettings.shareDocumentAnalytics
+                ? {}
+                : { maskTextSelector: DOCUMENT_CONTENT_SELECTOR }),
+            console_log_recording_enabled: true,
+        },
     });
 
     posthog.register({ app_version: appVersion, app: "desktop" });
@@ -87,7 +106,10 @@ export function capture(event: string, props?: Record<string, unknown>) {
  */
 export function syncShareDocumentAnalytics(sharing: boolean, key: string) {
     posthog.set_config({
-        session_recording: sharing ? {} : { maskTextSelector: ".cm-content" },
+        session_recording: {
+            ...(sharing ? {} : { maskTextSelector: DOCUMENT_CONTENT_SELECTOR }),
+            console_log_recording_enabled: true,
+        },
     });
     if (sharing && key.trim()) {
         posthog.register({ share_document_key: key.trim() });

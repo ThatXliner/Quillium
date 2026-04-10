@@ -132,7 +132,7 @@ function handleDeletePermanent() {
 
 <svelte:window onclick={handleWindowClick} />
 
-<div class="h-full flex flex-col bg-white/50 border-l border-black/8">
+<div class="ph-mask-text h-full flex flex-col bg-white/50 border-l border-black/8">
     {#if multiSelect}
         <!-- Multi-select summary -->
         <div class="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">

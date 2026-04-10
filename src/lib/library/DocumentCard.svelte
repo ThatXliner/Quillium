@@ -67,7 +67,7 @@ function formatDate(ms: number): string {
 {#if viewMode === "grid"}
     <!-- Having "on select" animations/transitions feel instant generally feels better -->
     <div
-        class="group relative text-left rounded-xl p-4 flex flex-col gap-2 border w-full min-w-0 overflow-hidden cursor-pointer
+        class="ph-mask-text group relative text-left rounded-xl p-4 flex flex-col gap-2 border w-full min-w-0 overflow-hidden cursor-pointer
             {selected
                 ? 'bg-blue-50 border-blue-300 shadow-md ring-2 ring-blue-400/30'
                 : trashMode
@@ -140,7 +140,7 @@ function formatDate(ms: number): string {
 {:else}
     <!-- Having "on select" animations/transitions feel instant generally feels better -->
     <div
-        class="group relative text-left w-full rounded-xl px-4 py-3 flex items-center gap-4 border cursor-pointer
+        class="ph-mask-text group relative text-left w-full rounded-xl px-4 py-3 flex items-center gap-4 border cursor-pointer
             {selected
                 ? 'bg-blue-50 border-blue-300 shadow-sm ring-2 ring-blue-400/30'
                 : trashMode
