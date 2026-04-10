@@ -43,6 +43,7 @@ import {
 } from "./plugins/annotations";
 import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
 import type { Transaction } from "@codemirror/state";
+import posthog from "$lib/posthog";
 
 export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
@@ -419,7 +420,9 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
         const pos = update.view.state.selection.main.head;
         let coords: { left: number; top: number; bottom: number } | null = null;
         try {
+            const t0 = performance.now();
             coords = update.view.coordsAtPos(pos);
+            posthog.capture("perf_coords_at_pos", { elapsed_ms: performance.now() - t0 });
         } catch (e) {
             // coordsAtPos requires a real layout engine — skip in environments
             // (e.g. jsdom in tests) that don't implement it.
