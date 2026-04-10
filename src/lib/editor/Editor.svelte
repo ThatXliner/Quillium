@@ -294,13 +294,7 @@ const fromSave = (async () => {
         // before the user makes any edits.
         const stateJson = JSON.stringify(state.toJSON(savedFields));
         await createSnapshot(newDraftId, stateJson, -1);
-        await updateDocumentMeta(
-            newDocId,
-            title,
-            getWordCount(content),
-            content.slice(0, 200),
-            "",
-        );
+        await updateDocumentMeta(newDocId, title, getWordCount(content), content.slice(0, 200), "");
     }
     // Set stores after snapshot is written to avoid a race where the
     // currentDocumentId subscription triggers loadDocument before the
