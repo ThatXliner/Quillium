@@ -1,0 +1,345 @@
+[
+  {
+    "name": "@ai-sdk/anthropic",
+    "version": "3.0.63",
+    "license": "Apache-2.0",
+    "url": "https://github.com/vercel/ai",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@ai-sdk/google",
+    "version": "3.0.53",
+    "license": "Apache-2.0",
+    "url": "https://github.com/vercel/ai",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@ai-sdk/openai",
+    "version": "2.0.101",
+    "license": "Apache-2.0",
+    "url": "https://github.com/vercel/ai",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@ai-sdk/svelte",
+    "version": "3.0.159",
+    "license": "Apache-2.0",
+    "url": "https://github.com/vercel/ai",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@codemirror/commands",
+    "version": "6.10.3",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/commands",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@codemirror/lang-markdown",
+    "version": "6.5.0",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/lang-markdown",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@codemirror/search",
+    "version": "6.6.0",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/search",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@codemirror/state",
+    "version": "6.6.0",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/state",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@codemirror/view",
+    "version": "6.40.0",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/view",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/caveat",
+    "version": "5.2.8",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/courier-prime",
+    "version": "5.2.8",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/eb-garamond",
+    "version": "5.2.7",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/ia-writer-quattro",
+    "version": "5.2.5",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/inter",
+    "version": "5.2.8",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/lora",
+    "version": "5.2.8",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/nunito",
+    "version": "5.2.7",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/opendyslexic",
+    "version": "5.2.5",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@fontsource/raleway",
+    "version": "5.2.8",
+    "license": "OFL-1.1",
+    "url": "https://github.com/fontsource/font-files",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@tauri-apps/api",
+    "version": "2.10.1",
+    "license": "Apache-2.0 OR MIT",
+    "url": "https://github.com/tauri-apps/tauri",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@tauri-apps/plugin-opener",
+    "version": "2.5.3",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@tauri-apps/plugin-process",
+    "version": "2.3.1",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@tauri-apps/plugin-updater",
+    "version": "2.10.0",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
+    "ecosystem": "js"
+  },
+  {
+    "name": "ai",
+    "version": "5.0.159",
+    "license": "Apache-2.0",
+    "url": "https://github.com/vercel/ai",
+    "ecosystem": "js"
+  },
+  {
+    "name": "bits-ui",
+    "version": "1.8.0",
+    "license": "MIT",
+    "url": "https://github.com/huntabyte/bits-ui",
+    "ecosystem": "js"
+  },
+  {
+    "name": "crelt",
+    "version": "1.0.6",
+    "license": "MIT",
+    "url": "https://github.com/marijnh/crelt",
+    "ecosystem": "js"
+  },
+  {
+    "name": "diff",
+    "version": "7.0.0",
+    "license": "BSD-3-Clause",
+    "url": "https://github.com/kpdecker/jsdiff",
+    "ecosystem": "js"
+  },
+  {
+    "name": "dompurify",
+    "version": "3.3.3",
+    "license": "(MPL-2.0 OR Apache-2.0)",
+    "url": "https://github.com/cure53/DOMPurify",
+    "ecosystem": "js"
+  },
+  {
+    "name": "harper.js",
+    "version": "2.0.0",
+    "license": "Apache-2.0",
+    "url": "https://github.com/automattic/harper",
+    "ecosystem": "js"
+  },
+  {
+    "name": "keyring",
+    "version": "3",
+    "license": "MIT",
+    "url": "https://github.com/hwchen/keyring-rs",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "lodash-es",
+    "version": "4.17.23",
+    "license": "MIT",
+    "url": "https://github.com/lodash/lodash",
+    "ecosystem": "js"
+  },
+  {
+    "name": "lucide-svelte",
+    "version": "0.475.0",
+    "license": "ISC",
+    "url": "https://github.com/lucide-icons/lucide",
+    "ecosystem": "js"
+  },
+  {
+    "name": "paneforge",
+    "version": "1.0.2",
+    "license": "MIT",
+    "url": "https://github.com/svecosystem/paneforge",
+    "ecosystem": "js"
+  },
+  {
+    "name": "posthog-js",
+    "version": "1.363.3",
+    "license": "SEE LICENSE IN LICENSE",
+    "url": "https://github.com/PostHog/posthog-js",
+    "ecosystem": "js"
+  },
+  {
+    "name": "rehype-remark",
+    "version": "10.0.1",
+    "license": "MIT",
+    "url": "https://github.com/rehypejs/rehype-remark",
+    "ecosystem": "js"
+  },
+  {
+    "name": "rehype-stringify",
+    "version": "10.0.1",
+    "license": "MIT",
+    "url": "https://github.com/rehypejs/rehype/tree/main/packages/rehype-stringify",
+    "ecosystem": "js"
+  },
+  {
+    "name": "remark-gfm",
+    "version": "4.0.1",
+    "license": "MIT",
+    "url": "https://github.com/remarkjs/remark-gfm",
+    "ecosystem": "js"
+  },
+  {
+    "name": "remark-parse",
+    "version": "11.0.0",
+    "license": "MIT",
+    "url": "https://github.com/remarkjs/remark/tree/main/packages/remark-parse",
+    "ecosystem": "js"
+  },
+  {
+    "name": "remark-rehype",
+    "version": "11.1.2",
+    "license": "MIT",
+    "url": "https://github.com/remarkjs/remark-rehype",
+    "ecosystem": "js"
+  },
+  {
+    "name": "rusqlite",
+    "version": "0.31",
+    "license": "MIT",
+    "url": "https://github.com/rusqlite/rusqlite",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "serde",
+    "version": "1",
+    "license": "MIT/Apache-2.0",
+    "url": "https://github.com/serde-rs/serde",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "serde_json",
+    "version": "1",
+    "license": "MIT/Apache-2.0",
+    "url": "https://github.com/serde-rs/json",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "svelte-sonner",
+    "version": "1.1.0",
+    "license": "MIT",
+    "url": "https://github.com/wobsoriano/svelte-sonner",
+    "ecosystem": "js"
+  },
+  {
+    "name": "tauri",
+    "version": "2",
+    "license": "MIT/Apache-2.0",
+    "url": "https://github.com/tauri-apps/tauri",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "tauri-plugin-opener",
+    "version": "2",
+    "license": "MIT/Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "tauri-plugin-process",
+    "version": "2",
+    "license": "MIT/Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "tauri-plugin-updater",
+    "version": "2",
+    "license": "MIT/Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "unified",
+    "version": "11.0.5",
+    "license": "MIT",
+    "url": "https://github.com/unifiedjs/unified",
+    "ecosystem": "js"
+  },
+  {
+    "name": "uuid",
+    "version": "1",
+    "license": "MIT/Apache-2.0",
+    "url": "https://github.com/uuid-rs/uuid",
+    "ecosystem": "rust"
+  },
+  {
+    "name": "zod",
+    "version": "4.3.6",
+    "license": "MIT",
+    "url": "https://github.com/colinhacks/zod",
+    "ecosystem": "js"
+  }
+]
