@@ -1,4 +1,28 @@
 <script lang="ts">
+import {
+    createDocument,
+    createDraft,
+    createSnapshot,
+    listDocuments,
+    listDrafts,
+    loadDocumentState,
+    updateDocumentMeta,
+} from "$lib/db";
+import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
+import posthog from "$lib/posthog";
+import {
+    activeAnnotation,
+    annotations,
+    currentDocumentId,
+    currentDocumentTitle,
+    currentDraftId,
+    documentContent,
+    editorView,
+    lastPersistedEventId,
+    lastSavedAt,
+    selectedText,
+    writingStats,
+} from "$lib/stores";
 /**
  * Editor.svelte — Main editor component and application entry point
  * for the writing surface.
@@ -23,55 +47,32 @@
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { get } from "svelte/store";
 import { onMount } from "svelte";
-import posthog from "$lib/posthog";
+import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
-import {
-    editorView,
-    annotations,
-    documentContent,
-    selectedText,
-    activeAnnotation,
-    currentDocumentId,
-    currentDocumentTitle,
-    currentDraftId,
-    lastPersistedEventId,
-    lastSavedAt,
-    writingStats,
-} from "$lib/stores";
-import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
-import {
-    listDocuments,
-    listDrafts,
-    createDocument,
-    createDraft,
-    createSnapshot,
-    loadDocumentState,
-    updateDocumentMeta,
-} from "$lib/db";
+import { loadUserDictionary } from "./harper/harperLinter";
 import "./plugins/annotations/default.css";
-import type { ViewUpdate } from "@codemirror/view";
-import StatusBar from "./StatusBar.svelte";
-import Annotations from "./plugins/annotations/Annotations.svelte";
-import type { ListenerOptions } from "./listeners";
-import { annotationField } from "./plugins/annotations";
-import { getActiveAnnotation } from "./plugins/annotations/utils";
-import { replayEvents } from "./replay";
-import type { EventRecord } from "$lib/db/types";
-import { appSettings } from "$lib/settings.svelte";
-import { SAMPLE_DOCUMENT_TITLE, SAMPLE_DOCUMENT_CONTENT } from "./sampleDocument";
+import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
-    hasApiKey,
-    setAiProcessing,
     ensureApiKeyLoaded,
     getAiAbortSignal,
+    hasApiKey,
+    setAiProcessing,
 } from "$lib/ai/settings.svelte";
-import { createModel } from "$lib/ai/provider";
+import type { EventRecord } from "$lib/db/types";
+import { appSettings } from "$lib/settings.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
+import type { ViewUpdate } from "@codemirror/view";
 import { generateText } from "ai";
 import { Pencil, SparklesIcon } from "lucide-svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
+import StatusBar from "./StatusBar.svelte";
+import type { ListenerOptions } from "./listeners";
+import { annotationField } from "./plugins/annotations";
+import Annotations from "./plugins/annotations/Annotations.svelte";
+import { getActiveAnnotation } from "./plugins/annotations/utils";
+import { replayEvents } from "./replay";
+import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
 
 // ── Local UI state ──────────────────────────────────────────────
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -382,6 +383,7 @@ onMount(() => {
             state,
             parent: element,
         });
+        loadUserDictionary();
         posthog.capture("app_session_started", {
             word_count: getWordCount(state.doc.toString()),
         });

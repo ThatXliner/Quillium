@@ -1,3 +1,4 @@
+import { appSettings } from "$lib/settings.svelte";
 /**
  * extensions.ts — Assembles the full CodeMirror 6 extension stack.
  *
@@ -33,18 +34,20 @@ import {
 } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import {
     EditorView,
+    type KeyBinding,
     dropCursor,
     highlightSpecialChars,
     keymap,
-    type KeyBinding,
 } from "@codemirror/view";
+import { dictionaryExtension } from "./dictionaryPlugin";
+import { harperExtension } from "./harper/harperLinter";
+import { type ListenerOptions, listeners } from "./listeners";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
-import { type ListenerOptions, listeners } from "./listeners";
-import { dictionaryExtension } from "./dictionaryPlugin";
+import "./harper/harper.css";
 
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
@@ -78,6 +81,8 @@ const nestedEditorKeymap: KeyBinding[] = [
     indentWithTab,
 ] as unknown as KeyBinding[];
 
+export const harperCompartment = new Compartment();
+
 export const getExtensions = (options?: ListenerOptions) => {
     const withHistory = options?.history !== false;
     return [
@@ -105,5 +110,8 @@ export const getExtensions = (options?: ListenerOptions) => {
         listeners(options),
         annotations(),
         dictionaryExtension,
+        ...(withHistory
+            ? [harperCompartment.of(appSettings.grammarCheckEnabled ? harperExtension() : [])]
+            : []),
     ];
 };
