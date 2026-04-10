@@ -175,12 +175,14 @@ async function runReview(content: string, manual = false) {
         return;
     }
 
-    setAiProcessing(true);
-    autoAIReviewing.set(true);
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
+        // Transition thinking → reviewing only after the async key load,
+        // so the >_< face is visible during the ensureApiKeyLoaded wait.
         autoAIThinking.set(false);
+        setAiProcessing(true);
+        autoAIReviewing.set(true);
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { object } = await generateObject({
             model,

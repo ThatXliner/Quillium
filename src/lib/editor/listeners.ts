@@ -407,15 +407,15 @@ async function doAppend(
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────
-// Throttled to one dispatch per animation frame to avoid forced reflows
-// on every keystroke.
-let caretRafPending = false;
+// Throttled to one rAF per view so multiple editor instances don't
+// suppress each other's broadcasts within the same animation frame.
+const caretRafPending = new WeakMap<EditorView, boolean>();
 const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
     if (!(update.selectionSet || update.docChanged)) return;
-    if (caretRafPending) return;
-    caretRafPending = true;
+    if (caretRafPending.get(update.view)) return;
+    caretRafPending.set(update.view, true);
     requestAnimationFrame(() => {
-        caretRafPending = false;
+        caretRafPending.set(update.view, false);
         const pos = update.view.state.selection.main.head;
         const coords = update.view.coordsAtPos(pos);
         if (coords) {
