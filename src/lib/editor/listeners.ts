@@ -411,6 +411,18 @@ const save = EditorView.updateListener.of((update: ViewUpdate) => {
     if (update.docChanged || annotationsChanged(update)) {
         persistTransaction(update);
     }
+    // Broadcast caret position for AutoAIFace eye tracking.
+    if (update.selectionSet || update.docChanged) {
+        const pos = update.state.selection.main.head;
+        const coords = update.view.coordsAtPos(pos);
+        if (coords) {
+            window.dispatchEvent(
+                new CustomEvent("quillium:caret-moved", {
+                    detail: { x: coords.left, y: (coords.top + coords.bottom) / 2 },
+                }),
+            );
+        }
+    }
 });
 
 export const listeners = (options?: ListenerOptions) => [
