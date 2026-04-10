@@ -14,7 +14,8 @@
       "playwright-report/**",
       "test-results/**",
       "src-tauri/target/**",
-      "src/lib/editor/plugins/dont-use-for-now-history/**"
+      "src/lib/editor/plugins/dont-use-for-now-history/**",
+      ".worktrees/**"
     ]
   },
   "formatter": {
