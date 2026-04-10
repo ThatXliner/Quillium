@@ -37,12 +37,17 @@ let isWaking = $state(false);
 let trackingTimer: ReturnType<typeof setTimeout> | null = null;
 let sleepTimer: ReturnType<typeof setTimeout> | null = null;
 let wakeTimer: ReturnType<typeof setTimeout> | null = null;
+let eyeRafPending = false;
+let pendingEyeTarget: { x: number; y: number } | null = null;
 const SLEEP_AFTER_MS = 60_000;
 const TRACKING_LINGER_MS = 1_000;
 const WAKE_DURATION_MS = 1600;
 let nameInputEl = $state<HTMLInputElement | null>(null);
 let widgetEl = $state<HTMLDivElement | null>(null);
-let autoAIRunning = $state(autoAISettings.enabled);
+// Derived directly from the settings object so external mutations (e.g.
+// AISettings.svelte disabling AutoAI when the API key is removed) are
+// immediately reflected here without a separate manual sync step.
+const autoAIRunning = $derived(autoAISettings.enabled);
 
 const noApiKey = $derived(!hasApiKey());
 const locked = $derived(noApiKey || !autoAIRunning);
@@ -109,7 +114,6 @@ function toggleOpen() {
 function toggleEnabled() {
     if (noApiKey) return;
     autoAISettings.enabled = !autoAISettings.enabled;
-    autoAIRunning = autoAISettings.enabled;
     posthog.capture("autoai_toggled", { enabled: autoAISettings.enabled });
     persistAutoAISettings();
     if (autoAISettings.enabled) startAutoAI();
@@ -183,8 +187,13 @@ function handleDocClick(e: MouseEvent) {
     }
 }
 
-function computeEyeOffset(targetX: number, targetY: number) {
-    if (!widgetEl) return;
+function flushEyeOffset() {
+    eyeRafPending = false;
+    if (!pendingEyeTarget || !widgetEl) return;
+    const { x: targetX, y: targetY } = pendingEyeTarget;
+    pendingEyeTarget = null;
+    // getBoundingClientRect() is called at most once per animation frame,
+    // so multiple pointer/caret events per frame collapse into a single layout read.
     const rect = widgetEl.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -196,6 +205,14 @@ function computeEyeOffset(targetX: number, targetY: number) {
     eyeOffsetY = Number.parseFloat(((dy / dist) * 4 * scale).toFixed(1));
 }
 
+function scheduleEyeOffset(x: number, y: number) {
+    pendingEyeTarget = { x, y };
+    if (!eyeRafPending) {
+        eyeRafPending = true;
+        requestAnimationFrame(flushEyeOffset);
+    }
+}
+
 function handleMouseMove(e: MouseEvent) {
     if (open) return;
     if (isSleeping) {
@@ -203,7 +220,7 @@ function handleMouseMove(e: MouseEvent) {
         return;
     }
     isTracking = true;
-    computeEyeOffset(e.clientX, e.clientY);
+    scheduleEyeOffset(e.clientX, e.clientY);
     resetTrackingTimer();
     resetSleepTimer();
 }
@@ -216,7 +233,7 @@ function handleCaretMoved(e: Event) {
         return;
     }
     isTracking = true;
-    computeEyeOffset(x, y);
+    scheduleEyeOffset(x, y);
     resetTrackingTimer();
     resetSleepTimer();
 }

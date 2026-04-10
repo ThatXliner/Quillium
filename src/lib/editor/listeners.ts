@@ -444,7 +444,6 @@ const save = EditorView.updateListener.of((update: ViewUpdate) => {
 });
 
 export const listeners = (options?: ListenerOptions) => [
-    ...(options?.persist === false ? [] : [save]),
-    caretBroadcast,
+    ...(options?.persist === false ? [] : [save, caretBroadcast]),
     ...(options?.updateListener ? [EditorView.updateListener.of(options.updateListener)] : []),
 ];

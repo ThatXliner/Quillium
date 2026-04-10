@@ -179,6 +179,9 @@ async function runReview(content: string, manual = false) {
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
+        // Guard: if the review was cancelled during ensureApiKeyLoaded, bail
+        // before flipping UI state to "reviewing" (avoids a brief flicker).
+        if (abortSignal.aborted) return;
         // Transition thinking → reviewing only after the async key load,
         // so the >_< face is visible during the ensureApiKeyLoaded wait.
         autoAIPhase.set("reviewing");
