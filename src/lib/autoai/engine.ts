@@ -253,9 +253,7 @@ export function cancelPendingReview() {
 export function triggerManualReview() {
     const content = get(documentContent);
     if (!content.trim()) return;
-    if (debounceTimer !== null) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-    }
+    cancelPendingReview();
+    autoAIThinking.set(true);
     runReview(content, true);
 }
