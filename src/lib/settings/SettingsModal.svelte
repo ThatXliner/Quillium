@@ -13,25 +13,30 @@
       - onclose: () => void — called when the modal is fully dismissed.
 -->
 <script lang="ts">
-import {
-    X,
-    Settings,
-    Check,
-    ChevronDown,
-    Plus,
-    Trash2,
-    HelpCircle,
-    MessageSquare,
-} from "lucide-svelte";
-import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
-import type { CustomQuickAction } from "$lib/settings.svelte";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import changelog from "$lib/changelog.json";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
+import { harperCompartment } from "$lib/editor/extensions";
+import { harperExtension, resetHarper } from "$lib/editor/harper/harperLinter";
 import { syncAnalyticsOptOut, syncShareDocumentAnalytics } from "$lib/posthog";
 import posthog from "$lib/posthog";
+import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
+import type { CustomQuickAction } from "$lib/settings.svelte";
+import { editorView } from "$lib/stores";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Dialect } from "harper.js";
+import {
+    Check,
+    ChevronDown,
+    HelpCircle,
+    MessageSquare,
+    Plus,
+    Settings,
+    Trash2,
+    X,
+} from "lucide-svelte";
+import { get } from "svelte/store";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
-import changelog from "$lib/changelog.json";
 
 const { onclose, scrollTo }: { onclose: () => void; scrollTo?: string } = $props();
 
@@ -210,8 +215,29 @@ function save() {
     const shareDocChanged =
         appSettings.shareDocumentAnalytics !== draft.shareDocumentAnalytics ||
         appSettings.shareDocumentKey !== draft.shareDocumentKey;
+    const oldDialect = appSettings.grammarDialect;
     Object.assign(appSettings, draft);
     persistSettings();
+
+    // Reconfigure Harper grammar checker
+    const view = get(editorView);
+    if (view) {
+        const dialectMap = {
+            american: Dialect.American,
+            british: Dialect.British,
+            australian: Dialect.Australian,
+        } as const;
+
+        if (draft.grammarDialect !== oldDialect) {
+            resetHarper(dialectMap[draft.grammarDialect]);
+        }
+
+        view.dispatch({
+            effects: harperCompartment.reconfigure(
+                draft.grammarCheckEnabled ? harperExtension() : [],
+            ),
+        });
+    }
     if (analyticsChanged) {
         syncAnalyticsOptOut(draft.analyticsEnabled);
     }
@@ -828,6 +854,62 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.showWordCount ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
+            </div>
+
+            <!-- Grammar check toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Grammar & spell check</div>
+                    <div class="setting-desc">Highlight spelling and grammar errors with squiggly underlines</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.grammarCheckEnabled}
+                    <button
+                        type="button"
+                        onclick={() => { draft.grammarCheckEnabled = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.grammarCheckEnabled}
+                    aria-label="Toggle grammar check"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.grammarCheckEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.grammarCheckEnabled = !draft.grammarCheckEnabled;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.grammarCheckEnabled ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <!-- English dialect dropdown -->
+            <div class="setting-row {!draft.grammarCheckEnabled ? 'opacity-40 pointer-events-none' : ''}">
+                <div class="setting-meta">
+                    <div class="setting-title">English dialect</div>
+                    <div class="setting-desc">Which English spelling and grammar rules to use</div>
+                </div>
+                <div class="shrink-0">
+                    <select
+                        class="text-sm bg-white/60 border border-black/10 rounded-md px-2 py-1 cursor-pointer"
+                        value={draft.grammarDialect}
+                        onchange={(e) => {
+                            draft.grammarDialect = e.currentTarget.value as typeof draft.grammarDialect;
+                            handleChange();
+                        }}
+                    >
+                        <option value="american">American English</option>
+                        <option value="british">British English</option>
+                        <option value="australian">Australian English</option>
+                    </select>
                 </div>
             </div>
 

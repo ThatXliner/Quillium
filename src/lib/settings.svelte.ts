@@ -35,6 +35,8 @@ type AppSettings = {
     autoVersionOnRevisionCreate: boolean;
     showAiSuggestions: boolean;
     checkForUpdates: boolean;
+    grammarCheckEnabled: boolean;
+    grammarDialect: "american" | "british" | "australian";
 };
 
 const DEFAULTS: AppSettings = {
@@ -59,6 +61,8 @@ const DEFAULTS: AppSettings = {
     autoVersionOnRevisionCreate: true,
     showAiSuggestions: true,
     checkForUpdates: true,
+    grammarCheckEnabled: true,
+    grammarDialect: "american",
 };
 
 function loadSettings(): AppSettings {
