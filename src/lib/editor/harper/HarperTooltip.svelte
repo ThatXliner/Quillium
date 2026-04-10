@@ -138,9 +138,14 @@ $effect(() => {
 // Track whether there are any squiggles in the document
 $effect(() => {
     const view = $editorView;
-    if (!view) { hasSquiggles = false; return; }
+    if (!view) {
+        hasSquiggles = false;
+        return;
+    }
     let count = 0;
-    forEachDiagnostic(view.state, () => { count++; });
+    forEachDiagnostic(view.state, () => {
+        count++;
+    });
     hasSquiggles = count > 0;
 });
 
@@ -171,8 +176,8 @@ $effect(() => {
     };
 });
 
-let suggestionActions = $derived(diagnostic?.actions?.filter(a => a.kind !== "dictionary") ?? []);
-let dictionaryAction = $derived(diagnostic?.actions?.find(a => a.kind === "dictionary") ?? null);
+let suggestionActions = $derived(diagnostic?.actions?.filter((a) => a.kind !== "dictionary") ?? []);
+let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dictionary") ?? null);
 </script>
 
 <svelte:window onkeydown={handleKeydown} />

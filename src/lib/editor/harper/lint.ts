@@ -472,7 +472,8 @@ function renderDiagnostic(view: EditorView, diagnostic: Diagnostic, inPanel: boo
                               elt("u", name.slice(keyIndex, keyIndex + 1)),
                               name.slice(keyIndex + 1),
                           ];
-                const kindClass = action.kind === "dictionary" ? " cm-diagnosticAction-dictionary" : "";
+                const kindClass =
+                    action.kind === "dictionary" ? " cm-diagnosticAction-dictionary" : "";
                 return elt(
                     "button",
                     {
@@ -556,7 +557,6 @@ function thickUnderline(color: string) {
 }
 
 const baseTheme = EditorView.baseTheme({
-
     ".cm-lintRange": {
         paddingBottom: "0.7px",
     },

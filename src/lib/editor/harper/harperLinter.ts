@@ -87,73 +87,75 @@ export function harperExtension(): Extension {
             const lints = await harper.organizedLints(text);
 
             const result = Object.entries(lints).flatMap(([linterName, lintList]) =>
-                lintList.map((lint): Diagnostic | null => {
-                    const span = lint.span();
-                    const msg = lint.message();
-                    const key = diagKey(linterName, span.start, span.end, msg);
-                    if (ignoredDiagnostics.has(key)) return null;
+                lintList
+                    .map((lint): Diagnostic | null => {
+                        const span = lint.span();
+                        const msg = lint.message();
+                        const key = diagKey(linterName, span.start, span.end, msg);
+                        if (ignoredDiagnostics.has(key)) return null;
 
-                    const actions: Action[] = lint.suggestions().map((sug: Suggestion) => ({
-                        kind: "suggestion" as const,
-                        name:
-                            sug.kind() === SuggestionKind.Replace &&
-                            sug.get_replacement_text().trim().length > 0
-                                ? sug.get_replacement_text()
-                                : suggestionToLabel(sug),
-                        title: suggestionToLabel(sug),
-                        apply: (view: EditorView, from: number, to: number) => {
-                            if (sug.kind() === SuggestionKind.Remove) {
-                                view.dispatch({
-                                    changes: { from, to, insert: "" },
-                                    selection: { anchor: from },
-                                });
-                            } else if (sug.kind() === SuggestionKind.Replace) {
-                                const replacement = sug.get_replacement_text();
-                                view.dispatch({
-                                    changes: { from, to, insert: replacement },
-                                    selection: { anchor: from + replacement.length },
-                                });
-                            } else if (sug.kind() === SuggestionKind.InsertAfter) {
-                                const replacement = sug.get_replacement_text();
-                                view.dispatch({
-                                    changes: { from: to, to, insert: replacement },
-                                    selection: { anchor: to + replacement.length },
-                                });
-                            }
-                        },
-                    }));
-
-                    if (lint.lint_kind() === "Spelling") {
-                        const word = lint.get_problem_text();
-                        actions.push({
-                            kind: "dictionary",
-                            name: "Add to dictionary",
-                            title: `Add "${word}" to your dictionary`,
-                            apply: (_view: EditorView) => {
-                                addToDictionary(word);
+                        const actions: Action[] = lint.suggestions().map((sug: Suggestion) => ({
+                            kind: "suggestion" as const,
+                            name:
+                                sug.kind() === SuggestionKind.Replace &&
+                                sug.get_replacement_text().trim().length > 0
+                                    ? sug.get_replacement_text()
+                                    : suggestionToLabel(sug),
+                            title: suggestionToLabel(sug),
+                            apply: (view: EditorView, from: number, to: number) => {
+                                if (sug.kind() === SuggestionKind.Remove) {
+                                    view.dispatch({
+                                        changes: { from, to, insert: "" },
+                                        selection: { anchor: from },
+                                    });
+                                } else if (sug.kind() === SuggestionKind.Replace) {
+                                    const replacement = sug.get_replacement_text();
+                                    view.dispatch({
+                                        changes: { from, to, insert: replacement },
+                                        selection: { anchor: from + replacement.length },
+                                    });
+                                } else if (sug.kind() === SuggestionKind.InsertAfter) {
+                                    const replacement = sug.get_replacement_text();
+                                    view.dispatch({
+                                        changes: { from: to, to, insert: replacement },
+                                        selection: { anchor: to + replacement.length },
+                                    });
+                                }
                             },
-                        });
-                    }
+                        }));
 
-                    return {
-                        from: span.start,
-                        to: span.end,
-                        source: linterName,
-                        severity: "warning",
-                        markClass: lintKindClass(lint.lint_kind()),
-                        title: lint.lint_kind_pretty(),
-                        message: msg,
-                        renderMessage: () => {
-                            const el = document.createElement("span");
-                            el.innerHTML = lint.message_html();
-                            return el;
-                        },
-                        ignore: () => {
-                            ignoredDiagnostics.add(key);
-                        },
-                        actions,
-                    };
-                }).filter((d): d is Diagnostic => d !== null),
+                        if (lint.lint_kind() === "Spelling") {
+                            const word = lint.get_problem_text();
+                            actions.push({
+                                kind: "dictionary",
+                                name: "Add to dictionary",
+                                title: `Add "${word}" to your dictionary`,
+                                apply: (_view: EditorView) => {
+                                    addToDictionary(word);
+                                },
+                            });
+                        }
+
+                        return {
+                            from: span.start,
+                            to: span.end,
+                            source: linterName,
+                            severity: "warning",
+                            markClass: lintKindClass(lint.lint_kind()),
+                            title: lint.lint_kind_pretty(),
+                            message: msg,
+                            renderMessage: () => {
+                                const el = document.createElement("span");
+                                el.innerHTML = lint.message_html();
+                                return el;
+                            },
+                            ignore: () => {
+                                ignoredDiagnostics.add(key);
+                            },
+                            actions,
+                        };
+                    })
+                    .filter((d): d is Diagnostic => d !== null),
             );
             return result;
         },
