@@ -50,11 +50,13 @@ import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
+import LicensesModal from "$lib/ui/LicensesModal.svelte";
 import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
 
 let showBetaDisclaimer = $state(false);
 let showChangelog = $state(false);
+let licensesOpen = $state(false);
 let changelogEntry = $state<{ date: string; content: string; version: string } | null>(null);
 let updateAvailable = $state(false);
 let updateVersion = $state("");
@@ -252,6 +254,9 @@ onMount(() => {
     listen("menu:library", () => {
         if (!destroyed) goToLibrary();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:licenses", () => {
+        if (!destroyed) licensesOpen = !licensesOpen;
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
 
     return () => {
         destroyed = true;
@@ -400,6 +405,11 @@ if (import.meta.env.DEV) {
         version={changelogEntry.version}
         ondismiss={handleChangelogDismiss}
     />
+{/if}
+
+<!-- Open Source Licenses modal -->
+{#if licensesOpen}
+    <LicensesModal ondismiss={() => (licensesOpen = false)} />
 {/if}
 
 <!-- Debug panel — DEV only, never rendered in production builds -->
