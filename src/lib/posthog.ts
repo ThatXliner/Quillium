@@ -23,7 +23,39 @@ export const DOCUMENT_CONTENT_SELECTOR = [
     ".ph-mask-text", // generic mask class for library cards, preview panel, etc.
 ].join(", ");
 
+/**
+ * Tauri serves assets via `tauri://localhost`, a custom protocol that browsers
+ * treat as cross-origin. This prevents rrweb (PostHog's session replay engine)
+ * from reading `stylesheet.cssRules` — so CSS is missing in replays.
+ *
+ * Fix: set `crossOrigin` on all `<link rel="stylesheet">` elements before
+ * the recorder takes its first DOM snapshot. Also observe future additions
+ * for dynamically injected stylesheets (e.g. from SvelteKit's HMR/code-split).
+ */
+function patchStylesheetCORS() {
+    document
+        .querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')
+        .forEach((link) => {
+            if (!link.crossOrigin) link.crossOrigin = "anonymous";
+        });
+
+    new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            for (const node of m.addedNodes) {
+                if (
+                    node instanceof HTMLLinkElement &&
+                    node.rel === "stylesheet" &&
+                    !node.crossOrigin
+                ) {
+                    node.crossOrigin = "anonymous";
+                }
+            }
+        }
+    }).observe(document.head, { childList: true });
+}
+
 if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
+    patchStylesheetCORS();
     posthog.init(PUBLIC_POSTHOG_KEY, {
         api_host: PUBLIC_POSTHOG_HOST,
         ui_host: "https://us.posthog.com",
