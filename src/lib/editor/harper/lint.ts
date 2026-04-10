@@ -1,3 +1,12 @@
+/**
+ * Vendored from Harper's Obsidian plugin (packages/obsidian-plugin/src/lint.ts).
+ * Original source: https://github.com/Automattic/harper
+ * License: Apache 2.0
+ *
+ * Adapted for Quillium: removed Obsidian-specific code, styled tooltips
+ * to match Quillium's design language.
+ */
+
 import {
     type EditorState,
     type Extension,
