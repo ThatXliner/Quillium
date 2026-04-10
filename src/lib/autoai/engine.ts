@@ -8,7 +8,7 @@
  * only fired when content changes meaningfully (>= MIN_DIFF_CHARS).
  */
 
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { documentContent, editorView } from "$lib/stores";
@@ -22,6 +22,9 @@ import {
 } from "$lib/editor/plugins/annotations/index";
 import { autoAISettings, type AutoAIConservativeness } from "./settings.svelte";
 import { toast } from "svelte-sonner";
+
+/** True while the debounce timer has fired but the AI call has not yet started. */
+export const autoAIThinking = writable(false);
 
 // Only re-review if the doc changed by at least this many characters.
 const MIN_DIFF_CHARS = 20;
@@ -166,6 +169,7 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
 async function runReview(content: string, manual = false) {
     if (!content.trim()) return;
 
+    autoAIThinking.set(false);
     setAiProcessing(true);
     const abortSignal = getAiAbortSignal();
     try {
@@ -195,6 +199,7 @@ function scheduleReview(content: string) {
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
         debounceTimer = null;
+        autoAIThinking.set(true);
         runReview(content);
     }, autoAISettings.debounceMs);
 }
@@ -232,6 +237,7 @@ export function cancelPendingReview() {
         clearTimeout(debounceTimer);
         debounceTimer = null;
     }
+    autoAIThinking.set(false);
 }
 
 /** Trigger an immediate review (used by manual mode / widget click). */
