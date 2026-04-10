@@ -23,11 +23,10 @@ import {
 import { autoAISettings, type AutoAIConservativeness } from "./settings.svelte";
 import { toast } from "svelte-sonner";
 
-/** True while the debounce timer has fired but the AI call has not yet started. */
-export const autoAIThinking = writable(false);
+export type AutoAIPhase = "idle" | "thinking" | "reviewing";
 
-/** True while AutoAI is actively running an AI review (distinct from the global aiProcessing). */
-export const autoAIReviewing = writable(false);
+/** Current AutoAI engine phase. idle → thinking (debounce warning) → reviewing → idle. */
+export const autoAIPhase = writable<AutoAIPhase>("idle");
 
 // Only re-review if the doc changed by at least this many characters.
 const MIN_DIFF_CHARS = 20;
@@ -173,7 +172,7 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
 
 async function runReview(content: string, manual = false) {
     if (!content.trim()) {
-        autoAIThinking.set(false);
+        autoAIPhase.set("idle");
         return;
     }
 
@@ -182,9 +181,8 @@ async function runReview(content: string, manual = false) {
         await ensureApiKeyLoaded();
         // Transition thinking → reviewing only after the async key load,
         // so the >_< face is visible during the ensureApiKeyLoaded wait.
-        autoAIThinking.set(false);
+        autoAIPhase.set("reviewing");
         setAiProcessing(true);
-        autoAIReviewing.set(true);
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { object } = await generateObject({
             model,
@@ -202,8 +200,7 @@ async function runReview(content: string, manual = false) {
         if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
     } finally {
-        autoAIThinking.set(false);
-        autoAIReviewing.set(false);
+        autoAIPhase.set("idle");
         setAiProcessing(false);
     }
 }
@@ -212,7 +209,7 @@ function scheduleReview(content: string) {
     cancelPendingReview();
     debounceTimer = setTimeout(() => {
         // WAITING → WARNING: show thinking face for the last 30% of the window.
-        autoAIThinking.set(true);
+        autoAIPhase.set("thinking");
         debounceTimer = setTimeout(() => {
             debounceTimer = null;
             runReview(content);
@@ -253,7 +250,7 @@ export function cancelPendingReview() {
         clearTimeout(debounceTimer);
         debounceTimer = null;
     }
-    autoAIThinking.set(false);
+    autoAIPhase.set("idle");
 }
 
 /** Trigger an immediate review (used by manual mode / widget click). */

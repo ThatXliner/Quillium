@@ -21,7 +21,7 @@ import {
     type AutoAIMode,
 } from "./settings.svelte";
 import { get } from "svelte/store";
-import { startAutoAI, stopAutoAI, triggerManualReview, autoAIThinking, autoAIReviewing } from "./engine";
+import { startAutoAI, stopAutoAI, triggerManualReview, autoAIPhase } from "./engine";
 import posthog from "$lib/posthog";
 import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
 
@@ -48,15 +48,21 @@ const noApiKey = $derived(!hasApiKey());
 const locked = $derived(noApiKey || !autoAIRunning);
 
 const faceState = $derived<FaceState>(
-    !hasApiKey()        ? "disabled"  :
-    $autoAIReviewing    ? "reviewing" :
-    $autoAIThinking     ? "thinking"  :
-    isWaking            ? "waking"    :
-    isSleeping          ? "sleeping"  :
-    isTracking          ? "tracking"  :
-                          "idle"
+    !hasApiKey()
+        ? "disabled"
+        : $autoAIPhase === "reviewing"
+          ? "reviewing"
+          : $autoAIPhase === "thinking"
+            ? "thinking"
+            : isWaking
+              ? "waking"
+              : isSleeping
+                ? "sleeping"
+                : isTracking
+                  ? "tracking"
+                  : "idle",
 );
-const isReviewing = $derived(autoAIRunning && $autoAIReviewing);
+const isReviewing = $derived(autoAIRunning && $autoAIPhase === "reviewing");
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
 
 // Focus slider: map conservativeness ↔ 0/1/2
@@ -88,7 +94,10 @@ function toggleOpen() {
         // so there's no point playing the waking animation.
         if (isSleeping) {
             isSleeping = false;
-            if (wakeTimer !== null) { clearTimeout(wakeTimer); wakeTimer = null; }
+            if (wakeTimer !== null) {
+                clearTimeout(wakeTimer);
+                wakeTimer = null;
+            }
             isWaking = false;
         }
     } else {
@@ -177,19 +186,22 @@ function handleDocClick(e: MouseEvent) {
 function computeEyeOffset(targetX: number, targetY: number) {
     if (!widgetEl) return;
     const rect = widgetEl.getBoundingClientRect();
-    const cx = rect.left + rect.width  / 2;
-    const cy = rect.top  + rect.height / 2;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
     const dx = targetX - cx;
     const dy = targetY - cy;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
     const scale = Math.min(1, dist / 80);
-    eyeOffsetX = parseFloat(((dx / dist) * 4 * scale).toFixed(1));
-    eyeOffsetY = parseFloat(((dy / dist) * 4 * scale).toFixed(1));
+    eyeOffsetX = Number.parseFloat(((dx / dist) * 4 * scale).toFixed(1));
+    eyeOffsetY = Number.parseFloat(((dy / dist) * 4 * scale).toFixed(1));
 }
 
 function handleMouseMove(e: MouseEvent) {
     if (open) return;
-    if (isSleeping) { triggerWake(); return; }
+    if (isSleeping) {
+        triggerWake();
+        return;
+    }
     isTracking = true;
     computeEyeOffset(e.clientX, e.clientY);
     resetTrackingTimer();
@@ -199,7 +211,10 @@ function handleMouseMove(e: MouseEvent) {
 function handleCaretMoved(e: Event) {
     const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
     if (open) return;
-    if (isSleeping) { triggerWake(); return; }
+    if (isSleeping) {
+        triggerWake();
+        return;
+    }
     isTracking = true;
     computeEyeOffset(x, y);
     resetTrackingTimer();
@@ -218,7 +233,7 @@ function resetSleepTimer() {
     if (sleepTimer !== null) clearTimeout(sleepTimer);
     sleepTimer = setTimeout(() => {
         sleepTimer = null;
-        if (open || get(autoAIReviewing) || get(autoAIThinking)) {
+        if (open || get(autoAIPhase) !== "idle") {
             // Busy or panel is open — reschedule so we don't miss the transition.
             resetSleepTimer();
             return;
