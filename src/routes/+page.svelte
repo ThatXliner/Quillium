@@ -206,19 +206,22 @@ onMount(() => {
     showTutorialOnFirstVisit();
 
     // Check for updates silently in the background.
-    check()
-        .then((update) => {
-            if (update) {
-                updateAvailable = true;
-                updateVersion = update.version;
-                posthog.capture("update_available", { version: update.version });
-            }
-        })
-        .catch(() => {
-            toast.error("Unable to check for updates", {
-                description: "https://github.com/ThatXliner/quillium-releases could not be reached",
+    if (appSettings.checkForUpdates) {
+        check()
+            .then((update) => {
+                if (update) {
+                    updateAvailable = true;
+                    updateVersion = update.version;
+                    posthog.capture("update_available", { version: update.version });
+                }
+            })
+            .catch(() => {
+                toast.error("Unable to check for updates", {
+                    description:
+                        "https://github.com/ThatXliner/quillium-releases could not be reached",
+                });
             });
-        });
+    }
 
     // Handle crash-restore events dispatched by ErrorBanner.svelte.
     function handleRestoreBackup(e: Event) {

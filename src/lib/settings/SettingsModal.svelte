@@ -32,7 +32,6 @@ import posthog from "$lib/posthog";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
 import changelog from "$lib/changelog.json";
-import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 
 const { onclose, scrollTo }: { onclose: () => void; scrollTo?: string } = $props();
 
@@ -162,7 +161,6 @@ function getChangelogEntry(): { date: string; content: string; version: string }
     return { ...entry, version: currentMinor };
 }
 
-let showChangelogFromSettings = $state(false);
 const currentChangelog = getChangelogEntry();
 
 // Which custom dropdown is open: "doc" | "ui" | null
@@ -239,6 +237,7 @@ function save() {
         show_word_count: draft.showWordCount,
         analytics_enabled: draft.analyticsEnabled,
         share_document_analytics: draft.shareDocumentAnalytics,
+        check_for_updates: draft.checkForUpdates,
     });
     onclose();
 }
@@ -301,7 +300,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="flex items-center gap-1.5">
                 {#if currentChangelog}
                     <button
-                        onclick={() => { showChangelogFromSettings = true; }}
+                        onclick={() => { window.dispatchEvent(new CustomEvent("quillium:show-changelog")); onclose(); }}
                         class="text-[10px] font-medium px-2.5 py-1 rounded-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
                     >
                         What's New
@@ -934,6 +933,40 @@ function fontLabel(fonts: FontOption[], value: string) {
             {/if}
             {/if}
 
+            <!-- Auto-update toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Check for updates</div>
+                    <div class="setting-desc">Automatically check for new versions on startup</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.checkForUpdates}
+                    <button
+                        type="button"
+                        onclick={() => { draft.checkForUpdates = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.checkForUpdates}
+                    aria-label="Toggle automatic update checks"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.checkForUpdates ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.checkForUpdates = !draft.checkForUpdates;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.checkForUpdates ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
             <div class="section-divider"></div>
 
             <!-- AI section -->
@@ -976,6 +1009,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             </div>
 
             <!-- AI suggestion decorations toggle -->
+            {#if draft.aiEnabled}
             <div class="setting-row">
                 <div class="setting-meta">
                     <div class="setting-title">AI suggestion underlines</div>
@@ -1008,6 +1042,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </button>
                 </div>
             </div>
+            {/if}
 
             <!-- QUICK ACTIONS section (AI-dependent) -->
             {#if draft.aiEnabled}
@@ -1120,14 +1155,6 @@ function fontLabel(fonts: FontOption[], value: string) {
     <FontGuideModal tab={showFontGuide} onclose={() => showFontGuide = null} />
 {/if}
 
-{#if showChangelogFromSettings && currentChangelog}
-    <ChangelogModal
-        date={currentChangelog.date}
-        content={currentChangelog.content}
-        version={currentChangelog.version}
-        ondismiss={() => { showChangelogFromSettings = false; }}
-    />
-{/if}
 
 <style>
     .settings-modal {
