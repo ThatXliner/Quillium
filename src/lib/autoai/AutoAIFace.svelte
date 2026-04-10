@@ -64,17 +64,21 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
         <rect class="wake-eye" x="25" y="7" width="4" height="14" rx="2" fill="#5c4a2a"/>
 
     {:else}
-        <!-- idle / tracking: vertical bar eyes, offset by eyeOffsetX/Y -->
-        <rect
-            class="bar-eye {state === 'idle' ? 'blink' : ''}"
-            style="transform: {tx}"
-            x="9"  y="7" width="4" height="14" rx="2" fill="#5c4a2a"
-        />
-        <rect
-            class="bar-eye {state === 'idle' ? 'blink' : ''}"
-            style="transform: {tx}"
-            x="25" y="7" width="4" height="14" rx="2" fill="#5c4a2a"
-        />
+        <!-- idle / tracking: vertical bar eyes, offset by eyeOffsetX/Y.
+             The tracking translate lives on a <g> wrapper so it doesn't
+             conflict with the blink scaleY animation on the inner <rect>. -->
+        <g style="transform: {tx}">
+            <rect
+                class="bar-eye {state === 'idle' ? 'blink' : ''}"
+                x="9"  y="7" width="4" height="14" rx="2" fill="#5c4a2a"
+            />
+        </g>
+        <g style="transform: {tx}">
+            <rect
+                class="bar-eye {state === 'idle' ? 'blink' : ''}"
+                x="25" y="7" width="4" height="14" rx="2" fill="#5c4a2a"
+            />
+        </g>
     {/if}
 </svg>
 

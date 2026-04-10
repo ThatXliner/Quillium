@@ -406,14 +406,17 @@ async function doAppend(
     );
 }
 
-// ── Auto-save listener ────────────────────────────────────────────
-const save = EditorView.updateListener.of((update: ViewUpdate) => {
-    if (update.docChanged || annotationsChanged(update)) {
-        persistTransaction(update);
-    }
-    // Broadcast caret position for AutoAIFace eye tracking.
-    if (update.selectionSet || update.docChanged) {
-        const pos = update.state.selection.main.head;
+// ── Caret broadcast for AutoAIFace eye tracking ───────────────────
+// Throttled to one dispatch per animation frame to avoid forced reflows
+// on every keystroke.
+let caretRafPending = false;
+const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
+    if (!(update.selectionSet || update.docChanged)) return;
+    if (caretRafPending) return;
+    caretRafPending = true;
+    requestAnimationFrame(() => {
+        caretRafPending = false;
+        const pos = update.view.state.selection.main.head;
         const coords = update.view.coordsAtPos(pos);
         if (coords) {
             window.dispatchEvent(
@@ -422,10 +425,18 @@ const save = EditorView.updateListener.of((update: ViewUpdate) => {
                 }),
             );
         }
+    });
+});
+
+// ── Auto-save listener ────────────────────────────────────────────
+const save = EditorView.updateListener.of((update: ViewUpdate) => {
+    if (update.docChanged || annotationsChanged(update)) {
+        persistTransaction(update);
     }
 });
 
 export const listeners = (options?: ListenerOptions) => [
     ...(options?.persist === false ? [] : [save]),
+    caretBroadcast,
     ...(options?.updateListener ? [EditorView.updateListener.of(options.updateListener)] : []),
 ];

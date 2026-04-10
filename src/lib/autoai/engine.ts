@@ -26,6 +26,9 @@ import { toast } from "svelte-sonner";
 /** True while the debounce timer has fired but the AI call has not yet started. */
 export const autoAIThinking = writable(false);
 
+/** True while AutoAI is actively running an AI review (distinct from the global aiProcessing). */
+export const autoAIReviewing = writable(false);
+
 // Only re-review if the doc changed by at least this many characters.
 const MIN_DIFF_CHARS = 20;
 
@@ -167,13 +170,17 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
 }
 
 async function runReview(content: string, manual = false) {
-    autoAIThinking.set(false);
-    if (!content.trim()) return;
+    if (!content.trim()) {
+        autoAIThinking.set(false);
+        return;
+    }
 
     setAiProcessing(true);
+    autoAIReviewing.set(true);
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
+        autoAIThinking.set(false);
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { object } = await generateObject({
             model,
@@ -191,6 +198,8 @@ async function runReview(content: string, manual = false) {
         if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
     } finally {
+        autoAIThinking.set(false);
+        autoAIReviewing.set(false);
         setAiProcessing(false);
     }
 }

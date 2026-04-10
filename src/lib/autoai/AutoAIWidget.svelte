@@ -11,7 +11,7 @@
 -->
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
-import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
+import { hasApiKey } from "$lib/ai/settings.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import {
     autoAISettings,
@@ -21,7 +21,7 @@ import {
     type AutoAIMode,
 } from "./settings.svelte";
 import { get } from "svelte/store";
-import { startAutoAI, stopAutoAI, triggerManualReview, autoAIThinking } from "./engine";
+import { startAutoAI, stopAutoAI, triggerManualReview, autoAIThinking, autoAIReviewing } from "./engine";
 import posthog from "$lib/posthog";
 import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
 
@@ -48,15 +48,15 @@ const noApiKey = $derived(!hasApiKey());
 const locked = $derived(noApiKey || !autoAIRunning);
 
 const faceState = $derived<FaceState>(
-    !hasApiKey()          ? "disabled"  :
-    aiProcessing.active   ? "reviewing" :
-    $autoAIThinking       ? "thinking"  :
-    isWaking              ? "waking"    :
-    isSleeping            ? "sleeping"  :
-    isTracking            ? "tracking"  :
-                            "idle"
+    !hasApiKey()        ? "disabled"  :
+    $autoAIReviewing    ? "reviewing" :
+    $autoAIThinking     ? "thinking"  :
+    isWaking            ? "waking"    :
+    isSleeping          ? "sleeping"  :
+    isTracking          ? "tracking"  :
+                          "idle"
 );
-const isReviewing = $derived(autoAIRunning && aiProcessing.active);
+const isReviewing = $derived(autoAIRunning && $autoAIReviewing);
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
 
 // Focus slider: map conservativeness ↔ 0/1/2
@@ -83,7 +83,18 @@ function handleFocusSlider(e: Event) {
 function toggleOpen() {
     open = !open;
     editingName = false;
-    if (open && isSleeping) triggerWake();
+    if (open) {
+        // Wake silently — the bubble is hidden while the panel is open,
+        // so there's no point playing the waking animation.
+        if (isSleeping) {
+            isSleeping = false;
+            if (wakeTimer !== null) { clearTimeout(wakeTimer); wakeTimer = null; }
+            isWaking = false;
+        }
+    } else {
+        // Panel closed — restart the sleep timer as a fresh interaction.
+        resetSleepTimer();
+    }
 }
 
 function toggleEnabled() {
@@ -157,7 +168,10 @@ function openSettings() {
 
 function handleDocClick(e: MouseEvent) {
     if (!open) return;
-    if (widgetEl && !widgetEl.contains(e.target as Node)) open = false;
+    if (widgetEl && !widgetEl.contains(e.target as Node)) {
+        open = false;
+        resetSleepTimer();
+    }
 }
 
 function computeEyeOffset(targetX: number, targetY: number) {
@@ -203,7 +217,13 @@ function resetTrackingTimer() {
 function resetSleepTimer() {
     if (sleepTimer !== null) clearTimeout(sleepTimer);
     sleepTimer = setTimeout(() => {
-        if (!open && !aiProcessing.active && !get(autoAIThinking)) {
+        sleepTimer = null;
+        if (open || get(autoAIReviewing) || get(autoAIThinking)) {
+            // Busy or panel is open — reschedule so we don't miss the transition.
+            resetSleepTimer();
+            return;
+        }
+        if (autoAIRunning && !noApiKey) {
             isSleeping = true;
         }
     }, SLEEP_AFTER_MS);
@@ -263,7 +283,7 @@ const annotationPills = [
            {isReviewing && !open ? 'rainbow-reviewing' : ''}"
 >
     <!-- Bubble layer -->
-    <div class="layer {open ? 'opacity-0 pointer-events-none' : 'opacity-100'}
+    <div class="layer {open ? 'opacity-0 pointer-events-none' : noApiKey ? 'opacity-50' : 'opacity-100'}
                 flex items-center justify-center">
         <button
             onclick={toggleOpen}
