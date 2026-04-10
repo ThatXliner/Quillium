@@ -346,6 +346,10 @@ pub fn run() {
                         .accelerator("CmdOrCtrl+,")
                         .build(app)?,
                 )
+                .item(
+                    &MenuItemBuilder::with_id("licenses", "Open Source Licenses…")
+                        .build(app)?,
+                )
                 .separator()
                 .services()
                 .separator()
@@ -397,7 +401,7 @@ pub fn run() {
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().as_ref();
                 match id {
-                    "settings" | "history" | "library" => {
+                    "settings" | "history" | "library" | "licenses" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.emit(&format!("menu:{id}"), ());
                         }
