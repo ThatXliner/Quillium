@@ -278,27 +278,36 @@ const fromSave = (async () => {
     // Blank editor (new installation).
     // Create an initial document + draft so the event log can record
     // edits immediately without waiting for the user to visit the library.
-    // Pre-fill with sample content so the tutorial has text to work with.
-    const newDocId = await createDocument(SAMPLE_DOCUMENT_TITLE);
+    // Pre-fill with sample content if the user hasn't seen the tutorial yet,
+    // so they have real text to work with during the guided tour.
+    const isFirstTime = !localStorage.getItem("quillium_tutorial_seen");
+    const title = isFirstTime ? SAMPLE_DOCUMENT_TITLE : "Untitled";
+    const content = isFirstTime ? SAMPLE_DOCUMENT_CONTENT : "";
+    const newDocId = await createDocument(title);
     const newDraftId = await createDraft(newDocId, "Draft");
-    currentDocumentId.set(newDocId);
-    currentDocumentTitle.set(SAMPLE_DOCUMENT_TITLE);
-    currentDraftId.set(newDraftId);
     const state = EditorState.create({
-        doc: SAMPLE_DOCUMENT_CONTENT,
+        doc: content,
         extensions: getExtensions(getExtensionOptions),
     });
-    // Persist the initial content immediately so it survives app restarts
-    // before the user makes any edits.
-    const stateJson = JSON.stringify(state.toJSON(savedFields));
-    await createSnapshot(newDraftId, stateJson, -1);
-    await updateDocumentMeta(
-        newDocId,
-        SAMPLE_DOCUMENT_TITLE,
-        getWordCount(SAMPLE_DOCUMENT_CONTENT),
-        SAMPLE_DOCUMENT_CONTENT.slice(0, 200),
-        "",
-    );
+    if (isFirstTime) {
+        // Persist the initial content immediately so it survives app restarts
+        // before the user makes any edits.
+        const stateJson = JSON.stringify(state.toJSON(savedFields));
+        await createSnapshot(newDraftId, stateJson, -1);
+        await updateDocumentMeta(
+            newDocId,
+            title,
+            getWordCount(content),
+            content.slice(0, 200),
+            "",
+        );
+    }
+    // Set stores after snapshot is written to avoid a race where the
+    // currentDocumentId subscription triggers loadDocument before the
+    // snapshot exists, resulting in an empty editor.
+    currentDocumentId.set(newDocId);
+    currentDocumentTitle.set(title);
+    currentDraftId.set(newDraftId);
     return state;
 })();
 
