@@ -22,11 +22,7 @@ export type Step = {
     showShortcuts?: boolean;
     /** Keyboard shortcut hint rendered after the body text using the Kbd component. */
     shortcutHint?: { prefix?: string; keys: string[] };
-    requirement?:
-        | "createRevision"
-        | "openRevisionModal"
-        | "createNestedRevision"
-        | "openNestedRevisionModal";
+    requirement?: "createRevision" | "openRevisionModal";
 };
 
 export const steps: Step[] = [
@@ -43,7 +39,7 @@ export const steps: Step[] = [
         section: "core",
         selector: "#editor-document",
         title: "Your Writing Space",
-        body: "Your main drafting canvas. Annotations and AI stay at the edges so you can stay in flow.",
+        body: "Your main drafting canvas. Everything else stays at the edges so you can stay in flow.",
         position: "left",
     },
     {
@@ -51,8 +47,7 @@ export const steps: Step[] = [
         section: "nested",
         selector: "#editor-document",
         title: "Create Nested Revisions",
-        body: "Select text in the main editor to create your first revision.",
-        shortcutHint: { keys: ["mod", "alt", "K"] },
+        body: "Let's create our first revision.",
         requirement: "createRevision",
         position: "left",
     },
@@ -63,25 +58,6 @@ export const steps: Step[] = [
         title: "Expand the Revision Modal",
         body: "In that new revision card, click the expand button to open the full revision modal.",
         requirement: "openRevisionModal",
-        position: "left",
-    },
-    {
-        id: "nested-create-inside-modal",
-        section: "nested",
-        selector: ".revision-modal .revision-modal-editor",
-        title: "Create a Revision Inside the Modal",
-        body: "In the revision modal editor, select text to create a nested revision.",
-        shortcutHint: { keys: ["mod", "alt", "K"] },
-        requirement: "createNestedRevision",
-        position: "left",
-    },
-    {
-        id: "nested-open-second-modal",
-        section: "nested",
-        selector: null,
-        title: "Expand the Nested Revision",
-        body: "In the modal's annotation sidebar, open the nested revision with its expand button. This is infinite nesting in action.",
-        requirement: "openNestedRevisionModal",
         position: "left",
     },
     {

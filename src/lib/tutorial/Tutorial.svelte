@@ -96,8 +96,6 @@ let lastStepId = $state<string | null>(null);
 let nestedGuideState = $state({
     baselineTopLevelRevisionIds: null as number[] | null,
     createdRevisionId: null as number | null,
-    baselineNestedRevisionIds: null as number[] | null,
-    createdNestedRevisionId: null as number | null,
 });
 
 const activeSteps = $derived(
@@ -131,8 +129,6 @@ function resetNestedGuideState() {
     nestedGuideState = {
         baselineTopLevelRevisionIds: null,
         createdRevisionId: null,
-        baselineNestedRevisionIds: null,
-        createdNestedRevisionId: null,
     };
 }
 
@@ -145,35 +141,6 @@ function getTopLevelRevisions(): Annotation<"revision">[] {
     );
 }
 
-function getRevisionById(id: number): Annotation<"revision"> | undefined {
-    return getTopLevelRevisions().find((revision) => revision.id === id);
-}
-
-function getNestedRevisionIds(revision: Annotation<"revision"> | undefined): number[] {
-    if (!revision) return [];
-    const activeVersion = revision.versions[revision.activeVersionIndex] as
-        | Record<string, unknown>
-        | undefined;
-    if (!activeVersion || !("annotationField" in activeVersion)) return [];
-
-    const annotationField = activeVersion.annotationField;
-    if (!annotationField || typeof annotationField !== "object") return [];
-
-    const nested = Object.values(annotationField as Record<string, unknown>)
-        .filter(
-            (x): x is { _type: string; id: number } =>
-                typeof x === "object" &&
-                x !== null &&
-                "_type" in x &&
-                "id" in x &&
-                (x as { _type: string })._type === "revision" &&
-                typeof (x as { id: unknown }).id === "number",
-        )
-        .map((x) => x.id);
-
-    return nested;
-}
-
 function handleStepEnter(currentStep: Step) {
     if (currentStep.section !== "nested" && $modalStack.length > 0) {
         modalStack.clear();
@@ -184,17 +151,6 @@ function handleStepEnter(currentStep: Step) {
     if (currentStep.requirement === "createRevision") {
         nestedGuideState.baselineTopLevelRevisionIds = getTopLevelRevisions().map((r) => r.id);
         nestedGuideState.createdRevisionId = null;
-        nestedGuideState.baselineNestedRevisionIds = [];
-        nestedGuideState.createdNestedRevisionId = null;
-    }
-
-    if (
-        currentStep.requirement === "createNestedRevision" &&
-        nestedGuideState.createdRevisionId !== null
-    ) {
-        const revision = getRevisionById(nestedGuideState.createdRevisionId);
-        nestedGuideState.baselineNestedRevisionIds = getNestedRevisionIds(revision);
-        nestedGuideState.createdNestedRevisionId = null;
     }
 }
 
@@ -209,13 +165,6 @@ function getEffectiveSelector(currentStep: Step | undefined): string | null {
         return '.annotation-scroll-container [data-tutorial-action="expand-revision-modal"]';
     }
 
-    if (currentStep.requirement === "openNestedRevisionModal") {
-        if (nestedGuideState.createdNestedRevisionId !== null) {
-            return `.revision-modal [data-tutorial-action="expand-revision-modal"][data-revision-id="${nestedGuideState.createdNestedRevisionId}"]`;
-        }
-        return '.revision-modal [data-tutorial-action="expand-revision-modal"]';
-    }
-
     return null;
 }
 
@@ -226,17 +175,6 @@ function getTargetRects(currentStep: Step | undefined): DOMRect[] {
     if (selector) {
         const el = document.querySelector(selector);
         if (el) rects.push(el.getBoundingClientRect());
-    }
-
-    // During nested-creation, also spotlight the nested revision expand button
-    // once it appears so users can immediately see the next control.
-    if (currentStep?.requirement === "createNestedRevision") {
-        const expandSelector =
-            nestedGuideState.createdNestedRevisionId !== null
-                ? `.revision-modal [data-tutorial-action="expand-revision-modal"][data-revision-id="${nestedGuideState.createdNestedRevisionId}"]`
-                : '.revision-modal [data-tutorial-action="expand-revision-modal"]';
-        const expandButton = document.querySelector(expandSelector);
-        if (expandButton) rects.push(expandButton.getBoundingClientRect());
     }
 
     return rects;
@@ -264,7 +202,7 @@ function getRequirementState(currentStep: Step | undefined): { met: boolean; hin
     if (currentStep.requirement === "createRevision") {
         return {
             met: nestedGuideState.createdRevisionId !== null,
-            hint: `Action required: create a revision with ${mod}+${opt}+K on selected text.`,
+            hint: `Action required: select some text, and press ${mod}+${opt}+K`,
         };
     }
 
@@ -281,30 +219,6 @@ function getRequirementState(currentStep: Step | undefined): { met: boolean; hin
                 createdId === null
                     ? "Create your first revision first."
                     : "Action required: click the expand button on the revision card.",
-        };
-    }
-
-    if (currentStep.requirement === "createNestedRevision") {
-        return {
-            met: nestedGuideState.createdNestedRevisionId !== null,
-            hint: `Action required: in the modal editor, select text and press ${mod}+${opt}+K.`,
-        };
-    }
-
-    if (currentStep.requirement === "openNestedRevisionModal") {
-        const nestedId = nestedGuideState.createdNestedRevisionId;
-        const topModal = $modalStack[$modalStack.length - 1];
-        const opened =
-            nestedId !== null &&
-            $modalStack.length >= 2 &&
-            topModal?.type === "revision" &&
-            topModal.revisionId === nestedId;
-        return {
-            met: opened,
-            hint:
-                nestedId === null
-                    ? "Create a nested revision in the modal first."
-                    : "Action required: expand the nested revision from the modal sidebar.",
         };
     }
 
@@ -460,19 +374,6 @@ $effect(() => {
             (revision) => !baseline.includes(revision.id),
         );
         if (newRevision) nestedGuideState.createdRevisionId = newRevision.id;
-    }
-
-    if (
-        nestedGuideState.createdRevisionId !== null &&
-        nestedGuideState.createdNestedRevisionId === null &&
-        nestedGuideState.baselineNestedRevisionIds !== null
-    ) {
-        const revision = getRevisionById(nestedGuideState.createdRevisionId);
-        const nestedBaseline = nestedGuideState.baselineNestedRevisionIds;
-        const nestedIds = getNestedRevisionIds(revision);
-        const newNestedRevisionId = nestedIds.find((id) => !nestedBaseline.includes(id));
-        if (newNestedRevisionId !== undefined)
-            nestedGuideState.createdNestedRevisionId = newNestedRevisionId;
     }
 });
 

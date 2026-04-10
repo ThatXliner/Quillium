@@ -46,6 +46,7 @@ import {
     listDrafts,
     createDocument,
     createDraft,
+    createSnapshot,
     loadDocumentState,
     updateDocumentMeta,
 } from "$lib/db";
@@ -59,6 +60,7 @@ import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { replayEvents } from "./replay";
 import type { EventRecord } from "$lib/db/types";
 import { appSettings } from "$lib/settings.svelte";
+import { SAMPLE_DOCUMENT_TITLE, SAMPLE_DOCUMENT_CONTENT } from "./sampleDocument";
 import {
     aiSettings,
     hasApiKey,
@@ -276,12 +278,28 @@ const fromSave = (async () => {
     // Blank editor (new installation).
     // Create an initial document + draft so the event log can record
     // edits immediately without waiting for the user to visit the library.
-    const newDocId = await createDocument("Untitled");
+    // Pre-fill with sample content so the tutorial has text to work with.
+    const newDocId = await createDocument(SAMPLE_DOCUMENT_TITLE);
     const newDraftId = await createDraft(newDocId, "Draft");
     currentDocumentId.set(newDocId);
-    currentDocumentTitle.set("Untitled");
+    currentDocumentTitle.set(SAMPLE_DOCUMENT_TITLE);
     currentDraftId.set(newDraftId);
-    return EditorState.create({ extensions: getExtensions(getExtensionOptions) });
+    const state = EditorState.create({
+        doc: SAMPLE_DOCUMENT_CONTENT,
+        extensions: getExtensions(getExtensionOptions),
+    });
+    // Persist the initial content immediately so it survives app restarts
+    // before the user makes any edits.
+    const stateJson = JSON.stringify(state.toJSON(savedFields));
+    await createSnapshot(newDraftId, stateJson, -1);
+    await updateDocumentMeta(
+        newDocId,
+        SAMPLE_DOCUMENT_TITLE,
+        getWordCount(SAMPLE_DOCUMENT_CONTENT),
+        SAMPLE_DOCUMENT_CONTENT.slice(0, 200),
+        "",
+    );
+    return state;
 })();
 
 function extractTitleFromStateJson(stateJson: string): string {
