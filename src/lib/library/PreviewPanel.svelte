@@ -4,7 +4,16 @@
 -->
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
-import { FileText, ExternalLink, Trash2, RotateCcw, Pencil, CheckSquare } from "lucide-svelte";
+import { type ExportFormat, exportDocumentById } from "$lib/export";
+import {
+    FileText,
+    ExternalLink,
+    Trash2,
+    RotateCcw,
+    Pencil,
+    CheckSquare,
+    Download,
+} from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -33,6 +42,49 @@ const {
 }: Props = $props();
 
 const multiSelect = $derived(selectedCount > 1);
+
+let exportOpen = $state(false);
+let exportWrapperEl = $state<HTMLDivElement>();
+$effect(() => {
+    void doc;
+    exportOpen = false;
+});
+let exporting = $state(false);
+let exportMenuEl = $state<HTMLDivElement>();
+let hoveredExportIdx = $state(-1);
+let exportPillStyle = $state("opacity: 0;");
+
+$effect(() => {
+    if (!exportMenuEl || hoveredExportIdx < 0) {
+        exportPillStyle = "opacity: 0;";
+        return;
+    }
+    const buttons = exportMenuEl.querySelectorAll<HTMLButtonElement>(".export-item");
+    const btn = buttons[hoveredExportIdx];
+    if (!btn) {
+        exportPillStyle = "opacity: 0;";
+        return;
+    }
+    exportPillStyle = `opacity: 1; top: ${btn.offsetTop}px; height: ${btn.offsetHeight}px;`;
+});
+
+function handleWindowClick(e: MouseEvent) {
+    if (exportOpen && exportWrapperEl && !exportWrapperEl.contains(e.target as Node)) {
+        exportOpen = false;
+        hoveredExportIdx = -1;
+    }
+}
+
+async function doExport(format: ExportFormat) {
+    if (!doc || exporting) return;
+    exporting = true;
+    try {
+        await exportDocumentById(doc.id, doc.title, format);
+    } finally {
+        exporting = false;
+        exportOpen = false;
+    }
+}
 
 let confirmingDelete = $derived.by(() => {
     void doc;
@@ -77,6 +129,8 @@ function handleDeletePermanent() {
     }
 }
 </script>
+
+<svelte:window onclick={handleWindowClick} />
 
 <div class="h-full flex flex-col bg-white/50 border-l border-black/8">
     {#if multiSelect}
@@ -200,14 +254,52 @@ function handleDeletePermanent() {
                     {confirmingDelete ? "Confirm permanent delete" : "Delete permanently"}
                 </button>
             {:else}
-                <button
-                    onclick={onOpen}
-                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
-                >
-                    <ExternalLink size={16} />
-                    Open document
-                    <Kbd variant="fullWhite" keys="↵" />
-                </button>
+                <div class="flex gap-2">
+                    <button
+                        onclick={onOpen}
+                        class="group flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                    >
+                        <ExternalLink size={16} />
+                        Open
+                        <Kbd variant="fullWhite" keys="↵" />
+                    </button>
+                    <div class="relative" bind:this={exportWrapperEl}>
+                        <button
+                            onclick={() => (exportOpen = !exportOpen)}
+                            class="h-full flex items-center justify-center gap-1.5 py-3 px-4 rounded-full text-sm font-medium shadow-sm transition-colors
+                                {exportOpen ? 'bg-purple-500 text-white' : 'bg-purple-50 text-purple-500 hover:bg-purple-100'}"
+                        >
+                            <Download size={15} />
+                            Export
+                        </button>
+                        {#if exportOpen}
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <div
+                                bind:this={exportMenuEl}
+                                class="absolute bottom-full mb-1 right-0 min-w-[11rem] rounded-xl bg-white border border-black/8 shadow-lg overflow-hidden py-1 px-1"
+                                onmouseleave={() => (hoveredExportIdx = -1)}
+                            >
+                                <div
+                                    class="absolute inset-x-1 rounded-lg bg-purple-50 pointer-events-none transition-[top,height,opacity] duration-200 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
+                                    style={exportPillStyle}
+                                ></div>
+                                {#each [
+                                    { format: "txt" as ExportFormat, label: "Plain Text (.txt)" },
+                                    { format: "txt+json" as ExportFormat, label: "Text + Annotations (.txt)" },
+                                    { format: "json" as ExportFormat, label: "JSON (.json)" },
+                                    { format: "md" as ExportFormat, label: "Markdown (.md)" },
+                                ] as item, i}
+                                    <button
+                                        onclick={() => doExport(item.format)}
+                                        onmouseenter={() => (hoveredExportIdx = i)}
+                                        disabled={exporting}
+                                        class="export-item relative z-[1] w-full text-left px-3 py-2.5 text-sm text-black/70 transition-colors disabled:opacity-50"
+                                    >{item.label}</button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                </div>
                 <button
                     onclick={onTrash}
                     class="group w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-red-400 hover:bg-red-50 transition-colors"

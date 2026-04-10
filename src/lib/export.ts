@@ -10,6 +10,7 @@
  * Uses the browser Blob + <a> download pattern (same as ErrorBanner).
  */
 
+import type { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { get } from "svelte/store";
 import { annotationField } from "./editor/plugins/annotations";
@@ -42,26 +43,26 @@ function annotationRange(annotation: GenericAnnotation): { from: number; to: num
     return { from: range.from, to: range.to };
 }
 
-function buildPlainText(view: EditorView): string {
-    return view.state.doc.toString();
+function buildPlainText(state: EditorState): string {
+    return state.doc.toString();
 }
 
-function buildJSON(view: EditorView): string {
+function buildJSON(state: EditorState, title: string): string {
     return JSON.stringify(
         {
-            title: get(currentDocumentTitle),
+            title,
             exportedAt: new Date().toISOString(),
-            text: view.state.doc.toString(),
-            annotations: buildAnnotationsJSON(view),
+            text: state.doc.toString(),
+            annotations: buildAnnotationsJSON(state),
         },
         null,
         2,
     );
 }
 
-function buildAnnotationsJSON(view: EditorView): object[] {
-    const doc = view.state.doc.toString();
-    const annots = view.state.field(annotationField);
+function buildAnnotationsJSON(state: EditorState): object[] {
+    const doc = state.doc.toString();
+    const annots = state.field(annotationField);
 
     return Object.values(annots).map((a) => {
         const { from, to } = annotationRange(a);
@@ -93,16 +94,16 @@ function buildAnnotationsJSON(view: EditorView): object[] {
     });
 }
 
-function buildPlainTextWithAnnotations(view: EditorView): string {
-    const doc = view.state.doc.toString();
-    const annotations = buildAnnotationsJSON(view);
+function buildPlainTextWithAnnotations(state: EditorState): string {
+    const doc = state.doc.toString();
+    const annotations = buildAnnotationsJSON(state);
     if (annotations.length === 0) return doc;
     return `${doc}\n\n---\n\n${JSON.stringify(annotations, null, 2)}`;
 }
 
-function buildMarkdown(view: EditorView): string {
-    const doc = view.state.doc.toString();
-    const annots = view.state.field(annotationField);
+function buildMarkdown(state: EditorState): string {
+    const doc = state.doc.toString();
+    const annots = state.field(annotationField);
     const annotList = Object.values(annots);
 
     if (annotList.length === 0) return doc;
@@ -149,13 +150,6 @@ function buildMarkdown(view: EditorView): string {
     return result;
 }
 
-const formatBuilders: Record<ExportFormat, (view: EditorView) => string> = {
-    txt: buildPlainText,
-    json: buildJSON,
-    md: buildMarkdown,
-    "txt+json": buildPlainTextWithAnnotations,
-};
-
 const mimeTypes: Record<ExportFormat, string> = {
     txt: "text/plain",
     json: "application/json",
@@ -170,9 +164,63 @@ const fileExtensions: Record<ExportFormat, string> = {
     "txt+json": "txt",
 };
 
+function buildContent(state: EditorState, format: ExportFormat, title: string): string {
+    switch (format) {
+        case "txt":
+            return buildPlainText(state);
+        case "json":
+            return buildJSON(state, title);
+        case "md":
+            return buildMarkdown(state);
+        case "txt+json":
+            return buildPlainTextWithAnnotations(state);
+    }
+}
+
+/** Export from an active EditorView (used from the editor). */
 export function exportDocument(view: EditorView, format: ExportFormat) {
     const title = sanitizeFilename(get(currentDocumentTitle));
-    const content = formatBuilders[format](view);
+    const content = buildContent(view.state, format, title);
     triggerDownload(content, `${title}.${fileExtensions[format]}`, mimeTypes[format]);
     posthog.capture("document_exported", { format });
+}
+
+/** Export a document by loading its state from the database. */
+export async function exportDocumentById(docId: string, docTitle: string, format: ExportFormat) {
+    const { listDrafts, loadDocumentState } = await import("./db");
+    const { replayEvents } = await import("./editor/replay");
+    const { history, historyField } = await import("@codemirror/commands");
+    const { EditorState } = await import("@codemirror/state");
+    const { annotationField } = await import("./editor/plugins/annotations");
+
+    const drafts = await listDrafts(docId);
+    const active = drafts.find((d) => d.isActive) ?? drafts[0];
+    if (!active) return;
+
+    const loaded = await loadDocumentState(docId, active.id);
+
+    const extensions = [history(), annotationField];
+    let state: EditorState;
+    if (loaded.snapshotStateJson && loaded.snapshotStateJson !== "{}") {
+        try {
+            state = EditorState.fromJSON(
+                JSON.parse(loaded.snapshotStateJson),
+                { extensions },
+                { historyField, annotationField },
+            );
+        } catch {
+            state = EditorState.create({ extensions });
+        }
+    } else {
+        state = EditorState.create({ extensions });
+    }
+
+    if (loaded.eventsSince.length > 0) {
+        state = replayEvents(state, loaded.eventsSince);
+    }
+
+    const title = sanitizeFilename(docTitle);
+    const content = buildContent(state, format, title);
+    triggerDownload(content, `${title}.${fileExtensions[format]}`, mimeTypes[format]);
+    posthog.capture("document_exported", { format, source: "library" });
 }

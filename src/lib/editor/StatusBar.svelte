@@ -19,19 +19,17 @@
 -->
 <script lang="ts">
 import { debugPanelActive } from "$lib/debug/store.svelte";
-import { type ExportFormat, exportDocument } from "$lib/export";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, Download, History, LayoutGrid, Settings } from "lucide-svelte";
+import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
 // settingsOpen is a shared store (see $lib/stores.ts)
-let exportOpen = $state(false);
 let hovered = $state(false);
 let hoverDelayed = $state(false);
 let hoverDelayTimer: ReturnType<typeof setTimeout> | undefined;
@@ -84,39 +82,6 @@ function onMouseLeave() {
     hoverDelayed = false;
 }
 
-function doExport(format: ExportFormat) {
-    const view = $editorView;
-    if (!view) return;
-    exportDocument(view, format);
-    exportOpen = false;
-}
-
-let exportButtonEl = $state<HTMLDivElement>();
-let exportMenuEl = $state<HTMLDivElement>();
-let exportPillStyle = $state("");
-let hoveredExportIdx = $state(-1);
-
-function handleWindowClick(e: MouseEvent) {
-    if (exportOpen && exportButtonEl && !exportButtonEl.contains(e.target as Node)) {
-        exportOpen = false;
-        hoveredExportIdx = -1;
-    }
-}
-
-$effect(() => {
-    if (!exportMenuEl || hoveredExportIdx < 0) {
-        exportPillStyle = "opacity: 0;";
-        return;
-    }
-    const buttons = exportMenuEl.querySelectorAll<HTMLButtonElement>(".export-item");
-    const btn = buttons[hoveredExportIdx];
-    if (!btn) {
-        exportPillStyle = "opacity: 0;";
-        return;
-    }
-    exportPillStyle = `opacity: 1; top: ${btn.offsetTop}px; height: ${btn.offsetHeight}px;`;
-});
-
 $effect(() => {
     if (!titleForced) {
         // titleForced just dropped — start the linger
@@ -132,8 +97,6 @@ $effect(() => {
     }
 });
 </script>
-
-<svelte:window onclick={handleWindowClick} />
 
 {#if $settingsOpen}
     <SettingsModal
@@ -204,49 +167,6 @@ $effect(() => {
                 <BarChart3 size={20} />
             </button>
         </div>
-        <div class="relative w-12 h-12 shrink-0" bind:this={exportButtonEl}>
-            <div
-                onclick={() => (exportOpen = !exportOpen)}
-                role="menu"
-                tabindex="0"
-                aria-label="Export document"
-                title="Export"
-                class="absolute top-0 left-1/2 -translate-x-1/2 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md overflow-hidden cursor-pointer z-50
-                    transition-[width,height,border-radius,background-color] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]
-                    {exportOpen ? 'w-[11rem] h-fit rounded-[14px] py-1 px-2 bg-[color-mix(in_srgb,theme(colors.gray.300),white_30%)]' : 'w-12 h-12 rounded-[24px] bg-[color-mix(in_srgb,white,theme(colors.gray.300)_50%)]'}"
-            >
-                <!-- Icon (visible when collapsed) -->
-                <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150
-                    {exportOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 text-purple-400 hover:text-purple-600'}">
-                    <Download size={20} />
-                </div>
-                <!-- Menu items (visible when expanded) -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
-                    bind:this={exportMenuEl}
-                    class="relative flex flex-col py-1 transition-opacity duration-150 {exportOpen ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'}"
-                    onmouseleave={() => (hoveredExportIdx = -1)}
-                >
-                    <div
-                        class="absolute inset-x-0 rounded-lg bg-white/70 backdrop-blur-sm shadow-[0_1px_3px_rgba(0,0,0,0.12)] inset-shadow-[0_1px_0_rgba(255,255,255,0.9)] pointer-events-none transition-[top,height] duration-250 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
-                        style={exportPillStyle}
-                    ></div>
-                    {#each [
-                        { format: "txt", label: "Plain Text (.txt)" },
-                        { format: "txt+json", label: "Text + Annotations (.txt)" },
-                        { format: "json", label: "JSON (.json)" },
-                        { format: "md", label: "Markdown (.md)" },
-                    ] as item, i}
-                        <button
-                            onclick={() => doExport(item.format)}
-                            onmouseenter={() => (hoveredExportIdx = i)}
-                            role="menuitem"
-                            class="export-item relative z-[1] px-1 w-full text-left py-2.5 text-sm text-black/80 whitespace-nowrap"
-                        >{item.label}</button>
-                    {/each}
-                </div>
-            </div>
-        </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
         <!-- Right side (pinned) -->
         <div class="flex items-center gap-2 shrink-0">
@@ -267,7 +187,7 @@ $effect(() => {
         </div>
     </div>
     {#if titleVisibility !== "never"}
-    {@const titleShown = titleVisibility === 'always' || (hoverDelayed && !exportOpen) || titleForced || titleLinger}
+    {@const titleShown = titleVisibility === 'always' || hoverDelayed || titleForced || titleLinger}
     <div
         class="grid transition-[grid-template-rows,opacity] duration-300 ease-in-out"
         style="grid-template-rows: {titleShown ? '1fr' : '0fr'}; opacity: {titleShown ? '1' : '0'};"
