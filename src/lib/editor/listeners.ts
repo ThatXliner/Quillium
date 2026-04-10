@@ -43,6 +43,7 @@ import {
 } from "./plugins/annotations";
 import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
 import type { Transaction } from "@codemirror/state";
+import posthog from "$lib/posthog";
 
 export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
@@ -409,28 +410,19 @@ async function doAppend(
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────
 // Throttled to one rAF per view so multiple editor instances don't
 // suppress each other's broadcasts within the same animation frame.
-//
-// caretTrackingNeeded: set to false by AutoAIWidget when it doesn't
-// need position updates (panel open or widget sleeping), so the
-// coordsAtPos DOM walk is skipped entirely on those frames.
-let caretTrackingNeeded = true;
-export function setCaretTrackingNeeded(needed: boolean): void {
-    caretTrackingNeeded = needed;
-}
-
 const caretRafPending = new WeakMap<EditorView, boolean>();
 const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
     if (!(update.selectionSet || update.docChanged)) return;
-    if (!caretTrackingNeeded) return;
     if (caretRafPending.get(update.view)) return;
     caretRafPending.set(update.view, true);
     requestAnimationFrame(() => {
         caretRafPending.set(update.view, false);
-        if (!caretTrackingNeeded) return;
         const pos = update.view.state.selection.main.head;
         let coords: { left: number; top: number; bottom: number } | null = null;
         try {
+            const t0 = performance.now();
             coords = update.view.coordsAtPos(pos);
+            posthog.capture("perf_coords_at_pos", { elapsed_ms: performance.now() - t0 });
         } catch (e) {
             // coordsAtPos requires a real layout engine — skip in environments
             // (e.g. jsdom in tests) that don't implement it.

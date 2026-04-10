@@ -22,7 +22,6 @@ import {
 } from "./settings.svelte";
 import { get } from "svelte/store";
 import { startAutoAI, stopAutoAI, triggerManualReview, autoAIPhase } from "./engine";
-import { setCaretTrackingNeeded } from "$lib/editor/listeners";
 import posthog from "$lib/posthog";
 import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
 
@@ -70,12 +69,6 @@ const faceState = $derived<FaceState>(
 );
 const isReviewing = $derived(autoAIRunning && $autoAIPhase === "reviewing");
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
-
-// Skip the coordsAtPos DOM walk when the widget doesn't need position updates:
-// panel open (eye is hidden) or sleeping (only needs a wake signal, not coords).
-$effect(() => {
-    setCaretTrackingNeeded(!open && !isSleeping);
-});
 
 // Focus slider: map conservativeness ↔ 0/1/2
 const focusLevels: AutoAIConservativeness[] = ["conservative", "balanced", "thorough"];
