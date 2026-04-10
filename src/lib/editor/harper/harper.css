@@ -1,0 +1,78 @@
+/* Harper grammar checker — squiggle underlines */
+.harper-spelling {
+    text-decoration: wavy underline #ef4444;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+}
+
+.harper-grammar {
+    text-decoration: wavy underline #3b82f6;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+}
+
+/* Harper tooltip — styled to match DictionaryPopover */
+.harper-tooltip {
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    padding: 0.75rem;
+    max-width: 320px;
+    z-index: 100;
+    font-family: var(--ui-font-family);
+}
+
+.harper-tooltip-category {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9ca3af;
+    margin-bottom: 4px;
+}
+
+.harper-tooltip-message {
+    font-size: 13px;
+    color: #374151;
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+.harper-tooltip-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.harper-tooltip-suggestion {
+    padding: 2px 8px;
+    font-size: 12px;
+    border-radius: 9999px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #374151;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.harper-tooltip-suggestion:hover {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.harper-tooltip-dictionary {
+    padding: 2px 8px;
+    font-size: 12px;
+    border-radius: 9999px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.harper-tooltip-dictionary:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
