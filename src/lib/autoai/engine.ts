@@ -87,6 +87,8 @@ IMPORTANT RULES:
 - Return valid JSON matching the schema. No prose outside JSON.`;
 }
 
+// Single timer variable — phases are nested inside each other:
+//   WAITING (70% of debounceMs) → WARNING/thinking (30%) → runReview
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastReviewedContent = "";
 let unsubscribe: (() => void) | null = null;
@@ -206,20 +208,16 @@ async function runReview(content: string, manual = false) {
     }
 }
 
-let thinkingTimer: ReturnType<typeof setTimeout> | null = null;
-
 function scheduleReview(content: string) {
-    if (debounceTimer !== null) clearTimeout(debounceTimer);
-    if (thinkingTimer !== null) clearTimeout(thinkingTimer);
-    autoAIThinking.set(false);
-    thinkingTimer = setTimeout(() => {
-        thinkingTimer = null;
-        autoAIThinking.set(true);
-    }, autoAISettings.debounceMs * 0.7);
+    cancelPendingReview();
     debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        runReview(content);
-    }, autoAISettings.debounceMs);
+        // WAITING → WARNING: show thinking face for the last 30% of the window.
+        autoAIThinking.set(true);
+        debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            runReview(content);
+        }, autoAISettings.debounceMs * 0.3);
+    }, autoAISettings.debounceMs * 0.7);
 }
 
 /** Start the AutoAI engine. Call when the user enables AutoAI. */
@@ -254,10 +252,6 @@ export function cancelPendingReview() {
     if (debounceTimer !== null) {
         clearTimeout(debounceTimer);
         debounceTimer = null;
-    }
-    if (thinkingTimer !== null) {
-        clearTimeout(thinkingTimer);
-        thinkingTimer = null;
     }
     autoAIThinking.set(false);
 }
