@@ -473,9 +473,13 @@ async function saveApiKey() {
 
     <!-- Third-party notice -->
     <p class="text-[10px] text-black/30 leading-relaxed px-0.5">
-        By using AI features, your writing is sent directly to your chosen provider. You agree to their respective terms of service and privacy policies:
-        <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>OpenAI Terms</button> · <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>Privacy</button>,
-        <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/consumer-terms")}>Anthropic Terms</button> · <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/privacy")}>Privacy</button>,
-        <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://ai.google.dev/gemini-api/terms")}>Google Terms</button> · <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://policies.google.com/privacy")}>Privacy</button>.
+        By using AI features, your writing is sent directly to {PROVIDERS.find((p) => p.id === selectedProvider)?.label ?? "your chosen provider"}. You agree to their
+        {#if selectedProvider === "openai"}
+            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>privacy policy</button>.
+        {:else if selectedProvider === "anthropic"}
+            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/consumer-terms")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/privacy")}>privacy policy</button>.
+        {:else if selectedProvider === "google"}
+            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://ai.google.dev/gemini-api/terms")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://policies.google.com/privacy")}>privacy policy</button>.
+        {/if}
     </p>
 </div>
