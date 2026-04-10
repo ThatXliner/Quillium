@@ -11,7 +11,7 @@
 -->
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
-import { aiProcessing, hasApiKey } from "$lib/ai/settings.svelte";
+import { hasApiKey } from "$lib/ai/settings.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import {
     autoAISettings,
@@ -20,18 +20,54 @@ import {
     type AutoAIConservativeness,
     type AutoAIMode,
 } from "./settings.svelte";
-import { startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
+import { get } from "svelte/store";
+import { startAutoAI, stopAutoAI, triggerManualReview, autoAIPhase } from "./engine";
 import posthog from "$lib/posthog";
+import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
 
 let open = $state(false);
 let editingName = $state(false);
+
+// ── Face state ──
+let eyeOffsetX = $state(0);
+let eyeOffsetY = $state(0);
+let isTracking = $state(false);
+let isSleeping = $state(false);
+let isWaking = $state(false);
+let trackingTimer: ReturnType<typeof setTimeout> | null = null;
+let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+let wakeTimer: ReturnType<typeof setTimeout> | null = null;
+let eyeRafPending = false;
+let pendingEyeTarget: { x: number; y: number } | null = null;
+const SLEEP_AFTER_MS = 60_000;
+const TRACKING_LINGER_MS = 1_000;
+const WAKE_DURATION_MS = 1600;
 let nameInputEl = $state<HTMLInputElement | null>(null);
 let widgetEl = $state<HTMLDivElement | null>(null);
-let autoAIRunning = $state(autoAISettings.enabled);
+// Derived directly from the settings object so external mutations (e.g.
+// AISettings.svelte disabling AutoAI when the API key is removed) are
+// immediately reflected here without a separate manual sync step.
+const autoAIRunning = $derived(autoAISettings.enabled);
 
 const noApiKey = $derived(!hasApiKey());
 const locked = $derived(noApiKey || !autoAIRunning);
-const isReviewing = $derived(autoAIRunning && aiProcessing.active);
+
+const faceState = $derived<FaceState>(
+    !hasApiKey()
+        ? "disabled"
+        : $autoAIPhase === "reviewing"
+          ? "reviewing"
+          : $autoAIPhase === "thinking"
+            ? "thinking"
+            : isWaking
+              ? "waking"
+              : isSleeping
+                ? "sleeping"
+                : isTracking
+                  ? "tracking"
+                  : "idle",
+);
+const isReviewing = $derived(autoAIRunning && $autoAIPhase === "reviewing");
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
 
 // Focus slider: map conservativeness ↔ 0/1/2
@@ -58,12 +94,26 @@ function handleFocusSlider(e: Event) {
 function toggleOpen() {
     open = !open;
     editingName = false;
+    if (open) {
+        // Wake silently — the bubble is hidden while the panel is open,
+        // so there's no point playing the waking animation.
+        if (isSleeping) {
+            isSleeping = false;
+            if (wakeTimer !== null) {
+                clearTimeout(wakeTimer);
+                wakeTimer = null;
+            }
+            isWaking = false;
+        }
+    } else {
+        // Panel closed — restart the sleep timer as a fresh interaction.
+        resetSleepTimer();
+    }
 }
 
 function toggleEnabled() {
     if (noApiKey) return;
     autoAISettings.enabled = !autoAISettings.enabled;
-    autoAIRunning = autoAISettings.enabled;
     posthog.capture("autoai_toggled", { enabled: autoAISettings.enabled });
     persistAutoAISettings();
     if (autoAISettings.enabled) startAutoAI();
@@ -131,16 +181,120 @@ function openSettings() {
 
 function handleDocClick(e: MouseEvent) {
     if (!open) return;
-    if (widgetEl && !widgetEl.contains(e.target as Node)) open = false;
+    if (widgetEl && !widgetEl.contains(e.target as Node)) {
+        open = false;
+        resetSleepTimer();
+    }
+}
+
+function flushEyeOffset() {
+    eyeRafPending = false;
+    if (!pendingEyeTarget || !widgetEl) return;
+    const { x: targetX, y: targetY } = pendingEyeTarget;
+    pendingEyeTarget = null;
+    // getBoundingClientRect() is called at most once per animation frame,
+    // so multiple pointer/caret events per frame collapse into a single layout read.
+    const rect = widgetEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = targetX - cx;
+    const dy = targetY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const scale = Math.min(1, dist / 80);
+    eyeOffsetX = Number.parseFloat(((dx / dist) * 4 * scale).toFixed(1));
+    eyeOffsetY = Number.parseFloat(((dy / dist) * 4 * scale).toFixed(1));
+}
+
+function scheduleEyeOffset(x: number, y: number) {
+    pendingEyeTarget = { x, y };
+    if (!eyeRafPending) {
+        eyeRafPending = true;
+        requestAnimationFrame(flushEyeOffset);
+    }
+}
+
+function handleMouseMove(e: MouseEvent) {
+    if (open) return;
+    if (isSleeping) {
+        triggerWake();
+        return;
+    }
+    isTracking = true;
+    scheduleEyeOffset(e.clientX, e.clientY);
+    resetTrackingTimer();
+    resetSleepTimer();
+}
+
+function handleCaretMoved(e: Event) {
+    const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
+    if (open) return;
+    if (isSleeping) {
+        triggerWake();
+        return;
+    }
+    isTracking = true;
+    scheduleEyeOffset(x, y);
+    resetTrackingTimer();
+    resetSleepTimer();
+}
+
+function resetTrackingTimer() {
+    if (trackingTimer !== null) clearTimeout(trackingTimer);
+    trackingTimer = setTimeout(() => {
+        isTracking = false;
+        trackingTimer = null;
+    }, TRACKING_LINGER_MS);
+}
+
+function resetSleepTimer() {
+    if (sleepTimer !== null) clearTimeout(sleepTimer);
+    sleepTimer = setTimeout(() => {
+        sleepTimer = null;
+        if (open || get(autoAIPhase) !== "idle") {
+            // Busy or panel is open — reschedule so we don't miss the transition.
+            resetSleepTimer();
+            return;
+        }
+        if (autoAIRunning && !noApiKey) {
+            isSleeping = true;
+        }
+    }, SLEEP_AFTER_MS);
+}
+
+function triggerWake() {
+    if (!isSleeping) return;
+    isSleeping = false;
+    isWaking = true;
+    if (wakeTimer !== null) clearTimeout(wakeTimer);
+    wakeTimer = setTimeout(() => {
+        isWaking = false;
+        wakeTimer = null;
+    }, WAKE_DURATION_MS);
+    resetSleepTimer();
+}
+
+function handleAnyInteraction() {
+    if (isSleeping) triggerWake();
+    else resetSleepTimer();
 }
 
 onMount(() => {
     document.addEventListener("mousedown", handleDocClick);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("keydown", handleAnyInteraction);
+    window.addEventListener("quillium:caret-moved", handleCaretMoved);
+    resetSleepTimer();
     if (autoAISettings.enabled) startAutoAI();
 });
 
 onDestroy(() => {
     document.removeEventListener("mousedown", handleDocClick);
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("keydown", handleAnyInteraction);
+    window.removeEventListener("quillium:caret-moved", handleCaretMoved);
+    if (trackingTimer !== null) clearTimeout(trackingTimer);
+    if (sleepTimer !== null) clearTimeout(sleepTimer);
+    if (wakeTimer !== null) clearTimeout(wakeTimer);
     stopAutoAI();
 });
 
@@ -161,29 +315,20 @@ const annotationPills = [
            {isReviewing && !open ? 'rainbow-reviewing' : ''}"
 >
     <!-- Bubble layer -->
-    <div class="layer {open ? 'opacity-0 pointer-events-none' : 'opacity-100'}
+    <div class="layer {open ? 'opacity-0 pointer-events-none' : noApiKey ? 'opacity-50' : 'opacity-100'}
                 flex items-center justify-center">
         <button
             onclick={toggleOpen}
             aria-label={noApiKey ? "AutoAI — add an API key to enable" : autoAIRunning ? "AutoAI active — click to configure" : "AutoAI paused — click to configure"}
             aria-expanded={open}
             class="w-full h-full flex items-center justify-center rounded-[inherit]
-                   bg-transparent border-none cursor-pointer
-                   {noApiKey ? 'text-gray-400' : 'text-amber-700'}"
+                   bg-transparent border-none cursor-pointer"
         >
-            {#if noApiKey}
-                <!-- Lock icon -->
-                <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <rect x="3.5" y="7" width="9" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-                    <path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-            {:else}
-                <!-- Quill icon -->
-                <svg width="28" height="28" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
-                    <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
-                </svg>
-            {/if}
+            <AutoAIFace
+                state={faceState}
+                eyeOffsetX={eyeOffsetX}
+                eyeOffsetY={eyeOffsetY}
+            />
         </button>
     </div>
 
@@ -194,10 +339,9 @@ const annotationPills = [
         <div class="panel-header">
             <div class="flex items-center gap-[6px]">
                 <div class="bubble-icon {autoAIRunning && !locked ? 'bubble-icon-active' : ''}">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
-                        <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
-                    </svg>
+                    <div style="transform: scale(0.38); transform-origin: center; width: 42px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                        <AutoAIFace state={faceState} eyeOffsetX={0} eyeOffsetY={0} />
+                    </div>
                 </div>
                 <div class="flex items-center gap-[3px] flex-1 min-w-0">
                     {#if editingName}
@@ -474,9 +618,6 @@ const annotationPills = [
 
     .mode-hint {
         font-size: 10px; color: #b5a99a; line-height: 1.2;
-    }
-    .mode-hint-row {
-        display: flex; align-items: center; gap: 3px;
     }
     .delay-label-row {
         display: flex; align-items: center; justify-content: space-between;

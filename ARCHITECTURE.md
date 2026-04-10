@@ -56,7 +56,8 @@ src/
 │   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
 │   │   └── utils.ts           # Shared AI utilities
 │   ├── autoai/
-│   │   ├── AutoAIWidget.svelte  # Bubble + expanded panel UI
+│   │   ├── AutoAIFace.svelte    # Animated face SVG component (purely presentational)
+│   │   ├── AutoAIWidget.svelte  # Bubble + expanded panel UI, face state machine
 │   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
 │   │   └── settings.svelte.ts   # AutoAI settings store (reactive, persisted)
 │   ├── db/
@@ -686,7 +687,8 @@ AutoAI is a background AI review system that watches document content and create
 |---|---|
 | `src/lib/autoai/settings.svelte.ts` | Settings store, type definitions, localStorage persistence |
 | `src/lib/autoai/engine.ts` | Review orchestration, AI calls (`generateObject`), annotation dispatch |
-| `src/lib/autoai/AutoAIWidget.svelte` | Bubble + expanded settings panel UI |
+| `src/lib/autoai/AutoAIWidget.svelte` | Bubble + expanded settings panel UI, face state machine, sleep/wake/tracking timers |
+| `src/lib/autoai/AutoAIFace.svelte` | Purely presentational animated face SVG component |
 
 ### Settings
 
@@ -707,38 +709,67 @@ AutoAI settings are stored in `autoAISettings` (`$state` proxy) and persisted to
 
 **`stopAutoAI()`** unsubscribes the listener and cancels any pending timer.
 
-**`triggerManualReview()`** bypasses debounce and calls `runReview()` immediately.
+**`triggerManualReview()`** cancels any pending debounce and calls `runReview()` immediately (no thinking state — the user already made the decision).
 
 **`runReview()` flow:**
 
 ```
 documentContent changed (≥ 20 chars)
 → debounce (debounceMs)
+→ autoAIThinking = true           ← face shows >_< while waiting
+→ ensureApiKeyLoaded()            ← async — thinking face visible here
+→ autoAIThinking = false
+→ autoAIReviewing = true          ← face switches to scanning squint
 → generateObject() — single non-streaming AI call
     system prompt: persona + conservativeness level + annotation type constraints
     Zod schema: array of { type, targetText, ... }
 → applyAnnotations() — for each result:
     find targetText in current doc
     dispatch createComment / createSuggestion / createRevision
+→ autoAIReviewing = false
 ```
 
-The AI call uses `createModel()` from `src/lib/ai/provider.ts` with the user's configured provider, API key, and model. `aiProcessing` is set for the duration to block concurrent AI sidebar operations.
+`autoAIThinking` and `autoAIReviewing` are exported writable stores (not the global `aiProcessing`) so the face state machine reacts only to AutoAI's own activity. `aiProcessing` is still set for the duration to block concurrent AI sidebar operations.
 
 ### Widget UI (`AutoAIWidget.svelte`)
 
 A morphing bubble component fixed at `bottom: 24px; left: 24px`:
 
 **Collapsed** (67 × 67px):
-- Quill icon (amber) when enabled; lock icon (gray) when no API key configured
-- Rainbow gradient border + spinning animation while a review is in progress
+- Animated `<AutoAIFace>` reacting to app state (see face states below)
+- Rainbow gradient border while enabled; spinning animation during review
+- Bubble dimmed to 50% opacity when no API key is configured
 
-**Expanded** (360 × 220px, two-pane layout):
-- **Left pane**: persona name (editable), enable toggle, mode selector (Auto / Manual)
+**Expanded** (320 × 310px):
+- Small face icon in the header (scaled down, static eye offsets)
+- Persona name (editable inline), enable toggle, close button
+- Mode selector (Auto / Manual)
   - Auto mode: delay slider (2–60 s)
   - Manual mode: "Review now" button
-- **Right pane**: annotation type pills (Comments / Suggestions / Revisions), conservativeness slider (3-stop: Conservative → Balanced → Thorough)
+- Annotation type pills (Comments / Suggestions / Revisions)
+- Depth slider (Conservative → Balanced → Thorough)
 
-Closes on outside click or Esc. Controls are dimmed at 40% opacity when no API key is set.
+Closes on outside click. Controls are dimmed at 40% opacity when no API key is set.
+
+### Face State Machine (`AutoAIFace.svelte`)
+
+`AutoAIFace` is a purely presentational SVG component driven by a `state` prop and `eyeOffsetX`/`eyeOffsetY` props (–4 to +4 px). All animation is CSS keyframes.
+
+**States** (priority order, highest first):
+
+| State | Appearance | Condition |
+|---|---|---|
+| `disabled` | × eyes | No API key configured |
+| `reviewing` | Narrow squint, scanning left-right | `autoAIReviewing` is true |
+| `thinking` | `>_<` face with head bob | `autoAIThinking` is true |
+| `waking` | Eyes stretch open (yawn) | Within 1600ms of waking from sleep |
+| `sleeping` | Horizontal bars + floating zzz | 60s idle with no interactions |
+| `tracking` | Bar eyes offset toward caret/cursor | Within 1s of last mouse/caret move |
+| `idle` | Bar eyes, synchronized blink every ~3s | Default |
+
+**Eye tracking**: `computeEyeOffset()` maps the distance and direction from the widget center to the target (caret or mouse) into a ±4px offset clamped by `dist / 80`. The caret position is broadcast via the `quillium:caret-moved` CustomEvent (emitted by `listeners.ts`, throttled to one dispatch per `requestAnimationFrame` per editor view via a `WeakMap`).
+
+**Sleep/wake**: After 60s of no `mousemove`, `keydown`, or caret events, the face sleeps. Any interaction triggers a 1600ms waking animation before returning to idle. Opening the panel silently clears the sleep state (no waking animation, since the bubble is hidden while the panel is open). The sleep timer reschedules itself if it fires while the panel is open or a review is active.
 
 ### Keybinding
 

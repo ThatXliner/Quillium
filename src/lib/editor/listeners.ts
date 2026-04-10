@@ -406,6 +406,36 @@ async function doAppend(
     );
 }
 
+// ── Caret broadcast for AutoAIFace eye tracking ───────────────────
+// Throttled to one rAF per view so multiple editor instances don't
+// suppress each other's broadcasts within the same animation frame.
+const caretRafPending = new WeakMap<EditorView, boolean>();
+const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
+    if (!(update.selectionSet || update.docChanged)) return;
+    if (caretRafPending.get(update.view)) return;
+    caretRafPending.set(update.view, true);
+    requestAnimationFrame(() => {
+        caretRafPending.set(update.view, false);
+        const pos = update.view.state.selection.main.head;
+        let coords: { left: number; top: number; bottom: number } | null = null;
+        try {
+            coords = update.view.coordsAtPos(pos);
+        } catch (e) {
+            // coordsAtPos requires a real layout engine — skip in environments
+            // (e.g. jsdom in tests) that don't implement it.
+            console.warn("[caretBroadcast] coordsAtPos failed — no layout engine?", e);
+            return;
+        }
+        if (coords) {
+            window.dispatchEvent(
+                new CustomEvent("quillium:caret-moved", {
+                    detail: { x: coords.left, y: (coords.top + coords.bottom) / 2 },
+                }),
+            );
+        }
+    });
+});
+
 // ── Auto-save listener ────────────────────────────────────────────
 const save = EditorView.updateListener.of((update: ViewUpdate) => {
     if (update.docChanged || annotationsChanged(update)) {
@@ -414,6 +444,6 @@ const save = EditorView.updateListener.of((update: ViewUpdate) => {
 });
 
 export const listeners = (options?: ListenerOptions) => [
-    ...(options?.persist === false ? [] : [save]),
+    ...(options?.persist === false ? [] : [save, caretBroadcast]),
     ...(options?.updateListener ? [EditorView.updateListener.of(options.updateListener)] : []),
 ];

@@ -8,7 +8,7 @@
  * only fired when content changes meaningfully (>= MIN_DIFF_CHARS).
  */
 
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { documentContent, editorView } from "$lib/stores";
@@ -22,6 +22,11 @@ import {
 } from "$lib/editor/plugins/annotations/index";
 import { autoAISettings, type AutoAIConservativeness } from "./settings.svelte";
 import { toast } from "svelte-sonner";
+
+export type AutoAIPhase = "idle" | "thinking" | "reviewing";
+
+/** Current AutoAI engine phase. idle → thinking (debounce warning) → reviewing → idle. */
+export const autoAIPhase = writable<AutoAIPhase>("idle");
 
 // Only re-review if the doc changed by at least this many characters.
 const MIN_DIFF_CHARS = 20;
@@ -81,6 +86,8 @@ IMPORTANT RULES:
 - Return valid JSON matching the schema. No prose outside JSON.`;
 }
 
+// Single timer variable — phases are nested inside each other:
+//   WAITING (70% of debounceMs) → WARNING/thinking (30%) → runReview
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastReviewedContent = "";
 let unsubscribe: (() => void) | null = null;
@@ -164,12 +171,21 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
 }
 
 async function runReview(content: string, manual = false) {
-    if (!content.trim()) return;
+    if (!content.trim()) {
+        autoAIPhase.set("idle");
+        return;
+    }
 
-    setAiProcessing(true);
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
+        // Guard: if the review was cancelled during ensureApiKeyLoaded, bail
+        // before flipping UI state to "reviewing" (avoids a brief flicker).
+        if (abortSignal.aborted) return;
+        // Transition thinking → reviewing only after the async key load,
+        // so the >_< face is visible during the ensureApiKeyLoaded wait.
+        autoAIPhase.set("reviewing");
+        setAiProcessing(true);
         const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
         const { object } = await generateObject({
             model,
@@ -187,16 +203,21 @@ async function runReview(content: string, manual = false) {
         if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
     } finally {
+        autoAIPhase.set("idle");
         setAiProcessing(false);
     }
 }
 
 function scheduleReview(content: string) {
-    if (debounceTimer !== null) clearTimeout(debounceTimer);
+    cancelPendingReview();
     debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        runReview(content);
-    }, autoAISettings.debounceMs);
+        // WAITING → WARNING: show thinking face for the last 30% of the window.
+        autoAIPhase.set("thinking");
+        debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            runReview(content);
+        }, autoAISettings.debounceMs * 0.3);
+    }, autoAISettings.debounceMs * 0.7);
 }
 
 /** Start the AutoAI engine. Call when the user enables AutoAI. */
@@ -232,15 +253,13 @@ export function cancelPendingReview() {
         clearTimeout(debounceTimer);
         debounceTimer = null;
     }
+    autoAIPhase.set("idle");
 }
 
 /** Trigger an immediate review (used by manual mode / widget click). */
 export function triggerManualReview() {
     const content = get(documentContent);
     if (!content.trim()) return;
-    if (debounceTimer !== null) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-    }
+    cancelPendingReview();
     runReview(content, true);
 }
