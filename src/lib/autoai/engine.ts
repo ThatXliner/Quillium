@@ -208,9 +208,9 @@ async function runReview(content: string, manual = false) {
 
 function scheduleReview(content: string) {
     if (debounceTimer !== null) clearTimeout(debounceTimer);
+    autoAIThinking.set(true);
     debounceTimer = setTimeout(() => {
         debounceTimer = null;
-        autoAIThinking.set(true);
         runReview(content);
     }, autoAISettings.debounceMs);
 }
