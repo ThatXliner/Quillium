@@ -33,10 +33,13 @@ let eyeOffsetX = $state(0);
 let eyeOffsetY = $state(0);
 let isTracking = $state(false);
 let isSleeping = $state(false);
+let isWaking = $state(false);
 let trackingTimer: ReturnType<typeof setTimeout> | null = null;
 let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+let wakeTimer: ReturnType<typeof setTimeout> | null = null;
 const SLEEP_AFTER_MS = 60_000;
 const TRACKING_LINGER_MS = 1_000;
+const WAKE_DURATION_MS = 600;
 let nameInputEl = $state<HTMLInputElement | null>(null);
 let widgetEl = $state<HTMLDivElement | null>(null);
 let autoAIRunning = $state(autoAISettings.enabled);
@@ -48,6 +51,7 @@ const faceState = $derived<FaceState>(
     !hasApiKey()          ? "disabled"  :
     aiProcessing.active   ? "reviewing" :
     $autoAIThinking       ? "thinking"  :
+    isWaking              ? "waking"    :
     isSleeping            ? "sleeping"  :
     isTracking            ? "tracking"  :
                             "idle"
@@ -79,7 +83,7 @@ function handleFocusSlider(e: Event) {
 function toggleOpen() {
     open = !open;
     editingName = false;
-    if (open) isSleeping = false;
+    if (open && isSleeping) triggerWake();
 }
 
 function toggleEnabled() {
@@ -171,8 +175,8 @@ function computeEyeOffset(targetX: number, targetY: number) {
 
 function handleMouseMove(e: MouseEvent) {
     if (open) return;
+    if (isSleeping) { triggerWake(); return; }
     isTracking = true;
-    isSleeping = false;
     computeEyeOffset(e.clientX, e.clientY);
     resetTrackingTimer();
     resetSleepTimer();
@@ -181,8 +185,8 @@ function handleMouseMove(e: MouseEvent) {
 function handleCaretMoved(e: Event) {
     const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
     if (open) return;
+    if (isSleeping) { triggerWake(); return; }
     isTracking = true;
-    isSleeping = false;
     computeEyeOffset(x, y);
     resetTrackingTimer();
     resetSleepTimer();
@@ -205,9 +209,21 @@ function resetSleepTimer() {
     }, SLEEP_AFTER_MS);
 }
 
-function handleAnyInteraction() {
+function triggerWake() {
+    if (!isSleeping) return;
     isSleeping = false;
+    isWaking = true;
+    if (wakeTimer !== null) clearTimeout(wakeTimer);
+    wakeTimer = setTimeout(() => {
+        isWaking = false;
+        wakeTimer = null;
+    }, WAKE_DURATION_MS);
     resetSleepTimer();
+}
+
+function handleAnyInteraction() {
+    if (isSleeping) triggerWake();
+    else resetSleepTimer();
 }
 
 onMount(() => {
@@ -226,6 +242,7 @@ onDestroy(() => {
     window.removeEventListener("quillium:caret-moved", handleCaretMoved);
     if (trackingTimer !== null) clearTimeout(trackingTimer);
     if (sleepTimer !== null) clearTimeout(sleepTimer);
+    if (wakeTimer !== null) clearTimeout(wakeTimer);
     stopAutoAI();
 });
 

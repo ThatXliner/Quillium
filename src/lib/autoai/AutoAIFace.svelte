@@ -5,6 +5,7 @@ export type FaceState =
     | "thinking"
     | "reviewing"
     | "sleeping"
+    | "waking"
     | "disabled";
 
 interface Props {
@@ -56,6 +57,11 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
         <!-- narrow suspicious squint + reading scan -->
         <rect class="review-eye" x="9"  y="7" width="4" height="14" rx="2" fill="#5c4a2a"/>
         <rect class="review-eye" x="25" y="7" width="4" height="14" rx="2" fill="#5c4a2a"/>
+
+    {:else if state === "waking"}
+        <!-- stretch open from horizontal → tall, slight overshoot -->
+        <rect class="wake-eye" x="9"  y="7" width="4" height="14" rx="2" fill="#5c4a2a"/>
+        <rect class="wake-eye" x="25" y="7" width="4" height="14" rx="2" fill="#5c4a2a"/>
 
     {:else}
         <!-- idle / tracking: vertical bar eyes, offset by eyeOffsetX/Y -->
@@ -147,4 +153,18 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
     .z1 { animation: zzz-float 2.2s ease-out 0s    infinite; }
     .z2 { animation: zzz-float 2.2s ease-out 0.73s infinite; }
     .z3 { animation: zzz-float 2.2s ease-out 1.46s infinite; }
+
+    /* ── Waking: stretch open with overshoot ── */
+    @keyframes wake {
+        0%   { transform: scaleY(0.1) scaleX(2.2); }  /* flat like sleeping bar */
+        40%  { transform: scaleY(1.4) scaleX(0.8); }  /* overshoot tall & narrow */
+        65%  { transform: scaleY(0.85) scaleX(1.1); } /* bounce back slightly */
+        85%  { transform: scaleY(1.1) scaleX(0.95); } /* settle */
+        100% { transform: scaleY(1) scaleX(1); }
+    }
+    .wake-eye {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: wake 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
 </style>
