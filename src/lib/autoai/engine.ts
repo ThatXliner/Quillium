@@ -167,9 +167,9 @@ function applyAnnotations(result: ReviewResult, doc: string): number {
 }
 
 async function runReview(content: string, manual = false) {
+    autoAIThinking.set(false);
     if (!content.trim()) return;
 
-    autoAIThinking.set(false);
     setAiProcessing(true);
     const abortSignal = getAiAbortSignal();
     try {
