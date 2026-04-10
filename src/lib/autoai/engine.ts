@@ -254,6 +254,5 @@ export function triggerManualReview() {
     const content = get(documentContent);
     if (!content.trim()) return;
     cancelPendingReview();
-    autoAIThinking.set(true);
     runReview(content, true);
 }
