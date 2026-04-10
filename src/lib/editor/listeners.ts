@@ -417,7 +417,15 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
     requestAnimationFrame(() => {
         caretRafPending.set(update.view, false);
         const pos = update.view.state.selection.main.head;
-        const coords = update.view.coordsAtPos(pos);
+        let coords: { left: number; top: number; bottom: number } | null = null;
+        try {
+            coords = update.view.coordsAtPos(pos);
+        } catch (e) {
+            // coordsAtPos requires a real layout engine — skip in environments
+            // (e.g. jsdom in tests) that don't implement it.
+            console.warn("[caretBroadcast] coordsAtPos failed — no layout engine?", e);
+            return;
+        }
         if (coords) {
             window.dispatchEvent(
                 new CustomEvent("quillium:caret-moved", {
