@@ -409,13 +409,24 @@ async function doAppend(
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────
 // Throttled to one rAF per view so multiple editor instances don't
 // suppress each other's broadcasts within the same animation frame.
+//
+// caretTrackingNeeded: set to false by AutoAIWidget when it doesn't
+// need position updates (panel open or widget sleeping), so the
+// coordsAtPos DOM walk is skipped entirely on those frames.
+let caretTrackingNeeded = true;
+export function setCaretTrackingNeeded(needed: boolean): void {
+    caretTrackingNeeded = needed;
+}
+
 const caretRafPending = new WeakMap<EditorView, boolean>();
 const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
     if (!(update.selectionSet || update.docChanged)) return;
+    if (!caretTrackingNeeded) return;
     if (caretRafPending.get(update.view)) return;
     caretRafPending.set(update.view, true);
     requestAnimationFrame(() => {
         caretRafPending.set(update.view, false);
+        if (!caretTrackingNeeded) return;
         const pos = update.view.state.selection.main.head;
         let coords: { left: number; top: number; bottom: number } | null = null;
         try {
