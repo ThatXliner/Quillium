@@ -41,9 +41,15 @@ onMount(async () => {
     }
 });
 
+function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") ondismiss();
+}
+
 const jsEntries = $derived(entries.filter((e) => e.ecosystem === "js"));
 const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="fixed inset-0 z-[9999]" role="dialog" aria-modal="true" aria-label="Open Source Licenses">
     <button
