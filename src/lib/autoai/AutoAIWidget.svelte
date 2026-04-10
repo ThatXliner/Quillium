@@ -79,6 +79,7 @@ function handleFocusSlider(e: Event) {
 function toggleOpen() {
     open = !open;
     editingName = false;
+    if (open) isSleeping = false;
 }
 
 function toggleEnabled() {
