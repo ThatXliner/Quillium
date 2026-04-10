@@ -20,10 +20,10 @@ import {
     type AutoAIConservativeness,
     type AutoAIMode,
 } from "./settings.svelte";
-import { startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
+import { get } from "svelte/store";
+import { startAutoAI, stopAutoAI, triggerManualReview, autoAIThinking } from "./engine";
 import posthog from "$lib/posthog";
 import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
-import { autoAIThinking } from "./engine";
 
 let open = $state(false);
 let editingName = $state(false);
@@ -198,7 +198,7 @@ function resetTrackingTimer() {
 function resetSleepTimer() {
     if (sleepTimer !== null) clearTimeout(sleepTimer);
     sleepTimer = setTimeout(() => {
-        if (!open && !aiProcessing.active && !$autoAIThinking) {
+        if (!open && !aiProcessing.active && !get(autoAIThinking)) {
             isSleeping = true;
         }
     }, SLEEP_AFTER_MS);
