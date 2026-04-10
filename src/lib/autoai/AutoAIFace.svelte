@@ -21,7 +21,6 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
 <!-- aria-hidden: face is decorative; aria-label lives on the parent button -->
 <svg
     aria-hidden="true"
-    class="face"
     overflow="visible"
     width="42"
     height="30"
@@ -103,16 +102,17 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
         75%       { transform: translateX(1.5px); }
     }
     .think-face {
+        transform-box: fill-box;
         animation: head-bob 1s ease-in-out infinite;
     }
 
     /* ── Reviewing: narrow squint + line-scan ── */
     @keyframes scan-x {
-        0%   { transform: scaleY(0.22) translate(-3px, 0px); }
-        40%  { transform: scaleY(0.22) translate(3px,  0px); }
-        50%  { transform: scaleY(0.22) translate(-3px, 3px); }
-        90%  { transform: scaleY(0.22) translate(3px,  3px); }
-        100% { transform: scaleY(0.22) translate(-3px, 0px); }
+        0%   { transform: translate(-3px, 0px) scaleY(0.22); }
+        40%  { transform: translate(3px,  0px) scaleY(0.22); }
+        50%  { transform: translate(-3px, 3px) scaleY(0.22); }
+        90%  { transform: translate(3px,  3px) scaleY(0.22); }
+        100% { transform: translate(-3px, 0px) scaleY(0.22); }
     }
     .review-eye {
         transform-box: fill-box;
