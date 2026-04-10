@@ -24,19 +24,25 @@ const { ondismiss }: { ondismiss: () => void } = $props();
 
 let entries = $state<LicenseEntry[]>([]);
 let loading = $state(true);
+let error = $state(false);
 
 onMount(async () => {
-    const res = await fetch("/licenses.json");
-    entries = await res.json();
-    loading = false;
+    try {
+        const res = await fetch("/licenses.json");
+        if (res.ok) {
+            entries = await res.json();
+        } else {
+            error = true;
+        }
+    } catch {
+        error = true;
+    } finally {
+        loading = false;
+    }
 });
 
 const jsEntries = $derived(entries.filter((e) => e.ecosystem === "js"));
 const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
-
-function openLink(url: string) {
-    openUrl(url);
-}
 </script>
 
 <div class="fixed inset-0 z-[9999]" role="dialog" aria-modal="true" aria-label="Open Source Licenses">
@@ -59,6 +65,7 @@ function openLink(url: string) {
                 <p class="text-xs text-black/35 mt-1">Libraries that make Quillium possible</p>
             </div>
             <button
+                type="button"
                 onclick={ondismiss}
                 aria-label="Close"
                 class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
@@ -71,6 +78,8 @@ function openLink(url: string) {
         <div class="flex-1 overflow-y-auto px-7 pt-5 pb-7">
             {#if loading}
                 <p class="text-sm text-black/35">Loading…</p>
+            {:else if error}
+                <p class="text-sm text-black/40">Could not load license information.</p>
             {:else}
                 {#each [{ label: "JavaScript", items: jsEntries }, { label: "Rust", items: rustEntries }] as section}
                     {#if section.items.length > 0}
@@ -85,7 +94,7 @@ function openLink(url: string) {
                                             <button
                                                 type="button"
                                                 class="text-sm font-medium text-black/75 hover:text-black truncate cursor-pointer bg-transparent border-0 p-0 text-left"
-                                                onclick={() => openLink(entry.url!)}
+                                                onclick={() => openUrl(entry.url!)}
                                             >
                                                 {entry.name}
                                             </button>
