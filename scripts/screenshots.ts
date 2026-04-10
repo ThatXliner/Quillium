@@ -1237,14 +1237,19 @@ async function scenarioChangelog(ctx: BrowserContext): Promise<void> {
 async function scenarioExportMenu(ctx: BrowserContext): Promise<void> {
     const page = await ctx.newPage();
     await page.setViewportSize(VIEWPORT);
-    await installTauriMock(page);
-    await page.goto(BASE_URL);
-    await waitForEditor(page);
-    await setEditorText(page, PROSE_SHORT);
-    // Hover the status bar to reveal buttons, then click export
-    await page.locator("#status-bar").hover();
-    await page.waitForTimeout(300);
-    await page.locator('[aria-label="Export document"]').click({ timeout: 5_000 });
+    await installTauriMock(page, { libraryMode: true });
+    await page.goto(`${BASE_URL}/library`);
+    await page.locator("h1").filter({ hasText: "Your Library" }).waitFor({ timeout: 10_000 });
+    await page.waitForTimeout(800);
+    // Select a document to show the preview panel with the export button
+    const cards = page.locator('[role="button"]').filter({ hasText: /words/ });
+    const count = await cards.count();
+    if (count > 0) {
+        await cards.nth(0).click();
+        await page.waitForTimeout(300);
+    }
+    // Click the Export button in the preview panel to open the format menu
+    await page.getByText("Export", { exact: true }).click({ timeout: 5_000 });
     await page.waitForTimeout(400);
     await shot(page, "28-export-menu");
     await page.close();
