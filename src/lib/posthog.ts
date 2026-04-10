@@ -33,11 +33,9 @@ export const DOCUMENT_CONTENT_SELECTOR = [
  * for dynamically injected stylesheets (e.g. from SvelteKit's HMR/code-split).
  */
 function patchStylesheetCORS() {
-    document
-        .querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')
-        .forEach((link) => {
-            if (!link.crossOrigin) link.crossOrigin = "anonymous";
-        });
+    document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((link) => {
+        if (!link.crossOrigin) link.crossOrigin = "anonymous";
+    });
 
     new MutationObserver((mutations) => {
         for (const m of mutations) {
