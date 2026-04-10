@@ -110,20 +110,18 @@ describe("shiftLints", () => {
 
 describe("mergeLints", () => {
     it("merges results from multiple groups", () => {
-        // @ts-expect-error - mock lint object
         const a = { Spelling: [makeLint(0, 3)] };
-        // @ts-expect-error - mock lint object
         const b = { Grammar: [makeLint(10, 15)] };
+        // @ts-expect-error - mock lint objects don't fully implement Lint
         const result = mergeLints(a, b);
         expect(Object.keys(result)).toContain("Spelling");
         expect(Object.keys(result)).toContain("Grammar");
     });
 
     it("concatenates lints under the same group key", () => {
-        // @ts-expect-error - mock lint object
         const a = { Spelling: [makeLint(0, 3)] };
-        // @ts-expect-error - mock lint object
         const b = { Spelling: [makeLint(10, 15)] };
+        // @ts-expect-error - mock lint objects don't fully implement Lint
         const result = mergeLints(a, b);
         expect(result.Spelling).toHaveLength(2);
     });

@@ -12,15 +12,16 @@
  *   cross-paragraph rules (e.g. RepeatedWords) and warm off-screen cache.
  * - Cache is LRU-bounded to CACHE_MAX_SIZE entries to prevent unbounded growth.
  */
-import type { EditorView } from "@codemirror/view";
+import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { type Dialect, WorkerLinter, SuggestionKind, type Suggestion, type Lint } from "harper.js";
 import { slimBinaryInlined } from "harper.js/slimBinaryInlined";
-import { linter, type Diagnostic, type Action } from "./lint";
+import { linter, forceLinting, type Diagnostic, type Action } from "./lint";
 import { lintKindClass } from "./lintKindColor";
 
 const HARPER_DICTIONARY_KEY = "harper-dictionary";
 const DEFAULT_DELAY = 300;
+const SCROLL_DELAY = 800;
 const FULL_LINT_INTERVAL = 30_000;
 const CACHE_MAX_SIZE = 200;
 
@@ -278,9 +279,32 @@ async function lintWithCache(view: EditorView, text: string): Promise<OrganizedL
     return mergeLints(...results);
 }
 
+/**
+ * ViewPlugin that debounces viewport changes and triggers a lint run after
+ * SCROLL_DELAY ms of scroll inactivity. Kept separate from the typing debounce
+ * so scrolling doesn't reset the typing timer and vice versa.
+ */
+const scrollLintPlugin = ViewPlugin.fromClass(
+    class {
+        private timeout = -1;
+
+        update(update: ViewUpdate) {
+            if (!update.viewportChanged || update.docChanged) return;
+            clearTimeout(this.timeout);
+            this.timeout = window.setTimeout(() => {
+                forceLinting(update.view);
+            }, SCROLL_DELAY);
+        }
+
+        destroy() {
+            clearTimeout(this.timeout);
+        }
+    },
+);
+
 /** Build the CM6 linter extension powered by Harper. */
 export function harperExtension(): Extension {
-    return linter(
+    return [scrollLintPlugin, linter(
         async (view: EditorView) => {
             const text = view.state.doc.sliceString(0);
             const lints = await lintWithCache(view, text);
@@ -359,5 +383,5 @@ export function harperExtension(): Extension {
             return result;
         },
         { delay: DEFAULT_DELAY },
-    );
+    )];
 }
