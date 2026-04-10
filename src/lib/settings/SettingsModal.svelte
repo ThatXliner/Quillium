@@ -296,6 +296,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="flex items-center gap-2">
                 <Settings size={14} class="text-black/35" />
                 <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
+                <span class="text-[11px] text-black/30 font-medium leading-none self-center">{typeof __APP_VERSION__ === "string" ? `v${__APP_VERSION__}` : "dev"}</span>
             </div>
             <div class="flex items-center gap-1.5">
                 {#if currentChangelog}
@@ -1124,7 +1125,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="flex items-center gap-3">
                 <button
                     onclick={() => openUrl(FEEDBACK_FORM_URL)}
-                    class="flex items-center gap-1.5 text-[11px] text-black/30 hover:text-black/55 transition-colors"
+                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-amber-400/20 text-amber-700 border border-amber-400/30 hover:bg-amber-400/30 transition-colors"
                 >
                     <MessageSquare size={12} />
                     Send Feedback
