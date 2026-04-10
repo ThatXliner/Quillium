@@ -22,15 +22,36 @@ import {
 } from "./settings.svelte";
 import { startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
 import posthog from "$lib/posthog";
+import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
+import { autoAIThinking } from "./engine";
 
 let open = $state(false);
 let editingName = $state(false);
+
+// ── Face state ──
+let eyeOffsetX = $state(0);
+let eyeOffsetY = $state(0);
+let isTracking = $state(false);
+let isSleeping = $state(false);
+let trackingTimer: ReturnType<typeof setTimeout> | null = null;
+let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+const SLEEP_AFTER_MS = 60_000;
+const TRACKING_LINGER_MS = 1_000;
 let nameInputEl = $state<HTMLInputElement | null>(null);
 let widgetEl = $state<HTMLDivElement | null>(null);
 let autoAIRunning = $state(autoAISettings.enabled);
 
 const noApiKey = $derived(!hasApiKey());
 const locked = $derived(noApiKey || !autoAIRunning);
+
+const faceState = $derived<FaceState>(
+    !hasApiKey()          ? "disabled"  :
+    aiProcessing.active   ? "reviewing" :
+    $autoAIThinking       ? "thinking"  :
+    isSleeping            ? "sleeping"  :
+    isTracking            ? "tracking"  :
+                            "idle"
+);
 const isReviewing = $derived(autoAIRunning && aiProcessing.active);
 const debounceSeconds = $derived(Math.round(autoAISettings.debounceMs / 1000));
 
@@ -134,13 +155,76 @@ function handleDocClick(e: MouseEvent) {
     if (widgetEl && !widgetEl.contains(e.target as Node)) open = false;
 }
 
+function computeEyeOffset(targetX: number, targetY: number) {
+    if (!widgetEl) return;
+    const rect = widgetEl.getBoundingClientRect();
+    const cx = rect.left + rect.width  / 2;
+    const cy = rect.top  + rect.height / 2;
+    const dx = targetX - cx;
+    const dy = targetY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const scale = Math.min(1, dist / 80);
+    eyeOffsetX = parseFloat(((dx / dist) * 4 * scale).toFixed(1));
+    eyeOffsetY = parseFloat(((dy / dist) * 4 * scale).toFixed(1));
+}
+
+function handleMouseMove(e: MouseEvent) {
+    if (open) return;
+    isTracking = true;
+    isSleeping = false;
+    computeEyeOffset(e.clientX, e.clientY);
+    resetTrackingTimer();
+    resetSleepTimer();
+}
+
+function handleCaretMoved(e: Event) {
+    const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
+    if (open) return;
+    isTracking = true;
+    isSleeping = false;
+    computeEyeOffset(x, y);
+    resetTrackingTimer();
+    resetSleepTimer();
+}
+
+function resetTrackingTimer() {
+    if (trackingTimer !== null) clearTimeout(trackingTimer);
+    trackingTimer = setTimeout(() => {
+        isTracking = false;
+        trackingTimer = null;
+    }, TRACKING_LINGER_MS);
+}
+
+function resetSleepTimer() {
+    if (sleepTimer !== null) clearTimeout(sleepTimer);
+    sleepTimer = setTimeout(() => {
+        if (!open && !aiProcessing.active && !$autoAIThinking) {
+            isSleeping = true;
+        }
+    }, SLEEP_AFTER_MS);
+}
+
+function handleAnyInteraction() {
+    isSleeping = false;
+    resetSleepTimer();
+}
+
 onMount(() => {
     document.addEventListener("mousedown", handleDocClick);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("keydown", handleAnyInteraction);
+    window.addEventListener("quillium:caret-moved", handleCaretMoved);
+    resetSleepTimer();
     if (autoAISettings.enabled) startAutoAI();
 });
 
 onDestroy(() => {
     document.removeEventListener("mousedown", handleDocClick);
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("keydown", handleAnyInteraction);
+    window.removeEventListener("quillium:caret-moved", handleCaretMoved);
+    if (trackingTimer !== null) clearTimeout(trackingTimer);
+    if (sleepTimer !== null) clearTimeout(sleepTimer);
     stopAutoAI();
 });
 
@@ -168,22 +252,13 @@ const annotationPills = [
             aria-label={noApiKey ? "AutoAI — add an API key to enable" : autoAIRunning ? "AutoAI active — click to configure" : "AutoAI paused — click to configure"}
             aria-expanded={open}
             class="w-full h-full flex items-center justify-center rounded-[inherit]
-                   bg-transparent border-none cursor-pointer
-                   {noApiKey ? 'text-gray-400' : 'text-amber-700'}"
+                   bg-transparent border-none cursor-pointer"
         >
-            {#if noApiKey}
-                <!-- Lock icon -->
-                <svg width="26" height="26" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <rect x="3.5" y="7" width="9" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-                    <path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-            {:else}
-                <!-- Quill icon -->
-                <svg width="28" height="28" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
-                    <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
-                </svg>
-            {/if}
+            <AutoAIFace
+                state={faceState}
+                eyeOffsetX={eyeOffsetX}
+                eyeOffsetY={eyeOffsetY}
+            />
         </button>
     </div>
 
@@ -194,10 +269,9 @@ const annotationPills = [
         <div class="panel-header">
             <div class="flex items-center gap-[6px]">
                 <div class="bubble-icon {autoAIRunning && !locked ? 'bubble-icon-active' : ''}">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M13 2C10 3 8 6 6 9C6 13 6 13 6 13C7 11 9 10 11 9C13 8 13 8 13 8C11 9 10 11 9 14L7.5 14C7.5 14 7 12 7 10C8 5 10 4 12 3Z" fill="currentColor" opacity="0.85"/>
-                        <circle cx="5.5" cy="13.5" r="1" fill="currentColor" opacity="0.5"/>
-                    </svg>
+                    <div style="transform: scale(0.38); transform-origin: center; width: 42px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                        <AutoAIFace state={faceState} eyeOffsetX={0} eyeOffsetY={0} />
+                    </div>
                 </div>
                 <div class="flex items-center gap-[3px] flex-1 min-w-0">
                     {#if editingName}
