@@ -79,6 +79,18 @@ function cacheSet(hash: number, val: OrganizedLints): void {
     paragraphCache.set(hash, val);
 }
 
+/**
+ * Reset all module-level state. Exported for testing only.
+ * Sets lastFullLintAt to now so the first test run uses incremental mode.
+ */
+export function resetCache(): void {
+    paragraphCache.clear();
+    lastFullLintAt = Date.now();
+    harperInstance = null;
+}
+
+export { lintWithCache };
+
 /** Dispose the current linter (call when dialect changes). */
 export function resetHarper(dialect?: Dialect): void {
     if (harperInstance) {
