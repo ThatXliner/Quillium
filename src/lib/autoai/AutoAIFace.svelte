@@ -154,17 +154,18 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
     .z2 { animation: zzz-float 2.2s ease-out 0.73s infinite; }
     .z3 { animation: zzz-float 2.2s ease-out 1.46s infinite; }
 
-    /* ── Waking: stretch open with overshoot ── */
+    /* ── Waking: slow sleepy yawn stretch ── */
     @keyframes wake {
-        0%   { transform: scaleY(0.1) scaleX(2.2); }  /* flat like sleeping bar */
-        40%  { transform: scaleY(1.4) scaleX(0.8); }  /* overshoot tall & narrow */
-        65%  { transform: scaleY(0.85) scaleX(1.1); } /* bounce back slightly */
-        85%  { transform: scaleY(1.1) scaleX(0.95); } /* settle */
+        0%   { transform: scaleY(0.1) scaleX(2.0); }  /* flat sleeping bar */
+        25%  { transform: scaleY(0.5) scaleX(1.5); }  /* sluggishly peeling open */
+        55%  { transform: scaleY(1.5) scaleX(0.75); } /* wide-open yawn peak — lingers */
+        75%  { transform: scaleY(1.5) scaleX(0.75); } /* hold the yawn */
+        90%  { transform: scaleY(0.9) scaleX(1.05); } /* drooping closed a touch */
         100% { transform: scaleY(1) scaleX(1); }
     }
     .wake-eye {
         transform-box: fill-box;
         transform-origin: center;
-        animation: wake 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        animation: wake 1.6s ease-in-out forwards;
     }
 </style>
