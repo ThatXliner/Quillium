@@ -226,7 +226,7 @@
   {
     "name": "posthog-js",
     "version": "1.363.3",
-    "license": "SEE LICENSE IN LICENSE",
+    "license": "Apache-2.0",
     "url": "https://github.com/PostHog/posthog-js",
     "ecosystem": "js"
   },

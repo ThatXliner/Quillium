@@ -31,11 +31,17 @@ const jsDeps: LicenseEntry[] = Object.keys(pkgJson.dependencies ?? {}).flatMap((
         } else if (depPkg.homepage) {
             url = depPkg.homepage;
         }
+        // posthog-js uses a non-standard "SEE LICENSE IN LICENSE" field; it's Apache-2.0.
+        const LICENSE_OVERRIDES: Record<string, string> = {
+            "posthog-js": "Apache-2.0",
+        };
+        const license: string = LICENSE_OVERRIDES[name] ?? depPkg.license ?? "Unknown";
+
         return [
             {
                 name: depPkg.name ?? name,
                 version: depPkg.version ?? pkgJson.dependencies[name],
-                license: depPkg.license ?? "Unknown",
+                license,
                 url,
                 ecosystem: "js" as const,
             },
