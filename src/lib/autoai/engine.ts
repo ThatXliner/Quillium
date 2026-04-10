@@ -206,9 +206,16 @@ async function runReview(content: string, manual = false) {
     }
 }
 
+let thinkingTimer: ReturnType<typeof setTimeout> | null = null;
+
 function scheduleReview(content: string) {
     if (debounceTimer !== null) clearTimeout(debounceTimer);
-    autoAIThinking.set(true);
+    if (thinkingTimer !== null) clearTimeout(thinkingTimer);
+    autoAIThinking.set(false);
+    thinkingTimer = setTimeout(() => {
+        thinkingTimer = null;
+        autoAIThinking.set(true);
+    }, autoAISettings.debounceMs * 0.7);
     debounceTimer = setTimeout(() => {
         debounceTimer = null;
         runReview(content);
@@ -247,6 +254,10 @@ export function cancelPendingReview() {
     if (debounceTimer !== null) {
         clearTimeout(debounceTimer);
         debounceTimer = null;
+    }
+    if (thinkingTimer !== null) {
+        clearTimeout(thinkingTimer);
+        thinkingTimer = null;
     }
     autoAIThinking.set(false);
 }
