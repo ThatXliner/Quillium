@@ -66,8 +66,16 @@ async function addToDictionary(word: string): Promise<void> {
 function suggestionToLabel(sug: Suggestion): string {
     const kind = sug.kind();
     if (kind === SuggestionKind.Remove) return "Remove";
-    if (kind === SuggestionKind.InsertAfter) return `Insert "${sug.get_replacement_text()}"`;
-    return `Replace with "${sug.get_replacement_text()}"`;
+    const text = sug.get_replacement_text();
+    if (text.trim().length === 0) return "Fix";
+    if (kind === SuggestionKind.InsertAfter) return `Insert "${text}"`;
+    return `Replace with "${text}"`;
+}
+
+const ignoredDiagnostics = new Set<string>();
+
+function diagKey(source: string, from: number, to: number, message: string): string {
+    return `${source}:${from}:${to}:${message}`;
 }
 
 /** Build the CM6 linter extension powered by Harper. */
@@ -78,14 +86,18 @@ export function harperExtension(): Extension {
             const text = view.state.doc.sliceString(0);
             const lints = await harper.organizedLints(text);
 
-            return Object.entries(lints).flatMap(([linterName, lintList]) =>
-                lintList.map((lint): Diagnostic => {
+            const result = Object.entries(lints).flatMap(([linterName, lintList]) =>
+                lintList.map((lint): Diagnostic | null => {
                     const span = lint.span();
+                    const msg = lint.message();
+                    const key = diagKey(linterName, span.start, span.end, msg);
+                    if (ignoredDiagnostics.has(key)) return null;
 
                     const actions: Action[] = lint.suggestions().map((sug: Suggestion) => ({
                         kind: "suggestion" as const,
                         name:
-                            sug.kind() === SuggestionKind.Replace
+                            sug.kind() === SuggestionKind.Replace &&
+                            sug.get_replacement_text().trim().length > 0
                                 ? sug.get_replacement_text()
                                 : suggestionToLabel(sug),
                         title: suggestionToLabel(sug),
@@ -130,33 +142,20 @@ export function harperExtension(): Extension {
                         severity: "warning",
                         markClass: lintKindClass(lint.lint_kind()),
                         title: lint.lint_kind_pretty(),
-                        message: lint.message(),
+                        message: msg,
                         renderMessage: () => {
-                            const container = document.createElement("div");
-                            container.className = "harper-tooltip";
-
-                            const category = document.createElement("div");
-                            category.className = "harper-tooltip-category";
-                            category.textContent = lint.lint_kind_pretty();
-                            container.appendChild(category);
-
-                            const msg = document.createElement("div");
-                            msg.className = "harper-tooltip-message";
-                            msg.innerHTML = lint.message_html();
-                            container.appendChild(msg);
-
-                            if (actions.length > 0) {
-                                const actionsDiv = document.createElement("div");
-                                actionsDiv.className = "harper-tooltip-actions";
-                                container.appendChild(actionsDiv);
-                            }
-
-                            return container;
+                            const el = document.createElement("span");
+                            el.innerHTML = lint.message_html();
+                            return el;
+                        },
+                        ignore: () => {
+                            ignoredDiagnostics.add(key);
                         },
                         actions,
                     };
-                }),
+                }).filter((d): d is Diagnostic => d !== null),
             );
+            return result;
         },
         { delay: DEFAULT_DELAY },
     );

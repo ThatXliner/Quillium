@@ -472,11 +472,12 @@ function renderDiagnostic(view: EditorView, diagnostic: Diagnostic, inPanel: boo
                               elt("u", name.slice(keyIndex, keyIndex + 1)),
                               name.slice(keyIndex + 1),
                           ];
+                const kindClass = action.kind === "dictionary" ? " cm-diagnosticAction-dictionary" : "";
                 return elt(
                     "button",
                     {
                         type: "button",
-                        class: "cm-diagnosticAction",
+                        class: `cm-diagnosticAction${kindClass}`,
                         onclick: click,
                         onmousedown: click,
                         "aria-label": ` ${title}${keyIndex < 0 ? "" : ` (access key "${keys[i]})"`}.`,
@@ -546,102 +547,15 @@ function underline(color: string) {
     );
 }
 
+function thickUnderline(color: string) {
+    // Larger SVG squiggle for visibility across engines (especially WebKit/Tauri)
+    return svg(
+        `<path d="m0 5 l3 -3 l1 0 l3 3 l1 0" stroke="${color}" fill="none" stroke-width="1.8"/>`,
+        `width="8" height="6"`,
+    );
+}
+
 const baseTheme = EditorView.baseTheme({
-    ".cm-diagnostic": {
-        padding: "4px",
-        marginLeft: "0px",
-        display: "flex",
-        flexDirection: "column",
-        whiteSpace: "pre-wrap",
-        maxHeight: "calc(100% - var(--header-height)) !important",
-    },
-
-    ".cm-diagnosticTitle": {
-        boxShadow: "inset 0 -2px #DB2B39",
-        width: "max-content",
-        fontWeight: "bold",
-    },
-
-    ".cm-diagnosticText": {
-        marginTop: "8px",
-    },
-
-    ".cm-diagnosticText p": {
-        margin: "0px",
-        padding: "0px",
-        display: "inline",
-    },
-
-    ".cm-diagnosticText code": {
-        fontFamily: "var(--font-monospace)",
-        borderRadius: "0.25rem",
-        backgroundColor: "var(--background-secondary) !important",
-        border: "1px solid rgb(from var(--background-secondary) calc(255 - r) calc(255 - g) calc(255 - b))",
-        padding: "0.25rem",
-    },
-
-    ".cm-diagnosticActionCont": {
-        display: "flex",
-        flexWrap: "wrap",
-        justifyContent: "flex-start",
-        alignItems: "flex-start",
-        alignContent: "flex-start",
-        gap: "var(--size-4-2)",
-    },
-
-    ".cm-diagnosticRow": {
-        display: "flex",
-        flexDirection: "row",
-        justifyContent: "space-between",
-    },
-
-    ".cm-diagnosticAction": {
-        font: "inherit",
-        border: "none",
-        marginTop: "8px",
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--size-4-2)",
-        padding: "var(--size-4-1) var(--size-4-2)",
-        cursor: "var(--cursor)",
-        fontSize: "var(--font-ui-small)",
-        borderRadius: "var(--radius-s)",
-        whiteSpace: "nowrap",
-    },
-
-    ".cm-tooltip": {
-        padding: "var(--size-2-3) !important",
-        border: "1px solid var(--background-modifier-border-hover) !important",
-        backgroundColor: "var(--background-secondary) !important",
-        borderRadius: "var(--radius-m) !important",
-        boxShadow: "var(--shadow-s) !important",
-        zIndex: "var(--layer-menu) !important",
-        userSelect: "none !important",
-        overflow: "hidden !important",
-    },
-
-    ".cm-diagnosticSource": {
-        fontSize: "70%",
-        opacity: 0.7,
-    },
-
-    ".cm-diagnosticIgnore": {
-        padding: "var(--size-4-1) 0px",
-        fontSize: "var(--font-ui-small)",
-    },
-
-    ".cm-diagnosticIgnore:hover": {
-        textDecoration: "underline",
-    },
-
-    ".cm-diagnosticDisable": {
-        padding: "var(--size-4-1) 0px",
-        fontSize: "var(--font-ui-small)",
-    },
-
-    ".cm-diagnosticDisable:hover": {
-        textDecoration: "underline",
-    },
 
     ".cm-lintRange": {
         paddingBottom: "0.7px",
@@ -683,6 +597,19 @@ const baseTheme = EditorView.baseTheme({
         backgroundImage: underline("#66d"),
         backgroundPosition: "left bottom",
         backgroundRepeat: "repeat-x",
+    },
+
+    ".cm-lintRange.harper-spelling": {
+        backgroundImage: thickUnderline("#ef4444"),
+        backgroundPosition: "left bottom",
+        backgroundRepeat: "repeat-x",
+        paddingBottom: "4px",
+    },
+    ".cm-lintRange.harper-grammar": {
+        backgroundImage: thickUnderline("#3b82f6"),
+        backgroundPosition: "left bottom",
+        backgroundRepeat: "repeat-x",
+        paddingBottom: "4px",
     },
 
     ".cm-lintRange-active": { backgroundColor: "#ffdd9980" },
@@ -806,7 +733,8 @@ const lintExtensions = [
             return false;
         },
     }),
-    hoverTooltip(lintTooltip, { hideOn: hideTooltip }),
+    // Hover tooltip disabled — we use a Svelte component instead (HarperTooltip.svelte)
+    // hoverTooltip(lintTooltip, { hideOn: hideTooltip }),
     baseTheme,
 ];
 

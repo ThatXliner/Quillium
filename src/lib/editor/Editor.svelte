@@ -52,6 +52,7 @@ import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
 import { loadUserDictionary } from "./harper/harperLinter";
 import "./plugins/annotations/default.css";
+import "./harper/harper.css";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,

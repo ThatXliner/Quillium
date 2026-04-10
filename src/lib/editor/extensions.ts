@@ -47,7 +47,6 @@ import { harperExtension } from "./harper/harperLinter";
 import { type ListenerOptions, listeners } from "./listeners";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
-import "./harper/harper.css";
 
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.

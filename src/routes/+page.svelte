@@ -23,6 +23,7 @@ import { onMount } from "svelte";
 import Editor from "$lib/editor/Editor.svelte";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
+import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
@@ -359,6 +360,7 @@ if (import.meta.env.DEV) {
     <AiSidebar />
 {/if}
 <DictionaryPopover />
+<HarperTooltip />
 
 <div class="h-screen w-full">
     <Editor bind:this={editorComponent} />
