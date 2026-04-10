@@ -884,8 +884,8 @@ function fontLabel(fonts: FontOption[], value: string) {
             {#if draft.analyticsEnabled}
             <div class="setting-row" data-setting-id="share-document-analytics">
                 <div class="setting-meta">
-                    <div class="setting-title">Share your document</div>
-                    <div class="setting-desc">Enable to share your document contents with analytics when making a bug report.</div>
+                    <div class="setting-title">Share your document with us</div>
+                    <div class="setting-desc">Enable to share your document contents with analytics when making a bug report. This unmasks text in session recordings and includes document data in error reports.</div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                 {#if draft.shareDocumentAnalytics}

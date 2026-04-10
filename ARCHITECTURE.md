@@ -1329,6 +1329,8 @@ The `settingsOpen` store is exported from `stores.ts` so that both the native me
 | `crash_backup_downloaded` | User downloads crash backup | `ErrorBanner.svelte` |
 | `crash_banner_dismissed` | User dismisses the error banner | `ErrorBanner.svelte` |
 | `crash_app_reloaded` | User clicks "Reload app" after crash | `ErrorBanner.svelte` |
+| `editor_replay_event_failed` | A single event fails during event log replay | `replay.ts` |
+| `editor_replay_completed_with_failures` | Event log replay finishes with one or more failures | `replay.ts` |
 | `update_available` | App detects a new version on launch | `+page.svelte` |
 | `update_started` | User clicks "Update" to begin download | `+page.svelte` |
 | `update_ready` | Download completes, relaunch offered | `+page.svelte` |

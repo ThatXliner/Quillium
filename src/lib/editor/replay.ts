@@ -22,6 +22,8 @@ import { RawAnnotationSchema } from "./plugins/annotations/models";
 import type { GenericAnnotation } from "./plugins/annotations/models";
 import type { EventRecord } from "$lib/db/types";
 import type { AnnotationEvent, EventPayload } from "$lib/db/events";
+import { capture } from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -128,13 +130,41 @@ function applyEventPayload(state: EditorState, payload: EventPayload): EditorSta
  */
 export function replayEvents(state: EditorState, events: EventRecord[]): EditorState {
     let current = state;
+    let failures = 0;
     for (const record of events) {
         try {
             const payload = JSON.parse(record.payload) as EventPayload;
             current = applyEventPayload(current, payload);
         } catch (err) {
+            failures++;
             console.warn(`[Editor] Failed to replay event id=${record.id}, skipping:`, err);
+            capture("editor_replay_event_failed", {
+                event_id: record.id,
+                error: err instanceof Error ? err.message : String(err),
+                stack: err instanceof Error ? err.stack : undefined,
+                event_type: tryParseType(record.payload),
+                total_events: events.length,
+                doc_length: current.doc.length,
+                annotation_count: current.field(annotationField).length,
+                // Include raw payload only when user has opted into document sharing
+                ...(appSettings.shareDocumentAnalytics ? { payload: record.payload } : {}),
+            });
         }
     }
+    if (failures > 0) {
+        capture("editor_replay_completed_with_failures", {
+            total_events: events.length,
+            failed_events: failures,
+        });
+    }
     return current;
+}
+
+/** Best-effort extract of the event type from a raw payload string. */
+function tryParseType(payload: string): string | undefined {
+    try {
+        return (JSON.parse(payload) as { type?: string }).type;
+    } catch {
+        return undefined;
+    }
 }
