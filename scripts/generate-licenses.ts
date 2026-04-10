@@ -20,7 +20,9 @@ const jsDeps: LicenseEntry[] = Object.keys(pkgJson.dependencies ?? {}).flatMap((
         const repo = depPkg.repository;
         let url: string | undefined;
         if (typeof repo === "string") {
-            url = repo.startsWith("https://") ? repo : `https://github.com/${repo.replace(/^github:/, "")}`;
+            url = repo.startsWith("https://")
+                ? repo
+                : `https://github.com/${repo.replace(/^github:/, "")}`;
         } else if (typeof repo === "object" && repo?.url) {
             url = repo.url
                 .replace(/^git\+/, "")
@@ -64,7 +66,8 @@ for (const m of cargoToml.matchAll(sectionRegex)) {
 for (const start of sectionStarts) {
     // Find the end of this section (next section header or end of file)
     const nextBracket = cargoToml.indexOf("\n[", start);
-    const sectionText = nextBracket === -1 ? cargoToml.slice(start) : cargoToml.slice(start, nextBracket);
+    const sectionText =
+        nextBracket === -1 ? cargoToml.slice(start) : cargoToml.slice(start, nextBracket);
 
     for (const line of sectionText.split("\n")) {
         const simple = line.match(/^(\S+)\s*=\s*"([^"]+)"/);
@@ -78,31 +81,42 @@ for (const start of sectionStarts) {
 }
 
 const RUST_LICENSES: Record<string, { license: string; url: string }> = {
-    tauri:                  { license: "MIT/Apache-2.0", url: "https://github.com/tauri-apps/tauri" },
-    "tauri-plugin-opener":  { license: "MIT/Apache-2.0", url: "https://github.com/tauri-apps/plugins-workspace" },
-    "tauri-plugin-updater": { license: "MIT/Apache-2.0", url: "https://github.com/tauri-apps/plugins-workspace" },
-    "tauri-plugin-process": { license: "MIT/Apache-2.0", url: "https://github.com/tauri-apps/plugins-workspace" },
-    serde:                  { license: "MIT/Apache-2.0", url: "https://github.com/serde-rs/serde" },
-    serde_json:             { license: "MIT/Apache-2.0", url: "https://github.com/serde-rs/json" },
-    keyring:                { license: "MIT",             url: "https://github.com/hwchen/keyring-rs" },
-    rusqlite:               { license: "MIT",             url: "https://github.com/rusqlite/rusqlite" },
-    uuid:                   { license: "MIT/Apache-2.0", url: "https://github.com/uuid-rs/uuid" },
+    tauri: { license: "MIT/Apache-2.0", url: "https://github.com/tauri-apps/tauri" },
+    "tauri-plugin-opener": {
+        license: "MIT/Apache-2.0",
+        url: "https://github.com/tauri-apps/plugins-workspace",
+    },
+    "tauri-plugin-updater": {
+        license: "MIT/Apache-2.0",
+        url: "https://github.com/tauri-apps/plugins-workspace",
+    },
+    "tauri-plugin-process": {
+        license: "MIT/Apache-2.0",
+        url: "https://github.com/tauri-apps/plugins-workspace",
+    },
+    serde: { license: "MIT/Apache-2.0", url: "https://github.com/serde-rs/serde" },
+    serde_json: { license: "MIT/Apache-2.0", url: "https://github.com/serde-rs/json" },
+    keyring: { license: "MIT", url: "https://github.com/hwchen/keyring-rs" },
+    rusqlite: { license: "MIT", url: "https://github.com/rusqlite/rusqlite" },
+    uuid: { license: "MIT/Apache-2.0", url: "https://github.com/uuid-rs/uuid" },
 };
 
+// Rust versions are Cargo requirement specifiers (minimum version),
+// not the exact resolved version from Cargo.lock.
+// RUST_LICENSES is the authoritative allow-list. Only packages listed here
+// will appear in the output — this also implicitly excludes dev-dependencies.
 const rustDeps: LicenseEntry[] = Object.keys(versionMap)
     .filter((name) => name in RUST_LICENSES)
     .map((name) => ({
         name,
-        version: versionMap[name],
+        version: `${versionMap[name]}+`,
         license: RUST_LICENSES[name].license,
         url: RUST_LICENSES[name].url,
         ecosystem: "rust" as const,
     }));
 
 // ── Merge, sort, write ────────────────────────────────────────────
-const all: LicenseEntry[] = [...jsDeps, ...rustDeps].sort((a, b) =>
-    a.name.localeCompare(b.name),
-);
+const all: LicenseEntry[] = [...jsDeps, ...rustDeps].sort((a, b) => a.name.localeCompare(b.name));
 
 writeFileSync("static/licenses.json", `${JSON.stringify(all, null, 2)}\n`);
 console.log(`Generated static/licenses.json (${all.length} entries)`);

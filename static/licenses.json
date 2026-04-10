@@ -197,7 +197,7 @@
   },
   {
     "name": "keyring",
-    "version": "3",
+    "version": "3+",
     "license": "MIT",
     "url": "https://github.com/hwchen/keyring-rs",
     "ecosystem": "rust"
@@ -267,21 +267,21 @@
   },
   {
     "name": "rusqlite",
-    "version": "0.31",
+    "version": "0.31+",
     "license": "MIT",
     "url": "https://github.com/rusqlite/rusqlite",
     "ecosystem": "rust"
   },
   {
     "name": "serde",
-    "version": "1",
+    "version": "1+",
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/serde-rs/serde",
     "ecosystem": "rust"
   },
   {
     "name": "serde_json",
-    "version": "1",
+    "version": "1+",
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/serde-rs/json",
     "ecosystem": "rust"
@@ -295,28 +295,28 @@
   },
   {
     "name": "tauri",
-    "version": "2",
+    "version": "2+",
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/tauri-apps/tauri",
     "ecosystem": "rust"
   },
   {
     "name": "tauri-plugin-opener",
-    "version": "2",
+    "version": "2+",
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/tauri-apps/plugins-workspace",
     "ecosystem": "rust"
   },
   {
     "name": "tauri-plugin-process",
-    "version": "2",
+    "version": "2+",
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/tauri-apps/plugins-workspace",
     "ecosystem": "rust"
   },
   {
     "name": "tauri-plugin-updater",
-    "version": "2",
+    "version": "2+",
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/tauri-apps/plugins-workspace",
     "ecosystem": "rust"
@@ -330,7 +330,7 @@
   },
   {
     "name": "uuid",
-    "version": "1",
+    "version": "1+",
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/uuid-rs/uuid",
     "ecosystem": "rust"
