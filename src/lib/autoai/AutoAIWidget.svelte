@@ -587,9 +587,6 @@ const annotationPills = [
     .mode-hint {
         font-size: 10px; color: #b5a99a; line-height: 1.2;
     }
-    .mode-hint-row {
-        display: flex; align-items: center; gap: 3px;
-    }
     .delay-label-row {
         display: flex; align-items: center; justify-content: space-between;
     }
