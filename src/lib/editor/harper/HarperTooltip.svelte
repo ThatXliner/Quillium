@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 import { editorView } from "$lib/stores";
-import { forEachDiagnostic, type Diagnostic, type Action } from "./lint";
+import { forEachDiagnostic, forceLinting, type Diagnostic, type Action } from "./lint";
 
 let visible = $state(false);
 let posX = $state(0);
@@ -88,7 +88,7 @@ function ignoreDiagnostic() {
     dismiss();
     const view = $editorView;
     if (view) {
-        view.dispatch({ changes: [] });
+        forceLinting(view);
     }
 }
 

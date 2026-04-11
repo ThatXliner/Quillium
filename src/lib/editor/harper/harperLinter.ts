@@ -355,8 +355,8 @@ export function harperExtension(): Extension {
                                     kind: "dictionary",
                                     name: "Add to dictionary",
                                     title: `Add "${word}" to your dictionary`,
-                                    apply: (_view: EditorView) => {
-                                        addToDictionary(word);
+                                    apply: (view: EditorView) => {
+                                        addToDictionary(word).then(() => forceLinting(view));
                                     },
                                 });
                             }
