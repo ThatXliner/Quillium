@@ -16,7 +16,11 @@
 import changelog from "$lib/changelog.json";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
 import { harperCompartment } from "$lib/editor/extensions";
-import { harperExtension, resetHarper } from "$lib/editor/harper/harperLinter";
+import {
+    harperExtension,
+    resetHarper,
+    HARPER_DICTIONARY_KEY,
+} from "$lib/editor/harper/harperLinter";
 import { syncAnalyticsOptOut, syncShareDocumentAnalytics } from "$lib/posthog";
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
@@ -24,16 +28,7 @@ import type { CustomQuickAction } from "$lib/settings.svelte";
 import { editorView } from "$lib/stores";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Dialect } from "harper.js";
-import {
-    Check,
-    ChevronDown,
-    HelpCircle,
-    MessageSquare,
-    Plus,
-    Settings,
-    Trash2,
-    X,
-} from "lucide-svelte";
+import { Check, ChevronDown, HelpCircle, MessageSquare, Plus, Trash2, X } from "lucide-svelte";
 import { get } from "svelte/store";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
@@ -167,6 +162,48 @@ function getChangelogEntry(): { date: string; content: string; version: string }
 }
 
 const currentChangelog = getChangelogEntry();
+
+// Tab state
+let activeTab = $state<"basic" | "advanced">("basic");
+let tabTrackEl = $state<HTMLElement | undefined>(undefined);
+let tabPillStyle = $state("");
+
+$effect(() => {
+    if (!tabTrackEl) return;
+    const buttons = tabTrackEl.querySelectorAll<HTMLButtonElement>(".settings-tab-btn");
+    const idx = activeTab === "basic" ? 0 : 1;
+    const btn = buttons[idx];
+    if (!btn) return;
+    tabPillStyle = `--tab-pill-width: ${btn.offsetWidth}px; --tab-pill-x: ${btn.offsetLeft - 3}px;`;
+});
+
+// Personal dictionary state
+function loadDictionaryWords(): string[] {
+    try {
+        const raw = localStorage.getItem(HARPER_DICTIONARY_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+let dictionaryWords = $state<string[]>(loadDictionaryWords());
+let newDictWord = $state("");
+
+function removeWord(word: string) {
+    const updated = dictionaryWords.filter((w) => w !== word);
+    dictionaryWords = updated;
+    localStorage.setItem(HARPER_DICTIONARY_KEY, JSON.stringify(updated));
+}
+
+function addDictWord() {
+    const word = newDictWord.trim();
+    if (!word || dictionaryWords.includes(word)) return;
+    const updated = [...dictionaryWords, word];
+    dictionaryWords = updated;
+    localStorage.setItem(HARPER_DICTIONARY_KEY, JSON.stringify(updated));
+    newDictWord = "";
+}
 
 // Which custom dropdown is open: "doc" | "ui" | null
 let openDropdown = $state<"doc" | "ui" | null>(null);
@@ -319,10 +356,22 @@ function fontLabel(fonts: FontOption[], value: string) {
 
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
-            <div class="flex items-center gap-2">
-                <Settings size={14} class="text-black/35" />
-                <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
-                <span class="text-[11px] text-black/30 font-medium leading-none self-center">{typeof __APP_VERSION__ === "string" ? `v${__APP_VERSION__}` : "dev"}</span>
+            <div class="flex items-baseline gap-3">
+                <div class="flex items-baseline gap-1.5">
+                    <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
+                    <span class="text-[11px] text-black/30 font-medium leading-none">{typeof __APP_VERSION__ === "string" ? `v${__APP_VERSION__}` : "dev"}</span>
+                </div>
+                <div class="settings-tab-track" bind:this={tabTrackEl} style={tabPillStyle}>
+                    <div class="settings-tab-pill"></div>
+                    <button
+                        onclick={() => activeTab = "basic"}
+                        class="settings-tab-btn outline-none {activeTab === 'basic' ? 'settings-tab-btn-active' : ''}"
+                    >Basic</button>
+                    <button
+                        onclick={() => activeTab = "advanced"}
+                        class="settings-tab-btn outline-none {activeTab === 'advanced' ? 'settings-tab-btn-active' : ''}"
+                    >Advanced</button>
+                </div>
             </div>
             <div class="flex items-center gap-1.5">
                 {#if currentChangelog}
@@ -347,8 +396,182 @@ function fontLabel(fonts: FontOption[], value: string) {
         <!-- Body -->
         <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-0">
 
-            <!-- DOCUMENT section -->
-            <div class="section-label">Document</div>
+        {#if activeTab === "basic"}
+
+            <!-- PERSONAL DICTIONARY section -->
+            <div class="section-label">Personal Dictionary</div>
+
+            <!-- Word list -->
+            {#if dictionaryWords.length > 0}
+                <div class="flex flex-wrap gap-1.5 mb-2.5 px-0.5">
+                    {#each dictionaryWords.sort() as word}
+                        <span class="dict-word-chip">
+                            {word}
+                            <button
+                                onclick={() => removeWord(word)}
+                                aria-label="Remove {word} from dictionary"
+                                class="dict-word-remove"
+                            ><X size={9} /></button>
+                        </span>
+                    {/each}
+                </div>
+            {:else}
+                <div class="text-[11px] text-black/30 px-0.5 mb-2.5">No custom words yet. Add words to skip spell-check on them.</div>
+            {/if}
+
+            <!-- Add word form -->
+            <div class="flex items-center gap-2 mb-1 px-0.5">
+                <input
+                    bind:value={newDictWord}
+                    onkeydown={(e) => e.key === "Enter" && addDictWord()}
+                    placeholder="Add a word…"
+                    class="flex-1 px-2.5 py-1.5 text-[12px] border border-black/[0.1] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
+                />
+                <button
+                    onclick={addDictWord}
+                    disabled={!newDictWord.trim() || dictionaryWords.includes(newDictWord.trim())}
+                    class="flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-medium
+                        bg-blue-500/80 text-white rounded-lg hover:bg-blue-600/80 transition-colors
+                        disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    <Plus size={12} />
+                    Add
+                </button>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <!-- WRITING section -->
+            <div class="section-label">Writing</div>
+
+            <!-- Grammar check toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Grammar & spell check</div>
+                    <div class="setting-desc">Highlight spelling and grammar errors with squiggly underlines</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.grammarCheckEnabled}
+                    <button
+                        type="button"
+                        onclick={() => { draft.grammarCheckEnabled = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.grammarCheckEnabled}
+                    aria-label="Toggle grammar check"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.grammarCheckEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.grammarCheckEnabled = !draft.grammarCheckEnabled;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.grammarCheckEnabled ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <!-- English dialect dropdown -->
+            <div class="setting-row {!draft.grammarCheckEnabled ? 'opacity-40 pointer-events-none' : ''}">
+                <div class="setting-meta">
+                    <div class="setting-title">English dialect</div>
+                    <div class="setting-desc">Which English spelling and grammar rules to use</div>
+                </div>
+                <div class="shrink-0">
+                    <select
+                        class="text-sm bg-white/60 border border-black/10 rounded-md px-2 py-1 cursor-pointer"
+                        value={draft.grammarDialect}
+                        onchange={(e) => {
+                            draft.grammarDialect = e.currentTarget.value as typeof draft.grammarDialect;
+                            handleChange();
+                        }}
+                    >
+                        <option value="american">American English</option>
+                        <option value="british">British English</option>
+                        <option value="australian">Australian English</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Shortcut hints toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Shortcut hints</div>
+                    <div class="setting-desc">Show a floating cheat-sheet of annotation shortcuts (comment, revision, dictionary) next to your text selection</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showShortcutHints}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showShortcutHints = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.showShortcutHints}
+                    aria-label="Toggle shortcut hints"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showShortcutHints ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showShortcutHints = !draft.showShortcutHints;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showShortcutHints ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <!-- Word count overlay toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Word count overlay</div>
+                    <div class="setting-desc">Show a floating word/character count pill (click it to change display mode)</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.showWordCount}
+                    <button
+                        type="button"
+                        onclick={() => { draft.showWordCount = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.showWordCount}
+                    aria-label="Toggle word count overlay"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.showWordCount ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.showWordCount = !draft.showWordCount;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.showWordCount ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <!-- APPEARANCE section -->
+            <div class="section-label">Appearance</div>
 
             <!-- Font family row -->
             <div class="setting-row">
@@ -476,11 +699,6 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
-            <div class="section-divider"></div>
-
-            <!-- INTERFACE section -->
-            <div class="section-label">Interface</div>
-
             <!-- UI font row -->
             <div class="setting-row">
                 <div class="setting-meta">
@@ -560,11 +778,6 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
                 </div>
             </div>
-
-            <div class="section-divider"></div>
-
-            <!-- UI TWEAKS section -->
-            <div class="section-label">UI Tweaks</div>
 
             <!-- Title visibility -->
             <div class="setting-row">
@@ -649,6 +862,111 @@ function fontLabel(fonts: FontOption[], value: string) {
             </div>
 
             <div class="section-divider"></div>
+
+            <!-- PRIVACY section -->
+            <div class="section-label">Privacy</div>
+
+            <!-- Analytics toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title flex items-center gap-1.5">
+                        Usage analytics
+                        <button
+                            onclick={() => openUrl("https://quillium.bryanhu.com/privacy")}
+                            aria-label="Privacy policy and your data rights"
+                            title="Privacy policy and your data rights"
+                            class="text-black/25 hover:text-black/50 transition-colors"
+                        >
+                            <HelpCircle size={13} />
+                        </button>
+                    </div>
+                    <div class="setting-desc">Help improve Quillium by sending anonymous usage data</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !draft.analyticsEnabled}
+                    <button
+                        type="button"
+                        onclick={() => { draft.analyticsEnabled = true; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.analyticsEnabled}
+                    aria-label="Toggle usage analytics"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.analyticsEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.analyticsEnabled = !draft.analyticsEnabled;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.analyticsEnabled ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <!-- Share document toggle (only relevant when analytics are on) -->
+            {#if draft.analyticsEnabled}
+            <div class="setting-row" data-setting-id="share-document-analytics">
+                <div class="setting-meta">
+                    <div class="setting-title">Share your document with us</div>
+                    <div class="setting-desc">Enable to share your document contents with analytics when making a bug report. This unmasks text in session recordings and includes document data in error reports.</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.shareDocumentAnalytics}
+                    <button
+                        type="button"
+                        onclick={() => { draft.shareDocumentAnalytics = false; draft.shareDocumentKey = ""; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.shareDocumentAnalytics}
+                    aria-label="Toggle document sharing"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.shareDocumentAnalytics ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.shareDocumentAnalytics = !draft.shareDocumentAnalytics;
+                        if (!draft.shareDocumentAnalytics) draft.shareDocumentKey = "";
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.shareDocumentAnalytics ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+            {#if draft.shareDocumentAnalytics}
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Incident code</div>
+                    <div class="setting-desc">Paste the code from the notification so we can match your document to the issue.</div>
+                </div>
+                <input
+                    type="text"
+                    bind:value={draft.shareDocumentKey}
+                    oninput={handleChange}
+                    placeholder="e.g. QIR-7K3P"
+                    class="w-40 px-2 py-1 text-sm rounded border border-black/10 bg-white/50
+                        focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30
+                        placeholder:text-black/30"
+                />
+            </div>
+            {/if}
+            {/if}
+
+        {:else}
+
+            <!-- ADVANCED TAB -->
 
             <!-- EDITOR section -->
             <div class="section-label">Editor</div>
@@ -789,232 +1107,10 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
-            <!-- Shortcut hints toggle -->
-            <div class="setting-row">
-                <div class="setting-meta">
-                    <div class="setting-title">Shortcut hints</div>
-                    <div class="setting-desc">Show a floating cheat-sheet of annotation shortcuts (comment, revision, dictionary) next to your text selection</div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                {#if !draft.showShortcutHints}
-                    <button
-                        type="button"
-                        onclick={() => { draft.showShortcutHints = true; handleChange(); }}
-                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                    >Reset</button>
-                {/if}
-                <button
-                    role="switch"
-                    aria-checked={draft.showShortcutHints}
-                    aria-label="Toggle shortcut hints"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.showShortcutHints ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.showShortcutHints = !draft.showShortcutHints;
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.showShortcutHints ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
-                </div>
-            </div>
-
-            <!-- Word count overlay toggle -->
-            <div class="setting-row">
-                <div class="setting-meta">
-                    <div class="setting-title">Word count overlay</div>
-                    <div class="setting-desc">Show a floating word/character count pill (click it to change display mode)</div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                {#if !draft.showWordCount}
-                    <button
-                        type="button"
-                        onclick={() => { draft.showWordCount = true; handleChange(); }}
-                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                    >Reset</button>
-                {/if}
-                <button
-                    role="switch"
-                    aria-checked={draft.showWordCount}
-                    aria-label="Toggle word count overlay"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.showWordCount ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.showWordCount = !draft.showWordCount;
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.showWordCount ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
-                </div>
-            </div>
-
-            <!-- Grammar check toggle -->
-            <div class="setting-row">
-                <div class="setting-meta">
-                    <div class="setting-title">Grammar & spell check</div>
-                    <div class="setting-desc">Highlight spelling and grammar errors with squiggly underlines</div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                {#if !draft.grammarCheckEnabled}
-                    <button
-                        type="button"
-                        onclick={() => { draft.grammarCheckEnabled = true; handleChange(); }}
-                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                    >Reset</button>
-                {/if}
-                <button
-                    role="switch"
-                    aria-checked={draft.grammarCheckEnabled}
-                    aria-label="Toggle grammar check"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.grammarCheckEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.grammarCheckEnabled = !draft.grammarCheckEnabled;
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.grammarCheckEnabled ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
-                </div>
-            </div>
-
-            <!-- English dialect dropdown -->
-            <div class="setting-row {!draft.grammarCheckEnabled ? 'opacity-40 pointer-events-none' : ''}">
-                <div class="setting-meta">
-                    <div class="setting-title">English dialect</div>
-                    <div class="setting-desc">Which English spelling and grammar rules to use</div>
-                </div>
-                <div class="shrink-0">
-                    <select
-                        class="text-sm bg-white/60 border border-black/10 rounded-md px-2 py-1 cursor-pointer"
-                        value={draft.grammarDialect}
-                        onchange={(e) => {
-                            draft.grammarDialect = e.currentTarget.value as typeof draft.grammarDialect;
-                            handleChange();
-                        }}
-                    >
-                        <option value="american">American English</option>
-                        <option value="british">British English</option>
-                        <option value="australian">Australian English</option>
-                    </select>
-                </div>
-            </div>
-
             <div class="section-divider"></div>
 
-            <!-- PRIVACY section -->
-            <div class="section-label">Privacy</div>
-
-            <!-- Analytics toggle -->
-            <div class="setting-row">
-                <div class="setting-meta">
-                    <div class="setting-title flex items-center gap-1.5">
-                        Usage analytics
-                        <button
-                            onclick={() => openUrl("https://quillium.bryanhu.com/privacy")}
-                            aria-label="Privacy policy and your data rights"
-                            title="Privacy policy and your data rights"
-                            class="text-black/25 hover:text-black/50 transition-colors"
-                        >
-                            <HelpCircle size={13} />
-                        </button>
-                    </div>
-                    <div class="setting-desc">Help improve Quillium by sending anonymous usage data</div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                {#if !draft.analyticsEnabled}
-                    <button
-                        type="button"
-                        onclick={() => { draft.analyticsEnabled = true; handleChange(); }}
-                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                    >Reset</button>
-                {/if}
-                <button
-                    role="switch"
-                    aria-checked={draft.analyticsEnabled}
-                    aria-label="Toggle usage analytics"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.analyticsEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.analyticsEnabled = !draft.analyticsEnabled;
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.analyticsEnabled ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
-                </div>
-            </div>
-
-            <!-- Share document toggle (only relevant when analytics are on) -->
-            {#if draft.analyticsEnabled}
-            <div class="setting-row" data-setting-id="share-document-analytics">
-                <div class="setting-meta">
-                    <div class="setting-title">Share your document with us</div>
-                    <div class="setting-desc">Enable to share your document contents with analytics when making a bug report. This unmasks text in session recordings and includes document data in error reports.</div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                {#if draft.shareDocumentAnalytics}
-                    <button
-                        type="button"
-                        onclick={() => { draft.shareDocumentAnalytics = false; draft.shareDocumentKey = ""; handleChange(); }}
-                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                    >Reset</button>
-                {/if}
-                <button
-                    role="switch"
-                    aria-checked={draft.shareDocumentAnalytics}
-                    aria-label="Toggle document sharing"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.shareDocumentAnalytics ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.shareDocumentAnalytics = !draft.shareDocumentAnalytics;
-                        if (!draft.shareDocumentAnalytics) draft.shareDocumentKey = "";
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.shareDocumentAnalytics ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
-                </div>
-            </div>
-            {#if draft.shareDocumentAnalytics}
-            <div class="setting-row">
-                <div class="setting-meta">
-                    <div class="setting-title">Incident code</div>
-                    <div class="setting-desc">Paste the code from the notification so we can match your document to the issue.</div>
-                </div>
-                <input
-                    type="text"
-                    bind:value={draft.shareDocumentKey}
-                    oninput={handleChange}
-                    placeholder="e.g. QIR-7K3P"
-                    class="w-40 px-2 py-1 text-sm rounded border border-black/10 bg-white/50
-                        focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30
-                        placeholder:text-black/30"
-                />
-            </div>
-            {/if}
-            {/if}
+            <!-- Updates section -->
+            <div class="section-label">Updates</div>
 
             <!-- Auto-update toggle -->
             <div class="setting-row">
@@ -1200,6 +1296,8 @@ function fontLabel(fonts: FontOption[], value: string) {
             </div>
             {/if}
 
+        {/if}
+
         </div>
 
         <!-- Footer -->
@@ -1267,6 +1365,82 @@ function fontLabel(fonts: FontOption[], value: string) {
         border-radius: 1rem;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
         overflow: hidden;
+    }
+
+    /* Tab switcher — matches FontGuide tab style */
+    .settings-tab-track {
+        position: relative;
+        display: flex;
+        gap: 2px;
+        background: rgba(180, 180, 180, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 999px;
+        padding: 3px;
+        backdrop-filter: blur(8px);
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .settings-tab-pill {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        height: calc(100% - 6px);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+        transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+        width: var(--tab-pill-width, 72px);
+        transform: translateX(var(--tab-pill-x, 0px));
+    }
+
+    .settings-tab-btn {
+        position: relative;
+        font-size: 11px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.4);
+        padding: 2px 10px;
+        border-radius: 999px;
+        transition: color 0.2s;
+        cursor: pointer;
+        z-index: 1;
+    }
+
+    .settings-tab-btn:hover {
+        color: rgba(0, 0, 0, 0.55);
+    }
+
+    .settings-tab-btn-active {
+        color: rgba(0, 0, 0, 0.7);
+    }
+
+    /* Personal dictionary word chips */
+    .dict-word-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.65);
+        background: rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 999px;
+        padding: 2px 8px 2px 10px;
+    }
+
+    .dict-word-remove {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(0, 0, 0, 0.3);
+        border-radius: 999px;
+        padding: 1px;
+        transition: color 0.15s, background 0.15s;
+    }
+
+    .dict-word-remove:hover {
+        color: rgba(220, 38, 38, 0.8);
+        background: rgba(220, 38, 38, 0.08);
     }
 
     /* Shake animation — same curve as annotation pending-shake */
