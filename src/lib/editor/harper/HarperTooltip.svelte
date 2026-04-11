@@ -16,15 +16,10 @@ let diagnostic = $state<Diagnostic | null>(null);
 let diagFrom = $state(0);
 let diagTo = $state(0);
 let tooltipEl = $state<HTMLDivElement | undefined>();
-let tooltipsDisabled = $state(false);
-let hasSquiggles = $state(false);
-let muteTabX = $state(0);
-let muteTabY = $state(0);
 let suppressedFrom = $state(-1);
 let suppressedTo = $state(-1);
 
 function showForElement(target: HTMLElement) {
-    if (tooltipsDisabled) return;
     const view = $editorView;
     if (!view) return;
 
@@ -135,73 +130,11 @@ $effect(() => {
     return () => scrollEl.removeEventListener("scroll", onScroll);
 });
 
-// Track whether there are any squiggles in the document
-$effect(() => {
-    const view = $editorView;
-    if (!view) {
-        hasSquiggles = false;
-        return;
-    }
-    let count = 0;
-    forEachDiagnostic(view.state, () => {
-        count++;
-    });
-    hasSquiggles = count > 0;
-});
-
-// Dismiss tooltip when suggestions are disabled
-$effect(() => {
-    if (tooltipsDisabled && visible) dismiss();
-});
-
-// Position "Mute suggestions" tab at inside top-right of the document card
-$effect(() => {
-    if (!hasSquiggles) return;
-    const card = document.getElementById("editor-document");
-    if (!card) return;
-
-    function update() {
-        const rect = card!.getBoundingClientRect();
-        muteTabX = rect.right;
-        muteTabY = rect.top;
-    }
-
-    update();
-    const parent = card.parentElement;
-    if (parent) parent.addEventListener("scroll", update);
-    window.addEventListener("resize", update);
-    return () => {
-        if (parent) parent.removeEventListener("scroll", update);
-        window.removeEventListener("resize", update);
-    };
-});
-
 let suggestionActions = $derived(diagnostic?.actions?.filter((a) => a.kind !== "dictionary") ?? []);
 let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dictionary") ?? null);
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
-
-<!-- Mute suggestions tab — attached to top-right of document card -->
-{#if hasSquiggles}
-    <label
-        class="fixed z-50 flex items-center gap-1.5 px-3 py-1.5
-            text-[11px] text-gray-400 hover:text-gray-500
-            bg-white rounded-tl-lg rounded-tr-lg
-            border-l border-t border-r border-gray-200/60
-            shadow-sm
-            transition-colors cursor-pointer select-none
-            -translate-x-full -translate-y-full"
-        style="left: {muteTabX}px; top: {muteTabY}px;"
-    >
-        <input
-            type="checkbox"
-            bind:checked={tooltipsDisabled}
-            class="accent-gray-400 w-3 h-3 cursor-pointer"
-        />
-        Mute suggestions
-    </label>
-{/if}
 
 {#if visible && diagnostic}
     <!-- Tooltip -->
