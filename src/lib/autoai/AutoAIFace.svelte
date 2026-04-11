@@ -102,7 +102,7 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
         transform-origin: center;
     }
     .blink {
-        animation: blink 3.2s ease-in-out infinite;
+        animation: blink 6s ease-in-out infinite;
     }
 
     /* ── Thinking: >_< head bob ── */
