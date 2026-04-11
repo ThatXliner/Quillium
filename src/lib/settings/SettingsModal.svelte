@@ -19,8 +19,10 @@ import { harperCompartment } from "$lib/editor/extensions";
 import {
     harperExtension,
     resetHarper,
+    loadUserDictionary,
     HARPER_DICTIONARY_KEY,
 } from "$lib/editor/harper/harperLinter";
+import { forceLinting } from "$lib/editor/harper/lint";
 import { syncAnalyticsOptOut, syncShareDocumentAnalytics } from "$lib/posthog";
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
@@ -113,7 +115,35 @@ let draft = $state({ ...appSettings });
 // Snapshot of what was persisted when the modal opened (for discard)
 const savedSnapshot = { ...appSettings };
 
-let isDirty = $derived(JSON.stringify(draft) !== JSON.stringify(savedSnapshot));
+// Personal dictionary state — draft-only; persisted only on save()
+function loadDictionaryWords(): string[] {
+    try {
+        const raw = localStorage.getItem(HARPER_DICTIONARY_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+const savedDictionaryWords = loadDictionaryWords();
+let dictionaryWords = $state<string[]>([...savedDictionaryWords]);
+let newDictWord = $state("");
+
+function removeWord(word: string) {
+    dictionaryWords = dictionaryWords.filter((w) => w !== word);
+}
+
+function addDictWord() {
+    const word = newDictWord.trim();
+    if (!word || dictionaryWords.includes(word)) return;
+    dictionaryWords = [...dictionaryWords, word];
+    newDictWord = "";
+}
+
+let isDirty = $derived(
+    JSON.stringify(draft) !== JSON.stringify(savedSnapshot) ||
+        JSON.stringify(dictionaryWords) !== JSON.stringify(savedDictionaryWords),
+);
 
 // Quick actions state
 let selectedPanel = $state<"revise" | "feedback" | "chat">("revise");
@@ -177,34 +207,6 @@ $effect(() => {
     tabPillStyle = `--tab-pill-width: ${btn.offsetWidth}px; --tab-pill-x: ${btn.offsetLeft - 3}px;`;
 });
 
-// Personal dictionary state
-function loadDictionaryWords(): string[] {
-    try {
-        const raw = localStorage.getItem(HARPER_DICTIONARY_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
-}
-
-let dictionaryWords = $state<string[]>(loadDictionaryWords());
-let newDictWord = $state("");
-
-function removeWord(word: string) {
-    const updated = dictionaryWords.filter((w) => w !== word);
-    dictionaryWords = updated;
-    localStorage.setItem(HARPER_DICTIONARY_KEY, JSON.stringify(updated));
-}
-
-function addDictWord() {
-    const word = newDictWord.trim();
-    if (!word || dictionaryWords.includes(word)) return;
-    const updated = [...dictionaryWords, word];
-    dictionaryWords = updated;
-    localStorage.setItem(HARPER_DICTIONARY_KEY, JSON.stringify(updated));
-    newDictWord = "";
-}
-
 // Which custom dropdown is open: "doc" | "ui" | null
 let openDropdown = $state<"doc" | "ui" | null>(null);
 let showFontGuide = $state<"doc" | "ui" | null>(null);
@@ -256,25 +258,29 @@ function save() {
     Object.assign(appSettings, draft);
     persistSettings();
 
-    // Reconfigure Harper grammar checker
+    // Reconfigure Harper grammar checker; always reset so the dictionary
+    // starts clean (removed words are evicted), then re-import the full list.
+    const dialectMap = {
+        american: Dialect.American,
+        british: Dialect.British,
+        australian: Dialect.Australian,
+    } as const;
+    localStorage.setItem(HARPER_DICTIONARY_KEY, JSON.stringify(dictionaryWords));
+    resetHarper(dialectMap[draft.grammarDialect]);
+    loadUserDictionary().then(() => {
+        const v = get(editorView);
+        if (v) forceLinting(v);
+    });
+
     const view = get(editorView);
     if (view) {
-        const dialectMap = {
-            american: Dialect.American,
-            british: Dialect.British,
-            australian: Dialect.Australian,
-        } as const;
-
-        if (draft.grammarDialect !== oldDialect) {
-            resetHarper(dialectMap[draft.grammarDialect]);
-        }
-
         view.dispatch({
             effects: harperCompartment.reconfigure(
                 draft.grammarCheckEnabled ? harperExtension() : [],
             ),
         });
     }
+
     if (analyticsChanged) {
         syncAnalyticsOptOut(draft.analyticsEnabled);
     }
@@ -307,6 +313,7 @@ function save() {
 
 function discard() {
     applySettings(savedSnapshot);
+    dictionaryWords = [...savedDictionaryWords];
     onclose();
 }
 
