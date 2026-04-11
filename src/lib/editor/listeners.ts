@@ -422,7 +422,10 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
         try {
             const t0 = performance.now();
             coords = update.view.coordsAtPos(pos);
-            posthog.capture("perf_coords_at_pos", { elapsed_ms: performance.now() - t0 });
+            posthog.capture("perf_coords_at_pos", {
+                elapsed_ms: performance.now() - t0,
+                doc_length: update.view.state.doc.length,
+            });
         } catch (e) {
             // coordsAtPos requires a real layout engine — skip in environments
             // (e.g. jsdom in tests) that don't implement it.
