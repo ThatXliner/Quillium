@@ -160,8 +160,8 @@ jobs:
           security default-keychain -s mas.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" mas.keychain
           security set-keychain-settings -t 3600 -u mas.keychain
-          security import mas-app.p12 -k mas.keychain -P "$APPLE_MAS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security import mas-installer.p12 -k mas.keychain -P "$APPLE_MAS_INSTALLER_CERTIFICATE_PASSWORD" -T /usr/bin/productbuild
+          security import mas-app.p12 -k mas.keychain -P "$APPLE_MAS_CERTIFICATE_PASSWORD" -A
+          security import mas-installer.p12 -k mas.keychain -P "$APPLE_MAS_INSTALLER_CERTIFICATE_PASSWORD" -A
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" mas.keychain
           security find-identity -v mas.keychain
 
@@ -196,10 +196,13 @@ jobs:
       - name: Package as .pkg
         env:
           APPLE_INSTALLER_SIGNING_IDENTITY: ${{ env.APPLE_INSTALLER_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" mas.keychain
           APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/Quillium.app"
           xcrun productbuild \
             --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
+            --keychain mas.keychain \
             --component "$APP_PATH" /Applications \
             Quillium.pkg
 
