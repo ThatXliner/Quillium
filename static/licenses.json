@@ -1,28 +1,28 @@
 [
   {
     "name": "@ai-sdk/anthropic",
-    "version": "3.0.63",
+    "version": "3.0.69",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/google",
-    "version": "3.0.53",
+    "version": "3.0.62",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/openai",
-    "version": "2.0.101",
+    "version": "2.0.102",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/svelte",
-    "version": "3.0.159",
+    "version": "3.0.172",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
@@ -57,7 +57,7 @@
   },
   {
     "name": "@codemirror/view",
-    "version": "6.40.0",
+    "version": "6.41.0",
     "license": "MIT",
     "url": "https://github.com/codemirror/view",
     "ecosystem": "js"
@@ -148,14 +148,14 @@
   },
   {
     "name": "@tauri-apps/plugin-updater",
-    "version": "2.10.0",
+    "version": "2.10.1",
     "license": "MIT OR Apache-2.0",
     "url": "https://github.com/tauri-apps/plugins-workspace",
     "ecosystem": "js"
   },
   {
     "name": "ai",
-    "version": "5.0.159",
+    "version": "5.0.172",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
@@ -204,7 +204,7 @@
   },
   {
     "name": "lodash-es",
-    "version": "4.17.23",
+    "version": "4.18.1",
     "license": "MIT",
     "url": "https://github.com/lodash/lodash",
     "ecosystem": "js"
@@ -225,7 +225,7 @@
   },
   {
     "name": "posthog-js",
-    "version": "1.363.3",
+    "version": "1.367.0",
     "license": "Apache-2.0",
     "url": "https://github.com/PostHog/posthog-js",
     "ecosystem": "js"
