@@ -363,10 +363,9 @@ const lintPlugin = ViewPlugin.fromClass(
         }
 
         force() {
-            if (this.set) {
-                this.lintTime = Date.now();
-                this.run();
-            }
+            this.lintTime = Date.now();
+            this.set = true;
+            this.run();
         }
 
         destroy() {
