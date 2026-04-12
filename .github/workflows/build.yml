@@ -176,7 +176,7 @@ jobs:
         env:
           APPLE_MAS_PROVISIONING_PROFILE: ${{ secrets.APPLE_MAS_PROVISIONING_PROFILE }}
         run: |
-          echo $APPLE_MAS_PROVISIONING_PROFILE | base64 --decode > src-tauri/embedded.provisionprofile
+          echo "$APPLE_MAS_PROVISIONING_PROFILE" | base64 --decode > src-tauri/embedded.provisionprofile
 
       - name: Build universal MAS app
         env:
