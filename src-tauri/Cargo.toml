@@ -17,7 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 # Build without auto-updater for Mac App Store distribution.
 # MAS handles updates itself; the updater plugin is not allowed.
-# To build for MAS: cargo build --features mas
+# To build for MAS: cargo build --no-default-features --features mas
 mas = []
 # Default includes the updater (non-MAS builds)
 default = ["updater"]
