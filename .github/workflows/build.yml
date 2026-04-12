@@ -152,7 +152,7 @@ jobs:
       - name: Resolve signing identities
         run: |
           APP_CERT=$(security find-identity -v -p codesigning mas.keychain | grep "Apple Distribution" | awk -F'"' '{print $2}' | head -1)
-          INSTALLER_CERT=$(security find-identity -v mas.keychain | grep "Mac Installer Distribution" | awk -F'"' '{print $2}' | head -1)
+          INSTALLER_CERT=$(security find-identity -v mas.keychain | grep "3rd Party Mac Developer Installer" | awk -F'"' '{print $2}' | head -1)
           echo "APPLE_SIGNING_IDENTITY=$APP_CERT" >> $GITHUB_ENV
           echo "APPLE_INSTALLER_SIGNING_IDENTITY=$INSTALLER_CERT" >> $GITHUB_ENV
 
