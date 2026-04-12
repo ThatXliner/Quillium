@@ -2,24 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Required for Mac App Store distribution -->
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-
-    <!-- App and team identifiers (required by MAS) -->
-    <key>com.apple.application-identifier</key>
-    <string>$(AppIdentifierPrefix)com.bryanhu.quillium</string>
-    <key>com.apple.developer.team-identifier</key>
-    <string>$(AppIdentifierPrefix)</string>
-
     <!-- Outbound network access (AI APIs, PostHog analytics) -->
     <key>com.apple.security.network.client</key>
     <true/>
-
-    <!-- Keychain access for storing API keys -->
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(AppIdentifierPrefix)com.bryanhu.quillium</string>
-    </array>
 </dict>
 </plist>

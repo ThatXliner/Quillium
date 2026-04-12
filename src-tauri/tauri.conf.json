@@ -50,10 +50,7 @@
     ],
     "macOS": {
       "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB",
-      "entitlements": "Entitlements.mac.plist",
-      "files": {
-        "embedded.provisionprofile": "embedded.provisionprofile"
-      }
+      "entitlements": "Entitlements.mac.plist"
     },
     "createUpdaterArtifacts": true
   }
