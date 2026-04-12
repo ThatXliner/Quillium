@@ -23,7 +23,8 @@ import type { GenericAnnotation } from "./plugins/annotations/models";
 import type { EventRecord } from "$lib/db/types";
 import type { AnnotationEvent, EventPayload } from "$lib/db/events";
 import { capture } from "$lib/posthog";
-import { appSettings } from "$lib/settings.svelte";
+// TODO(#191): restore appSettings import when shareDocumentAnalytics is re-enabled
+// import { appSettings } from "$lib/settings.svelte";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -146,8 +147,8 @@ export function replayEvents(state: EditorState, events: EventRecord[]): EditorS
                 total_events: events.length,
                 doc_length: current.doc.length,
                 annotation_count: current.field(annotationField).length,
-                // Include raw payload only when user has opted into document sharing
-                ...(appSettings.shareDocumentAnalytics ? { payload: record.payload } : {}),
+                // TODO(#191): include raw payload when shareDocumentAnalytics is re-enabled
+                // ...(appSettings.shareDocumentAnalytics ? { payload: record.payload } : {}),
             });
         }
     }

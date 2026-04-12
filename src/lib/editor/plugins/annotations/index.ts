@@ -609,20 +609,13 @@ export function getSelection({
             const stripEllipsis = (s: string) => s.replace(/\s*(?:\.{3}|…)\s*$/, "");
             const stripped = stripEllipsis(targetText);
             if (stripped.length > 0 && stripped !== targetText) {
-                if (appSettings.shareDocumentAnalytics) {
-                    const code = generateIncidentCode();
-                    posthog.capture("ai_target_text_ellipsis_stripped", {
-                        incident_code: code,
-                        original: targetText.slice(0, 80),
-                    });
-                } else {
-                    const code = showPrivacyNudge("AI text targeting was imprecise.", (id) =>
-                        settingsOpen.set(id),
-                    );
-                    posthog.capture("ai_target_text_ellipsis_stripped", {
-                        incident_code: code,
-                    });
-                }
+                // TODO(#191): conditionally include `original` when shareDocumentAnalytics is re-enabled
+                const code = showPrivacyNudge("AI text targeting was imprecise.", (id) =>
+                    settingsOpen.set(id),
+                );
+                posthog.capture("ai_target_text_ellipsis_stripped", {
+                    incident_code: code,
+                });
                 const strippedCtx = context ? stripEllipsis(context) || context : undefined;
                 return getSelection({
                     targetText: stripped,
@@ -630,11 +623,8 @@ export function getSelection({
                     document,
                 });
             }
-            throw new Error(
-                appSettings.shareDocumentAnalytics
-                    ? `Target text not found in document: "${targetText.slice(0, 60)}…"`
-                    : "Target text not found in document (content redacted for privacy)",
-            );
+            // TODO(#191): include targetText in message when shareDocumentAnalytics is re-enabled
+            throw new Error("Target text not found in document (content redacted for privacy)");
         }
         selection = EditorSelection.create(selections);
     }

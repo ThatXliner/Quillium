@@ -23,7 +23,7 @@ import {
     HARPER_DICTIONARY_KEY,
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
-import { syncAnalyticsOptOut, syncShareDocumentAnalytics } from "$lib/posthog";
+import { syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
@@ -251,9 +251,10 @@ function handleChange() {
 
 function save() {
     const analyticsChanged = appSettings.analyticsEnabled !== draft.analyticsEnabled;
-    const shareDocChanged =
-        appSettings.shareDocumentAnalytics !== draft.shareDocumentAnalytics ||
-        appSettings.shareDocumentKey !== draft.shareDocumentKey;
+    // TODO(#191): restore shareDocChanged check when shareDocumentAnalytics is re-enabled
+    // const shareDocChanged =
+    //     appSettings.shareDocumentAnalytics !== draft.shareDocumentAnalytics ||
+    //     appSettings.shareDocumentKey !== draft.shareDocumentKey;
     const oldDialect = appSettings.grammarDialect;
     Object.assign(appSettings, draft);
     persistSettings();
@@ -284,9 +285,10 @@ function save() {
     if (analyticsChanged) {
         syncAnalyticsOptOut(draft.analyticsEnabled);
     }
-    if (shareDocChanged) {
-        syncShareDocumentAnalytics(draft.shareDocumentAnalytics, draft.shareDocumentKey);
-    }
+    // TODO(#191): restore syncShareDocumentAnalytics call when document sharing is re-enabled
+    // if (shareDocChanged) {
+    //     syncShareDocumentAnalytics(draft.shareDocumentAnalytics, draft.shareDocumentKey);
+    // }
     posthog.capture("settings_saved", {
         ai_enabled: draft.aiEnabled,
         select_text_in_nested_editor: draft.selectTextInNestedEditor,
@@ -305,7 +307,8 @@ function save() {
         show_ai_suggestions: draft.showAiSuggestions,
         show_word_count: draft.showWordCount,
         analytics_enabled: draft.analyticsEnabled,
-        share_document_analytics: draft.shareDocumentAnalytics,
+        // TODO(#191): restore share_document_analytics prop when re-enabled
+        // share_document_analytics: draft.shareDocumentAnalytics,
         check_for_updates: draft.checkForUpdates,
     });
     onclose();
@@ -450,59 +453,13 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
 
-            <!-- Share document toggle (only relevant when analytics are on) -->
+            <!-- TODO(#191): restore document sharing toggle when re-enabled
             {#if draft.analyticsEnabled}
             <div class="setting-row" data-setting-id="share-document-analytics">
-                <div class="setting-meta">
-                    <div class="setting-title">Share your document with us</div>
-                    <div class="setting-desc">Enable to share your document contents with analytics when making a bug report. This unmasks text in session recordings and includes document data in error reports.</div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                {#if draft.shareDocumentAnalytics}
-                    <button
-                        type="button"
-                        onclick={() => { draft.shareDocumentAnalytics = false; draft.shareDocumentKey = ""; handleChange(); }}
-                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                    >Reset</button>
-                {/if}
-                <button
-                    role="switch"
-                    aria-checked={draft.shareDocumentAnalytics}
-                    aria-label="Toggle document sharing"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.shareDocumentAnalytics ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.shareDocumentAnalytics = !draft.shareDocumentAnalytics;
-                        if (!draft.shareDocumentAnalytics) draft.shareDocumentKey = "";
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.shareDocumentAnalytics ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
-                </div>
-            </div>
-            {#if draft.shareDocumentAnalytics}
-            <div class="setting-row">
-                <div class="setting-meta">
-                    <div class="setting-title">Incident code</div>
-                    <div class="setting-desc">Paste the code from the notification so we can match your document to the issue.</div>
-                </div>
-                <input
-                    type="text"
-                    bind:value={draft.shareDocumentKey}
-                    oninput={handleChange}
-                    placeholder="e.g. QIR-7K3P"
-                    class="w-40 px-2 py-1 text-sm rounded border border-black/10 bg-white/50
-                        focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30
-                        placeholder:text-black/30"
-                />
+                ...
             </div>
             {/if}
-            {/if}
+            -->
 
             <!-- Auto-update toggle -->
             <div class="setting-row">

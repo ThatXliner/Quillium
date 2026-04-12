@@ -1364,8 +1364,8 @@ Outside, a man walked his dog in the rain. The dog did not seem to mind.`,
         label: "Ellipsis privacy nudge",
         description:
             "Simulates an AI returning truncated targetText (with trailing ellipsis). " +
-            "When shareDocumentAnalytics is OFF, a privacy-nudge toast should appear " +
-            "with an incident code and an 'Open Settings' button.",
+            "A privacy-nudge toast should appear with an incident code and an 'Open Settings' button. " +
+            "TODO(#191): restore shareDocumentAnalytics branch when document sharing is re-enabled.",
         category: "debug",
         doc: DOC_LIGHTHOUSE_KEEPER,
         setup(view) {

@@ -9,7 +9,8 @@ const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"
 
 /**
  * CSS selector matching all elements that contain user document content.
- * Used by PostHog session recording to mask text when `shareDocumentAnalytics` is off.
+ * Used by PostHog session recording to always mask text (document sharing is disabled).
+ * TODO(#191): conditionally unmask when shareDocumentAnalytics is re-enabled.
  */
 export const DOCUMENT_CONTENT_SELECTOR = [
     ".cm-content", // main editor
@@ -60,19 +61,13 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         defaults: "2026-01-30",
         capture_exceptions: true,
         session_recording: {
-            ...(appSettings.shareDocumentAnalytics
-                ? {}
-                : { maskTextSelector: DOCUMENT_CONTENT_SELECTOR }),
+            // TODO(#191): conditionally clear maskTextSelector when shareDocumentAnalytics is re-enabled
+            maskTextSelector: DOCUMENT_CONTENT_SELECTOR,
             console_log_recording_enabled: true,
         },
     });
 
     posthog.register({ app_version: appVersion, app: "desktop" });
-
-    // Register share-document key if sharing is enabled
-    if (appSettings.shareDocumentAnalytics && appSettings.shareDocumentKey.trim()) {
-        posthog.register({ share_document_key: appSettings.shareDocumentKey.trim() });
-    }
 
     // Respect the user's analytics preference
     if (!appSettings.analyticsEnabled) {
@@ -110,11 +105,11 @@ export function syncAnalyticsOptOut(enabled: boolean) {
 export const REDACTED_KEYS: ReadonlySet<string> = new Set(["synonym", "word", "original"]);
 
 /**
- * Privacy-aware capture wrapper. Strips document-content properties
- * unless the user has opted in to shareDocumentAnalytics.
+ * Privacy-aware capture wrapper. Always strips document-content properties.
+ * TODO(#191): conditionally pass through when shareDocumentAnalytics is re-enabled.
  */
 export function capture(event: string, props?: Record<string, unknown>) {
-    if (!props || appSettings.shareDocumentAnalytics) {
+    if (!props) {
         posthog.capture(event, props);
         return;
     }
@@ -130,23 +125,8 @@ export function capture(event: string, props?: Record<string, unknown>) {
     posthog.capture(event, cleaned);
 }
 
-/**
- * Sync session recording masking and the share-document super property.
- * Call after changing `appSettings.shareDocumentAnalytics` or `shareDocumentKey`.
- */
-export function syncShareDocumentAnalytics(sharing: boolean, key: string) {
-    posthog.set_config({
-        session_recording: {
-            ...(sharing ? {} : { maskTextSelector: DOCUMENT_CONTENT_SELECTOR }),
-            console_log_recording_enabled: true,
-        },
-    });
-    if (sharing && key.trim()) {
-        posthog.register({ share_document_key: key.trim() });
-    } else {
-        posthog.unregister("share_document_key");
-    }
-}
+// TODO(#191): restore syncShareDocumentAnalytics when document sharing is re-enabled
+// export function syncShareDocumentAnalytics(sharing: boolean, key: string) { ... }
 
 /**
  * Generate a short incident code.

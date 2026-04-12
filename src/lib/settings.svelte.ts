@@ -26,8 +26,9 @@ type AppSettings = {
     titleLingerDuration: number;
     uiZoom: number;
     analyticsEnabled: boolean;
-    shareDocumentAnalytics: boolean;
-    shareDocumentKey: string;
+    // TODO(#191): re-enable once App Store is established
+    // shareDocumentAnalytics: boolean;
+    // shareDocumentKey: string;
     aiEnabled: boolean;
     showShortcutHints: boolean;
     showWordCount: boolean;
@@ -52,8 +53,9 @@ const DEFAULTS: AppSettings = {
     titleLingerDuration: 3000,
     uiZoom: 1,
     analyticsEnabled: true,
-    shareDocumentAnalytics: false,
-    shareDocumentKey: "",
+    // TODO(#191): re-enable once App Store is established
+    // shareDocumentAnalytics: false,
+    // shareDocumentKey: "",
     aiEnabled: false,
     showShortcutHints: true,
     showWordCount: true,

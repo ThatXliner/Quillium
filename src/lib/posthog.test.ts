@@ -24,10 +24,10 @@ vi.mock("$env/static/public", () => ({
     PUBLIC_POSTHOG_HOST: "",
 }));
 
-// Mock settings — start with sharing OFF (default)
+// Mock settings — document sharing is disabled (TODO #192: re-enable shareDocumentAnalytics)
 const mockSettings = vi.hoisted(() => ({
-    shareDocumentAnalytics: false,
-    shareDocumentKey: "",
+    // shareDocumentAnalytics: false,
+    // shareDocumentKey: "",
     analyticsEnabled: true,
 }));
 vi.mock("$lib/settings.svelte", () => ({
@@ -38,28 +38,23 @@ import {
     capture,
     DOCUMENT_CONTENT_SELECTOR,
     REDACTED_KEYS,
-    syncShareDocumentAnalytics,
+    // TODO(#191): re-enable when syncShareDocumentAnalytics is restored
+    // syncShareDocumentAnalytics,
 } from "$lib/posthog";
 
 describe("capture", () => {
     beforeEach(() => {
         mockCapture.mockClear();
-        mockSettings.shareDocumentAnalytics = false;
+        // TODO(#191): reset mockSettings.shareDocumentAnalytics = false when re-enabled
     });
 
-    it("strips redacted keys when shareDocumentAnalytics is false", () => {
+    it("strips redacted keys (document sharing is always off)", () => {
         capture("dictionary_synonym_replaced", { synonym: "happy", extra: 42 });
         expect(mockCapture).toHaveBeenCalledWith("dictionary_synonym_replaced", { extra: 42 });
     });
 
-    it("passes all properties when shareDocumentAnalytics is true", () => {
-        mockSettings.shareDocumentAnalytics = true;
-        capture("dictionary_synonym_replaced", { synonym: "happy", extra: 42 });
-        expect(mockCapture).toHaveBeenCalledWith("dictionary_synonym_replaced", {
-            synonym: "happy",
-            extra: 42,
-        });
-    });
+    // TODO(#191): restore this test when shareDocumentAnalytics is re-enabled
+    // it("passes all properties when shareDocumentAnalytics is true", () => { ... });
 
     it("does not mutate the original props object", () => {
         const props = { synonym: "happy", extra: 42 };
@@ -78,34 +73,5 @@ describe("capture", () => {
     });
 });
 
-describe("syncShareDocumentAnalytics", () => {
-    beforeEach(() => {
-        mockSetConfig.mockClear();
-        mockRegister.mockClear();
-        mockUnregister.mockClear();
-    });
-
-    it("clears masking and registers key when sharing with key", () => {
-        syncShareDocumentAnalytics(true, "BUG-123");
-        expect(mockSetConfig).toHaveBeenCalledWith({
-            session_recording: { console_log_recording_enabled: true },
-        });
-        expect(mockRegister).toHaveBeenCalledWith({ share_document_key: "BUG-123" });
-    });
-
-    it("sets masking and unregisters key when not sharing", () => {
-        syncShareDocumentAnalytics(false, "");
-        expect(mockSetConfig).toHaveBeenCalledWith({
-            session_recording: {
-                maskTextSelector: DOCUMENT_CONTENT_SELECTOR,
-                console_log_recording_enabled: true,
-            },
-        });
-        expect(mockUnregister).toHaveBeenCalledWith("share_document_key");
-    });
-
-    it("unregisters key when sharing but key is empty", () => {
-        syncShareDocumentAnalytics(true, "  ");
-        expect(mockUnregister).toHaveBeenCalledWith("share_document_key");
-    });
-});
+// TODO(#191): restore syncShareDocumentAnalytics tests when document sharing is re-enabled
+// describe("syncShareDocumentAnalytics", () => { ... });
