@@ -191,8 +191,7 @@ jobs:
           bun run tauri build \
             --config src-tauri/tauri.mas.conf.json \
             --bundles app \
-            --target universal-apple-darwin \
-            -- --no-default-features --features mas
+            --target universal-apple-darwin
 
       - name: Package as .pkg
         env:

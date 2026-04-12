@@ -228,6 +228,8 @@ onMount(() => {
         check()
             .then((update) => {
                 if (update) {
+                    const skipped = localStorage.getItem("quillium_skipped_update");
+                    if (skipped === update.version) return;
                     updateAvailable = true;
                     updateVersion = update.version;
                     posthog.capture("update_available", { version: update.version });
@@ -407,6 +409,7 @@ if (import.meta.env.DEV) {
         oninstall={installUpdate}
         ondismiss={() => {
             posthog.capture("update_dismissed", { version: updateVersion });
+            localStorage.setItem("quillium_skipped_update", updateVersion);
             updateAvailable = false;
             debugMasMode = null;
         }}
