@@ -37,6 +37,13 @@ if (typeof window !== "undefined") {
         // this can surface as an unhandled rejection in some Tauri webview
         // timing scenarios. Ignore it rather than showing a crash banner.
         if (err.message?.includes("effect_orphan")) return;
+        // WebKit surfaces failed fetch() calls as "Load failed" — typically from
+        // PostHog analytics or session recording when offline. Non-fatal:
+        // don't scare the user with a crash banner, but still report to PostHog.
+        if (err.message === "Load failed") {
+            posthog.captureException(err);
+            return;
+        }
         saveEmergencyBackup(`Unhandled promise rejection: ${err.message}`);
         saveEmergencySnapshot("Before crash (auto)");
         const stack = err.stack ?? err.message;
