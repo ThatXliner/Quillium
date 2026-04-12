@@ -103,26 +103,30 @@ describe("getSelection", () => {
         expect(props).not.toHaveProperty("original");
     });
 
-    it("sends document content and incident code when document analytics is on", () => {
+    // TODO(#191): restore "sends document content when document analytics is on" test
+    it("always shows privacy nudge regardless of shareDocumentAnalytics setting", () => {
         (appSettings as Record<string, unknown>).shareDocumentAnalytics = true;
         getSelection({ targetText: "brown fox...", document: doc });
-        expect(mockShowPrivacyNudge).not.toHaveBeenCalled();
+        expect(mockShowPrivacyNudge).toHaveBeenCalledOnce();
         expect(mockCapture).toHaveBeenCalledWith("ai_target_text_ellipsis_stripped", {
             incident_code: "QIR-TEST",
-            original: "brown fox...",
         });
+        // Must NOT contain document content even when setting is "on"
+        const props = mockCapture.mock.calls[0][1];
+        expect(props).not.toHaveProperty("original");
     });
 
-    it("redacts error message when document analytics is off", () => {
+    it("redacts error message regardless of shareDocumentAnalytics setting", () => {
         expect(() => getSelection({ targetText: "nonexistent", document: doc })).toThrow(
             "content redacted for privacy",
         );
     });
 
-    it("includes content in error message when document analytics is on", () => {
+    // TODO(#191): restore "includes content in error message when document analytics is on" test
+    it("always redacts error message even when shareDocumentAnalytics is true", () => {
         (appSettings as Record<string, unknown>).shareDocumentAnalytics = true;
         expect(() => getSelection({ targetText: "nonexistent", document: doc })).toThrow(
-            "nonexistent",
+            "content redacted for privacy",
         );
     });
 });
