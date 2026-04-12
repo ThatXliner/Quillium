@@ -12,3 +12,5 @@ playwright-report/
 test-results/
 tests/e2e/screenshots/
 .superpowers/
+src-tauri/embedded.provisionprofile
+src-tauri/capabilities/updater.json
