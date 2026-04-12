@@ -13,6 +13,9 @@ export default defineConfig(async () => ({
         __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
+        alias: {
+            "posthog-js": "posthog-js/dist/module.full.no-external",
+        },
         dedupe: ["@codemirror/state", "@codemirror/view"],
     },
 
