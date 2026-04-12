@@ -5,6 +5,7 @@ import { get } from "svelte/store";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { currentDraftId, editorView, lastPersistedEventId, lastSavedAt } from "$lib/stores";
+import posthog from "$lib/posthog";
 import {
     listDocuments,
     listDrafts,
@@ -182,6 +183,7 @@ async function handleRestore() {
     } catch (e) {
         confirmingRestoreId = null;
         console.error("Restore failed:", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
         return;
     }
     goToEditor();

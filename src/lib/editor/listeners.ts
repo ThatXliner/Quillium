@@ -253,7 +253,10 @@ async function doAppend(
                     preStateJson,
                     eventId,
                     "Before large deletion (auto)",
-                ).catch(console.error);
+                ).catch((e) => {
+                    console.error(e);
+                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                });
 
                 setTimeout(() => {
                     errorBanner.set({
@@ -287,7 +290,10 @@ async function doAppend(
                     preStateJson,
                     eventId,
                     "Before mass annotation removal (auto)",
-                ).catch(console.error);
+                ).catch((e) => {
+                    console.error(e);
+                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                });
 
                 setTimeout(() => {
                     errorBanner.set({
@@ -310,7 +316,10 @@ async function doAppend(
                     preStateJson,
                     eventId,
                     "Before nested annotation loss (auto)",
-                ).catch(console.error);
+                ).catch((e) => {
+                    console.error(e);
+                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                });
 
                 setTimeout(() => {
                     errorBanner.set({
@@ -355,12 +364,16 @@ async function doAppend(
 
         if (result.needsSnapshot) {
             const stateJson = JSON.stringify(update.state.toJSON(savedFields));
-            await createSnapshot(draftId, stateJson, result.eventId).catch(console.error);
+            await createSnapshot(draftId, stateJson, result.eventId).catch((e) => {
+                console.error(e);
+                posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+            });
         }
 
         saveStatus.set("saved");
     } catch (e) {
         console.error("[listeners] appendEvent failed:", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
         if (savingIndicatorTimer !== null) {
             clearTimeout(savingIndicatorTimer);
             savingIndicatorTimer = null;
@@ -399,7 +412,10 @@ async function doAppend(
                         currentDocumentTitle.set(title);
                     }
                 }
-                updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch(console.error);
+                updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch((e) => {
+                    console.error(e);
+                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                });
             } finally {
                 metaDebounceTimers.delete(docId);
             }

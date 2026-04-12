@@ -182,6 +182,7 @@ $effect(() => {
         .catch((e) => {
             if (cancelled) return;
             console.error("get_api_key error:", e);
+            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
             apiKey = "";
         })
         .finally(() => {
@@ -265,6 +266,7 @@ async function saveApiKey() {
         saveStatus = "error";
         saveError = String(e);
         console.error("saveApiKey failed:", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
     }
     saveTimer = setTimeout(() => {
         saveStatus = "idle";

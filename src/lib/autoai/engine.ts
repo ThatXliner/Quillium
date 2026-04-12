@@ -12,6 +12,7 @@ import { get, writable } from "svelte/store";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { documentContent, editorView } from "$lib/stores";
+import posthog from "$lib/posthog";
 import { createModel } from "$lib/ai/provider";
 import { aiSettings, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
 import { setAiProcessing, getAiAbortSignal } from "$lib/ai/settings.svelte";
@@ -202,6 +203,7 @@ async function runReview(content: string, manual = false) {
     } catch (e) {
         if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
     } finally {
         autoAIPhase.set("idle");
         setAiProcessing(false);

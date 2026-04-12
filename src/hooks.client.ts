@@ -1,6 +1,6 @@
 import posthog from "$lib/posthog";
 import type { HandleClientError } from "@sveltejs/kit";
-import { saveEmergencyBackup, readBackup } from "$lib/errorGuard";
+import { saveEmergencyBackup, saveEmergencySnapshot, readBackup } from "$lib/errorGuard";
 import { errorBanner } from "$lib/stores";
 
 // ── Crash safety net ─────────────────────────────────────────────
@@ -20,6 +20,7 @@ function showCrashBanner(message: string, details?: string) {
 if (typeof window !== "undefined") {
     window.addEventListener("error", (event) => {
         saveEmergencyBackup(`Uncaught error: ${event.message}`);
+        saveEmergencySnapshot("Before crash (auto)");
         const err = event.error instanceof Error ? event.error : new Error(event.message);
         const stack = err.stack ?? err.message;
         const details = stack.startsWith(err.name)
@@ -37,6 +38,7 @@ if (typeof window !== "undefined") {
         // timing scenarios. Ignore it rather than showing a crash banner.
         if (err.message?.includes("effect_orphan")) return;
         saveEmergencyBackup(`Unhandled promise rejection: ${err.message}`);
+        saveEmergencySnapshot("Before crash (auto)");
         const stack = err.stack ?? err.message;
         const details = stack.startsWith(err.name)
             ? stack
@@ -50,6 +52,7 @@ if (typeof window !== "undefined") {
 export const handleError: HandleClientError = async ({ error, status, message }) => {
     const err = error instanceof Error ? error : new Error(message);
     saveEmergencyBackup(`App error (${status}): ${err.message}`);
+    saveEmergencySnapshot("Before crash (auto)");
     const stack = err.stack ?? `${err.message} (status ${status})`;
     const details = stack.startsWith(err.name) ? stack : `${err.name}: ${err.message}\n${stack}`;
     showCrashBanner("Something went wrong. Your work has been backed up.", details);

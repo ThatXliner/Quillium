@@ -30,8 +30,17 @@
  */
 
 import { get } from "svelte/store";
-import { documentContent, currentDocumentTitle } from "./stores";
+import {
+    documentContent,
+    currentDocumentTitle,
+    editorView,
+    currentDraftId,
+    lastPersistedEventId,
+} from "./stores";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
+import { savedFields } from "$lib/editor/extensions";
+import { createNamedSnapshot } from "$lib/db";
+import posthog from "$lib/posthog";
 
 export type BackupEntry = {
     timestamp: number;
@@ -221,6 +230,28 @@ export function saveEmergencyBackup(reason: string): boolean {
         documentText: text,
         reason,
     });
+}
+
+/**
+ * Creates a version-history snapshot from the current editor state so
+ * the user can restore from it via the version history panel.
+ * Called alongside saveEmergencyBackup from crash handlers.
+ */
+export function saveEmergencySnapshot(label: string): void {
+    const view = get(editorView);
+    const draftId = get(currentDraftId);
+    const eventId = get(lastPersistedEventId);
+    if (!view || !draftId) return;
+
+    try {
+        const stateJson = JSON.stringify(view.state.toJSON(savedFields));
+        createNamedSnapshot(draftId, stateJson, eventId, label).catch((e) => {
+            console.error(e);
+            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        });
+    } catch {
+        // Best-effort — don't let snapshot failures mask the original crash
+    }
 }
 
 // Clean up stale auto-backup key from previous versions

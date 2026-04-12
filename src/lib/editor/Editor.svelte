@@ -113,12 +113,18 @@ async function suggestTitle() {
             if (docId) {
                 const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
                 updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]").catch(
-                    console.error,
+                    (e) => {
+                        console.error(e);
+                        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                    },
                 );
             }
         }
     } catch (e) {
-        if (!abortSignal.aborted) console.error("[suggestTitle]", e);
+        if (!abortSignal.aborted) {
+            console.error("[suggestTitle]", e);
+            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        }
     } finally {
         titleSuggesting = false;
         setAiProcessing(false);
@@ -135,9 +141,10 @@ async function commitTitle() {
     if (docId) {
         const text = $editorView?.state.doc.toString() ?? "";
         const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-        updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]").catch(
-            console.error,
-        );
+        updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]").catch((e) => {
+            console.error(e);
+            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        });
     }
 }
 
