@@ -1,0 +1,6 @@
+{
+  "identifier": "updater-capability",
+  "platforms": ["macOS", "windows", "linux"],
+  "windows": ["main"],
+  "permissions": ["updater:default", "process:allow-restart"]
+}

@@ -11,6 +11,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
+    "tauri:mas": "VITE_MAS=true tauri build --bundles app --target universal-apple-darwin -- --no-default-features --features mas",
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "playwright test",

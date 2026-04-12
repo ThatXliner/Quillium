@@ -1,0 +1,121 @@
+name: Build Mac App Store Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-mas:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Universal binary: ARM + Intel for widest MAS compatibility
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: bun ci
+
+      # Same keychain import pattern as build.yml, but with MAS-specific certs.
+      # You need two certs from the Apple Developer portal:
+      #   - "Apple Distribution" (signs the .app)
+      #   - "Mac Installer Distribution" (signs the .pkg for submission)
+      # Export each as a .p12 and base64-encode: `base64 -i cert.p12 | pbcopy`
+      - name: Import MAS certificates
+        env:
+          APPLE_MAS_CERTIFICATE: ${{ secrets.APPLE_MAS_CERTIFICATE }}
+          APPLE_MAS_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_MAS_CERTIFICATE_PASSWORD }}
+          APPLE_MAS_INSTALLER_CERTIFICATE: ${{ secrets.APPLE_MAS_INSTALLER_CERTIFICATE }}
+          APPLE_MAS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_MAS_INSTALLER_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo $APPLE_MAS_CERTIFICATE | base64 --decode > mas-app.p12
+          echo $APPLE_MAS_INSTALLER_CERTIFICATE | base64 --decode > mas-installer.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" mas.keychain
+          security default-keychain -s mas.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" mas.keychain
+          security set-keychain-settings -t 3600 -u mas.keychain
+          security import mas-app.p12 -k mas.keychain -P "$APPLE_MAS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import mas-installer.p12 -k mas.keychain -P "$APPLE_MAS_INSTALLER_CERTIFICATE_PASSWORD" -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" mas.keychain
+          security find-identity -v mas.keychain
+
+      - name: Resolve signing identities
+        run: |
+          APP_CERT=$(security find-identity -v -p codesigning mas.keychain | grep "Apple Distribution" | awk -F'"' '{print $2}' | head -1)
+          INSTALLER_CERT=$(security find-identity -v mas.keychain | grep "Mac Installer Distribution" | awk -F'"' '{print $2}' | head -1)
+          echo "APPLE_SIGNING_IDENTITY=$APP_CERT" >> $GITHUB_ENV
+          echo "APPLE_INSTALLER_SIGNING_IDENTITY=$INSTALLER_CERT" >> $GITHUB_ENV
+          echo "App cert: $APP_CERT"
+          echo "Installer cert: $INSTALLER_CERT"
+
+      # Download the provisioning profile from Apple Developer portal:
+      #   Certificates, IDs & Profiles → Profiles → + → Mac App Store Connect
+      # base64-encode it: `base64 -i profile.provisionprofile | pbcopy`
+      # Store as APPLE_MAS_PROVISIONING_PROFILE secret.
+      # Tauri embeds it via the `files` entry in tauri.conf.json.
+      - name: Install provisioning profile
+        env:
+          APPLE_MAS_PROVISIONING_PROFILE: ${{ secrets.APPLE_MAS_PROVISIONING_PROFILE }}
+        run: |
+          echo $APPLE_MAS_PROVISIONING_PROFILE | base64 --decode > src-tauri/embedded.provisionprofile
+
+      - name: Build universal MAS app
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          VITE_MAS: "true"
+          PUBLIC_POSTHOG_KEY: ${{ vars.PUBLIC_POSTHOG_KEY }}
+          PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
+        run: |
+          bun run tauri build \
+            --bundles app \
+            --target universal-apple-darwin \
+            -- --no-default-features --features mas
+
+      - name: Package as .pkg
+        env:
+          APPLE_INSTALLER_SIGNING_IDENTITY: ${{ env.APPLE_INSTALLER_SIGNING_IDENTITY }}
+        run: |
+          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/Quillium.app"
+          xcrun productbuild \
+            --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
+            --component "$APP_PATH" /Applications \
+            Quillium.pkg
+
+      # App Store Connect API key setup:
+      #   appstoreconnect.apple.com → Users & Access → Integrations → Keys → +
+      #   Role: Developer (minimum). Download the .p8 — you only get one chance.
+      #   APPLE_API_KEY_ID: the Key ID shown in the list
+      #   APPLE_API_KEY_ISSUER: the Issuer ID shown at the top of the Keys page
+      #   APPLE_API_KEY_CONTENT: full contents of the .p8 file
+      - name: Upload to App Store Connect
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_ISSUER: ${{ secrets.APPLE_API_KEY_ISSUER }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APPLE_API_KEY_CONTENT" > ~/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+          xcrun altool --upload-app \
+            --type macos \
+            --file Quillium.pkg \
+            --apiKey "$APPLE_API_KEY_ID" \
+            --apiIssuer "$APPLE_API_KEY_ISSUER"
