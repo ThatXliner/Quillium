@@ -40,6 +40,12 @@ import { appSettings, applySettings, persistSettings } from "$lib/settings.svelt
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { APP_STORE_URL } from "$lib/constants";
+
+// On MAS builds the updater/process plugins are not registered, but we still
+// check for updates and show the banner — clicking it opens the App Store instead.
+const MAS_BUILD = import.meta.env.VITE_MAS === "true";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
@@ -62,6 +68,9 @@ let updateAvailable = $state(false);
 let updateVersion = $state("");
 let updateInstalling = $state(false);
 let updateReady = $state(false);
+// DEV only: allows the debug panel to simulate the banner in either mode.
+let debugMasMode = $state<boolean | null>(null);
+let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -183,6 +192,11 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 async function installUpdate() {
+    if (effectiveMasMode) {
+        posthog.capture("update_app_store_opened", { version: updateVersion });
+        await openUrl(APP_STORE_URL);
+        return;
+    }
     updateInstalling = true;
     try {
         if (updateReady) {
@@ -209,6 +223,7 @@ onMount(() => {
     showTutorialOnFirstVisit();
 
     // Check for updates silently in the background.
+    // On MAS builds the banner redirects to the App Store instead of self-updating.
     if (appSettings.checkForUpdates) {
         check()
             .then((update) => {
@@ -238,9 +253,19 @@ onMount(() => {
         if (appSettings.aiEnabled && autoAISettings.enabled) triggerManualReview();
     }
 
+    function handleShowUpdateBanner(e: Event) {
+        const { version: v, mas } = (e as CustomEvent<{ version: string; mas: boolean }>).detail;
+        updateVersion = v;
+        updateAvailable = true;
+        updateReady = false;
+        updateInstalling = false;
+        debugMasMode = mas;
+    }
+
     window.addEventListener("quillium:restore-backup", handleRestoreBackup);
     window.addEventListener("quillium:manual-review", handleManualReviewEvent);
     window.addEventListener("quillium:show-changelog", forceShowChangelog);
+    window.addEventListener("quillium:show-update-banner", handleShowUpdateBanner);
 
     // Listen for Tauri menu events
     let destroyed = false;
@@ -263,6 +288,7 @@ onMount(() => {
         window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
         window.removeEventListener("quillium:show-changelog", forceShowChangelog);
+        window.removeEventListener("quillium:show-update-banner", handleShowUpdateBanner);
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -377,8 +403,13 @@ if (import.meta.env.DEV) {
         version={updateVersion}
         installing={updateInstalling}
         ready={updateReady}
+        masMode={effectiveMasMode}
         oninstall={installUpdate}
-        ondismiss={() => { posthog.capture("update_dismissed", { version: updateVersion }); updateAvailable = false; }}
+        ondismiss={() => {
+            posthog.capture("update_dismissed", { version: updateVersion });
+            updateAvailable = false;
+            debugMasMode = null;
+        }}
     />
 {/if}
 

@@ -20,7 +20,14 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost https:",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "font-src": "'self' data:",
+        "style-src": "'unsafe-inline' 'self'",
+        "script-src": "'self'"
+      }
     }
   },
   "plugins": {
@@ -42,7 +49,11 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB"
+      "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB",
+      "entitlements": "Entitlements.mac.plist",
+      "files": {
+        "embedded.provisionprofile": "embedded.provisionprofile"
+      }
     },
     "createUpdaterArtifacts": true
   }
