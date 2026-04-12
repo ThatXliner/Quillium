@@ -181,6 +181,17 @@ function triggerChangelog() {
     });
 }
 
+function triggerUpdateBanner(mas: boolean) {
+    startCountdown(mas ? "update-mas" : "update", () => {
+        close();
+        window.dispatchEvent(
+            new CustomEvent("quillium:show-update-banner", {
+                detail: { version: "99.0.0", mas },
+            }),
+        );
+    });
+}
+
 function triggerCrashBanner() {
     startCountdown("crash", () => {
         close();
@@ -364,6 +375,16 @@ function handleKeydown(e: KeyboardEvent) {
                 disabled={pendingSimulation !== null}
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "changelog" ? `Firing in ${countdownSeconds}s…` : "Changelog"}</button>
+            <button
+                onclick={() => triggerUpdateBanner(false)}
+                disabled={pendingSimulation !== null}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
+            >{pendingSimulation === "update" ? `Firing in ${countdownSeconds}s…` : "Update banner"}</button>
+            <button
+                onclick={() => triggerUpdateBanner(true)}
+                disabled={pendingSimulation !== null}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
+            >{pendingSimulation === "update-mas" ? `Firing in ${countdownSeconds}s…` : "Update banner (MAS)"}</button>
         </div>
 
         <!-- Footer -->
