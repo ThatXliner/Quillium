@@ -58,6 +58,7 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           cache-on-failure: true
+          prefix-key: "v1"
 
       - name: Install frontend dependencies
         run: bun ci
@@ -141,6 +142,7 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           cache-on-failure: true
+          prefix-key: "v1-mas"
 
       - name: Install frontend dependencies
         run: bun ci
