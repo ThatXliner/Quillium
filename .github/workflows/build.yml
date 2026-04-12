@@ -70,6 +70,13 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security find-identity -v -p codesigning build.keychain
 
+      - name: Install provisioning profile
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_MAS_PROVISIONING_PROFILE: ${{ secrets.APPLE_MAS_PROVISIONING_PROFILE }}
+        run: |
+          echo "$APPLE_MAS_PROVISIONING_PROFILE" | base64 --decode > src-tauri/embedded.provisionprofile
+
       - name: Verify Certificate
         if: matrix.platform == 'macos-latest'
         run: |
