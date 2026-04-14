@@ -56,8 +56,9 @@ src/
 │   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
 │   │   └── utils.ts           # Shared AI utilities
 │   ├── autoai/
-│   │   ├── AutoAIFace.svelte    # Animated face SVG component (purely presentational)
-│   │   ├── AutoAIWidget.svelte  # Bubble + expanded panel UI, face state machine
+│   │   ├── AutoAIFace.svelte         # Animated face SVG component (purely presentational)
+│   │   ├── AutoAIWidget.svelte       # Bubble + expanded panel UI, face state machine
+│   │   ├── faceAnimation.svelte.ts   # Eye tracking + sleep/wake state (extracted from widget)
 │   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
 │   │   └── settings.svelte.ts   # AutoAI settings store (reactive, persisted)
 │   ├── db/
@@ -687,8 +688,9 @@ AutoAI is a background AI review system that watches document content and create
 |---|---|
 | `src/lib/autoai/settings.svelte.ts` | Settings store, type definitions, localStorage persistence |
 | `src/lib/autoai/engine.ts` | Review orchestration, AI calls (`generateObject`), annotation dispatch |
-| `src/lib/autoai/AutoAIWidget.svelte` | Bubble + expanded settings panel UI, face state machine, sleep/wake/tracking timers |
+| `src/lib/autoai/AutoAIWidget.svelte` | Bubble + expanded settings panel UI, wires settings + engine + face animation |
 | `src/lib/autoai/AutoAIFace.svelte` | Purely presentational animated face SVG component |
+| `src/lib/autoai/faceAnimation.svelte.ts` | Factory owning eye-offset, tracking, and sleep/wake state (consumed by the widget) |
 
 ### Settings
 
@@ -763,13 +765,13 @@ Closes on outside click. Controls are dimmed at 40% opacity when no API key is s
 | `reviewing` | Narrow squint, scanning left-right | `autoAIReviewing` is true |
 | `thinking` | `>_<` face with head bob | `autoAIThinking` is true |
 | `waking` | Eyes stretch open (yawn) | Within 1600ms of waking from sleep |
-| `sleeping` | Horizontal bars + floating zzz | 60s idle with no interactions |
-| `tracking` | Bar eyes offset toward caret/cursor | Within 1s of last mouse/caret move |
+| `sleeping` | Horizontal bars + floating zzz | 30s idle with no interactions |
+| `tracking` | Bar eyes offset toward caret/cursor | Engaged after 1s of sustained typing (then within 2s linger after the last caret/edit); mouse also tracks within 180px of the widget |
 | `idle` | Bar eyes, synchronized blink every ~3s | Default |
 
-**Eye tracking**: `computeEyeOffset()` maps the distance and direction from the widget center to the target (caret or mouse) into a ±4px offset clamped by `dist / 80`. The caret position is broadcast via the `quillium:caret-moved` CustomEvent (emitted by `listeners.ts`, throttled to one dispatch per `requestAnimationFrame` per editor view via a `WeakMap`).
+**Eye tracking**: `computeEyeOffset()` maps the distance and direction from the widget center to the target into a ±4px offset clamped by `dist / 80`. The caret position is broadcast via the `quillium:caret-moved` CustomEvent (emitted by `listeners.ts` on `selectionSet || docChanged`, throttled to one dispatch per `requestAnimationFrame` per editor view via a `WeakMap`). Caret/typing tracking is gated by a sustained-typing check: the first caret event opens a streak, each subsequent event extends it, and the streak is broken by 500ms of silence. Tracking only engages once the streak has lasted `SUSTAINED_TYPING_MS` (1s). This prevents a single keystroke or a short correction from snapping the eyes into tracking mode. Mouse tracking fires when either (a) caret tracking is currently active (i.e. within the 2s linger window after the last caret/typing event that crossed the sustained-typing gate) or (b) the cursor is within `PROXIMITY_RADIUS_PX` (180px) of the widget center, which gives an "it noticed you" beat as you approach the bubble. Outside both conditions the widget ignores `mousemove` entirely. When tracking ends the face transitions to `idle`; the derived `tx` resolves to `translate(0,0)` in any non-tracking state, and a 0.35s `transition: transform` on the `.tracker` wrapper group interpolates the eye offset smoothly back to the center, so the eyes glide (rather than snap) to the middle before the blink animation resumes.
 
-**Sleep/wake**: After 60s of no `mousemove`, `keydown`, or caret events, the face sleeps. Any interaction triggers a 1600ms waking animation before returning to idle. Opening the panel silently clears the sleep state (no waking animation, since the bubble is hidden while the panel is open). The sleep timer reschedules itself if it fires while the panel is open or a review is active.
+**Sleep/wake**: After 30s of no `keydown` or caret events, the face sleeps. Any interaction triggers a 1600ms waking animation before returning to idle. Opening the panel silently clears the sleep state (no waking animation, since the bubble is hidden while the panel is open). The sleep timer reschedules itself if it fires while the panel is open or a review is active.
 
 ### Keybinding
 

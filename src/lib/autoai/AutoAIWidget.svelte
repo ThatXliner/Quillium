@@ -10,38 +10,24 @@
     two overlapping opacity layers, bubble fades out / panel fades in (+80ms delay).
 -->
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
 import { hasApiKey } from "$lib/ai/settings.svelte";
+import posthog from "$lib/posthog";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { onDestroy, onMount } from "svelte";
+import { get } from "svelte/store";
+import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
+import { autoAIPhase, startAutoAI, stopAutoAI, triggerManualReview } from "./engine";
+import { createFaceAnimation } from "./faceAnimation.svelte";
 import {
-    autoAISettings,
-    persistAutoAISettings,
     type AutoAIAnnotationType,
     type AutoAIConservativeness,
     type AutoAIMode,
+    autoAISettings,
+    persistAutoAISettings,
 } from "./settings.svelte";
-import { get } from "svelte/store";
-import { startAutoAI, stopAutoAI, triggerManualReview, autoAIPhase } from "./engine";
-import posthog from "$lib/posthog";
-import AutoAIFace, { type FaceState } from "./AutoAIFace.svelte";
 
 let open = $state(false);
 let editingName = $state(false);
-
-// ── Face state ──
-let eyeOffsetX = $state(0);
-let eyeOffsetY = $state(0);
-let isTracking = $state(false);
-let isSleeping = $state(false);
-let isWaking = $state(false);
-let trackingTimer: ReturnType<typeof setTimeout> | null = null;
-let sleepTimer: ReturnType<typeof setTimeout> | null = null;
-let wakeTimer: ReturnType<typeof setTimeout> | null = null;
-let eyeRafPending = false;
-let pendingEyeTarget: { x: number; y: number } | null = null;
-const SLEEP_AFTER_MS = 60_000;
-const TRACKING_LINGER_MS = 1_000;
-const WAKE_DURATION_MS = 1600;
 let nameInputEl = $state<HTMLInputElement | null>(null);
 let widgetEl = $state<HTMLDivElement | null>(null);
 // Derived directly from the settings object so external mutations (e.g.
@@ -52,6 +38,15 @@ const autoAIRunning = $derived(autoAISettings.enabled);
 const noApiKey = $derived(!hasApiKey());
 const locked = $derived(noApiKey || !autoAIRunning);
 
+// Playful face behavior (eye tracking, sleep/wake) lives in faceAnimation.
+// It only cares about panel-open state and whether the engine is idle
+// enough to allow sleep — the rest of the logic is self-contained.
+const face = createFaceAnimation({
+    getWidgetEl: () => widgetEl,
+    getIsPanelOpen: () => open,
+    getCanSleep: () => autoAIRunning && !noApiKey && get(autoAIPhase) === "idle",
+});
+
 const faceState = $derived<FaceState>(
     !hasApiKey()
         ? "disabled"
@@ -59,11 +54,11 @@ const faceState = $derived<FaceState>(
           ? "reviewing"
           : $autoAIPhase === "thinking"
             ? "thinking"
-            : isWaking
+            : face.isWaking
               ? "waking"
-              : isSleeping
+              : face.isSleeping
                 ? "sleeping"
-                : isTracking
+                : face.isTracking
                   ? "tracking"
                   : "idle",
 );
@@ -94,21 +89,8 @@ function handleFocusSlider(e: Event) {
 function toggleOpen() {
     open = !open;
     editingName = false;
-    if (open) {
-        // Wake silently — the bubble is hidden while the panel is open,
-        // so there's no point playing the waking animation.
-        if (isSleeping) {
-            isSleeping = false;
-            if (wakeTimer !== null) {
-                clearTimeout(wakeTimer);
-                wakeTimer = null;
-            }
-            isWaking = false;
-        }
-    } else {
-        // Panel closed — restart the sleep timer as a fresh interaction.
-        resetSleepTimer();
-    }
+    if (open) face.wakeSilently();
+    else face.resetSleep();
 }
 
 function toggleEnabled() {
@@ -183,118 +165,19 @@ function handleDocClick(e: MouseEvent) {
     if (!open) return;
     if (widgetEl && !widgetEl.contains(e.target as Node)) {
         open = false;
-        resetSleepTimer();
+        face.resetSleep();
     }
-}
-
-function flushEyeOffset() {
-    eyeRafPending = false;
-    if (!pendingEyeTarget || !widgetEl) return;
-    const { x: targetX, y: targetY } = pendingEyeTarget;
-    pendingEyeTarget = null;
-    // getBoundingClientRect() is called at most once per animation frame,
-    // so multiple pointer/caret events per frame collapse into a single layout read.
-    const rect = widgetEl.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = targetX - cx;
-    const dy = targetY - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    const scale = Math.min(1, dist / 80);
-    eyeOffsetX = Number.parseFloat(((dx / dist) * 4 * scale).toFixed(1));
-    eyeOffsetY = Number.parseFloat(((dy / dist) * 4 * scale).toFixed(1));
-}
-
-function scheduleEyeOffset(x: number, y: number) {
-    pendingEyeTarget = { x, y };
-    if (!eyeRafPending) {
-        eyeRafPending = true;
-        requestAnimationFrame(flushEyeOffset);
-    }
-}
-
-function handleMouseMove(e: MouseEvent) {
-    if (open) return;
-    if (isSleeping) {
-        triggerWake();
-        return;
-    }
-    isTracking = true;
-    scheduleEyeOffset(e.clientX, e.clientY);
-    resetTrackingTimer();
-    resetSleepTimer();
-}
-
-function handleCaretMoved(e: Event) {
-    const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
-    if (open) return;
-    if (isSleeping) {
-        triggerWake();
-        return;
-    }
-    isTracking = true;
-    scheduleEyeOffset(x, y);
-    resetTrackingTimer();
-    resetSleepTimer();
-}
-
-function resetTrackingTimer() {
-    if (trackingTimer !== null) clearTimeout(trackingTimer);
-    trackingTimer = setTimeout(() => {
-        isTracking = false;
-        trackingTimer = null;
-    }, TRACKING_LINGER_MS);
-}
-
-function resetSleepTimer() {
-    if (sleepTimer !== null) clearTimeout(sleepTimer);
-    sleepTimer = setTimeout(() => {
-        sleepTimer = null;
-        if (open || get(autoAIPhase) !== "idle") {
-            // Busy or panel is open — reschedule so we don't miss the transition.
-            resetSleepTimer();
-            return;
-        }
-        if (autoAIRunning && !noApiKey) {
-            isSleeping = true;
-        }
-    }, SLEEP_AFTER_MS);
-}
-
-function triggerWake() {
-    if (!isSleeping) return;
-    isSleeping = false;
-    isWaking = true;
-    if (wakeTimer !== null) clearTimeout(wakeTimer);
-    wakeTimer = setTimeout(() => {
-        isWaking = false;
-        wakeTimer = null;
-    }, WAKE_DURATION_MS);
-    resetSleepTimer();
-}
-
-function handleAnyInteraction() {
-    if (isSleeping) triggerWake();
-    else resetSleepTimer();
 }
 
 onMount(() => {
     document.addEventListener("mousedown", handleDocClick);
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("keydown", handleAnyInteraction);
-    window.addEventListener("quillium:caret-moved", handleCaretMoved);
-    resetSleepTimer();
+    face.start();
     if (autoAISettings.enabled) startAutoAI();
 });
 
 onDestroy(() => {
     document.removeEventListener("mousedown", handleDocClick);
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("keydown", handleAnyInteraction);
-    window.removeEventListener("quillium:caret-moved", handleCaretMoved);
-    if (trackingTimer !== null) clearTimeout(trackingTimer);
-    if (sleepTimer !== null) clearTimeout(sleepTimer);
-    if (wakeTimer !== null) clearTimeout(wakeTimer);
+    face.stop();
     stopAutoAI();
 });
 
@@ -326,8 +209,8 @@ const annotationPills = [
         >
             <AutoAIFace
                 state={faceState}
-                eyeOffsetX={eyeOffsetX}
-                eyeOffsetY={eyeOffsetY}
+                eyeOffsetX={face.eyeOffsetX}
+                eyeOffsetY={face.eyeOffsetY}
             />
         </button>
     </div>

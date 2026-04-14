@@ -16,7 +16,14 @@ interface Props {
 
 let { state, eyeOffsetX = 0, eyeOffsetY = 0 }: Props = $props();
 
-const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(1)}px)`);
+// Tracking uses the live offset; idle recenters to 0,0 so the eyes settle
+// back to the middle before the blink animation plays. The CSS transition
+// on `.tracker` smooths the recenter so it glides rather than snapping.
+const tx = $derived(
+    state === "tracking"
+        ? `translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(1)}px)`
+        : "translate(0px, 0px)",
+);
 </script>
 
 <!-- aria-hidden: face is decorative; aria-label lives on the parent button -->
@@ -67,13 +74,13 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
         <!-- idle / tracking: vertical bar eyes, offset by eyeOffsetX/Y.
              The tracking translate lives on a <g> wrapper so it doesn't
              conflict with the blink scaleY animation on the inner <rect>. -->
-        <g style="transform: {tx}">
+        <g class="tracker {state === 'tracking' ? 'live' : ''}" style="transform: {tx}">
             <rect
                 class="bar-eye {state === 'idle' ? 'blink' : ''}"
                 x="9"  y="7" width="4" height="14" rx="2" fill="#5c4a2a"
             />
         </g>
-        <g style="transform: {tx}">
+        <g class="tracker {state === 'tracking' ? 'live' : ''}" style="transform: {tx}">
             <rect
                 class="bar-eye {state === 'idle' ? 'blink' : ''}"
                 x="25" y="7" width="4" height="14" rx="2" fill="#5c4a2a"
@@ -84,6 +91,12 @@ const tx = $derived(`translate(${eyeOffsetX.toFixed(1)}px, ${eyeOffsetY.toFixed(
 
 <style>
     /* ── Shared ── */
+    .tracker {
+        transition: transform 0.35s ease-out;
+    }
+    .tracker.live {
+        transition: none;
+    }
     .eye-v {
         stroke: #5c4a2a;
         stroke-width: 2.8;
