@@ -311,6 +311,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let db_path = app
                 .path()
@@ -360,12 +362,32 @@ pub fn run() {
                 .quit()
                 .build()?;
 
+            let export_submenu = SubmenuBuilder::new(app, "Export")
+                .item(
+                    &MenuItemBuilder::with_id("export-txt", "Plain Text (.txt)")
+                        .build(app)?,
+                )
+                .item(
+                    &MenuItemBuilder::with_id("export-txt-json", "Text + Annotations (.txt)")
+                        .build(app)?,
+                )
+                .item(
+                    &MenuItemBuilder::with_id("export-json", "JSON (.json)")
+                        .build(app)?,
+                )
+                .item(
+                    &MenuItemBuilder::with_id("export-md", "Markdown (.md)")
+                        .build(app)?,
+                )
+                .build()?;
+
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(
                     &MenuItemBuilder::with_id("library", "Library")
                         .accelerator("CmdOrCtrl+O")
                         .build(app)?,
                 )
+                .item(&export_submenu)
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -401,7 +423,8 @@ pub fn run() {
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().as_ref();
                 match id {
-                    "settings" | "history" | "library" | "licenses" => {
+                    "settings" | "history" | "library" | "licenses"
+                    | "export-txt" | "export-txt-json" | "export-json" | "export-md" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.emit(&format!("menu:{id}"), ());
                         }

@@ -284,6 +284,22 @@ onMount(() => {
     listen("menu:licenses", () => {
         if (!destroyed) licensesOpen = !licensesOpen;
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-txt", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "txt");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-txt-json", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "txt+json");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-json", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "json");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-md", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "md");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
 
     return () => {
         destroyed = true;
