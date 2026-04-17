@@ -10,6 +10,7 @@
 import { io, type Socket } from "socket.io-client";
 import { getSession } from "$lib/auth/auth.svelte";
 import { PUBLIC_RELAY_URL } from "$env/static/public";
+import { collabState } from "./store";
 
 const RELAY_URL = PUBLIC_RELAY_URL;
 
@@ -55,6 +56,8 @@ export async function connectToCollab(
         throw new Error("Not authenticated");
     }
 
+    collabState.set("connecting");
+
     // Create Socket.io connection with auth
     const newSocket = io(RELAY_URL, {
         auth: {
@@ -71,12 +74,14 @@ export async function connectToCollab(
             console.log("[collab] Connected to relay, version:", data.version);
             socket = newSocket;
             currentDocId = docId;
+            collabState.set("connected");
             resolve({ socket: newSocket, initialState: data });
         });
 
         newSocket.on("connect_error", (error) => {
             console.error("[collab] Connection error:", error.message);
             newSocket.close();
+            collabState.set("error");
             reject(new Error(`Failed to connect to relay: ${error.message}`));
         });
 
@@ -85,6 +90,7 @@ export async function connectToCollab(
             if (socket === newSocket) {
                 socket = null;
                 currentDocId = null;
+                collabState.set("disconnected");
             }
         });
     });
@@ -99,6 +105,7 @@ export function disconnectCollab(): void {
         socket = null;
         currentDocId = null;
     }
+    collabState.set("disconnected");
 }
 
 /**

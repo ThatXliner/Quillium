@@ -38,8 +38,8 @@ export function collabPushPull(socket: Socket) {
             private destroyed = false;
 
             constructor(private view: EditorView) {
-                // Set up Socket.io event handler for receiving updates
-                socket.on("pullUpdates", (data: { updates: SerializedUpdate[] }) => {
+                // Set up Socket.io event handler for receiving broadcast updates from other clients
+                socket.on("updates", (data: { updates: SerializedUpdate[] }) => {
                     this.handlePullResponse(data.updates);
                 });
 
@@ -69,11 +69,11 @@ export function collabPushPull(socket: Socket) {
                             clientID: u.clientID,
                         })),
                     },
-                    (response: { ok: boolean }) => {
+                    (response: { version?: number; error?: string }) => {
                         this.pushing = false;
-                        if (!response.ok) {
-                            // Stale base version -- pull first, then retry
-                            console.log("[collab] Push rejected, pulling first");
+                        if (response.error) {
+                            // Stale base version or other error -- pull first, then retry
+                            console.log("[collab] Push rejected:", response.error);
                             this.pullUpdates();
                         } else {
                             // Check for more accumulated updates
@@ -115,7 +115,7 @@ export function collabPushPull(socket: Socket) {
 
             destroy() {
                 this.destroyed = true;
-                socket.off("pullUpdates");
+                socket.off("updates");
             }
         },
     );

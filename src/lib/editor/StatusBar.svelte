@@ -23,6 +23,7 @@ import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import { collabState } from "$lib/collab";
 import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
@@ -114,14 +115,33 @@ $effect(() => {
     onmouseleave={onMouseLeave}
 >
     <div class="flex gap-4 items-center py-2 px-8 min-w-0">
-        <!-- Save status (pinned left) -->
+        <!-- Save status (pinned left) -- shows collab state when active, otherwise save state -->
         <div class="flex items-center gap-2 shrink-0">
-            <div
-                class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
-            ></div>
-            <span class="text-sm text-black/90"
-                >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
-            >
+            {#if $collabState !== "disconnected"}
+                <div
+                    class={`w-2 h-2 rounded-full ${
+                        $collabState === "connected"
+                            ? "bg-green-400"
+                            : $collabState === "error"
+                              ? "bg-red-400"
+                              : "bg-yellow-400"
+                    }`}
+                ></div>
+                <span class="text-sm text-black/90"
+                    >{$collabState === "connected"
+                        ? "Synced"
+                        : $collabState === "error"
+                          ? "Disconnected"
+                          : "Connecting..."}</span
+                >
+            {:else}
+                <div
+                    class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
+                ></div>
+                <span class="text-sm text-black/90"
+                    >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
+                >
+            {/if}
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
         <!-- Middle buttons (scrollable) -->

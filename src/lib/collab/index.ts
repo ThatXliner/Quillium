@@ -20,6 +20,7 @@ import { supabase } from "$lib/auth/supabase";
 // Re-exports
 export { collabCompartment } from "./collabPlugin";
 export { relayConfigured, getSocket, connectToCollab, disconnectCollab } from "./socket";
+export { collabState } from "./store";
 export * from "./types";
 export * from "./protocol";
 
