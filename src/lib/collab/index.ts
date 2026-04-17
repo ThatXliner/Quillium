@@ -100,15 +100,17 @@ export async function enableCollab(
         authoritativeContent = relayDoc;
     }
 
-    // Force editor to the authoritative content AND enable collab in a single transaction.
-    // This ensures @codemirror/collab's v0 baseline matches the relay's v0 exactly,
-    // regardless of any typing that happened during the async connect/init flow.
+    // Two-step dispatch to avoid the doc-replacement being tracked as a sendable
+    // update by collab(). Step 1: replace content (without collab active).
+    // Step 2: install collab extension — its v0 baseline captures the now-authoritative doc.
     const currentContent = view.state.doc.toString();
+    if (currentContent !== authoritativeContent) {
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: authoritativeContent },
+        });
+    }
+
     view.dispatch({
-        changes:
-            currentContent !== authoritativeContent
-                ? { from: 0, to: view.state.doc.length, insert: authoritativeContent }
-                : undefined,
         effects: collabCompartment.reconfigure(
             createCollabExtension(startVersion, clientID, socket),
         ),
