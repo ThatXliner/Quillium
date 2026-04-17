@@ -57,7 +57,7 @@ async function joinById() {
         currentDraftId.set(id);
 
         // Connect as joiner -- relay's content becomes source of truth
-        await enableCollab(view, id, user.id);
+        await enableCollab(view, id, user.id, false);
 
         joinIdInput = "";
         isLive = true;
