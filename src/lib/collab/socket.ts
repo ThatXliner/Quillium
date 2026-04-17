@@ -9,9 +9,9 @@
  * Per D-53: JWT from getSession().access_token passed in URL query param.
  */
 import { getSession } from "$lib/auth/auth.svelte";
-import { PUBLIC_RELAY_URL } from "$env/static/public";
+import { env } from "$env/dynamic/public";
 
-const RELAY_URL = PUBLIC_RELAY_URL;
+const RELAY_URL = env.PUBLIC_RELAY_URL ?? "";
 
 /** True if PUBLIC_RELAY_URL is configured */
 export const relayConfigured = !!RELAY_URL;
