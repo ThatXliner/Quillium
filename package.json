@@ -88,6 +88,7 @@
     "jsdom": "^28.1.0",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
+    "supabase": "^2.92.0",
     "svelte": "^5.55.3",
     "svelte-check": "^4.4.6",
     "tailwindcss": "^4.2.2",
