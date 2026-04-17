@@ -19,6 +19,8 @@ import {
 } from "@codemirror/collab";
 import type { Socket } from "socket.io-client";
 import type { SerializedUpdate } from "./protocol";
+import { ownerLeftSignal } from "./store";
+import { removeRemoteCursor } from "./cursors";
 
 /** Compartment for hot-swapping collab extension (per D-51) */
 export const collabCompartment = new Compartment();
@@ -41,6 +43,32 @@ export function collabPushPull(socket: Socket) {
                 // Set up Socket.io event handler for receiving broadcast updates from other clients.
                 socket.on("updates", (data: { updates: SerializedUpdate[] }) => {
                     this.handlePullResponse(data.updates);
+                });
+
+                // Handle owner disconnect (per D-61): defer dispatch to avoid update cycle recursion
+                socket.on("ownerLeft", () => {
+                    if (this.destroyed) return;
+                    setTimeout(() => {
+                        if (this.destroyed) return;
+                        // Reconfigure compartment to empty (same as disableCollab's dispatch step).
+                        // Socket disconnect is handled separately by GoLiveButton after signal fires.
+                        this.view.dispatch({
+                            effects: collabCompartment.reconfigure([]),
+                        });
+                        ownerLeftSignal.update((n) => n + 1);
+                    }, 0);
+                });
+
+                // Handle collaborator leaving: remove their cursor from remoteCursorsField
+                socket.on("clientLeft", (data: { clientID: string }) => {
+                    if (this.destroyed) return;
+                    // clientLeft may arrive while a transaction is processing — defer to be safe
+                    setTimeout(() => {
+                        if (this.destroyed) return;
+                        this.view.dispatch({
+                            effects: removeRemoteCursor.of(data.clientID),
+                        });
+                    }, 0);
                 });
 
                 // Initial pull to catch any updates that happened between init and now.
@@ -121,6 +149,8 @@ export function collabPushPull(socket: Socket) {
             destroy() {
                 this.destroyed = true;
                 socket.off("updates");
+                socket.off("ownerLeft");
+                socket.off("clientLeft");
             }
         },
     );
