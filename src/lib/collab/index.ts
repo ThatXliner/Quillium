@@ -76,35 +76,39 @@ export async function enableCollab(
     const startVersion = initialState.version;
     let shouldReplaceLocal = false;
 
-    if (relayDoc !== localDoc) {
-        if (asOwner && initialState.version === 0 && relayDoc.length === 0) {
-            // Owner connecting to empty/fresh room — seed relay with local content.
-            // This keeps owner as source of truth (no cloud storage — owner's local wins).
-            // After initDocument, relay's v0 doc == local doc, so collab can start cleanly.
-            console.log("[collab] Owner seeding relay with local content, length:", localDoc.length);
-            const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
-                socket.emit("initDocument", { content: localDoc }, resolve);
-            });
-            if (!initResult.ok) {
-                throw new Error("Failed to seed relay with document content");
-            }
-            // Relay now has our content at v0, local editor unchanged — consistent.
-        } else {
-            // Either joiner, or owner connecting to a room that already has content.
-            // Relay's content is truth. Replace local editor.
-            // The snapshot taken before Go Live preserves original content.
-            console.log(
-                `[collab] ${asOwner ? "Owner" : "Joiner"} syncing to relay state (v${startVersion}, length ${relayDoc.length})`,
-            );
-            shouldReplaceLocal = true;
+    // Determine authoritative content (what the relay will have at startVersion).
+    let authoritativeContent: string;
+
+    if (asOwner && initialState.version === 0 && relayDoc.length === 0) {
+        // Owner connecting to empty/fresh room — seed relay with snapshot of current local content.
+        // This keeps owner as source of truth (no cloud storage — owner's local wins).
+        console.log("[collab] Owner seeding relay with local content, length:", localDoc.length);
+        const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
+            socket.emit("initDocument", { content: localDoc }, resolve);
+        });
+        if (!initResult.ok) {
+            throw new Error("Failed to seed relay with document content");
         }
+        // Relay now has our captured content at v0. Any typing during the async gap
+        // must be discarded because collab's v0 baseline must match relay's v0.
+        authoritativeContent = localDoc;
+    } else {
+        // Joiner, or owner joining existing room — relay content is truth.
+        console.log(
+            `[collab] ${asOwner ? "Owner" : "Joiner"} syncing to relay state (v${startVersion}, length ${relayDoc.length})`,
+        );
+        authoritativeContent = relayDoc;
     }
 
-    // Apply content replacement AND enable collab extension in a single transaction.
+    // Force editor to the authoritative content AND enable collab in a single transaction.
+    // This ensures @codemirror/collab's v0 baseline matches the relay's v0 exactly,
+    // regardless of any typing that happened during the async connect/init flow.
+    const currentContent = view.state.doc.toString();
     view.dispatch({
-        changes: shouldReplaceLocal
-            ? { from: 0, to: view.state.doc.length, insert: relayDoc }
-            : undefined,
+        changes:
+            currentContent !== authoritativeContent
+                ? { from: 0, to: view.state.doc.length, insert: authoritativeContent }
+                : undefined,
         effects: collabCompartment.reconfigure(
             createCollabExtension(startVersion, clientID, socket),
         ),
