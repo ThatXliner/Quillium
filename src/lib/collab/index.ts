@@ -75,9 +75,11 @@ export async function enableCollab(
     const relayDoc = initialState.doc;
     let startVersion = initialState.version;
 
+    let shouldReplaceLocal = false;
+
     if (relayDoc !== localDoc) {
         if (initialState.version === 0 && relayDoc.length === 0 && localDoc.length > 0) {
-            // Relay is empty, owner has content — initialize relay with owner's content.
+            // Relay is empty, local has content — initialize relay with local content.
             console.log("[collab] Initializing room with local content, length:", localDoc.length);
             const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
                 socket.emit("initDocument", { content: localDoc }, resolve);
@@ -86,18 +88,20 @@ export async function enableCollab(
                 throw new Error("Failed to initialize document on relay");
             }
             startVersion = initResult.version ?? 0;
-        } else if (relayDoc.length > 0) {
-            // Relay has content — sync local to relay's version.
+        } else {
+            // Relay has content that differs from local — sync local to relay.
             // The snapshot taken before Go Live preserves the original local content.
-            view.dispatch({
-                changes: { from: 0, to: view.state.doc.length, insert: relayDoc },
-            });
-            console.log("[collab] Synced to relay document, length:", relayDoc.length);
+            console.log("[collab] Will sync to relay document, length:", relayDoc.length);
+            shouldReplaceLocal = true;
         }
     }
 
-    // Use the version from the relay's initial state (or updated after initDocument)
+    // Apply content replacement AND enable collab extension in a single transaction.
+    // This prevents the replacement from being tracked as a local change by collab().
     view.dispatch({
+        changes: shouldReplaceLocal
+            ? { from: 0, to: view.state.doc.length, insert: relayDoc }
+            : undefined,
         effects: collabCompartment.reconfigure(
             createCollabExtension(startVersion, clientID, socket),
         ),
