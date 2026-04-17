@@ -76,15 +76,20 @@ async function handleSubmit(e: Event) {
         await signInAnonymously(trimmedName);
         toast.success(`Welcome, ${trimmedName}!`);
         onjoin();
-    } catch (err) {
-        error = err instanceof Error ? err.message : "Failed to join";
+    } catch (err: unknown) {
+        // Preserve Supabase error context (codes, status) for debugging
+        if (err && typeof err === "object" && "message" in err) {
+            error = String(err.message);
+        } else {
+            error = "Failed to join";
+        }
     } finally {
         submitting = false;
     }
 }
 
 // Validation for button disabled state
-const isNameValid = $derived(() => {
+const isNameValid = $derived.by(() => {
     const trimmed = displayName.trim();
     return trimmed.length >= 2 && trimmed.length <= 50;
 });
@@ -143,7 +148,7 @@ const isNameValid = $derived(() => {
 
             <button
                 type="submit"
-                disabled={submitting || !isNameValid()}
+                disabled={submitting || !isNameValid}
                 aria-disabled={submitting}
                 class="w-full px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-lg
                     hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
