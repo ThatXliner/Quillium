@@ -36,11 +36,41 @@ async function joinById() {
         toast.error("Invalid document ID format");
         return;
     }
-    // Override current draft ID — collab will connect to this document's room
-    currentDraftId.set(id);
-    joinIdInput = "";
+
+    connecting = true;
     menuOpen = false;
-    toast.success("Switched to shared document. Click Go Live to connect.");
+    try {
+        const view = get(editorView);
+        const user = getUser();
+        const session = getSession();
+        if (!view || !user || !session) {
+            throw new Error("Missing required state");
+        }
+
+        // Disconnect current session if live
+        if (isLive) {
+            disableCollab(view);
+            isLive = false;
+        }
+
+        // Switch to shared document ID (skip sync_documents registration -- owner already did that)
+        currentDraftId.set(id);
+
+        // Connect as joiner -- relay's content becomes source of truth
+        await enableCollab(view, id, user.id);
+
+        joinIdInput = "";
+        isLive = true;
+        toast.success("Joined shared document");
+    } catch (err) {
+        console.error("[collab] Failed to join:", err);
+        const message = err instanceof Error && err.message.includes("relay")
+            ? "Couldn't connect to relay server"
+            : "Failed to join document";
+        toast.error(message);
+    } finally {
+        connecting = false;
+    }
 }
 
 async function handleToggle() {
