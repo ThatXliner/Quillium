@@ -94,7 +94,12 @@ Plans:
   1. Relay persists all updates to Supabase Postgres
   2. Relay can reload full document state from DB on restart
   3. Clients reconnecting after server restart get correct state
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
+- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
+- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
 
 ### Phase 6: Client Collab
 **Goal**: Two Quillium instances can see each other's text edits in real-time
@@ -105,7 +110,12 @@ Plans:
   2. Concurrent edits auto-merge via OT (no conflict UI)
   3. Per-user undo works correctly (don't undo remote changes)
   4. Document content converges identically on all clients
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
+- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
+- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
 
 ### Phase 7: Connection UX
 **Goal**: Users always know connection status and recover gracefully from disconnects
@@ -116,7 +126,12 @@ Plans:
   2. Reconnection automatically recovers pending changes
   3. No data loss or duplication on reconnect
   4. User sees clear feedback during reconnection
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
+- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
+- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
 **UI hint**: yes
 
 ### Phase 8: Annotation Sync
@@ -128,7 +143,12 @@ Plans:
   2. Revision annotations sync via sharedEffects
   3. Position divergence is mitigated (anchors stay on correct text)
   4. Annotation operations integrate with per-user undo
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
+- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
+- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
 
 ### Phase 9: Offline Queue
 **Goal**: Document owner can edit offline and sync when reconnected
@@ -139,7 +159,12 @@ Plans:
   2. Offline edits queue in local storage
   3. Queue rebases and syncs on reconnect
   4. Pre-merge snapshot taken as safety net before rebase
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
+- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
+- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
 
 ## Progress
 
