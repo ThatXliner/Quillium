@@ -83,6 +83,22 @@ export async function signOut() {
     if (error) throw error;
 }
 
+/**
+ * Sign in anonymously with a display name.
+ * Per D-20: Display name passed via options.data (maps to raw_user_meta_data).
+ * Per D-24: Session automatically persists via localStorage (already configured in supabase.ts).
+ */
+export async function signInAnonymously(displayName: string) {
+    if (!supabase) throw new Error("Supabase not configured");
+    const { data, error } = await supabase.auth.signInAnonymously({
+        options: {
+            data: { display_name: displayName },
+        },
+    });
+    if (error) throw error;
+    return data;
+}
+
 // Reactive getters
 export function getUser() {
     return user;
@@ -95,6 +111,14 @@ export function isLoading() {
 }
 export function isAuthenticated() {
     return !!user;
+}
+
+/**
+ * Check if the current user is an anonymous user.
+ * Supabase sets is_anonymous: true on anonymous user objects.
+ */
+export function isAnonymous(): boolean {
+    return user?.is_anonymous === true;
 }
 
 /**
