@@ -49,8 +49,8 @@ async function handleToggle() {
             await createNamedSnapshot(draftId, stateJson, eventId, "Before going live (auto)");
 
             // Per D-50: clientID is user.id for per-user undo
-            // startVersion 0 for new sessions (relay will send full state)
-            await enableCollab(view, draftId, 0, user.id);
+            // Version comes from relay's initial state
+            await enableCollab(view, draftId, user.id);
 
             isLive = true;
             toast.success("You're live!");

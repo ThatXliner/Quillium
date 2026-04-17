@@ -1,13 +1,13 @@
 /**
- * socket.ts -- WebSocket client for collab relay.
+ * socket.ts -- Socket.io client for collab relay.
  *
  * Module-level singleton. Created on demand when collab is enabled,
- * destroyed when collab is disabled. Uses raw WebSocket (relay uses ws,
- * not socket.io).
+ * destroyed when collab is disabled. Uses Socket.io to match relay server.
  *
  * Per D-52: Per-document socket instance -- socket lifecycle tied to collab session.
- * Per D-53: JWT from getSession().access_token passed in URL query param.
+ * Per D-53: JWT from getSession().access_token passed in auth handshake.
  */
+import { io, type Socket } from "socket.io-client";
 import { getSession } from "$lib/auth/auth.svelte";
 import { PUBLIC_RELAY_URL } from "$env/static/public";
 
@@ -20,19 +20,29 @@ if (!relayConfigured) {
     console.warn("[collab] Missing PUBLIC_RELAY_URL -- collab features will not work");
 }
 
-let socket: WebSocket | null = null;
+let socket: Socket | null = null;
 let currentDocId: string | null = null;
+
+/** Initial state received from relay on connect */
+export type InitialState = {
+    version: number;
+    doc: string;
+};
 
 /**
  * Connect to the relay for a specific document.
- * Per D-53: JWT passed in query param (relay expects ?token=...).
- * Returns a Promise that resolves with the socket on successful connection,
+ * Per D-53: JWT passed in auth handshake.
+ * Returns a Promise that resolves with { socket, initialState } on successful connection,
  * or rejects if connection fails.
  */
-export async function connectToCollab(docId: string): Promise<WebSocket> {
-    if (socket && currentDocId === docId && socket.readyState === WebSocket.OPEN) {
+export async function connectToCollab(
+    docId: string,
+): Promise<{ socket: Socket; initialState: InitialState }> {
+    if (socket && currentDocId === docId && socket.connected) {
         console.warn("[collab] Socket already connected to", docId);
-        return socket;
+        // Return existing socket but we don't have initialState cached
+        // This shouldn't happen in normal flow
+        return { socket, initialState: { version: 0, doc: "" } };
     }
 
     // Close existing connection if switching documents
@@ -45,30 +55,38 @@ export async function connectToCollab(docId: string): Promise<WebSocket> {
         throw new Error("Not authenticated");
     }
 
-    // Relay URL pattern: /doc/:docId?token=...
-    const url = `${RELAY_URL}/doc/${docId}?token=${session.access_token}`;
-    const newSocket = new WebSocket(url);
+    // Create Socket.io connection with auth
+    const newSocket = io(RELAY_URL, {
+        auth: {
+            token: session.access_token,
+            documentId: docId,
+        },
+        // Don't auto-reconnect for now (Phase 7 will add reconnection UX)
+        reconnection: false,
+    });
 
     return new Promise((resolve, reject) => {
-        newSocket.onopen = () => {
-            console.log("[collab] Connected to relay");
+        // Handle successful connection and initial state
+        newSocket.on("init", (data: InitialState) => {
+            console.log("[collab] Connected to relay, version:", data.version);
             socket = newSocket;
             currentDocId = docId;
-            resolve(newSocket);
-        };
+            resolve({ socket: newSocket, initialState: data });
+        });
 
-        newSocket.onerror = (error) => {
-            console.error("[collab] Socket error:", error);
-            reject(new Error("Failed to connect to relay"));
-        };
+        newSocket.on("connect_error", (error) => {
+            console.error("[collab] Connection error:", error.message);
+            newSocket.close();
+            reject(new Error(`Failed to connect to relay: ${error.message}`));
+        });
 
-        newSocket.onclose = () => {
-            console.log("[collab] Disconnected from relay");
+        newSocket.on("disconnect", (reason) => {
+            console.log("[collab] Disconnected from relay:", reason);
             if (socket === newSocket) {
                 socket = null;
                 currentDocId = null;
             }
-        };
+        });
     });
 }
 
@@ -77,7 +95,7 @@ export async function connectToCollab(docId: string): Promise<WebSocket> {
  */
 export function disconnectCollab(): void {
     if (socket) {
-        socket.close();
+        socket.disconnect();
         socket = null;
         currentDocId = null;
     }
@@ -86,7 +104,7 @@ export function disconnectCollab(): void {
 /**
  * Get the current socket (or null if not connected).
  */
-export function getSocket(): WebSocket | null {
+export function getSocket(): Socket | null {
     return socket;
 }
 
