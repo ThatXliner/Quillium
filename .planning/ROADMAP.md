@@ -54,8 +54,8 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 02-01-PLAN.md - Supabase client + auth store (AUTH-01, AUTH-02, AUTH-03, AUTH-04)
-- [ ] 02-02-PLAN.md - Auth UI components (AUTH-01, AUTH-02, AUTH-03, AUTH-04)
+- [x] 02-01-PLAN.md - Supabase client + auth store (AUTH-01, AUTH-02, AUTH-03, AUTH-04)
+- [x] 02-02-PLAN.md - Auth UI components (AUTH-01, AUTH-02, AUTH-03, AUTH-04)
 
 ### Phase 3: Anonymous Auth
 **Goal**: Collaborators can join documents without creating accounts
