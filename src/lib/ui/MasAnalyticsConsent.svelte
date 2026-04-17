@@ -1,14 +1,14 @@
 <script lang="ts">
 import posthog, { syncAnalyticsOptOut } from "$lib/posthog";
 
-const { onresolve }: { onresolve: () => void } = $props();
+const { onresolve }: { onresolve: (enabled: boolean) => void } = $props();
 
 function resolve(enabled: boolean) {
     syncAnalyticsOptOut(enabled);
     if (enabled) {
         posthog.capture("mas_analytics_consent_granted");
     }
-    onresolve();
+    onresolve(enabled);
 }
 </script>
 

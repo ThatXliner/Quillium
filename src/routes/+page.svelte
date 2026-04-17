@@ -445,7 +445,14 @@ if (import.meta.env.DEV) {
 
 <!-- MAS analytics consent — shown once after tutorial or on first visit for returning users -->
 {#if showMasAnalyticsConsent}
-    <MasAnalyticsConsent onresolve={() => { showMasAnalyticsConsent = false; tryShowChangelog(); }} />
+    <MasAnalyticsConsent
+        onresolve={(enabled) => {
+            appSettings.analyticsEnabled = enabled;
+            persistSettings();
+            showMasAnalyticsConsent = false;
+            tryShowChangelog();
+        }}
+    />
 {/if}
 
 <!-- Beta disclaimer — shown once after tutorial or on first visit for returning users -->
