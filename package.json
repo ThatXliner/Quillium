@@ -33,6 +33,7 @@
     "@ai-sdk/google": "^3.0.62",
     "@ai-sdk/openai": "^2.0.102",
     "@ai-sdk/svelte": "^3.0.172",
+    "@codemirror/collab": "^6.1.1",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/search": "^6.6.0",
