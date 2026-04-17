@@ -73,17 +73,31 @@ export async function enableCollab(
 
     const localDoc = view.state.doc.toString();
     const relayDoc = initialState.doc;
-    let startVersion = initialState.version;
+    const startVersion = initialState.version;
     let shouldReplaceLocal = false;
 
-    // Always sync local to relay state (relay is source of truth for collab sessions).
-    // The snapshot taken before Go Live preserves the owner's original content,
-    // accessible via Version History. After the session ends, the snapshot can be restored.
     if (relayDoc !== localDoc) {
-        console.log(
-            `[collab] ${asOwner ? "Owner" : "Joiner"} syncing to relay state (v${initialState.version}, length ${relayDoc.length})`,
-        );
-        shouldReplaceLocal = true;
+        if (asOwner && initialState.version === 0 && relayDoc.length === 0) {
+            // Owner connecting to empty/fresh room — seed relay with local content.
+            // This keeps owner as source of truth (no cloud storage — owner's local wins).
+            // After initDocument, relay's v0 doc == local doc, so collab can start cleanly.
+            console.log("[collab] Owner seeding relay with local content, length:", localDoc.length);
+            const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
+                socket.emit("initDocument", { content: localDoc }, resolve);
+            });
+            if (!initResult.ok) {
+                throw new Error("Failed to seed relay with document content");
+            }
+            // Relay now has our content at v0, local editor unchanged — consistent.
+        } else {
+            // Either joiner, or owner connecting to a room that already has content.
+            // Relay's content is truth. Replace local editor.
+            // The snapshot taken before Go Live preserves original content.
+            console.log(
+                `[collab] ${asOwner ? "Owner" : "Joiner"} syncing to relay state (v${startVersion}, length ${relayDoc.length})`,
+            );
+            shouldReplaceLocal = true;
+        }
     }
 
     // Apply content replacement AND enable collab extension in a single transaction.
