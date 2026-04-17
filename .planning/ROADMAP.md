@@ -50,8 +50,12 @@ Plans:
   2. User can log in and session persists across app restarts
   3. User can log out from the app
   4. Login/logout UI exists in appropriate location
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
+
+Plans:
+- [ ] 02-01-PLAN.md - Supabase client + auth store (AUTH-01, AUTH-02, AUTH-03, AUTH-04)
+- [ ] 02-02-PLAN.md - Auth UI components (AUTH-01, AUTH-02, AUTH-03, AUTH-04)
 
 ### Phase 3: Anonymous Auth
 **Goal**: Collaborators can join documents without creating accounts
@@ -136,8 +140,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Data Model | 0/3 | Planned | - |
-| 2. Auth Foundation | 0/? | Not started | - |
+| 1. Data Model | 3/3 | Complete | - |
+| 2. Auth Foundation | 0/2 | Planned | - |
 | 3. Anonymous Auth | 0/? | Not started | - |
 | 4. Relay Core | 0/? | Not started | - |
 | 5. Relay Persistence | 0/? | Not started | - |

@@ -39,13 +39,14 @@ async function handleLogout() {
 <div class="relative">
     {#if loading}
         <!-- Loading state: show subtle placeholder -->
-        <div class="w-7 h-7 rounded-full bg-black/[0.06] animate-pulse"></div>
+        <div class="w-10 h-10 rounded-full bg-black/[0.06] animate-pulse"></div>
     {:else if authenticated}
         <!-- Logged in: Avatar button per D-15b -->
         <button
             onclick={() => (dropdownOpen = !dropdownOpen)}
-            class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold
-                hover:ring-2 hover:ring-black/10 transition-shadow"
+            title={displayName}
+            class="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold
+                shadow-md hover:ring-2 hover:ring-black/10 transition-shadow"
             style="background: {avatarColor(displayName)};"
             aria-label="Account menu"
         >
@@ -61,12 +62,12 @@ async function handleLogout() {
             />
         {/if}
     {:else}
-        <!-- Logged out: Sign In button per D-15 (faint/glassy) -->
+        <!-- Logged out: Sign In button per D-15 (glassy, matching StatusBar style) -->
         <button
             onclick={onauthclick}
-            class="px-3 py-1.5 text-xs font-medium text-black/40 bg-black/[0.04]
-                border border-black/[0.06] rounded-full
-                hover:text-black/60 hover:bg-black/[0.07] transition-colors"
+            class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md
+                rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                hover:text-black/70 hover:bg-white/60 transition-colors"
         >
             Sign in
         </button>

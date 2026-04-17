@@ -5,7 +5,7 @@
  * Initializes via initAuth() on app mount, subscribes to auth changes.
  */
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
+import { supabase, supabaseConfigured } from "./supabase";
 
 // Reactive state
 let user = $state<User | null>(null);
@@ -20,6 +20,11 @@ let initialized = false;
 export async function initAuth(): Promise<void> {
     if (initialized) return;
     initialized = true;
+
+    if (!supabase) {
+        loading = false;
+        return;
+    }
 
     const {
         data: { session: existingSession },
@@ -44,6 +49,7 @@ export async function initAuth(): Promise<void> {
  * database trigger to populate public.users.display_name.
  */
 export async function signUp(email: string, password: string, displayName: string) {
+    if (!supabase) throw new Error("Supabase not configured");
     const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -59,6 +65,7 @@ export async function signUp(email: string, password: string, displayName: strin
  * Sign in with email and password.
  */
 export async function signIn(email: string, password: string) {
+    if (!supabase) throw new Error("Supabase not configured");
     const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -71,6 +78,7 @@ export async function signIn(email: string, password: string) {
  * Sign out the current user.
  */
 export async function signOut() {
+    if (!supabase) throw new Error("Supabase not configured");
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
 }

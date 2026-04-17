@@ -1,7 +1,7 @@
 /**
  * Auth module exports.
  */
-export { supabase } from "./supabase";
+export { supabase, supabaseConfigured } from "./supabase";
 export {
     getDisplayName,
     getSession,
