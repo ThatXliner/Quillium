@@ -65,7 +65,10 @@ Plans:
   1. Anonymous users get automatic Supabase anon token
   2. Anonymous token works for relay WebSocket connection
   3. No account creation required to join as collaborator
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [x] 03-01-PLAN.md - Anonymous auth function + name entry modal (AUTH-05)
 
 ### Phase 4: Relay Core
 **Goal**: WebSocket relay server accepts connections and orders changes (in quillium-landing repo)
@@ -141,8 +144,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Data Model | 3/3 | Complete | - |
-| 2. Auth Foundation | 0/2 | Planned | - |
-| 3. Anonymous Auth | 0/? | Not started | - |
+| 2. Auth Foundation | 2/2 | Complete | - |
+| 3. Anonymous Auth | 0/1 | Planned | - |
 | 4. Relay Core | 0/? | Not started | - |
 | 5. Relay Persistence | 0/? | Not started | - |
 | 6. Client Collab | 0/? | Not started | - |
