@@ -26,9 +26,11 @@ let currentDocId: string | null = null;
 /**
  * Connect to the relay for a specific document.
  * Per D-53: JWT passed in query param (relay expects ?token=...).
+ * Returns a Promise that resolves with the socket on successful connection,
+ * or rejects if connection fails.
  */
-export function connectToCollab(docId: string): WebSocket {
-    if (socket && currentDocId === docId) {
+export async function connectToCollab(docId: string): Promise<WebSocket> {
+    if (socket && currentDocId === docId && socket.readyState === WebSocket.OPEN) {
         console.warn("[collab] Socket already connected to", docId);
         return socket;
     }
@@ -45,24 +47,29 @@ export function connectToCollab(docId: string): WebSocket {
 
     // Relay URL pattern: /doc/:docId?token=...
     const url = `${RELAY_URL}/doc/${docId}?token=${session.access_token}`;
-    socket = new WebSocket(url);
-    currentDocId = docId;
+    const newSocket = new WebSocket(url);
 
-    socket.onopen = () => {
-        console.log("[collab] Connected to relay");
-    };
+    return new Promise((resolve, reject) => {
+        newSocket.onopen = () => {
+            console.log("[collab] Connected to relay");
+            socket = newSocket;
+            currentDocId = docId;
+            resolve(newSocket);
+        };
 
-    socket.onerror = (error) => {
-        console.error("[collab] Socket error:", error);
-    };
+        newSocket.onerror = (error) => {
+            console.error("[collab] Socket error:", error);
+            reject(new Error("Failed to connect to relay"));
+        };
 
-    socket.onclose = () => {
-        console.log("[collab] Disconnected from relay");
-        socket = null;
-        currentDocId = null;
-    };
-
-    return socket;
+        newSocket.onclose = () => {
+            console.log("[collab] Disconnected from relay");
+            if (socket === newSocket) {
+                socket = null;
+                currentDocId = null;
+            }
+        };
+    });
 }
 
 /**

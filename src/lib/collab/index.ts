@@ -31,14 +31,15 @@ export * from "./protocol";
  * @param docId - The document ID for the relay room
  * @param startVersion - The version to start syncing from
  * @param clientID - The user's ID for per-user undo (typically Supabase user.id)
+ * @throws If connection to relay fails
  */
-export function enableCollab(
+export async function enableCollab(
     view: EditorView,
     docId: string,
     startVersion: number,
     clientID: string,
-): void {
-    const socket = connectToCollab(docId);
+): Promise<void> {
+    const socket = await connectToCollab(docId);
     view.dispatch({
         effects: collabCompartment.reconfigure(createCollabExtension(startVersion, clientID, socket)),
     });
