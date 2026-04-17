@@ -69,25 +69,36 @@ export async function enableCollab(
 ): Promise<void> {
     const { socket, initialState } = await connectToCollab(docId);
 
-    // Sync document content: relay's doc becomes the source of truth.
-    // If relay has content, replace local doc. If relay is empty, local content
-    // will be pushed as changes once collab extension is active.
+    // Sync document content between local and relay.
     const localDoc = view.state.doc.toString();
     const relayDoc = initialState.doc;
+    let startVersion = initialState.version;
 
     if (relayDoc !== localDoc) {
-        // Replace local document with relay's version to ensure same starting point.
-        // The snapshot taken before Go Live preserves the original local content.
-        view.dispatch({
-            changes: { from: 0, to: view.state.doc.length, insert: relayDoc },
-        });
-        console.log("[collab] Synced to relay document, length:", relayDoc.length);
+        if (initialState.version === 0 && relayDoc.length === 0 && localDoc.length > 0) {
+            // Relay is empty, owner has content — initialize relay with owner's content.
+            console.log("[collab] Initializing room with local content, length:", localDoc.length);
+            const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
+                socket.emit("initDocument", { content: localDoc }, resolve);
+            });
+            if (!initResult.ok) {
+                throw new Error("Failed to initialize document on relay");
+            }
+            startVersion = initResult.version ?? 0;
+        } else if (relayDoc.length > 0) {
+            // Relay has content — sync local to relay's version.
+            // The snapshot taken before Go Live preserves the original local content.
+            view.dispatch({
+                changes: { from: 0, to: view.state.doc.length, insert: relayDoc },
+            });
+            console.log("[collab] Synced to relay document, length:", relayDoc.length);
+        }
     }
 
-    // Use the version from the relay's initial state
+    // Use the version from the relay's initial state (or updated after initDocument)
     view.dispatch({
         effects: collabCompartment.reconfigure(
-            createCollabExtension(initialState.version, clientID, socket),
+            createCollabExtension(startVersion, clientID, socket),
         ),
     });
 }
