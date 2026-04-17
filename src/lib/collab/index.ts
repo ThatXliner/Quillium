@@ -76,36 +76,14 @@ export async function enableCollab(
     let startVersion = initialState.version;
     let shouldReplaceLocal = false;
 
+    // Always sync local to relay state (relay is source of truth for collab sessions).
+    // The snapshot taken before Go Live preserves the owner's original content,
+    // accessible via Version History. After the session ends, the snapshot can be restored.
     if (relayDoc !== localDoc) {
-        if (asOwner) {
-            // Owner: local content is source of truth.
-            // If relay is empty, initialize it. If relay has stale content, we force-replace it.
-            if (initialState.version === 0 && relayDoc.length === 0) {
-                // Empty room — initialize with local content via initDocument.
-                console.log("[collab] Owner initializing empty room with local content, length:", localDoc.length);
-                const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
-                    socket.emit("initDocument", { content: localDoc }, resolve);
-                });
-                if (!initResult.ok) {
-                    throw new Error("Failed to initialize document on relay");
-                }
-                startVersion = initResult.version ?? 0;
-            } else {
-                // Relay has stale content from a previous session — owner's local wins.
-                // TODO: Phase 7+ should warn user about this or reset the relay room.
-                console.warn(
-                    "[collab] Owner has different local content than relay (v" + initialState.version +
-                    "). Local content preserved; relay state will be out of sync until next session reset."
-                );
-                // Don't replace local, don't initDocument (room isn't empty).
-                // Owner's future edits will push as diffs from v=initialState.version,
-                // which will cause OT errors. User should reset relay room.
-            }
-        } else {
-            // Joiner: relay content is source of truth. Replace local.
-            console.log("[collab] Joiner syncing to relay document, length:", relayDoc.length);
-            shouldReplaceLocal = true;
-        }
+        console.log(
+            `[collab] ${asOwner ? "Owner" : "Joiner"} syncing to relay state (v${initialState.version}, length ${relayDoc.length})`,
+        );
+        shouldReplaceLocal = true;
     }
 
     // Apply content replacement AND enable collab extension in a single transaction.
