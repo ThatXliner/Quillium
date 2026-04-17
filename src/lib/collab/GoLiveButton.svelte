@@ -50,7 +50,7 @@ async function handleToggle() {
 
             // Per D-50: clientID is user.id for per-user undo
             // startVersion 0 for new sessions (relay will send full state)
-            enableCollab(view, draftId, 0, user.id);
+            await enableCollab(view, draftId, 0, user.id);
 
             isLive = true;
             toast.success("You're live!");
