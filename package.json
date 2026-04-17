@@ -47,6 +47,7 @@
     "@fontsource/nunito": "^5.2.7",
     "@fontsource/opendyslexic": "^5.2.5",
     "@fontsource/raleway": "^5.2.8",
+    "@supabase/supabase-js": "^2.103.3",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-fs": "^2.5.0",
