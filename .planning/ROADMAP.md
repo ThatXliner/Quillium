@@ -111,11 +111,12 @@ Plans:
   3. Per-user undo works correctly (don't undo remote changes)
   4. Document content converges identically on all clients
 **Plans**: 3 plans
+**UI hint**: yes
 
 Plans:
-- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
-- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
-- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
+- [ ] 06-01-PLAN.md - Collab module foundation: types, protocol, socket client (SYNC-01)
+- [ ] 06-02-PLAN.md - Collab ViewPlugin and extension integration (SYNC-01, SYNC-02)
+- [ ] 06-03-PLAN.md - Go Live button UI (SYNC-01, SYNC-02)
 
 ### Phase 7: Connection UX
 **Goal**: Users always know connection status and recover gracefully from disconnects
@@ -126,12 +127,7 @@ Plans:
   2. Reconnection automatically recovers pending changes
   3. No data loss or duplication on reconnect
   4. User sees clear feedback during reconnection
-**Plans**: 3 plans
-
-Plans:
-- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
-- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
-- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
+**Plans**: [to be planned]
 **UI hint**: yes
 
 ### Phase 8: Annotation Sync
@@ -143,12 +139,7 @@ Plans:
   2. Revision annotations sync via sharedEffects
   3. Position divergence is mitigated (anchors stay on correct text)
   4. Annotation operations integrate with per-user undo
-**Plans**: 3 plans
-
-Plans:
-- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
-- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
-- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
+**Plans**: [to be planned]
 
 ### Phase 9: Offline Queue
 **Goal**: Document owner can edit offline and sync when reconnected
@@ -159,12 +150,7 @@ Plans:
   2. Offline edits queue in local storage
   3. Queue rebases and syncs on reconnect
   4. Pre-merge snapshot taken as safety net before rebase
-**Plans**: 3 plans
-
-Plans:
-- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
-- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
-- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
+**Plans**: [to be planned]
 
 ## Progress
 
@@ -176,9 +162,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 1. Data Model | 3/3 | Complete | - |
 | 2. Auth Foundation | 2/2 | Complete | - |
 | 3. Anonymous Auth | 1/1 | Complete | - |
-| 4. Relay Core | 0/3 | Planned | - |
-| 5. Relay Persistence | 0/? | Not started | - |
-| 6. Client Collab | 0/? | Not started | - |
+| 4. Relay Core | 3/3 | Complete | - |
+| 5. Relay Persistence | 0/3 | Planned | - |
+| 6. Client Collab | 0/3 | Planned | - |
 | 7. Connection UX | 0/? | Not started | - |
 | 8. Annotation Sync | 0/? | Not started | - |
 | 9. Offline Queue | 0/? | Not started | - |
