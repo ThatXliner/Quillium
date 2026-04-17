@@ -31,13 +31,15 @@ function handleKeydown(e: KeyboardEvent) {
 
 function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (!target.closest(".avatar-dropdown")) {
-        onclose();
+    // Don't close if clicking the avatar button itself (parent handles toggle)
+    if (target.closest(".avatar-dropdown") || target.closest("[aria-label='Account menu']")) {
+        return;
     }
+    onclose();
 }
 </script>
 
-<svelte:window onkeydown={handleKeydown} onclick={handleClickOutside} />
+<svelte:window onkeydown={handleKeydown} onmousedown={handleClickOutside} />
 
 <div class="avatar-dropdown absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl shadow-lg border border-black/[0.08] py-1.5 z-50">
     <!-- User info -->

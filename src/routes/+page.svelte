@@ -486,7 +486,7 @@ if (import.meta.env.DEV) {
 <Toaster position="bottom-right" />
 
 <!-- Auth button — top-right per D-10 -->
-<div class="fixed top-6 right-6 z-40">
+<div class="fixed top-8 right-8 z-40">
     <AuthButton onauthclick={() => (authModalOpen = true)} />
 </div>
 
