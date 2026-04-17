@@ -1,3 +1,5 @@
+import { MAS_BUILD, readMasAnalyticsConsent } from "$lib/platform";
+
 /**
  * settings.svelte.ts — Global application settings store.
  *
@@ -52,7 +54,7 @@ const DEFAULTS: AppSettings = {
     titleHoverDelay: 350,
     titleLingerDuration: 3000,
     uiZoom: 1,
-    analyticsEnabled: true,
+    analyticsEnabled: readMasAnalyticsConsent() === "granted" || !MAS_BUILD,
     // TODO(#191): re-enable once App Store is established
     // shareDocumentAnalytics: false,
     // shareDocumentKey: "",
@@ -62,7 +64,7 @@ const DEFAULTS: AppSettings = {
     wordCountDisplayMode: "both",
     autoVersionOnRevisionCreate: true,
     showAiSuggestions: true,
-    checkForUpdates: true,
+    checkForUpdates: !MAS_BUILD,
     grammarCheckEnabled: true,
     grammarDialect: "american",
 };
@@ -77,7 +79,13 @@ function loadSettings(): AppSettings {
             parsed.titleVisibility = parsed.alwaysShowTitle ? "always" : "hover";
             delete parsed.alwaysShowTitle;
         }
-        return { ...DEFAULTS, ...parsed };
+        const settings = { ...DEFAULTS, ...parsed };
+        if (MAS_BUILD) {
+            settings.analyticsEnabled =
+                readMasAnalyticsConsent() === "granted" ? settings.analyticsEnabled : false;
+            settings.checkForUpdates = false;
+        }
+        return settings;
     } catch {
         return { ...DEFAULTS };
     }

@@ -42,10 +42,8 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { APP_STORE_URL } from "$lib/constants";
+import { MAS_BUILD, hasMasAnalyticsConsentChoice } from "$lib/platform";
 
-// On MAS builds the updater/process plugins are not registered, but we still
-// check for updates and show the banner — clicking it opens the App Store instead.
-const MAS_BUILD = import.meta.env.VITE_MAS === "true";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
@@ -55,12 +53,14 @@ import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
+import MasAnalyticsConsent from "$lib/ui/MasAnalyticsConsent.svelte";
 import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 import LicensesModal from "$lib/ui/LicensesModal.svelte";
 import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
 
 let showBetaDisclaimer = $state(false);
+let showMasAnalyticsConsent = $state(false);
 let showChangelog = $state(false);
 let licensesOpen = $state(false);
 let changelogEntry = $state<{ date: string; content: string; version: string } | null>(null);
@@ -77,24 +77,26 @@ let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: (
 const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
 
 /** Show the tutorial on first visit if the user hasn't seen it. */
-function showTutorialOnFirstVisit() {
-    if (!localStorage.getItem("quillium_tutorial_seen")) {
-        $tutorialActive = true;
-    } else if (!betaAccepted()) {
-        // Tutorial already seen (e.g. returning user from private beta),
-        // but beta terms not yet accepted — show disclaimer directly.
+function advancePostTutorialFlow() {
+    if (MAS_BUILD && !hasMasAnalyticsConsentChoice()) {
+        showMasAnalyticsConsent = true;
+    } else if (!MAS_BUILD && !betaAccepted()) {
         showBetaDisclaimer = true;
     } else {
         tryShowChangelog();
     }
 }
 
-function handleTutorialComplete() {
-    if (!betaAccepted()) {
-        showBetaDisclaimer = true;
+function showTutorialOnFirstVisit() {
+    if (!localStorage.getItem("quillium_tutorial_seen")) {
+        $tutorialActive = true;
     } else {
-        tryShowChangelog();
+        advancePostTutorialFlow();
     }
+}
+
+function handleTutorialComplete() {
+    advancePostTutorialFlow();
 }
 
 const CHANGELOG_SEEN_KEY = "quillium_changelog_seen";
@@ -222,9 +224,8 @@ async function installUpdate() {
 onMount(() => {
     showTutorialOnFirstVisit();
 
-    // Check for updates silently in the background.
-    // On MAS builds the banner redirects to the App Store instead of self-updating.
-    if (appSettings.checkForUpdates) {
+    // Check for updates silently in the background for direct builds only.
+    if (!effectiveMasMode && appSettings.checkForUpdates) {
         check()
             .then((update) => {
                 if (update) {
@@ -442,8 +443,13 @@ if (import.meta.env.DEV) {
     <Tutorial onComplete={handleTutorialComplete} />
 {/if}
 
+<!-- MAS analytics consent — shown once after tutorial or on first visit for returning users -->
+{#if showMasAnalyticsConsent}
+    <MasAnalyticsConsent onresolve={() => { showMasAnalyticsConsent = false; tryShowChangelog(); }} />
+{/if}
+
 <!-- Beta disclaimer — shown once after tutorial or on first visit for returning users -->
-{#if showBetaDisclaimer}
+{#if !MAS_BUILD && showBetaDisclaimer}
     <BetaDisclaimer onaccept={() => { showBetaDisclaimer = false; tryShowChangelog(); }} />
 {/if}
 
