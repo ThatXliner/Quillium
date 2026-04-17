@@ -56,7 +56,10 @@ async function handleToggle() {
             toast.success("You're live!");
         } catch (err) {
             console.error("[collab] Failed to go live:", err);
-            toast.error("Failed to go live");
+            const message = err instanceof Error && err.message.includes("relay")
+                ? "Couldn't connect to relay server"
+                : "Failed to go live";
+            toast.error(message);
         } finally {
             connecting = false;
         }
