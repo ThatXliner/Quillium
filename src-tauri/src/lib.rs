@@ -314,10 +314,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            let db_path = app
-                .path()
-                .app_local_data_dir()
-                .expect("failed to resolve app local data dir");
+            // Allow override for testing (e.g. running two instances with separate DBs)
+            let db_path = match std::env::var("QUILLIUM_DATA_DIR") {
+                Ok(dir) => std::path::PathBuf::from(dir),
+                Err(_) => app
+                    .path()
+                    .app_local_data_dir()
+                    .expect("failed to resolve app local data dir"),
+            };
             std::fs::create_dir_all(&db_path).expect("failed to create app data dir");
             let db_file = db_path.join("quillium.db");
             let conn = open_db(&db_file).expect("failed to open database");
