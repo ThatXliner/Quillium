@@ -12,12 +12,13 @@ Quillium Omni adds real-time collaborative editing to an existing single-user de
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Data Model** - Supabase tables for users, documents, updates, and shares
-- [ ] **Phase 2: Auth Foundation** - Email/password authentication with session persistence
-- [ ] **Phase 3: Anonymous Auth** - Anonymous tokens for collaborators without accounts
-- [ ] **Phase 4: Relay Core** - WebSocket server with JWT auth and OT ordering
-- [ ] **Phase 5: Relay Persistence** - Durable update storage and server restart recovery
-- [ ] **Phase 6: Client Collab** - CodeMirror collab integration with real-time sync
+- [x] **Phase 1: Data Model** - Supabase tables for users, documents, updates, and shares
+- [x] **Phase 2: Auth Foundation** - Email/password authentication with session persistence
+- [x] **Phase 3: Anonymous Auth** - Anonymous tokens for collaborators without accounts
+- [x] **Phase 4: Relay Core** - WebSocket server with JWT auth and OT ordering
+- [x] **Phase 5: Relay Persistence** - Durable update storage and server restart recovery
+- [x] **Phase 6: Client Collab** - CodeMirror collab integration with real-time sync
+- [ ] **Phase 6.5: Collab Polish** - Live cursors, owner disconnect handling, dev setup docs
 - [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via sharedEffects
 - [ ] **Phase 9: Offline Queue** - Owner-only offline editing with rebase on reconnect
@@ -97,9 +98,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
-- [ ] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
-- [ ] 05-03-PLAN.md - Room state loading from DB (RELY-06)
+- [x] 05-01-PLAN.md - DB migration + persistence module foundation (Wave 0)
+- [x] 05-02-PLAN.md - Write-through persistence + snapshots (RELY-05)
+- [x] 05-03-PLAN.md - Room state loading from DB (RELY-06)
 
 ### Phase 6: Client Collab
 **Goal**: Two Quillium instances can see each other's text edits in real-time
@@ -114,13 +115,24 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 06-01-PLAN.md - Collab module foundation: types, protocol, socket client (SYNC-01)
-- [ ] 06-02-PLAN.md - Collab ViewPlugin and extension integration (SYNC-01, SYNC-02)
-- [ ] 06-03-PLAN.md - Go Live button UI (SYNC-01, SYNC-02)
+- [x] 06-01-PLAN.md - Collab module foundation: types, protocol, socket client (SYNC-01)
+- [x] 06-02-PLAN.md - Collab ViewPlugin and extension integration (SYNC-01, SYNC-02)
+- [x] 06-03-PLAN.md - Go Live button UI (SYNC-01, SYNC-02)
+
+### Phase 6.5: Collab Polish (INSERTED)
+**Goal**: Essential UX polish for usable collab sessions
+**Depends on**: Phase 6
+**Requirements**: (new)
+**Success Criteria** (what must be TRUE):
+  1. Live cursors show other users' cursor positions in real-time
+  2. When owner disconnects, all clients are kicked with clear message
+  3. Developer documentation explains how to run the full collab setup
+**Plans**: [to be planned]
+**UI hint**: yes
 
 ### Phase 7: Connection UX
 **Goal**: Users always know connection status and recover gracefully from disconnects
-**Depends on**: Phase 6
+**Depends on**: Phase 6.5
 **Requirements**: SYNC-03, SYNC-04
 **Success Criteria** (what must be TRUE):
   1. Connection indicator shows connected/syncing/offline status
@@ -163,8 +175,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 2. Auth Foundation | 2/2 | Complete | - |
 | 3. Anonymous Auth | 1/1 | Complete | - |
 | 4. Relay Core | 3/3 | Complete | - |
-| 5. Relay Persistence | 0/3 | Planned | - |
-| 6. Client Collab | 0/3 | Planned | - |
+| 5. Relay Persistence | 3/3 | Complete | 2025-04-17 |
+| 6. Client Collab | 3/3 | Complete | 2025-04-17 |
+| 6.5. Collab Polish | 0/? | Not started | - |
 | 7. Connection UX | 0/? | Not started | - |
 | 8. Annotation Sync | 0/? | Not started | - |
 | 9. Offline Queue | 0/? | Not started | - |
