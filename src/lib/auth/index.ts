@@ -15,3 +15,4 @@ export {
     signUp,
 } from "./auth.svelte";
 export { loginSchema, signUpSchema, type LoginInput, type SignUpInput } from "./schemas";
+export { avatarColor, initials } from "./avatarUtils";
