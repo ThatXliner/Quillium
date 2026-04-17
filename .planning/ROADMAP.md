@@ -184,6 +184,18 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 9. Offline Queue | 0/? | Not started | - |
 
 ---
+
+## v2 Backlog
+
+Ideas deferred from v1 that may become future phases.
+
+| Item | Description | Deferred From |
+|------|-------------|---------------|
+| Shared Document Mode | Server as source of truth, owner-independent sessions (Google Docs model). Functionally equivalent to Live Room if owner stays online, but survives owner disconnect. | Phase 6 |
+| Presence/Cursors | Online status, cursor positions, follow mode (PRES-01 through PRES-04) | v1 scope |
+| Sharing UI | Share links, permissions, revoke access (SHAR-01 through SHAR-04) | v1 scope |
+
+---
 *Roadmap created: 2025-04-16*
 *Granularity: fine (8-12 phases)*
 *Coverage: 23/23 requirements mapped*
