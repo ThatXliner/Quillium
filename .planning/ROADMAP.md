@@ -127,7 +127,13 @@ Plans:
   1. Live cursors show other users' cursor positions in real-time
   2. When owner disconnects, all clients are kicked with clear message
   3. Developer documentation explains how to run the full collab setup
-**Plans**: [to be planned]
+**Plans**: 4 plans
+
+Plans:
+- [ ] 06.5-01-PLAN.md — Relay: isOwner middleware, ownerLeft + clientLeft + cursorUpdate broadcast
+- [ ] 06.5-02-PLAN.md — Developer collab setup guide (docs/collab-setup.md)
+- [ ] 06.5-03-PLAN.md — Client cursor module: StateField + ViewPlugin + WidgetType + tests
+- [ ] 06.5-04-PLAN.md — Client: ownerLeft/clientLeft wiring, cursor extension composition
 **UI hint**: yes
 
 ### Phase 7: Connection UX
@@ -177,7 +183,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 4. Relay Core | 3/3 | Complete | - |
 | 5. Relay Persistence | 3/3 | Complete | 2025-04-17 |
 | 6. Client Collab | 3/3 | Complete | 2025-04-17 |
-| 6.5. Collab Polish | 0/? | Not started | - |
+| 6.5. Collab Polish | 0/4 | Not started | - |
 | 7. Connection UX | 0/? | Not started | - |
 | 8. Annotation Sync | 0/? | Not started | - |
 | 9. Offline Queue | 0/? | Not started | - |
