@@ -27,6 +27,7 @@ import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
+import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
 import { initAuth } from "$lib/auth";
 import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
@@ -485,8 +486,9 @@ if (import.meta.env.DEV) {
 </BottomLeftStack>
 <Toaster position="bottom-right" />
 
-<!-- Auth button — top-right per D-10 -->
-<div class="fixed top-8 right-8 z-40">
+<!-- Top-right cluster: Go Live + Auth (per D-10, D-56) -->
+<div class="fixed top-8 right-8 z-40 flex items-center gap-3">
+    <GoLiveButton />
     <AuthButton onauthclick={() => (authModalOpen = true)} />
 </div>
 
