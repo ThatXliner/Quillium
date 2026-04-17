@@ -15,12 +15,42 @@
 import type { EditorView } from "@codemirror/view";
 import { connectToCollab, disconnectCollab, getSocket, relayConfigured } from "./socket";
 import { collabCompartment, createCollabExtension } from "./collabPlugin";
+import { supabase } from "$lib/auth/supabase";
 
 // Re-exports
 export { collabCompartment } from "./collabPlugin";
 export { relayConfigured, getSocket, connectToCollab, disconnectCollab } from "./socket";
 export * from "./types";
 export * from "./protocol";
+
+/**
+ * Register a document with the relay's sync_documents table.
+ * Creates the row if it doesn't exist (upsert).
+ * Must be called before connecting to ensure the relay allows the connection.
+ */
+export async function registerDocumentForCollab(
+    docId: string,
+    ownerId: string,
+    title: string,
+): Promise<void> {
+    if (!supabase) {
+        throw new Error("Supabase not configured");
+    }
+
+    const { error } = await supabase.from("sync_documents").upsert(
+        {
+            id: docId,
+            owner_id: ownerId,
+            title: title,
+        },
+        { onConflict: "id" },
+    );
+
+    if (error) {
+        console.error("[collab] Failed to register document:", error);
+        throw new Error(`Failed to register document: ${error.message}`);
+    }
+}
 
 /**
  * Enable collab for the given editor view.

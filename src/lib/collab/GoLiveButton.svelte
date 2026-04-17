@@ -11,7 +11,7 @@ import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
-import { enableCollab, disableCollab, relayConfigured } from "$lib/collab";
+import { enableCollab, disableCollab, relayConfigured, registerDocumentForCollab } from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 
@@ -47,6 +47,9 @@ async function handleToggle() {
             // Per D-58: Snapshot before pulling remote state
             const stateJson = JSON.stringify(view.state.toJSON(savedFields));
             await createNamedSnapshot(draftId, stateJson, eventId, "Before going live (auto)");
+
+            // Register document with relay's sync_documents table (auto-creates if missing)
+            await registerDocumentForCollab(draftId, user.id, "Untitled");
 
             // Per D-50: clientID is user.id for per-user undo
             // Version comes from relay's initial state
