@@ -68,6 +68,22 @@ export async function enableCollab(
     clientID: string,
 ): Promise<void> {
     const { socket, initialState } = await connectToCollab(docId);
+
+    // Sync document content: relay's doc becomes the source of truth.
+    // If relay has content, replace local doc. If relay is empty, local content
+    // will be pushed as changes once collab extension is active.
+    const localDoc = view.state.doc.toString();
+    const relayDoc = initialState.doc;
+
+    if (relayDoc !== localDoc) {
+        // Replace local document with relay's version to ensure same starting point.
+        // The snapshot taken before Go Live preserves the original local content.
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: relayDoc },
+        });
+        console.log("[collab] Synced to relay document, length:", relayDoc.length);
+    }
+
     // Use the version from the relay's initial state
     view.dispatch({
         effects: collabCompartment.reconfigure(
