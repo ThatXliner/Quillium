@@ -20,7 +20,7 @@ import {
 import type { Socket } from "socket.io-client";
 import type { SerializedUpdate } from "./protocol";
 import { ownerLeftSignal } from "./store";
-import { removeRemoteCursor } from "./cursors";
+import { removeRemoteCursor, setRemoteCursor } from "./cursors";
 
 /** Compartment for hot-swapping collab extension (per D-51) */
 export const collabCompartment = new Compartment();
@@ -70,6 +70,20 @@ export function collabPushPull(socket: Socket) {
                         });
                     }, 0);
                 });
+
+                // Handle remote cursor position updates
+                socket.on(
+                    "cursorUpdate",
+                    (data: { clientID: string; pos: number; name: string; color: string }) => {
+                        if (this.destroyed) return;
+                        setTimeout(() => {
+                            if (this.destroyed) return;
+                            this.view.dispatch({
+                                effects: setRemoteCursor.of(data),
+                            });
+                        }, 0);
+                    },
+                );
 
                 // Initial pull to catch any updates that happened between init and now.
                 // This handles the race where owner types while joiner is setting up.
@@ -151,6 +165,7 @@ export function collabPushPull(socket: Socket) {
                 socket.off("updates");
                 socket.off("ownerLeft");
                 socket.off("clientLeft");
+                socket.off("cursorUpdate");
             }
         },
     );
