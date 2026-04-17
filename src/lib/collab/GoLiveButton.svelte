@@ -11,7 +11,7 @@ import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
-import { enableCollab, disableCollab, relayConfigured, registerDocumentForCollab } from "$lib/collab";
+import { enableCollab, disableCollab, disconnectCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal } from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 
@@ -23,6 +23,16 @@ let joinIdInput = $state("");
 const authenticated = $derived(isAuthenticated());
 const canGoLive = $derived(authenticated && relayConfigured);
 const currentId = $derived($currentDraftId ?? "");
+
+// React when owner ends the session (ownerLeftSignal is incremented by collabPlugin)
+$effect(() => {
+    if ($ownerLeftSignal > 0 && isLive) {
+        // Disconnect socket (collabPlugin already reconfigured the compartment)
+        disconnectCollab();
+        isLive = false;
+        toast.error("The owner ended the session");
+    }
+});
 
 function copyId() {
     navigator.clipboard.writeText(currentId);

@@ -16,11 +16,14 @@ import type { EditorView } from "@codemirror/view";
 import { connectToCollab, disconnectCollab, getSocket, relayConfigured } from "./socket";
 import { collabCompartment, createCollabExtension } from "./collabPlugin";
 import { supabase } from "$lib/auth/supabase";
+import { getUser } from "$lib/auth/auth.svelte";
+import { createRemoteCursorsExtension, colorForClient } from "./cursors";
 
 // Re-exports
 export { collabCompartment } from "./collabPlugin";
 export { relayConfigured, getSocket, connectToCollab, disconnectCollab } from "./socket";
-export { collabState } from "./store";
+export { collabState, ownerLeftSignal } from "./store";
+export { createRemoteCursorsExtension, colorForClient } from "./cursors";
 export * from "./types";
 export * from "./protocol";
 
@@ -118,10 +121,16 @@ export async function enableCollab(
         });
     }
 
+    // Derive display name and color for cursor presence
+    const user = getUser();
+    const displayName = user?.user_metadata?.full_name ?? user?.email ?? clientID.slice(0, 8);
+    const cursorColor = colorForClient(clientID);
+
     view.dispatch({
-        effects: collabCompartment.reconfigure(
-            createCollabExtension(collabStartVersion, clientID, socket),
-        ),
+        effects: collabCompartment.reconfigure([
+            ...createCollabExtension(collabStartVersion, clientID, socket),
+            ...createRemoteCursorsExtension(socket, displayName, cursorColor),
+        ]),
     });
 }
 
