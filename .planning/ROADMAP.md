@@ -79,7 +79,12 @@ Plans:
   2. Relay validates permissions via Supabase
   3. Relay assigns version numbers using rebaseUpdates (not rejection)
   4. Relay broadcasts updates to all connected clients
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [x] 04-01-PLAN.md - Project scaffold and test infrastructure (Wave 0)
+- [x] 04-02-PLAN.md - Socket.io server with JWT auth and permissions (RELY-01, RELY-02)
+- [x] 04-03-PLAN.md - Room management, OT ordering, and broadcasting (RELY-03, RELY-04)
 
 ### Phase 5: Relay Persistence
 **Goal**: Relay survives restarts without losing document state (in quillium-landing repo)
@@ -145,8 +150,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 |-------|----------------|--------|-----------|
 | 1. Data Model | 3/3 | Complete | - |
 | 2. Auth Foundation | 2/2 | Complete | - |
-| 3. Anonymous Auth | 0/1 | Planned | - |
-| 4. Relay Core | 0/? | Not started | - |
+| 3. Anonymous Auth | 1/1 | Complete | - |
+| 4. Relay Core | 0/3 | Planned | - |
 | 5. Relay Persistence | 0/? | Not started | - |
 | 6. Client Collab | 0/? | Not started | - |
 | 7. Connection UX | 0/? | Not started | - |
