@@ -8,11 +8,20 @@ export {
     getUser,
     getUserEmail,
     initAuth,
+    isAnonymous,
     isAuthenticated,
     isLoading,
     signIn,
+    signInAnonymously,
     signOut,
     signUp,
 } from "./auth.svelte";
-export { loginSchema, signUpSchema, type LoginInput, type SignUpInput } from "./schemas";
+export {
+    displayNameSchema,
+    loginSchema,
+    signUpSchema,
+    type DisplayNameInput,
+    type LoginInput,
+    type SignUpInput,
+} from "./schemas";
 export { avatarColor, initials } from "./avatarUtils";
