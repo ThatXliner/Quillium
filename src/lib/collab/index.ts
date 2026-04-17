@@ -74,10 +74,17 @@ export async function enableCollab(
     const localDoc = view.state.doc.toString();
     const relayDoc = initialState.doc;
     const startVersion = initialState.version;
-    let shouldReplaceLocal = false;
+
+    console.log(
+        `[collab] enableCollab: localDoc.length=${localDoc.length}, relayDoc.length=${relayDoc.length}, ` +
+        `startVersion=${startVersion}, asOwner=${asOwner}`,
+    );
 
     // Determine authoritative content (what the relay will have at startVersion).
     let authoritativeContent: string;
+
+    // Track the version to use for collab (may be updated by initDocument)
+    let collabStartVersion = startVersion;
 
     if (asOwner && initialState.version === 0 && relayDoc.length === 0) {
         // Owner connecting to empty/fresh room — seed relay with snapshot of current local content.
@@ -89,8 +96,9 @@ export async function enableCollab(
         if (!initResult.ok) {
             throw new Error("Failed to seed relay with document content");
         }
-        // Relay now has our captured content at v0. Any typing during the async gap
-        // must be discarded because collab's v0 baseline must match relay's v0.
+        // Relay returns the new version (1) after initializing content
+        collabStartVersion = initResult.version ?? 1;
+        console.log("[collab] Relay initialized, starting collab at version:", collabStartVersion);
         authoritativeContent = localDoc;
     } else {
         // Joiner, or owner joining existing room — relay content is truth.
@@ -112,7 +120,7 @@ export async function enableCollab(
 
     view.dispatch({
         effects: collabCompartment.reconfigure(
-            createCollabExtension(startVersion, clientID, socket),
+            createCollabExtension(collabStartVersion, clientID, socket),
         ),
     });
 }

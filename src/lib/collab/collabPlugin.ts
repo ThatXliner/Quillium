@@ -38,12 +38,13 @@ export function collabPushPull(socket: Socket) {
             private destroyed = false;
 
             constructor(private view: EditorView) {
-                // Set up Socket.io event handler for receiving broadcast updates from other clients
+                // Set up Socket.io event handler for receiving broadcast updates from other clients.
                 socket.on("updates", (data: { updates: SerializedUpdate[] }) => {
                     this.handlePullResponse(data.updates);
                 });
 
-                // Initial pull to sync with server state
+                // Initial pull to catch any updates that happened between init and now.
+                // This handles the race where owner types while joiner is setting up.
                 this.pullUpdates();
             }
 
@@ -60,6 +61,11 @@ export function collabPushPull(socket: Socket) {
                 this.pushing = true;
                 const version = getSyncedVersion(this.view.state);
 
+                console.log(
+                    `[collab] Pushing ${updates.length} updates from v${version}, ` +
+                    `doc.length=${this.view.state.doc.length}, changes.length=${updates[0]?.changes.length}`,
+                );
+
                 socket.emit(
                     "pushUpdates",
                     {
@@ -69,17 +75,16 @@ export function collabPushPull(socket: Socket) {
                             clientID: u.clientID,
                         })),
                     },
-                    (response: { version?: number; error?: string }) => {
+                    (response: { version?: number; updates?: SerializedUpdate[]; error?: string }) => {
                         this.pushing = false;
                         if (response.error) {
-                            // Stale base version or other error -- pull first, then retry
-                            console.log("[collab] Push rejected:", response.error);
-                            this.pullUpdates();
-                        } else {
-                            // Check for more accumulated updates
-                            if (sendableUpdates(this.view.state).length) {
-                                setTimeout(() => this.push(), 100);
-                            }
+                            // Log the error. Don't retry automatically — if the server
+                            // rejects our push, the documents are out of sync and we
+                            // need user intervention (reload) rather than infinite retry.
+                            console.error("[collab] Push rejected:", response.error);
+                        } else if (response.updates && response.updates.length > 0) {
+                            // Server returns our confirmed updates — apply them to advance synced version
+                            this.handlePullResponse(response.updates);
                         }
                     },
                 );
