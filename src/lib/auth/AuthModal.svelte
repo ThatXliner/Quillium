@@ -64,7 +64,7 @@ async function handleSubmit(e: Event) {
         if (activeTab === "login") {
             const result = loginSchema.safeParse({ email, password });
             if (!result.success) {
-                error = result.error.errors[0]?.message ?? "Invalid input";
+                error = result.error.issues[0]?.message ?? "Invalid input";
                 submitting = false;
                 return;
             }
@@ -74,7 +74,7 @@ async function handleSubmit(e: Event) {
         } else {
             const result = signUpSchema.safeParse({ email, password, displayName });
             if (!result.success) {
-                error = result.error.errors[0]?.message ?? "Invalid input";
+                error = result.error.issues[0]?.message ?? "Invalid input";
                 submitting = false;
                 return;
             }
