@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
 - [ ] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
-- [ ] **Phase 8.5a: CRDT Data Shape** - Recursive Y.Map annotation shape + converters (INSERTED)
+- [x] **Phase 8.5a: CRDT Data Shape** - Recursive Y.Map annotation shape + converters (INSERTED)
 - [ ] **Phase 8.5b: CRDT Sync Plumbing** - Scoped observeDeep plugin + undo-scope helper (INSERTED)
 - [ ] **Phase 8.5c: CRDT Nested Editor Wiring** - Subtree bindings + undo auto-nav (INSERTED)
 
@@ -215,7 +215,7 @@ Plans:
 
 Plans:
 - [x] 08.5a-01-PLAN.md — Wave 0 test scaffolds: twoPeerHarness + 8 failing-test files (SYNC-05)
-- [ ] 08.5a-02-PLAN.md — Shape refactor: types.ts + annotationSchema.ts recursive Y.Map converters (SYNC-05)
+- [x] 08.5a-02-PLAN.md — Shape refactor: types.ts + annotationSchema.ts recursive Y.Map converters (SYNC-05)
 
 ### Phase 8.5b: CRDT Sync Plumbing (INSERTED)
 **Goal**: Make the annotation sync plugin scope-agnostic via `observeDeep` so it can operate at any recursion depth, and extend the UndoManager with a subtree-scope helper for nested editors
@@ -268,7 +268,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 7. Connection UX | 0/5 | Not started | - |
 | 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/6 | Not started | - |
-| 8.5a. CRDT Data Shape | 0/2 | Not started | - |
+| 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
 | 8.5b. CRDT Sync Plumbing | 0/2 | Not started | - |
 | 8.5c. CRDT Nested Editor Wiring | 0/2 | Not started | - |
 

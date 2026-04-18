@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: In progress (Phase 8.5a)
-stopped_at: "Completed 08.5a-01 — Wave 0 test scaffolding landed"
-last_updated: "2026-04-18T21:53:17.000Z"
-last_activity: 2026-04-18 -- Completed 08.5a-01 Wave 0 test scaffolding (1 harness + 8 test scaffolds, 19 it.todo entries)
+stopped_at: "Completed 08.5a-02 — recursive Y.Map schema + 5 wired annotation-tree tests"
+last_updated: "2026-04-18T22:10:00.000Z"
+last_activity: 2026-04-18 -- Completed 08.5a-02 recursive Y.Map schema refactor (types.ts + annotationSchema.ts rewrites, 5 annotation-tree tests wired)
 progress:
   total_phases: 13
   completed_phases: 10
   total_plans: 43
-  completed_plans: 38
-  percent: 88
+  completed_plans: 39
+  percent: 91
 ---
 
 # Project State
@@ -26,19 +26,26 @@ See: .planning/PROJECT.md (updated 2025-04-16)
 ## Current Position
 
 Phase: 8.5a
-Plan: 08.5a-01 complete (Wave 0 scaffolding); 08.5a-02 is next
-Status: In progress — run /gsd-execute-phase 8.5a to continue with plan 02
-Last activity: 2026-04-18 -- Completed 08.5a-01 Wave 0 test scaffolding (1 harness + 8 test scaffolds, 19 it.todo entries)
+Plan: 08.5a-02 complete (recursive Y.Map schema refactor); Phase 8.5a done; 08.5b-01 is next
+Status: In progress — run /gsd-execute-phase 8.5b to continue with Phase 8.5b
+Last activity: 2026-04-18 -- Completed 08.5a-02 recursive Y.Map schema refactor (types.ts + annotationSchema.ts, 5 annotation-tree tests wired)
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: -
 - Total execution time: 0 hours
+
+**Plan Metrics:**
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 08.5a | 01 | 8min  | 2 | 9 |
+| 08.5a | 02 | 11min | 2 | 3 |
 
 **By Phase:**
 
@@ -68,6 +75,9 @@ Recent decisions affecting current work:
 - 08.5a-01: Use `it.todo` (not `it.skip`) for Wave 0 scaffolds so Vitest reports TODO count distinctly and the suite stays green.
 - 08.5a-01: Keep harness `Peer.ymap` typed as `Y.Map<unknown>` with a `Y.Map<never>` cast at the plugin boundary so the harness survives the shape rewrite in 08.5a-02.
 - 08.5a-01: Wave 0 scaffolds do NOT import the harness yet; downstream plans add imports when they rewrite a todo into a real test.
+- 08.5a-02: Recursive Y.Map node shape replaces flat JSON blob — `YjsAnnotationNode = Y.Map<unknown>` with runtime `instanceof` guards; Yjs does not support discriminated-union typing of child types (D-90/D-92).
+- 08.5a-02: Converter wraps all child Y type creation in a single `ydoc.transact(..., "init")` so remote peers see atomic node insertion; must call `ymap.set(key, node)` before reading back (detached Y.Maps log "Invalid access" and return undefined).
+- 08.5a-02: annotation-tree `version propagation` test cannot use `twoPeerHarness.makePeer` yet — `createAnnotationSyncPlugin` still expects the legacy flat shape (owned by Plan 8.5b-01). Standalone two-Y.Doc setup used for this test only.
 
 ### Pending Todos
 
@@ -96,6 +106,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-18T21:53:17.000Z
-Stopped at: Completed 08.5a-01-PLAN.md (Wave 0 test scaffolding)
+Last session: 2026-04-18T22:10:00.000Z
+Stopped at: Completed 08.5a-02-PLAN.md (recursive Y.Map schema refactor)
 Resume file: None
