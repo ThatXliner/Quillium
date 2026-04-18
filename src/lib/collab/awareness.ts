@@ -26,7 +26,7 @@ import {
     WidgetType,
     type ViewUpdate,
 } from "@codemirror/view";
-import { type Extension, RangeSetBuilder } from "@codemirror/state";
+import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 
@@ -86,12 +86,21 @@ class RemoteCursorWidget extends WidgetType {
     constructor(
         readonly name: string,
         readonly color: string,
+        /** Position is part of identity so CodeMirror rebuilds the widget DOM
+         *  when the remote cursor moves. Without it, eq() returns true for
+         *  every keystroke at the same doc (same name+color) and CM reuses
+         *  the old DOM at the old position. */
+        readonly pos: number,
     ) {
         super();
     }
 
     eq(other: RemoteCursorWidget): boolean {
-        return this.name === other.name && this.color === other.color;
+        return (
+            this.name === other.name &&
+            this.color === other.color &&
+            this.pos === other.pos
+        );
     }
 
     toDOM(): HTMLElement {
@@ -171,6 +180,12 @@ const awarenessTheme = EditorView.baseTheme({
  * @param localName - Local user's display name
  * @param localColor - Local user's cursor color
  */
+/** Effect carrying the awareness "version" — a bumped counter that forces
+ *  the cursors field to rebuild decorations against current awareness state.
+ *  Using a counter (not the decoration set itself) keeps the effect payload
+ *  cheap and avoids rebuilding in the effect dispatcher. */
+const awarenessTickEffect = StateEffect.define<number>();
+
 export function createAwarenessExtension(
     awareness: Awareness,
     ytext: Y.Text,
@@ -208,39 +223,126 @@ export function createAwarenessExtension(
         }
     }
 
-    const plugin = ViewPlugin.fromClass(
+    function buildDecorations(docLength: number): DecorationSet {
+        const states = awareness.getStates();
+        const localClientId = awareness.clientID;
+        const meta = awareness.meta;
+
+        // Dedupe by user name — stale clientIDs from recent page reloads
+        // linger for ~30s before awareness GC removes them, so a single
+        // user can appear as multiple active clients. Keep the most
+        // recently updated entry per user.
+        const byName = new Map<
+            string,
+            { pos: number; name: string; color: string; ts: number }
+        >();
+
+        states.forEach((state: AwarenessState, clientId: number) => {
+            if (clientId === localClientId) return;
+
+            const cursor = state.cursor;
+            const user = state.user;
+            if (!cursor || !user) return;
+
+            // Resolve RelativePosition against current Y.Doc state.
+            // If the referenced item is gone (text deleted), skip.
+            const resolved = decodePos(cursor.headPos);
+            if (resolved === null) return;
+
+            const pos = Math.max(0, Math.min(resolved, docLength));
+            const ts = meta.get(clientId)?.lastUpdated ?? 0;
+            const existing = byName.get(user.name);
+            if (!existing || ts > existing.ts) {
+                byName.set(user.name, { pos, name: user.name, color: user.color, ts });
+            }
+        });
+
+        const cursors = Array.from(byName.values());
+
+        if (cursors.length === 0) return Decoration.none;
+
+        // CRITICAL: Sort by position for RangeSetBuilder (panics on out-of-order insertion)
+        cursors.sort((a, b) => a.pos - b.pos);
+
+        const builder = new RangeSetBuilder<Decoration>();
+        for (const c of cursors) {
+            builder.add(
+                c.pos,
+                c.pos,
+                Decoration.widget({
+                    widget: new RemoteCursorWidget(c.name, c.color, c.pos),
+                    side: 1,
+                }),
+            );
+        }
+
+        return builder.finish();
+    }
+
+    /** StateField owning the remote-cursor decorations. Rebuilds whenever:
+     *  - the document changes (text may shift decoded positions), or
+     *  - an awarenessTickEffect fires (remote awareness state changed).
+     *  Using a StateField (not a ViewPlugin mutation) guarantees the CM
+     *  decoration facet sees a fresh RangeSet and repaints widgets. */
+    const cursorsField = StateField.define<DecorationSet>({
+        create(state) {
+            return buildDecorations(state.doc.length);
+        },
+        update(value, tr) {
+            // Rebuild on any doc change OR explicit awareness tick.
+            if (
+                tr.docChanged ||
+                tr.effects.some((e) => e.is(awarenessTickEffect))
+            ) {
+                return buildDecorations(tr.state.doc.length);
+            }
+            return value;
+        },
+        provide: (f) => EditorView.decorations.from(f),
+    });
+
+    // ── ViewPlugin handles local cursor broadcast + awareness subscription ──
+    const localCursorPlugin = ViewPlugin.fromClass(
         class {
-            decorations: DecorationSet;
             private changeHandler: () => void;
             private lastCursorHead = -1;
             private lastCursorAnchor = -1;
             private destroyed = false;
-            private updating = false;
+            private tick = 0;
+            /** True while we're inside our own ViewPlugin.update() — setLocalStateField
+             *  fires awareness "update" synchronously and would reenter dispatch. */
+            private insideUpdate = false;
 
             constructor(private view: EditorView) {
-                this.decorations = this.buildDecorations();
-
                 this.changeHandler = () => {
                     if (this.destroyed) return;
-                    this.decorations = this.buildDecorations();
-                    // Dispatch synchronously when possible for real-time feel.
-                    // We only defer when awareness fires during our own CM update
-                    // (from setLocalStateField in update()), since dispatching
-                    // while an update is in progress throws.
-                    if (this.updating) {
-                        queueMicrotask(() => {
-                            if (!this.destroyed) this.view.dispatch({});
+                    this.tick++;
+                    const tick = this.tick;
+                    const doDispatch = () => {
+                        if (this.destroyed) return;
+                        this.view.dispatch({
+                            effects: awarenessTickEffect.of(tick),
                         });
+                    };
+                    // Dispatch sync when safe (typical case: WebSocket message handler).
+                    // Defer when we're inside an active CM transaction (our own
+                    // setLocalStateField echoing back to us).
+                    if (this.insideUpdate) {
+                        queueMicrotask(doDispatch);
                     } else {
-                        this.view.dispatch({});
+                        doDispatch();
                     }
                 };
 
-                awareness.on("change", this.changeHandler);
+                // Listen to "update" not "change": y-protocols only fires "change"
+                // when state differs by equalityDeep. When the remote user types at
+                // end-of-doc, their encoded RelativePosition ("after end") is byte-
+                // identical each keystroke, so "change" never fires and their cursor
+                // appears frozen. "update" fires on every clock bump.
+                awareness.on("update", this.changeHandler);
 
-                // Set initial cursor position. Constructor runs during CM's
-                // init update, so guard against re-entrant dispatch.
-                this.updating = true;
+                // Set initial cursor position.
+                this.insideUpdate = true;
                 try {
                     const head = view.state.selection.main.head;
                     const anchor = view.state.selection.main.anchor;
@@ -251,12 +353,12 @@ export function createAwarenessExtension(
                     this.lastCursorHead = head;
                     this.lastCursorAnchor = anchor;
                 } finally {
-                    this.updating = false;
+                    this.insideUpdate = false;
                 }
             }
 
             update(update: ViewUpdate) {
-                this.updating = true;
+                this.insideUpdate = true;
                 try {
                     // Update local cursor in awareness whenever selection OR doc
                     // changes. Doc changes matter because remote edits shift our
@@ -278,87 +380,20 @@ export function createAwarenessExtension(
                             });
                         }
                     }
-
-                    // Rebuild decorations if doc changed (remote cursor positions
-                    // need re-resolution against the new doc state).
-                    if (update.docChanged) {
-                        this.decorations = this.buildDecorations();
-                    }
                 } finally {
-                    this.updating = false;
+                    this.insideUpdate = false;
                 }
-            }
-
-            private buildDecorations(): DecorationSet {
-                const states = awareness.getStates();
-                const localClientId = awareness.clientID;
-                const docLength = this.view.state.doc.length;
-                const meta = awareness.meta;
-
-                // Dedupe by user name — stale clientIDs from recent page reloads
-                // linger for ~30s before awareness GC removes them, so a single
-                // user can appear as multiple active clients. Keep the most
-                // recently updated entry per user.
-                const byName = new Map<
-                    string,
-                    { pos: number; name: string; color: string; ts: number }
-                >();
-
-                states.forEach((state: AwarenessState, clientId: number) => {
-                    if (clientId === localClientId) return;
-
-                    const cursor = state.cursor;
-                    const user = state.user;
-                    if (!cursor || !user) return;
-
-                    // Resolve RelativePosition against current Y.Doc state.
-                    // If the referenced item is gone (text deleted), skip.
-                    const resolved = decodePos(cursor.headPos);
-                    if (resolved === null) return;
-
-                    const pos = Math.max(0, Math.min(resolved, docLength));
-                    const ts = meta.get(clientId)?.lastUpdated ?? 0;
-                    const existing = byName.get(user.name);
-                    if (!existing || ts > existing.ts) {
-                        byName.set(user.name, { pos, name: user.name, color: user.color, ts });
-                    }
-                });
-
-                const cursors = Array.from(byName.values());
-
-                if (cursors.length === 0) return Decoration.none;
-
-                // CRITICAL: Sort by position for RangeSetBuilder (panics on out-of-order insertion)
-                cursors.sort((a, b) => a.pos - b.pos);
-
-                const builder = new RangeSetBuilder<Decoration>();
-                for (const c of cursors) {
-                    builder.add(
-                        c.pos,
-                        c.pos,
-                        Decoration.widget({
-                            widget: new RemoteCursorWidget(c.name, c.color),
-                            side: 1,
-                        }),
-                    );
-                }
-
-                return builder.finish();
             }
 
             destroy() {
                 this.destroyed = true;
-                awareness.off("change", this.changeHandler);
+                awareness.off("update", this.changeHandler);
                 // Clear local cursor state on disconnect (prevents ghost cursors).
-                // destroyed=true above prevents any queued dispatch from firing.
-                this.updating = true;
+                this.insideUpdate = true;
                 awareness.setLocalStateField("cursor", null);
             }
         },
-        {
-            decorations: (v) => v.decorations,
-        },
     );
 
-    return [plugin, awarenessTheme];
+    return [cursorsField, localCursorPlugin, awarenessTheme];
 }

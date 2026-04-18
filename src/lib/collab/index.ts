@@ -187,9 +187,9 @@ export async function enableCollab(
 
     // Listen for owner left (custom message from server)
     // y-websocket doesn't have built-in custom messages, so we listen on provider events
-    provider.on("connection-close" as any, (event: CloseEvent) => {
-        // Check close reason for owner disconnect
-        if (event.reason === "Owner left") {
+    provider.on("connection-close" as any, (event: CloseEvent | null) => {
+        // Check close reason for owner disconnect (event may be null on manual disconnect)
+        if (event?.reason === "Owner left") {
             handleOwnerLeft();
         }
     });

@@ -119,7 +119,7 @@ describe("awareness", () => {
                 remoteClientId,
                 makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
             );
-            awareness.emit("change", [
+            awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
@@ -141,7 +141,7 @@ describe("awareness", () => {
                 remoteClientId,
                 makeRemoteCursorState(ytext, "Bob", "#E87040", 5),
             );
-            awareness.emit("change", [
+            awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
@@ -164,7 +164,7 @@ describe("awareness", () => {
                 remoteClientId,
                 makeRemoteCursorState(ytext, "Charlie", "#50B86C", 2),
             );
-            awareness.emit("change", [
+            awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
@@ -188,7 +188,7 @@ describe("awareness", () => {
                 remoteClientId,
                 makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
             );
-            awareness.emit("change", [
+            awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
@@ -197,7 +197,7 @@ describe("awareness", () => {
             expect(view.dom.querySelectorAll(".cm-remote-cursor").length).toBe(1);
 
             awareness.states.delete(remoteClientId);
-            awareness.emit("change", [
+            awareness.emit("update", [
                 { added: [], updated: [], removed: [remoteClientId] },
                 "test",
             ]);
@@ -271,7 +271,7 @@ describe("awareness", () => {
                 remoteClientId,
                 makeRemoteCursorState(ytext, "Bob", "#E87040", 6),
             );
-            awareness.emit("change", [
+            awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
@@ -302,7 +302,7 @@ describe("awareness", () => {
                 remoteClientId,
                 makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
             );
-            awareness.emit("change", [
+            awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
