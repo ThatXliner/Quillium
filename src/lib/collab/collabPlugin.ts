@@ -20,6 +20,7 @@ import {
 import type { Socket } from "socket.io-client";
 import type { SerializedUpdate } from "./protocol";
 import { ownerLeftSignal, pendingUpdatesCount, collabState } from "./store";
+import { flushBufferedUpdates } from "./socket";
 import { get } from "svelte/store";
 import { removeRemoteCursor, setRemoteCursor } from "./cursors";
 
@@ -93,6 +94,13 @@ export function collabPushPull(socket: Socket) {
                     console.log("[collab] Reconnected, re-syncing state");
                     this.pullUpdates();
                 });
+
+                // Flush any updates that arrived between init and plugin setup
+                const buffered = flushBufferedUpdates();
+                for (const data of buffered) {
+                    console.log("[collab] Replaying buffered updates:", data.updates.length);
+                    this.handlePullResponse(data.updates as SerializedUpdate[]);
+                }
 
                 // Initial pull to catch any updates that happened between init and now.
                 // This handles the race where owner types while joiner is setting up.

@@ -30,6 +30,21 @@ export type InitialState = {
     doc: string;
 };
 
+/** Buffered updates received before collabPlugin is ready */
+let bufferedUpdates: { updates: unknown[] }[] = [];
+let updatesHandlerReady = false;
+
+/**
+ * Mark the updates handler as ready and return any buffered updates.
+ * Called by collabPlugin after registering its socket.on("updates") handler.
+ */
+export function flushBufferedUpdates(): { updates: unknown[] }[] {
+    updatesHandlerReady = true;
+    const buffered = bufferedUpdates;
+    bufferedUpdates = [];
+    return buffered;
+}
+
 /**
  * Connect to the relay for a specific document.
  * Per D-53: JWT passed in auth handshake.
@@ -69,6 +84,19 @@ export async function connectToCollab(
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 30000,
+    });
+
+    // Reset buffering state for new connection
+    bufferedUpdates = [];
+    updatesHandlerReady = false;
+
+    // Buffer updates until collabPlugin is ready
+    newSocket.on("updates", (data: { updates: unknown[] }) => {
+        if (!updatesHandlerReady) {
+            console.log("[collab] Buffering updates until plugin ready:", data.updates.length);
+            bufferedUpdates.push(data);
+        }
+        // Once ready, the collabPlugin's own handler will process updates
     });
 
     return new Promise((resolve, reject) => {
