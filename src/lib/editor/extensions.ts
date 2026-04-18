@@ -42,7 +42,6 @@ import {
     highlightSpecialChars,
     keymap,
 } from "@codemirror/view";
-import { collabCompartment } from "$lib/collab";
 import { dictionaryExtension } from "./dictionaryPlugin";
 import { harperExtension } from "./harper/harperLinter";
 import { type ListenerOptions, listeners } from "./listeners";
@@ -113,7 +112,5 @@ export const getExtensions = (options?: ListenerOptions) => {
         ...(withHistory
             ? [harperCompartment.of(appSettings.grammarCheckEnabled ? harperExtension() : [])]
             : []),
-        // Collab extension (initially disabled, reconfigured on "Go Live" per D-51)
-        collabCompartment.of([]),
     ];
 };

@@ -27,27 +27,17 @@ import {
     getYjsProvider,
     getCurrentDocId,
 } from "./yjsProvider";
-import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 
 // Stores
 import { collabState, ownerLeftSignal, pendingUpdatesCount, reconnectAttempt } from "./store";
 
 // Types
-export type { CollabSession, CollabState, YjsAnnotation } from "./types";
+export type { CollabSession, CollabState } from "./types";
 
 // Re-exports
 export { collabState, ownerLeftSignal, pendingUpdatesCount, reconnectAttempt } from "./store";
 export { colorForClient } from "./awareness";
 export { relayConfigured, getYjsProvider, getCurrentDocId } from "./yjsProvider";
-// Annotation sync exports
-export { yjsAnnotationSync, createAnnotationSyncPlugin } from "./yjsAnnotations";
-export { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
-export {
-    codeMirrorToYjsAnnotation,
-    yjsAnnotationToCodeMirror,
-    AnnotationIdMap,
-    generateAnnotationId,
-} from "./annotationSchema";
 
 /** Compartment for hot-swapping collab extension (per D-51) */
 export const collabCompartment = new Compartment();
@@ -104,7 +94,7 @@ export async function enableCollab(
     asOwner: boolean = true,
 ): Promise<void> {
     // Connect to Yjs relay
-    const { provider, awareness, ydoc, ytext, ymap } = await createYjsProvider(docId);
+    const { provider, awareness, ydoc, ytext } = await createYjsProvider(docId);
 
     // Get local content before connecting
     const localDoc = view.state.doc.toString();
@@ -168,17 +158,14 @@ export async function enableCollab(
     const cursorColor = colorForClient(clientID);
 
     const binding = createYjsBinding(ytext);
-    // Per D-83: Pass ymap to UndoManager for unified undo stack
-    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext);
     const awarenessExt = createAwarenessExtension(awareness, displayName, cursorColor);
-    // Annotation sync plugin - bidirectional Y.Map <-> annotationField sync
-    const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID);
 
     currentUndoManager = undoManager;
 
-    // Install Yjs collab extension - includes annotation sync
+    // Install Yjs collab extension
     view.dispatch({
-        effects: collabCompartment.reconfigure([binding, undoExt, awarenessExt, annotationSync]),
+        effects: collabCompartment.reconfigure([binding, undoExt, awarenessExt]),
     });
 
     // Listen for owner left (custom message from server)

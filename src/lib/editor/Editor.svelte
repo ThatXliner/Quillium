@@ -3,7 +3,6 @@ import {
     createDocument,
     createDraft,
     createSnapshot,
-    getDocumentMeta,
     listDocuments,
     listDrafts,
     loadDocumentState,
@@ -257,14 +256,15 @@ const fromSave = (async () => {
 
     if (docId) {
         // Document already set (e.g. navigated from library)
-        const doc = await getDocumentMeta(docId);
-        if (doc) {
-            currentDocumentTitle.set(doc.title);
-        }
         const draftId = await resolveActiveDraft(docId);
         currentDraftId.set(draftId);
         if (draftId) {
             const loaded = await loadDocumentState(docId, draftId);
+            currentDocumentTitle.set(
+                loaded.snapshotStateJson
+                    ? extractTitleFromStateJson(loaded.snapshotStateJson)
+                    : "Untitled",
+            );
             return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
         }
     } else {
@@ -363,12 +363,11 @@ export async function loadDocument(id: string) {
         return;
     }
 
-    const [loaded, docMeta] = await Promise.all([
-        loadDocumentState(id, draftId),
-        getDocumentMeta(id),
-    ]);
+    const loaded = await loadDocumentState(id, draftId);
     if (gen !== loadGeneration) return;
-    currentDocumentTitle.set(docMeta?.title ?? "Untitled");
+    currentDocumentTitle.set(
+        loaded.snapshotStateJson ? extractTitleFromStateJson(loaded.snapshotStateJson) : "Untitled",
+    );
 
     // Seed lastPersistedEventId from the loaded state so named checkpoints
     // can be created immediately without requiring a new edit first.

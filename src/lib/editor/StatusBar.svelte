@@ -23,7 +23,6 @@ import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { collabState, pendingUpdatesCount, reconnectAttempt } from "$lib/collab";
 import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
@@ -115,43 +114,14 @@ $effect(() => {
     onmouseleave={onMouseLeave}
 >
     <div class="flex gap-4 items-center py-2 px-8 min-w-0">
-        <!-- Save status (pinned left) -- shows collab state when active, otherwise save state -->
+        <!-- Save status (pinned left) -->
         <div class="flex items-center gap-2 shrink-0">
-            {#if $collabState !== "disconnected"}
-                <div
-                    class={`w-2 h-2 rounded-full ${
-                        $collabState === "connected"
-                            ? "bg-green-400"
-                            : $collabState === "syncing"
-                              ? "bg-blue-400 animate-pulse"
-                              : $collabState === "reconnecting"
-                                ? "bg-yellow-400 animate-pulse"
-                                : $collabState === "error"
-                                  ? "bg-red-400"
-                                  : "bg-yellow-400"
-                    }`}
-                ></div>
-                <span class="text-sm text-black/90">
-                    {#if $collabState === "connected"}
-                        Synced
-                    {:else if $collabState === "syncing"}
-                        Syncing{$pendingUpdatesCount > 0 ? ` (${$pendingUpdatesCount})` : "..."}
-                    {:else if $collabState === "reconnecting"}
-                        Reconnecting{$reconnectAttempt > 0 ? ` (${$reconnectAttempt}/10)` : "..."}
-                    {:else if $collabState === "error"}
-                        Disconnected
-                    {:else}
-                        Connecting...
-                    {/if}
-                </span>
-            {:else}
-                <div
-                    class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
-                ></div>
-                <span class="text-sm text-black/90"
-                    >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
-                >
-            {/if}
+            <div
+                class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
+            ></div>
+            <span class="text-sm text-black/90"
+                >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
+            >
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
         <!-- Middle buttons (scrollable) -->

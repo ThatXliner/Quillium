@@ -311,17 +311,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            // Allow override for testing (e.g. running two instances with separate DBs)
-            let db_path = match std::env::var("QUILLIUM_DATA_DIR") {
-                Ok(dir) => std::path::PathBuf::from(dir),
-                Err(_) => app
-                    .path()
-                    .app_local_data_dir()
-                    .expect("failed to resolve app local data dir"),
-            };
+            let db_path = app
+                .path()
+                .app_local_data_dir()
+                .expect("failed to resolve app local data dir");
             std::fs::create_dir_all(&db_path).expect("failed to create app data dir");
             let db_file = db_path.join("quillium.db");
             let conn = open_db(&db_file).expect("failed to open database");
@@ -366,32 +360,12 @@ pub fn run() {
                 .quit()
                 .build()?;
 
-            let export_submenu = SubmenuBuilder::new(app, "Export")
-                .item(
-                    &MenuItemBuilder::with_id("export-txt", "Plain Text (.txt)")
-                        .build(app)?,
-                )
-                .item(
-                    &MenuItemBuilder::with_id("export-txt-json", "Text + Annotations (.txt)")
-                        .build(app)?,
-                )
-                .item(
-                    &MenuItemBuilder::with_id("export-json", "JSON (.json)")
-                        .build(app)?,
-                )
-                .item(
-                    &MenuItemBuilder::with_id("export-md", "Markdown (.md)")
-                        .build(app)?,
-                )
-                .build()?;
-
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(
                     &MenuItemBuilder::with_id("library", "Library")
                         .accelerator("CmdOrCtrl+O")
                         .build(app)?,
                 )
-                .item(&export_submenu)
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -427,8 +401,7 @@ pub fn run() {
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().as_ref();
                 match id {
-                    "settings" | "history" | "library" | "licenses"
-                    | "export-txt" | "export-txt-json" | "export-json" | "export-md" => {
+                    "settings" | "history" | "library" | "licenses" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.emit(&format!("menu:{id}"), ());
                         }

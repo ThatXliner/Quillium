@@ -23,9 +23,6 @@ Quillium is built as a modern web application using SvelteKit, packaged as a cro
 The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 
 ```
-                                        ┌─────────────────────┐
-                                        │ GoLive │ AuthButton │  ← Top-right cluster
-                                        └─────────────────────┘
 ┌──────────────┬──────────────────────┬──────────────────┐
 │  AI Sidebar  │       Editor         │   Annotations    │
 │              │                      │                  │
@@ -33,14 +30,7 @@ The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 │  Feedback    │  (816px fixed width) │  Revision cards  │
 │  Revise      │  Status bar          │  Suggestion cards│
 └──────────────┴──────────────────────┴──────────────────┘
-                        ┌─────┐
-                        │AutoAI│  ← Bottom-left bubble
-                        └─────┘
 ```
-
-The top-right cluster contains:
-- `GoLiveButton` — collab toggle ("Go Live" / "Live"), copy ID, join by ID menu
-- `AuthButton` — sign in button (logged out) or avatar dropdown (logged in)
 
 Modal overlays (revision editors, diff views) are rendered on top via `modalStack` — a stack of `<RevisionModal>` and `<DiffModal>` instances managed by `src/lib/stores.ts`.
 
@@ -65,32 +55,12 @@ src/
 │   │   ├── provider.ts        # Provider-agnostic client setup
 │   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
 │   │   └── utils.ts           # Shared AI utilities
-│   ├── auth/
-│   │   ├── AuthButton.svelte    # Top-right auth button (sign in / avatar dropdown)
-│   │   ├── AuthModal.svelte     # Sign in / sign up modal
-│   │   ├── AvatarDropdown.svelte # Dropdown menu for logged-in user
-│   │   ├── NameEntryModal.svelte # Anonymous user display name prompt
-│   │   ├── auth.svelte.ts       # Reactive auth state store (Svelte 5 $state runes)
-│   │   ├── avatarUtils.ts       # initials() and avatarColor() helpers
-│   │   ├── schemas.ts           # Zod schemas for auth forms
-│   │   ├── supabase.ts          # Supabase client singleton
-│   │   └── index.ts             # Re-exports for public API
 │   ├── autoai/
 │   │   ├── AutoAIFace.svelte         # Animated face SVG component (purely presentational)
 │   │   ├── AutoAIWidget.svelte       # Bubble + expanded panel UI, face state machine
 │   │   ├── faceAnimation.svelte.ts   # Eye tracking + sleep/wake state (extracted from widget)
 │   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
 │   │   └── settings.svelte.ts   # AutoAI settings store (reactive, persisted)
-│   ├── collab/
-│   │   ├── GoLiveButton.svelte  # Top-right collab toggle + join-by-ID menu
-│   │   ├── collabPlugin.ts      # ViewPlugin for push/pull loop + event handlers
-│   │   ├── cursors.ts           # Remote cursor StateField, ViewPlugin, WidgetType
-│   │   ├── cursors.test.ts      # Remote cursor unit tests
-│   │   ├── index.ts             # Public API: enableCollab, disableCollab, etc.
-│   │   ├── protocol.ts          # WebSocket message types (pushUpdates, pullUpdates)
-│   │   ├── socket.ts            # Socket.io client singleton
-│   │   ├── store.ts             # Svelte stores: collabState, ownerLeftSignal, etc.
-│   │   └── types.ts             # CollabSession, CollabState types
 │   ├── db/
 │   │   ├── index.ts           # Typed invoke() wrappers for all Rust DB commands
 │   │   ├── types.ts           # TypeScript mirrors of Rust structs (DocumentMeta, DraftMeta, etc.)
@@ -235,13 +205,6 @@ User types / dispatches transaction
     │  $selectedText               │ ← read by AI sidebar
     │  $saveStatus                 │ ← read by StatusBar
     │  $currentDocumentTitle       │ ← read by StatusBar, library
-    └──────────────────────────────┘
-
-    Collab stores (separate from updateListener):
-    ┌──────────────────────────────┐
-    │  $collabState                │ ← read by StatusBar, GoLiveButton
-    │  $ownerLeftSignal            │ ← read by GoLiveButton (session end)
-    │  $reconnectAttempt           │ ← read by StatusBar (reconnection UI)
     └──────────────────────────────┘
 ```
 
@@ -1302,261 +1265,6 @@ A Discord-style "What's New" modal shown on startup when the user upgrades to a 
 **Adding a changelog entry:** Add a `"major.minor"` key to `src/lib/changelog.json` with `date` (display string like `"April 2026"`) and `content` (markdown string). The modal renders the markdown via `renderMarkdown()`.
 
 **PostHog:** A `changelog_viewed` event with the version is captured on dismiss.
-
----
-
-## Authentication
-
-Quillium uses Supabase Auth for user identity, enabling real-time collaboration features. Authentication is optional — the app works fully offline without an account.
-
-### Files
-
-| File | Purpose |
-|---|---|
-| `src/lib/auth/supabase.ts` | Supabase client singleton with localStorage session persistence |
-| `src/lib/auth/auth.svelte.ts` | Reactive auth state store using Svelte 5 `$state` runes |
-| `src/lib/auth/AuthButton.svelte` | Top-right button: "Sign in" when logged out, avatar when logged in |
-| `src/lib/auth/AuthModal.svelte` | Sign in / sign up form modal |
-| `src/lib/auth/AvatarDropdown.svelte` | Dropdown menu with user info and logout |
-| `src/lib/auth/NameEntryModal.svelte` | Display name prompt for anonymous users |
-| `src/lib/auth/avatarUtils.ts` | `initials()` and `avatarColor()` for avatar rendering |
-
-### Auth Flows
-
-**Email/password sign up:**
-```
-User clicks "Sign in" → AuthModal opens → User fills form → signUp(email, password, displayName)
-→ Supabase creates user with display_name in raw_user_meta_data → Session stored in localStorage
-```
-
-**Anonymous auth (for collaborators):**
-```
-User clicks "Join" on a shared document → NameEntryModal prompts for display name
-→ signInAnonymously(displayName) → Supabase creates anonymous user with is_anonymous: true
-→ Session stored in localStorage → Can join collab sessions without full account
-```
-
-### Session Persistence
-
-Sessions are stored in localStorage (not SQLite) because:
-1. Auth state must be available before Tauri backend loads
-2. Supabase SDK expects synchronous storage access
-3. Per-device sessions align with desktop app model
-
-The `initAuth()` function is called once at app startup from `+page.svelte`. It checks for an existing session and subscribes to auth state changes.
-
-### Environment Variables
-
-| Variable | Purpose |
-|---|---|
-| `PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY` | Supabase anon key for client-side auth |
-
-If these are not configured, `supabaseConfigured` is `false` and auth features are disabled (GoLiveButton hidden, AuthButton hidden).
-
----
-
-## Real-time Collaboration (Quillium Omni)
-
-Quillium Omni enables real-time collaborative editing between multiple Quillium instances. Built on `@codemirror/collab` for OT-based text sync, Socket.io for transport, and Supabase for auth and document registry.
-
-### Architecture Overview
-
-```
-┌─────────────────┐          ┌─────────────────┐
-│  Quillium (A)   │          │  Quillium (B)   │
-│  Owner          │          │  Joiner         │
-│                 │          │                 │
-│  ┌───────────┐  │          │  ┌───────────┐  │
-│  │CodeMirror │  │          │  │CodeMirror │  │
-│  │  collab() │  │          │  │  collab() │  │
-│  └─────┬─────┘  │          │  └─────┬─────┘  │
-│        │        │          │        │        │
-│  ┌─────┴─────┐  │          │  ┌─────┴─────┐  │
-│  │collabPlugin│ │          │  │collabPlugin│ │
-│  │push/pull  │  │          │  │push/pull  │  │
-│  └─────┬─────┘  │          │  └─────┬─────┘  │
-└────────┼────────┘          └────────┼────────┘
-         │                            │
-         │ Socket.io (JWT auth)       │
-         │                            │
-         ▼                            ▼
-    ┌────────────────────────────────────┐
-    │         Relay Server               │
-    │   (quillium-landing repo)          │
-    │                                    │
-    │  • JWT validation via Supabase     │
-    │  • Room management per document    │
-    │  • OT ordering (rebaseUpdates)     │
-    │  • Broadcasts to all clients       │
-    │  • Persists to collab_updates      │
-    └────────────────────────────────────┘
-```
-
-### Files
-
-| File | Purpose |
-|---|---|
-| `src/lib/collab/index.ts` | Public API: `enableCollab()`, `disableCollab()`, `registerDocumentForCollab()` |
-| `src/lib/collab/socket.ts` | Socket.io client singleton with JWT auth |
-| `src/lib/collab/collabPlugin.ts` | ViewPlugin for push/pull loop, socket event handlers |
-| `src/lib/collab/cursors.ts` | Remote cursor StateField, ViewPlugin, WidgetType, emit plugin |
-| `src/lib/collab/protocol.ts` | Message types: `pushUpdates`, `pullUpdates`, `SerializedUpdate` |
-| `src/lib/collab/types.ts` | `CollabSession`, `CollabState` types |
-| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `ownerLeftSignal`, `reconnectAttempt` |
-| `src/lib/collab/GoLiveButton.svelte` | UI: "Go Live" toggle, copy ID, join by ID |
-
-### Data Model (Supabase)
-
-| Table | Purpose |
-|---|---|
-| `users` | User profiles (populated by database trigger on auth.users insert) |
-| `sync_documents` | Document registry: `id`, `owner_id`, `title` |
-| `collab_updates` | Ordered change history for relay persistence |
-| `shares` | Access grants with tokens (v2 — not yet implemented) |
-
-### Collab Extension Integration
-
-The collab system uses CodeMirror's Compartment pattern for hot-swapping:
-
-```typescript
-// extensions.ts — initially empty
-collabCompartment.of([])
-
-// enableCollab() — reconfigures with active extensions
-view.dispatch({
-    effects: collabCompartment.reconfigure([
-        ...createCollabExtension(startVersion, clientID, socket),
-        ...createRemoteCursorsExtension(socket, displayName, cursorColor),
-    ]),
-});
-
-// disableCollab() — back to empty
-view.dispatch({
-    effects: collabCompartment.reconfigure([]),
-});
-```
-
-### Owner vs Joiner Flow
-
-**Owner goes live:**
-```
-User clicks "Go Live" → createNamedSnapshot("Before going live (auto)")
-→ registerDocumentForCollab(draftId, userId, title) — upserts to sync_documents
-→ connectToCollab(docId) — Socket.io connect with JWT
-→ Relay returns { version: 0, doc: "" } for fresh room
-→ Owner seeds relay: socket.emit("initDocument", { content: localDoc })
-→ enableCollab() reconfigures compartment at version 1
-→ isLive = true, toast "You're live!"
-```
-
-**Joiner joins by ID:**
-```
-User pastes document UUID → joinById() validates UUID format
-→ connectToCollab(docId) — Socket.io connect with JWT
-→ Relay returns { version: N, doc: "..." } with current state
-→ Joiner replaces local doc with relay content
-→ enableCollab() reconfigures compartment at version N
-→ isLive = true, toast "Joined shared document"
-```
-
-### Push/Pull Loop (`collabPlugin.ts`)
-
-The `collabPushPull` ViewPlugin implements the sync loop:
-
-**On local change (`update.docChanged`):**
-```
-sendableUpdates(state) → serialize changes
-→ socket.emit("pushUpdates", { version, updates })
-→ Relay rebases if needed, broadcasts to others
-→ Callback returns confirmed updates → receiveUpdates()
-```
-
-**On remote change (`socket.on("updates")`):**
-```
-Deserialize updates → ChangeSet.fromJSON()
-→ view.dispatch(receiveUpdates(state, updates))
-→ If local pending: setTimeout → push()
-```
-
-### Remote Cursors
-
-Remote cursor positions are displayed Google Docs-style with colored carets and name labels.
-
-**Components:**
-- `remoteCursorsField` — StateField storing `Map<clientID, RemoteCursor>`
-- `remoteCursorsPlugin` — ViewPlugin building `DecorationSet` from field
-- `RemoteCursorWidget` — WidgetType rendering label + caret DOM
-- `createCursorEmitPlugin` — ViewPlugin emitting local cursor position (throttled 100ms)
-
-**Cursor flow:**
-```
-Local selection changes → cursorEmitPlugin throttles
-→ socket.emit("cursorUpdate", { pos, name, color })
-→ Relay broadcasts to other clients
-→ socket.on("cursorUpdate") → setRemoteCursor effect
-→ remoteCursorsField maps position through doc changes
-→ remoteCursorsPlugin rebuilds decorations
-```
-
-**Position mapping:** When doc changes arrive, cursor positions are mapped through `tr.changes.mapPos(pos, 1)` with `side: 1` to keep cursors after inserted text.
-
-### Session Lifecycle Events
-
-| Event | Direction | Handler |
-|---|---|---|
-| `init` | Server → Client | Initial state `{ version, doc }` on connect |
-| `pushUpdates` | Client → Server | Local changes with base version |
-| `pullUpdates` | Client → Server | Request updates since version N |
-| `updates` | Server → Client | Broadcast of confirmed updates |
-| `initDocument` | Client → Server | Owner seeds fresh room with content |
-| `cursorUpdate` | Bidirectional | Cursor position broadcasts |
-| `ownerLeft` | Server → Client | Owner disconnected, session ends |
-| `clientLeft` | Server → Client | Collaborator disconnected |
-
-### Owner Disconnect Handling
-
-When the owner disconnects, the relay broadcasts `ownerLeft` to all clients:
-
-```
-socket.on("ownerLeft") → setTimeout (defer past update cycle)
-→ collabCompartment.reconfigure([]) — disable collab extension
-→ ownerLeftSignal.update(n => n + 1) — notify UI
-→ GoLiveButton $effect detects signal → disconnectCollab() + toast "The owner ended the session"
-```
-
-### Connection States
-
-| State | Meaning |
-|---|---|
-| `disconnected` | Not connected to relay |
-| `connecting` | Socket.io handshake in progress |
-| `connected` | Active session, synced |
-| `syncing` | Connected but has pending local updates |
-| `reconnecting` | Lost connection, auto-reconnect in progress |
-| `error` | Connection failed after max retries |
-
-The `collabState` store is consumed by `StatusBar.svelte` to show a colored indicator:
-- Green dot + "Synced" when `connected`
-- Yellow dot + "Connecting..." when `connecting` or `reconnecting`
-- Red dot + "Disconnected" when `error`
-
-### Environment Variables
-
-| Variable | Purpose |
-|---|---|
-| `PUBLIC_RELAY_URL` | WebSocket relay server URL |
-| `PUBLIC_SUPABASE_URL` | Supabase project URL (for sync_documents table) |
-| `PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY` | Supabase anon key |
-
-If `PUBLIC_RELAY_URL` is not configured, `relayConfigured` is `false` and the GoLiveButton is hidden.
-
-### Known Limitations
-
-- **Live Room mode only** — session ends when owner disconnects. Shared Document mode (server as source of truth) is deferred to v2.
-- **Annotation sync not implemented** — comments and revisions don't sync yet (Phase 8).
-- **Offline queue not implemented** — owner can't edit offline and rebase on reconnect (Phase 9).
-- **No sharing UI** — joiners must manually paste document UUID. Share links and permissions are deferred to v2.
 
 ---
 

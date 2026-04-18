@@ -20,16 +20,16 @@ export default defineConfig(async () => ({
     //
     // 1. prevent vite from obscuring rust errors
     clearScreen: false,
-    // 2. tauri expects a fixed port — can be overridden via QUILLIUM_DEV_PORT for running multiple instances
+    // 2. tauri expects a fixed port, fail if that port is not available
     server: {
-        port: Number(process.env.QUILLIUM_DEV_PORT) || 1420,
+        port: 1420,
         strictPort: true,
         host: host || false,
         hmr: host
             ? {
                   protocol: "ws",
                   host,
-                  port: (Number(process.env.QUILLIUM_DEV_PORT) || 1420) + 1,
+                  port: 1421,
               }
             : undefined,
         watch: {

@@ -7,13 +7,11 @@
  *   - JSON (.json) — document content + all annotations
  *   - Markdown (.md) — document text with annotations as footnotes
  *
- * Uses native save dialog via Tauri's dialog plugin.
+ * Uses the browser Blob + <a> download pattern (same as ErrorBanner).
  */
 
 import type { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { get } from "svelte/store";
 import { annotationField } from "./editor/plugins/annotations";
 import {
@@ -26,26 +24,14 @@ import posthog from "./posthog";
 
 export type ExportFormat = "txt" | "json" | "md" | "txt+json";
 
-async function saveWithDialog(
-    content: string,
-    defaultName: string,
-    extension: string,
-): Promise<boolean> {
-    const filterName =
-        extension === "txt"
-            ? "Text"
-            : extension === "json"
-              ? "JSON"
-              : extension === "md"
-                ? "Markdown"
-                : "Text";
-    const path = await save({
-        defaultPath: defaultName,
-        filters: [{ name: filterName, extensions: [extension] }],
-    });
-    if (!path) return false;
-    await writeTextFile(path, content);
-    return true;
+function triggerDownload(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function sanitizeFilename(title: string): string {
@@ -164,6 +150,13 @@ function buildMarkdown(state: EditorState): string {
     return result;
 }
 
+const mimeTypes: Record<ExportFormat, string> = {
+    txt: "text/plain",
+    json: "application/json",
+    md: "text/markdown",
+    "txt+json": "text/plain",
+};
+
 const fileExtensions: Record<ExportFormat, string> = {
     txt: "txt",
     json: "json",
@@ -185,14 +178,11 @@ function buildContent(state: EditorState, format: ExportFormat, title: string): 
 }
 
 /** Export from an active EditorView (used from the editor). */
-export async function exportDocument(view: EditorView, format: ExportFormat) {
+export function exportDocument(view: EditorView, format: ExportFormat) {
     const title = sanitizeFilename(get(currentDocumentTitle));
     const content = buildContent(view.state, format, title);
-    const filename = `${title}.${fileExtensions[format]}`;
-    const saved = await saveWithDialog(content, filename, fileExtensions[format]);
-    if (saved) {
-        posthog.capture("document_exported", { format });
-    }
+    triggerDownload(content, `${title}.${fileExtensions[format]}`, mimeTypes[format]);
+    posthog.capture("document_exported", { format });
 }
 
 /** Export a document by loading its state from the database. */
@@ -231,9 +221,6 @@ export async function exportDocumentById(docId: string, docTitle: string, format
 
     const title = sanitizeFilename(docTitle);
     const content = buildContent(state, format, title);
-    const filename = `${title}.${fileExtensions[format]}`;
-    const saved = await saveWithDialog(content, filename, fileExtensions[format]);
-    if (saved) {
-        posthog.capture("document_exported", { format, source: "library" });
-    }
+    triggerDownload(content, `${title}.${fileExtensions[format]}`, mimeTypes[format]);
+    posthog.capture("document_exported", { format, source: "library" });
 }
