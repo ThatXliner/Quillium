@@ -12,8 +12,17 @@
  * - Y.Map changes with origin "local" are CM-originated (skip in observer)
  * - CM transactions with yjsAnnotationSync annotation are Yjs-originated (skip in update)
  *
+ * Revision sync:
+ * - Internal revision effects (_updateActiveRevisionVersion, _addVersionToRevision, etc.)
+ *   are NOT exported from annotationField.ts. Instead, syncRevisionChanges() detects
+ *   changes by comparing old/new annotationField state on every docChanged transaction.
+ * - The Y.Map observer handles incoming revision updates from remote peers via
+ *   the existing "update" action path (remove + re-add with updated data).
+ *
  * Threat mitigations:
  *   T-08-03: yjsAnnotationToCodeMirror validates and converts; null returned for invalid data
+ *   T-08-05: JSON.parse for remote versions wrapped in try-catch; malformed returns empty array
+ *   T-08-06: Remote activeVersionIndex bounds-checked against versions array length
  *
  * Key dependencies:
  *   - yjs for Y.Map, Y.Doc
@@ -36,6 +45,7 @@ import {
     updateThread,
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
+import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 
 /** Annotation to mark transactions originating from Y.Map sync (prevents feedback loop) */
 export const yjsAnnotationSync = Annotation.define<boolean>();
@@ -189,6 +199,63 @@ export function createAnnotationSyncPlugin(
                                 }
                             }
                         }
+                    }
+                }
+
+                // Detect revision-specific changes not covered by explicit effects:
+                // - Internal effects (_updateActiveRevisionVersion, _addVersionToRevision, etc.)
+                //   are not exported, so we compare old vs new annotation state.
+                // - Phase 3 of annotationField also updates versions[active].doc from doc text.
+                if (update.docChanged) {
+                    this.syncRevisionChanges(update, ydoc);
+                }
+            }
+
+            /**
+             * Detect and sync revision changes that result from internal StateEffects
+             * (version switches, new versions, Phase 3 doc-text pulls) which are not
+             * exported and thus not catchable via effect.is() in update().
+             *
+             * Compares old and new annotationField state for each revision and pushes
+             * changed activeVersionIndex or versions array to Y.Map.
+             *
+             * T-08-05 / T-08-06: Remote values are validated before use in the observer;
+             * here we only write local (trusted) values to Y.Map.
+             */
+            private syncRevisionChanges(update: ViewUpdate, ydoc: Y.Doc) {
+                const oldAnnotations = update.startState.field(annotationField);
+                const newAnnotations = update.state.field(annotationField);
+
+                for (const [idStr, newAnn] of Object.entries(newAnnotations)) {
+                    if (!isAnnotationOfType(newAnn, "revision")) continue;
+
+                    const cmId = Number(idStr);
+                    const yjsId = this.idMap.getYjsId(cmId);
+                    if (!yjsId) continue;
+
+                    const existing = ymap.get(yjsId);
+                    if (!existing) continue;
+
+                    const oldAnn = oldAnnotations[cmId];
+                    if (!oldAnn || !isAnnotationOfType(oldAnn, "revision")) continue;
+
+                    const indexChanged = newAnn.activeVersionIndex !== oldAnn.activeVersionIndex;
+                    // Compare versions as JSON strings — a structural equality check.
+                    // This is safe because VersionState contains only plain JSON-serializable values.
+                    const versionsChanged =
+                        JSON.stringify(newAnn.versions) !== JSON.stringify(oldAnn.versions);
+
+                    if (indexChanged || versionsChanged) {
+                        const capturedYjsId = yjsId;
+                        const capturedVersions = JSON.stringify(newAnn.versions);
+                        const capturedIndex = newAnn.activeVersionIndex;
+                        ydoc.transact(() => {
+                            ymap.set(capturedYjsId, {
+                                ...existing,
+                                versions: capturedVersions,
+                                activeVersionIndex: capturedIndex,
+                            });
+                        }, "local");
                     }
                 }
             }

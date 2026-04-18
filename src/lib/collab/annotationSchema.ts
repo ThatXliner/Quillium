@@ -177,14 +177,28 @@ export function yjsAnnotationToCodeMirror(
     }
 
     if (yjsAnnotation._type === "revision") {
+        // T-08-05: JSON.parse wrapped in safeJsonParse; malformed returns empty array
         const versions: VersionState[] = yjsAnnotation.versions
             ? (safeJsonParse<VersionState[]>(yjsAnnotation.versions) ?? [])
             : [];
+        // T-08-06: Bounds-check activeVersionIndex against the actual versions array.
+        // A tampered or stale index from a remote peer must not point outside the array.
+        const rawIndex = yjsAnnotation.activeVersionIndex ?? 0;
+        const activeVersionIndex =
+            versions.length > 0 ? Math.max(0, Math.min(rawIndex, versions.length - 1)) : 0;
+        // Require at least one version for a valid revision annotation.
+        if (versions.length === 0) {
+            console.warn(
+                "[annotationSchema] Dropping revision annotation with empty versions array:",
+                yjsAnnotation.id,
+            );
+            return null;
+        }
         return {
             ...base,
             _type: "revision",
             versions,
-            activeVersionIndex: yjsAnnotation.activeVersionIndex ?? 0,
+            activeVersionIndex,
         };
     }
 
