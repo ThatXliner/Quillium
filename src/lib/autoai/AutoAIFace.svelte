@@ -325,4 +325,10 @@ onMount(() => {
         transform-origin: center;
         animation: wake 1.6s ease-in-out forwards;
     }
+    @media (prefers-reduced-motion: reduce) {
+        [class^="idle-"],
+        [class*=" idle-"] {
+            animation: none !important;
+        }
+    }
 </style>
