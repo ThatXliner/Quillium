@@ -20,8 +20,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Client Collab** - CodeMirror collab integration with real-time sync
 - [x] **Phase 6.5: Collab Polish** - Live cursors, owner disconnect handling, dev setup docs
 - [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
-- [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via sharedEffects
-- [ ] **Phase 9: Offline Queue** - Owner-only offline editing with rebase on reconnect
+- [ ] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
+- [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
+- [ ] **Phase 9: Offline Queue** - Owner-only offline editing with Yjs persistence
 
 ## Phase Details
 
@@ -155,14 +156,38 @@ Plans:
 - [ ] 07-04-PLAN.md — State transitions and reconnection feedback toasts (SYNC-03, SYNC-04)
 - [ ] 07-05-PLAN.md — Reconnection tests and manual verification (SYNC-03, SYNC-04)
 
+### Phase 7.5: Yjs Migration (INSERTED)
+**Goal**: Replace OT (@codemirror/collab) with Yjs CRDT for more robust sync
+**Depends on**: Phase 7
+**Requirements**: SYNC-10 (replaces SYNC-01, SYNC-02 implementation)
+**Success Criteria** (what must be TRUE):
+  1. Client uses custom Yjs-CodeMirror binding (per D-72, y-codemirror.next unmaintained)
+  2. Relay uses y-websocket provider pattern with native WebSocket
+  3. Documents sync correctly between multiple clients
+  4. Concurrent edits converge without version mismatch errors
+  5. Per-user undo works via Yjs UndoManager
+  6. Existing features (cursors, owner disconnect) preserved
+  7. Awareness protocol replaces custom cursor sync
+**Plans**: 7 plans in 4 waves
+**UI hint**: no (backend refactor)
+
+Plans:
+- [ ] 07.5-01-PLAN.md — Install Yjs deps, create Y.Text <-> CodeMirror binding (SYNC-10)
+- [ ] 07.5-02-PLAN.md — UndoManager integration, awareness-based cursors (SYNC-10)
+- [ ] 07.5-03-PLAN.md — WebsocketProvider wrapper with auth (SYNC-10)
+- [ ] 07.5-04-PLAN.md — Relay: Yjs sync handler, persistence module (SYNC-10)
+- [ ] 07.5-05-PLAN.md — Relay: Server rewrite with native WebSocket + Yjs (SYNC-10)
+- [ ] 07.5-06-PLAN.md — Client: Wire up Yjs in index.ts, update GoLiveButton (SYNC-10)
+- [ ] 07.5-07-PLAN.md — Remove OT code, manual integration verification (SYNC-10)
+
 ### Phase 8: Annotation Sync
 **Goal**: Comments and revisions sync between collaborators
-**Depends on**: Phase 7
+**Depends on**: Phase 7.5
 **Requirements**: SYNC-05
 **Success Criteria** (what must be TRUE):
-  1. Comment annotations sync via sharedEffects
-  2. Revision annotations sync via sharedEffects
-  3. Position divergence is mitigated (anchors stay on correct text)
+  1. Comment annotations sync via Yjs Y.Map shared type
+  2. Revision annotations sync via Yjs Y.Map shared type
+  3. Position tracking uses Yjs RelativePosition (no drift)
   4. Annotation operations integrate with per-user undo
 **Plans**: [to be planned]
 
@@ -172,15 +197,15 @@ Plans:
 **Requirements**: OFFL-01, OFFL-02, OFFL-03
 **Success Criteria** (what must be TRUE):
   1. Owner can continue editing when offline (local SQLite works)
-  2. Offline edits queue in local storage
-  3. Queue rebases and syncs on reconnect
-  4. Pre-merge snapshot taken as safety net before rebase
+  2. Offline edits stored via Yjs persistence (y-indexeddb pattern)
+  3. Yjs automatically merges on reconnect (no manual rebase)
+  4. Pre-merge snapshot taken as safety net
 **Plans**: [to be planned]
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -192,6 +217,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 6. Client Collab | 3/3 | Complete | 2025-04-17 |
 | 6.5. Collab Polish | 4/4 | Complete | 2025-04-17 |
 | 7. Connection UX | 0/5 | Not started | - |
+| 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/? | Not started | - |
 | 9. Offline Queue | 0/? | Not started | - |
 
