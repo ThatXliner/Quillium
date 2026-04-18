@@ -13,6 +13,7 @@
  *   - ./collabPlugin (collabPushPull, createCollabExtension)
  */
 import type { EditorView } from "@codemirror/view";
+import { getSyncedVersion, sendableUpdates } from "@codemirror/collab";
 import { connectToCollab, disconnectCollab, getSocket, relayConfigured } from "./socket";
 import { collabCompartment, createCollabExtension } from "./collabPlugin";
 import { supabase } from "$lib/auth/supabase";
@@ -132,6 +133,20 @@ export async function enableCollab(
             ...createRemoteCursorsExtension(socket, displayName, cursorColor),
         ]),
     });
+
+    // Verify state after collab is installed
+    const finalDocLength = view.state.doc.length;
+    const syncedVersion = getSyncedVersion(view.state);
+    const pending = sendableUpdates(view.state);
+
+    // Warn if there are unexpected pending updates — this would indicate
+    // changes were made between content sync and collab installation
+    if (pending.length > 0) {
+        console.warn(
+            `[collab] WARNING: ${pending.length} unexpected pending updates after install! ` +
+                `doc.length=${finalDocLength}, syncedVersion=${syncedVersion}`,
+        );
+    }
 }
 
 /**

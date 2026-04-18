@@ -1,9 +1,12 @@
 /**
  * collabPlugin.ts -- ViewPlugin for collab push/pull loop.
  *
- * Sends local changes via sendableUpdates() on docChanged.
- * Receives remote changes via Socket.io events.
- * Applies remote changes via receiveUpdates().
+ * Follows the canonical CodeMirror collab pattern:
+ * - Push: send local changes when doc changes
+ * - Pull: fetch updates from server, ensuring sequential delivery
+ *
+ * Socket.io broadcasts are used as signals that updates are available,
+ * but we always pull to get updates in the correct order.
  *
  * Per D-51: Static collab extension in stack, enabled/disabled via Compartment.
  * Per D-50: Per-user undo via clientID in collab() config.
@@ -30,22 +33,26 @@ export const collabCompartment = new Compartment();
 /**
  * Create the push/pull ViewPlugin for a specific Socket.io connection.
  *
- * The plugin:
- * 1. On docChanged: sends local changes to relay via pushUpdates
- * 2. On socket pullUpdates event: applies remote changes via receiveUpdates
- * 3. Handles push rejection by pulling first, then retrying
+ * Following the canonical CodeMirror collab example:
+ * 1. On docChanged: push local changes to relay
+ * 2. On broadcast signal: pull updates from relay (ensures sequential delivery)
+ * 3. receiveUpdates() handles rebasing local changes against remote
  */
 export function collabPushPull(socket: Socket) {
     return ViewPlugin.fromClass(
         class {
             private pushing = false;
+            private pulling = false;
             private destroyed = false;
             private pendingCount = 0;
 
             constructor(private view: EditorView) {
-                // Set up Socket.io event handler for receiving broadcast updates from other clients.
-                socket.on("updates", (data: { updates: SerializedUpdate[] }) => {
-                    this.handlePullResponse(data.updates);
+                // Socket.io broadcasts signal that updates are available.
+                // Instead of applying directly (which could be out of order),
+                // we pull to get updates in the correct sequence.
+                socket.on("updates", () => {
+                    if (this.destroyed) return;
+                    this.pull();
                 });
 
                 // Handle owner disconnect (per D-61): defer dispatch to avoid update cycle recursion
@@ -53,8 +60,6 @@ export function collabPushPull(socket: Socket) {
                     if (this.destroyed) return;
                     setTimeout(() => {
                         if (this.destroyed) return;
-                        // Reconfigure compartment to empty (same as disableCollab's dispatch step).
-                        // Socket disconnect is handled separately by GoLiveButton after signal fires.
                         this.view.dispatch({
                             effects: collabCompartment.reconfigure([]),
                         });
@@ -65,7 +70,6 @@ export function collabPushPull(socket: Socket) {
                 // Handle collaborator leaving: remove their cursor from remoteCursorsField
                 socket.on("clientLeft", (data: { clientID: string }) => {
                     if (this.destroyed) return;
-                    // clientLeft may arrive while a transaction is processing — defer to be safe
                     setTimeout(() => {
                         if (this.destroyed) return;
                         this.view.dispatch({
@@ -88,23 +92,23 @@ export function collabPushPull(socket: Socket) {
                     },
                 );
 
-                // Handle successful reconnection: pull any missed updates, then push pending
+                // Handle successful reconnection: pull any missed updates
                 socket.on("reconnect", () => {
                     if (this.destroyed) return;
                     console.log("[collab] Reconnected, re-syncing state");
-                    this.pullUpdates();
+                    this.pull();
                 });
 
-                // Flush any updates that arrived between init and plugin setup
-                const buffered = flushBufferedUpdates();
-                for (const data of buffered) {
-                    console.log("[collab] Replaying buffered updates:", data.updates.length);
-                    this.handlePullResponse(data.updates as SerializedUpdate[]);
-                }
+                // Discard any buffered updates — we'll pull fresh from relay.
+                // This is cleaner than trying to apply potentially stale buffered updates.
+                flushBufferedUpdates();
 
                 // Initial pull to catch any updates that happened between init and now.
-                // This handles the race where owner types while joiner is setting up.
-                this.pullUpdates();
+                // Deferred to avoid nested dispatch during plugin construction.
+                setTimeout(() => {
+                    if (this.destroyed) return;
+                    this.pull();
+                }, 0);
             }
 
             update(update: ViewUpdate) {
@@ -123,7 +127,7 @@ export function collabPushPull(socket: Socket) {
 
                 console.log(
                     `[collab] Pushing ${updates.length} updates from v${version}, ` +
-                    `doc.length=${this.view.state.doc.length}, changes.length=${updates[0]?.changes.length}`,
+                        `doc.length=${this.view.state.doc.length}, changes.length=${updates[0]?.changes.length}`,
                 );
 
                 socket.emit(
@@ -137,48 +141,111 @@ export function collabPushPull(socket: Socket) {
                     },
                     (response: { version?: number; updates?: SerializedUpdate[]; error?: string }) => {
                         this.pushing = false;
+
                         if (response.error) {
-                            // Log the error. Don't retry automatically — if the server
-                            // rejects our push, the documents are out of sync and we
-                            // need user intervention (reload) rather than infinite retry.
                             console.error("[collab] Push rejected:", response.error);
-                        } else if (response.updates && response.updates.length > 0) {
-                            // Server returns our confirmed updates — apply them to advance synced version
-                            this.handlePullResponse(response.updates);
+                            // Pull to re-sync, then retry push
+                            this.pull();
+                        } else {
+                            // Push succeeded. Following the canonical CodeMirror pattern,
+                            // we DON'T apply updates from the push callback. Instead, we
+                            // pull to get updates in proper sequence. This avoids version
+                            // mismatch issues when the server rebases our changes.
+                            //
+                            // The pull will return our confirmed updates (matched by clientID)
+                            // along with any other updates we may have missed.
+                            this.pull();
                         }
+
                         this.updatePendingCount();
                     },
                 );
             }
 
-            private pullUpdates() {
+            private pull() {
+                // Prevent concurrent pulls
+                if (this.pulling || this.destroyed) return;
+                this.pulling = true;
+
                 const version = getSyncedVersion(this.view.state);
+                console.log(`[collab] Pulling updates from v${version}`);
+
                 socket.emit(
                     "pullUpdates",
                     { version },
                     (response: { updates: SerializedUpdate[] }) => {
-                        this.handlePullResponse(response.updates);
+                        this.pulling = false;
+                        if (this.destroyed) return;
+
+                        if (response.updates && response.updates.length > 0) {
+                            console.log(`[collab] Received ${response.updates.length} updates from pull`);
+                            this.applyUpdates(response.updates);
+
+                            // After applying, push any pending local changes
+                            if (sendableUpdates(this.view.state).length) {
+                                setTimeout(() => this.push(), 100);
+                            }
+                        }
+
+                        this.updatePendingCount();
                     },
                 );
             }
 
-            private handlePullResponse(updates: SerializedUpdate[]) {
-                if (this.destroyed) return;
+            /**
+             * Apply updates received from the relay via receiveUpdates().
+             * This handles both remote updates and confirmation of our own updates.
+             */
+            private applyUpdates(updates: SerializedUpdate[]) {
+                if (this.destroyed || updates.length === 0) return;
 
-                if (updates.length > 0) {
-                    const parsed: Update[] = updates.map((u) => ({
-                        changes: ChangeSet.fromJSON(u.changes),
-                        clientID: u.clientID,
-                    }));
+                const syncedVersion = getSyncedVersion(this.view.state);
+                const docLength = this.view.state.doc.length;
+
+                console.log(
+                    `[collab] Applying ${updates.length} updates, ` +
+                        `syncedVersion=${syncedVersion}, doc.length=${docLength}`,
+                );
+
+                const parsed: Update[] = updates.map((u) => ({
+                    changes: ChangeSet.fromJSON(u.changes),
+                    clientID: u.clientID,
+                }));
+
+                // Log changeset details for debugging
+                for (let i = 0; i < parsed.length; i++) {
+                    const cs = parsed[i].changes;
+                    console.log(
+                        `[collab] Update ${i}: changeset.length=${cs.length}, ` +
+                            `changeset.newLength=${cs.newLength}, clientID=${parsed[i].clientID}`,
+                    );
+                }
+
+                // Log pending updates for debugging
+                const pendingBefore = sendableUpdates(this.view.state);
+                if (pendingBefore.length > 0) {
+                    console.log(`[collab] Before receiveUpdates: ${pendingBefore.length} pending`);
+                    for (let i = 0; i < pendingBefore.length; i++) {
+                        console.log(
+                            `[collab] Pending[${i}]: changes.length=${pendingBefore[i].changes.length}, ` +
+                                `changes.newLength=${pendingBefore[i].changes.newLength}, ` +
+                                `clientID=${pendingBefore[i].clientID}`,
+                        );
+                    }
+                }
+
+                try {
                     this.view.dispatch(receiveUpdates(this.view.state, parsed));
+                } catch (e) {
+                    console.error("[collab] receiveUpdates failed:", e);
+                    console.error(
+                        "[collab] State at failure: syncedVersion=",
+                        syncedVersion,
+                        ", docLength=",
+                        docLength,
+                    );
+                    // Don't rethrow — log and continue. The user can reload if needed.
                 }
-
-                // After applying, check if we have pending local changes
-                if (sendableUpdates(this.view.state).length) {
-                    setTimeout(() => this.push(), 100);
-                }
-
-                this.updatePendingCount();
             }
 
             private updatePendingCount() {
@@ -187,7 +254,6 @@ export function collabPushPull(socket: Socket) {
                     this.pendingCount = pending;
                     pendingUpdatesCount.set(pending);
 
-                    // Update collabState based on pending count
                     const currentState = get(collabState);
                     if (pending > 0 && currentState === "connected") {
                         collabState.set("syncing");
