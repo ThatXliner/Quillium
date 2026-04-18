@@ -4,7 +4,7 @@
  * Tests bidirectional sync between Y.Map<YjsAnnotation> and CodeMirror annotationField.
  * Verifies origin tracking for feedback loop prevention.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorState, EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
@@ -145,12 +145,7 @@ describe("yjsAnnotations", () => {
         });
 
         it("does not dispatch for local-origin Y.Map changes", () => {
-            let dispatchCount = 0;
-            const originalDispatch = view.dispatch.bind(view);
-            view.dispatch = (...args) => {
-                dispatchCount++;
-                return originalDispatch(...args);
-            };
+            const dispatchSpy = vi.spyOn(view, "dispatch");
 
             // Local Y.Map change (origin === "local")
             ydoc.transact(() => {
@@ -164,7 +159,8 @@ describe("yjsAnnotations", () => {
             }, "local");
 
             // Should not trigger additional dispatch (observer skips local origin)
-            expect(dispatchCount).toBe(0);
+            expect(dispatchSpy).not.toHaveBeenCalled();
+            dispatchSpy.mockRestore();
         });
     });
 
