@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 8.5 context gathered"
-last_updated: "2026-04-18T19:14:00.000Z"
-last_activity: 2026-04-18 -- Phase 8.5 context gathered (CRDT subtrees for nested editors)
+status: Ready to execute
+stopped_at: "Phase 8.5 split into 8.5a/b/c (2/2/2 plans)"
+last_updated: "2026-04-18T22:00:00.000Z"
+last_activity: 2026-04-18 -- Phase 8.5 split into 8.5a (data shape), 8.5b (sync plumbing), 8.5c (nested wiring)
 progress:
-  total_phases: 11
+  total_phases: 13
   completed_phases: 10
-  total_plans: 37
+  total_plans: 43
   completed_plans: 37
-  percent: 91
+  percent: 86
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2025-04-16)
 
 **Core value:** Two Quillium instances can connect and see each other's edits in real-time
-**Current focus:** Phase 8.5 — crdt-nested-editors (context captured, ready for planning)
+**Current focus:** Phase 8.5a — CRDT data shape (planned, ready to execute)
 
 ## Current Position
 
-Phase: 8.5
-Plan: not yet drafted
-Status: Context captured, ready for /gsd-plan-phase
-Last activity: 2025-04-17 -- Phase 8 planned
+Phase: 8.5a
+Plan: 2 plans drafted (08.5a-01, 08.5a-02) in 2 waves
+Status: Ready to execute — run /gsd-execute-phase 8.5a
+Last activity: 2026-04-18 -- Phase 8.5 split into 8.5a/b/c (data shape, sync plumbing, nested wiring)
 
 Progress: [███████░░░] 70%
 
@@ -94,6 +94,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-18T16:02:41.919Z
+Last session: 2026-04-18T21:32:09.195Z
 Stopped at: context exhaustion at 90% (2026-04-18)
 Resume file: None

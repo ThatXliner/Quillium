@@ -22,7 +22,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
 - [ ] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
-- [ ] **Phase 8.5: CRDT Subtrees for Nested Editors** - Character-level CRDT merge inside revision nested editors (INSERTED)
+- [ ] **Phase 8.5a: CRDT Data Shape** - Recursive Y.Map annotation shape + converters (INSERTED)
+- [ ] **Phase 8.5b: CRDT Sync Plumbing** - Scoped observeDeep plugin + undo-scope helper (INSERTED)
+- [ ] **Phase 8.5c: CRDT Nested Editor Wiring** - Subtree bindings + undo auto-nav (INSERTED)
 
 ## Phase Details
 
@@ -200,32 +202,59 @@ Plans:
 - [ ] 08-05-PLAN.md — Wire annotation sync into collab module (SYNC-05)
 - [ ] 08-06-PLAN.md — Convergence tests and manual verification (SYNC-05)
 
-### Phase 8.5: CRDT Subtrees for Nested Editors (INSERTED)
-**Goal**: Character-level CRDT merge inside revision nested editors — peer edits within a revision behave the same as peer edits in the main document
+### Phase 8.5a: CRDT Data Shape (INSERTED)
+**Goal**: Rewrite the YjsAnnotation data model from a flat JSON blob into a recursive Y.Map node with Y.Text/Y.Array/Y.Map children, so every revision version owns a dedicated Y.Text subtree
 **Depends on**: Phase 8
 **Requirements**: SYNC-05 (extended)
 **Success Criteria** (what must be TRUE):
-  1. Each revision version owns a dedicated Y.Text subtree (not a JSON-stringified blob)
-  2. Concurrent keystrokes by two peers inside the same nested editor merge without data loss
-  3. Annotations inside nested editors follow the same recursive Y.Map structure (arbitrary nesting)
-  4. Undo is per-user, covers all your edits across main+nested editors, and auto-navigates to the affected editor
-  5. Version switches are local-only (do not interrupt peer editing of other versions)
-  6. Comment threads use append-only Y.Array sorted by timestamp on read
-  7. Peer cursor rendering inside nested editors is out of scope (deferred to v2)
-**Plans**: 6 plans in 5 waves
+  1. `YjsAnnotationNode = Y.Map<unknown>` replaces the legacy flat `YjsAnnotation` interface
+  2. `codeMirrorToYjsAnnotation` builds child Y types (Y.Text for version bodies, Y.Array for threads, Y.Map for nested annotations) inside a single `ydoc.transact`
+  3. `yjsAnnotationToCodeMirror` reads Y.Map children directly with no JSON parsing
+  4. `annotation-tree.test.ts` passes the shape-integrity, version-propagation, thread-ordering, bounds-clamp, and null-selection tests
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 08.5-01-PLAN.md — Wave 0 test scaffolds: twoPeerHarness + 8 failing-test files + E2E spec (SYNC-05)
-- [ ] 08.5-02-PLAN.md — Shape refactor: types.ts + annotationSchema.ts recursive Y.Map converters (SYNC-05)
-- [ ] 08.5-03-PLAN.md — yjsAnnotations.ts rewrite: scoped observeDeep plugin, syncRevisionChanges removal (SYNC-05)
-- [ ] 08.5-04-PLAN.md — yjsUndo.ts: addSubtreeToUndoScope + breakUndoCapture; eventBus undo-target variant (SYNC-05)
-- [ ] 08.5-05-PLAN.md — NestedEditorController subtree binding + annotationField Phase 3 gating (SYNC-05)
-- [ ] 08.5-06-PLAN.md — collab/index.ts undo auto-nav wiring + Playwright E2E test (SYNC-05)
+- [ ] 08.5a-01-PLAN.md — Wave 0 test scaffolds: twoPeerHarness + 8 failing-test files (SYNC-05)
+- [ ] 08.5a-02-PLAN.md — Shape refactor: types.ts + annotationSchema.ts recursive Y.Map converters (SYNC-05)
+
+### Phase 8.5b: CRDT Sync Plumbing (INSERTED)
+**Goal**: Make the annotation sync plugin scope-agnostic via `observeDeep` so it can operate at any recursion depth, and extend the UndoManager with a subtree-scope helper for nested editors
+**Depends on**: Phase 8.5a
+**Requirements**: SYNC-05 (extended)
+**Success Criteria** (what must be TRUE):
+  1. `createAnnotationSyncPlugin(scopeYtext, scopeAnnotations, clientId)` works at any recursion depth via a single `observeDeep` subscription
+  2. `syncRevisionChanges` JSON-blob path is deleted wholesale
+  3. Concurrent Y.Array thread appends from two peers both survive (D-93)
+  4. `addSubtreeToUndoScope(undoManager, subtreeYtext)` exists and is callable from NestedEditorController
+  5. `AnnotationEvent` union includes the `undo-target` variant for Phase 8.5c's auto-nav
+**Plans**: 2 plans in 1 wave (parallel)
+
+Plans:
+- [ ] 08.5b-01-PLAN.md — yjsAnnotations.ts rewrite: scoped observeDeep plugin, syncRevisionChanges removal (SYNC-05)
+- [ ] 08.5b-02-PLAN.md — yjsUndo.ts: addSubtreeToUndoScope + breakUndoCapture; eventBus undo-target variant (SYNC-05)
+
+### Phase 8.5c: CRDT Nested Editor Wiring (INSERTED)
+**Goal**: Wire subtree bindings into NestedEditorController so peer edits inside a nested revision editor merge character-by-character, and surface cross-editor undo via auto-navigation
+**Depends on**: Phase 8.5b
+**Requirements**: SYNC-05 (extended)
+**Success Criteria** (what must be TRUE):
+  1. NestedEditorController installs a subtree Y.Text binding + scoped annotation sync plugin on mount when collab is active
+  2. Concurrent keystrokes by two peers inside the same nested editor merge without data loss
+  3. `annotationField` Phase 3 (pushDocToVersionState) is bypassed when a subtree Y.Text owns the text
+  4. Recursive mount: nested-in-nested subtree bindings fire correctly (D-92)
+  5. Undo popping a stack item whose subtree points to a non-focused editor emits an `undo-target` event; E2E test proves the user-visible behavior
+  6. Version switches remain local-only and do not interrupt peer editing of other versions
+  7. Comment threads append via Y.Array sorted by timestamp on read (Y.Array already delivered in 8.5b)
+**Plans**: 2 plans in 2 waves
+
+Plans:
+- [ ] 08.5c-01-PLAN.md — NestedEditorController subtree binding + annotationField Phase 3 gating (SYNC-05)
+- [ ] 08.5c-02-PLAN.md — collab/index.ts undo auto-nav wiring + Playwright E2E test (SYNC-05)
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 8.5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 8.5a -> 8.5b -> 8.5c
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -239,7 +268,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 7. Connection UX | 0/5 | Not started | - |
 | 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/6 | Not started | - |
-| 8.5. CRDT Nested Editors | 0/6 | Not started | - |
+| 8.5a. CRDT Data Shape | 0/2 | Not started | - |
+| 8.5b. CRDT Sync Plumbing | 0/2 | Not started | - |
+| 8.5c. CRDT Nested Editor Wiring | 0/2 | Not started | - |
 
 ---
 
