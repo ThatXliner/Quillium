@@ -5,13 +5,14 @@
     Per D-57: Live Room mode only -- session ends when owner leaves.
     Per D-58: Snapshot before pulling remote state.
     Per D-59: Manual toggle for owner's own documents.
+    Per D-70: Updated for Yjs migration.
 -->
 <script lang="ts">
 import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
-import { enableCollab, disableCollab, disconnectCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal, collabState, reconnectAttempt } from "$lib/collab";
+import { enableCollab, disableCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal, collabState, reconnectAttempt } from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 
@@ -25,11 +26,10 @@ const authenticated = $derived(isAuthenticated());
 const canGoLive = $derived(authenticated && relayConfigured);
 const currentId = $derived($currentDraftId ?? "");
 
-// React when owner ends the session (ownerLeftSignal is incremented by collabPlugin)
+// React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
 $effect(() => {
     if ($ownerLeftSignal > 0 && isLive) {
-        // Disconnect socket (collabPlugin already reconfigured the compartment)
-        disconnectCollab();
+        // Provider already disconnected via handleOwnerLeft, just update UI state
         isLive = false;
         toast.error("The owner ended the session");
     }
