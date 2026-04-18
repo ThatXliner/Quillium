@@ -114,19 +114,24 @@ describe("yjsBinding", () => {
             expect(hasAnnotation).toBe(true);
         });
 
-        it("does not apply local Y.Text changes (yTransaction.local = true)", () => {
-            // Track all dispatches
+        it("skips Y.Text changes with 'local' origin (prevents feedback loop)", () => {
+            // Changes with origin "local" are from CodeMirror, should be skipped by observer
+            // This prevents infinite loops: CM -> Y.Text -> CM -> ...
             const dispatchSpy = vi.spyOn(view, "dispatch");
+            const initialDispatchCount = dispatchSpy.mock.calls.length;
 
-            // Local origin transaction should not trigger a CM dispatch
+            // Simulate what happens when CM writes to Y.Text with "local" origin
+            // The observer should NOT dispatch back to CM
             ydoc.transact(() => {
                 ytext.insert(0, "local-origin");
             }, "local");
 
-            // The binding's observer should skip local transactions
-            // The only dispatch should be from iterChanges in update(), not from the observer
-            // This test verifies no infinite loop occurs
-            expect(view.state.doc.toString()).toBe("local-origin");
+            // No new dispatches should have occurred (observer skipped it)
+            expect(dispatchSpy.mock.calls.length).toBe(initialDispatchCount);
+            // Y.Text has the content
+            expect(ytext.toString()).toBe("local-origin");
+            // But CM does not (observer skipped it, which is correct for local origin)
+            expect(view.state.doc.toString()).toBe("");
         });
     });
 
