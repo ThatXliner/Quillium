@@ -14,4 +14,10 @@ export type CollabSession = {
 };
 
 /** Connection state for UI display */
-export type CollabState = "disconnected" | "connecting" | "connected" | "error";
+export type CollabState =
+    | "disconnected"
+    | "connecting"
+    | "connected"
+    | "syncing" // Connected but has pending local updates
+    | "reconnecting" // Lost connection, attempting to reconnect
+    | "error";

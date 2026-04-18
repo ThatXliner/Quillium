@@ -10,7 +10,7 @@
 import { io, type Socket } from "socket.io-client";
 import { getSession } from "$lib/auth/auth.svelte";
 import { PUBLIC_RELAY_URL } from "$env/static/public";
-import { collabState } from "./store";
+import { collabState, reconnectAttempt } from "./store";
 
 const RELAY_URL = PUBLIC_RELAY_URL;
 
@@ -64,8 +64,11 @@ export async function connectToCollab(
             token: session.access_token,
             documentId: docId,
         },
-        // Don't auto-reconnect for now (Phase 7 will add reconnection UX)
-        reconnection: false,
+        // Reconnection with exponential backoff
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 30000,
     });
 
     return new Promise((resolve, reject) => {
@@ -88,10 +91,37 @@ export async function connectToCollab(
         newSocket.on("disconnect", (reason) => {
             console.log("[collab] Disconnected from relay:", reason);
             if (socket === newSocket) {
-                socket = null;
-                currentDocId = null;
-                collabState.set("disconnected");
+                // Socket.io will attempt reconnection for these reasons
+                const willReconnect =
+                    reason === "transport close" ||
+                    reason === "transport error" ||
+                    reason === "ping timeout";
+                if (willReconnect) {
+                    collabState.set("reconnecting");
+                } else {
+                    socket = null;
+                    currentDocId = null;
+                    collabState.set("disconnected");
+                }
             }
+        });
+
+        newSocket.on("reconnect_attempt", (attempt: number) => {
+            console.log("[collab] Reconnection attempt:", attempt);
+            reconnectAttempt.set(attempt);
+            collabState.set("reconnecting");
+        });
+
+        newSocket.on("reconnect", () => {
+            console.log("[collab] Reconnected to relay");
+            reconnectAttempt.set(0);
+            collabState.set("connected");
+        });
+
+        newSocket.on("reconnect_failed", () => {
+            console.log("[collab] Reconnection failed after max attempts");
+            reconnectAttempt.set(0);
+            collabState.set("error");
         });
     });
 }

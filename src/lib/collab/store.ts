@@ -14,3 +14,15 @@ export const collabState = writable<CollabState>("disconnected");
  * GoLiveButton subscribes with $effect to reset its isLive state.
  */
 export const ownerLeftSignal = writable(0);
+
+/**
+ * Count of pending local updates not yet confirmed by relay.
+ * Used by StatusBar to show syncing state and by reconnection logic.
+ */
+export const pendingUpdatesCount = writable(0);
+
+/**
+ * Current reconnection attempt number (0 = not reconnecting).
+ * Reset to 0 on successful reconnect or manual disconnect.
+ */
+export const reconnectAttempt = writable(0);
