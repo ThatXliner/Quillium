@@ -22,7 +22,7 @@ import { createRemoteCursorsExtension, colorForClient } from "./cursors";
 // Re-exports
 export { collabCompartment } from "./collabPlugin";
 export { relayConfigured, getSocket, connectToCollab, disconnectCollab } from "./socket";
-export { collabState, ownerLeftSignal } from "./store";
+export { collabState, ownerLeftSignal, pendingUpdatesCount, reconnectAttempt } from "./store";
 export { createRemoteCursorsExtension, colorForClient } from "./cursors";
 export * from "./types";
 export * from "./protocol";

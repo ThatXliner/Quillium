@@ -19,7 +19,8 @@ import {
 } from "@codemirror/collab";
 import type { Socket } from "socket.io-client";
 import type { SerializedUpdate } from "./protocol";
-import { ownerLeftSignal } from "./store";
+import { ownerLeftSignal, pendingUpdatesCount, collabState } from "./store";
+import { get } from "svelte/store";
 import { removeRemoteCursor, setRemoteCursor } from "./cursors";
 
 /** Compartment for hot-swapping collab extension (per D-51) */
@@ -38,6 +39,7 @@ export function collabPushPull(socket: Socket) {
         class {
             private pushing = false;
             private destroyed = false;
+            private pendingCount = 0;
 
             constructor(private view: EditorView) {
                 // Set up Socket.io event handler for receiving broadcast updates from other clients.
@@ -85,6 +87,13 @@ export function collabPushPull(socket: Socket) {
                     },
                 );
 
+                // Handle successful reconnection: pull any missed updates, then push pending
+                socket.on("reconnect", () => {
+                    if (this.destroyed) return;
+                    console.log("[collab] Reconnected, re-syncing state");
+                    this.pullUpdates();
+                });
+
                 // Initial pull to catch any updates that happened between init and now.
                 // This handles the race where owner types while joiner is setting up.
                 this.pullUpdates();
@@ -94,6 +103,7 @@ export function collabPushPull(socket: Socket) {
                 if (update.docChanged && !this.pushing) {
                     this.push();
                 }
+                this.updatePendingCount();
             }
 
             private push() {
@@ -128,6 +138,7 @@ export function collabPushPull(socket: Socket) {
                             // Server returns our confirmed updates — apply them to advance synced version
                             this.handlePullResponse(response.updates);
                         }
+                        this.updatePendingCount();
                     },
                 );
             }
@@ -158,14 +169,34 @@ export function collabPushPull(socket: Socket) {
                 if (sendableUpdates(this.view.state).length) {
                     setTimeout(() => this.push(), 100);
                 }
+
+                this.updatePendingCount();
+            }
+
+            private updatePendingCount() {
+                const pending = sendableUpdates(this.view.state).length;
+                if (pending !== this.pendingCount) {
+                    this.pendingCount = pending;
+                    pendingUpdatesCount.set(pending);
+
+                    // Update collabState based on pending count
+                    const currentState = get(collabState);
+                    if (pending > 0 && currentState === "connected") {
+                        collabState.set("syncing");
+                    } else if (pending === 0 && currentState === "syncing") {
+                        collabState.set("connected");
+                    }
+                }
             }
 
             destroy() {
                 this.destroyed = true;
+                pendingUpdatesCount.set(0);
                 socket.off("updates");
                 socket.off("ownerLeft");
                 socket.off("clientLeft");
                 socket.off("cursorUpdate");
+                socket.off("reconnect");
             }
         },
     );
