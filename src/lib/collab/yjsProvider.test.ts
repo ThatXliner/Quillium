@@ -13,36 +13,44 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { get } from "svelte/store";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
 
-// Mock y-websocket
-vi.mock("y-websocket", () => ({
-    WebsocketProvider: vi.fn().mockImplementation((url, room, doc, opts) => {
-        const handlers: Map<string, Set<Function>> = new Map();
-        const mockProvider = {
-            awareness: {
-                clientID: 1,
-                setLocalStateField: vi.fn(),
-                on: vi.fn(),
-                off: vi.fn(),
-                destroy: vi.fn(),
-            },
-            on: (event: string, handler: Function) => {
-                if (!handlers.has(event)) handlers.set(event, new Set());
-                handlers.get(event)!.add(handler);
-            },
-            off: (event: string, handler: Function) => {
-                handlers.get(event)?.delete(handler);
-            },
+// Mock y-websocket - factory must define class inline
+vi.mock("y-websocket", () => {
+    class MockWebsocketProvider {
+        awareness = {
+            clientID: 1,
+            setLocalStateField: vi.fn(),
+            on: vi.fn(),
+            off: vi.fn(),
             destroy: vi.fn(),
-            _testEmit: (event: string, data: unknown) => {
-                handlers.get(event)?.forEach((h) => h(data));
-            },
-            _opts: opts,
-            url,
-            roomname: room,
         };
-        return mockProvider;
-    }),
-}));
+        handlers: Map<string, Set<Function>> = new Map();
+        destroy = vi.fn();
+        _opts: any;
+        url: string;
+        roomname: string;
+
+        constructor(url: string, room: string, _doc: any, opts?: any) {
+            this.url = url;
+            this.roomname = room;
+            this._opts = opts;
+        }
+
+        on(event: string, handler: Function) {
+            if (!this.handlers.has(event)) this.handlers.set(event, new Set());
+            this.handlers.get(event)!.add(handler);
+        }
+
+        off(event: string, handler: Function) {
+            this.handlers.get(event)?.delete(handler);
+        }
+
+        _testEmit(event: string, data: unknown) {
+            this.handlers.get(event)?.forEach((h) => h(data));
+        }
+    }
+
+    return { WebsocketProvider: MockWebsocketProvider };
+});
 
 // Mock auth
 vi.mock("$lib/auth/auth.svelte", () => ({
