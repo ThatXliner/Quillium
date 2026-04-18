@@ -174,7 +174,7 @@ export async function enableCollab(
     const binding = createYjsBinding(ytext);
     // Per D-83: Pass ymap to UndoManager for unified undo stack
     const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
-    const awarenessExt = createAwarenessExtension(awareness, displayName, cursorColor);
+    const awarenessExt = createAwarenessExtension(awareness, ytext, displayName, cursorColor);
     // Annotation sync plugin - bidirectional Y.Map <-> annotationField sync
     const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID);
 

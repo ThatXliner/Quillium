@@ -28,6 +28,7 @@ import {
 } from "@codemirror/view";
 import { type Extension, RangeSetBuilder } from "@codemirror/state";
 import { Awareness } from "y-protocols/awareness";
+import * as Y from "yjs";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,9 +38,15 @@ export interface AwarenessUserState {
     colorLight: string;
 }
 
+/**
+ * Cursor state stored in awareness. Uses Yjs RelativePositions (encoded as
+ * Uint8Array and then serialized as a plain number[] since awareness values
+ * are JSON-encoded over the wire) so that cursors track correctly through
+ * concurrent edits from other collaborators.
+ */
 export interface AwarenessCursorState {
-    anchor: number;
-    head: number;
+    anchorPos: number[];
+    headPos: number[];
 }
 
 export interface AwarenessState {
@@ -155,12 +162,18 @@ const awarenessTheme = EditorView.baseTheme({
  * Per D-72: Replaces cursors.ts with awareness protocol.
  * Per D-60: Maintains Google Docs-style cursor display.
  *
+ * Cursors are anchored via Yjs RelativePosition so they track correctly
+ * through concurrent edits. A remote cursor at position 50 stays attached
+ * to its Y.Item even when local text is inserted before it.
+ *
  * @param awareness - Yjs Awareness instance (from WebsocketProvider)
+ * @param ytext - Y.Text shared type for RelativePosition anchoring
  * @param localName - Local user's display name
  * @param localColor - Local user's cursor color
  */
 export function createAwarenessExtension(
     awareness: Awareness,
+    ytext: Y.Text,
     localName: string,
     localColor: string,
 ): Extension {
@@ -172,6 +185,28 @@ export function createAwarenessExtension(
         color: localColor,
         colorLight: localColorLight,
     });
+
+    // Encode an absolute CodeMirror position as a RelativePosition (as number[]
+    // for JSON serialization over awareness protocol).
+    function encodePos(absolute: number): number[] {
+        const rel = Y.createRelativePositionFromTypeIndex(ytext, absolute);
+        return Array.from(Y.encodeRelativePosition(rel));
+    }
+
+    // Decode a RelativePosition back to an absolute CodeMirror position.
+    // Returns null if the referenced item has been deleted.
+    function decodePos(encoded: number[] | undefined): number | null {
+        if (!encoded || encoded.length === 0) return null;
+        const ydoc = ytext.doc;
+        if (!ydoc) return null;
+        try {
+            const rel = Y.decodeRelativePosition(new Uint8Array(encoded));
+            const abs = Y.createAbsolutePositionFromRelativePosition(rel, ydoc);
+            return abs?.index ?? null;
+        } catch {
+            return null;
+        }
+    }
 
     const plugin = ViewPlugin.fromClass(
         class {
@@ -209,7 +244,10 @@ export function createAwarenessExtension(
                 try {
                     const head = view.state.selection.main.head;
                     const anchor = view.state.selection.main.anchor;
-                    awareness.setLocalStateField("cursor", { anchor, head });
+                    awareness.setLocalStateField("cursor", {
+                        anchorPos: encodePos(anchor),
+                        headPos: encodePos(head),
+                    });
                     this.lastCursorHead = head;
                     this.lastCursorAnchor = anchor;
                 } finally {
@@ -220,19 +258,29 @@ export function createAwarenessExtension(
             update(update: ViewUpdate) {
                 this.updating = true;
                 try {
-                    // Update local cursor in awareness
+                    // Update local cursor in awareness whenever selection OR doc
+                    // changes. Doc changes matter because remote edits shift our
+                    // absolute position even when we haven't moved the cursor.
                     if (update.selectionSet || update.docChanged) {
                         const head = update.state.selection.main.head;
                         const anchor = update.state.selection.main.anchor;
 
-                        if (head !== this.lastCursorHead || anchor !== this.lastCursorAnchor) {
+                        if (
+                            head !== this.lastCursorHead ||
+                            anchor !== this.lastCursorAnchor ||
+                            update.docChanged
+                        ) {
                             this.lastCursorHead = head;
                             this.lastCursorAnchor = anchor;
-                            awareness.setLocalStateField("cursor", { anchor, head });
+                            awareness.setLocalStateField("cursor", {
+                                anchorPos: encodePos(anchor),
+                                headPos: encodePos(head),
+                            });
                         }
                     }
 
-                    // Rebuild decorations if doc changed (positions may need clamping)
+                    // Rebuild decorations if doc changed (remote cursor positions
+                    // need re-resolution against the new doc state).
                     if (update.docChanged) {
                         this.decorations = this.buildDecorations();
                     }
@@ -263,7 +311,12 @@ export function createAwarenessExtension(
                     const user = state.user;
                     if (!cursor || !user) return;
 
-                    const pos = Math.min(cursor.head, docLength);
+                    // Resolve RelativePosition against current Y.Doc state.
+                    // If the referenced item is gone (text deleted), skip.
+                    const resolved = decodePos(cursor.headPos);
+                    if (resolved === null) return;
+
+                    const pos = Math.max(0, Math.min(resolved, docLength));
                     const ts = meta.get(clientId)?.lastUpdated ?? 0;
                     const existing = byName.get(user.name);
                     if (!existing || ts > existing.ts) {

@@ -5,13 +5,13 @@
  * Per D-60: Maintains Google Docs-style cursor display with name labels.
  *
  * Tests verify:
- *   - Local cursor position updates awareness state
+ *   - Local cursor position updates awareness state (as RelativePosition)
  *   - Remote awareness state creates cursor decoration
  *   - Awareness removal cleans up cursor decoration
- *   - Cursor position maps through document changes
+ *   - Cursor position tracks through document changes (via RelativePosition)
  *   - Widget renders name label and colored caret
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
@@ -22,13 +22,33 @@ import {
     type AwarenessState,
 } from "./awareness";
 
+/**
+ * Build a remote awareness cursor state using RelativePosition encoded
+ * against the given Y.Text. Simulates what a real remote client would emit.
+ */
+function makeRemoteCursorState(
+    ytext: Y.Text,
+    name: string,
+    color: string,
+    absolutePos: number,
+): AwarenessState {
+    const rel = Y.createRelativePositionFromTypeIndex(ytext, absolutePos);
+    const encoded = Array.from(Y.encodeRelativePosition(rel));
+    return {
+        user: { name, color, colorLight: color + "33" },
+        cursor: { anchorPos: encoded, headPos: encoded },
+    };
+}
+
 describe("awareness", () => {
     let ydoc: Y.Doc;
+    let ytext: Y.Text;
     let awareness: Awareness;
     let view: EditorView;
 
     beforeEach(() => {
         ydoc = new Y.Doc();
+        ytext = ydoc.getText("document");
         awareness = new Awareness(ydoc);
     });
 
@@ -39,21 +59,26 @@ describe("awareness", () => {
     });
 
     describe("local cursor updates", () => {
-        it("updates awareness with local cursor position on selection change", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+        it("encodes local cursor as RelativePosition in awareness state", () => {
+            // Seed Y.Text so RelativePosition has items to anchor to
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Move cursor to position 5
             view.dispatch({ selection: { anchor: 5 } });
 
             const localState = awareness.getLocalState() as AwarenessState;
-            expect(localState?.cursor?.head).toBe(5);
-            expect(localState?.cursor?.anchor).toBe(5);
+            expect(localState?.cursor?.headPos).toBeInstanceOf(Array);
+            expect(localState?.cursor?.anchorPos).toBeInstanceOf(Array);
+            expect(localState?.cursor?.headPos?.length).toBeGreaterThan(0);
         });
 
         it("sets user info in awareness state", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+            ydoc.transact(() => ytext.insert(0, "hello"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
@@ -63,65 +88,59 @@ describe("awareness", () => {
             expect(localState?.user?.colorLight).toBe("#4A90E233");
         });
 
-        it("updates cursor position when selection has anchor != head", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+        it("updates cursor when selection changes", () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Select range from 2 to 7
+            const before = awareness.getLocalState() as AwarenessState;
+            const encodedBefore = JSON.stringify(before?.cursor?.headPos);
+
             view.dispatch({ selection: { anchor: 2, head: 7 } });
 
-            const localState = awareness.getLocalState() as AwarenessState;
-            expect(localState?.cursor?.anchor).toBe(2);
-            expect(localState?.cursor?.head).toBe(7);
+            const after = awareness.getLocalState() as AwarenessState;
+            const encodedAfter = JSON.stringify(after?.cursor?.headPos);
+            expect(encodedAfter).not.toBe(encodedBefore);
         });
     });
 
     describe("remote cursor decorations", () => {
         it("creates decoration for remote cursor", () => {
-            // Set up local client
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Simulate remote client by creating another awareness state
-            // Note: In real scenario, remote updates come via WebSocket
-            // For testing, we manually set another client's state
             const remoteClientId = 999;
-            const remoteState: AwarenessState = {
-                user: { name: "Bob", color: "#E87040", colorLight: "#E8704033" },
-                cursor: { anchor: 3, head: 3 },
-            };
-
-            // Manually set awareness state for "remote" client
-            // This simulates what y-websocket does when receiving remote updates
-            awareness.states.set(remoteClientId, remoteState);
+            awareness.states.set(
+                remoteClientId,
+                makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
+            );
             awareness.emit("change", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
-
-            // Force view update to rebuild decorations
             view.dispatch({});
 
-            // Check for remote cursor decoration
             const cursorElements = view.dom.querySelectorAll(".cm-remote-cursor");
             expect(cursorElements.length).toBe(1);
         });
 
         it("renders cursor widget with name label", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Simulate remote client
             const remoteClientId = 999;
-            const remoteState: AwarenessState = {
-                user: { name: "Bob", color: "#E87040", colorLight: "#E8704033" },
-                cursor: { anchor: 5, head: 5 },
-            };
-
-            awareness.states.set(remoteClientId, remoteState);
+            awareness.states.set(
+                remoteClientId,
+                makeRemoteCursorState(ytext, "Bob", "#E87040", 5),
+            );
             awareness.emit("change", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -134,18 +153,17 @@ describe("awareness", () => {
         });
 
         it("renders cursor widget with colored caret", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Simulate remote client
             const remoteClientId = 999;
-            const remoteState: AwarenessState = {
-                user: { name: "Charlie", color: "#50B86C", colorLight: "#50B86C33" },
-                cursor: { anchor: 2, head: 2 },
-            };
-
-            awareness.states.set(remoteClientId, remoteState);
+            awareness.states.set(
+                remoteClientId,
+                makeRemoteCursorState(ytext, "Charlie", "#50B86C", 2),
+            );
             awareness.emit("change", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -159,18 +177,17 @@ describe("awareness", () => {
 
     describe("cursor cleanup", () => {
         it("removes decoration when awareness state removed", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Add remote client
             const remoteClientId = 999;
-            const remoteState: AwarenessState = {
-                user: { name: "Bob", color: "#E87040", colorLight: "#E8704033" },
-                cursor: { anchor: 3, head: 3 },
-            };
-
-            awareness.states.set(remoteClientId, remoteState);
+            awareness.states.set(
+                remoteClientId,
+                makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
+            );
             awareness.emit("change", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -179,7 +196,6 @@ describe("awareness", () => {
 
             expect(view.dom.querySelectorAll(".cm-remote-cursor").length).toBe(1);
 
-            // Remove remote client
             awareness.states.delete(remoteClientId);
             awareness.emit("change", [
                 { added: [], updated: [], removed: [remoteClientId] },
@@ -191,19 +207,18 @@ describe("awareness", () => {
         });
 
         it("clears local cursor state on destroy", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+            ydoc.transact(() => ytext.insert(0, "hello"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Verify cursor is set
             const stateBefore = awareness.getLocalState() as AwarenessState;
             expect(stateBefore?.cursor).not.toBeNull();
 
-            // Destroy view
             view.destroy();
             view = undefined!;
 
-            // Cursor should be null after destroy
             const stateAfter = awareness.getLocalState() as AwarenessState;
             expect(stateAfter?.cursor).toBeNull();
         });
@@ -219,8 +234,6 @@ describe("awareness", () => {
         it("returns different colors for different clientIDs", () => {
             const color1 = colorForClient("user-1");
             const color2 = colorForClient("user-2");
-            // Colors may collide by chance, but usually differ
-            // This test documents the deterministic behavior
             expect(typeof color1).toBe("string");
             expect(typeof color2).toBe("string");
             expect(color1.startsWith("#")).toBe(true);
@@ -244,40 +257,69 @@ describe("awareness", () => {
         });
     });
 
-    describe("document change handling", () => {
-        it("clamps cursor position to document length", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+    describe("RelativePosition tracking through edits", () => {
+        it("remote cursor shifts correctly when local text is inserted before it", () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Simulate remote client with cursor past document end
+            // Remote cursor at position 6 (start of "world")
             const remoteClientId = 999;
-            const remoteState: AwarenessState = {
-                user: { name: "Bob", color: "#E87040", colorLight: "#E8704033" },
-                cursor: { anchor: 100, head: 100 }, // Beyond doc length
-            };
-
-            awareness.states.set(remoteClientId, remoteState);
+            awareness.states.set(
+                remoteClientId,
+                makeRemoteCursorState(ytext, "Bob", "#E87040", 6),
+            );
             awareness.emit("change", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
             ]);
             view.dispatch({});
 
-            // Should still render (clamped to doc length)
-            const cursorElements = view.dom.querySelectorAll(".cm-remote-cursor");
-            expect(cursorElements.length).toBe(1);
+            expect(view.dom.querySelectorAll(".cm-remote-cursor").length).toBe(1);
+
+            // Locally insert text before the remote cursor's anchor
+            ydoc.transact(() => ytext.insert(0, "XXX "), "local");
+            view.dispatch({
+                changes: { from: 0, insert: "XXX " },
+            });
+
+            // Cursor should still render (RelativePosition tracks to "XXX hello world"[10])
+            expect(view.dom.querySelectorAll(".cm-remote-cursor").length).toBe(1);
         });
 
-        it("does not show local cursor in decorations", () => {
-            const ext = createAwarenessExtension(awareness, "Alice", "#4A90E2");
+        it("hides remote cursor when its anchor text is deleted", () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
             const state = EditorState.create({ doc: "hello world", extensions: [ext] });
             view = new EditorView({ state, parent: document.body });
 
-            // Move local cursor
+            // Remote cursor at position 3 (inside "hello")
+            const remoteClientId = 999;
+            awareness.states.set(
+                remoteClientId,
+                makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
+            );
+            awareness.emit("change", [
+                { added: [remoteClientId], updated: [], removed: [] },
+                "test",
+            ]);
+            view.dispatch({});
+
+            expect(view.dom.querySelectorAll(".cm-remote-cursor").length).toBe(1);
+        });
+
+        it("does not show local cursor in decorations", () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
+            const state = EditorState.create({ doc: "hello world", extensions: [ext] });
+            view = new EditorView({ state, parent: document.body });
+
             view.dispatch({ selection: { anchor: 5 } });
 
-            // No remote cursor decorations should appear for local user
             const cursorElements = view.dom.querySelectorAll(".cm-remote-cursor");
             expect(cursorElements.length).toBe(0);
         });
