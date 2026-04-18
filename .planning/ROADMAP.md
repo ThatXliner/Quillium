@@ -189,7 +189,16 @@ Plans:
   2. Revision annotations sync via Yjs Y.Map shared type
   3. Position tracking uses Yjs RelativePosition (no drift)
   4. Annotation operations integrate with per-user undo
-**Plans**: [to be planned]
+**Plans**: 6 plans in 5 waves
+**UI hint**: no (backend sync layer)
+
+Plans:
+- [ ] 08-01-PLAN.md — Types, schemas, RelativePosition utilities (SYNC-05)
+- [ ] 08-02-PLAN.md — UndoManager extension for unified undo (SYNC-05)
+- [ ] 08-03-PLAN.md — Annotation sync ViewPlugin with bidirectional sync (SYNC-05)
+- [ ] 08-04-PLAN.md — Revision-specific sync (version switches, additions) (SYNC-05)
+- [ ] 08-05-PLAN.md — Wire annotation sync into collab module (SYNC-05)
+- [ ] 08-06-PLAN.md — Convergence tests and manual verification (SYNC-05)
 
 ### Phase 9: Offline Queue
 **Goal**: Document owner can edit offline and sync when reconnected
@@ -218,7 +227,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 6.5. Collab Polish | 4/4 | Complete | 2025-04-17 |
 | 7. Connection UX | 0/5 | Not started | - |
 | 7.5. Yjs Migration | 0/7 | Not started | - |
-| 8. Annotation Sync | 0/? | Not started | - |
+| 8. Annotation Sync | 0/6 | Not started | - |
 | 9. Offline Queue | 0/? | Not started | - |
 
 ---
