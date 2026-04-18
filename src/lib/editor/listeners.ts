@@ -28,6 +28,7 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import { appendEvent, createSnapshot, createNamedSnapshot, updateDocumentMeta } from "$lib/db";
+import { isCollabJoiner } from "$lib/collab/store";
 import {
     isSuspiciousDeletion,
     isSuspiciousAnnotationChange,
@@ -227,6 +228,9 @@ async function doAppend(
 ) {
     if (!enqueueDocId || !enqueueDraftId) return;
     if (get(currentDocumentId) !== enqueueDocId) return;
+    // Live Room mode: joiners are ephemeral viewers of the owner's document.
+    // Skip all local persistence -- the owner's relay is the source of truth.
+    if (get(isCollabJoiner)) return;
     const docId = enqueueDocId;
     const draftId = enqueueDraftId;
 

@@ -26,3 +26,11 @@ export const pendingUpdatesCount = writable(0);
  * Reset to 0 on successful reconnect or manual disconnect.
  */
 export const reconnectAttempt = writable(0);
+
+/**
+ * True when this client joined someone else's live session (not the owner).
+ * In Live Room mode, joiners are ephemeral viewers -- they should NOT persist
+ * anything to the local event log, since the document belongs to the owner.
+ * Set true on join, reset to false on disconnect.
+ */
+export const isCollabJoiner = writable(false);

@@ -11,6 +11,7 @@
 import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
+import { isCollabJoiner } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
 import { enableCollab, disableCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal, collabState, reconnectAttempt } from "$lib/collab";
 import { get } from "svelte/store";
@@ -31,6 +32,8 @@ $effect(() => {
     if ($ownerLeftSignal > 0 && isLive) {
         // Provider already disconnected via handleOwnerLeft, just update UI state
         isLive = false;
+        // Reset joiner flag -- persistence resumes normally after kick
+        isCollabJoiner.set(false);
         toast.error("The owner ended the session");
     }
 });
@@ -91,6 +94,12 @@ async function joinById() {
         // Switch to shared document ID (skip sync_documents registration -- owner already did that)
         currentDraftId.set(id);
 
+        // Mark this client as an ephemeral joiner BEFORE connecting so the
+        // persistence listener skips Yjs-driven document updates. Joiners in
+        // Live Room mode don't own the document -- the owner's local store is
+        // authoritative, so we don't write the shared ID to our event log.
+        isCollabJoiner.set(true);
+
         // Connect as joiner -- relay's content becomes source of truth
         await enableCollab(view, id, user.id, false);
 
@@ -99,6 +108,8 @@ async function joinById() {
         toast.success("Joined shared document");
     } catch (err) {
         console.error("[collab] Failed to join:", err);
+        // Reset joiner flag on failure so normal persistence resumes
+        isCollabJoiner.set(false);
         const message = err instanceof Error && err.message.includes("relay")
             ? "Couldn't connect to relay server"
             : "Failed to join document";
@@ -116,6 +127,8 @@ async function handleToggle() {
             disableCollab(view);
         }
         isLive = false;
+        // Reset joiner flag -- persistence resumes normally after disconnect
+        isCollabJoiner.set(false);
         toast.success("Session ended");
     } else {
         // Go live -- snapshot first (D-58)
