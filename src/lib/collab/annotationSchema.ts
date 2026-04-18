@@ -1,54 +1,37 @@
 /**
- * annotationSchema.ts -- Yjs annotation schema and bidirectional converters.
+ * annotationSchema.ts — Yjs recursive-Y.Map annotation converters.
  *
- * Bridges between CodeMirror's annotationField format (EditorSelection, number IDs)
- * and Yjs Y.Map format (RelativePosition, string IDs, JSON-serialized nested data).
+ * Per D-90/D-92: YjsAnnotation is a Y.Map<unknown> with Y.Text/Y.Array/Y.Map children.
+ * Per D-93: Comment threads are Y.Array<MessageObject> (append-only, sorted on read).
+ * Per D-94: No migration; Phase 8 wire format was never shipped.
  *
- * Per Yjs bug #642: Avoid nested Y.Array/Y.Map in UndoManager-tracked structures.
- * Thread, versions, and replacements are stored as JSON strings instead.
- *
- * Threat mitigations:
- *   T-08-01: YjsAnnotationSchema validates Y.Map entries before conversion (Zod)
- *   T-08-02: JSON.parse calls are wrapped in try-catch; malformed data returns null
+ * Converter invariants:
+ *   - codeMirrorToYjsAnnotation runs all child-Y-type creation inside a single
+ *     ydoc.transact(..., "init") so remote peers see atomic node insertion.
+ *   - yjsAnnotationToCodeMirror never throws; it returns null on malformed data.
+ *   - Subtree annotations (`annotations` field on each node / version) start empty;
+ *     Plan 8.5c-01 populates them when nested editors create child annotations.
  *
  * Key dependencies:
- *   - zod for schema validation
- *   - ./relativePosition for position conversion
+ *   - yjs (Y.Map, Y.Text, Y.Array) for runtime construction
+ *   - ./relativePosition for position encoding
  *   - ../editor/plugins/annotations/models for CM types
  */
-import { z } from "zod";
 import * as Y from "yjs";
 import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
 import {
     isAnnotationOfType,
     type GenericAnnotation,
-    type Thread,
     type SuggestionReplacement,
     type VersionState,
 } from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotation } from "./types";
-
-// ── Zod schema for Y.Map validation (T-08-01) ────────────────────────
-
-export const YjsAnnotationSchema = z.object({
-    id: z.string(),
-    _type: z.enum(["comment", "suggestion", "revision"]),
-    startPos: z.instanceof(Uint8Array),
-    endPos: z.instanceof(Uint8Array),
-    thread: z.string(), // JSON-serialized Thread
-    // Suggestion-specific
-    replacements: z.string().optional(),
-    author: z.string().optional(),
-    // Revision-specific
-    versions: z.string().optional(),
-    activeVersionIndex: z.number().optional(),
-});
+import type { YjsAnnotationNode, MessageObject } from "./types";
 
 // ── ID generation ─────────────────────────────────────────────────────
 
 /**
  * Generate a unique annotation ID for collaborative context.
- * Uses client ID prefix to prevent collisions between concurrent clients.
+ * Client-prefixed to prevent collisions between concurrent clients.
  */
 export function generateAnnotationId(clientId: string): string {
     const timestamp = Date.now();
@@ -56,169 +39,174 @@ export function generateAnnotationId(clientId: string): string {
     return `${clientId}-${timestamp}-${random}`;
 }
 
-// ── CodeMirror -> Yjs conversion ──────────────────────────────────────
+// ── CodeMirror → Yjs (recursive Y.Map builder) ────────────────────────
 
 /**
- * Convert a CodeMirror annotation to Yjs format for sync.
- *
- * @param annotation - CodeMirror GenericAnnotation
- * @param ytext - Y.Text for position encoding
- * @param clientId - Client ID for unique ID generation
- * @returns YjsAnnotation ready for Y.Map storage
+ * Convert a CodeMirror annotation to a freshly constructed YjsAnnotationNode.
+ * Creates and populates every child Y type inside a single ydoc.transact so
+ * peers never observe a partially assembled node.
  */
 export function codeMirrorToYjsAnnotation(
     annotation: GenericAnnotation,
     ytext: Y.Text,
     clientId: string,
-): YjsAnnotation {
+    ydoc: Y.Doc,
+): YjsAnnotationNode {
     const { startPos, endPos } = absoluteToRelative(ytext, annotation.selection);
+    const node: YjsAnnotationNode = new Y.Map<unknown>();
 
-    const base: YjsAnnotation = {
-        id: generateAnnotationId(clientId),
-        _type: annotation._type,
-        startPos,
-        endPos,
-        thread: JSON.stringify(annotation.thread),
-    };
+    ydoc.transact(() => {
+        node.set("id", generateAnnotationId(clientId));
+        node.set("_type", annotation._type);
+        node.set("startPos", startPos);
+        node.set("endPos", endPos);
 
-    if (isAnnotationOfType(annotation, "suggestion")) {
-        return {
-            ...base,
-            replacements: JSON.stringify(annotation.replacements),
-            author: annotation.author,
-        };
-    }
+        const thread = new Y.Array<MessageObject>();
+        if (annotation.thread.length > 0) {
+            thread.push(annotation.thread.map((m) => ({ ...m })));
+        }
+        node.set("thread", thread);
 
-    if (isAnnotationOfType(annotation, "revision")) {
-        return {
-            ...base,
-            versions: JSON.stringify(annotation.versions),
-            activeVersionIndex: annotation.activeVersionIndex,
-        };
-    }
+        node.set("annotations", new Y.Map<YjsAnnotationNode>());
 
-    // Comment
-    return base;
+        if (isAnnotationOfType(annotation, "suggestion")) {
+            const repl = new Y.Array<SuggestionReplacement>();
+            if (annotation.replacements.length > 0) {
+                repl.push(annotation.replacements.map((r) => ({ ...r })));
+            }
+            node.set("replacements", repl);
+            if (annotation.author !== undefined) {
+                node.set("author", annotation.author);
+            }
+        } else if (isAnnotationOfType(annotation, "revision")) {
+            const versionsMap = new Y.Map<Y.Map<unknown>>();
+            annotation.versions.forEach((v, idx) => {
+                const versionNode = new Y.Map<unknown>();
+                const vtext = new Y.Text();
+                if (v.doc.length > 0) {
+                    vtext.insert(0, v.doc);
+                }
+                versionNode.set("text", vtext);
+                if (v.label !== undefined) {
+                    versionNode.set("label", v.label);
+                }
+                versionNode.set("annotations", new Y.Map<YjsAnnotationNode>());
+                versionsMap.set(String(idx), versionNode);
+            });
+            node.set("versions", versionsMap);
+            node.set("activeVersionIndex", annotation.activeVersionIndex);
+        }
+    }, "init");
+
+    return node;
 }
 
-// ── Yjs -> CodeMirror conversion ──────────────────────────────────────
+// ── Yjs → CodeMirror (recursive Y.Map reader) ─────────────────────────
 
 /**
- * Safely parse JSON, returning null on failure (T-08-02).
- */
-function safeJsonParse<T>(json: string): T | null {
-    try {
-        return JSON.parse(json) as T;
-    } catch {
-        console.warn("[annotationSchema] Failed to parse JSON:", json.slice(0, 100));
-        return null;
-    }
-}
-
-/**
- * Convert a Yjs annotation back to CodeMirror format.
- *
- * @param yjsAnnotation - Yjs-stored annotation
- * @param ydoc - Y.Doc for position resolution
- * @param ytext - Y.Text for position resolution
- * @param numericId - Numeric ID for CM annotationField (caller manages ID mapping)
- * @returns GenericAnnotation or null if position resolution or JSON parsing fails
+ * Convert a YjsAnnotationNode back to a CodeMirror GenericAnnotation.
+ * Returns null if the anchored text was deleted or the node is malformed.
  */
 export function yjsAnnotationToCodeMirror(
-    yjsAnnotation: YjsAnnotation,
+    node: YjsAnnotationNode,
     ydoc: Y.Doc,
     ytext: Y.Text,
     numericId: number,
 ): GenericAnnotation | null {
-    let selection;
-    try {
-        selection = relativeToAbsolute(
-            ydoc,
-            ytext,
-            yjsAnnotation.startPos,
-            yjsAnnotation.endPos,
-        );
-    } catch {
-        // T-08-01: Corrupted position data from Y.Map returns null
-        console.warn("[annotationSchema] Failed to decode position for annotation:", yjsAnnotation.id);
+    const startPos = node.get("startPos") as Uint8Array | undefined;
+    const endPos = node.get("endPos") as Uint8Array | undefined;
+    if (!(startPos instanceof Uint8Array) || !(endPos instanceof Uint8Array)) {
+        console.warn("[annotationSchema] Missing or malformed positions");
         return null;
     }
 
+    let selection;
+    try {
+        selection = relativeToAbsolute(ydoc, ytext, startPos, endPos);
+    } catch {
+        console.warn("[annotationSchema] Failed to decode position");
+        return null;
+    }
     if (selection === null) {
         return null; // Anchored text was deleted
     }
 
-    // T-08-02: Wrap JSON.parse in try-catch; malformed data returns null
-    const thread = safeJsonParse<Thread>(yjsAnnotation.thread);
-    if (thread === null) {
+    const threadArr = node.get("thread");
+    const thread: MessageObject[] =
+        threadArr instanceof Y.Array ? (threadArr.toArray() as MessageObject[]) : [];
+
+    const type = node.get("_type") as GenericAnnotation["_type"] | undefined;
+    if (type !== "comment" && type !== "suggestion" && type !== "revision") {
+        console.warn("[annotationSchema] Unknown _type:", type);
         return null;
     }
 
-    const base = {
-        id: numericId,
-        selection,
-        thread,
-    };
+    const base = { id: numericId, selection, thread };
 
-    if (yjsAnnotation._type === "comment") {
+    if (type === "comment") {
         return { ...base, _type: "comment" };
     }
 
-    if (yjsAnnotation._type === "suggestion") {
-        const replacements: SuggestionReplacement[] = yjsAnnotation.replacements
-            ? (safeJsonParse<SuggestionReplacement[]>(yjsAnnotation.replacements) ?? [])
-            : [];
+    if (type === "suggestion") {
+        const replArr = node.get("replacements");
+        const replacements: SuggestionReplacement[] =
+            replArr instanceof Y.Array ? (replArr.toArray() as SuggestionReplacement[]) : [];
+        const author = node.get("author");
         return {
             ...base,
             _type: "suggestion",
             replacements,
-            author: yjsAnnotation.author,
+            author: typeof author === "string" ? author : undefined,
         };
     }
 
-    if (yjsAnnotation._type === "revision") {
-        // T-08-05: JSON.parse wrapped in safeJsonParse; malformed returns empty array
-        const versions: VersionState[] = yjsAnnotation.versions
-            ? (safeJsonParse<VersionState[]>(yjsAnnotation.versions) ?? [])
-            : [];
-        // T-08-06: Bounds-check activeVersionIndex against the actual versions array.
-        // A tampered or stale index from a remote peer must not point outside the array.
-        const rawIndex = yjsAnnotation.activeVersionIndex ?? 0;
-        const activeVersionIndex =
-            versions.length > 0 ? Math.max(0, Math.min(rawIndex, versions.length - 1)) : 0;
-        // Require at least one version for a valid revision annotation.
-        if (versions.length === 0) {
-            console.warn(
-                "[annotationSchema] Dropping revision annotation with empty versions array:",
-                yjsAnnotation.id,
-            );
-            return null;
-        }
+    // revision
+    const versionsMap = node.get("versions");
+    if (!(versionsMap instanceof Y.Map)) {
+        console.warn("[annotationSchema] Revision missing versions map");
+        return null;
+    }
+    const keys = Array.from(versionsMap.keys())
+        .map((k) => Number(k))
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b);
+    if (keys.length === 0) {
+        console.warn("[annotationSchema] Revision has empty versions map");
+        return null;
+    }
+    const versions: VersionState[] = keys.map((k) => {
+        const v = versionsMap.get(String(k)) as Y.Map<unknown>;
+        const vtext = v.get("text");
+        const doc = vtext instanceof Y.Text ? vtext.toString() : "";
+        const label = v.get("label");
         return {
-            ...base,
-            _type: "revision",
-            versions,
-            activeVersionIndex,
+            doc,
+            ...(typeof label === "string" ? { label } : {}),
+            annotationGeneration: 0,
         };
-    }
+    });
 
-    return null;
+    const rawIndex =
+        typeof node.get("activeVersionIndex") === "number"
+            ? (node.get("activeVersionIndex") as number)
+            : 0;
+    const activeVersionIndex = Math.max(0, Math.min(rawIndex, versions.length - 1));
+
+    return {
+        ...base,
+        _type: "revision",
+        versions,
+        activeVersionIndex,
+    };
 }
 
-// ── ID mapping utilities ──────────────────────────────────────────────
+// ── ID mapping utilities (unchanged; preserved verbatim) ─────────────
 
-/**
- * Maps between Yjs string IDs and CodeMirror numeric IDs.
- * Necessary because annotationField uses numeric keys but Yjs uses strings.
- */
 export class AnnotationIdMap {
     private yjsToCm = new Map<string, number>();
     private cmToYjs = new Map<number, string>();
     private nextCmId = 0;
 
-    /**
-     * Get or create a numeric CM ID for a Yjs annotation ID.
-     */
     getOrCreateCmId(yjsId: string): number {
         let cmId = this.yjsToCm.get(yjsId);
         if (cmId === undefined) {
@@ -229,23 +217,14 @@ export class AnnotationIdMap {
         return cmId;
     }
 
-    /**
-     * Get the Yjs ID for a CM numeric ID.
-     */
     getYjsId(cmId: number): string | undefined {
         return this.cmToYjs.get(cmId);
     }
 
-    /**
-     * Get the CM ID for a Yjs ID.
-     */
     getCmId(yjsId: string): number | undefined {
         return this.yjsToCm.get(yjsId);
     }
 
-    /**
-     * Register a new mapping (when CM creates an annotation locally).
-     */
     register(yjsId: string, cmId: number): void {
         this.yjsToCm.set(yjsId, cmId);
         this.cmToYjs.set(cmId, yjsId);
@@ -254,9 +233,6 @@ export class AnnotationIdMap {
         }
     }
 
-    /**
-     * Remove a mapping.
-     */
     remove(yjsId: string): void {
         const cmId = this.yjsToCm.get(yjsId);
         if (cmId !== undefined) {
@@ -265,9 +241,6 @@ export class AnnotationIdMap {
         this.yjsToCm.delete(yjsId);
     }
 
-    /**
-     * Clear all mappings.
-     */
     clear(): void {
         this.yjsToCm.clear();
         this.cmToYjs.clear();
