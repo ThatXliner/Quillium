@@ -11,7 +11,7 @@ import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
-import { enableCollab, disableCollab, disconnectCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal } from "$lib/collab";
+import { enableCollab, disableCollab, disconnectCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal, collabState, reconnectAttempt } from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 
@@ -19,6 +19,7 @@ let isLive = $state(false);
 let connecting = $state(false);
 let menuOpen = $state(false);
 let joinIdInput = $state("");
+let prevCollabState = $state<string>("disconnected");
 
 const authenticated = $derived(isAuthenticated());
 const canGoLive = $derived(authenticated && relayConfigured);
@@ -32,6 +33,30 @@ $effect(() => {
         isLive = false;
         toast.error("The owner ended the session");
     }
+});
+
+// React to reconnection state changes
+$effect(() => {
+    const state = $collabState;
+    const attempt = $reconnectAttempt;
+
+    // Reconnected successfully
+    if (prevCollabState === "reconnecting" && state === "connected") {
+        toast.success("Reconnected");
+    }
+
+    // Reconnection failed (error state after reconnecting)
+    if (prevCollabState === "reconnecting" && state === "error") {
+        toast.error("Connection lost. Please go live again to reconnect.");
+        isLive = false;
+    }
+
+    // Started reconnecting (first attempt)
+    if (prevCollabState !== "reconnecting" && state === "reconnecting" && attempt === 1) {
+        toast("Connection lost, reconnecting...");
+    }
+
+    prevCollabState = state;
 });
 
 function copyId() {
