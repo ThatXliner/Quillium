@@ -74,6 +74,7 @@
     "svelte-sonner": "^1.1.0",
     "unified": "^11.0.5",
     "y-protocols": "^1.0.7",
+    "y-websocket": "^3.0.0",
     "yjs": "^13.6.30",
     "zod": "^4.3.6"
   },
