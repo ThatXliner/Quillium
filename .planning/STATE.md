@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: In progress (Phase 8.5a)
-stopped_at: "Completed 08.5a-02 — recursive Y.Map schema + 5 wired annotation-tree tests"
-last_updated: "2026-04-18T22:10:00.000Z"
-last_activity: 2026-04-18 -- Completed 08.5a-02 recursive Y.Map schema refactor (types.ts + annotationSchema.ts rewrites, 5 annotation-tree tests wired)
+status: Ready to execute
+stopped_at: "Phase 8.5a complete — 8.5b next"
+last_updated: "2026-04-18T15:25:00.000Z"
+last_activity: 2026-04-18 -- Phase 8.5a complete (2/2 plans, verified passed); 8.5b (sync plumbing) is next
 progress:
   total_phases: 13
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 43
   completed_plans: 39
   percent: 91
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2025-04-16)
 
 **Core value:** Two Quillium instances can connect and see each other's edits in real-time
-**Current focus:** Phase 8.5a — CRDT data shape (in progress; 08.5a-01 complete, 08.5a-02 next)
+**Current focus:** Phase 8.5b — CRDT sync plumbing (planned, ready to execute after 8.5a)
 
 ## Current Position
 
-Phase: 8.5a
-Plan: 08.5a-02 complete (recursive Y.Map schema refactor); Phase 8.5a done; 08.5b-01 is next
-Status: In progress — run /gsd-execute-phase 8.5b to continue with Phase 8.5b
-Last activity: 2026-04-18 -- Completed 08.5a-02 recursive Y.Map schema refactor (types.ts + annotationSchema.ts, 5 annotation-tree tests wired)
+Phase: 8.5b
+Plan: Phase 8.5a complete and verified (2/2 plans); 8.5b (sync plumbing) is next
+Status: Ready to execute — run /gsd-execute-phase 8.5b
+Last activity: 2026-04-18 -- Phase 8.5a complete (2/2 plans, verified passed); next: Phase 8.5b
 
 Progress: [█████████░] 91%
 
@@ -106,6 +106,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-18T22:10:00.000Z
-Stopped at: Completed 08.5a-02-PLAN.md (recursive Y.Map schema refactor)
+Last session: 2026-04-18T22:21:17.272Z
+Stopped at: context exhaustion at 91% (2026-04-18)
 Resume file: None
