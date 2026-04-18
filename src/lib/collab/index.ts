@@ -125,23 +125,36 @@ export async function enableCollab(
     });
 
     // After sync, determine authoritative content
+    // Per D-55: Owner's local SQLite is source of truth; relay is broadcast layer
+    // Per D-57: Live Room mode — session ends when owner leaves
     const remoteContent = ytext.toString();
     let authoritativeContent: string;
 
-    if (asOwner && remoteContent.length === 0 && localDoc.length > 0) {
-        // Owner connecting to empty room -- seed with local content
-        console.log("[collab] Owner seeding relay with local content, length:", localDoc.length);
-        ydoc.transact(() => {
-            ytext.insert(0, localDoc);
-        }, "init");
+    if (asOwner) {
+        // Owner ALWAYS seeds with local content (D-55: owner's local is source of truth)
+        // Clear any stale relay content first, then insert local
+        if (remoteContent.length > 0 || localDoc.length > 0) {
+            console.log(
+                `[collab] Owner replacing relay content (remote=${remoteContent.length}, local=${localDoc.length})`,
+            );
+            ydoc.transact(() => {
+                if (ytext.length > 0) {
+                    ytext.delete(0, ytext.length);
+                }
+                if (localDoc.length > 0) {
+                    ytext.insert(0, localDoc);
+                }
+            }, "init");
+        }
         authoritativeContent = localDoc;
     } else if (remoteContent.length > 0) {
-        // Relay has content -- use it
-        console.log(`[collab] Using relay content (length ${remoteContent.length})`);
+        // Joiner: relay content is authoritative (owner already seeded it)
+        console.log(`[collab] Joiner using relay content (length ${remoteContent.length})`);
         authoritativeContent = remoteContent;
     } else {
-        // Both empty -- use local (empty)
-        authoritativeContent = localDoc;
+        // Joiner connecting to empty room — unusual, but use empty
+        console.warn("[collab] Joiner connected to empty room — owner may not have seeded yet");
+        authoritativeContent = "";
     }
 
     // Sync editor to authoritative content (without triggering Yjs update)
