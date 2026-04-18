@@ -33,12 +33,21 @@ import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 import { collabState, ownerLeftSignal, pendingUpdatesCount, reconnectAttempt } from "./store";
 
 // Types
-export type { CollabSession, CollabState } from "./types";
+export type { CollabSession, CollabState, YjsAnnotation } from "./types";
 
 // Re-exports
 export { collabState, ownerLeftSignal, pendingUpdatesCount, reconnectAttempt } from "./store";
 export { colorForClient } from "./awareness";
 export { relayConfigured, getYjsProvider, getCurrentDocId } from "./yjsProvider";
+// Annotation sync exports
+export { yjsAnnotationSync, createAnnotationSyncPlugin } from "./yjsAnnotations";
+export { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
+export {
+    codeMirrorToYjsAnnotation,
+    yjsAnnotationToCodeMirror,
+    AnnotationIdMap,
+    generateAnnotationId,
+} from "./annotationSchema";
 
 /** Compartment for hot-swapping collab extension (per D-51) */
 export const collabCompartment = new Compartment();

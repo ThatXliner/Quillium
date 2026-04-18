@@ -31,15 +31,15 @@ import type { Extension } from "@codemirror/state";
  * @param ymap - Optional Y.Map for annotation sync (D-83 unified undo)
  * @returns Object containing the CodeMirror extension and UndoManager instance
  */
-export function createYjsUndoExtension(
+export function createYjsUndoExtension<T = unknown>(
     ytext: Y.Text,
-    ymap?: Y.Map<unknown>,
+    ymap?: Y.Map<T>,
 ): {
     extension: Extension;
     undoManager: Y.UndoManager;
 } {
     // Per D-83: Track both text and annotations in unified stack when ymap provided
-    const trackedTypes: (Y.Text | Y.Map<unknown>)[] = ymap ? [ytext, ymap] : [ytext];
+    const trackedTypes: (Y.Text | Y.Map<T>)[] = ymap ? [ytext, ymap] : [ytext];
 
     const undoManager = new Y.UndoManager(trackedTypes, {
         trackedOrigins: new Set(["local"]), // Only undo local changes (per D-74)
