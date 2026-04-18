@@ -22,6 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
 - [ ] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
+- [ ] **Phase 8.5: CRDT Subtrees for Nested Editors** - Character-level CRDT merge inside revision nested editors (INSERTED)
 
 ## Phase Details
 
@@ -199,10 +200,25 @@ Plans:
 - [ ] 08-05-PLAN.md — Wire annotation sync into collab module (SYNC-05)
 - [ ] 08-06-PLAN.md — Convergence tests and manual verification (SYNC-05)
 
+### Phase 8.5: CRDT Subtrees for Nested Editors (INSERTED)
+**Goal**: Character-level CRDT merge inside revision nested editors — peer edits within a revision behave the same as peer edits in the main document
+**Depends on**: Phase 8
+**Requirements**: SYNC-05 (extended)
+**Success Criteria** (what must be TRUE):
+  1. Each revision version owns a dedicated Y.Text subtree (not a JSON-stringified blob)
+  2. Concurrent keystrokes by two peers inside the same nested editor merge without data loss
+  3. Annotations inside nested editors follow the same recursive Y.Map structure (arbitrary nesting)
+  4. Undo is per-user, covers all your edits across main+nested editors, and auto-navigates to the affected editor
+  5. Version switches are local-only (do not interrupt peer editing of other versions)
+  6. Comment threads use append-only Y.Array sorted by timestamp on read
+  7. Peer cursor rendering inside nested editors is out of scope (deferred to v2)
+
+Plans: TBD (drafted during /gsd-plan-phase)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 8.5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -216,6 +232,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 7. Connection UX | 0/5 | Not started | - |
 | 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/6 | Not started | - |
+| 8.5. CRDT Nested Editors | 0/- | Not started | - |
 
 ---
 
