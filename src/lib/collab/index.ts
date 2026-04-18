@@ -103,13 +103,22 @@ export async function enableCollab(
         `[collab] enableCollab: localDoc.length=${localDoc.length}, asOwner=${asOwner}`,
     );
 
-    // Wait for initial sync
-    await new Promise<void>((resolve) => {
+    // Wait for initial sync with timeout
+    await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            console.error("[collab] Sync timeout after 10s - provider.synced:", provider.synced);
+            reject(new Error("Sync timeout - relay may not be responding correctly"));
+        }, 10000);
+
         const checkSync = () => {
             if (provider.synced) {
+                clearTimeout(timeout);
                 resolve();
             } else {
-                provider.once("sync", () => resolve());
+                provider.once("sync", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
             }
         };
         checkSync();

@@ -38,6 +38,11 @@ export function createYjsBinding(ytext: Y.Text) {
                     // - origin allows us to distinguish CM-initiated changes from remote sync
                     if (this.destroyed || yTransaction.origin === "local") return;
 
+                    // Yjs delta ops reference positions in the OLD (pre-change)
+                    // document. CodeMirror's ChangeSpec also uses OLD coordinates
+                    // (from/to). So we advance `pos` for retain AND delete (both
+                    // consume old-doc chars), but NOT for insert (inserts produce
+                    // new chars without consuming old ones).
                     const changes: { from: number; to: number; insert: string }[] = [];
                     let pos = 0;
 
@@ -47,9 +52,9 @@ export function createYjsBinding(ytext: Y.Text) {
                         } else if (delta.insert !== undefined) {
                             const text = typeof delta.insert === "string" ? delta.insert : "";
                             changes.push({ from: pos, to: pos, insert: text });
-                            pos += text.length;
                         } else if (delta.delete !== undefined) {
                             changes.push({ from: pos, to: pos + delta.delete, insert: "" });
+                            pos += delta.delete;
                         }
                     }
 
@@ -73,16 +78,27 @@ export function createYjsBinding(ytext: Y.Text) {
                 ) {
                     const ydoc = ytext.doc;
                     if (ydoc) {
+                        // iterChanges reports fromA/toA in the ORIGINAL document
+                        // coordinate space. Y.Text mutations use CURRENT coordinates,
+                        // which shift as we mutate. Track the running length delta
+                        // from earlier ops and offset each subsequent op by it so
+                        // the final Y.Text state matches CodeMirror's B-space.
                         ydoc.transact(() => {
-                            update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-                                // Delete first, then insert at the same position
-                                if (toA > fromA) {
-                                    ytext.delete(fromA, toA - fromA);
-                                }
-                                if (inserted.length > 0) {
-                                    ytext.insert(fromA, inserted.toString());
-                                }
-                            });
+                            let delta = 0;
+                            update.changes.iterChanges(
+                                (fromA, toA, _fromB, _toB, inserted) => {
+                                    const from = fromA + delta;
+                                    const len = toA - fromA;
+                                    if (len > 0) {
+                                        ytext.delete(from, len);
+                                    }
+                                    const insText = inserted.toString();
+                                    if (insText.length > 0) {
+                                        ytext.insert(from, insText);
+                                    }
+                                    delta += insText.length - len;
+                                },
+                            );
                         }, "local"); // Origin for UndoManager (per D-74)
                     }
                 }
