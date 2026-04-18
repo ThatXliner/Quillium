@@ -214,7 +214,7 @@ Plans:
 **Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 08.5a-01-PLAN.md — Wave 0 test scaffolds: twoPeerHarness + 8 failing-test files (SYNC-05)
+- [x] 08.5a-01-PLAN.md — Wave 0 test scaffolds: twoPeerHarness + 8 failing-test files (SYNC-05)
 - [ ] 08.5a-02-PLAN.md — Shape refactor: types.ts + annotationSchema.ts recursive Y.Map converters (SYNC-05)
 
 ### Phase 8.5b: CRDT Sync Plumbing (INSERTED)

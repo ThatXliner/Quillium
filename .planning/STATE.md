@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-stopped_at: "Phase 8.5 split into 8.5a/b/c (2/2/2 plans)"
-last_updated: "2026-04-18T22:00:00.000Z"
-last_activity: 2026-04-18 -- Phase 8.5 split into 8.5a (data shape), 8.5b (sync plumbing), 8.5c (nested wiring)
+status: In progress (Phase 8.5a)
+stopped_at: "Completed 08.5a-01 — Wave 0 test scaffolding landed"
+last_updated: "2026-04-18T21:53:17.000Z"
+last_activity: 2026-04-18 -- Completed 08.5a-01 Wave 0 test scaffolding (1 harness + 8 test scaffolds, 19 it.todo entries)
 progress:
   total_phases: 13
   completed_phases: 10
   total_plans: 43
-  completed_plans: 37
-  percent: 86
+  completed_plans: 38
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2025-04-16)
 
 **Core value:** Two Quillium instances can connect and see each other's edits in real-time
-**Current focus:** Phase 8.5a — CRDT data shape (planned, ready to execute)
+**Current focus:** Phase 8.5a — CRDT data shape (in progress; 08.5a-01 complete, 08.5a-02 next)
 
 ## Current Position
 
 Phase: 8.5a
-Plan: 2 plans drafted (08.5a-01, 08.5a-02) in 2 waves
-Status: Ready to execute — run /gsd-execute-phase 8.5a
-Last activity: 2026-04-18 -- Phase 8.5 split into 8.5a/b/c (data shape, sync plumbing, nested wiring)
+Plan: 08.5a-01 complete (Wave 0 scaffolding); 08.5a-02 is next
+Status: In progress — run /gsd-execute-phase 8.5a to continue with plan 02
+Last activity: 2026-04-18 -- Completed 08.5a-01 Wave 0 test scaffolding (1 harness + 8 test scaffolds, 19 it.todo entries)
 
-Progress: [███████░░░] 70%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -65,7 +65,9 @@ Progress: [███████░░░] 70%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- (none yet)
+- 08.5a-01: Use `it.todo` (not `it.skip`) for Wave 0 scaffolds so Vitest reports TODO count distinctly and the suite stays green.
+- 08.5a-01: Keep harness `Peer.ymap` typed as `Y.Map<unknown>` with a `Y.Map<never>` cast at the plugin boundary so the harness survives the shape rewrite in 08.5a-02.
+- 08.5a-01: Wave 0 scaffolds do NOT import the harness yet; downstream plans add imports when they rewrite a todo into a real test.
 
 ### Pending Todos
 
@@ -94,6 +96,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-18T21:32:09.195Z
-Stopped at: context exhaustion at 90% (2026-04-18)
+Last session: 2026-04-18T21:53:17.000Z
+Stopped at: Completed 08.5a-01-PLAN.md (Wave 0 test scaffolding)
 Resume file: None
