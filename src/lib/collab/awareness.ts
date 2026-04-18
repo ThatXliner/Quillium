@@ -114,21 +114,27 @@ class RemoteCursorWidget extends WidgetType {
 // ── Theme (preserved from cursors.ts) ───────────────────────────────────────
 
 const awarenessTheme = EditorView.baseTheme({
+    // Zero-width wrapper: must not contribute to line metrics or consume space.
+    // Previously used inline-block + a child with height:1.1em, which inflated
+    // line height and left a visible gap around the cursor.
     ".cm-remote-cursor": {
-        display: "inline-block",
         position: "relative",
+        display: "inline",
+        width: "0",
     },
     ".cm-remote-cursor-caret": {
-        display: "inline-block",
+        position: "absolute",
+        top: "0",
+        bottom: "0",
+        left: "-1px",
         width: "2px",
-        height: "1.1em",
         backgroundColor: "var(--cursor-color)",
-        verticalAlign: "text-bottom",
+        pointerEvents: "none",
     },
     ".cm-remote-cursor-label": {
         position: "absolute",
         bottom: "100%",
-        left: "0",
+        left: "-1px",
         padding: "1px 4px",
         fontSize: "11px",
         lineHeight: "1.4",
@@ -173,14 +179,20 @@ export function createAwarenessExtension(
             private changeHandler: () => void;
             private lastCursorHead = -1;
             private lastCursorAnchor = -1;
+            private destroyed = false;
 
             constructor(private view: EditorView) {
                 this.decorations = this.buildDecorations();
 
                 this.changeHandler = () => {
+                    if (this.destroyed) return;
                     this.decorations = this.buildDecorations();
-                    // Request a view update to apply new decorations
-                    this.view.requestMeasure();
+                    // Defer dispatch to next microtask: awareness emits during CM
+                    // updates (we setLocalStateField from inside update()), and
+                    // dispatching while an update is in progress throws.
+                    queueMicrotask(() => {
+                        if (!this.destroyed) this.view.dispatch({});
+                    });
                 };
 
                 awareness.on("change", this.changeHandler);
@@ -216,26 +228,33 @@ export function createAwarenessExtension(
                 const states = awareness.getStates();
                 const localClientId = awareness.clientID;
                 const docLength = this.view.state.doc.length;
+                const meta = awareness.meta;
 
-                const cursors: { pos: number; name: string; color: string }[] = [];
+                // Dedupe by user name — stale clientIDs from recent page reloads
+                // linger for ~30s before awareness GC removes them, so a single
+                // user can appear as multiple active clients. Keep the most
+                // recently updated entry per user.
+                const byName = new Map<
+                    string,
+                    { pos: number; name: string; color: string; ts: number }
+                >();
 
                 states.forEach((state: AwarenessState, clientId: number) => {
-                    // Skip local cursor (we don't show our own cursor as remote)
                     if (clientId === localClientId) return;
 
                     const cursor = state.cursor;
                     const user = state.user;
+                    if (!cursor || !user) return;
 
-                    if (cursor && user) {
-                        // CRITICAL: Clamp position to document length (remote edits can push pos past end)
-                        const pos = Math.min(cursor.head, docLength);
-                        cursors.push({
-                            pos,
-                            name: user.name,
-                            color: user.color,
-                        });
+                    const pos = Math.min(cursor.head, docLength);
+                    const ts = meta.get(clientId)?.lastUpdated ?? 0;
+                    const existing = byName.get(user.name);
+                    if (!existing || ts > existing.ts) {
+                        byName.set(user.name, { pos, name: user.name, color: user.color, ts });
                     }
                 });
+
+                const cursors = Array.from(byName.values());
 
                 if (cursors.length === 0) return Decoration.none;
 
@@ -258,6 +277,7 @@ export function createAwarenessExtension(
             }
 
             destroy() {
+                this.destroyed = true;
                 awareness.off("change", this.changeHandler);
                 // Clear local cursor state on disconnect (prevents ghost cursors)
                 awareness.setLocalStateField("cursor", null);
