@@ -197,7 +197,7 @@ async function handleToggle() {
         </button>
 
         {#if menuOpen}
-            <div class="absolute top-10 right-0 w-80 p-3 bg-white rounded-lg shadow-xl border border-black/5 space-y-3 text-xs">
+            <div class="absolute top-10 right-0 z-50 w-80 p-3 bg-white rounded-lg shadow-xl border border-black/5 space-y-3 text-xs">
                 <div>
                     <div class="font-medium text-black/70 mb-1">This document's ID</div>
                     <div class="flex gap-1">
