@@ -1,32 +1,49 @@
 /**
- * index.ts -- Collab module entry point.
+ * index.ts -- Collab module entry point (Yjs implementation).
  *
- * Re-exports the public API for collaborative editing:
+ * Per D-70: Clean migration -- uses Yjs instead of @codemirror/collab.
+ * Per D-72: Custom Y.Text <-> CodeMirror binding.
+ *
+ * Re-exports public API:
  *   - collabCompartment: Compartment for hot-swapping collab extension
- *   - enableCollab(): activate collab with socket + version
- *   - disableCollab(): deactivate collab, disconnect socket
- *
- * Key dependencies:
- *   - @codemirror/state (Compartment)
- *   - @codemirror/collab (collab, getSyncedVersion)
- *   - ./socket (connectToCollab, disconnectCollab)
- *   - ./collabPlugin (collabPushPull, createCollabExtension)
+ *   - enableCollab(): activate collab with Yjs provider
+ *   - disableCollab(): deactivate collab, disconnect provider
  */
 import type { EditorView } from "@codemirror/view";
-import { getSyncedVersion, sendableUpdates } from "@codemirror/collab";
-import { connectToCollab, disconnectCollab, getSocket, relayConfigured } from "./socket";
-import { collabCompartment, createCollabExtension } from "./collabPlugin";
+import { Compartment } from "@codemirror/state";
+import * as Y from "yjs";
 import { supabase } from "$lib/auth/supabase";
 import { getUser } from "$lib/auth/auth.svelte";
-import { createRemoteCursorsExtension, colorForClient } from "./cursors";
+
+// Yjs modules
+import { createYjsBinding } from "./yjsBinding";
+import { createYjsUndoExtension } from "./yjsUndo";
+import { createAwarenessExtension, colorForClient } from "./awareness";
+import {
+    createYjsProvider,
+    disconnectYjsProvider,
+    handleOwnerLeft,
+    relayConfigured,
+    getYjsProvider,
+    getCurrentDocId,
+} from "./yjsProvider";
+
+// Stores
+import { collabState, ownerLeftSignal, pendingUpdatesCount, reconnectAttempt } from "./store";
+
+// Types
+export type { CollabSession, CollabState } from "./types";
 
 // Re-exports
-export { collabCompartment } from "./collabPlugin";
-export { relayConfigured, getSocket, connectToCollab, disconnectCollab } from "./socket";
 export { collabState, ownerLeftSignal, pendingUpdatesCount, reconnectAttempt } from "./store";
-export { createRemoteCursorsExtension, colorForClient } from "./cursors";
-export * from "./types";
-export * from "./protocol";
+export { colorForClient } from "./awareness";
+export { relayConfigured, getYjsProvider, getCurrentDocId } from "./yjsProvider";
+
+/** Compartment for hot-swapping collab extension (per D-51) */
+export const collabCompartment = new Compartment();
+
+/** Current Y.UndoManager (for external access if needed) */
+let currentUndoManager: Y.UndoManager | null = null;
 
 /**
  * Register a document with the relay's sync_documents table.
@@ -59,12 +76,15 @@ export async function registerDocumentForCollab(
 
 /**
  * Enable collab for the given editor view.
- * Per D-52: Creates per-document socket instance.
- * Per D-50: clientID enables per-user undo.
+ *
+ * Per D-70: Uses Yjs instead of @codemirror/collab.
+ * Per D-72: Custom Y.Text <-> CodeMirror binding.
+ * Per D-74: UndoManager tracks local changes only.
  *
  * @param view - The EditorView to enable collab on
  * @param docId - The document ID for the relay room
- * @param clientID - The user's ID for per-user undo (typically Supabase user.id)
+ * @param clientID - The user's ID (typically Supabase user.id)
+ * @param asOwner - Whether connecting as document owner
  * @throws If connection to relay fails
  */
 export async function enableCollab(
@@ -73,48 +93,49 @@ export async function enableCollab(
     clientID: string,
     asOwner: boolean = true,
 ): Promise<void> {
-    const { socket, initialState } = await connectToCollab(docId);
+    // Connect to Yjs relay
+    const { provider, awareness, ydoc, ytext } = await createYjsProvider(docId);
 
+    // Get local content before connecting
     const localDoc = view.state.doc.toString();
-    const relayDoc = initialState.doc;
-    const startVersion = initialState.version;
 
     console.log(
-        `[collab] enableCollab: localDoc.length=${localDoc.length}, relayDoc.length=${relayDoc.length}, ` +
-        `startVersion=${startVersion}, asOwner=${asOwner}`,
+        `[collab] enableCollab: localDoc.length=${localDoc.length}, asOwner=${asOwner}`,
     );
 
-    // Determine authoritative content (what the relay will have at startVersion).
+    // Wait for initial sync
+    await new Promise<void>((resolve) => {
+        const checkSync = () => {
+            if (provider.synced) {
+                resolve();
+            } else {
+                provider.once("sync", () => resolve());
+            }
+        };
+        checkSync();
+    });
+
+    // After sync, determine authoritative content
+    const remoteContent = ytext.toString();
     let authoritativeContent: string;
 
-    // Track the version to use for collab (may be updated by initDocument)
-    let collabStartVersion = startVersion;
-
-    if (asOwner && initialState.version === 0 && relayDoc.length === 0) {
-        // Owner connecting to empty/fresh room — seed relay with snapshot of current local content.
-        // This keeps owner as source of truth (no cloud storage — owner's local wins).
+    if (asOwner && remoteContent.length === 0 && localDoc.length > 0) {
+        // Owner connecting to empty room -- seed with local content
         console.log("[collab] Owner seeding relay with local content, length:", localDoc.length);
-        const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
-            socket.emit("initDocument", { content: localDoc }, resolve);
-        });
-        if (!initResult.ok) {
-            throw new Error("Failed to seed relay with document content");
-        }
-        // Relay returns the new version (1) after initializing content
-        collabStartVersion = initResult.version ?? 1;
-        console.log("[collab] Relay initialized, starting collab at version:", collabStartVersion);
+        ydoc.transact(() => {
+            ytext.insert(0, localDoc);
+        }, "init");
         authoritativeContent = localDoc;
+    } else if (remoteContent.length > 0) {
+        // Relay has content -- use it
+        console.log(`[collab] Using relay content (length ${remoteContent.length})`);
+        authoritativeContent = remoteContent;
     } else {
-        // Joiner, or owner joining existing room — relay content is truth.
-        console.log(
-            `[collab] ${asOwner ? "Owner" : "Joiner"} syncing to relay state (v${startVersion}, length ${relayDoc.length})`,
-        );
-        authoritativeContent = relayDoc;
+        // Both empty -- use local (empty)
+        authoritativeContent = localDoc;
     }
 
-    // Two-step dispatch to avoid the doc-replacement being tracked as a sendable
-    // update by collab(). Step 1: replace content (without collab active).
-    // Step 2: install collab extension — its v0 baseline captures the now-authoritative doc.
+    // Sync editor to authoritative content (without triggering Yjs update)
     const currentContent = view.state.doc.toString();
     if (currentContent !== authoritativeContent) {
         view.dispatch({
@@ -122,40 +143,51 @@ export async function enableCollab(
         });
     }
 
-    // Derive display name and color for cursor presence
+    // Create Yjs extensions
     const user = getUser();
     const displayName = user?.user_metadata?.full_name ?? user?.email ?? clientID.slice(0, 8);
     const cursorColor = colorForClient(clientID);
 
+    const binding = createYjsBinding(ytext);
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext);
+    const awarenessExt = createAwarenessExtension(awareness, displayName, cursorColor);
+
+    currentUndoManager = undoManager;
+
+    // Install Yjs collab extension
     view.dispatch({
-        effects: collabCompartment.reconfigure([
-            ...createCollabExtension(collabStartVersion, clientID, socket),
-            ...createRemoteCursorsExtension(socket, displayName, cursorColor),
-        ]),
+        effects: collabCompartment.reconfigure([binding, undoExt, awarenessExt]),
     });
 
-    // Verify state after collab is installed
-    const finalDocLength = view.state.doc.length;
-    const syncedVersion = getSyncedVersion(view.state);
-    const pending = sendableUpdates(view.state);
+    // Listen for owner left (custom message from server)
+    // y-websocket doesn't have built-in custom messages, so we listen on provider events
+    provider.on("connection-close" as any, (event: CloseEvent) => {
+        // Check close reason for owner disconnect
+        if (event.reason === "Owner left") {
+            handleOwnerLeft();
+        }
+    });
 
-    // Warn if there are unexpected pending updates — this would indicate
-    // changes were made between content sync and collab installation
-    if (pending.length > 0) {
-        console.warn(
-            `[collab] WARNING: ${pending.length} unexpected pending updates after install! ` +
-                `doc.length=${finalDocLength}, syncedVersion=${syncedVersion}`,
-        );
-    }
+    console.log(`[collab] Collab enabled for ${docId.slice(0, 8)}...`);
 }
 
 /**
  * Disable collab and disconnect from relay.
- * Per D-52: Destroys the per-document socket instance.
  */
 export function disableCollab(view: EditorView): void {
-    disconnectCollab();
+    disconnectYjsProvider();
+    currentUndoManager = null;
+
     view.dispatch({
         effects: collabCompartment.reconfigure([]),
     });
+
+    console.log("[collab] Collab disabled");
+}
+
+/**
+ * Get current UndoManager (or null if not in collab mode).
+ */
+export function getUndoManager(): Y.UndoManager | null {
+    return currentUndoManager;
 }
