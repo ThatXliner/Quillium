@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Relay Core** - WebSocket server with JWT auth and OT ordering
 - [x] **Phase 5: Relay Persistence** - Durable update storage and server restart recovery
 - [x] **Phase 6: Client Collab** - CodeMirror collab integration with real-time sync
-- [ ] **Phase 6.5: Collab Polish** - Live cursors, owner disconnect handling, dev setup docs
+- [x] **Phase 6.5: Collab Polish** - Live cursors, owner disconnect handling, dev setup docs
 - [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via sharedEffects
 - [ ] **Phase 9: Offline Queue** - Owner-only offline editing with rebase on reconnect
@@ -130,10 +130,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 06.5-01-PLAN.md — Relay: isOwner middleware, ownerLeft + clientLeft + cursorUpdate broadcast
-- [ ] 06.5-02-PLAN.md — Developer collab setup guide (docs/collab-setup.md)
-- [ ] 06.5-03-PLAN.md — Client cursor module: StateField + ViewPlugin + WidgetType + tests
-- [ ] 06.5-04-PLAN.md — Client: ownerLeft/clientLeft wiring, cursor extension composition
+- [x] 06.5-01-PLAN.md — Relay: isOwner middleware, ownerLeft + clientLeft + cursorUpdate broadcast
+- [x] 06.5-02-PLAN.md — Developer collab setup guide (docs/collab-setup.md)
+- [x] 06.5-03-PLAN.md — Client cursor module: StateField + ViewPlugin + WidgetType + tests
+- [x] 06.5-04-PLAN.md — Client: ownerLeft/clientLeft wiring, cursor extension composition
 **UI hint**: yes
 
 ### Phase 7: Connection UX
@@ -145,8 +145,15 @@ Plans:
   2. Reconnection automatically recovers pending changes
   3. No data loss or duplication on reconnect
   4. User sees clear feedback during reconnection
-**Plans**: [to be planned]
+**Plans**: 5 plans
 **UI hint**: yes
+
+Plans:
+- [ ] 07-01-PLAN.md — Types, stores, and socket reconnection config (SYNC-03, SYNC-04)
+- [ ] 07-02-PLAN.md — CollabPlugin reconnection handling and pending tracking (SYNC-03, SYNC-04)
+- [ ] 07-03-PLAN.md — StatusBar enhanced connection status display (SYNC-03)
+- [ ] 07-04-PLAN.md — State transitions and reconnection feedback toasts (SYNC-03, SYNC-04)
+- [ ] 07-05-PLAN.md — Reconnection tests and manual verification (SYNC-03, SYNC-04)
 
 ### Phase 8: Annotation Sync
 **Goal**: Comments and revisions sync between collaborators
@@ -183,8 +190,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 | 4. Relay Core | 3/3 | Complete | - |
 | 5. Relay Persistence | 3/3 | Complete | 2025-04-17 |
 | 6. Client Collab | 3/3 | Complete | 2025-04-17 |
-| 6.5. Collab Polish | 0/4 | Not started | - |
-| 7. Connection UX | 0/? | Not started | - |
+| 6.5. Collab Polish | 4/4 | Complete | 2025-04-17 |
+| 7. Connection UX | 0/5 | Not started | - |
 | 8. Annotation Sync | 0/? | Not started | - |
 | 9. Offline Queue | 0/? | Not started | - |
 
