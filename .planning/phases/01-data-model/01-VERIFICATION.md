@@ -105,17 +105,17 @@ No placeholder implementations, empty returns, or hollow wiring found. All SQL i
 
 ### Human Verification Required
 
-#### 1. Migration Execution
+#### 1. Migration Execution — ✅ PASSED (2026-04-17)
 
 **Test:** Run `bunx supabase start && bunx supabase db reset` from the project root.
 **Expected:** All 5 migrations and seed.sql apply without errors. Tables users, sync_documents, collab_updates, shares appear in the schema.
-**Why human:** Docker/Supabase containers required; cannot be verified programmatically in this environment. All three execution summaries noted this same limitation.
+**Result:** Verified by ThatXliner — migrations apply successfully, all tables created.
 
-#### 2. Signup Trigger
+#### 2. Signup Trigger — ✅ PASSED (2026-04-17)
 
 **Test:** Create a test user via Supabase Auth (dashboard or Auth API). Verify a corresponding row appears automatically in `public.users`.
 **Expected:** Row inserted with id matching auth.users.id, display_name defaulting to 'Anonymous' or the provided value.
-**Why human:** Requires live Supabase Auth connection and container runtime.
+**Result:** Verified by ThatXliner — trigger works correctly.
 
 ### Gaps Summary
 
