@@ -2,7 +2,7 @@
 
 ## Overview
 
-Quillium Omni adds real-time collaborative editing to an existing single-user desktop writing app. The build follows a strict dependency chain: Supabase tables first (data model), then authentication (identity for JWT), then the relay server (central authority for OT), then client integration (collab extension), and finally the hard problems (annotation sync, offline queue). The relay server lives in the `quillium-landing` repo.
+Quillium Omni adds real-time collaborative editing to an existing single-user desktop writing app. The build follows a strict dependency chain: Supabase tables first (data model), then authentication (identity for JWT), then the relay server (central authority for OT), then client integration (collab extension), and finally annotation sync. The relay server lives in the `quillium-landing` repo.
 
 ## Phases
 
@@ -22,7 +22,6 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
 - [ ] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
-- [ ] **Phase 9: Offline Queue** - Owner-only offline editing with Yjs persistence
 
 ## Phase Details
 
@@ -200,21 +199,10 @@ Plans:
 - [ ] 08-05-PLAN.md — Wire annotation sync into collab module (SYNC-05)
 - [ ] 08-06-PLAN.md — Convergence tests and manual verification (SYNC-05)
 
-### Phase 9: Offline Queue
-**Goal**: Document owner can edit offline and sync when reconnected
-**Depends on**: Phase 8
-**Requirements**: OFFL-01, OFFL-02, OFFL-03
-**Success Criteria** (what must be TRUE):
-  1. Owner can continue editing when offline (local SQLite works)
-  2. Offline edits stored via Yjs persistence (y-indexeddb pattern)
-  3. Yjs automatically merges on reconnect (no manual rebase)
-  4. Pre-merge snapshot taken as safety net
-**Plans**: [to be planned]
-
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -228,7 +216,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 7. Connection UX | 0/5 | Not started | - |
 | 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/6 | Not started | - |
-| 9. Offline Queue | 0/? | Not started | - |
 
 ---
 
@@ -238,8 +225,8 @@ Ideas deferred from v1 that may become future phases.
 
 | Item | Description | Deferred From |
 |------|-------------|---------------|
-| Shared Document Mode | Server as source of truth, owner-independent sessions (Google Docs model). Functionally equivalent to Live Room if owner stays online, but survives owner disconnect. | Phase 6 |
-| Presence/Cursors | Online status, cursor positions, follow mode (PRES-01 through PRES-04) | v1 scope |
+| Shared Document Mode | Server as source of truth, owner-independent sessions (Google Docs model). Functionally equivalent to Live Room if owner stays online, but survives owner disconnect. Includes offline editing for all participants via Yjs persistence. | Phase 6 |
+| Presence/Cursors | Online status, follow mode (PRES-01 through PRES-04). Note: live cursor positions already implemented in Phase 6.5. | v1 scope |
 | Sharing UI | Share links, permissions, revoke access (SHAR-01 through SHAR-04) | v1 scope |
 
 ---

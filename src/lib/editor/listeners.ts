@@ -28,6 +28,7 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import { appendEvent, createSnapshot, createNamedSnapshot, updateDocumentMeta } from "$lib/db";
+import { isCollabJoiner } from "$lib/collab/store";
 import {
     isSuspiciousDeletion,
     isSuspiciousAnnotationChange,
@@ -219,6 +220,10 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
  * order rather than DB completion order.
  */
 function persistTransaction(update: ViewUpdate): void {
+    // Live Room mode: joiners are ephemeral viewers of the owner's document.
+    // Skip all local persistence -- the owner's relay is the source of truth.
+    if (get(isCollabJoiner)) return;
+
     const enqueueDocId = get(currentDocumentId);
     const enqueueDraftId = get(currentDraftId);
     persistQueue = persistQueue

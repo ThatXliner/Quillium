@@ -7,7 +7,7 @@ Step-by-step developer documentation for setting up and running the Quillium rea
 The collab stack consists of three services:
 
 1. **Quillium** (this repo) - Desktop app built with Tauri + SvelteKit
-2. **Relay Server** (quillium-landing/relay) - WebSocket server that orders and broadcasts edits
+2. **Relay Server** (quillium-landing/relay) - Yjs WebSocket server that syncs CRDT updates
 3. **Supabase** - Auth and Postgres for user management and update persistence
 
 Two Quillium instances connect to the same relay server and see each other's edits in real-time.
@@ -49,7 +49,7 @@ supabase projects create quillium-collab --org-id YOUR_ORG_ID
 The collab system requires these tables:
 - `users` - User profiles
 - `sync_documents` - Document registry
-- `collab_updates` - OT update history
+- `collab_updates` - Update history (legacy OT, now Yjs)
 - `collab_snapshots` - Periodic state snapshots
 - `shares` - Document sharing config
 
@@ -150,7 +150,21 @@ This starts both the Vite dev server and the Tauri app window.
 
 ## 4. Testing the Collab Session
 
-### Setup (Two Terminal Windows)
+### Quick Start: Zellij Layout
+
+The fastest way to run all three services:
+
+```bash
+cd Quillium
+zellij --layout collab-dev.kdl
+```
+
+This opens 3 panes:
+- **Quillium 1 (Owner)** — port 1420
+- **Quillium 2 (Collaborator)** — port 1422, separate data dir
+- **Relay Server** — port 3001
+
+### Manual Setup (Three Terminal Windows)
 
 **Terminal 1 - Relay Server:**
 ```bash
@@ -167,10 +181,10 @@ bun run tauri dev
 **Terminal 3 - Second Quillium Instance:**
 ```bash
 cd Quillium
-bun run tauri dev
+QUILLIUM_DATA_DIR=/tmp/quillium-collab2 bun run tauri:dev2
 ```
 
-Note: Tauri creates separate SQLite databases for each instance automatically, so running two instances on the same machine works out of the box.
+The `tauri:dev2` script runs Vite on port 1422 with a separate Tauri config, so both instances can run simultaneously without port conflicts.
 
 ### Connect and Collaborate
 
@@ -298,8 +312,8 @@ public.users (id, display_name, subscription_status, created_at, updated_at)
 -- Document registry (no content - stored locally)
 public.sync_documents (id, owner_id, title, created_at, updated_at)
 
--- Ordered OT updates from @codemirror/collab
-public.collab_updates (id, document_id, version, client_id, changes, created_at)
+-- Yjs CRDT updates (replaces legacy OT)
+public.yjs_updates (id, document_id, update_data, created_at)
 
 -- Periodic snapshots for fast state reconstruction
 public.collab_snapshots (id, document_id, version, state_json, created_at)

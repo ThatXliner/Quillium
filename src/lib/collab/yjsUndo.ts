@@ -25,15 +25,23 @@ import type { Extension } from "@codemirror/state";
  *
  * Per D-74: Only tracks local changes via trackedOrigins.
  * Per D-50: Maintains per-user undo behavior from OT implementation.
+ * Per D-83: Single unified undo stack for text + annotations when ymap provided.
  *
  * @param ytext - Y.Text shared type (same instance as yjsBinding)
+ * @param ymap - Optional Y.Map for annotation sync (D-83 unified undo)
  * @returns Object containing the CodeMirror extension and UndoManager instance
  */
-export function createYjsUndoExtension(ytext: Y.Text): {
+export function createYjsUndoExtension<T = unknown>(
+    ytext: Y.Text,
+    ymap?: Y.Map<T>,
+): {
     extension: Extension;
     undoManager: Y.UndoManager;
 } {
-    const undoManager = new Y.UndoManager(ytext, {
+    // Per D-83: Track both text and annotations in unified stack when ymap provided
+    const trackedTypes: (Y.Text | Y.Map<T>)[] = ymap ? [ytext, ymap] : [ytext];
+
+    const undoManager = new Y.UndoManager(trackedTypes, {
         trackedOrigins: new Set(["local"]), // Only undo local changes (per D-74)
         captureTimeout: 500, // Merge rapid typing into single undo step
     });
