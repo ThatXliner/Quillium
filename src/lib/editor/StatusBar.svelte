@@ -23,7 +23,7 @@ import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { collabState } from "$lib/collab";
+import { collabState, pendingUpdatesCount, reconnectAttempt } from "$lib/collab";
 import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
@@ -122,18 +122,28 @@ $effect(() => {
                     class={`w-2 h-2 rounded-full ${
                         $collabState === "connected"
                             ? "bg-green-400"
-                            : $collabState === "error"
-                              ? "bg-red-400"
-                              : "bg-yellow-400"
+                            : $collabState === "syncing"
+                              ? "bg-blue-400 animate-pulse"
+                              : $collabState === "reconnecting"
+                                ? "bg-yellow-400 animate-pulse"
+                                : $collabState === "error"
+                                  ? "bg-red-400"
+                                  : "bg-yellow-400"
                     }`}
                 ></div>
-                <span class="text-sm text-black/90"
-                    >{$collabState === "connected"
-                        ? "Synced"
-                        : $collabState === "error"
-                          ? "Disconnected"
-                          : "Connecting..."}</span
-                >
+                <span class="text-sm text-black/90">
+                    {#if $collabState === "connected"}
+                        Synced
+                    {:else if $collabState === "syncing"}
+                        Syncing{$pendingUpdatesCount > 0 ? ` (${$pendingUpdatesCount})` : "..."}
+                    {:else if $collabState === "reconnecting"}
+                        Reconnecting{$reconnectAttempt > 0 ? ` (${$reconnectAttempt}/10)` : "..."}
+                    {:else if $collabState === "error"}
+                        Disconnected
+                    {:else}
+                        Connecting...
+                    {/if}
+                </span>
             {:else}
                 <div
                     class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
