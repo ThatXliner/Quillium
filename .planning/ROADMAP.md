@@ -212,8 +212,15 @@ Plans:
   5. Version switches are local-only (do not interrupt peer editing of other versions)
   6. Comment threads use append-only Y.Array sorted by timestamp on read
   7. Peer cursor rendering inside nested editors is out of scope (deferred to v2)
+**Plans**: 6 plans in 5 waves
 
-Plans: TBD (drafted during /gsd-plan-phase)
+Plans:
+- [ ] 08.5-01-PLAN.md — Wave 0 test scaffolds: twoPeerHarness + 8 failing-test files + E2E spec (SYNC-05)
+- [ ] 08.5-02-PLAN.md — Shape refactor: types.ts + annotationSchema.ts recursive Y.Map converters (SYNC-05)
+- [ ] 08.5-03-PLAN.md — yjsAnnotations.ts rewrite: scoped observeDeep plugin, syncRevisionChanges removal (SYNC-05)
+- [ ] 08.5-04-PLAN.md — yjsUndo.ts: addSubtreeToUndoScope + breakUndoCapture; eventBus undo-target variant (SYNC-05)
+- [ ] 08.5-05-PLAN.md — NestedEditorController subtree binding + annotationField Phase 3 gating (SYNC-05)
+- [ ] 08.5-06-PLAN.md — collab/index.ts undo auto-nav wiring + Playwright E2E test (SYNC-05)
 
 ## Progress
 
@@ -232,7 +239,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 7. Connection UX | 0/5 | Not started | - |
 | 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/6 | Not started | - |
-| 8.5. CRDT Nested Editors | 0/- | Not started | - |
+| 8.5. CRDT Nested Editors | 0/6 | Not started | - |
 
 ---
 
