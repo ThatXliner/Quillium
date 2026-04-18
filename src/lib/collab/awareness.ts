@@ -180,6 +180,7 @@ export function createAwarenessExtension(
             private lastCursorHead = -1;
             private lastCursorAnchor = -1;
             private destroyed = false;
+            private updating = false;
 
             constructor(private view: EditorView) {
                 this.decorations = this.buildDecorations();
@@ -187,40 +188,56 @@ export function createAwarenessExtension(
                 this.changeHandler = () => {
                     if (this.destroyed) return;
                     this.decorations = this.buildDecorations();
-                    // Defer dispatch to next microtask: awareness emits during CM
-                    // updates (we setLocalStateField from inside update()), and
-                    // dispatching while an update is in progress throws.
-                    queueMicrotask(() => {
-                        if (!this.destroyed) this.view.dispatch({});
-                    });
+                    // Dispatch synchronously when possible for real-time feel.
+                    // We only defer when awareness fires during our own CM update
+                    // (from setLocalStateField in update()), since dispatching
+                    // while an update is in progress throws.
+                    if (this.updating) {
+                        queueMicrotask(() => {
+                            if (!this.destroyed) this.view.dispatch({});
+                        });
+                    } else {
+                        this.view.dispatch({});
+                    }
                 };
 
                 awareness.on("change", this.changeHandler);
 
-                // Set initial cursor position
-                const head = view.state.selection.main.head;
-                const anchor = view.state.selection.main.anchor;
-                awareness.setLocalStateField("cursor", { anchor, head });
-                this.lastCursorHead = head;
-                this.lastCursorAnchor = anchor;
+                // Set initial cursor position. Constructor runs during CM's
+                // init update, so guard against re-entrant dispatch.
+                this.updating = true;
+                try {
+                    const head = view.state.selection.main.head;
+                    const anchor = view.state.selection.main.anchor;
+                    awareness.setLocalStateField("cursor", { anchor, head });
+                    this.lastCursorHead = head;
+                    this.lastCursorAnchor = anchor;
+                } finally {
+                    this.updating = false;
+                }
             }
 
             update(update: ViewUpdate) {
-                // Update local cursor in awareness
-                if (update.selectionSet || update.docChanged) {
-                    const head = update.state.selection.main.head;
-                    const anchor = update.state.selection.main.anchor;
+                this.updating = true;
+                try {
+                    // Update local cursor in awareness
+                    if (update.selectionSet || update.docChanged) {
+                        const head = update.state.selection.main.head;
+                        const anchor = update.state.selection.main.anchor;
 
-                    if (head !== this.lastCursorHead || anchor !== this.lastCursorAnchor) {
-                        this.lastCursorHead = head;
-                        this.lastCursorAnchor = anchor;
-                        awareness.setLocalStateField("cursor", { anchor, head });
+                        if (head !== this.lastCursorHead || anchor !== this.lastCursorAnchor) {
+                            this.lastCursorHead = head;
+                            this.lastCursorAnchor = anchor;
+                            awareness.setLocalStateField("cursor", { anchor, head });
+                        }
                     }
-                }
 
-                // Rebuild decorations if doc changed (positions may need clamping)
-                if (update.docChanged) {
-                    this.decorations = this.buildDecorations();
+                    // Rebuild decorations if doc changed (positions may need clamping)
+                    if (update.docChanged) {
+                        this.decorations = this.buildDecorations();
+                    }
+                } finally {
+                    this.updating = false;
                 }
             }
 
@@ -279,7 +296,9 @@ export function createAwarenessExtension(
             destroy() {
                 this.destroyed = true;
                 awareness.off("change", this.changeHandler);
-                // Clear local cursor state on disconnect (prevents ghost cursors)
+                // Clear local cursor state on disconnect (prevents ghost cursors).
+                // destroyed=true above prevents any queued dispatch from firing.
+                this.updating = true;
                 awareness.setLocalStateField("cursor", null);
             }
         },
