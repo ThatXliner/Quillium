@@ -129,6 +129,52 @@ describe("yjsAnnotations", () => {
     });
 
     describe("Y.Map -> CodeMirror sync", () => {
+        it("syncs existing Y.Map annotations on plugin mount", async () => {
+            // Pre-seed ymap with an annotation BEFORE creating a new view
+            const ydoc2 = new Y.Doc();
+            const ytext2 = ydoc2.getText("document");
+            const ymap2 = ydoc2.getMap<YjsAnnotationNode>("annotations");
+
+            ydoc2.transact(() => {
+                ytext2.insert(0, "hello world");
+            }, "init");
+
+            // Add annotation to Y.Map before mounting editor
+            const node = new Y.Map<unknown>();
+            ydoc2.transact(() => {
+                node.set("id", "pre-existing-ann");
+                node.set("_type", "comment");
+                const startRel = Y.createRelativePositionFromTypeIndex(ytext2, 0);
+                const endRel = Y.createRelativePositionFromTypeIndex(ytext2, 5);
+                node.set("startPos", Y.encodeRelativePosition(startRel));
+                node.set("endPos", Y.encodeRelativePosition(endRel));
+                node.set("thread", new Y.Array<MessageObject>());
+                node.set("annotations", new Y.Map<YjsAnnotationNode>());
+                ymap2.set("pre-existing-ann", node as YjsAnnotationNode);
+            }, "init");
+
+            expect(ymap2.size).toBe(1);
+
+            // Now mount editor with the sync plugin
+            const state2 = EditorState.create({
+                doc: "hello world",
+                extensions: [annotationField, createAnnotationSyncPlugin(ytext2, ymap2, "joiner")],
+            });
+            const view2 = new EditorView({ state: state2, parent: document.body });
+
+            // Initial sync uses queueMicrotask (CM doesn't allow dispatch during construction)
+            await new Promise((r) => queueMicrotask(r));
+
+            // The pre-existing annotation should now be in CodeMirror
+            const annotations = view2.state.field(annotationField);
+            expect(Object.keys(annotations).length).toBe(1);
+            const ann = Object.values(annotations)[0];
+            expect(isAnnotationOfType(ann, "comment")).toBe(true);
+
+            view2.destroy();
+            ydoc2.destroy();
+        });
+
         it("removes CM annotation from remote Y.Map delete", () => {
             // First add locally
             const annotation = createTestAnnotation(0, 0, 5);

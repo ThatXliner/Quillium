@@ -41,6 +41,7 @@ export function createAnnotationSyncPlugin(
     scopeYtext: Y.Text,
     scopeAnnotations: Y.Map<YjsAnnotationNode>,
     clientId: string,
+    idMap: AnnotationIdMap = new AnnotationIdMap(),
 ) {
     return ViewPlugin.fromClass(
         class {
@@ -49,10 +50,11 @@ export function createAnnotationSyncPlugin(
                 tr: Y.Transaction,
             ) => void;
             private destroyed = false;
-            private idMap = new AnnotationIdMap();
+            private idMap = idMap;
 
             constructor(private view: EditorView) {
                 this._syncIdMapFromCM();
+                this._syncInitialFromYjs();
 
                 this.deepObserver = (events, tr) => {
                     if (this.destroyed || tr.origin === "local") return;
@@ -163,6 +165,37 @@ export function createAnnotationSyncPlugin(
                 }
             }
 
+            private _syncInitialFromYjs() {
+                const ydoc = scopeYtext.doc;
+                if (!ydoc) return;
+                if (scopeAnnotations.size === 0) return;
+
+                // CodeMirror doesn't allow dispatch() during plugin construction or
+                // update(). queueMicrotask defers to the next event loop tick, after
+                // the current update cycle completes. This is the standard CM pattern
+                // for plugins that need to dispatch on mount (see codemirror/dev#1341).
+                queueMicrotask(() => {
+                    if (this.destroyed) return;
+
+                    const effects: ReturnType<typeof addAnnotation.of>[] = [];
+                    scopeAnnotations.forEach((node, yjsKey) => {
+                        // Skip if already in CM (owner case)
+                        if (this.idMap.getCmId(yjsKey) !== undefined) return;
+
+                        const cmId = this.idMap.getOrCreateCmId(yjsKey);
+                        const ann = yjsAnnotationToCodeMirror(node, ydoc, scopeYtext, cmId);
+                        if (ann) effects.push(addAnnotation.of(ann));
+                    });
+
+                    if (effects.length > 0) {
+                        this.view.dispatch({
+                            effects,
+                            annotations: [yjsAnnotationSync.of(true)],
+                        });
+                    }
+                });
+            }
+
             update(update: ViewUpdate) {
                 if (update.transactions.some((tr) => tr.annotation(yjsAnnotationSync))) {
                     return;
@@ -229,7 +262,8 @@ export function createAnnotationSyncPlugin(
             destroy() {
                 this.destroyed = true;
                 scopeAnnotations.unobserveDeep(this.deepObserver);
-                this.idMap.clear();
+                // idMap lifecycle is owned by the caller when externally provided;
+                // nested editors create their own local maps.
             }
         },
     );
