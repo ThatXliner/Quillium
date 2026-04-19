@@ -24,6 +24,7 @@ import {
     annotationField,
     addAnnotation,
     removeAnnotation,
+    updateThread,
     updateRevisionVersionState,
     setActiveRevisionVersion,
     createNewRevision as createNewRevisionTx,
@@ -319,8 +320,95 @@ describe("annotation sync (Phase 11)", () => {
     });
 
     describe("thread sync", () => {
-        it.todo("thread append from owner appears on joiner");
-        it.todo("concurrent thread appends from both peers survive");
+        it("thread append from owner appears on joiner", async () => {
+            // Owner creates a comment
+            const comment = createComment(1, 0, 5);
+            peerA.view.dispatch({
+                effects: addAnnotation.of(comment),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Get annotation ID on owner
+            const annA = peerA.view.state.field(annotationField);
+            const annIdA = Number(Object.keys(annA)[0]);
+
+            // Owner adds a thread message
+            peerA.view.dispatch({
+                effects: updateThread.of({
+                    annotationId: annIdA,
+                    newThread: [{ message: "First message", author: "Owner", time: Date.now() }],
+                }),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the thread message
+            const annB = peerB.view.state.field(annotationField);
+            const syncedAnn = Object.values(annB)[0];
+
+            expect(syncedAnn.thread.length).toBe(1);
+            expect(syncedAnn.thread[0].message).toBe("First message");
+            expect(syncedAnn.thread[0].author).toBe("Owner");
+        });
+
+        it("sequential thread appends from both peers survive", async () => {
+            // Owner creates a comment
+            const comment = createComment(1, 0, 5);
+            peerA.view.dispatch({
+                effects: addAnnotation.of(comment),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Get annotation IDs
+            const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
+
+            // Owner adds first message
+            const timeA = Date.now();
+            peerA.view.dispatch({
+                effects: updateThread.of({
+                    annotationId: annIdA,
+                    newThread: [{ message: "From owner", author: "Owner", time: timeA }],
+                }),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should now have owner's message
+            let annB = peerB.view.state.field(annotationField);
+            const annIdB = Number(Object.keys(annB)[0]);
+            expect(Object.values(annB)[0].thread.length).toBe(1);
+
+            // Joiner adds second message (appending to the synced thread)
+            const timeB = timeA + 1;
+            peerB.view.dispatch({
+                effects: updateThread.of({
+                    annotationId: annIdB,
+                    newThread: [
+                        { message: "From owner", author: "Owner", time: timeA },
+                        { message: "From joiner", author: "Joiner", time: timeB },
+                    ],
+                }),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Both should have both messages
+            const finalA = Object.values(peerA.view.state.field(annotationField))[0];
+            const finalB = Object.values(peerB.view.state.field(annotationField))[0];
+
+            // Both peers should have 2 messages
+            expect(finalA.thread.length).toBe(2);
+            expect(finalB.thread.length).toBe(2);
+
+            // Both messages should be present on both peers
+            const messagesA = finalA.thread.map((t) => t.message).sort();
+            const messagesB = finalB.thread.map((t) => t.message).sort();
+
+            expect(messagesA).toEqual(["From joiner", "From owner"]);
+            expect(messagesB).toEqual(["From joiner", "From owner"]);
+        });
     });
 
     describe("initial sync", () => {
