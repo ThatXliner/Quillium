@@ -4,22 +4,21 @@
  * Role: Eliminates duplicated makePeer/connect helpers across convergence suites.
  *   - yjsBinding.convergence.test.ts (existing)
  *   - yjsAnnotations.convergence.test.ts (existing)
- *   - subtree-convergence.test.ts (Phase 8.5, new)
- *   - convergence-edgecases.test.ts (Phase 8.5, new)
- *   - recursive-mount.test.ts (Phase 8.5, new)
  *
  * Key dependencies: yjs, @codemirror/state, @codemirror/view.
  *
  * Interactions: Each peer owns a Y.Doc, a "document" Y.Text, an "annotations"
- * Y.Map, and a CodeMirror EditorView with createYjsBinding + createAnnotationSyncPlugin
- * installed. connect() manually pipes updates between two peers with "remote"
- * origin to prevent feedback loops in the UndoManager.
+ * Y.Map, and a CodeMirror EditorView with createYjsBinding installed.
+ * connect() manually pipes updates between two peers with "remote" origin to
+ * prevent feedback loops in the UndoManager.
+ *
+ * Phase 10: Annotation sync plugin removed. Main text sync only.
+ * Phase 11 will rebuild annotation sync with unified diff-and-write.
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
 import { createYjsBinding } from "../yjsBinding";
-import { createAnnotationSyncPlugin } from "../yjsAnnotations";
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
 
 export interface Peer {
@@ -45,13 +44,7 @@ export function makePeer(clientId: string, initialText = ""): Peer {
         extensions: [
             annotationField,
             createYjsBinding(ytext),
-            // CAST: tests declare ymap as Y.Map<unknown>; after Plan 8.5b-01 the plugin
-            // is parameterised on Y.Map<YjsAnnotationNode>, which is itself
-            // Y.Map<unknown> at runtime, so this cast narrows the type parameter
-            // without changing the runtime shape. Still required because TypeScript
-            // generics on Y.Map are invariant (no structural assignability between
-            // Y.Map<A> and Y.Map<B> even when A extends B).
-            createAnnotationSyncPlugin(ytext, ymap as Y.Map<never>, clientId),
+            // Phase 10: Annotation sync plugin removed. Main text sync only.
         ],
     });
     const view = new EditorView({ state, parent: document.body });
