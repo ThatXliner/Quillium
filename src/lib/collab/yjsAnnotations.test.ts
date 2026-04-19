@@ -1,8 +1,11 @@
 /**
  * yjsAnnotations.test.ts -- Unit tests for annotation sync plugin.
  *
- * Tests bidirectional sync between Y.Map<YjsAnnotation> and CodeMirror annotationField.
+ * Tests bidirectional sync between Y.Map<YjsAnnotationNode> and CodeMirror annotationField.
  * Verifies origin tracking for feedback loop prevention.
+ *
+ * Per D-90/D-92: YjsAnnotationNode is a recursive Y.Map structure with Y.Array for
+ * threads and Y.Map for versions. Tests must read values via .get() on Y types.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorState, EditorSelection } from "@codemirror/state";
@@ -15,7 +18,7 @@ import {
     updateThread,
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
-import type { YjsAnnotation } from "./types";
+import type { YjsAnnotationNode, MessageObject } from "./types";
 import {
     isAnnotationOfType,
     type GenericAnnotation,
@@ -24,7 +27,7 @@ import {
 describe("yjsAnnotations", () => {
     let ydoc: Y.Doc;
     let ytext: Y.Text;
-    let ymap: Y.Map<YjsAnnotation>;
+    let ymap: Y.Map<YjsAnnotationNode>;
     let view: EditorView;
     const clientId = "test-client";
 
@@ -40,7 +43,7 @@ describe("yjsAnnotations", () => {
     beforeEach(() => {
         ydoc = new Y.Doc();
         ytext = ydoc.getText("document");
-        ymap = ydoc.getMap("annotations");
+        ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
 
         // Seed document
         ydoc.transact(() => {
@@ -69,7 +72,7 @@ describe("yjsAnnotations", () => {
 
             expect(ymap.size).toBe(1);
             const yjsAnn = Array.from(ymap.values())[0];
-            expect(yjsAnn._type).toBe("comment");
+            expect(yjsAnn.get("_type")).toBe("comment");
         });
 
         it("propagates removeAnnotation to Y.Map", () => {
@@ -87,7 +90,7 @@ describe("yjsAnnotations", () => {
             expect(ymap.size).toBe(0);
         });
 
-        it("propagates updateThread to Y.Map", () => {
+        it("propagates updateThread to Y.Map via Y.Array.push", () => {
             // First add an annotation
             const annotation = createTestAnnotation(0, 0, 5);
             view.dispatch({
@@ -105,9 +108,10 @@ describe("yjsAnnotations", () => {
             });
 
             const yjsAnn = Array.from(ymap.values())[0];
-            const thread = JSON.parse(yjsAnn.thread);
-            expect(thread).toHaveLength(1);
-            expect(thread[0].message).toBe("test");
+            const threadArr = yjsAnn.get("thread") as Y.Array<MessageObject>;
+            expect(threadArr instanceof Y.Array).toBe(true);
+            expect(threadArr.length).toBe(1);
+            expect(threadArr.get(0).message).toBe("test");
         });
 
         it("does not propagate Yjs-originated changes back to Y.Map", () => {
@@ -150,15 +154,18 @@ describe("yjsAnnotations", () => {
         it("does not dispatch for local-origin Y.Map changes", () => {
             const dispatchSpy = vi.spyOn(view, "dispatch");
 
-            // Local Y.Map change (origin === "local")
+            // Build a properly structured YjsAnnotationNode for local origin
+            const node = new Y.Map<unknown>();
             ydoc.transact(() => {
-                ymap.set("local-ann", {
-                    id: "local-ann",
-                    _type: "comment",
-                    startPos: new Uint8Array([]),
-                    endPos: new Uint8Array([]),
-                    thread: "[]",
-                });
+                node.set("id", "local-ann");
+                node.set("_type", "comment");
+                const startRel = Y.createRelativePositionFromTypeIndex(ytext, 0);
+                const endRel = Y.createRelativePositionFromTypeIndex(ytext, 5);
+                node.set("startPos", Y.encodeRelativePosition(startRel));
+                node.set("endPos", Y.encodeRelativePosition(endRel));
+                node.set("thread", new Y.Array<MessageObject>());
+                node.set("annotations", new Y.Map<YjsAnnotationNode>());
+                ymap.set("local-ann", node as YjsAnnotationNode);
             }, "local");
 
             // Should not trigger additional dispatch (observer skips local origin)
@@ -181,8 +188,9 @@ describe("yjsAnnotations", () => {
             });
 
             const yjsAnn = Array.from(ymap.values())[0];
-            expect(yjsAnn._type).toBe("comment");
-            expect(JSON.parse(yjsAnn.thread)).toHaveLength(1);
+            expect(yjsAnn.get("_type")).toBe("comment");
+            const threadArr = yjsAnn.get("thread") as Y.Array<MessageObject>;
+            expect(threadArr.length).toBe(1);
         });
 
         it("syncs suggestion annotations", () => {
@@ -200,11 +208,12 @@ describe("yjsAnnotations", () => {
             });
 
             const yjsAnn = Array.from(ymap.values())[0];
-            expect(yjsAnn._type).toBe("suggestion");
-            expect(yjsAnn.author).toBe("ai");
-            const replacements = JSON.parse(yjsAnn.replacements!);
-            expect(replacements).toHaveLength(1);
-            expect(replacements[0].text).toBe("replacement");
+            expect(yjsAnn.get("_type")).toBe("suggestion");
+            expect(yjsAnn.get("author")).toBe("ai");
+            const replacements = yjsAnn.get("replacements") as Y.Array<unknown>;
+            expect(replacements instanceof Y.Array).toBe(true);
+            expect(replacements.length).toBe(1);
+            expect((replacements.get(0) as { text: string }).text).toBe("replacement");
         });
 
         it("syncs revision annotations", () => {
@@ -222,21 +231,19 @@ describe("yjsAnnotations", () => {
             });
 
             const yjsAnn = Array.from(ymap.values())[0];
-            expect(yjsAnn._type).toBe("revision");
-            expect(yjsAnn.activeVersionIndex).toBe(0);
-            const versions = JSON.parse(yjsAnn.versions!);
-            expect(versions).toHaveLength(2);
+            expect(yjsAnn.get("_type")).toBe("revision");
+            expect(yjsAnn.get("activeVersionIndex")).toBe(0);
+            const versions = yjsAnn.get("versions") as Y.Map<Y.Map<unknown>>;
+            expect(versions instanceof Y.Map).toBe(true);
+            expect(versions.size).toBe(2);
         });
     });
 });
 
-// ── Shared setup helpers used by the describe blocks below ──────────────────
-// These run in the same jsdom environment as the outer describe block above.
-
 describe("revision sync", () => {
     let ydoc: Y.Doc;
     let ytext: Y.Text;
-    let ymap: Y.Map<YjsAnnotation>;
+    let ymap: Y.Map<YjsAnnotationNode>;
     let view: EditorView;
     const clientId = "test-revision-client";
 
@@ -260,7 +267,7 @@ describe("revision sync", () => {
     beforeEach(() => {
         ydoc = new Y.Doc();
         ytext = ydoc.getText("document");
-        ymap = ydoc.getMap("annotations");
+        ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
 
         ydoc.transact(() => {
             ytext.insert(0, "hello world");
@@ -279,20 +286,22 @@ describe("revision sync", () => {
     });
 
     it("syncs activeVersionIndex change to Y.Map via remove+add", () => {
-        const annotation = createRevisionAnnotation(0, 0, 5, [
-            { doc: "hello" },
-            { doc: "world" },
-        ], 0);
+        const annotation = createRevisionAnnotation(
+            0,
+            0,
+            5,
+            [{ doc: "hello" }, { doc: "world" }],
+            0,
+        );
 
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
         const yjsId = Array.from(ymap.keys())[0];
-        expect(ymap.get(yjsId)!.activeVersionIndex).toBe(0);
+        expect(ymap.get(yjsId)!.get("activeVersionIndex")).toBe(0);
 
         // Simulate what setActiveRevisionVersion does: it emits a doc change
         // plus internal effects. In tests we approximate via remove+add with
         // updated data (the same path that the CM->Yjs sync uses).
-        // Note: removeAnnotation deletes the old yjsId; addAnnotation creates a new one.
         const updatedAnnotation: GenericAnnotation = { ...annotation, activeVersionIndex: 1 };
         view.dispatch({
             effects: [removeAnnotation.of(annotation), addAnnotation.of(updatedAnnotation)],
@@ -302,7 +311,7 @@ describe("revision sync", () => {
         expect(ymap.size).toBe(1);
         const newYjsId = Array.from(ymap.keys())[0];
         const yjsAnn = ymap.get(newYjsId)!;
-        expect(yjsAnn.activeVersionIndex).toBe(1);
+        expect(yjsAnn.get("activeVersionIndex")).toBe(1);
     });
 
     it("syncs new version addition to Y.Map via remove+add", () => {
@@ -311,8 +320,8 @@ describe("revision sync", () => {
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
         const yjsId = Array.from(ymap.keys())[0];
-        const initialVersions = JSON.parse(ymap.get(yjsId)!.versions!);
-        expect(initialVersions).toHaveLength(1);
+        const initialVersions = ymap.get(yjsId)!.get("versions") as Y.Map<Y.Map<unknown>>;
+        expect(initialVersions.size).toBe(1);
 
         const updatedAnnotation: GenericAnnotation = {
             ...annotation,
@@ -327,28 +336,31 @@ describe("revision sync", () => {
         expect(ymap.size).toBe(1);
         const newYjsId = Array.from(ymap.keys())[0];
         const yjsAnn = ymap.get(newYjsId)!;
-        const versions = JSON.parse(yjsAnn.versions!);
-        expect(versions).toHaveLength(2);
-        expect(versions[1].doc).toBe("new version");
+        const versions = yjsAnn.get("versions") as Y.Map<Y.Map<unknown>>;
+        expect(versions.size).toBe(2);
+        const v1 = versions.get("1") as Y.Map<unknown>;
+        const v1Text = v1.get("text") as Y.Text;
+        expect(v1Text.toString()).toBe("new version");
     });
 
-    it("receives remote activeVersionIndex change", () => {
-        const annotation = createRevisionAnnotation(0, 0, 5, [
-            { doc: "hello" },
-            { doc: "world" },
-        ], 0);
+    it("receives remote activeVersionIndex change via shallow Y.Map update", () => {
+        const annotation = createRevisionAnnotation(
+            0,
+            0,
+            5,
+            [{ doc: "hello" }, { doc: "world" }],
+            0,
+        );
 
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
         const yjsId = Array.from(ymap.keys())[0];
         const existing = ymap.get(yjsId)!;
 
-        // Simulate remote version switch from a peer
+        // Simulate remote version switch by updating the activeVersionIndex field
+        // This is a shallow Y.Map key update that observeDeep detects
         ydoc.transact(() => {
-            ymap.set(yjsId, {
-                ...existing,
-                activeVersionIndex: 1,
-            });
+            existing.set("activeVersionIndex", 1);
         }, "remote");
 
         const annotations = view.state.field(annotationField);
@@ -364,14 +376,14 @@ describe("revision sync", () => {
 describe("thread sync", () => {
     let ydoc: Y.Doc;
     let ytext: Y.Text;
-    let ymap: Y.Map<YjsAnnotation>;
+    let ymap: Y.Map<YjsAnnotationNode>;
     let view: EditorView;
     const clientId = "test-thread-client";
 
     beforeEach(() => {
         ydoc = new Y.Doc();
         ytext = ydoc.getText("document");
-        ymap = ydoc.getMap("annotations");
+        ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
 
         ydoc.transact(() => {
             ytext.insert(0, "hello world");
@@ -389,7 +401,7 @@ describe("thread sync", () => {
         ydoc.destroy();
     });
 
-    it("receives remote thread reply", () => {
+    it("receives remote thread reply via Y.Array.push", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "comment",
@@ -401,18 +413,11 @@ describe("thread sync", () => {
 
         const yjsId = Array.from(ymap.keys())[0];
         const existing = ymap.get(yjsId)!;
+        const threadArr = existing.get("thread") as Y.Array<MessageObject>;
 
-        // Simulate remote thread reply from a peer
-        const updatedThread = [
-            { message: "initial", author: "user1", time: 100 },
-            { message: "reply", author: "user2", time: 200 },
-        ];
-
+        // Simulate remote thread reply from a peer via Y.Array.push (D-93)
         ydoc.transact(() => {
-            ymap.set(yjsId, {
-                ...existing,
-                thread: JSON.stringify(updatedThread),
-            });
+            threadArr.push([{ message: "reply", author: "user2", time: 200 }]);
         }, "remote");
 
         const annotations = view.state.field(annotationField);
@@ -422,7 +427,7 @@ describe("thread sync", () => {
         expect(updated.thread[1].author).toBe("user2");
     });
 
-    it("syncs local thread update to Y.Map", () => {
+    it("syncs local thread update to Y.Map via Y.Array.push", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "comment",
@@ -444,23 +449,23 @@ describe("thread sync", () => {
         });
 
         const yjsAnn = ymap.get(yjsId)!;
-        const thread = JSON.parse(yjsAnn.thread);
-        expect(thread).toHaveLength(1);
-        expect(thread[0].message).toBe("hello");
+        const threadArr = yjsAnn.get("thread") as Y.Array<MessageObject>;
+        expect(threadArr.length).toBe(1);
+        expect(threadArr.get(0).message).toBe("hello");
     });
 });
 
 describe("suggestion sync", () => {
     let ydoc: Y.Doc;
     let ytext: Y.Text;
-    let ymap: Y.Map<YjsAnnotation>;
+    let ymap: Y.Map<YjsAnnotationNode>;
     let view: EditorView;
     const clientId = "test-suggestion-client";
 
     beforeEach(() => {
         ydoc = new Y.Doc();
         ytext = ydoc.getText("document");
-        ymap = ydoc.getMap("annotations");
+        ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
 
         ydoc.transact(() => {
             ytext.insert(0, "hello world");

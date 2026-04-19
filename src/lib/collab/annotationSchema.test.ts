@@ -1,5 +1,8 @@
 /**
  * annotationSchema.test.ts -- Tests for Yjs annotation schema and bidirectional converters.
+ *
+ * Per D-90/D-92: YjsAnnotationNode is a recursive Y.Map structure with Y.Array for
+ * threads and Y.Map for versions. Tests verify converters handle the new shape.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EditorSelection } from "@codemirror/state";
@@ -9,19 +12,21 @@ import {
     yjsAnnotationToCodeMirror,
     generateAnnotationId,
     AnnotationIdMap,
-    YjsAnnotationSchema,
 } from "./annotationSchema";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import type { YjsAnnotationNode, MessageObject } from "./types";
 
 describe("annotationSchema", () => {
     let ydoc: Y.Doc;
     let ytext: Y.Text;
+    let ymap: Y.Map<YjsAnnotationNode>;
     const CLIENT_ID = "test-client";
 
     beforeEach(() => {
         ydoc = new Y.Doc();
         ytext = ydoc.getText("document");
-        ytext.insert(0, "hello world");
+        ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+        ydoc.transact(() => ytext.insert(0, "hello world"), "init");
     });
 
     afterEach(() => {
@@ -42,7 +47,7 @@ describe("annotationSchema", () => {
     });
 
     describe("codeMirrorToYjsAnnotation", () => {
-        it("converts a comment annotation", () => {
+        it("converts a comment annotation to recursive Y.Map", () => {
             const ann: GenericAnnotation = {
                 id: 1,
                 _type: "comment",
@@ -50,16 +55,22 @@ describe("annotationSchema", () => {
                 thread: [{ message: "test", author: "user", time: 1000 }],
             };
 
-            const yjs = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID);
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            // Integrate into ymap so we can read it
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
 
-            expect(yjs._type).toBe("comment");
-            expect(yjs.startPos).toBeInstanceOf(Uint8Array);
-            expect(yjs.endPos).toBeInstanceOf(Uint8Array);
-            expect(yjs.id).toContain(CLIENT_ID);
-            expect(JSON.parse(yjs.thread)).toEqual(ann.thread);
+            expect(retrieved.get("_type")).toBe("comment");
+            expect(retrieved.get("startPos")).toBeInstanceOf(Uint8Array);
+            expect(retrieved.get("endPos")).toBeInstanceOf(Uint8Array);
+            expect((retrieved.get("id") as string).includes(CLIENT_ID)).toBe(true);
+            const threadArr = retrieved.get("thread") as Y.Array<MessageObject>;
+            expect(threadArr).toBeInstanceOf(Y.Array);
+            expect(threadArr.length).toBe(1);
+            expect(threadArr.get(0).message).toBe("test");
         });
 
-        it("converts a suggestion annotation", () => {
+        it("converts a suggestion annotation to recursive Y.Map", () => {
             const ann: GenericAnnotation = {
                 id: 2,
                 _type: "suggestion",
@@ -69,15 +80,19 @@ describe("annotationSchema", () => {
                 author: "ai",
             };
 
-            const yjs = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID);
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
 
-            expect(yjs._type).toBe("suggestion");
-            expect(yjs.replacements).toBeDefined();
-            expect(JSON.parse(yjs.replacements!)).toEqual(ann.replacements);
-            expect(yjs.author).toBe("ai");
+            expect(retrieved.get("_type")).toBe("suggestion");
+            const replacements = retrieved.get("replacements") as Y.Array<unknown>;
+            expect(replacements).toBeInstanceOf(Y.Array);
+            expect(replacements.length).toBe(1);
+            expect((replacements.get(0) as { text: string }).text).toBe("better");
+            expect(retrieved.get("author")).toBe("ai");
         });
 
-        it("converts a revision annotation", () => {
+        it("converts a revision annotation to recursive Y.Map with Y.Text versions", () => {
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
@@ -87,12 +102,19 @@ describe("annotationSchema", () => {
                 activeVersionIndex: 0,
             };
 
-            const yjs = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID);
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
 
-            expect(yjs._type).toBe("revision");
-            expect(yjs.versions).toBeDefined();
-            expect(JSON.parse(yjs.versions!)).toEqual(ann.versions);
-            expect(yjs.activeVersionIndex).toBe(0);
+            expect(retrieved.get("_type")).toBe("revision");
+            const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
+            expect(versions).toBeInstanceOf(Y.Map);
+            expect(versions.size).toBe(1);
+            const v0 = versions.get("0") as Y.Map<unknown>;
+            expect(v0.get("text")).toBeInstanceOf(Y.Text);
+            expect((v0.get("text") as Y.Text).toString()).toBe("version text");
+            expect(v0.get("label")).toBe("v1");
+            expect(retrieved.get("activeVersionIndex")).toBe(0);
         });
     });
 
@@ -105,8 +127,10 @@ describe("annotationSchema", () => {
                 thread: [{ message: "hello", author: "user", time: 1000 }],
             };
 
-            const yjs = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID);
-            const restored = yjsAnnotationToCodeMirror(yjs, ydoc, ytext, 42);
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
+            const restored = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 42);
 
             expect(restored).not.toBeNull();
             expect(restored!._type).toBe("comment");
@@ -126,8 +150,10 @@ describe("annotationSchema", () => {
                 author: "ai",
             };
 
-            const yjs = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID);
-            const restored = yjsAnnotationToCodeMirror(yjs, ydoc, ytext, 99);
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
+            const restored = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 99);
 
             expect(restored).not.toBeNull();
             expect(restored!._type).toBe("suggestion");
@@ -147,61 +173,50 @@ describe("annotationSchema", () => {
                 activeVersionIndex: 0,
             };
 
-            const yjs = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID);
-            const restored = yjsAnnotationToCodeMirror(yjs, ydoc, ytext, 5);
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
+            const restored = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 5);
 
             expect(restored).not.toBeNull();
             expect(restored!._type).toBe("revision");
             if (restored !== null && restored._type === "revision") {
-                expect(restored.versions).toEqual(ann.versions);
+                expect(restored.versions[0].doc).toBe("v1 text");
                 expect(restored.activeVersionIndex).toBe(0);
             }
         });
 
-        it("returns null for malformed JSON in thread (T-08-02 safety)", () => {
-            const yjs = {
-                id: "x",
-                _type: "comment" as const,
-                startPos: new Uint8Array([]),
-                endPos: new Uint8Array([]),
-                thread: "not valid json {{{",
-            };
+        it("returns null for malformed node (missing positions)", () => {
+            const node = new Y.Map<unknown>();
+            ydoc.transact(() => {
+                node.set("id", "x");
+                node.set("_type", "comment");
+                // Missing startPos and endPos
+                node.set("thread", new Y.Array());
+                ymap.set("test", node as YjsAnnotationNode);
+            });
 
-            // Should not throw; returns null for bad data
-            const result = yjsAnnotationToCodeMirror(yjs, ydoc, ytext, 1);
+            const retrieved = ymap.get("test")!;
+            const result = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 1);
             expect(result).toBeNull();
         });
-    });
 
-    describe("YjsAnnotationSchema validation (T-08-01)", () => {
-        it("validates a well-formed YjsAnnotation", () => {
-            const valid = {
-                id: "client-123",
-                _type: "comment",
-                startPos: new Uint8Array([1]),
-                endPos: new Uint8Array([2]),
-                thread: "[]",
-            };
-            const result = YjsAnnotationSchema.safeParse(valid);
-            expect(result.success).toBe(true);
-        });
+        it("returns null for unknown _type", () => {
+            const node = new Y.Map<unknown>();
+            ydoc.transact(() => {
+                node.set("id", "x");
+                node.set("_type", "unknown_type");
+                const startRel = Y.createRelativePositionFromTypeIndex(ytext, 0);
+                const endRel = Y.createRelativePositionFromTypeIndex(ytext, 5);
+                node.set("startPos", Y.encodeRelativePosition(startRel));
+                node.set("endPos", Y.encodeRelativePosition(endRel));
+                node.set("thread", new Y.Array());
+                ymap.set("test", node as YjsAnnotationNode);
+            });
 
-        it("rejects missing required fields", () => {
-            const invalid = { id: "x", _type: "comment" };
-            const result = YjsAnnotationSchema.safeParse(invalid);
-            expect(result.success).toBe(false);
-        });
-
-        it("rejects invalid _type values", () => {
-            const invalid = {
-                id: "x",
-                _type: "unknown",
-                startPos: new Uint8Array([1]),
-                endPos: new Uint8Array([2]),
-                thread: "[]",
-            };
-            const result = YjsAnnotationSchema.safeParse(invalid);
-            expect(result.success).toBe(false);
+            const retrieved = ymap.get("test")!;
+            const result = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 1);
+            expect(result).toBeNull();
         });
     });
 

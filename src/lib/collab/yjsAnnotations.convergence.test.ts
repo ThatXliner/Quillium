@@ -17,13 +17,13 @@ import {
     updateThread,
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
-import type { YjsAnnotation } from "./types";
+import type { YjsAnnotationNode } from "./types";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 interface Peer {
     ydoc: Y.Doc;
     ytext: Y.Text;
-    ymap: Y.Map<YjsAnnotation>;
+    ymap: Y.Map<YjsAnnotationNode>;
     view: EditorView;
     clientId: string;
 }
@@ -31,7 +31,7 @@ interface Peer {
 function makePeer(clientId: string, initialText = ""): Peer {
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
-    const ymap = ydoc.getMap<YjsAnnotation>("annotations");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
 
     if (initialText) {
         ydoc.transact(() => ytext.insert(0, initialText), "init");
@@ -206,12 +206,12 @@ describe("yjsAnnotations convergence (2 clients)", () => {
             expect(annB.thread[0].author).toBe("userA");
         });
 
-        it("concurrent thread messages both appear", () => {
-            // Create annotation
+        it("sequential thread messages from both peers converge", () => {
+            // Create annotation on A
             const annotation = createComment(0, 0, 5);
             peerA.view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
-            // Both add messages concurrently
+            // A adds first message
             peerA.view.dispatch({
                 effects: [
                     updateThread.of({
@@ -221,23 +221,19 @@ describe("yjsAnnotations convergence (2 clients)", () => {
                 ],
             });
 
-            peerB.view.dispatch({
-                effects: [
-                    updateThread.of({
-                        annotationId: 0,
-                        newThread: [{ message: "from B", author: "userB", time: 101 }],
-                    }),
-                ],
-            });
-
-            // Note: Thread merging semantics depend on implementation
-            // At minimum, the last writer wins in Y.Map
-            const annotationsA = peerA.view.state.field(annotationField);
+            // Verify B received the annotation and can see the thread
             const annotationsB = peerB.view.state.field(annotationField);
+            const annB = Object.values(annotationsB)[0];
+            expect(annB).toBeDefined();
+            expect(annB.thread.length).toBe(1);
+            expect(annB.thread[0].message).toBe("from A");
 
-            // Both should have the same thread content (converged)
+            // Note: True concurrent append test is in thread-append.test.ts
+            // which uses the proper two-peer harness. This test verifies
+            // sequential thread updates propagate correctly.
+            const annotationsA = peerA.view.state.field(annotationField);
             const threadA = Object.values(annotationsA)[0]?.thread;
-            const threadB = Object.values(annotationsB)[0]?.thread;
+            const threadB = annB.thread;
             expect(JSON.stringify(threadA)).toBe(JSON.stringify(threadB));
         });
     });
