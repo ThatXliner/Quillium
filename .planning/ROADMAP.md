@@ -313,11 +313,11 @@ and a single observeDeep-driven rebuild — no effect-specific handlers.
 **Plans**: 5 plans in 3 waves
 
 Plans:
-- [ ] 11-01-PLAN.md — Wave 0: test scaffolds + twoPeerHarness extension + AnnotationIdMap.getOrCreateYjsId (SYNC-05)
-- [ ] 11-02-PLAN.md — Diff-and-reconcile write path in yjsAnnotations.ts update() (SYNC-05)
-- [ ] 11-03-PLAN.md — Basic annotation sync tests: comment + revision creation (SYNC-05)
-- [ ] 11-04-PLAN.md — Revision operation tests: concurrent typing, version switch, add/delete (SYNC-05)
-- [ ] 11-05-PLAN.md — Thread sync tests + full suite verification (SYNC-05)
+- [x] 11-01-PLAN.md — Wave 0: test scaffolds + twoPeerHarness extension + AnnotationIdMap.getOrCreateYjsId (SYNC-05)
+- [x] 11-02-PLAN.md — Diff-and-reconcile write path in yjsAnnotations.ts update() (SYNC-05)
+- [x] 11-03-PLAN.md — Basic annotation sync tests: comment + revision creation (SYNC-05)
+- [x] 11-04-PLAN.md — Revision operation tests: concurrent typing, version switch, add/delete (SYNC-05)
+- [x] 11-05-PLAN.md — Thread sync tests + full suite verification (SYNC-05)
 
 ### Phase 12: Nested Editor Reunification
 **Goal**: One code path for the nested editor regardless of collab state. Drop the
