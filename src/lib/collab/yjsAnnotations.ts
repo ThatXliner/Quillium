@@ -33,7 +33,11 @@ import {
     removeAnnotation,
     updateThread,
     annotationField,
+    _updateActiveRevisionVersion,
+    _addVersionToRevision,
+    _deleteVersionFromRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
+import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 
 export const yjsAnnotationSync = Annotation.define<boolean>();
 
@@ -290,13 +294,117 @@ export function createAnnotationSyncPlugin(
                                     }
                                 }
                             }, "local");
+                        } else if (effect.is(_updateActiveRevisionVersion)) {
+                            // Propagate active-version-switch to the shared Y.Map so
+                            // peers re-render with the same active version.
+                            const yjsId = this.idMap.getYjsId(effect.value.annotationId);
+                            if (!yjsId) continue;
+                            const node = scopeAnnotations.get(yjsId);
+                            if (!node) continue;
+                            ydoc.transact(() => {
+                                node.set("activeVersionIndex", effect.value.to);
+                            }, "local");
+                        } else if (effect.is(_addVersionToRevision)) {
+                            // Add a new version's Y.Map entry to the revision's
+                            // `versions` Y.Map. Remote peers rebuild from observeDeep.
+                            const yjsId = this.idMap.getYjsId(effect.value.annotationId);
+                            if (!yjsId) continue;
+                            const node = scopeAnnotations.get(yjsId);
+                            if (!node) continue;
+                            const versions = node.get("versions");
+                            if (!(versions instanceof Y.Map)) continue;
+                            // Read the current annotation to learn the insertion index
+                            // and the full versions list (post-effect state).
+                            const ann = this.view.state.field(annotationField)[
+                                effect.value.annotationId
+                            ];
+                            if (!ann || !isAnnotationOfType(ann, "revision")) continue;
+                            const at =
+                                effect.value.at ??
+                                (ann.versions.length > 0 ? ann.versions.length - 1 : 0);
+                            ydoc.transact(() => {
+                                // Rebuild versions map to reflect the new ordering,
+                                // since Y.Map keys are stringified indices.
+                                const existingEntries: Array<[string, Y.Map<unknown>]> = [];
+                                versions.forEach((v, k) => {
+                                    if (v instanceof Y.Map) existingEntries.push([k, v]);
+                                });
+                                existingEntries.sort((a, b) => Number(a[0]) - Number(b[0]));
+
+                                // Build the new version's Y.Map subtree.
+                                const v = effect.value.newVersion;
+                                const newVersionNode = new Y.Map<unknown>();
+                                const vtext = new Y.Text();
+                                if (v.doc.length > 0) vtext.insert(0, v.doc);
+                                newVersionNode.set("text", vtext);
+                                if (v.label !== undefined)
+                                    newVersionNode.set("label", v.label);
+                                newVersionNode.set(
+                                    "annotations",
+                                    new Y.Map<YjsAnnotationNode>(),
+                                );
+
+                                // Splice into the new order.
+                                const reordered: Array<[string, Y.Map<unknown>]> = [];
+                                let inserted = false;
+                                for (const [, yNode] of existingEntries) {
+                                    if (reordered.length === at && !inserted) {
+                                        reordered.push([String(reordered.length), newVersionNode]);
+                                        inserted = true;
+                                    }
+                                    reordered.push([String(reordered.length), yNode]);
+                                }
+                                if (!inserted) {
+                                    reordered.push([String(reordered.length), newVersionNode]);
+                                }
+
+                                // Replace the versions map contents with the new order.
+                                // Y.Map has no splice primitive; we clear and re-add by key.
+                                const keysToDelete: string[] = [];
+                                versions.forEach((_, k) => keysToDelete.push(k));
+                                for (const k of keysToDelete) versions.delete(k);
+                                for (const [k, v2] of reordered) versions.set(k, v2);
+
+                                // active index may have shifted — write it explicitly.
+                                node.set("activeVersionIndex", ann.activeVersionIndex);
+                            }, "local");
+                        } else if (effect.is(_deleteVersionFromRevision)) {
+                            // Remove a version entry and compact the remaining keys.
+                            const yjsId = this.idMap.getYjsId(effect.value.annotationId);
+                            if (!yjsId) continue;
+                            const node = scopeAnnotations.get(yjsId);
+                            if (!node) continue;
+                            const versions = node.get("versions");
+                            if (!(versions instanceof Y.Map)) continue;
+                            const ann = this.view.state.field(annotationField)[
+                                effect.value.annotationId
+                            ];
+                            if (!ann || !isAnnotationOfType(ann, "revision")) continue;
+
+                            ydoc.transact(() => {
+                                // Collect surviving entries by numeric key, excluding the
+                                // deleted index, then re-key them densely.
+                                const entries: Array<[number, Y.Map<unknown>]> = [];
+                                versions.forEach((v, k) => {
+                                    const idx = Number(k);
+                                    if (idx !== effect.value.versionId && v instanceof Y.Map) {
+                                        entries.push([idx, v]);
+                                    }
+                                });
+                                entries.sort((a, b) => a[0] - b[0]);
+                                const keysToDelete: string[] = [];
+                                versions.forEach((_, k) => keysToDelete.push(k));
+                                for (const k of keysToDelete) versions.delete(k);
+                                entries.forEach(([, v], i) => versions.set(String(i), v));
+                                node.set("activeVersionIndex", ann.activeVersionIndex);
+                            }, "local");
                         }
                     }
                 }
-                // NOTE: syncRevisionChanges removed. Revision version text is owned
-                // by the subtree Y.Text (Plan 8.5c-01 wires createYjsBinding there).
-                // Revision structural ops (add version, switch active) will go
-                // through dedicated StateEffects or subtree Y.Map updates in Plan 8.5c-01.
+                // NOTE: Revision version text is owned by the subtree Y.Text
+                // (Plan 8.5c-01 wires createYjsBinding there). Structural ops
+                // above propagate via the `versions` Y.Map; remote peers rebuild
+                // the CM annotation via the observeDeep path.
             }
 
             destroy() {

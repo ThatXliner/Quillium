@@ -186,16 +186,16 @@ export const _revisionCleanup = Annotation.define<boolean>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 // There is no "updateRevisionVersion" since we sniff that from document changes
-const _addVersionToRevision = StateEffect.define<{
+export const _addVersionToRevision = StateEffect.define<{
     annotationId: number;
     newVersion: VersionState;
     at?: number;
 }>();
-const _deleteVersionFromRevision = StateEffect.define<{
+export const _deleteVersionFromRevision = StateEffect.define<{
     annotationId: number;
     versionId: number;
 }>();
-const _updateActiveRevisionVersion = StateEffect.define<{
+export const _updateActiveRevisionVersion = StateEffect.define<{
     annotationId: number;
     to: number;
 }>();
