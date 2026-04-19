@@ -54,7 +54,8 @@ export function createAnnotationSyncPlugin(
 
             constructor(private view: EditorView) {
                 this._syncIdMapFromCM();
-                this._syncInitialFromYjs();
+                this._syncInitialToYjs();   // Owner: push CM annotations to Yjs
+                this._syncInitialFromYjs(); // Joiner: pull Yjs annotations to CM
 
                 this.deepObserver = (events, tr) => {
                     if (this.destroyed || tr.origin === "local") return;
@@ -163,6 +164,39 @@ export function createAnnotationSyncPlugin(
                     const yjsId = `${clientId}-init-${cmId}`;
                     this.idMap.register(yjsId, cmId);
                 }
+            }
+
+            private _syncInitialToYjs() {
+                const ydoc = scopeYtext.doc;
+                if (!ydoc) return;
+
+                const annotations = this.view.state.field(annotationField);
+                const annotationIds = Object.keys(annotations);
+                if (annotationIds.length === 0) return;
+
+                // Owner seeding: push existing CM annotations to Yjs
+                // Use queueMicrotask to ensure plugin is fully constructed
+                queueMicrotask(() => {
+                    if (this.destroyed) return;
+
+                    ydoc.transact(() => {
+                        for (const idStr of annotationIds) {
+                            const cmId = Number(idStr);
+                            const ann = annotations[cmId];
+                            if (!ann) continue;
+
+                            const yjsId = this.idMap.getYjsId(cmId);
+                            if (!yjsId) continue;
+
+                            // Skip if already in Yjs (reconnect case)
+                            if (scopeAnnotations.has(yjsId)) continue;
+
+                            const node = codeMirrorToYjsAnnotation(ann, scopeYtext, clientId, ydoc);
+                            node.set("id", yjsId);
+                            scopeAnnotations.set(yjsId, node);
+                        }
+                    }, "local");
+                });
             }
 
             private _syncInitialFromYjs() {
