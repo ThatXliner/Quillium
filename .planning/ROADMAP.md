@@ -286,7 +286,15 @@ main-text sync working and annotation sync intentionally disabled. Clean ground 
   6. All tests coupled to the old sync-plugin design deleted (revision-lifecycle, version-coordination, go-live-mid-session, nested-editor-sync, version-switch-live, subtree-binding, any other directly-affected files)
   7. Typecheck passes, biome passes
   8. Integration test (non-Playwright) proves: two peers connected via the twoPeerHarness, main text edits on peer A character-wise appear on peer B
-**Plans**: to be scoped in `/gsd-plan-phase 10`
+**Plans**: 6 plans in 3 waves
+
+Plans:
+- [ ] 10-01-PLAN.md — Gut createAnnotationSyncPlugin write path + delete hasSubtreeForRevision (SYNC-05)
+- [ ] 10-02-PLAN.md — Strip collabSubtree from nestedEditor + remove _hasCollabSubtree branching (SYNC-05)
+- [ ] 10-03-PLAN.md — Remove needsCollabModeRebuild $effect blocks + delete subtree helpers (SYNC-05)
+- [ ] 10-04-PLAN.md — Delete tests coupled to old sync-plugin design (SYNC-05)
+- [ ] 10-05-PLAN.md — Fix remaining tests, typecheck, biome (SYNC-05)
+- [ ] 10-06-PLAN.md — Integration test for main text sync (SYNC-05)
 
 ### Phase 11: Unified Subtree Sync Rebuild
 **Goal**: Single source of truth for annotation state in Yjs with per-character merge
@@ -352,7 +360,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 8.5b. CRDT Sync Plumbing | 2/2 | Complete | 2026-04-19 |
 | 8.5c. CRDT Nested Editor Wiring | 2/2 | Complete | 2026-04-18 |
 | 9. Fix Live Collab Revision Editing Bugs | 3/3 | Reopened | - |
-| 10. Strip Broken Collab Sync Layer | 0/- | Planned | - |
+| 10. Strip Broken Collab Sync Layer | 0/6 | Planned | - |
 | 11. Unified Subtree Sync Rebuild | 0/- | Planned | - |
 | 12. Nested Editor Reunification | 0/- | Planned | - |
 | 13. Dogfooding Regression Suite | 0/- | Planned | - |
