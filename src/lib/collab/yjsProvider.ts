@@ -106,23 +106,15 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
             if (currentAttemptCount === 0) {
                 collabState.set("connecting");
             }
-            // During reconnection, keep "reconnecting" state (set by disconnect handler)
+            // During reconnection, keep "reconnecting" state (set by connection-close handler)
         } else if (status === "connected") {
             // Wait for sync before setting connected -- sync event is more reliable
         } else if (status === "disconnected") {
-            // Only update state if this provider is still current
-            if (currentProvider === provider) {
-                currentAttemptCount += 1;
-                reconnectAttempt.set(currentAttemptCount);
-
-                if (currentAttemptCount >= MAX_RECONNECT_ATTEMPTS) {
-                    // Per D-104: Exhausted retries, set error state
-                    collabState.set("error");
-                    // Per D-105: Stop reconnection - user must manually Go Live again
-                    provider.disconnect();
-                } else {
-                    collabState.set("reconnecting");
-                }
+            // First disconnect only - subsequent failures go through connection-close
+            if (currentProvider === provider && currentAttemptCount === 0) {
+                currentAttemptCount = 1;
+                reconnectAttempt.set(1);
+                collabState.set("reconnecting");
             }
         }
     });
@@ -137,10 +129,24 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         }
     });
 
-    // Handle connection close (may include owner disconnect kick)
-    // The server sends close reason when owner leaves (D-57, D-61)
-    provider.on("connection-close" as any, (event: any) => {
-        console.log("[yjsProvider] Connection closed:", event);
+    // Handle connection close - fires on EVERY close including failed retry attempts
+    // y-websocket only emits "disconnected" status on first disconnect, but connection-close
+    // fires each time, so we track retry attempts here
+    provider.on("connection-close" as any, (_event: any) => {
+        console.log(`[yjsProvider] Connection closed (attempt ${currentAttemptCount})`);
+        if (currentProvider === provider && currentAttemptCount > 0) {
+            // Already in reconnection mode, increment attempt
+            currentAttemptCount += 1;
+            reconnectAttempt.set(currentAttemptCount);
+
+            if (currentAttemptCount >= MAX_RECONNECT_ATTEMPTS) {
+                // Per D-104: Exhausted retries, set error state
+                collabState.set("error");
+                // Per D-105: Stop reconnection - user must manually Go Live again
+                // Use setTimeout to avoid calling disconnect inside close handler (stack overflow)
+                setTimeout(() => provider.disconnect(), 0);
+            }
+        }
     });
 
     // Store references for current connection

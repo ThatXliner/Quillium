@@ -181,26 +181,31 @@ describe("yjsProvider", () => {
         expect(get(reconnectAttempt)).toBe(1);
     });
 
-    it("increments reconnectAttempt on each disconnect", async () => {
+    it("increments reconnectAttempt on each connection-close", async () => {
         const { provider } = await createYjsProvider("doc-123");
 
-        // Simulate multiple disconnects
+        // First disconnect sets attempt to 1
         (provider as any)._testEmit("status", { status: "disconnected" });
         expect(get(reconnectAttempt)).toBe(1);
 
-        (provider as any)._testEmit("status", { status: "disconnected" });
+        // Subsequent connection-close events increment the counter
+        (provider as any)._testEmit("connection-close", {});
         expect(get(reconnectAttempt)).toBe(2);
 
-        (provider as any)._testEmit("status", { status: "disconnected" });
+        (provider as any)._testEmit("connection-close", {});
         expect(get(reconnectAttempt)).toBe(3);
     });
 
-    it("sets collabState to error after 5 disconnect attempts", async () => {
+    it("sets collabState to error after 5 attempts", async () => {
         const { provider } = await createYjsProvider("doc-123");
 
-        // Simulate 5 disconnects (max attempts)
-        for (let i = 0; i < 5; i++) {
-            (provider as any)._testEmit("status", { status: "disconnected" });
+        // First disconnect
+        (provider as any)._testEmit("status", { status: "disconnected" });
+        expect(get(reconnectAttempt)).toBe(1);
+
+        // 4 more connection-close events (total 5 attempts)
+        for (let i = 0; i < 4; i++) {
+            (provider as any)._testEmit("connection-close", {});
         }
 
         expect(get(collabState)).toBe("error");
@@ -208,22 +213,30 @@ describe("yjsProvider", () => {
     });
 
     it("calls provider.disconnect() when max attempts reached", async () => {
+        vi.useFakeTimers();
         const { provider } = await createYjsProvider("doc-123");
 
-        // Simulate 5 disconnects
-        for (let i = 0; i < 5; i++) {
-            (provider as any)._testEmit("status", { status: "disconnected" });
+        // First disconnect
+        (provider as any)._testEmit("status", { status: "disconnected" });
+
+        // 4 more connection-close events (total 5 attempts)
+        for (let i = 0; i < 4; i++) {
+            (provider as any)._testEmit("connection-close", {});
         }
 
+        // disconnect() is called via setTimeout to avoid stack overflow
+        vi.runAllTimers();
+
         expect((provider as any).disconnect).toHaveBeenCalled();
+        vi.useRealTimers();
     });
 
     it("resets reconnectAttempt to 0 on successful sync after reconnecting", async () => {
         const { provider } = await createYjsProvider("doc-123");
 
-        // Simulate some disconnects
+        // First disconnect then a connection-close
         (provider as any)._testEmit("status", { status: "disconnected" });
-        (provider as any)._testEmit("status", { status: "disconnected" });
+        (provider as any)._testEmit("connection-close", {});
         expect(get(reconnectAttempt)).toBe(2);
         expect(get(collabState)).toBe("reconnecting");
 
