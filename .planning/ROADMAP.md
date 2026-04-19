@@ -266,9 +266,75 @@ Plans:
 - [x] 09-02-PLAN.md — D-100 Room-as-View architecture + D-103 prior-view restore (SYNC-05)
 - [x] 09-03-PLAN.md — Verify sync bugs fixed by 8.5a-c (SYNC-05)
 
+**Status**: REOPENED 2026-04-19 — success criteria 2, 3, 5 not met in real app. Dogfooding
+revealed inline-editor version text and active-version switching still fail on the joiner,
+and concurrent edits inside a revision do not round-trip. Plans 1–3 landed work but the
+phase's goal (dogfoodable live-collab revisions) was not achieved. Continuation in phases
+10–13 on the `omni-fixes` branch.
+
+### Phase 10: Strip Broken Collab Sync Layer
+**Goal**: Remove all code paths that make live-collab annotation sync inconsistent, leaving
+main-text sync working and annotation sync intentionally disabled. Clean ground for Phase 11's rebuild.
+**Depends on**: Phase 9 (reopened)
+**Requirements**: SYNC-05 (stability)
+**Success Criteria** (what must be TRUE):
+  1. Effect-by-effect write handlers in `createAnnotationSyncPlugin` deleted (addAnnotation/removeAnnotation/updateThread/_updateActiveRevisionVersion/_addVersionToRevision/_deleteVersionFromRevision branches gone)
+  2. Per-version subtree Y.Text bindings removed from `createNestedEditorState` and `NestedEditorController`
+  3. `hasSubtreeForRevision` short-circuit deleted from `annotationField` Phase 3 — Phase 3 runs unconditionally again
+  4. `_hasCollabSubtree` branching removed from `NestedEditorController` (single code path, no fork)
+  5. `needsCollabModeRebuild` + associated `$effect` blocks removed from `Revision.svelte` and `RevisionModal.svelte`
+  6. All tests coupled to the old sync-plugin design deleted (revision-lifecycle, version-coordination, go-live-mid-session, nested-editor-sync, version-switch-live, subtree-binding, any other directly-affected files)
+  7. Typecheck passes, biome passes
+  8. Integration test (non-Playwright) proves: two peers connected via the twoPeerHarness, main text edits on peer A character-wise appear on peer B
+**Plans**: to be scoped in `/gsd-plan-phase 10`
+
+### Phase 11: Unified Subtree Sync Rebuild
+**Goal**: Single source of truth for annotation state in Yjs with per-character merge
+inside revision versions. State is projected both ways via a single diff-and-write cycle
+and a single observeDeep-driven rebuild — no effect-specific handlers.
+**Depends on**: Phase 10
+**Requirements**: SYNC-05 (functionality)
+**Success Criteria** (what must be TRUE):
+  1. Annotations Y.Map entries have shape that mirrors `GenericAnnotation` with per-version Y.Text children for revision bodies
+  2. `createAnnotationSyncPlugin` writes to Y.Map via a single diff-and-reconcile function on every transaction (no per-effect branches)
+  3. `observeDeep` drives a single rebuild path for remote changes — no partial updates
+  4. Revision version text merges character-by-character between peers (two peers typing into the same version converge without loss)
+  5. activeVersionIndex is a Y.Map field; switching on one peer visibly switches on the other
+  6. Add version, delete version, thread append all round-trip between peers
+  7. Integration tests (non-Playwright) cover: concurrent typing in same version, version switch propagation, add/delete version, thread append, joiner sees owner's pre-existing annotations on initial sync
+**Plans**: to be scoped in `/gsd-plan-phase 11`
+
+### Phase 12: Nested Editor Reunification
+**Goal**: One code path for the nested editor regardless of collab state. Drop the
+local/collab mode fork in `NestedEditorController` now that collab sync is correct.
+**Depends on**: Phase 11
+**Requirements**: SYNC-05 (maintainability)
+**Success Criteria** (what must be TRUE):
+  1. `NestedEditorController` has no `_hasCollabSubtree` flag, no mode branch, no dual-mode lifecycle
+  2. Nested editor always uses the same extension set whether or not collab is active
+  3. Version text flows via the same mechanism in both modes (Yjs binding on the version's Y.Text, which exists in both live and local contexts after the model unification)
+  4. `needsCollabModeRebuild` and its `$effect` callers fully removed from `Revision.svelte` and `RevisionModal.svelte`
+  5. Integration test (non-Playwright) proves the inline editor works identically with collab on vs off for: create revision, type in inline editor, switch version, add/delete version, undo/redo
+**Plans**: to be scoped in `/gsd-plan-phase 12`
+
+### Phase 13: Dogfooding Regression Suite
+**Goal**: Lock in the rebuild with integration tests that would have caught the Phase 9
+bugs. All run inside vitest — no Playwright. These are the tests Phase 9 should have had.
+**Depends on**: Phase 12
+**Requirements**: SYNC-05 (verification), dogfoodable quality bar
+**Success Criteria** (what must be TRUE):
+  1. Integration test: owner types inside a revision's nested editor → peer sees character-wise text updates, and vice versa
+  2. Integration test: owner switches active version → peer's active version updates, peer's inline editor body updates to new version's text
+  3. Integration test: two peers type concurrently into the same version (last-X chars on each side) → both converge to the merged result without data loss
+  4. Integration test: joiner connects to an owner who already has revisions with multiple versions → joiner sees all of them correctly and can interact
+  5. Integration test: owner deletes a version that is active on both peers → peer's active version falls back correctly, no dangling references
+  6. Integration test: Cmd-z on joiner immediately after connect does not revert to pre-connect state
+  7. Integration test: threading append from both peers concurrently → both messages survive (no lost write)
+  8. Each test exercises the FULL stack end-to-end in vitest (parent view, nested editor controller, yjsBinding, annotation sync plugin, observeDeep reconciliation) without mocks or Playwright
+**Plans**: to be scoped in `/gsd-plan-phase 13`
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 8.5a -> 8.5b -> 8.5c -> 9
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 8.5a -> 8.5b -> 8.5c -> 9 -> 10 -> 11 -> 12 -> 13
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -285,7 +351,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
 | 8.5b. CRDT Sync Plumbing | 2/2 | Complete | 2026-04-19 |
 | 8.5c. CRDT Nested Editor Wiring | 2/2 | Complete | 2026-04-18 |
-| 9. Fix Live Collab Revision Editing Bugs | 3/3 | Complete | 2026-04-19 |
+| 9. Fix Live Collab Revision Editing Bugs | 3/3 | Reopened | - |
+| 10. Strip Broken Collab Sync Layer | 0/- | Planned | - |
+| 11. Unified Subtree Sync Rebuild | 0/- | Planned | - |
+| 12. Nested Editor Reunification | 0/- | Planned | - |
+| 13. Dogfooding Regression Suite | 0/- | Planned | - |
 
 ---
 

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Complete
+status: in_progress
 stopped_at: 
-last_updated: "2026-04-19T15:40:00.000Z"
-last_activity: 2026-04-19 -- Phase 9 complete; D-100 architecture + sync bugs verified
+last_updated: "2026-04-19T17:00:00.000Z"
+last_activity: 2026-04-19 -- Phase 9 reopened; phases 10-13 scaffolded for sync-layer rewrite on omni-fixes branch
 progress:
-  total_phases: 14
+  total_phases: 18
   completed_phases: 11
   total_plans: 36
   completed_plans: 36
-  percent: 100
+  percent: 61
 ---
 
 # Project State
@@ -21,16 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-18)
 
 **Core value:** Two Quillium instances can connect and see each other's edits in real-time
-**Current focus:** All phases complete — milestone ready for final verification
+**Current focus:** Phases 10–13 — rewrite the collab annotation sync layer on the `omni-fixes` branch. Phase 9's work landed but did not achieve its goal (inline-editor and active-version bugs persist in the real app).
 
 ## Current Position
 
-Phase: 9 - Fix Live Collab Revision Editing Bugs
-Plan: All 3 plans complete
-Status: Complete
-Last activity: 2026-04-19 -- Phase 9 complete; D-100 architecture + sync bugs verified
+Branch: omni-fixes
+Phase: 10 - Strip Broken Collab Sync Layer (next up)
+Plan: Not yet planned — run `/gsd-plan-phase 10`
+Status: Phase 9 reopened; 10–13 scaffolded
+Last activity: 2026-04-19 -- reopened phase 9 and added 10–13 scaffolding
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 61%
 
 ## Performance Metrics
 
@@ -94,6 +95,11 @@ None yet.
 - Phase 7.5 inserted: Yjs Migration - Replace OT with Yjs CRDT (moved from Phase 10)
 - Phases 8/9 updated: Now build on Yjs instead of OT assumptions
 - Phase 9 added: Fix Live Collab Revision Editing Bugs (post-8.5c dogfooding regressions)
+- Phase 9 reopened 2026-04-19: plans landed but inline-editor and active-version bugs persist in dogfooding; continuation split into phases 10–13 on the `omni-fixes` branch
+- Phase 10 added: Strip Broken Collab Sync Layer — remove effect-by-effect handlers, per-version subtree bindings, `hasSubtreeForRevision` short-circuit, `_hasCollabSubtree` fork; keep main-text sync working with an integration test
+- Phase 11 added: Unified Subtree Sync Rebuild — single diff-and-write path, per-character merge inside revision versions, observeDeep-driven rebuild, no per-effect handlers
+- Phase 12 added: Nested Editor Reunification — drop the local/collab fork in `NestedEditorController`; one code path regardless of collab state
+- Phase 13 added: Dogfooding Regression Suite — integration tests in vitest covering the scenarios phase 9 missed (concurrent typing inside a version, version switch propagation, joiner pre-existing annotations, Cmd-z post-connect, concurrent thread appends)
 
 ### Blockers/Concerns
 
