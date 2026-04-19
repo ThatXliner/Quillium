@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: "Phase 8.5a complete — 8.5b next"
-last_updated: "2026-04-18T15:25:00.000Z"
-last_activity: 2026-04-18 -- Phase 8.5a complete (2/2 plans, verified passed); 8.5b (sync plumbing) is next
+stopped_at: "Phase 8.5b complete — 8.5c next"
+last_updated: "2026-04-19T06:15:00.000Z"
+last_activity: 2026-04-19 -- Phase 8.5b complete (2/2 plans, verified passed); 8.5c (nested editor wiring) is next
 progress:
   total_phases: 13
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 43
-  completed_plans: 39
-  percent: 91
+  completed_plans: 41
+  percent: 95
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2025-04-16)
 
 **Core value:** Two Quillium instances can connect and see each other's edits in real-time
-**Current focus:** Phase 8.5b — CRDT sync plumbing (planned, ready to execute after 8.5a)
+**Current focus:** Phase 8.5c — CRDT nested editor wiring (next after 8.5b)
 
 ## Current Position
 
-Phase: 8.5b
-Plan: Phase 8.5b complete (2/2 plans); 8.5c next
-Status: Ready to execute
-Last activity: 2026-04-19 -- Plan 8.5b-01 complete (scoped observeDeep annotation sync, thread Y.Array); phase complete
+Phase: 8.5c
+Plan: Phase 8.5b verified and complete; 8.5c is next
+Status: Ready to execute — run /gsd-execute-phase 8.5c
+Last activity: 2026-04-19 -- Phase 8.5b complete (2/2 plans, verified passed); next: Phase 8.5c
 
-Progress: [█████████░] 93%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
@@ -112,6 +112,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-19T06:03:00Z
-Stopped at: Phase 8.5b complete (2/2 plans); 8.5c next
+Last session: 2026-04-19T06:10:21.060Z
+Stopped at: context exhaustion at 90% (2026-04-19)
 Resume file: None
