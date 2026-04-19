@@ -148,15 +148,12 @@ Plans:
   2. Reconnection automatically recovers pending changes
   3. No data loss or duplication on reconnect
   4. User sees clear feedback during reconnection
-**Plans**: 5 plans
+**Plans**: 1 plan
 **UI hint**: yes
+**Note**: StatusBar and GoLiveButton already handle reconnection display and toasts. Only yjsProvider.ts needs modification to track attempts and transition to error state.
 
 Plans:
-- [ ] 07-01-PLAN.md — Types, stores, and socket reconnection config (SYNC-03, SYNC-04)
-- [ ] 07-02-PLAN.md — CollabPlugin reconnection handling and pending tracking (SYNC-03, SYNC-04)
-- [ ] 07-03-PLAN.md — StatusBar enhanced connection status display (SYNC-03)
-- [ ] 07-04-PLAN.md — State transitions and reconnection feedback toasts (SYNC-03, SYNC-04)
-- [ ] 07-05-PLAN.md — Reconnection tests and manual verification (SYNC-03, SYNC-04)
+- [ ] 07-01-PLAN.md — Reconnection tracking and backoff in yjsProvider.ts (SYNC-03, SYNC-04)
 
 ### Phase 7.5: Yjs Migration (INSERTED)
 **Goal**: Replace OT (@codemirror/collab) with Yjs CRDT for more robust sync
@@ -231,7 +228,7 @@ Plans:
 
 Plans:
 - [x] 08.5b-01-PLAN.md — yjsAnnotations.ts rewrite: scoped observeDeep plugin, syncRevisionChanges removal (SYNC-05)
-- [ ] 08.5b-02-PLAN.md — yjsUndo.ts: addSubtreeToUndoScope + breakUndoCapture; eventBus undo-target variant (SYNC-05)
+- [x] 08.5b-02-PLAN.md — yjsUndo.ts: addSubtreeToUndoScope + breakUndoCapture; eventBus undo-target variant (SYNC-05)
 
 ### Phase 8.5c: CRDT Nested Editor Wiring (INSERTED)
 **Goal**: Wire subtree bindings into NestedEditorController so peer edits inside a nested revision editor merge character-by-character, and surface cross-editor undo via auto-navigation
@@ -248,8 +245,8 @@ Plans:
 **Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 08.5c-01-PLAN.md — NestedEditorController subtree binding + annotationField Phase 3 gating (SYNC-05)
-- [ ] 08.5c-02-PLAN.md — collab/index.ts undo auto-nav wiring + Playwright E2E test (SYNC-05)
+- [x] 08.5c-01-PLAN.md — NestedEditorController subtree binding + annotationField Phase 3 gating (SYNC-05)
+- [x] 08.5c-02-PLAN.md — collab/index.ts undo auto-nav wiring + Playwright E2E test (SYNC-05)
 
 ## Progress
 
@@ -265,7 +262,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 5. Relay Persistence | 3/3 | Complete | 2025-04-17 |
 | 6. Client Collab | 3/3 | Complete | 2025-04-17 |
 | 6.5. Collab Polish | 4/4 | Complete | 2025-04-17 |
-| 7. Connection UX | 0/5 | Not started | - |
+| 7. Connection UX | 0/1 | Not started | - |
 | 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/6 | Not started | - |
 | 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
