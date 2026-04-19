@@ -8,6 +8,9 @@
  *
  * Key dependencies: yjs, @codemirror/view, @codemirror/state.
  * Interactions: Uses twoPeerHarness for two-peer scenarios.
+ *
+ * Phase 10: Write path (CM -> Yjs) disabled. Tests that depend on write path skipped.
+ * Phase 11 will rebuild and re-enable these tests.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
@@ -42,7 +45,8 @@ describe("thread Y.Array sync", () => {
         teardown(peerB);
     });
 
-    it("concurrent append from two peers surfaces both messages", async () => {
+    // Phase 10: write path disabled — skipped until Phase 11 rebuilds it
+    it.skip("concurrent append from two peers surfaces both messages", async () => {
         // Seed a comment annotation on A
         const comment: GenericAnnotation = {
             _type: "comment",
@@ -99,7 +103,8 @@ describe("thread Y.Array sync", () => {
         expect(bMessages.map((m) => m.message).sort()).toEqual(["from A", "from B"]);
     });
 
-    it("single-peer append is mirrored remotely via observeDeep", async () => {
+    // Phase 10: write path disabled — skipped until Phase 11 rebuilds it
+    it.skip("single-peer append is mirrored remotely via observeDeep", async () => {
         // Seed a comment annotation on A with one initial message
         const comment: GenericAnnotation = {
             _type: "comment",
@@ -138,7 +143,8 @@ describe("thread Y.Array sync", () => {
         expect(bThread.toArray().map((m) => m.message)).toEqual(["initial", "appended"]);
     });
 
-    it("shrink-path fallback replaces the full thread array", async () => {
+    // Phase 10: write path disabled — skipped until Phase 11 rebuilds it
+    it.skip("shrink-path fallback replaces the full thread array", async () => {
         // Create a standalone peer with a comment that has 3 messages
         const ydoc = new Y.Doc();
         const ytext = ydoc.getText("document");

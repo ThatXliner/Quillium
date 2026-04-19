@@ -22,10 +22,7 @@ import {
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
 import type { YjsAnnotationNode, MessageObject } from "./types";
-import {
-    isAnnotationOfType,
-    type GenericAnnotation,
-} from "$lib/editor/plugins/annotations/models";
+import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 describe("yjsAnnotations", () => {
     let ydoc: Y.Doc;
@@ -167,7 +164,7 @@ describe("yjsAnnotations", () => {
             const view2 = new EditorView({ state: state2, parent: document.body });
 
             // Initial sync uses queueMicrotask (CM doesn't allow dispatch during construction)
-            await new Promise((r) => queueMicrotask(r));
+            await new Promise<void>((r) => queueMicrotask(r));
 
             // The pre-existing annotation should now be in CodeMirror
             const annotations = view2.state.field(annotationField);
@@ -355,7 +352,7 @@ describe("revision sync", () => {
         // Simulate what setActiveRevisionVersion does: it emits a doc change
         // plus internal effects. In tests we approximate via remove+add with
         // updated data (the same path that the CM->Yjs sync uses).
-        const updatedAnnotation: GenericAnnotation = { ...annotation, activeVersionIndex: 1 };
+        const updatedAnnotation = { ...annotation, activeVersionIndex: 1 };
         view.dispatch({
             effects: [removeAnnotation.of(annotation), addAnnotation.of(updatedAnnotation)],
         });
@@ -376,7 +373,7 @@ describe("revision sync", () => {
         const initialVersions = ymap.get(yjsId)!.get("versions") as Y.Map<Y.Map<unknown>>;
         expect(initialVersions.size).toBe(1);
 
-        const updatedAnnotation: GenericAnnotation = {
+        const updatedAnnotation = {
             ...annotation,
             versions: [{ doc: "hello" }, { doc: "new version" }],
             activeVersionIndex: 1,
