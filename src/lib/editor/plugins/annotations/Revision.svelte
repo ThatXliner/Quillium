@@ -41,7 +41,6 @@ import { versionText, type VersionState } from "./models";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { modalStack } from "$lib/stores";
-import { collabSession } from "$lib/collab/store";
 import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
@@ -350,22 +349,8 @@ $effect(() => {
     createNestedEditor(activeVersion);
 });
 
-// Going live (or leaving) mid-session must rebuild the nested editor.
-// The extension list chosen at mount time captures the local-vs-collab
-// decision — you can't reconfigure it live. Without this rebuild, the
-// inline editor mounted before Go Live keeps running the local sync path,
-// but annotationField Phase 3 has already short-circuited for the now-live
-// revision (hasSubtreeForRevision returns true), so version text updates
-// get dropped on the floor (bug #1).
-$effect(() => {
-    // Track collabSession by reading the store in this effect so Svelte
-    // subscribes us to its changes. The body doesn't use the value directly.
-    void $collabSession;
-    if (!controller.editor || !isEditorOpen || !activeVersion) return;
-    if (!controller.needsCollabModeRebuild()) return;
-    destroyNestedEditor();
-    createNestedEditor(activeVersion);
-});
+// Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
+// is no longer needed - nested editors always use local-only mode.
 
 // When a modal for this revision closes and flushes, rebuild the inline
 // editor from the flushed version blob. The event fires synchronously
