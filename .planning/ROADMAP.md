@@ -230,7 +230,7 @@ Plans:
 **Plans**: 2 plans in 1 wave (parallel)
 
 Plans:
-- [ ] 08.5b-01-PLAN.md — yjsAnnotations.ts rewrite: scoped observeDeep plugin, syncRevisionChanges removal (SYNC-05)
+- [x] 08.5b-01-PLAN.md — yjsAnnotations.ts rewrite: scoped observeDeep plugin, syncRevisionChanges removal (SYNC-05)
 - [ ] 08.5b-02-PLAN.md — yjsUndo.ts: addSubtreeToUndoScope + breakUndoCapture; eventBus undo-target variant (SYNC-05)
 
 ### Phase 8.5c: CRDT Nested Editor Wiring (INSERTED)
@@ -269,7 +269,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 7.5. Yjs Migration | 0/7 | Not started | - |
 | 8. Annotation Sync | 0/6 | Not started | - |
 | 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
-| 8.5b. CRDT Sync Plumbing | 0/2 | Not started | - |
+| 8.5b. CRDT Sync Plumbing | 2/2 | Complete | 2026-04-19 |
 | 8.5c. CRDT Nested Editor Wiring | 0/2 | Not started | - |
 
 ---

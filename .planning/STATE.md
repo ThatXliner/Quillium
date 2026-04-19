@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2025-04-16)
 ## Current Position
 
 Phase: 8.5b
-Plan: 02 complete; 8.5b-01 pending
-Status: In progress
-Last activity: 2026-04-19 -- Plan 8.5b-02 complete (addSubtreeToUndoScope, breakUndoCapture, undo-target event)
+Plan: Phase 8.5b complete (2/2 plans); 8.5c next
+Status: Ready to execute
+Last activity: 2026-04-19 -- Plan 8.5b-01 complete (scoped observeDeep annotation sync, thread Y.Array); phase complete
 
 Progress: [█████████░] 93%
 
@@ -46,6 +46,7 @@ Progress: [█████████░] 93%
 |-------|------|----------|-------|-------|
 | 08.5a | 01 | 8min  | 2 | 9 |
 | 08.5a | 02 | 11min | 2 | 3 |
+| 08.5b | 01 | 5min  | 2 | 4 |
 | 08.5b | 02 | 3min  | 2 | 3 |
 
 **By Phase:**
@@ -79,6 +80,8 @@ Recent decisions affecting current work:
 - 08.5a-02: Recursive Y.Map node shape replaces flat JSON blob — `YjsAnnotationNode = Y.Map<unknown>` with runtime `instanceof` guards; Yjs does not support discriminated-union typing of child types (D-90/D-92).
 - 08.5a-02: Converter wraps all child Y type creation in a single `ydoc.transact(..., "init")` so remote peers see atomic node insertion; must call `ymap.set(key, node)` before reading back (detached Y.Maps log "Invalid access" and return undefined).
 - 08.5a-02: annotation-tree `version propagation` test cannot use `twoPeerHarness.makePeer` yet — `createAnnotationSyncPlugin` still expects the legacy flat shape (owned by Plan 8.5b-01). Standalone two-Y.Doc setup used for this test only.
+- 08.5b-01: observeDeep handles all nested Y.Map/Y.Array/Y.Text events with a single subscription; event routing: shallow Y.Map -> add/remove/rebuild, thread Y.Array -> updateThread, all others -> full annotation rebuild.
+- 08.5b-01: Y.Array.push is used for thread append (D-93 happy path), with atomic replace fallback for shrink; syncRevisionChanges deleted entirely (D-94).
 - 08.5b-02: Cast Y.Text to AbstractType<unknown> in addSubtreeToUndoScope to satisfy TypeScript; Yjs internal event handler types are more specific but addToScope accepts any AbstractType.
 - 08.5b-02: breakUndoCapture is a thin wrapper exposing stopCapturing as a caller-friendly boundary primitive for yjs#642 mitigation.
 
@@ -109,6 +112,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-04-19T06:01:00Z
-Stopped at: Completed 08.5b-02-PLAN.md
+Last session: 2026-04-19T06:03:00Z
+Stopped at: Phase 8.5b complete (2/2 plans); 8.5c next
 Resume file: None
