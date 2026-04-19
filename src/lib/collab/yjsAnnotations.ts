@@ -1,122 +1,145 @@
 /**
- * yjsAnnotations.ts -- Bidirectional Y.Map <-> annotationField sync.
+ * yjsAnnotations.ts — Scoped Y.Map <-> annotationField sync via observeDeep.
  *
- * Per SYNC-05: Annotations sync between collaborators via Yjs shared types.
+ * Per D-90/D-92: Annotations are recursive Y.Map nodes; this plugin syncs
+ * ONE scope (pair of Y.Text + Y.Map) to a CodeMirror EditorView. Plan 8.5c-01
+ * mounts an instance per nested editor subtree.
+ * Per D-93: Comment threads are Y.Array (append-only); Y.Array.push is the
+ * mutation primitive.
+ * Per D-94: No legacy wire format. The previous syncRevisionChanges JSON-diff
+ * path was deleted in this phase.
  *
- * Architecture:
- * - Y.Map stores YjsAnnotation objects with RelativePosition anchors
- * - CodeMirror annotationField stores GenericAnnotation with EditorSelection
- * - This ViewPlugin bridges the two with bidirectional sync
- *
- * Origin tracking:
- * - Y.Map changes with origin "local" are CM-originated (skip in observer)
- * - CM transactions with yjsAnnotationSync annotation are Yjs-originated (skip in update)
- *
- * Revision sync:
- * - Internal revision effects (_updateActiveRevisionVersion, _addVersionToRevision, etc.)
- *   are NOT exported from annotationField.ts. Instead, syncRevisionChanges() detects
- *   changes by comparing old/new annotationField state on every docChanged transaction.
- * - The Y.Map observer handles incoming revision updates from remote peers via
- *   the existing "update" action path (remove + re-add with updated data).
+ * Origin tagging:
+ *   - ydoc.transact(..., "local")  : writes this plugin originated
+ *   - Transactions tagged with yjsAnnotationSync(true) : dispatches this plugin
+ *     originated on the CM side (skip to avoid loops)
  *
  * Threat mitigations:
- *   T-08-03: yjsAnnotationToCodeMirror validates and converts; null returned for invalid data
- *   T-08-05: JSON.parse for remote versions wrapped in try-catch; malformed returns empty array
- *   T-08-06: Remote activeVersionIndex bounds-checked against versions array length
- *
- * Key dependencies:
- *   - yjs for Y.Map, Y.Doc
- *   - @codemirror/view for ViewPlugin
- *   - ./annotationSchema for converters and ID mapping
- *   - ../editor/plugins/annotations/annotationField for StateEffects
+ *   T-08.5-03-01: Observer ignores any event whose tr.origin === "local".
+ *   T-08.5-03-02: Remote payloads pass through yjsAnnotationToCodeMirror which
+ *                 returns null on malformed data; null entries are skipped.
  */
 import { ViewPlugin, type ViewUpdate, type EditorView } from "@codemirror/view";
 import { Annotation } from "@codemirror/state";
-import type * as Y from "yjs";
+import * as Y from "yjs";
 import {
     codeMirrorToYjsAnnotation,
     yjsAnnotationToCodeMirror,
     AnnotationIdMap,
 } from "./annotationSchema";
-import type { YjsAnnotation } from "./types";
+import type { YjsAnnotationNode, MessageObject } from "./types";
 import {
     addAnnotation,
     removeAnnotation,
     updateThread,
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
-import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 
-/** Annotation to mark transactions originating from Y.Map sync (prevents feedback loop) */
 export const yjsAnnotationSync = Annotation.define<boolean>();
 
-/**
- * Create ViewPlugin for Y.Map <-> annotationField sync.
- *
- * @param ytext - Y.Text for RelativePosition resolution
- * @param ymap - Y.Map<YjsAnnotation> to sync with
- * @param clientId - Client ID for annotation ID generation
- * @returns ViewPlugin that maintains bidirectional sync
- */
 export function createAnnotationSyncPlugin(
-    ytext: Y.Text,
-    ymap: Y.Map<YjsAnnotation>,
+    scopeYtext: Y.Text,
+    scopeAnnotations: Y.Map<YjsAnnotationNode>,
     clientId: string,
 ) {
     return ViewPlugin.fromClass(
         class {
-            private observer: (event: Y.YMapEvent<YjsAnnotation>, tr: Y.Transaction) => void;
+            private deepObserver: (
+                events: Y.YEvent<Y.AbstractType<unknown>>[],
+                tr: Y.Transaction,
+            ) => void;
             private destroyed = false;
             private idMap = new AnnotationIdMap();
 
             constructor(private view: EditorView) {
-                // Initialize ID map from current CM annotations
                 this._syncIdMapFromCM();
 
-                // Y.Map -> CodeMirror
-                this.observer = (event, yTransaction) => {
-                    // Skip if destroyed or if this change originated from CM (origin === "local")
-                    // 'local' origin is set by codeMirrorToYjsAnnotation paths to prevent loops
-                    if (this.destroyed || yTransaction.origin === "local") return;
-
-                    const ydoc = ytext.doc;
+                this.deepObserver = (events, tr) => {
+                    if (this.destroyed || tr.origin === "local") return;
+                    const ydoc = scopeYtext.doc;
                     if (!ydoc) return;
 
-                    const effects: (
+                    const effects: Array<
                         | ReturnType<typeof addAnnotation.of>
                         | ReturnType<typeof removeAnnotation.of>
-                    )[] = [];
+                        | ReturnType<typeof updateThread.of>
+                    > = [];
 
-                    for (const key of event.keysChanged) {
-                        const change = event.changes.keys.get(key);
-                        if (!change) continue;
+                    // Track annotation IDs that need a full rebuild so we don't
+                    // queue an add + update for the same node in one flush.
+                    const rebuildCmIds = new Set<number>();
 
-                        if (change.action === "add" || change.action === "update") {
-                            const yjsAnn = ymap.get(key);
-                            if (!yjsAnn) continue;
+                    for (const ev of events) {
+                        // Shallow: scopeAnnotations key add/remove/update
+                        if (ev.target === scopeAnnotations && ev instanceof Y.YMapEvent) {
+                            for (const key of ev.keysChanged) {
+                                const change = ev.changes.keys.get(key);
+                                if (!change) continue;
 
-                            const cmId = this.idMap.getOrCreateCmId(key);
-                            const cmAnn = yjsAnnotationToCodeMirror(yjsAnn, ydoc, ytext, cmId);
-
-                            if (cmAnn) {
-                                // Check if this is an update (annotation exists) or add
-                                const currentAnnotations = this.view.state.field(annotationField);
-                                if (currentAnnotations[cmId]) {
-                                    // Update: remove old, add new
-                                    effects.push(removeAnnotation.of(currentAnnotations[cmId]));
+                                if (change.action === "delete") {
+                                    const cmId = this.idMap.getCmId(key);
+                                    if (cmId !== undefined) {
+                                        const current = this.view.state.field(annotationField);
+                                        const existing = current[cmId];
+                                        if (existing) effects.push(removeAnnotation.of(existing));
+                                        this.idMap.remove(key);
+                                    }
+                                    continue;
                                 }
-                                effects.push(addAnnotation.of(cmAnn));
+
+                                // add or update → schedule full rebuild
+                                const node = scopeAnnotations.get(key);
+                                if (!node) continue;
+                                const cmId = this.idMap.getOrCreateCmId(key);
+                                rebuildCmIds.add(cmId);
                             }
-                        } else if (change.action === "delete") {
-                            const cmId = this.idMap.getCmId(key);
-                            if (cmId !== undefined) {
-                                const currentAnnotations = this.view.state.field(annotationField);
-                                const existingAnn = currentAnnotations[cmId];
-                                if (existingAnn) {
-                                    effects.push(removeAnnotation.of(existingAnn));
-                                }
-                                this.idMap.remove(key);
-                            }
+                            continue;
+                        }
+
+                        // Nested: thread Y.Array for one of our annotations.
+                        // Path shape: [<annotationYjsKey>, "thread"] or similar.
+                        if (
+                            ev.target instanceof Y.Array &&
+                            ev.path.length >= 2 &&
+                            ev.path[1] === "thread"
+                        ) {
+                            const yjsKey = ev.path[0] as string;
+                            const cmId = this.idMap.getCmId(yjsKey);
+                            if (cmId === undefined) continue;
+                            const threadArr = ev.target as Y.Array<MessageObject>;
+                            effects.push(
+                                updateThread.of({
+                                    annotationId: cmId,
+                                    newThread: threadArr.toArray(),
+                                }),
+                            );
+                            continue;
+                        }
+
+                        // Nested: anything else under a revision's version subtree
+                        // (text changes, label edits, nested annotations map ops).
+                        // Schedule a full rebuild of the owning annotation so the CM
+                        // revision annotation reflects the new versions[] snapshot.
+                        if (ev.path.length >= 1) {
+                            const yjsKey = ev.path[0] as string;
+                            const cmId = this.idMap.getCmId(yjsKey);
+                            if (cmId !== undefined) rebuildCmIds.add(cmId);
+                        }
+                    }
+
+                    // Apply pending rebuilds (remove + add)
+                    if (rebuildCmIds.size > 0) {
+                        const current = this.view.state.field(annotationField);
+                        for (const cmId of rebuildCmIds) {
+                            const yjsKey = this.idMap.getYjsId(cmId);
+                            if (!yjsKey) continue;
+                            const node = scopeAnnotations.get(yjsKey);
+                            if (!node) continue;
+                            const rebuilt = yjsAnnotationToCodeMirror(node, ydoc, scopeYtext, cmId);
+                            if (!rebuilt) continue;
+                            const existing = current[cmId];
+                            if (existing) effects.push(removeAnnotation.of(existing));
+                            effects.push(addAnnotation.of(rebuilt));
                         }
                     }
 
@@ -128,141 +151,84 @@ export function createAnnotationSyncPlugin(
                     }
                 };
 
-                ymap.observe(this.observer);
+                scopeAnnotations.observeDeep(this.deepObserver);
             }
 
             private _syncIdMapFromCM() {
                 const annotations = this.view.state.field(annotationField);
-                // On initial load, existing annotations need Yjs IDs registered
-                // This handles the case where local annotations exist before collab starts
                 for (const idStr of Object.keys(annotations)) {
                     const cmId = Number(idStr);
-                    // Generate a stable Yjs ID based on client and local ID
                     const yjsId = `${clientId}-init-${cmId}`;
                     this.idMap.register(yjsId, cmId);
                 }
             }
 
             update(update: ViewUpdate) {
-                // CodeMirror -> Y.Map
-                // Skip if this transaction came from Y.Map sync (yjsAnnotationSync marked)
                 if (update.transactions.some((tr) => tr.annotation(yjsAnnotationSync))) {
                     return;
                 }
-
-                const ydoc = ytext.doc;
+                const ydoc = scopeYtext.doc;
                 if (!ydoc) return;
 
                 for (const tr of update.transactions) {
                     for (const effect of tr.effects) {
                         if (effect.is(addAnnotation)) {
                             const ann = effect.value;
-                            // Check if we already have a Yjs ID for this annotation
                             let yjsId = this.idMap.getYjsId(ann.id);
                             if (!yjsId) {
-                                // New local annotation - generate Yjs ID
                                 yjsId = `${clientId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                                 this.idMap.register(yjsId, ann.id);
                             }
-
-                            const yjsAnn = codeMirrorToYjsAnnotation(ann, ytext, clientId);
-                            // Override the auto-generated ID with our tracked Yjs ID
-                            yjsAnn.id = yjsId;
-
                             const capturedYjsId = yjsId;
+                            const node = codeMirrorToYjsAnnotation(ann, scopeYtext, clientId, ydoc);
+                            node.set("id", capturedYjsId);
                             ydoc.transact(() => {
-                                ymap.set(capturedYjsId, yjsAnn);
-                            }, "local"); // 'local' origin tells observer to skip this
+                                scopeAnnotations.set(capturedYjsId, node);
+                            }, "local");
                         } else if (effect.is(removeAnnotation)) {
                             const ann = effect.value;
                             const yjsId = this.idMap.getYjsId(ann.id);
                             if (yjsId) {
                                 const capturedYjsId = yjsId;
                                 ydoc.transact(() => {
-                                    ymap.delete(capturedYjsId);
+                                    scopeAnnotations.delete(capturedYjsId);
                                 }, "local");
                                 this.idMap.remove(yjsId);
                             }
                         } else if (effect.is(updateThread)) {
                             const { annotationId, newThread } = effect.value;
                             const yjsId = this.idMap.getYjsId(annotationId);
-                            if (yjsId) {
-                                const existing = ymap.get(yjsId);
-                                if (existing) {
-                                    const capturedYjsId = yjsId;
-                                    ydoc.transact(() => {
-                                        ymap.set(capturedYjsId, {
-                                            ...existing,
-                                            thread: JSON.stringify(newThread),
-                                        });
-                                    }, "local");
+                            if (!yjsId) continue;
+                            const node = scopeAnnotations.get(yjsId);
+                            if (!node) continue;
+                            const threadArr = node.get("thread");
+                            if (!(threadArr instanceof Y.Array)) continue;
+                            const cur = threadArr.length;
+                            ydoc.transact(() => {
+                                if (newThread.length >= cur) {
+                                    // Pure append (D-93 happy path)
+                                    const appended = newThread.slice(cur).map((m) => ({ ...m }));
+                                    if (appended.length > 0) threadArr.push(appended);
+                                } else {
+                                    // Shrink / divergence — replace atomically.
+                                    threadArr.delete(0, cur);
+                                    if (newThread.length > 0) {
+                                        threadArr.push(newThread.map((m) => ({ ...m })));
+                                    }
                                 }
-                            }
+                            }, "local");
                         }
                     }
                 }
-
-                // Detect revision-specific changes not covered by explicit effects:
-                // - Internal effects (_updateActiveRevisionVersion, _addVersionToRevision, etc.)
-                //   are not exported, so we compare old vs new annotation state.
-                // - Phase 3 of annotationField also updates versions[active].doc from doc text.
-                if (update.docChanged) {
-                    this.syncRevisionChanges(update, ydoc);
-                }
-            }
-
-            /**
-             * Detect and sync revision changes that result from internal StateEffects
-             * (version switches, new versions, Phase 3 doc-text pulls) which are not
-             * exported and thus not catchable via effect.is() in update().
-             *
-             * Compares old and new annotationField state for each revision and pushes
-             * changed activeVersionIndex or versions array to Y.Map.
-             *
-             * T-08-05 / T-08-06: Remote values are validated before use in the observer;
-             * here we only write local (trusted) values to Y.Map.
-             */
-            private syncRevisionChanges(update: ViewUpdate, ydoc: Y.Doc) {
-                const oldAnnotations = update.startState.field(annotationField);
-                const newAnnotations = update.state.field(annotationField);
-
-                for (const [idStr, newAnn] of Object.entries(newAnnotations)) {
-                    if (!isAnnotationOfType(newAnn, "revision")) continue;
-
-                    const cmId = Number(idStr);
-                    const yjsId = this.idMap.getYjsId(cmId);
-                    if (!yjsId) continue;
-
-                    const existing = ymap.get(yjsId);
-                    if (!existing) continue;
-
-                    const oldAnn = oldAnnotations[cmId];
-                    if (!oldAnn || !isAnnotationOfType(oldAnn, "revision")) continue;
-
-                    const indexChanged = newAnn.activeVersionIndex !== oldAnn.activeVersionIndex;
-                    // Compare versions as JSON strings — a structural equality check.
-                    // This is safe because VersionState contains only plain JSON-serializable values.
-                    const versionsChanged =
-                        JSON.stringify(newAnn.versions) !== JSON.stringify(oldAnn.versions);
-
-                    if (indexChanged || versionsChanged) {
-                        const capturedYjsId = yjsId;
-                        const capturedVersions = JSON.stringify(newAnn.versions);
-                        const capturedIndex = newAnn.activeVersionIndex;
-                        ydoc.transact(() => {
-                            ymap.set(capturedYjsId, {
-                                ...existing,
-                                versions: capturedVersions,
-                                activeVersionIndex: capturedIndex,
-                            });
-                        }, "local");
-                    }
-                }
+                // NOTE: syncRevisionChanges removed. Revision version text is owned
+                // by the subtree Y.Text (Plan 8.5c-01 wires createYjsBinding there).
+                // Revision structural ops (add version, switch active) will go
+                // through dedicated StateEffects or subtree Y.Map updates in Plan 8.5c-01.
             }
 
             destroy() {
                 this.destroyed = true;
-                ymap.unobserve(this.observer);
+                scopeAnnotations.unobserveDeep(this.deepObserver);
                 this.idMap.clear();
             }
         },

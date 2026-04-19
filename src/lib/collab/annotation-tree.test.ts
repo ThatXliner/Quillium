@@ -255,5 +255,68 @@ describe("annotation tree", () => {
         expect(decoded).toBeNull();
     });
 
-    it.todo("observeDeep fires for descendant Y.Text changes");
+    it("observeDeep propagation: remote node appears in CM", () => {
+        // Two standalone Y.Docs (no CM ViewPlugin yet — testing pure observeDeep behavior).
+        // Peer A sets a comment annotation node into the ymap.
+        // Peer B's observeDeep fires and can read the node.
+        const a = makeHost("Hello world");
+        const b = makeHost("");
+
+        const aToB = (update: Uint8Array, origin: unknown) => {
+            if (origin === "remote") return;
+            Y.applyUpdate(b.ydoc, update, "remote");
+        };
+        const bToA = (update: Uint8Array, origin: unknown) => {
+            if (origin === "remote") return;
+            Y.applyUpdate(a.ydoc, update, "remote");
+        };
+        a.ydoc.on("update", aToB);
+        b.ydoc.on("update", bToA);
+        Y.applyUpdate(b.ydoc, Y.encodeStateAsUpdate(a.ydoc), "remote");
+        Y.applyUpdate(a.ydoc, Y.encodeStateAsUpdate(b.ydoc), "remote");
+
+        const observedKeys: string[] = [];
+        b.ymap.observeDeep((events) => {
+            for (const ev of events) {
+                if (ev.target === b.ymap && ev instanceof Y.YMapEvent) {
+                    for (const key of ev.keysChanged) {
+                        observedKeys.push(key);
+                    }
+                }
+            }
+        });
+
+        try {
+            // Peer A creates a comment annotation
+            const comment: GenericAnnotation = {
+                _type: "comment",
+                id: 0,
+                selection: EditorSelection.single(0, 5),
+                thread: [{ message: "Hi", author: "A", time: 1 }],
+            };
+            buildAndIntegrate(comment, a, "comment-1");
+
+            // Peer B's observeDeep should have fired
+            expect(observedKeys).toContain("comment-1");
+
+            // Peer B can read the node and decode it
+            const bNode = b.ymap.get("comment-1");
+            expect(bNode instanceof Y.Map).toBe(true);
+            const decoded = yjsAnnotationToCodeMirror(
+                bNode as YjsAnnotationNode,
+                b.ydoc,
+                b.ytext,
+                0,
+            );
+            expect(decoded).not.toBeNull();
+            expect(decoded!._type).toBe("comment");
+            expect(decoded!.thread.length).toBe(1);
+            expect(decoded!.thread[0].message).toBe("Hi");
+        } finally {
+            a.ydoc.off("update", aToB);
+            b.ydoc.off("update", bToA);
+            a.ydoc.destroy();
+            b.ydoc.destroy();
+        }
+    });
 });
