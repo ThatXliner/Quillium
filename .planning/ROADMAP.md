@@ -330,7 +330,11 @@ local/collab mode fork in `NestedEditorController` now that collab sync is corre
   3. Version text flows via the same mechanism in both modes (Yjs binding on the version's Y.Text, which exists in both live and local contexts after the model unification)
   4. `needsCollabModeRebuild` and its `$effect` callers fully removed from `Revision.svelte` and `RevisionModal.svelte`
   5. Integration test (non-Playwright) proves the inline editor works identically with collab on vs off for: create revision, type in inline editor, switch version, add/delete version, undo/redo
-**Plans**: to be scoped in `/gsd-plan-phase 12`
+**Plans**: 2 plans
+
+Plans:
+- [x] 12-01-PLAN.md — Wire nested editor typing to annotation sync (SYNC-05)
+- [x] 12-02-PLAN.md — Unified nested editor integration test (SYNC-05)
 
 ### Phase 13: Dogfooding Regression Suite
 **Goal**: Lock in the rebuild with integration tests that would have caught the Phase 9
