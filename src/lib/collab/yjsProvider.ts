@@ -96,6 +96,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
             auth: session.access_token,
         },
         connect: true,
+        maxBackoffTime: 5000, // 5 seconds max between retries (default is 2.5s)
     });
 
     // Track connection state via provider events
