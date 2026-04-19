@@ -289,12 +289,12 @@ main-text sync working and annotation sync intentionally disabled. Clean ground 
 **Plans**: 6 plans in 3 waves
 
 Plans:
-- [ ] 10-01-PLAN.md — Gut createAnnotationSyncPlugin write path + delete hasSubtreeForRevision (SYNC-05)
-- [ ] 10-02-PLAN.md — Strip collabSubtree from nestedEditor + remove _hasCollabSubtree branching (SYNC-05)
-- [ ] 10-03-PLAN.md — Remove needsCollabModeRebuild $effect blocks + delete subtree helpers (SYNC-05)
-- [ ] 10-04-PLAN.md — Delete tests coupled to old sync-plugin design (SYNC-05)
-- [ ] 10-05-PLAN.md — Fix remaining tests, typecheck, biome (SYNC-05)
-- [ ] 10-06-PLAN.md — Integration test for main text sync (SYNC-05)
+- [x] 10-01-PLAN.md — Gut createAnnotationSyncPlugin write path + delete hasSubtreeForRevision (SYNC-05)
+- [x] 10-02-PLAN.md — Strip collabSubtree from nestedEditor + remove _hasCollabSubtree branching (SYNC-05)
+- [x] 10-03-PLAN.md — Remove needsCollabModeRebuild $effect blocks + delete subtree helpers (SYNC-05)
+- [x] 10-04-PLAN.md — Delete tests coupled to old sync-plugin design (SYNC-05)
+- [x] 10-05-PLAN.md — Fix remaining tests, typecheck, biome (SYNC-05)
+- [x] 10-06-PLAN.md — Integration test for main text sync (SYNC-05)
 
 ### Phase 11: Unified Subtree Sync Rebuild
 **Goal**: Single source of truth for annotation state in Yjs with per-character merge

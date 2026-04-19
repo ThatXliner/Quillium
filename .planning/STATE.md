@@ -9,7 +9,7 @@ last_activity: 2026-04-19 -- Phase 9 reopened; phases 10-13 scaffolded for sync-
 progress:
   total_phases: 18
   completed_phases: 11
-  total_plans: 36
+  total_plans: 42
   completed_plans: 36
   percent: 61
 ---
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-04-18)
 ## Current Position
 
 Branch: omni-fixes
-Phase: 10 - Strip Broken Collab Sync Layer (next up)
-Plan: Not yet planned — run `/gsd-plan-phase 10`
-Status: Phase 9 reopened; 10–13 scaffolded
-Last activity: 2026-04-19 -- reopened phase 9 and added 10–13 scaffolding
+Phase: 11 - Unified Subtree Sync Rebuild
+Plan: Ready to plan
+Status: Phase 10 complete, ready for Phase 11
+Last activity: 2026-04-19 -- Phase 10 executed (6 plans, 3 waves)
 
 Progress: [███████░░░] 61%
 
