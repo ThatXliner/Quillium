@@ -15,17 +15,12 @@
 
 import { Annotation, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
-import type * as Y from "yjs";
-import { get } from "svelte/store";
 import {
     addAnnotation,
     annotationField,
     removeAnnotation,
     updateRevisionVersionState,
     updateThread,
-    _updateRevisionVersionDoc,
-    _nestedEditRevision,
-    nestedEditorEdit,
 } from "./annotationField";
 import { createNestedEditorState, translateAndDispatch } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
@@ -34,8 +29,6 @@ import { annotationEventBus } from "./eventBus";
 import type { VersionState, Annotation as AnnotationType, Annotations } from "./models";
 import type { GenericAnnotation } from "./models";
 import posthog from "$lib/posthog";
-import { getRevisionYjsId, getSubtreeContext, collabSession } from "$lib/collab";
-import { addSubtreeToUndoScope, breakUndoCapture } from "$lib/collab/yjsUndo";
 
 /** Transaction annotation marking a sync from the parent document. */
 const parentSyncEdit = Annotation.define<true>();
@@ -61,9 +54,6 @@ export class NestedEditorController {
     private _mountedVersionIndex = -1;
     private _lastDispatchedDoc = "";
     private _editorVersionIndex = 0;
-    // Plan 8.5c-01: Collab subtree tracking
-    private _hasCollabSubtree = false;
-    private _subtreeUndoManager: Y.UndoManager | undefined;
     private _lastMountedBlob: string | undefined;
 
     constructor(
@@ -84,15 +74,9 @@ export class NestedEditorController {
         return this._mountedVersionIndex;
     }
 
-    /** Whether collab owns this nested editor's subtree Y.Text. */
-    get hasCollabSubtree(): boolean {
-        return this._hasCollabSubtree;
-    }
-
     /**
      * Create the nested editor in the given host element.
-     * Plan 8.5c-01: When collab is active, installs subtree Y.Text binding
-     * and scoped annotation sync plugin instead of using JSON blob flush.
+     * Phase 10: Collab subtree bindings removed. Local-only mode.
      */
     create(
         host: HTMLDivElement,
@@ -102,49 +86,18 @@ export class NestedEditorController {
     ): void {
         if (this._editor) return;
 
-        // Resolve subtree context if collab is active for this revision.
-        let collabSubtree:
-            | { subtreeYtext: Y.Text; subtreeAnnotations: Y.Map<unknown>; clientId: string }
-            | undefined;
-        const yjsId = getRevisionYjsId(this.revisionId);
-        if (yjsId) {
-            const ctx = getSubtreeContext(yjsId, versionIndex);
-            if (ctx) {
-                const session = get(collabSession);
-                collabSubtree = {
-                    subtreeYtext: ctx.subtreeYtext,
-                    // Cast required because getSubtreeContext returns the specific
-                    // YjsAnnotationNode type, but the function parameter uses unknown
-                    subtreeAnnotations: ctx.subtreeAnnotations as Y.Map<unknown>,
-                    clientId: session?.clientID ?? "",
-                };
-                this._subtreeUndoManager = ctx.undoManager;
-                this._hasCollabSubtree = true;
-            }
-        }
-
         const state = createNestedEditorState(
             version,
             (update: ViewUpdate) => this.onNestedUpdate(update),
             this.parentView,
             this.revisionId,
             this.historyView,
-            collabSubtree,
         );
 
         this._editor = new EditorView({ state, parent: host });
         this._mountedVersionIndex = versionIndex;
         this._editorVersionIndex = versionIndex;
         this._lastDispatchedDoc = this._editor.state.doc.toString();
-
-        // Register subtree with global undo scope (D-97)
-        if (this._hasCollabSubtree && collabSubtree && this._subtreeUndoManager) {
-            addSubtreeToUndoScope(
-                this._subtreeUndoManager,
-                collabSubtree.subtreeYtext,
-                [collabSubtree.subtreeAnnotations as Y.AbstractType<unknown>],
-            );
-        }
 
         // Fire initial callback
         this.callbacks.onUpdate?.(
@@ -164,49 +117,34 @@ export class NestedEditorController {
             this._editor.focus();
         }
 
-        // Local-only rebuild trigger: snapshot the mounted blob so
-        // `needsAnnotationRebuild(version)` can detect parent-level edits that
-        // bypassed this controller. In collab mode this field stays undefined
-        // because observeDeep drives re-renders instead.
-        this._lastMountedBlob = this._hasCollabSubtree ? undefined : JSON.stringify(version);
+        // Snapshot the mounted blob so `needsAnnotationRebuild(version)` can
+        // detect parent-level edits that bypassed this controller.
+        this._lastMountedBlob = JSON.stringify(version);
     }
 
     /**
      * Destroy the nested editor. If flushBehavior is "flush" or
      * "flush-on-destroy", serializes nested state back to the parent
-     * version blob first — unless `skipFlush` is true or collab owns
-     * the subtree.
+     * version blob first — unless `skipFlush` is true.
      *
      * Pass `skipFlush: true` when a modal holds the authoritative state
      * for this revision (the modal will flush on its own destroy).
      * Without this, the inline editor's stale flush would overwrite
      * the modal's annotations with an empty blob.
-     *
-     * Plan 8.5c-01: When collab owns the subtree, skips JSON flush
-     * entirely (subtree Y.Text is the source of truth) and breaks
-     * undo capture so the next session starts a fresh undo window.
      */
     destroy(options?: { skipFlush?: boolean }): void {
         if (!this._editor) return;
 
-        if (this._hasCollabSubtree) {
-            // Collab path: break undo capture, skip flush (subtree is authoritative)
-            if (this._subtreeUndoManager) {
-                breakUndoCapture(this._subtreeUndoManager);
-            }
-        } else if (
+        if (
             !options?.skipFlush &&
             (this.flushBehavior === "flush" || this.flushBehavior === "flush-on-destroy")
         ) {
-            // Local-only path: flush to parent JSON blob
             this.flushToParent();
         }
 
         this._editor.destroy();
         this._editor = undefined;
         this._mountedVersionIndex = -1;
-        this._hasCollabSubtree = false;
-        this._subtreeUndoManager = undefined;
         this._lastMountedBlob = undefined;
     }
 
@@ -218,12 +156,6 @@ export class NestedEditorController {
      */
     syncFromParent(externalDoc: string): void {
         if (!this._editor) return;
-        // Collab path: the subtree Y.Text is authoritative and Yjs observers
-        // reconcile live. Patching the nested editor from `activeVersion.doc`
-        // would dispatch changes through yjsBinding and corrupt the current
-        // version's subtree Y.Text when the parent's `activeVersion` pointer
-        // moves (e.g., on version switch) before the controller is rebuilt.
-        if (this._hasCollabSubtree) return;
         if (externalDoc === this._lastDispatchedDoc) return;
 
         const current = this._editor.state.doc.toString();
@@ -268,41 +200,15 @@ export class NestedEditorController {
     /**
      * Signal whether the current nested EditorView must be torn down and rebuilt.
      *
-     * Collab path (`_hasCollabSubtree === true`): observeDeep reconciles live, so
-     *   the controller never needs a forced rebuild. The caller (Revision.svelte /
-     *   RevisionModal.svelte) re-renders via the observer-driven CM dispatch path.
-     *
-     * Local-only path: compare the CURRENT version blob (JSON-serialised) against
-     *   the blob we mounted. A mismatch means annotations or text shifted outside
-     *   the live editor (e.g. a parent-level undo re-wrote the version); we must
-     *   rebuild so the CM state matches the parent-authoritative blob again.
+     * Compare the CURRENT version blob (JSON-serialised) against the blob we
+     * mounted. A mismatch means annotations or text shifted outside the live
+     * editor (e.g. a parent-level undo re-wrote the version); we must rebuild
+     * so the CM state matches the parent-authoritative blob again.
      */
     needsAnnotationRebuild(version: VersionState): boolean {
-        if (this._hasCollabSubtree) return false; // observeDeep reconciles live
         if (!this._editor) return false;
         const currentBlob = JSON.stringify(version);
         return currentBlob !== this._lastMountedBlob;
-    }
-
-    /**
-     * Signal whether the editor must be rebuilt because the revision's collab
-     * mode flipped since mount. Going live mid-session registers a Yjs subtree
-     * for this revision; leaving live tears it down. The extension list passed
-     * to `createNestedEditorState` captures that choice at mount time and
-     * cannot be reconfigured without a rebuild. Callers (Revision.svelte /
-     * RevisionModal.svelte) watch `$collabSession` and destroy+recreate when
-     * this returns true.
-     *
-     * Why this matters: with a subtree registered, the annotationField reducer
-     * short-circuits Phase 3 (doc → versions[i].doc) assuming the collab path
-     * in `onNestedUpdate` is writing the version text. But that collab path
-     * only runs when `_hasCollabSubtree` is true — which is the branch this
-     * check catches when stale.
-     */
-    needsCollabModeRebuild(): boolean {
-        if (!this._editor) return false;
-        const subtreeAvailable = getRevisionYjsId(this.revisionId) !== null;
-        return subtreeAvailable !== this._hasCollabSubtree;
     }
 
     /**
@@ -330,11 +236,6 @@ export class NestedEditorController {
      *   1. Doc changes → translateAndDispatch (maps changes to parent coordinates)
      *   2. Annotation changes → flushAnnotationStateToParent (serializes
      *      annotationField blob to the parent's version state)
-     *
-     * Plan 8.5c-01: When collab owns the subtree, both paths are skipped.
-     * createYjsBinding handles doc sync, and createAnnotationSyncPlugin
-     * handles annotation sync. No flush needed — the subtree Y.Text and
-     * Y.Map ARE the source of truth.
      */
     private onNestedUpdate(update: ViewUpdate): void {
         if (!this._editor) return;
@@ -345,70 +246,22 @@ export class NestedEditorController {
             (tr) => tr.annotation(parentSyncEdit) === true,
         );
 
-        // Local-only path: translate doc changes and flush annotation state
-        if (!this._hasCollabSubtree) {
-            if (!isParentSync && translateAndDispatch(update, this.parentView, this.revisionId)) {
-                this._lastDispatchedDoc = this._editor.state.doc.toString();
-            }
-
-            // Detect annotation-only mutations (add/remove/update effects) and
-            // propagate them to the parent's version blob so they enter the
-            // parent's undo history.
-            if (this.flushBehavior !== "no-flush" && !isParentSync) {
-                if (this.hasAnnotationMutationEffect(update)) {
-                    this.flushAnnotationStateToParent(true);
-                } else if (update.docChanged && this.hasNestedAnnotations()) {
-                    // Bookkeeping flush: keep blob positions in sync with doc.
-                    this.flushAnnotationStateToParent(false);
-                }
-            }
-        } else if (update.docChanged && !isParentSync) {
-            // Collab path: bundle the parent doc slice update + versions[i].doc
-            // update into ONE transaction so no intermediate state is observable.
-            // See onNestedUpdate JSDoc for why each of these is required.
-            const newDoc = this._editor.state.doc.toString();
-            const rev = this.parentView.state.field(annotationField)[this.revisionId] as
-                | AnnotationType<"revision">
-                | undefined;
-            const isActive = !!rev && rev.activeVersionIndex === this._editorVersionIndex;
-            const dispatchSpec: Parameters<EditorView["dispatch"]>[0] = {
-                effects: [
-                    _updateRevisionVersionDoc.of({
-                        annotationId: this.revisionId,
-                        versionIndex: this._editorVersionIndex,
-                        doc: newDoc,
-                    }),
-                ],
-            };
-            if (isActive && rev) {
-                // Translate nested-coord changes to parent-coord changes, then
-                // apply them alongside the version doc effect in one go.
-                const offset = rev.selection.main.from;
-                const parentChanges: { from: number; to: number; insert: string }[] = [];
-                update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-                    parentChanges.push({
-                        from: offset + fromA,
-                        to: offset + toA,
-                        insert: inserted.toString(),
-                    });
-                });
-                if (parentChanges.length > 0) {
-                    dispatchSpec.changes = parentChanges;
-                    dispatchSpec.effects = [
-                        ...(dispatchSpec.effects as readonly unknown[]),
-                        _nestedEditRevision.of(this.revisionId),
-                    ] as never;
-                    dispatchSpec.annotations = [
-                        nestedEditorEdit.of(this.revisionId),
-                        Transaction.addToHistory.of(true),
-                    ];
-                    this._lastDispatchedDoc = newDoc;
-                }
-            }
-            this.parentView.dispatch(dispatchSpec);
+        // Translate doc changes and flush annotation state
+        if (!isParentSync && translateAndDispatch(update, this.parentView, this.revisionId)) {
+            this._lastDispatchedDoc = this._editor.state.doc.toString();
         }
-        // On the collab subtree path, createYjsBinding handles doc sync to Y.Text
-        // and createAnnotationSyncPlugin handles sub-annotation sync.
+
+        // Detect annotation-only mutations (add/remove/update effects) and
+        // propagate them to the parent's version blob so they enter the
+        // parent's undo history.
+        if (this.flushBehavior !== "no-flush" && !isParentSync) {
+            if (this.hasAnnotationMutationEffect(update)) {
+                this.flushAnnotationStateToParent(true);
+            } else if (update.docChanged && this.hasNestedAnnotations()) {
+                // Bookkeeping flush: keep blob positions in sync with doc.
+                this.flushAnnotationStateToParent(false);
+            }
+        }
 
         this.callbacks.onUpdate?.(
             this._editor.state.field(annotationField),
