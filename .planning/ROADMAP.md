@@ -262,9 +262,9 @@ Plans:
 **Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 09-01-PLAN.md — Integration tests for all bug invariants (SYNC-05)
-- [ ] 09-02-PLAN.md — D-100 Room-as-View architecture + D-103 prior-view restore (SYNC-05)
-- [ ] 09-03-PLAN.md — Fix sync bugs: Y.Text -> versions[i].doc, D-110 lazy subscription (SYNC-05)
+- [x] 09-01-PLAN.md — Integration tests for all bug invariants (SYNC-05)
+- [x] 09-02-PLAN.md — D-100 Room-as-View architecture + D-103 prior-view restore (SYNC-05)
+- [x] 09-03-PLAN.md — Verify sync bugs fixed by 8.5a-c (SYNC-05)
 
 
 **Execution Order:**
@@ -285,7 +285,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
 | 8.5b. CRDT Sync Plumbing | 2/2 | Complete | 2026-04-19 |
 | 8.5c. CRDT Nested Editor Wiring | 2/2 | Complete | 2026-04-18 |
-| 9. Fix Live Collab Revision Editing Bugs | 0/3 | Planned | - |
+| 9. Fix Live Collab Revision Editing Bugs | 3/3 | Complete | 2026-04-19 |
 
 ---
 
