@@ -6,6 +6,9 @@
  *
  * Per D-90/D-92: YjsAnnotationNode is a recursive Y.Map structure with Y.Array for
  * threads and Y.Map for versions. Tests must read values via .get() on Y types.
+ *
+ * Phase 10: Write path (CM -> Yjs) disabled. Tests for write path skipped.
+ * Phase 11 will rebuild and re-enable these tests.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorState, EditorSelection } from "@codemirror/state";
@@ -63,7 +66,8 @@ describe("yjsAnnotations", () => {
     });
 
     describe("CodeMirror -> Y.Map sync", () => {
-        it("propagates addAnnotation to Y.Map", () => {
+        // Phase 10: write path disabled — these tests are skipped until Phase 11 rebuilds it
+        it.skip("propagates addAnnotation to Y.Map", () => {
             const annotation = createTestAnnotation(0, 0, 5);
 
             view.dispatch({
@@ -75,7 +79,7 @@ describe("yjsAnnotations", () => {
             expect(yjsAnn.get("_type")).toBe("comment");
         });
 
-        it("propagates removeAnnotation to Y.Map", () => {
+        it.skip("propagates removeAnnotation to Y.Map", () => {
             // First add an annotation
             const annotation = createTestAnnotation(0, 0, 5);
             view.dispatch({
@@ -90,7 +94,7 @@ describe("yjsAnnotations", () => {
             expect(ymap.size).toBe(0);
         });
 
-        it("propagates updateThread to Y.Map via Y.Array.push", () => {
+        it.skip("propagates updateThread to Y.Map via Y.Array.push", () => {
             // First add an annotation
             const annotation = createTestAnnotation(0, 0, 5);
             view.dispatch({
@@ -175,7 +179,8 @@ describe("yjsAnnotations", () => {
             ydoc2.destroy();
         });
 
-        it("removes CM annotation from remote Y.Map delete", () => {
+        // Phase 10: This test requires the write path to add the annotation first
+        it.skip("removes CM annotation from remote Y.Map delete", () => {
             // First add locally
             const annotation = createTestAnnotation(0, 0, 5);
             view.dispatch({
@@ -221,7 +226,8 @@ describe("yjsAnnotations", () => {
     });
 
     describe("annotation types", () => {
-        it("syncs comment annotations", () => {
+        // Phase 10: write path disabled — these tests are skipped until Phase 11 rebuilds it
+        it.skip("syncs comment annotations", () => {
             const annotation: GenericAnnotation = {
                 id: 0,
                 _type: "comment",
@@ -239,7 +245,7 @@ describe("yjsAnnotations", () => {
             expect(threadArr.length).toBe(1);
         });
 
-        it("syncs suggestion annotations", () => {
+        it.skip("syncs suggestion annotations", () => {
             const annotation: GenericAnnotation = {
                 id: 0,
                 _type: "suggestion",
@@ -262,7 +268,7 @@ describe("yjsAnnotations", () => {
             expect((replacements.get(0) as { text: string }).text).toBe("replacement");
         });
 
-        it("syncs revision annotations", () => {
+        it.skip("syncs revision annotations", () => {
             const annotation: GenericAnnotation = {
                 id: 0,
                 _type: "revision",
@@ -331,7 +337,8 @@ describe("revision sync", () => {
         ydoc.destroy();
     });
 
-    it("syncs activeVersionIndex change to Y.Map via remove+add", () => {
+    // Phase 10: write path disabled — these tests are skipped until Phase 11 rebuilds it
+    it.skip("syncs activeVersionIndex change to Y.Map via remove+add", () => {
         const annotation = createRevisionAnnotation(
             0,
             0,
@@ -360,7 +367,7 @@ describe("revision sync", () => {
         expect(yjsAnn.get("activeVersionIndex")).toBe(1);
     });
 
-    it("syncs new version addition to Y.Map via remove+add", () => {
+    it.skip("syncs new version addition to Y.Map via remove+add", () => {
         const annotation = createRevisionAnnotation(0, 0, 5, [{ doc: "hello" }], 0);
 
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
@@ -389,7 +396,8 @@ describe("revision sync", () => {
         expect(v1Text.toString()).toBe("new version");
     });
 
-    it("receives remote activeVersionIndex change via shallow Y.Map update", () => {
+    // Phase 10: This test requires write path to add the initial annotation
+    it.skip("receives remote activeVersionIndex change via shallow Y.Map update", () => {
         const annotation = createRevisionAnnotation(
             0,
             0,
@@ -447,7 +455,8 @@ describe("thread sync", () => {
         ydoc.destroy();
     });
 
-    it("receives remote thread reply via Y.Array.push", () => {
+    // Phase 10: This test requires write path to add the initial annotation
+    it.skip("receives remote thread reply via Y.Array.push", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "comment",
@@ -473,7 +482,8 @@ describe("thread sync", () => {
         expect(updated.thread[1].author).toBe("user2");
     });
 
-    it("syncs local thread update to Y.Map via Y.Array.push", () => {
+    // Phase 10: write path disabled — this test is skipped until Phase 11 rebuilds it
+    it.skip("syncs local thread update to Y.Map via Y.Array.push", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "comment",
@@ -529,7 +539,8 @@ describe("suggestion sync", () => {
         ydoc.destroy();
     });
 
-    it("syncs suggestion acceptance state (removal)", () => {
+    // Phase 10: write path disabled — this test is skipped until Phase 11 rebuilds it
+    it.skip("syncs suggestion acceptance state (removal)", () => {
         const annotation: GenericAnnotation = {
             id: 0,
             _type: "suggestion",
