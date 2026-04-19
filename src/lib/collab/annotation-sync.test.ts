@@ -20,8 +20,15 @@ import {
     teardown,
     type Peer,
 } from "./test-helpers/twoPeerHarness";
-import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    annotationField,
+    addAnnotation,
+    removeAnnotation,
+} from "$lib/editor/plugins/annotations/annotationField";
+import {
+    isAnnotationOfType,
+    type GenericAnnotation,
+} from "$lib/editor/plugins/annotations/models";
 
 function createComment(id: number, from: number, to: number): GenericAnnotation {
     return {
@@ -66,13 +73,99 @@ describe("annotation sync (Phase 11)", () => {
     });
 
     describe("comment sync", () => {
-        it.todo("owner creates comment, joiner sees it");
-        it.todo("joiner creates comment, owner sees it");
-        it.todo("comment deletion syncs between peers");
+        it("owner creates comment, joiner sees it", async () => {
+            // Owner creates a comment on "world" (positions 6-11)
+            const comment = createComment(1, 6, 11);
+            peerA.view.dispatch({
+                effects: addAnnotation.of(comment),
+            });
+
+            // Allow microtask queue to flush for sync
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the comment
+            const annB = peerB.view.state.field(annotationField);
+            const keys = Object.keys(annB);
+            expect(keys.length).toBe(1);
+
+            const syncedAnn = Object.values(annB)[0];
+            expect(isAnnotationOfType(syncedAnn, "comment")).toBe(true);
+            expect(syncedAnn.selection.main.from).toBe(6);
+            expect(syncedAnn.selection.main.to).toBe(11);
+        });
+
+        it("joiner creates comment, owner sees it", async () => {
+            // Joiner creates a comment on "hello" (positions 0-5)
+            const comment = createComment(1, 0, 5);
+            peerB.view.dispatch({
+                effects: addAnnotation.of(comment),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Owner should see the comment
+            const annA = peerA.view.state.field(annotationField);
+            const keys = Object.keys(annA);
+            expect(keys.length).toBe(1);
+
+            const syncedAnn = Object.values(annA)[0];
+            expect(isAnnotationOfType(syncedAnn, "comment")).toBe(true);
+            expect(syncedAnn.selection.main.from).toBe(0);
+            expect(syncedAnn.selection.main.to).toBe(5);
+        });
+
+        it("comment deletion syncs between peers", async () => {
+            // Owner creates a comment
+            const comment = createComment(1, 0, 5);
+            peerA.view.dispatch({
+                effects: addAnnotation.of(comment),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Verify joiner has it
+            let annB = peerB.view.state.field(annotationField);
+            expect(Object.keys(annB).length).toBe(1);
+
+            // Owner deletes the comment
+            const annA = peerA.view.state.field(annotationField);
+            const toDelete = Object.values(annA)[0];
+            peerA.view.dispatch({
+                effects: removeAnnotation.of(toDelete),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see deletion
+            annB = peerB.view.state.field(annotationField);
+            expect(Object.keys(annB).length).toBe(0);
+        });
     });
 
     describe("revision sync", () => {
-        it.todo("owner creates revision, joiner sees it with version text");
+        it("owner creates revision, joiner sees it with version text", async () => {
+            // Owner creates a revision on "world" with version text
+            const revision = createRevision(1, 6, 11, "world");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the revision with version
+            const annB = peerB.view.state.field(annotationField);
+            const keys = Object.keys(annB);
+            expect(keys.length).toBe(1);
+
+            const syncedAnn = Object.values(annB)[0];
+            expect(isAnnotationOfType(syncedAnn, "revision")).toBe(true);
+            if (isAnnotationOfType(syncedAnn, "revision")) {
+                expect(syncedAnn.versions.length).toBeGreaterThanOrEqual(1);
+                expect(syncedAnn.versions[0].doc).toBe("world");
+                expect(syncedAnn.activeVersionIndex).toBe(0);
+            }
+        });
+
         it.todo("concurrent typing in same version merges character-by-character");
         it.todo("activeVersionIndex switch on owner propagates to joiner");
         it.todo("add version on owner propagates to joiner");
@@ -85,7 +178,69 @@ describe("annotation sync (Phase 11)", () => {
     });
 
     describe("initial sync", () => {
-        it.todo("joiner sees owner pre-existing annotations on connect");
-        it.todo("owner sees joiner pre-existing annotations on connect");
+        it("joiner sees owner pre-existing annotations on connect", async () => {
+            // Create owner with pre-existing comment BEFORE connecting
+            teardown(peerA);
+            teardown(peerB);
+            disconnect();
+
+            // Create owner with initial text and comment
+            peerA = makePeerWithAnnotationSync("peer-a", "hello world");
+            const comment = createComment(1, 0, 5);
+            peerA.view.dispatch({
+                effects: addAnnotation.of(comment),
+            });
+
+            // Allow owner's sync to Yjs
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Now create joiner and connect
+            peerB = makePeerWithAnnotationSync("peer-b");
+            disconnect = connect(peerA, peerB);
+
+            // Allow initial sync
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see owner's pre-existing annotation
+            const annB = peerB.view.state.field(annotationField);
+            expect(Object.keys(annB).length).toBe(1);
+
+            const syncedAnn = Object.values(annB)[0];
+            expect(isAnnotationOfType(syncedAnn, "comment")).toBe(true);
+        });
+
+        it("owner sees joiner pre-existing annotations on connect", async () => {
+            // Note: This is an edge case - normally joiner doesn't have pre-existing.
+            // But if they do (e.g., reconnect scenario), owner should see them.
+            teardown(peerA);
+            teardown(peerB);
+            disconnect();
+
+            // Create both peers with their own annotations
+            peerA = makePeerWithAnnotationSync("peer-a", "hello world");
+            peerB = makePeerWithAnnotationSync("peer-b", "hello world");
+
+            // Each creates their own comment
+            peerA.view.dispatch({
+                effects: addAnnotation.of(createComment(1, 0, 5)),
+            });
+            peerB.view.dispatch({
+                effects: addAnnotation.of(createComment(2, 6, 11)),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Now connect
+            disconnect = connect(peerA, peerB);
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Both should have both annotations
+            const annA = peerA.view.state.field(annotationField);
+            const annB = peerB.view.state.field(annotationField);
+
+            expect(Object.keys(annA).length).toBe(2);
+            expect(Object.keys(annB).length).toBe(2);
+        });
     });
 });
