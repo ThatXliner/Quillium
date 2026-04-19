@@ -64,7 +64,6 @@ import {
     type ModalEntry,
 } from "$lib/stores";
 import { annotationEventBus } from "./eventBus";
-import { collabSession } from "$lib/collab/store";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { appSettings } from "$lib/settings.svelte";
@@ -506,17 +505,8 @@ $effect(() => {
     send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
 });
 
-// Going live (or leaving) mid-session must rebuild the nested editor.
-// See Revision.svelte for the full explanation (bug #1): the extension list
-// captures the local-vs-collab decision at mount time and cannot be
-// reconfigured live, so we route this transition through the FSM's rebuild
-// path (same as version switches).
-$effect(() => {
-    void $collabSession;
-    if (fsmState !== "ready" || !controller.editor || !isTop) return;
-    if (!controller.needsCollabModeRebuild()) return;
-    send({ type: "REBUILD_REQUESTED" });
-});
+// Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
+// is no longer needed - nested editors always use local-only mode.
 
 // Close the version dropdown when clicking outside of it.
 $effect(() => {
