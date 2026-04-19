@@ -20,8 +20,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Client Collab** - CodeMirror collab integration with real-time sync
 - [x] **Phase 6.5: Collab Polish** - Live cursors, owner disconnect handling, dev setup docs
 - [x] **Phase 7: Connection UX** - Status indicator and reconnection handling
-- [ ] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
-- [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
+- [x] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
+- [x] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
 - [x] **Phase 8.5a: CRDT Data Shape** - Recursive Y.Map annotation shape + converters (INSERTED)
 - [x] **Phase 8.5b: CRDT Sync Plumbing** - Scoped observeDeep plugin + undo-scope helper (INSERTED)
 - [x] **Phase 8.5c: CRDT Nested Editor Wiring** - Subtree bindings + undo auto-nav (INSERTED)
@@ -171,13 +171,13 @@ Plans:
 **UI hint**: no (backend refactor)
 
 Plans:
-- [ ] 07.5-01-PLAN.md — Install Yjs deps, create Y.Text <-> CodeMirror binding (SYNC-10)
-- [ ] 07.5-02-PLAN.md — UndoManager integration, awareness-based cursors (SYNC-10)
-- [ ] 07.5-03-PLAN.md — WebsocketProvider wrapper with auth (SYNC-10)
-- [ ] 07.5-04-PLAN.md — Relay: Yjs sync handler, persistence module (SYNC-10)
-- [ ] 07.5-05-PLAN.md — Relay: Server rewrite with native WebSocket + Yjs (SYNC-10)
-- [ ] 07.5-06-PLAN.md — Client: Wire up Yjs in index.ts, update GoLiveButton (SYNC-10)
-- [ ] 07.5-07-PLAN.md — Remove OT code, manual integration verification (SYNC-10)
+- [x] 07.5-01-PLAN.md — Install Yjs deps, create Y.Text <-> CodeMirror binding (SYNC-10)
+- [x] 07.5-02-PLAN.md — UndoManager integration, awareness-based cursors (SYNC-10)
+- [x] 07.5-03-PLAN.md — WebsocketProvider wrapper with auth (SYNC-10)
+- [x] 07.5-04-PLAN.md — Relay: Yjs sync handler, persistence module (SYNC-10)
+- [x] 07.5-05-PLAN.md — Relay: Server rewrite with native WebSocket + Yjs (SYNC-10)
+- [x] 07.5-06-PLAN.md — Client: Wire up Yjs in index.ts, update GoLiveButton (SYNC-10)
+- [x] 07.5-07-PLAN.md — Remove OT code, manual integration verification (SYNC-10)
 
 ### Phase 8: Annotation Sync
 **Goal**: Comments and revisions sync between collaborators
@@ -192,12 +192,12 @@ Plans:
 **UI hint**: no (backend sync layer)
 
 Plans:
-- [ ] 08-01-PLAN.md — Types, schemas, RelativePosition utilities (SYNC-05)
-- [ ] 08-02-PLAN.md — UndoManager extension for unified undo (SYNC-05)
-- [ ] 08-03-PLAN.md — Annotation sync ViewPlugin with bidirectional sync (SYNC-05)
-- [ ] 08-04-PLAN.md — Revision-specific sync (version switches, additions) (SYNC-05)
-- [ ] 08-05-PLAN.md — Wire annotation sync into collab module (SYNC-05)
-- [ ] 08-06-PLAN.md — Convergence tests and manual verification (SYNC-05)
+- [x] 08-01-PLAN.md — Types, schemas, RelativePosition utilities (SYNC-05)
+- [x] 08-02-PLAN.md — UndoManager extension for unified undo (SYNC-05)
+- [x] 08-03-PLAN.md — Annotation sync ViewPlugin with bidirectional sync (SYNC-05)
+- [x] 08-04-PLAN.md — Revision-specific sync (version switches, additions) (SYNC-05)
+- [x] 08-05-PLAN.md — Wire annotation sync into collab module (SYNC-05)
+- [x] 08-06-PLAN.md — Convergence tests and manual verification (SYNC-05)
 
 ### Phase 8.5a: CRDT Data Shape (INSERTED)
 **Goal**: Rewrite the YjsAnnotation data model from a flat JSON blob into a recursive Y.Map node with Y.Text/Y.Array/Y.Map children, so every revision version owns a dedicated Y.Text subtree
@@ -262,9 +262,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 5. Relay Persistence | 3/3 | Complete | 2025-04-17 |
 | 6. Client Collab | 3/3 | Complete | 2025-04-17 |
 | 6.5. Collab Polish | 4/4 | Complete | 2025-04-17 |
-| 7. Connection UX | 0/1 | Not started | - |
-| 7.5. Yjs Migration | 0/7 | Not started | - |
-| 8. Annotation Sync | 0/6 | Not started | - |
+| 7. Connection UX | 1/1 | Complete | 2026-04-19 |
+| 7.5. Yjs Migration | 7/7 | Complete | - |
+| 8. Annotation Sync | 6/6 | Complete | - |
 | 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
 | 8.5b. CRDT Sync Plumbing | 2/2 | Complete | 2026-04-19 |
 | 8.5c. CRDT Nested Editor Wiring | 2/2 | Complete | 2026-04-18 |
