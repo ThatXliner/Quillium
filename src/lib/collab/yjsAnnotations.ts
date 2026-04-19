@@ -38,6 +38,7 @@ import {
     _deleteVersionFromRevision,
     _updateRevisionVersionDoc,
     _updateRevisionVersionLabel,
+    _updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     isAnnotationOfType,
@@ -263,7 +264,8 @@ export function createAnnotationSyncPlugin(
                             e.is(_addVersionToRevision) ||
                             e.is(_deleteVersionFromRevision) ||
                             e.is(_updateRevisionVersionDoc) ||
-                            e.is(_updateRevisionVersionLabel),
+                            e.is(_updateRevisionVersionLabel) ||
+                            e.is(_updateRevisionVersionState),
                     ),
                 );
                 if (!hasAnnotationEffect) return;

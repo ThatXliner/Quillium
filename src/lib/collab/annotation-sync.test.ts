@@ -24,6 +24,10 @@ import {
     annotationField,
     addAnnotation,
     removeAnnotation,
+    updateRevisionVersionState,
+    setActiveRevisionVersion,
+    createNewRevision as createNewRevisionTx,
+    deleteRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     isAnnotationOfType,
@@ -166,10 +170,152 @@ describe("annotation sync (Phase 11)", () => {
             }
         });
 
-        it.todo("concurrent typing in same version merges character-by-character");
-        it.todo("activeVersionIndex switch on owner propagates to joiner");
-        it.todo("add version on owner propagates to joiner");
-        it.todo("delete version on owner propagates to joiner");
+        it("version text update syncs between peers", async () => {
+            // Owner creates a revision
+            const revision = createRevision(1, 6, 11, "world");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Get annotation ID on owner
+            const annA = peerA.view.state.field(annotationField);
+            const annIdA = Number(Object.keys(annA)[0]);
+
+            // Owner updates version text
+            const trA = updateRevisionVersionState(peerA.view.state, annIdA, 0, {
+                doc: "modified world",
+            });
+            peerA.view.dispatch(trA);
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the updated text
+            const annB = peerB.view.state.field(annotationField);
+            const revB = Object.values(annB)[0];
+
+            if (isAnnotationOfType(revB, "revision")) {
+                expect(revB.versions[0].doc).toBe("modified world");
+            } else {
+                expect.fail("Expected revision annotation");
+            }
+        });
+
+        it("activeVersionIndex switch on owner propagates to joiner", async () => {
+            // Owner creates revision with initial version
+            const revision = createRevision(1, 6, 11, "version0");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Get annotation ID
+            const annA = peerA.view.state.field(annotationField);
+            const annIdA = Number(Object.keys(annA)[0]);
+
+            // Owner adds a second version
+            const addTr = createNewRevisionTx(peerA.view.state, annIdA);
+            peerA.view.dispatch(addTr);
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Verify both peers have 2 versions
+            let revA = Object.values(peerA.view.state.field(annotationField))[0];
+            let revB = Object.values(peerB.view.state.field(annotationField))[0];
+
+            if (!isAnnotationOfType(revA, "revision") || !isAnnotationOfType(revB, "revision")) {
+                expect.fail("Expected revision annotations");
+                return;
+            }
+
+            expect(revA.versions.length).toBe(2);
+            expect(revB.versions.length).toBe(2);
+            expect(revA.activeVersionIndex).toBe(1); // createNewRevision switches to new version
+            expect(revB.activeVersionIndex).toBe(1);
+
+            // Owner switches back to version 0
+            const switchTr = setActiveRevisionVersion(peerA.view.state, annIdA, 0);
+            peerA.view.dispatch(switchTr);
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the switch
+            revA = Object.values(peerA.view.state.field(annotationField))[0] as typeof revA;
+            revB = Object.values(peerB.view.state.field(annotationField))[0] as typeof revB;
+
+            expect(revA.activeVersionIndex).toBe(0);
+            expect(revB.activeVersionIndex).toBe(0);
+        });
+
+        it("add version on owner propagates to joiner", async () => {
+            // Owner creates revision with initial version
+            const revision = createRevision(1, 6, 11, "v0");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
+
+            // Owner adds a new version
+            const addTr = createNewRevisionTx(peerA.view.state, annIdA);
+            peerA.view.dispatch(addTr);
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the new version
+            const revB = Object.values(peerB.view.state.field(annotationField))[0];
+
+            if (isAnnotationOfType(revB, "revision")) {
+                expect(revB.versions.length).toBe(2);
+            } else {
+                expect.fail("Expected revision annotation");
+            }
+        });
+
+        it("delete version on owner propagates to joiner", async () => {
+            // Owner creates revision and adds a second version
+            const revision = createRevision(1, 6, 11, "v0");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
+
+            // Add second version
+            const addTr = createNewRevisionTx(peerA.view.state, annIdA);
+            peerA.view.dispatch(addTr);
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Verify both have 2 versions
+            let revB = Object.values(peerB.view.state.field(annotationField))[0];
+            if (!isAnnotationOfType(revB, "revision")) {
+                expect.fail("Expected revision");
+                return;
+            }
+            expect(revB.versions.length).toBe(2);
+
+            // Owner deletes version 1 (the new one)
+            const delTr = deleteRevisionVersion(peerA.view.state, annIdA, 1);
+            peerA.view.dispatch(delTr);
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the deletion
+            revB = Object.values(peerB.view.state.field(annotationField))[0];
+
+            if (isAnnotationOfType(revB, "revision")) {
+                expect(revB.versions.length).toBe(1);
+            } else {
+                expect.fail("Expected revision annotation");
+            }
+        });
     });
 
     describe("thread sync", () => {

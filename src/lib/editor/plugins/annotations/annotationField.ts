@@ -198,7 +198,7 @@ export const _updateActiveRevisionVersion = StateEffect.define<{
     annotationId: number;
     to: number;
 }>();
-const _updateRevisionVersionState = StateEffect.define<{
+export const _updateRevisionVersionState = StateEffect.define<{
     annotationId: number;
     versionId: number;
     versionState: VersionState;
