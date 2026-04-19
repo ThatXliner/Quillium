@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Relay Persistence** - Durable update storage and server restart recovery
 - [x] **Phase 6: Client Collab** - CodeMirror collab integration with real-time sync
 - [x] **Phase 6.5: Collab Polish** - Live cursors, owner disconnect handling, dev setup docs
-- [ ] **Phase 7: Connection UX** - Status indicator and reconnection handling
+- [x] **Phase 7: Connection UX** - Status indicator and reconnection handling
 - [ ] **Phase 7.5: Yjs Migration** - Replace OT with Yjs CRDT (INSERTED)
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
 - [x] **Phase 8.5a: CRDT Data Shape** - Recursive Y.Map annotation shape + converters (INSERTED)
@@ -153,7 +153,7 @@ Plans:
 **Note**: StatusBar and GoLiveButton already handle reconnection display and toasts. Only yjsProvider.ts needs modification to track attempts and transition to error state.
 
 Plans:
-- [ ] 07-01-PLAN.md — Reconnection tracking and backoff in yjsProvider.ts (SYNC-03, SYNC-04)
+- [x] 07-01-PLAN.md — Reconnection tracking and backoff in yjsProvider.ts (SYNC-03, SYNC-04)
 
 ### Phase 7.5: Yjs Migration (INSERTED)
 **Goal**: Replace OT (@codemirror/collab) with Yjs CRDT for more robust sync
