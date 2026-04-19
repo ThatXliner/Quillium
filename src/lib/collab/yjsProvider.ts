@@ -28,7 +28,7 @@ import type { Awareness } from "y-protocols/awareness";
 import { getSession } from "$lib/auth/auth.svelte";
 import { PUBLIC_RELAY_URL } from "$env/static/public";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
-import type { YjsAnnotation } from "./types";
+import type { YjsAnnotationNode } from "./types";
 
 /** True if PUBLIC_RELAY_URL is configured */
 export const relayConfigured = !!PUBLIC_RELAY_URL;
@@ -50,7 +50,7 @@ export interface YjsProviderResult {
     awareness: Awareness;
     ydoc: Y.Doc;
     ytext: Y.Text;
-    ymap: Y.Map<YjsAnnotation>;
+    ymap: Y.Map<YjsAnnotationNode>;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     // Create Y.Doc and get text shared type
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
-    const ymap = ydoc.getMap<YjsAnnotation>("annotations");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
 
     // Create WebsocketProvider with JWT auth in params (per D-71)
     const provider = new WebsocketProvider(PUBLIC_RELAY_URL, docId, ydoc, {
