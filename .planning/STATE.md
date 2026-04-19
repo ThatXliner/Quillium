@@ -1,37 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: completed
-stopped_at: context exhaustion at 90% (2026-04-19)
-last_updated: "2026-04-19T21:43:33.150Z"
-last_activity: 2026-04-19
+milestone: v1.1
+milestone_name: PRE-V2 FIX ANNOTATION SYNC
+status: in_progress
+stopped_at: 
+last_updated: "2026-04-19T21:50:00.000Z"
+last_activity: 2026-04-19 -- v1.1 milestone started
 progress:
-  total_phases: 18
-  completed_phases: 14
-  total_plans: 49
-  completed_plans: 49
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-18)
+See: .planning/PROJECT.md (updated 2026-04-19)
 
-**Core value:** Two Quillium instances can connect and see each other's edits in real-time
-**Current focus:** Phases 10–13 — rewrite the collab annotation sync layer on the `omni-fixes` branch. Phase 9's work landed but did not achieve its goal (inline-editor and active-version bugs persist in the real app).
+**Core value:** Two Quillium instances can connect and see each other's edits in real-time, including annotations and revision versions, without divergence or data loss
+**Current focus:** v1.1 milestone — re-architect annotation sync (CM annotationField ↔ Y.Map) to fix the recurring bug class that plagued v1.0 Phases 9-13
 
 ## Current Position
 
 Branch: omni-fixes
-Phase: 11 - Unified Subtree Sync Rebuild
-Plan: Ready to plan
-Status: Phase 10 complete, ready for Phase 11
-Last activity: 2026-04-19
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-19 — v1.1 milestone started
 
-Progress: [███████░░░] 61%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
