@@ -285,6 +285,27 @@ export class NestedEditorController {
     }
 
     /**
+     * Signal whether the editor must be rebuilt because the revision's collab
+     * mode flipped since mount. Going live mid-session registers a Yjs subtree
+     * for this revision; leaving live tears it down. The extension list passed
+     * to `createNestedEditorState` captures that choice at mount time and
+     * cannot be reconfigured without a rebuild. Callers (Revision.svelte /
+     * RevisionModal.svelte) watch `$collabSession` and destroy+recreate when
+     * this returns true.
+     *
+     * Why this matters: with a subtree registered, the annotationField reducer
+     * short-circuits Phase 3 (doc → versions[i].doc) assuming the collab path
+     * in `onNestedUpdate` is writing the version text. But that collab path
+     * only runs when `_hasCollabSubtree` is true — which is the branch this
+     * check catches when stale.
+     */
+    needsCollabModeRebuild(): boolean {
+        if (!this._editor) return false;
+        const subtreeAvailable = getRevisionYjsId(this.revisionId) !== null;
+        return subtreeAvailable !== this._hasCollabSubtree;
+    }
+
+    /**
      * Consume a pending selection event from the event bus for
      * the controller's revision, if one exists.
      */

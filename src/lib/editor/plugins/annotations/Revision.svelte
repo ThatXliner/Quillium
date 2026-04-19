@@ -41,6 +41,7 @@ import { versionText, type VersionState } from "./models";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { modalStack } from "$lib/stores";
+import { collabSession } from "$lib/collab/store";
 import { annotationEventBus } from "./eventBus";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
@@ -345,6 +346,23 @@ $effect(() => {
     if (!controller.editor || !isEditorOpen || !activeVersion) return;
     if (controller.needsVersionSwitch(revision.activeVersionIndex)) return;
     if (!controller.needsAnnotationRebuild(activeVersion)) return;
+    destroyNestedEditor();
+    createNestedEditor(activeVersion);
+});
+
+// Going live (or leaving) mid-session must rebuild the nested editor.
+// The extension list chosen at mount time captures the local-vs-collab
+// decision — you can't reconfigure it live. Without this rebuild, the
+// inline editor mounted before Go Live keeps running the local sync path,
+// but annotationField Phase 3 has already short-circuited for the now-live
+// revision (hasSubtreeForRevision returns true), so version text updates
+// get dropped on the floor (bug #1).
+$effect(() => {
+    // Track collabSession by reading the store in this effect so Svelte
+    // subscribes us to its changes. The body doesn't use the value directly.
+    void $collabSession;
+    if (!controller.editor || !isEditorOpen || !activeVersion) return;
+    if (!controller.needsCollabModeRebuild()) return;
     destroyNestedEditor();
     createNestedEditor(activeVersion);
 });
