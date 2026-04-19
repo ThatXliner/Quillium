@@ -248,10 +248,27 @@ Plans:
 - [x] 08.5c-01-PLAN.md — NestedEditorController subtree binding + annotationField Phase 3 gating (SYNC-05)
 - [x] 08.5c-02-PLAN.md — collab/index.ts undo auto-nav wiring + Playwright E2E test (SYNC-05)
 
-## Progress
+### Phase 9: Fix Live Collab Revision Editing Bugs
+**Goal**: Fix cascading bugs discovered while dogfooding live-collab revision editing so the feature is actually dogfoodable — editing a revision version syncs cleanly, switching active version never destroys the annotation, and cmd-z never reverts the joiner to pre-connect state
+**Depends on**: Phase 8.5c
+**Requirements**: SYNC-05 (stability), dogfoodable quality bar
+**Success Criteria** (what must be TRUE):
+  1. Integration test harness exercises the full nested-editor + subtree Y.Text + parent-doc flow across two peers (no manual click-testing required)
+  2. Nested-editor typing on the active version keeps parent doc slice, `versions[i].doc`, and subtree Y.Text all in sync
+  3. Switching active version (including the first switch after initial join) preserves the annotation — decoration stays visible, selection is valid, version content is correct
+  4. Cmd-z on joiner right after connect does NOT revert to pre-connect local doc or mangle the seeded content
+  5. Remote peer edits to inactive version Y.Text propagate to local `versions[i].doc` for UI rendering
+  6. No duplicate annotations after joiner initial sync (Yjs-seeded vs SQLite-seeded)
+**Plans**: 3 plans in 3 waves
+
+Plans:
+- [ ] 09-01-PLAN.md — Integration tests for all bug invariants (SYNC-05)
+- [ ] 09-02-PLAN.md — D-100 Room-as-View architecture + D-103 prior-view restore (SYNC-05)
+- [ ] 09-03-PLAN.md — Fix sync bugs: Y.Text -> versions[i].doc, D-110 lazy subscription (SYNC-05)
+
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 8.5a -> 8.5b -> 8.5c
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -> 8 -> 8.5a -> 8.5b -> 8.5c -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -268,6 +285,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
 | 8.5b. CRDT Sync Plumbing | 2/2 | Complete | 2026-04-19 |
 | 8.5c. CRDT Nested Editor Wiring | 2/2 | Complete | 2026-04-18 |
+| 9. Fix Live Collab Revision Editing Bugs | 0/3 | Planned | - |
 
 ---
 
