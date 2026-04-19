@@ -626,8 +626,20 @@ export const annotationField = StateField.define<Annotations>({
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
                 annotations[e.value.id] = e.value;
+                // Skip Phase 3 for revisions added via addAnnotation (e.g., from
+                // remote sync). The annotation already has correct versions[].doc
+                // from the source; pulling from the main doc would overwrite it
+                // with stale content. (#12-01 fix for version switch corruption)
+                if (isAnnotationOfType(e.value, "revision")) {
+                    revisionsWithExplicitEffect.add(e.value.id);
+                }
             } else if (e.is(_restoreAnnotation)) {
                 annotations[e.value.id] = e.value;
+                // Same logic for restore — the restored annotation has the correct
+                // version doc from the undo history.
+                if (isAnnotationOfType(e.value, "revision")) {
+                    revisionsWithExplicitEffect.add(e.value.id);
+                }
             } else if (e.is(removeAnnotation)) {
                 delete annotations[e.value.id];
             } else if (e.is(updateThread)) {

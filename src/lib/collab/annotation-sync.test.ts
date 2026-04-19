@@ -353,6 +353,33 @@ describe("annotation sync (Phase 11)", () => {
                 expect.fail("Expected revision annotation");
             }
         });
+
+        it("remote rebuild preserves version text (#12-01)", async () => {
+            // Regression test: remote annotation rebuild should preserve versions[].doc.
+            // Bug: Phase 3 (pushDocToVersionState) was running on remote syncs,
+            // pulling the main doc slice into versions[activeVersionIndex].doc.
+            // Fix: addAnnotation now adds to revisionsWithExplicitEffect so
+            // Phase 3 skips rebuilds from remote sync.
+
+            // Owner creates revision - "world" at positions 6-11
+            const revision = createRevision(1, 6, 11, "world");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should have exact same version text from Yjs
+            const revB = Object.values(peerB.view.state.field(annotationField))[0];
+            if (!isAnnotationOfType(revB, "revision")) {
+                expect.fail("Expected revision");
+                return;
+            }
+
+            // This is the key assertion: the version doc should match what was
+            // sent, not be corrupted by Phase 3 pulling from main doc
+            expect(revB.versions[0].doc).toBe("world");
+        });
     });
 
     describe("thread sync", () => {
