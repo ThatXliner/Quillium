@@ -102,7 +102,11 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     provider.on("status", ({ status }: { status: string }) => {
         console.log(`[yjsProvider] Status: ${status}`);
         if (status === "connecting") {
-            collabState.set("connecting");
+            // Only set "connecting" on initial connection, not during reconnection
+            if (currentAttemptCount === 0) {
+                collabState.set("connecting");
+            }
+            // During reconnection, keep "reconnecting" state (set by disconnect handler)
         } else if (status === "connected") {
             // Wait for sync before setting connected -- sync event is more reliable
         } else if (status === "disconnected") {
