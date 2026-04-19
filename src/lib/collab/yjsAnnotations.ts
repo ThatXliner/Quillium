@@ -33,6 +33,7 @@ import {
     removeAnnotation,
     updateThread,
     annotationField,
+    nestedEditorEdit,
     _updateActiveRevisionVersion,
     _addVersionToRevision,
     _deleteVersionFromRevision,
@@ -252,6 +253,11 @@ export function createAnnotationSyncPlugin(
                 // Skip if this dispatch originated from our observeDeep (avoid infinite loop)
                 if (update.transactions.some((tr) => tr.annotation(yjsAnnotationSync))) return;
 
+                // Check for nested editor edits (Phase 3 pulls doc text without an effect)
+                const hasNestedEditorEdit = update.transactions.some(
+                    (tr) => tr.annotation(nestedEditorEdit) !== undefined,
+                );
+
                 // Skip if no annotation effects in this transaction
                 // (optimization: avoid diff on pure text changes)
                 const hasAnnotationEffect = update.transactions.some((tr) =>
@@ -268,7 +274,7 @@ export function createAnnotationSyncPlugin(
                             e.is(_updateRevisionVersionState),
                     ),
                 );
-                if (!hasAnnotationEffect) return;
+                if (!hasAnnotationEffect && !hasNestedEditorEdit) return;
 
                 this.diffAndReconcile(update);
             }

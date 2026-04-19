@@ -29,6 +29,7 @@ import {
     setActiveRevisionVersion,
     createNewRevision as createNewRevisionTx,
     deleteRevisionVersion,
+    nestedEditorEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     isAnnotationOfType,
@@ -198,6 +199,41 @@ describe("annotation sync (Phase 11)", () => {
 
             if (isAnnotationOfType(revB, "revision")) {
                 expect(revB.versions[0].doc).toBe("modified world");
+            } else {
+                expect.fail("Expected revision annotation");
+            }
+        });
+
+        it("nested editor typing syncs character-by-character", async () => {
+            // Owner creates a revision on "world" (positions 6-11)
+            const revision = createRevision(1, 6, 11, "world");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
+
+            // Simulate nested editor typing by dispatching with nestedEditorEdit annotation
+            // This mimics what translateAndDispatch does when typing in the nested editor
+            const annA = peerA.view.state.field(annotationField)[annIdA];
+            if (!isAnnotationOfType(annA, "revision")) throw new Error("Expected revision");
+
+            const from = annA.selection.main.from;
+            peerA.view.dispatch({
+                changes: { from: from, to: from + 5, insert: "hello" },
+                annotations: [nestedEditorEdit.of(annIdA)],
+            });
+
+            await new Promise((resolve) => queueMicrotask(resolve));
+
+            // Joiner should see the updated text
+            const annB = peerB.view.state.field(annotationField);
+            const revB = Object.values(annB)[0];
+
+            if (isAnnotationOfType(revB, "revision")) {
+                expect(revB.versions[0].doc).toBe("hello");
             } else {
                 expect.fail("Expected revision annotation");
             }
