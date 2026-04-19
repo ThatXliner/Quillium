@@ -40,3 +40,15 @@ export const reconnectAttempt = writable(0);
  * Set true on join, reset to false on disconnect.
  */
 export const isCollabJoiner = writable(false);
+
+/**
+ * Prior view state for joiner to restore on disconnect (D-103).
+ * Captured when joiner enters a room, read when joiner leaves or is kicked.
+ * Contains the draftId and view type from before joining.
+ */
+export interface JoinerPriorView {
+    draftId: string | null;
+    viewType: "editor" | "library";
+}
+
+export const joinerPriorView = writable<JoinerPriorView | null>(null);

@@ -40,7 +40,13 @@ import {
     pendingUpdatesCount,
     reconnectAttempt,
     collabSession,
+    joinerPriorView,
+    isCollabJoiner,
 } from "./store";
+
+// Navigation (D-103: restore joiner to prior view)
+import { goToLibrary, goToEditor } from "$lib/navigation";
+import { currentDraftId } from "$lib/stores";
 
 // Types
 export type { CollabSession, CollabState } from "./types";
@@ -52,6 +58,9 @@ export {
     pendingUpdatesCount,
     reconnectAttempt,
     collabSession,
+    joinerPriorView,
+    isCollabJoiner,
+    type JoinerPriorView,
 } from "./store";
 export { colorForClient } from "./awareness";
 export { relayConfigured, getYjsProvider, getCurrentDocId } from "./yjsProvider";
@@ -266,6 +275,33 @@ export async function enableCollab(
 }
 
 /**
+ * Restore joiner to their prior view after leaving/being kicked (D-103).
+ * Called by disableCollab when isCollabJoiner is true.
+ */
+export function restoreJoinerPriorView(): void {
+    const prior = get(joinerPriorView);
+
+    // Clear joiner state first
+    joinerPriorView.set(null);
+    isCollabJoiner.set(false);
+
+    if (!prior) {
+        // No prior view recorded, go to library
+        goToLibrary();
+        return;
+    }
+
+    if (prior.draftId) {
+        // Restore to previous document
+        currentDraftId.set(prior.draftId);
+        goToEditor();
+    } else {
+        // Was in library before
+        goToLibrary();
+    }
+}
+
+/**
  * Disable collab and disconnect from relay.
  */
 export function disableCollab(view: EditorView): void {
@@ -274,6 +310,9 @@ export function disableCollab(view: EditorView): void {
         currentUndoManager.off("stack-item-popped", stackItemPoppedListener);
         stackItemPoppedListener = null;
     }
+
+    // D-103: Check if this is a joiner before clearing session
+    const wasJoiner = get(isCollabJoiner);
 
     disconnectYjsProvider();
     currentUndoManager = null;
@@ -284,6 +323,11 @@ export function disableCollab(view: EditorView): void {
     });
 
     console.log("[collab] Collab disabled");
+
+    // D-103: Restore joiner to prior view
+    if (wasJoiner) {
+        restoreJoinerPriorView();
+    }
 }
 
 /**
