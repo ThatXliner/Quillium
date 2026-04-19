@@ -4,10 +4,10 @@ milestone: v1.1
 milestone_name: PRE-V2 FIX ANNOTATION SYNC
 status: in_progress
 stopped_at: 
-last_updated: "2026-04-19T21:50:00.000Z"
-last_activity: 2026-04-19 -- v1.1 milestone started
+last_updated: "2026-04-19T22:15:00.000Z"
+last_activity: 2026-04-19 -- v1.1 roadmap created (9 phases, 32/32 requirements mapped)
 progress:
-  total_phases: 0
+  total_phases: 9
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-19)
 
 **Core value:** Two Quillium instances can connect and see each other's edits in real-time, including annotations and revision versions, without divergence or data loss
-**Current focus:** v1.1 milestone — re-architect annotation sync (CM annotationField ↔ Y.Map) to fix the recurring bug class that plagued v1.0 Phases 9-13
+**Current focus:** v1.1 milestone — re-architect annotation sync (CM annotationField ↔ Y.Map) as a single source of truth (Yjs canonical, annotationField derived projection)
 
 ## Current Position
 
 Branch: omni-fixes
-Phase: Not started (defining requirements)
+Phase: Phase 1: Test Harness & Invariants (next)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-19 — v1.1 milestone started
+Status: Roadmap complete; ready for `/gsd-plan-phase 1`
+Last activity: 2026-04-19 — v1.1 roadmap created (9 phases, 32/32 requirements mapped)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [░░░░░░░░░░] 0% (0/9 phases)
 
 ## Performance Metrics
 
@@ -75,6 +75,8 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- v1.1 phase numbering reset to 1 (v1.0 phases archived under `milestones/v1.0-ROADMAP.md`).
+- v1.1 phase ordering follows research SUMMARY.md "Proposed Phase Ordering" — invariants/harness first, single SOT before Phase 3 deletion, nested rewire after Phase 3 deletion, fuzz/dogfood last.
 - 08.5a-01: Use `it.todo` (not `it.skip`) for Wave 0 scaffolds so Vitest reports TODO count distinctly and the suite stays green.
 - 08.5a-01: Keep harness `Peer.ymap` typed as `Y.Map<unknown>` with a `Y.Map<never>` cast at the plugin boundary so the harness survives the shape rewrite in 08.5a-02.
 - 08.5a-01: Wave 0 scaffolds do NOT import the harness yet; downstream plans add imports when they rewrite a todo into a real test.
@@ -92,22 +94,24 @@ None yet.
 
 ### Roadmap Evolution
 
+- 2026-04-19: v1.1 roadmap created — 9 phases, 32/32 requirements mapped, phase numbering reset to 1, v1.0 phases archived under milestones/v1.0-ROADMAP.md.
 - Phase 7.5 inserted: Yjs Migration - Replace OT with Yjs CRDT (moved from Phase 10)
 - Phases 8/9 updated: Now build on Yjs instead of OT assumptions
 - Phase 9 added: Fix Live Collab Revision Editing Bugs (post-8.5c dogfooding regressions)
 - Phase 9 reopened 2026-04-19: plans landed but inline-editor and active-version bugs persist in dogfooding; continuation split into phases 10–13 on the `omni-fixes` branch
-- Phase 10 added: Strip Broken Collab Sync Layer — remove effect-by-effect handlers, per-version subtree bindings, `hasSubtreeForRevision` short-circuit, `_hasCollabSubtree` fork; keep main-text sync working with an integration test
-- Phase 11 added: Unified Subtree Sync Rebuild — single diff-and-write path, per-character merge inside revision versions, observeDeep-driven rebuild, no per-effect handlers
-- Phase 12 added: Nested Editor Reunification — drop the local/collab fork in `NestedEditorController`; one code path regardless of collab state
-- Phase 13 added: Dogfooding Regression Suite — integration tests in vitest covering the scenarios phase 9 missed (concurrent typing inside a version, version switch propagation, joiner pre-existing annotations, Cmd-z post-connect, concurrent thread appends)
+- Phase 10 added: Strip Broken Collab Sync Layer
+- Phase 11 added: Unified Subtree Sync Rebuild
+- Phase 12 added: Nested Editor Reunification
+- Phase 13 added: Dogfooding Regression Suite
 
 ### Blockers/Concerns
 
-Research identified key risks to track:
+Research identified key risks to track for v1.1:
 
-- **Annotation divergence**: OT guarantees document convergence but not position convergence. Comment/revision anchors may drift. Mitigation strategy needed before Phase 8.
-- **Relay must use rebaseUpdates**: Demo server rejects stale versions. Production relay must implement rebaseUpdates from day one (Phase 4).
-- **Per-user undo required**: Multi-user editing needs per-user undo stacks. Must tag operations with author in Phase 6.
+- **Pattern 7c prototype unproven**: Atomic parent-slice ↔ version Y.Text dual-write inside one `ydoc.transact` has not been prototyped end-to-end. Build a minimal two-peer test in Phase 1 or early Phase 5 before committing to the design.
+- **observeDeep event ordering (yjs#591)**: Phase 4 must preserve and test the read-all-then-rebuild-once pattern; ordering quirk may surprise multi-mutation transactions.
+- **Persistence migration for RelativePositions (yjs#340)**: Phase 7 must audit current snapshot format; if RelativePositions are JSON-encoded today, a small binary migration is required.
+- **`activeVersionIndex` semantics under concurrent version add**: Decision pending — numeric index vs stable string ID. Cheap to make safe (string ID); deferred only if version add stays owner-only.
 
 ### Quick Tasks Completed
 
@@ -117,18 +121,18 @@ Research identified key risks to track:
 
 ## Deferred Items
 
-Items acknowledged and deferred at milestone close on 2026-04-19:
+Items acknowledged and deferred at v1.0 milestone close on 2026-04-19:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| phase | Phase 12: Nested Editor Reunification — tactical patches, architecture debt | deferred | 2026-04-19 |
-| phase | Phase 13: Dogfooding Regression Suite — never planned | deferred | 2026-04-19 |
-| quick_task | 260419-annotation-sync-initial | missing | 2026-04-19 |
-| quick_task | 260419-revision-version-live-edit-sync | missing | 2026-04-19 |
-| architecture | Dual-source-of-truth: annotationField ↔ Y.Map causes recurring sync bugs | deferred | 2026-04-19 |
+| phase | Phase 12: Nested Editor Reunification — tactical patches, architecture debt | absorbed into v1.1 Phase 6 | 2026-04-19 |
+| phase | Phase 13: Dogfooding Regression Suite — never planned | absorbed into v1.1 Phase 1 + Phase 9 | 2026-04-19 |
+| quick_task | 260419-annotation-sync-initial | addressed in v1.1 Phase 4 (JOINER-04) | 2026-04-19 |
+| quick_task | 260419-revision-version-live-edit-sync | addressed in v1.1 Phase 5 (REVISION-01) | 2026-04-19 |
+| architecture | Dual-source-of-truth: annotationField ↔ Y.Map causes recurring sync bugs | addressed by v1.1 milestone | 2026-04-19 |
 
 ## Session Continuity
 
-Last session: 2026-04-19T15:36:40.082Z
-Stopped at: context exhaustion at 90% (2026-04-19)
+Last session: 2026-04-19T22:15:00.000Z
+Stopped at: roadmap creation complete
 Resume file: None

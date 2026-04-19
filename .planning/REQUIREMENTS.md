@@ -107,44 +107,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SYNC-01 | TBD | Pending |
-| SYNC-02 | TBD | Pending |
-| SYNC-03 | TBD | Pending |
-| SYNC-04 | TBD | Pending |
-| SYNC-05 | TBD | Pending |
-| SYNC-06 | TBD | Pending |
-| REVISION-01 | TBD | Pending |
-| REVISION-02 | TBD | Pending |
-| REVISION-03 | TBD | Pending |
-| REVISION-04 | TBD | Pending |
-| REVISION-05 | TBD | Pending |
-| REVISION-06 | TBD | Pending |
-| REVISION-07 | TBD | Pending |
-| REVISION-08 | TBD | Pending |
-| JOINER-01 | TBD | Pending |
-| JOINER-02 | TBD | Pending |
-| JOINER-03 | TBD | Pending |
-| JOINER-04 | TBD | Pending |
-| JOINER-05 | TBD | Pending |
-| JOINER-06 | TBD | Pending |
-| THREAD-01 | TBD | Pending |
-| THREAD-02 | TBD | Pending |
-| ANCHOR-01 | TBD | Pending |
-| ANCHOR-02 | TBD | Pending |
-| ANCHOR-03 | TBD | Pending |
-| HARNESS-01 | TBD | Pending |
-| HARNESS-02 | TBD | Pending |
-| HARNESS-03 | TBD | Pending |
-| HARNESS-04 | TBD | Pending |
-| HARNESS-05 | TBD | Pending |
-| SCHEMA-01 | TBD | Pending |
-| SCHEMA-02 | TBD | Pending |
+| SYNC-01 | Phase 4 | Pending |
+| SYNC-02 | Phase 3 | Pending |
+| SYNC-03 | Phase 3 | Pending |
+| SYNC-04 | Phase 4 | Pending |
+| SYNC-05 | Phase 3 | Pending |
+| SYNC-06 | Phase 1 | Pending |
+| REVISION-01 | Phase 5 | Pending |
+| REVISION-02 | Phase 5 | Pending |
+| REVISION-03 | Phase 5 | Pending |
+| REVISION-04 | Phase 6 | Pending |
+| REVISION-05 | Phase 6 | Pending |
+| REVISION-06 | Phase 6 | Pending |
+| REVISION-07 | Phase 5 | Pending |
+| REVISION-08 | Phase 6 | Pending |
+| JOINER-01 | Phase 2 | Pending |
+| JOINER-02 | Phase 2 | Pending |
+| JOINER-03 | Phase 2 | Pending |
+| JOINER-04 | Phase 4 | Pending |
+| JOINER-05 | Phase 2 | Pending |
+| JOINER-06 | Phase 4 | Pending |
+| THREAD-01 | Phase 3 | Pending |
+| THREAD-02 | Phase 3 | Pending |
+| ANCHOR-01 | Phase 7 | Pending |
+| ANCHOR-02 | Phase 7 | Pending |
+| ANCHOR-03 | Phase 7 | Pending |
+| HARNESS-01 | Phase 1 | Pending |
+| HARNESS-02 | Phase 1 | Pending |
+| HARNESS-03 | Phase 9 | Pending |
+| HARNESS-04 | Phase 9 | Pending |
+| HARNESS-05 | Phase 9 | Pending |
+| SCHEMA-01 | Phase 3 | Pending |
+| SCHEMA-02 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 32 total
-- Mapped to phases: 0 (filled by roadmapper)
-- Unmapped: 32 ⚠️
+- Mapped to phases: 32 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-19*
-*Last updated: 2026-04-19 after initial definition*
+*Last updated: 2026-04-19 after roadmap creation (32/32 mapped across 9 phases)*
