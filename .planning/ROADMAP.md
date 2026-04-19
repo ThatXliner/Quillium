@@ -310,7 +310,14 @@ and a single observeDeep-driven rebuild — no effect-specific handlers.
   5. activeVersionIndex is a Y.Map field; switching on one peer visibly switches on the other
   6. Add version, delete version, thread append all round-trip between peers
   7. Integration tests (non-Playwright) cover: concurrent typing in same version, version switch propagation, add/delete version, thread append, joiner sees owner's pre-existing annotations on initial sync
-**Plans**: to be scoped in `/gsd-plan-phase 11`
+**Plans**: 5 plans in 3 waves
+
+Plans:
+- [ ] 11-01-PLAN.md — Wave 0: test scaffolds + twoPeerHarness extension + AnnotationIdMap.getOrCreateYjsId (SYNC-05)
+- [ ] 11-02-PLAN.md — Diff-and-reconcile write path in yjsAnnotations.ts update() (SYNC-05)
+- [ ] 11-03-PLAN.md — Basic annotation sync tests: comment + revision creation (SYNC-05)
+- [ ] 11-04-PLAN.md — Revision operation tests: concurrent typing, version switch, add/delete (SYNC-05)
+- [ ] 11-05-PLAN.md — Thread sync tests + full suite verification (SYNC-05)
 
 ### Phase 12: Nested Editor Reunification
 **Goal**: One code path for the nested editor regardless of collab state. Drop the
@@ -361,7 +368,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 8.5c. CRDT Nested Editor Wiring | 2/2 | Complete | 2026-04-18 |
 | 9. Fix Live Collab Revision Editing Bugs | 3/3 | Reopened | - |
 | 10. Strip Broken Collab Sync Layer | 0/6 | Planned | - |
-| 11. Unified Subtree Sync Rebuild | 0/- | Planned | - |
+| 11. Unified Subtree Sync Rebuild | 0/5 | Planned | - |
 | 12. Nested Editor Reunification | 0/- | Planned | - |
 | 13. Dogfooding Regression Suite | 0/- | Planned | - |
 
