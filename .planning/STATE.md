@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-stopped_at: 
-last_updated: "2026-04-19T17:00:00.000Z"
-last_activity: 2026-04-19 -- Phase 9 reopened; phases 10-13 scaffolded for sync-layer rewrite on omni-fixes branch
+status: completed
+stopped_at: context exhaustion at 90% (2026-04-19)
+last_updated: "2026-04-19T21:43:33.150Z"
+last_activity: 2026-04-19
 progress:
   total_phases: 18
-  completed_phases: 11
-  total_plans: 42
-  completed_plans: 36
-  percent: 61
+  completed_phases: 14
+  total_plans: 49
+  completed_plans: 49
+  percent: 100
 ---
 
 # Project State
@@ -29,7 +29,7 @@ Branch: omni-fixes
 Phase: 11 - Unified Subtree Sync Rebuild
 Plan: Ready to plan
 Status: Phase 10 complete, ready for Phase 11
-Last activity: 2026-04-19 -- Phase 10 executed (6 plans, 3 waves)
+Last activity: 2026-04-19
 
 Progress: [███████░░░] 61%
 
@@ -117,11 +117,15 @@ Research identified key risks to track:
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged and deferred at milestone close on 2026-04-19:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| phase | Phase 12: Nested Editor Reunification — tactical patches, architecture debt | deferred | 2026-04-19 |
+| phase | Phase 13: Dogfooding Regression Suite — never planned | deferred | 2026-04-19 |
+| quick_task | 260419-annotation-sync-initial | missing | 2026-04-19 |
+| quick_task | 260419-revision-version-live-edit-sync | missing | 2026-04-19 |
+| architecture | Dual-source-of-truth: annotationField ↔ Y.Map causes recurring sync bugs | deferred | 2026-04-19 |
 
 ## Session Continuity
 
