@@ -85,3 +85,35 @@ export function createYjsUndoExtension<T = unknown>(
         undoManager,
     };
 }
+
+/**
+ * Register a subtree Y.Text with an existing UndoManager's tracked scope (D-97).
+ * Idempotent — Yjs's addToScope is a no-op if the type is already tracked.
+ * Caller is responsible for calling this at nested-editor mount time; Plan 8.5c-01
+ * (NestedEditorController) owns those call-sites.
+ *
+ * @param undoManager - The UndoManager returned by createYjsUndoExtension
+ * @param subtreeYtext - The subtree Y.Text that should participate in undo
+ * @param extraTypes - Optional additional types (e.g. a subtree Y.Map of child annotations)
+ */
+export function addSubtreeToUndoScope(
+    undoManager: Y.UndoManager,
+    subtreeYtext: Y.Text,
+    extraTypes?: Y.AbstractType<unknown>[],
+): void {
+    // Cast required because Y.Text's internal event handler type is more specific
+    // than AbstractType<unknown>, but addToScope accepts any AbstractType.
+    const toAdd = [subtreeYtext as Y.AbstractType<unknown>, ...(extraTypes ?? [])];
+    undoManager.addToScope(toAdd);
+}
+
+/**
+ * Break the current UndoManager capture window so subsequent local edits
+ * produce a fresh stack item. Used at modal open/close boundaries, before
+ * version-creation transactions, and whenever the UX treats two rapid edits
+ * as semantically distinct. Mitigates yjs#642 by ensuring capture boundaries
+ * never span a structural (add/remove version) change plus a character edit.
+ */
+export function breakUndoCapture(undoManager: Y.UndoManager): void {
+    undoManager.stopCapturing();
+}
