@@ -182,7 +182,6 @@ export function yjsAnnotationToCodeMirror(
         return {
             doc,
             ...(typeof label === "string" ? { label } : {}),
-            annotationGeneration: 0,
         };
     });
 

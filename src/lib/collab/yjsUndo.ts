@@ -18,7 +18,7 @@
  */
 import { keymap, type KeyBinding } from "@codemirror/view";
 import * as Y from "yjs";
-import type { Extension } from "@codemirror/state";
+import { Prec, type Extension } from "@codemirror/state";
 
 /**
  * Create UndoManager extension for per-user undo.
@@ -49,39 +49,37 @@ export function createYjsUndoExtension<T = unknown>(
     const undoKeymap: KeyBinding[] = [
         {
             key: "Mod-z",
+            // Always claim Mod-z in collab mode, even when the Yjs undo stack is
+            // empty — otherwise CodeMirror's historyKeymap runs next and can
+            // revert to the joiner's pre-connect local doc or to earlier
+            // replayed-event history entries that no longer match the live doc.
             run: () => {
-                if (undoManager.canUndo()) {
-                    undoManager.undo();
-                    return true;
-                }
-                return false;
+                if (undoManager.canUndo()) undoManager.undo();
+                return true;
             },
         },
         {
             key: "Mod-Shift-z",
             run: () => {
-                if (undoManager.canRedo()) {
-                    undoManager.redo();
-                    return true;
-                }
-                return false;
+                if (undoManager.canRedo()) undoManager.redo();
+                return true;
             },
         },
         {
             // Windows/Linux alternative for redo
             key: "Mod-y",
             run: () => {
-                if (undoManager.canRedo()) {
-                    undoManager.redo();
-                    return true;
-                }
-                return false;
+                if (undoManager.canRedo()) undoManager.redo();
+                return true;
             },
         },
     ];
 
     return {
-        extension: keymap.of(undoKeymap),
+        // Prec.highest so Yjs undo wins over CodeMirror's historyKeymap Mod-z —
+        // otherwise CM history (which still accumulated pre-collab events) would
+        // run first and revert to the joiner's pre-connect local doc.
+        extension: Prec.highest(keymap.of(undoKeymap)),
         undoManager,
     };
 }

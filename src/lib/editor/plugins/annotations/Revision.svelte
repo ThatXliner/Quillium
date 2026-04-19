@@ -338,14 +338,13 @@ $effect(() => {
 });
 
 // When the modal closes, it flushes nested annotations back into the
-// version blob. Detect the flush by comparing annotationGeneration —
-// incremented by the flush, so this fires only when annotations actually changed.
+// version blob. Detect the flush by comparing the serialized blob —
+// needsAnnotationRebuild compares against the mounted snapshot.
+// Plan 8.5c-01: In collab mode this is a no-op (observeDeep reconciles live).
 $effect(() => {
     if (!controller.editor || !isEditorOpen || !activeVersion) return;
     if (controller.needsVersionSwitch(revision.activeVersionIndex)) return;
-    const generation =
-        (activeVersion as { annotationGeneration?: number }).annotationGeneration ?? 0;
-    if (!controller.needsAnnotationRebuild(generation)) return;
+    if (!controller.needsAnnotationRebuild(activeVersion)) return;
     destroyNestedEditor();
     createNestedEditor(activeVersion);
 });
@@ -368,9 +367,8 @@ $effect(() => {
         if (!rev) return;
         const latestVersion = rev.versions[rev.activeVersionIndex];
         if (!latestVersion) return;
-        const incomingGeneration =
-            (latestVersion as { annotationGeneration?: number }).annotationGeneration ?? 0;
-        if (!controller.needsAnnotationRebuild(incomingGeneration)) return;
+        // Plan 8.5c-01: In collab mode this is a no-op (observeDeep reconciles live).
+        if (!controller.needsAnnotationRebuild(latestVersion)) return;
         // Destroy WITHOUT flushing — the modal already wrote the correct state.
         controller.destroy({ skipFlush: true });
         activeAnnotation = undefined;

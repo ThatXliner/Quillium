@@ -16,6 +16,7 @@ import {
     removeAnnotation,
     updateThread,
     annotationField,
+    _updateRevisionVersionDoc,
 } from "$lib/editor/plugins/annotations/annotationField";
 import type { YjsAnnotationNode } from "./types";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
@@ -308,6 +309,71 @@ describe("yjsAnnotations convergence (2 clients)", () => {
             const revB = Object.values(annotationsB)[0];
             if (revB._type === "revision") {
                 expect(revB.activeVersionIndex).toBe(1);
+            }
+        });
+
+        it("revision version TEXT edit syncs between clients", () => {
+            // Create revision on A
+            const revision: GenericAnnotation = {
+                id: 0,
+                _type: "revision",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+                versions: [{ doc: "hello" }],
+                activeVersionIndex: 0,
+            };
+
+            peerA.view.dispatch({ effects: [addAnnotation.of(revision)] });
+            expect(getAnnotationCount(peerB)).toBe(1);
+
+            // Verify initial state on B
+            let annotationsB = peerB.view.state.field(annotationField);
+            let revB = Object.values(annotationsB)[0];
+            expect(revB._type).toBe("revision");
+            if (revB._type === "revision") {
+                expect(revB.versions[0].doc).toBe("hello");
+            }
+
+            // Simulate nested editor typing: NestedEditorController does TWO things:
+            // 1. yjsBinding updates the version's Y.Text
+            // 2. onNestedUpdate dispatches _updateRevisionVersionDoc to sync parent CM state
+            const yjsAnnKey = Array.from(peerA.ymap.keys())[0];
+            const revNode = peerA.ymap.get(yjsAnnKey)!;
+            const versionsMap = revNode.get("versions") as Y.Map<Y.Map<unknown>>;
+            const v0 = versionsMap.get("0")!;
+            const vtext = v0.get("text") as Y.Text;
+
+            // Step 1: Update Y.Text (like yjsBinding does)
+            peerA.ydoc.transact(() => {
+                vtext.insert(vtext.length, " world");
+            }, "local");
+
+            // Step 2: Update parent CM state (like NestedEditorController.onNestedUpdate does)
+            peerA.view.dispatch({
+                effects: [
+                    _updateRevisionVersionDoc.of({
+                        annotationId: 0,
+                        versionIndex: 0,
+                        doc: "hello world",
+                    }),
+                ],
+            });
+
+            // A should now see the text change reflected in its CM annotation
+            let annotationsA = peerA.view.state.field(annotationField);
+            let revA = Object.values(annotationsA)[0];
+            expect(revA._type).toBe("revision");
+            if (revA._type === "revision") {
+                expect(revA.versions[0].doc).toBe("hello world");
+            }
+
+            // B should see the text change reflected in the CM annotation
+            // (via observeDeep on the Y.Text change, which has origin "remote" for B)
+            annotationsB = peerB.view.state.field(annotationField);
+            revB = Object.values(annotationsB)[0];
+            expect(revB._type).toBe("revision");
+            if (revB._type === "revision") {
+                expect(revB.versions[0].doc).toBe("hello world");
             }
         });
     });

@@ -122,12 +122,12 @@ describe("Phase 3: pushDocToVersionState", () => {
         expect(rev.versions[1].doc).toBe("CCC"); // non-active version unchanged
     });
 
-    it("preserves annotationGeneration and other version metadata through Phase 3", () => {
+    it("preserves label and other version metadata through Phase 3", () => {
         let state = makeState("hello world");
         state = addRevision(state, 6, 11, ["world"]);
 
-        // Set version state with annotationGeneration
-        const blob: VersionState = { doc: "world", annotationGeneration: 5 };
+        // Set version state with a label
+        const blob: VersionState = { doc: "world", label: "test-label" };
         const tr = updateRevisionVersionState(state, 0, 0, blob);
         state = state.update(tr).state;
 
@@ -138,8 +138,8 @@ describe("Phase 3: pushDocToVersionState", () => {
 
         const rev = getRevision(state, 0);
         expect(rev.versions[0].doc).toBe("earth");
-        // annotationGeneration should be preserved by the spread in pushDocToVersionState
-        expect(rev.versions[0].annotationGeneration).toBe(5);
+        // label should be preserved by the spread in pushDocToVersionState
+        expect(rev.versions[0].label).toBe("test-label");
     });
 });
 
@@ -315,12 +315,12 @@ describe("updateRevisionVersionState", () => {
         let state = makeState("active");
         state = addRevision(state, 0, 6, ["active", "old"]);
 
-        const newBlob: VersionState = { doc: "updated", annotationGeneration: 1 };
+        const newBlob: VersionState = { doc: "updated", label: "test" };
         state = state.update(updateRevisionVersionState(state, 0, 1, newBlob)).state;
 
         const rev = getRevision(state, 0);
         expect(rev.versions[1].doc).toBe("updated");
-        expect(rev.versions[1].annotationGeneration).toBe(1);
+        expect(rev.versions[1].label).toBe("test");
         expect(state.doc.toString()).toBe("active"); // doc unchanged
     });
 
@@ -341,12 +341,12 @@ describe("updateRevisionVersionState", () => {
         state = addRevision(state, 0, 4, ["same"]);
 
         // Update active version with same doc text but new metadata
-        const newBlob: VersionState = { doc: "same", annotationGeneration: 3 };
+        const newBlob: VersionState = { doc: "same", label: "meta" };
         const tr = updateRevisionVersionState(state, 0, 0, newBlob);
         state = state.update(tr).state;
 
         const rev = getRevision(state, 0);
-        expect(rev.versions[0].annotationGeneration).toBe(3);
+        expect(rev.versions[0].label).toBe("meta");
         expect(state.doc.toString()).toBe("same");
     });
 
@@ -355,13 +355,13 @@ describe("updateRevisionVersionState", () => {
         state = addRevision(state, 0, 7, ["initial"]);
 
         // updateRevisionVersionState changes both the blob AND the doc
-        const newBlob: VersionState = { doc: "changed", annotationGeneration: 2 };
+        const newBlob: VersionState = { doc: "changed", label: "meta" };
         state = state.update(updateRevisionVersionState(state, 0, 0, newBlob)).state;
 
         const rev = getRevision(state, 0);
         // The blob should match exactly what we set — Phase 3 should have skipped
         expect(rev.versions[0].doc).toBe("changed");
-        expect(rev.versions[0].annotationGeneration).toBe(2);
+        expect(rev.versions[0].label).toBe("meta");
     });
 });
 
@@ -571,7 +571,7 @@ describe("rapid sequential operations", () => {
         // Update non-active version with a blob containing nested annotations
         const blob: VersionState = {
             doc: "updated-other",
-            annotationGeneration: 1,
+            label: "v2",
         };
         state = state.update(updateRevisionVersionState(state, 0, 1, blob)).state;
 
@@ -579,7 +579,7 @@ describe("rapid sequential operations", () => {
         expect(state.doc.toString()).toBe("active");
         expect(getRevision(state, 0).versions[0].doc).toBe("active");
         expect(getRevision(state, 0).versions[1].doc).toBe("updated-other");
-        expect(getRevision(state, 0).versions[1].annotationGeneration).toBe(1);
+        expect(getRevision(state, 0).versions[1].label).toBe("v2");
     });
 });
 
@@ -612,16 +612,14 @@ describe("toJSON/fromJSON round-trip", () => {
         let state = makeState("text");
         state = addRevision(state, 0, 4, ["text"]);
 
-        const blob: VersionState = { doc: "text", annotationGeneration: 7, label: "Final" };
+        const blob: VersionState = { doc: "text", label: "Final" };
         state = state.update(updateRevisionVersionState(state, 0, 0, blob)).state;
 
         const rev = getRevision(state, 0);
-        expect(rev.versions[0].annotationGeneration).toBe(7);
         expect(rev.versions[0].label).toBe("Final");
 
         // JSON round-trip preserves metadata
         const raw = JSON.parse(JSON.stringify(rev.versions[0]));
-        expect(raw.annotationGeneration).toBe(7);
         expect(raw.label).toBe("Final");
     });
 });
@@ -725,7 +723,7 @@ describe("version override prevention", () => {
         // Update non-active version blob (simulates modal flush)
         const blob: VersionState = {
             doc: "new-inactive",
-            annotationGeneration: 1,
+            label: "flush",
         };
         state = state.update(updateRevisionVersionState(state, 0, 1, blob)).state;
 
@@ -742,10 +740,10 @@ describe("version override prevention", () => {
         state = addRevision(state, 0, 2, ["v0", "v1", "v2"]);
 
         // Update all non-active versions in rapid succession
-        const blob1: VersionState = { doc: "v1-updated", annotationGeneration: 1 };
+        const blob1: VersionState = { doc: "v1-updated" };
         state = state.update(updateRevisionVersionState(state, 0, 1, blob1)).state;
 
-        const blob2: VersionState = { doc: "v2-updated", annotationGeneration: 1 };
+        const blob2: VersionState = { doc: "v2-updated" };
         state = state.update(updateRevisionVersionState(state, 0, 2, blob2)).state;
 
         const rev = getRevision(state, 0);
@@ -828,7 +826,7 @@ describe("edge cases", () => {
 
         // Step 2: flushToParent fires with OLD version's content to OLD index
         // (this is the correct case — modal editor wasn't synced yet)
-        const correctBlob: VersionState = { doc: "hello", annotationGeneration: 1 };
+        const correctBlob: VersionState = { doc: "hello" };
         state = state.update(
             updateRevisionVersionState(state, 0, 0, correctBlob, { addToHistory: false }),
         ).state;
@@ -1030,7 +1028,6 @@ describe("edge cases", () => {
         const contaminatedBlob: VersionState = {
             doc: "hello", // doc is preserved by merge-only flush
             annotationField: {}, // but annotations were collapsed/dropped
-            annotationGeneration: 1,
         };
         state = state.update(
             updateRevisionVersionState(state, 0, 0, contaminatedBlob, { addToHistory: false }),

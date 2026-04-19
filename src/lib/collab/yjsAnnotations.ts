@@ -20,7 +20,7 @@
  *                 returns null on malformed data; null entries are skipped.
  */
 import { ViewPlugin, type ViewUpdate, type EditorView } from "@codemirror/view";
-import { Annotation } from "@codemirror/state";
+import { Annotation, Transaction } from "@codemirror/state";
 import * as Y from "yjs";
 import {
     codeMirrorToYjsAnnotation,
@@ -149,7 +149,10 @@ export function createAnnotationSyncPlugin(
                     if (effects.length > 0) {
                         this.view.dispatch({
                             effects,
-                            annotations: [yjsAnnotationSync.of(true)],
+                            annotations: [
+                                yjsAnnotationSync.of(true),
+                                Transaction.addToHistory.of(false),
+                            ],
                         });
                     }
                 };
@@ -224,7 +227,10 @@ export function createAnnotationSyncPlugin(
                     if (effects.length > 0) {
                         this.view.dispatch({
                             effects,
-                            annotations: [yjsAnnotationSync.of(true)],
+                            annotations: [
+                                yjsAnnotationSync.of(true),
+                                Transaction.addToHistory.of(false),
+                            ],
                         });
                     }
                 });

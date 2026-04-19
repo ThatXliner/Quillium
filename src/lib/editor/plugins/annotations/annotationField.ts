@@ -70,6 +70,7 @@ import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import { mapValues } from "lodash-es";
+import { hasSubtreeForRevision } from "$lib/collab";
 // -------------------------------------------------------
 // StateEffect declarations
 //
@@ -203,6 +204,17 @@ const _updateRevisionVersionState = StateEffect.define<{
     versionId: number;
     versionState: VersionState;
 }>();
+/**
+ * Collab-mode effect: updates ONLY versions[i].doc without triggering parent
+ * doc changes. Used by NestedEditorController when collab owns the subtree
+ * Y.Text — the nested editor's content is authoritative, and we just need to
+ * keep the parent's annotation state in sync for UI rendering.
+ */
+export const _updateRevisionVersionDoc = StateEffect.define<{
+    annotationId: number;
+    versionIndex: number;
+    doc: string;
+}>();
 export const _updateRevisionVersionLabel = StateEffect.define<{
     annotationId: number;
     versionId: number;
@@ -213,6 +225,7 @@ export function setActiveRevisionVersion(state: EditorState, annotationId: numbe
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
     }
+    const insert = versionText(original.versions[to]);
     return state.update({
         effects: [
             _updateActiveRevisionVersion.of({
@@ -224,7 +237,7 @@ export function setActiveRevisionVersion(state: EditorState, annotationId: numbe
         changes: state.changes({
             from: original.selection.main.from,
             to: original.selection.main.to,
-            insert: versionText(original.versions[to]),
+            insert,
         }),
     });
 }
@@ -583,6 +596,9 @@ function pushDocToVersionState(
     const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
+            // Plan 8.5c-01: Skip Phase 3 for revisions with Yjs subtrees — the
+            // subtree Y.Text is the source of truth, not the parent doc slice.
+            if (hasSubtreeForRevision(x.id)) return x;
             if (x.selection.main.empty && !isNestedEdit) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
             if (text === versionText(x.versions[x.activeVersionIndex])) return x;
@@ -669,6 +685,23 @@ export const annotationField = StateField.define<Annotations>({
                     versions: newVersions,
                     selection,
                 };
+            } else if (e.is(_updateRevisionVersionDoc)) {
+                // Collab-mode: update ONLY the version's doc text without
+                // affecting parent document or selection. The nested editor's
+                // Y.Text is authoritative; this just keeps the annotation state
+                // in sync for UI rendering and persistence.
+                const annotation = annotations[e.value.annotationId];
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
+                revisionsWithExplicitEffect.add(e.value.annotationId);
+                const newVersions = annotation.versions.slice();
+                const existing = newVersions[e.value.versionIndex];
+                if (existing) {
+                    newVersions[e.value.versionIndex] = { ...existing, doc: e.value.doc };
+                    annotations[e.value.annotationId] = {
+                        ...annotation,
+                        versions: newVersions,
+                    };
+                }
             } else if (e.is(addSuggestion)) {
                 const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
                 for (const { from, to } of cursor) {

@@ -32,6 +32,7 @@
 import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
 import { undo, redo } from "@codemirror/commands";
 import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
+import type * as Y from "yjs";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
 import {
     annotationField,
@@ -41,6 +42,9 @@ import {
 } from "./annotationField";
 import { annotationEventBus } from "./eventBus";
 import { versionText, type VersionState, isAnnotationOfType } from "./models";
+import { createYjsBinding } from "$lib/collab/yjsBinding";
+import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
+import type { YjsAnnotationNode } from "$lib/collab/types";
 
 const VERSION_PREVIEW_MAX = 34;
 
@@ -53,6 +57,9 @@ const VERSION_PREVIEW_MAX = 34;
  *   editor). For deeper levels (level 2+) it must be the root view that
  *   actually has history enabled, since intermediate parents have
  *   history: false.
+ * @param collabSubtree — Plan 8.5c-01: When provided, installs Yjs binding
+ *   and scoped annotation sync plugin instead of using JSON blob flush.
+ *   The subtree Y.Text IS the source of truth for this version's content.
  */
 export function createNestedEditorState(
     version: VersionState,
@@ -60,12 +67,32 @@ export function createNestedEditorState(
     parentView: EditorView,
     revisionId: number,
     historyView?: EditorView,
+    collabSubtree?: {
+        subtreeYtext: Y.Text;
+        subtreeAnnotations: Y.Map<unknown>;
+        clientId: string;
+    },
 ): EditorState {
+    // When collab owns the subtree, skip CodeMirror history — the Yjs
+    // UndoManager handles undo for this editor via addSubtreeToUndoScope.
+    const useHistory = !collabSubtree;
     const extensions = [
-        ...getExtensions({ persist: false, history: false, updateListener }),
+        ...getExtensions({ persist: false, history: useHistory ? false : false, updateListener }),
         makeParentUndoKeymap(historyView ?? parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
+
+    // Plan 8.5c-01: Wire Yjs binding and scoped annotation sync for collab
+    if (collabSubtree) {
+        extensions.push(
+            createYjsBinding(collabSubtree.subtreeYtext),
+            createAnnotationSyncPlugin(
+                collabSubtree.subtreeYtext,
+                collabSubtree.subtreeAnnotations as Y.Map<YjsAnnotationNode>,
+                collabSubtree.clientId,
+            ),
+        );
+    }
     if (hasSerializedNestedState(version)) {
         try {
             const docLen = version.doc.length;
@@ -293,6 +320,10 @@ export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: 
 }
 
 /**
+ * Local-only upward doc sync. Not invoked when collab owns the subtree
+ * Y.Text — in that case createYjsBinding(subtreeYtext) directly mutates
+ * the parent-visible version.doc through the Yjs observer.
+ *
  * Translates a doc-changing transaction from the nested editor into
  * an equivalent change on the parent document at the revision's range,
  * then dispatches it to the parent tagged with nestedEditorEdit.
