@@ -216,6 +216,16 @@ export class AnnotationIdMap {
         return cmId;
     }
 
+    getOrCreateYjsId(cmId: number, clientId: string): string {
+        let yjsId = this.cmToYjs.get(cmId);
+        if (yjsId === undefined) {
+            yjsId = generateAnnotationId(clientId);
+            this.yjsToCm.set(yjsId, cmId);
+            this.cmToYjs.set(cmId, yjsId);
+        }
+        return yjsId;
+    }
+
     getYjsId(cmId: number): string | undefined {
         return this.cmToYjs.get(cmId);
     }
