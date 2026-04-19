@@ -7,9 +7,6 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { addSubtreeToUndoScope, breakUndoCapture, createYjsUndoExtension } from "./yjsUndo";
-import { AnnotationIdMap } from "./annotationSchema";
-import { annotationEventBus, type EventOfType } from "$lib/editor/plugins/annotations/eventBus";
-import { findOwningAnnotationId } from "./index";
 
 describe("yjs undo manager", () => {
     it("chronological across scopes", () => {
@@ -83,57 +80,9 @@ describe("yjs undo manager", () => {
         expect(subtree2.toString()).toBe("");
     });
 
-    it("auto-nav event emitted", () => {
-        // Setup doc-level ymap with a registered annotation node
-        const ydoc = new Y.Doc();
-        const ymap = ydoc.getMap<Y.Map<unknown>>("anns");
-        const mainIdMap = new AnnotationIdMap();
-
-        // Seed one revision annotation (CM id 42) with one version
-        const node = new Y.Map<unknown>();
-        const versions = new Y.Map<Y.Map<unknown>>();
-        const v0 = new Y.Map<unknown>();
-        const subtreeText = new Y.Text();
-        v0.set("text", subtreeText);
-        versions.set("0", v0);
-        node.set("versions", versions);
-        ymap.set("yjs-id-42", node);
-        mainIdMap.register("yjs-id-42", 42);
-
-        const undoManager = new Y.UndoManager([ymap], {
-            trackedOrigins: new Set(["local"]),
-        });
-        addSubtreeToUndoScope(undoManager, subtreeText);
-
-        // Subscribe to undo-target
-        const received: EventOfType<"undo-target">[] = [];
-        const unsub = annotationEventBus.on("undo-target", (e) => received.push(e));
-
-        // Wire the listener directly (mirrors enableCollab's logic with deduplication)
-        undoManager.on("stack-item-popped", (event) => {
-            const emittedCmIds = new Set<number>();
-            for (const yType of event.changedParentTypes.keys()) {
-                const owning = findOwningAnnotationId(yType, ymap, mainIdMap);
-                if (!owning) continue;
-                if (emittedCmIds.has(owning.cmId)) continue;
-                emittedCmIds.add(owning.cmId);
-                annotationEventBus.emit({
-                    type: "undo-target",
-                    annotationId: owning.cmId,
-                    versionIndex: owning.versionIndex,
-                    undoType: event.type,
-                });
-            }
-        });
-
-        // Make a local edit
-        ydoc.transact(() => subtreeText.insert(0, "hello"), "local");
-        undoManager.undo();
-
-        expect(received).toHaveLength(1);
-        expect(received[0]).toMatchObject({ annotationId: 42, versionIndex: 0, undoType: "undo" });
-        unsub();
-    });
+    // Phase 10: "auto-nav event emitted" test removed. findOwningAnnotationId
+    // and stack-item-popped listener were deleted as part of removing the
+    // broken collab sync layer.
 
     it("addToScope captures new type", () => {
         // Setup: Create an UndoManager with just ytext + ymap
