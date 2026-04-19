@@ -70,7 +70,6 @@ import { cleanRangesOf, mapRange } from "./utils";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import { mapValues } from "lodash-es";
-import { hasSubtreeForRevision } from "$lib/collab";
 // -------------------------------------------------------
 // StateEffect declarations
 //
@@ -596,9 +595,6 @@ function pushDocToVersionState(
     const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
     return mapValues(annotations, (x) => {
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
-            // Plan 8.5c-01: Skip Phase 3 for revisions with Yjs subtrees — the
-            // subtree Y.Text is the source of truth, not the parent doc slice.
-            if (hasSubtreeForRevision(x.id)) return x;
             if (x.selection.main.empty && !isNestedEdit) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
             if (text === versionText(x.versions[x.activeVersionIndex])) return x;

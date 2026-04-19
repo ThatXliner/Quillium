@@ -71,15 +71,6 @@ export const collabCompartment = new Compartment();
 /** Current Y.UndoManager (for external access if needed) */
 let currentUndoManager: Y.UndoManager | null = null;
 
-/** Module-scope listener for stack-item-popped cleanup in disableCollab */
-let stackItemPoppedListener:
-    | ((event: {
-          stackItem: Y.UndoManager extends { undoStack: (infer T)[] } ? T : never;
-          type: "undo" | "redo";
-          changedParentTypes: Map<Y.AbstractType<unknown>, unknown[]>;
-      }) => void)
-    | null = null;
-
 /**
  * Register a document with the relay's sync_documents table.
  * Creates the row if it doesn't exist (upsert).
@@ -234,29 +225,6 @@ export async function enableCollab(
         mainIdMap,
     });
 
-    // Plan 8.5c-02 (D-96): Wire stack-item-popped → undo-target event
-    stackItemPoppedListener = (event) => {
-        try {
-            const emittedCmIds = new Set<number>();
-            for (const yType of event.changedParentTypes.keys()) {
-                const owning = findOwningAnnotationId(yType, ymap, mainIdMap);
-                if (!owning) continue;
-                if (emittedCmIds.has(owning.cmId)) continue;
-                emittedCmIds.add(owning.cmId);
-                annotationEventBus.emit({
-                    type: "undo-target",
-                    annotationId: owning.cmId,
-                    versionIndex: owning.versionIndex,
-                    undoType: event.type,
-                });
-            }
-        } catch (err) {
-            // T-08.5-06-04: Don't break UndoManager state on emit error
-            console.error("[collab] stack-item-popped listener error:", err);
-        }
-    };
-    undoManager.on("stack-item-popped", stackItemPoppedListener);
-
     // Install Yjs collab extension - includes annotation sync
     view.dispatch({
         effects: collabCompartment.reconfigure([binding, undoExt, awarenessExt, annotationSync]),
@@ -305,12 +273,6 @@ export function restoreJoinerPriorView(): void {
  * Disable collab and disconnect from relay.
  */
 export function disableCollab(view: EditorView): void {
-    // Plan 8.5c-02: Clean up stack-item-popped listener
-    if (currentUndoManager && stackItemPoppedListener) {
-        currentUndoManager.off("stack-item-popped", stackItemPoppedListener);
-        stackItemPoppedListener = null;
-    }
-
     // D-103: Check if this is a joiner before clearing session
     const wasJoiner = get(isCollabJoiner);
 
@@ -335,37 +297,6 @@ export function disableCollab(view: EditorView): void {
  */
 export function getUndoManager(): Y.UndoManager | null {
     return currentUndoManager;
-}
-
-// ── Plan 8.5c-01: Subtree context helpers ─────────────────────────────────
-
-/**
- * Resolve a CM revision ID to its Yjs annotation ID.
- * Returns null if collab is not active or the revision is not yet synced.
- */
-export function getRevisionYjsId(cmId: number): string | null {
-    const session = get(collabSession);
-    if (!session?.mainIdMap) return null;
-    return session.mainIdMap.getYjsId(cmId) ?? null;
-}
-
-/**
- * Check if a revision has an active Yjs subtree (collab owns its content).
- * Used by annotationField Phase 3 to skip doc-pulling for revisions whose
- * content is managed by Yjs.
- */
-export function hasSubtreeForRevision(cmId: number): boolean {
-    const yjsId = getRevisionYjsId(cmId);
-    if (!yjsId) return false;
-
-    const session = get(collabSession);
-    if (!session) return false;
-
-    const revNode = session.ymap.get(yjsId);
-    if (!(revNode instanceof Y.Map)) return false;
-
-    const versionsMap = revNode.get("versions");
-    return versionsMap instanceof Y.Map && versionsMap.size > 0;
 }
 
 /**
