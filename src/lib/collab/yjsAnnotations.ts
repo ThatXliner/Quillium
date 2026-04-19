@@ -33,7 +33,17 @@ import {
     removeAnnotation,
     updateThread,
     annotationField,
+    _updateActiveRevisionVersion,
+    _addVersionToRevision,
+    _deleteVersionFromRevision,
+    _updateRevisionVersionDoc,
+    _updateRevisionVersionLabel,
 } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    isAnnotationOfType,
+    type GenericAnnotation,
+    type Annotation as AnnotationType,
+} from "$lib/editor/plugins/annotations/models";
 
 export const yjsAnnotationSync = Annotation.define<boolean>();
 
@@ -51,10 +61,11 @@ export function createAnnotationSyncPlugin(
             ) => void;
             private destroyed = false;
             private idMap = idMap;
+            private clientId = clientId;
 
             constructor(private view: EditorView) {
                 this._syncIdMapFromCM();
-                this._syncInitialToYjs();   // Owner: push CM annotations to Yjs
+                this._syncInitialToYjs(); // Owner: push CM annotations to Yjs
                 this._syncInitialFromYjs(); // Joiner: pull Yjs annotations to CM
 
                 this.deepObserver = (events, tr) => {
@@ -236,10 +247,216 @@ export function createAnnotationSyncPlugin(
                 });
             }
 
-            update(_update: ViewUpdate) {
-                // Phase 10: annotation sync write path intentionally disabled.
-                // Phase 11 will implement a single diff-and-write path.
-                return;
+            update(update: ViewUpdate) {
+                // Skip if this dispatch originated from our observeDeep (avoid infinite loop)
+                if (update.transactions.some((tr) => tr.annotation(yjsAnnotationSync))) return;
+
+                // Skip if no annotation effects in this transaction
+                // (optimization: avoid diff on pure text changes)
+                const hasAnnotationEffect = update.transactions.some((tr) =>
+                    tr.effects.some(
+                        (e) =>
+                            e.is(addAnnotation) ||
+                            e.is(removeAnnotation) ||
+                            e.is(updateThread) ||
+                            e.is(_updateActiveRevisionVersion) ||
+                            e.is(_addVersionToRevision) ||
+                            e.is(_deleteVersionFromRevision) ||
+                            e.is(_updateRevisionVersionDoc) ||
+                            e.is(_updateRevisionVersionLabel),
+                    ),
+                );
+                if (!hasAnnotationEffect) return;
+
+                this.diffAndReconcile(update);
+            }
+
+            /**
+             * Diff CM annotationField against Yjs Y.Map and write delta.
+             * Single unified write path - no per-effect branching.
+             */
+            private diffAndReconcile(update: ViewUpdate) {
+                const ydoc = scopeYtext.doc;
+                if (!ydoc) return;
+
+                const cmAnns = update.state.field(annotationField);
+                const cmIds = new Set(Object.keys(cmAnns).map(Number));
+
+                // Build set of CM IDs currently in Yjs
+                const yjsIds = new Set<number>();
+                scopeAnnotations.forEach((_node, yjsKey) => {
+                    const cmId = this.idMap.getCmId(yjsKey);
+                    if (cmId !== undefined) yjsIds.add(cmId);
+                });
+
+                ydoc.transact(() => {
+                    // 1. Remove from Yjs: in Yjs but not in CM
+                    for (const cmId of yjsIds) {
+                        if (!cmIds.has(cmId)) {
+                            const yjsKey = this.idMap.getYjsId(cmId);
+                            if (yjsKey) {
+                                scopeAnnotations.delete(yjsKey);
+                                this.idMap.remove(yjsKey);
+                            }
+                        }
+                    }
+
+                    // 2. Add to Yjs: in CM but not in Yjs
+                    for (const cmId of cmIds) {
+                        if (!yjsIds.has(cmId)) {
+                            const ann = cmAnns[cmId];
+                            if (!ann) continue;
+
+                            const yjsKey = this.idMap.getOrCreateYjsId(cmId, this.clientId);
+                            const node = codeMirrorToYjsAnnotation(ann, scopeYtext, this.clientId, ydoc);
+                            node.set("id", yjsKey); // Ensure Yjs ID matches the key
+                            scopeAnnotations.set(yjsKey, node);
+                        }
+                    }
+
+                    // 3. Update existing: check for field changes
+                    for (const cmId of cmIds) {
+                        if (yjsIds.has(cmId)) {
+                            const ann = cmAnns[cmId];
+                            const yjsKey = this.idMap.getYjsId(cmId);
+                            if (!ann || !yjsKey) continue;
+
+                            const node = scopeAnnotations.get(yjsKey);
+                            if (!node) continue;
+
+                            this.syncAnnotationFields(ann, node, ydoc);
+                        }
+                    }
+                }, "local");
+            }
+
+            /**
+             * Sync specific mutable fields from CM annotation to Yjs node.
+             * Handles: thread, activeVersionIndex, version text, version label.
+             */
+            private syncAnnotationFields(
+                ann: GenericAnnotation,
+                node: YjsAnnotationNode,
+                ydoc: Y.Doc,
+            ) {
+                // Thread sync (all annotation types)
+                const threadArr = node.get("thread") as Y.Array<MessageObject> | undefined;
+                if (threadArr) {
+                    const cmThread = ann.thread;
+                    const yjsThread = threadArr.toArray();
+                    // Append-only: if CM has more messages, push the new ones
+                    if (cmThread.length > yjsThread.length) {
+                        const newMessages = cmThread.slice(yjsThread.length);
+                        threadArr.push(newMessages.map((m) => ({ ...m })));
+                    }
+                }
+
+                // Revision-specific fields
+                if (isAnnotationOfType(ann, "revision")) {
+                    // activeVersionIndex
+                    const cmIndex = ann.activeVersionIndex;
+                    const yjsIndex = node.get("activeVersionIndex") as number | undefined;
+                    if (cmIndex !== yjsIndex) {
+                        node.set("activeVersionIndex", cmIndex);
+                    }
+
+                    // Version management (add/delete/update)
+                    const versionsMap = node.get("versions") as Y.Map<Y.Map<unknown>> | undefined;
+                    if (versionsMap) {
+                        this.syncRevisionVersions(ann, versionsMap, ydoc);
+                    }
+                }
+            }
+
+            /**
+             * Sync revision versions between CM and Yjs.
+             * Handles: add version, delete version, version text, version label.
+             */
+            private syncRevisionVersions(
+                ann: AnnotationType<"revision">,
+                versionsMap: Y.Map<Y.Map<unknown>>,
+                _ydoc: Y.Doc,
+            ) {
+                const cmVersions = ann.versions;
+                const yjsKeys = new Set(versionsMap.keys());
+
+                // Add new versions
+                for (let i = 0; i < cmVersions.length; i++) {
+                    const key = String(i);
+                    if (!yjsKeys.has(key)) {
+                        const versionNode = new Y.Map<unknown>();
+                        const vtext = new Y.Text();
+                        if (cmVersions[i].doc.length > 0) {
+                            vtext.insert(0, cmVersions[i].doc);
+                        }
+                        versionNode.set("text", vtext);
+                        if (cmVersions[i].label !== undefined) {
+                            versionNode.set("label", cmVersions[i].label);
+                        }
+                        versionNode.set("annotations", new Y.Map<YjsAnnotationNode>());
+                        versionsMap.set(key, versionNode);
+                    }
+                }
+
+                // Delete removed versions
+                for (const key of yjsKeys) {
+                    const idx = Number(key);
+                    if (idx >= cmVersions.length) {
+                        versionsMap.delete(key);
+                    }
+                }
+
+                // Sync version text and labels
+                for (let i = 0; i < cmVersions.length; i++) {
+                    const key = String(i);
+                    const vNode = versionsMap.get(key);
+                    if (!vNode) continue;
+
+                    // Version text - character-level sync
+                    const vtext = vNode.get("text") as Y.Text | undefined;
+                    if (vtext) {
+                        this.syncVersionText(cmVersions[i].doc, vtext);
+                    }
+
+                    // Version label
+                    const cmLabel = cmVersions[i].label;
+                    const yjsLabel = vNode.get("label") as string | undefined;
+                    if (cmLabel !== yjsLabel) {
+                        if (cmLabel !== undefined) {
+                            vNode.set("label", cmLabel);
+                        } else if (yjsLabel !== undefined) {
+                            vNode.delete("label");
+                        }
+                    }
+                }
+            }
+
+            /**
+             * Sync version text using character-level diff.
+             * Computes minimal diff to preserve CRDT history.
+             */
+            private syncVersionText(cmText: string, ytext: Y.Text) {
+                const yjsText = ytext.toString();
+                if (cmText === yjsText) return;
+
+                // Compute minimal diff using prefix/suffix matching
+                const minLen = Math.min(cmText.length, yjsText.length);
+                let prefix = 0;
+                while (prefix < minLen && cmText[prefix] === yjsText[prefix]) prefix++;
+
+                let suffix = 0;
+                while (
+                    suffix < minLen - prefix &&
+                    cmText[cmText.length - 1 - suffix] === yjsText[yjsText.length - 1 - suffix]
+                )
+                    suffix++;
+
+                const deleteFrom = prefix;
+                const deleteTo = yjsText.length - suffix;
+                const insertText = cmText.slice(prefix, cmText.length - suffix);
+
+                if (deleteTo > deleteFrom) ytext.delete(deleteFrom, deleteTo - deleteFrom);
+                if (insertText) ytext.insert(deleteFrom, insertText);
             }
 
             destroy() {
