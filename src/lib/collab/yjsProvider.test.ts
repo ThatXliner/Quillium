@@ -25,6 +25,7 @@ vi.mock("y-websocket", () => {
         };
         handlers: Map<string, Set<Function>> = new Map();
         destroy = vi.fn();
+        disconnect = vi.fn();
         _opts: any;
         url: string;
         roomname: string;
@@ -168,5 +169,68 @@ describe("yjsProvider", () => {
 
         // Second provider should be active
         expect(provider2).toBeDefined();
+    });
+
+    it("sets collabState to reconnecting on first disconnect", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+
+        // Simulate disconnect
+        (provider as any)._testEmit("status", { status: "disconnected" });
+
+        expect(get(collabState)).toBe("reconnecting");
+        expect(get(reconnectAttempt)).toBe(1);
+    });
+
+    it("increments reconnectAttempt on each disconnect", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+
+        // Simulate multiple disconnects
+        (provider as any)._testEmit("status", { status: "disconnected" });
+        expect(get(reconnectAttempt)).toBe(1);
+
+        (provider as any)._testEmit("status", { status: "disconnected" });
+        expect(get(reconnectAttempt)).toBe(2);
+
+        (provider as any)._testEmit("status", { status: "disconnected" });
+        expect(get(reconnectAttempt)).toBe(3);
+    });
+
+    it("sets collabState to error after 10 disconnect attempts", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+
+        // Simulate 10 disconnects (max attempts)
+        for (let i = 0; i < 10; i++) {
+            (provider as any)._testEmit("status", { status: "disconnected" });
+        }
+
+        expect(get(collabState)).toBe("error");
+        expect(get(reconnectAttempt)).toBe(10);
+    });
+
+    it("calls provider.disconnect() when max attempts reached", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+
+        // Simulate 10 disconnects
+        for (let i = 0; i < 10; i++) {
+            (provider as any)._testEmit("status", { status: "disconnected" });
+        }
+
+        expect((provider as any).disconnect).toHaveBeenCalled();
+    });
+
+    it("resets reconnectAttempt to 0 on successful sync after reconnecting", async () => {
+        const { provider } = await createYjsProvider("doc-123");
+
+        // Simulate some disconnects
+        (provider as any)._testEmit("status", { status: "disconnected" });
+        (provider as any)._testEmit("status", { status: "disconnected" });
+        expect(get(reconnectAttempt)).toBe(2);
+        expect(get(collabState)).toBe("reconnecting");
+
+        // Simulate successful reconnect (sync event)
+        (provider as any)._testEmit("sync", true);
+
+        expect(get(reconnectAttempt)).toBe(0);
+        expect(get(collabState)).toBe("connected");
     });
 });

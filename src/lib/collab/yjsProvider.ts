@@ -43,6 +43,11 @@ let currentProvider: WebsocketProvider | null = null;
 let currentYdoc: Y.Doc | null = null;
 let currentDocId: string | null = null;
 
+// ── Reconnection tracking ───────────────────────────────────────────────────
+
+const MAX_RECONNECT_ATTEMPTS = 10;
+let currentAttemptCount = 0;
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface YjsProviderResult {
@@ -103,7 +108,17 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         } else if (status === "disconnected") {
             // Only update state if this provider is still current
             if (currentProvider === provider) {
-                collabState.set("reconnecting");
+                currentAttemptCount += 1;
+                reconnectAttempt.set(currentAttemptCount);
+
+                if (currentAttemptCount >= MAX_RECONNECT_ATTEMPTS) {
+                    // Per D-104: Exhausted retries, set error state
+                    collabState.set("error");
+                    // Per D-105: Stop reconnection - user must manually Go Live again
+                    provider.disconnect();
+                } else {
+                    collabState.set("reconnecting");
+                }
             }
         }
     });
@@ -113,6 +128,7 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
         console.log(`[yjsProvider] Sync: ${isSynced}`);
         if (isSynced && currentProvider === provider) {
             collabState.set("connected");
+            currentAttemptCount = 0;
             reconnectAttempt.set(0);
         }
     });
@@ -150,6 +166,7 @@ export function disconnectYjsProvider(): void {
         currentYdoc = null;
     }
     currentDocId = null;
+    currentAttemptCount = 0;
     collabState.set("disconnected");
     reconnectAttempt.set(0);
 }
