@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 8: Annotation Sync** - Sync comments and revisions via Yjs shared types
 - [x] **Phase 8.5a: CRDT Data Shape** - Recursive Y.Map annotation shape + converters (INSERTED)
 - [x] **Phase 8.5b: CRDT Sync Plumbing** - Scoped observeDeep plugin + undo-scope helper (INSERTED)
-- [ ] **Phase 8.5c: CRDT Nested Editor Wiring** - Subtree bindings + undo auto-nav (INSERTED)
+- [x] **Phase 8.5c: CRDT Nested Editor Wiring** - Subtree bindings + undo auto-nav (INSERTED)
 
 ## Phase Details
 
@@ -270,7 +270,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 6.5 -> 7 -> 7.5 -
 | 8. Annotation Sync | 0/6 | Not started | - |
 | 8.5a. CRDT Data Shape | 2/2 | Complete | 2026-04-18 |
 | 8.5b. CRDT Sync Plumbing | 2/2 | Complete | 2026-04-19 |
-| 8.5c. CRDT Nested Editor Wiring | 0/2 | Not started | - |
+| 8.5c. CRDT Nested Editor Wiring | 2/2 | Complete | 2026-04-18 |
 
 ---
 
