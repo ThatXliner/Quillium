@@ -195,23 +195,23 @@ describe("yjsProvider", () => {
         expect(get(reconnectAttempt)).toBe(3);
     });
 
-    it("sets collabState to error after 10 disconnect attempts", async () => {
+    it("sets collabState to error after 5 disconnect attempts", async () => {
         const { provider } = await createYjsProvider("doc-123");
 
-        // Simulate 10 disconnects (max attempts)
-        for (let i = 0; i < 10; i++) {
+        // Simulate 5 disconnects (max attempts)
+        for (let i = 0; i < 5; i++) {
             (provider as any)._testEmit("status", { status: "disconnected" });
         }
 
         expect(get(collabState)).toBe("error");
-        expect(get(reconnectAttempt)).toBe(10);
+        expect(get(reconnectAttempt)).toBe(5);
     });
 
     it("calls provider.disconnect() when max attempts reached", async () => {
         const { provider } = await createYjsProvider("doc-123");
 
-        // Simulate 10 disconnects
-        for (let i = 0; i < 10; i++) {
+        // Simulate 5 disconnects
+        for (let i = 0; i < 5; i++) {
             (provider as any)._testEmit("status", { status: "disconnected" });
         }
 

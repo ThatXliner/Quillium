@@ -137,7 +137,7 @@ $effect(() => {
                     {:else if $collabState === "syncing"}
                         Syncing{$pendingUpdatesCount > 0 ? ` (${$pendingUpdatesCount})` : "..."}
                     {:else if $collabState === "reconnecting"}
-                        Reconnecting{$reconnectAttempt > 0 ? ` (${$reconnectAttempt}/10)` : "..."}
+                        Reconnecting{$reconnectAttempt > 0 ? ` (${$reconnectAttempt}/5)` : "..."}
                     {:else if $collabState === "error"}
                         Disconnected
                     {:else}
