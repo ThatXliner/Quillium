@@ -82,15 +82,19 @@ src/
 │   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
 │   │   └── settings.svelte.ts   # AutoAI settings store (reactive, persisted)
 │   ├── collab/
-│   │   ├── GoLiveButton.svelte  # Top-right collab toggle + join-by-ID menu
-│   │   ├── collabPlugin.ts      # ViewPlugin for push/pull loop + event handlers
-│   │   ├── cursors.ts           # Remote cursor StateField, ViewPlugin, WidgetType
-│   │   ├── cursors.test.ts      # Remote cursor unit tests
-│   │   ├── index.ts             # Public API: enableCollab, disableCollab, etc.
-│   │   ├── protocol.ts          # WebSocket message types (pushUpdates, pullUpdates)
-│   │   ├── socket.ts            # Socket.io client singleton
-│   │   ├── store.ts             # Svelte stores: collabState, ownerLeftSignal, etc.
-│   │   └── types.ts             # CollabSession, CollabState types
+│   │   ├── GoLiveButton.svelte    # Top-right collab toggle + join-by-ID menu
+│   │   ├── annotationSchema.ts    # CM ↔ Yjs bidirectional converters for annotations
+│   │   ├── awareness.ts           # Yjs awareness protocol for cursor/presence sync
+│   │   ├── index.ts               # Public API: enableCollab, disableCollab, etc.
+│   │   ├── relativePosition.ts    # RelativePosition utilities for cursor anchoring
+│   │   ├── store.ts               # Svelte stores: collabState, ownerLeftSignal, etc.
+│   │   ├── types.ts               # CollabSession, YjsAnnotationNode, awareness types
+│   │   ├── yjsAnnotations.ts      # Y.Map-based annotation sync ViewPlugin
+│   │   ├── yjsBinding.ts          # CodeMirror ↔ Y.Text binding (custom, not y-codemirror.next)
+│   │   ├── yjsProvider.ts         # Y.Doc + WebsocketProvider setup with JWT auth
+│   │   ├── yjsUndo.ts             # Unified undo stack via Y.UndoManager
+│   │   └── test-helpers/
+│   │       └── twoPeerHarness.ts  # Two-peer test harness for convergence tests
 │   ├── db/
 │   │   ├── index.ts           # Typed invoke() wrappers for all Rust DB commands
 │   │   ├── types.ts           # TypeScript mirrors of Rust structs (DocumentMeta, DraftMeta, etc.)
@@ -1554,9 +1558,198 @@ If `PUBLIC_RELAY_URL` is not configured, `relayConfigured` is `false` and the Go
 ### Known Limitations
 
 - **Live Room mode only** — session ends when owner disconnects. Shared Document mode (server as source of truth) is deferred to v2.
-- **Annotation sync not implemented** — comments and revisions don't sync yet (Phase 8).
+- **Nested editor CRDT subtrees not wired** — revision versions sync as blobs, not as recursive Y.Text (Phase 8.5c).
 - **Offline queue not implemented** — owner can't edit offline and rebase on reconnect (Phase 9).
 - **No sharing UI** — joiners must manually paste document UUID. Share links and permissions are deferred to v2.
+
+---
+
+## Yjs Sync Layer (Phase 8)
+
+Phase 8 replaces the OT-based `@codemirror/collab` with Yjs CRDTs for text, annotations, and cursors. This enables offline editing and conflict-free merging.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Y.Doc                                  │
+│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
+│  │ Y.Text          │  │ Y.Map<YjsAnnotationNode>        │   │
+│  │ "document"      │  │ "annotations"                   │   │
+│  │                 │  │                                 │   │
+│  │ ← yjsBinding →  │  │ ← yjsAnnotations →              │   │
+│  │   CodeMirror    │  │   annotationField               │   │
+│  └─────────────────┘  └─────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
+│  │ Awareness       │  │ Y.UndoManager                   │   │
+│  │ cursor + name   │  │ tracks Y.Text + Y.Map           │   │
+│  │ ← awareness.ts  │  │ ← yjsUndo.ts                    │   │
+│  └─────────────────┘  └─────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+         │
+         │ WebsocketProvider (y-websocket)
+         │ JWT auth in params
+         ▼
+    ┌─────────────────────────────────────┐
+    │   y-websocket-server (relay)        │
+    │   quillium-landing repo             │
+    └─────────────────────────────────────┘
+```
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `yjsProvider.ts` | Creates Y.Doc, Y.Text, Y.Map, WebsocketProvider with JWT auth |
+| `yjsBinding.ts` | Bidirectional Y.Text ↔ CodeMirror sync ViewPlugin |
+| `yjsAnnotations.ts` | Bidirectional Y.Map ↔ annotationField sync ViewPlugin |
+| `annotationSchema.ts` | Converters: `codeMirrorToYjsAnnotation()`, `yjsAnnotationToCodeMirror()` |
+| `relativePosition.ts` | `absoluteToRelative()`, `relativeToAbsolute()` for position anchoring |
+| `awareness.ts` | Remote cursor rendering via Yjs awareness protocol |
+| `yjsUndo.ts` | Unified undo stack via Y.UndoManager (text + annotations) |
+| `types.ts` | `YjsAnnotationNode`, `CollabSession`, awareness state types |
+
+### YjsAnnotationNode Shape
+
+Annotations are stored as recursive Y.Map structures:
+
+```typescript
+YjsAnnotationNode = Y.Map<unknown> with runtime shape:
+├── id: string
+├── _type: "comment" | "suggestion" | "revision"
+├── startPos: Uint8Array (encoded RelativePosition)
+├── endPos: Uint8Array (encoded RelativePosition)
+├── thread: Y.Array<MessageObject>
+├── annotations: Y.Map<YjsAnnotationNode>  // nested annotations
+│
+├── (suggestion only)
+│   ├── replacements: Y.Array<string>
+│   └── author: string | null
+│
+└── (revision only)
+    ├── versions: Y.Map<string, Y.Map<unknown>>
+    │   └── [versionId]: { content: string, title: string }
+    └── activeVersionIndex: number
+```
+
+### Sync Flow
+
+**Y.Text → CodeMirror (remote edits):**
+```
+WebsocketProvider receives update → Y.Text fires observe()
+→ yjsBinding observer skips if origin === "local"
+→ Converts Yjs delta to CodeMirror ChangeSpec
+→ Dispatches with yjsAnnotation.of(true) to prevent feedback
+```
+
+**CodeMirror → Y.Text (local edits):**
+```
+User types → ViewPlugin.update() fires
+→ Skips if transaction has yjsAnnotation
+→ ydoc.transact(() => { ytext.delete/insert }, "local")
+→ "local" origin lets UndoManager track, prevents observer re-entry
+```
+
+**Y.Map → annotationField (remote annotations):**
+```
+Y.Map fires observeDeep() → yjsAnnotations observer
+→ Skips if origin === "local"
+→ Shallow key change: full rebuild via replaceAllAnnotations effect
+→ Thread append: updateThread effect with new messages
+→ Version change: rebuild
+```
+
+**annotationField → Y.Map (local annotations):**
+```
+User creates annotation → addAnnotation effect
+→ yjsAnnotations.update() intercepts
+→ codeMirrorToYjsAnnotation() builds Y.Map
+→ ydoc.transact(() => ymap.set(id, node), "local")
+```
+
+### RelativePosition Anchoring
+
+Annotation positions use Yjs RelativePosition instead of absolute indices. This survives concurrent edits:
+
+```typescript
+// Save: absolute CM selection → encoded RelativePosition
+const { startPos, endPos } = absoluteToRelative(ytext, selection);
+// startPos, endPos are Uint8Array
+
+// Load: encoded RelativePosition → absolute CM selection
+const selection = relativeToAbsolute(ydoc, ytext, startPos, endPos);
+// Returns null if anchored text was deleted
+```
+
+### Awareness (Remote Cursors)
+
+Remote cursors use Yjs awareness protocol with position anchoring:
+
+```
+Local cursor changes → createCursorEmitPlugin (throttled 100ms)
+→ encodePos() converts to RelativePosition
+→ awareness.setLocalState({ cursor: { start, end }, user: { name, color } })
+→ WebsocketProvider broadcasts to peers
+→ Remote peers receive awareness update
+→ decodePos() resolves RelativePosition to absolute
+→ RemoteCursorWidget renders colored caret + name label
+```
+
+Position mapping: When doc changes arrive, cursor positions are re-resolved from RelativePosition, so they track concurrent edits correctly.
+
+### Unified Undo (D-83)
+
+Y.UndoManager tracks both Y.Text and Y.Map changes in a single stack:
+
+```typescript
+const undoManager = new Y.UndoManager([ytext, ymap], {
+    trackedOrigins: new Set(["local"]), // Only undo local changes
+    captureTimeout: 500, // Merge rapid edits
+});
+```
+
+- `Mod-z` → `undoManager.undo()` (undoes text + annotation changes together)
+- `Mod-Shift-z` / `Mod-y` → `undoManager.redo()`
+- `breakUndoCapture()` forces a new undo step (used at modal boundaries)
+- `addSubtreeToUndoScope()` registers nested editor Y.Text with the stack (Phase 8.5c)
+
+### ID Mapping
+
+CodeMirror uses numeric annotation IDs; Yjs uses string IDs. `AnnotationIdMap` maintains bidirectional mapping:
+
+```typescript
+class AnnotationIdMap {
+    getOrCreateCmId(yjsId: string): number  // Auto-allocates CM ID
+    getYjsId(cmId: number): string | undefined
+    register(cmId: number, yjsId: string): void
+    remove(cmId: number): void
+}
+```
+
+### Test Harness
+
+`test-helpers/twoPeerHarness.ts` provides a two-peer test harness:
+
+```typescript
+const peerA = makePeer("A", "initial text");
+const peerB = makePeer("B", "");
+
+const disconnect = connect(peerA, peerB);
+// Peers now sync bidirectionally
+
+peerA.view.dispatch({ changes: { from: 0, insert: "Hello " } });
+// peerB.view.state.doc.toString() === "Hello initial text"
+
+disconnect();
+teardown(peerA);
+teardown(peerB);
+```
+
+Key patterns:
+- Origin-based filtering: updates marked "remote" skip local undo logic
+- Bidirectional state sync on connect
+- Explicit teardown prevents memory leaks
 
 ---
 
