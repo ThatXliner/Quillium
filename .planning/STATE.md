@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: PRE-V2 FIX ANNOTATION SYNC
-status: executing
-stopped_at: roadmap creation complete
-last_updated: "2026-04-20T00:30:35.596Z"
-last_activity: 2026-04-20 -- Phase --phase execution started
+status: in_progress
+stopped_at: 
+last_updated: "2026-04-19T17:36:00.000Z"
+last_activity: 2026-04-19 -- Phase 1 complete (3/3 plans; flushAll, projection property test, SYNC-06 feedback-loop harness)
 progress:
-  total_phases: 1
-  completed_phases: 0
+  total_phases: 9
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 3
+  percent: 11
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-19)
 
 **Core value:** Two Quillium instances can connect and see each other's edits in real-time, including annotations and revision versions, without divergence or data loss
-**Current focus:** Phase --phase — 01
+**Current focus:** v1.1 milestone — re-architect annotation sync (CM annotationField ↔ Y.Map) as a single source of truth (Yjs canonical, annotationField derived projection)
 
 ## Current Position
 
 Branch: omni-fixes
-Phase: --phase (01) — EXECUTING
-Plan: 1 of --name
-Status: Executing Phase --phase
-Last activity: 2026-04-20 -- Phase --phase execution started
+Phase: Phase 1: Test Harness & Invariants — COMPLETE
+Plan: 3/3 plans complete
+Status: Ready for Phase 2
+Last activity: 2026-04-19 — Phase 1 complete (HARNESS-01, HARNESS-02, SYNC-06; 21/21 collab tests pass)
 
-Progress: [░░░░░░░░░░] 0% (0/9 phases)
+Progress: [█░░░░░░░░░] 11% (1/9 phases)
 
 ## Performance Metrics
 
