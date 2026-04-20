@@ -439,7 +439,7 @@ describe("annotation sync (Phase 11)", () => {
             await new Promise((resolve) => queueMicrotask(resolve));
 
             // Joiner should now have owner's message
-            let annB = peerB.view.state.field(annotationField);
+            const annB = peerB.view.state.field(annotationField);
             const annIdB = Number(Object.keys(annB)[0]);
             expect(Object.values(annB)[0].thread.length).toBe(1);
 

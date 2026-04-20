@@ -11,7 +11,7 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { Compartment, Transaction } from "@codemirror/state";
-import * as Y from "yjs";
+import type * as Y from "yjs";
 import { get } from "svelte/store";
 import { supabase } from "$lib/auth/supabase";
 import { getUser } from "$lib/auth/auth.svelte";
@@ -115,7 +115,7 @@ export async function enableCollab(
     view: EditorView,
     docId: string,
     clientID: string,
-    asOwner: boolean = true,
+    asOwner = true,
 ): Promise<void> {
     // Connect to Yjs relay
     const { provider, awareness, ydoc, ytext, ymap } = await createYjsProvider(docId);
