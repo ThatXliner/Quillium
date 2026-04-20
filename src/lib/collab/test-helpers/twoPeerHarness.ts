@@ -106,3 +106,49 @@ export function teardown(peer: Peer): void {
     peer.view.destroy();
     peer.ydoc.destroy();
 }
+
+/**
+ * flushAll -- Variadic state-vector-equality flush primitive for N-peer convergence tests.
+ *
+ * Drains queued microtasks, then checks pairwise Y.encodeStateVector equality
+ * across every peer. Repeats until stable or until MAX_ITERATIONS is exceeded
+ * (in which case it throws a loud error -- this signals real amplification or
+ * a feedback loop, not a transient miss).
+ *
+ * This is the ONLY flush primitive used by two-peer convergence tests in Phases
+ * 1-9. Do not introduce alternative flush helpers (fixed-N microtask ticks,
+ * explicit update-queue drains, single awaits) -- they hide amplification bugs
+ * behind their own counters or tick budgets.
+ *
+ * Decisions: D-01 (variadic), D-02 (state-vector loop with cap), D-03 (rejected alts).
+ */
+export const FLUSH_ALL_MAX_ITERATIONS = 20;
+
+export async function flushAll(...peers: Peer[]): Promise<void> {
+    if (peers.length < 2) {
+        throw new Error("flushAll: requires at least 2 peers");
+    }
+    for (let iter = 0; iter < FLUSH_ALL_MAX_ITERATIONS; iter++) {
+        await Promise.resolve();
+        await Promise.resolve();
+        const sv0 = Y.encodeStateVector(peers[0].ydoc);
+        let converged = true;
+        for (let i = 1; i < peers.length; i++) {
+            const svi = Y.encodeStateVector(peers[i].ydoc);
+            if (!equalUint8(sv0, svi)) {
+                converged = false;
+                break;
+            }
+        }
+        if (converged) return;
+    }
+    throw new Error(
+        `flushAll: peers did not converge after ${FLUSH_ALL_MAX_ITERATIONS} iterations -- likely amplification or feedback loop (one local op produced an unbounded chain of remote updates)`,
+    );
+}
+
+function equalUint8(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+}

@@ -1,23 +1,72 @@
 /**
- * yjsAnnotations.ts — Scoped Y.Map <-> annotationField sync via observeDeep.
+ * yjsAnnotations.ts -- Yjs <-> CodeMirror annotation sync plugin (scoped).
  *
- * Per D-90/D-92: Annotations are recursive Y.Map nodes; this plugin syncs
- * ONE scope (pair of Y.Text + Y.Map) to a CodeMirror EditorView. Plan 8.5c-01
- * mounts an instance per nested editor subtree.
- * Per D-93: Comment threads are Y.Array (append-only); Y.Array.push is the
- * mutation primitive.
- * Per D-94: No legacy wire format. The previous syncRevisionChanges JSON-diff
- * path was deleted in this phase.
+ * ─────────────────────────────────────────────────────────────────────────
+ *  CANONICAL-SOURCE INVARIANT (v1.1)
+ * ─────────────────────────────────────────────────────────────────────────
+ *  Yjs is canonical. The CodeMirror `annotationField` is a DERIVED PROJECTION
+ *  of the Yjs `annotations` Y.Map. Reads of annotation state for sync purposes
+ *  go through `yjsAnnotationToCodeMirror(yMap)`; writes go through Yjs first
+ *  inside `ydoc.transact(fn, "local")` and the CM dispatch is the projection.
  *
- * Origin tagging:
- *   - ydoc.transact(..., "local")  : writes this plugin originated
- *   - Transactions tagged with yjsAnnotationSync(true) : dispatches this plugin
- *     originated on the CM side (skip to avoid loops)
+ *  This file does NOT enforce that contract for the entire codebase yet (Phases
+ *  3–5 do that). It is the SOLE writer of `annotationField` on the read path
+ *  and it MUST never write to Yjs from inside an observer callback. The Phase 1
+ *  convergence property test (HARNESS-02) is the runtime enforcement of the
+ *  projection invariant.
  *
- * Threat mitigations:
- *   T-08.5-03-01: Observer ignores any event whose tr.origin === "local".
- *   T-08.5-03-02: Remote payloads pass through yjsAnnotationToCodeMirror which
- *                 returns null on malformed data; null entries are skipped.
+ * ─────────────────────────────────────────────────────────────────────────
+ *  FOUR-GUARD ORIGIN DISCIPLINE
+ * ─────────────────────────────────────────────────────────────────────────
+ *  Feedback loops between CM transactions and Y updates are prevented by four
+ *  guard sites that MUST stay in lockstep. If any guard is removed or its
+ *  predicate weakened, expect O(N²) relay traffic and the SYNC-06 feedback-
+ *  loop test to fail loudly.
+ *
+ *    Guard 1 -- src/lib/collab/yjsBinding.ts:39 (Y.Text observer)
+ *      Skips the CM dispatch when `yTransaction.origin === "local"` (the write
+ *      came from this peer's CM binding, not from a remote update).
+ *
+ *    Guard 2 -- src/lib/collab/yjsAnnotations.ts:74 (Y.Map observer, this file)
+ *      Same shape: skips CM dispatch when `tr.origin === "local"`.
+ *
+ *    Guard 3 -- src/lib/collab/yjsAnnotations.ts:254 (CM update listener, this file)
+ *      Skips Y.Map writes when the CM transaction carries the
+ *      `yjsAnnotationSync` annotation (i.e., the transaction was DISPATCHED BY
+ *      Guard 2's projection, so writing back to Y would echo).
+ *
+ *    Guard 4 -- src/lib/collab/yjsBinding.ts:77 (CM update listener, Y.Text side)
+ *      Same shape on the Y.Text side: skips Y.Text writes when the CM
+ *      transaction is itself a remote-applied projection (carries the
+ *      `yjsAnnotation` marker).
+ *
+ *  Run `grep -n 'origin === "local"' src/lib/collab/{yjsBinding,yjsAnnotations}.ts`
+ *  and `grep -n 'yjsAnnotationSync' src/lib/collab/yjsAnnotations.ts` to locate
+ *  the live guard sites. Phase 3 may move them; update the line refs above when
+ *  it does. The COUNT (four) and the SHAPE (two origin-skips on each side, two
+ *  annotation-skips on each side) is the invariant; the line numbers are for
+ *  navigation, not enforcement.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ *  Role / dependency notes (preserved from prior comment block):
+ *
+ *  Per D-90/D-92: Annotations are recursive Y.Map nodes; this plugin syncs
+ *  ONE scope (pair of Y.Text + Y.Map) to a CodeMirror EditorView. Plan 8.5c-01
+ *  mounts an instance per nested editor subtree.
+ *  Per D-93: Comment threads are Y.Array (append-only); Y.Array.push is the
+ *  mutation primitive.
+ *  Per D-94: No legacy wire format. The previous syncRevisionChanges JSON-diff
+ *  path was deleted in this phase.
+ *
+ *  Origin tagging:
+ *    - ydoc.transact(..., "local")  : writes this plugin originated
+ *    - Transactions tagged with yjsAnnotationSync(true) : dispatches this plugin
+ *      originated on the CM side (skip to avoid loops)
+ *
+ *  Threat mitigations:
+ *    T-08.5-03-01: Observer ignores any event whose tr.origin === "local".
+ *    T-08.5-03-02: Remote payloads pass through yjsAnnotationToCodeMirror which
+ *                  returns null on malformed data; null entries are skipped.
  */
 import { ViewPlugin, type ViewUpdate, type EditorView } from "@codemirror/view";
 import { Annotation, Transaction } from "@codemirror/state";
