@@ -18,6 +18,10 @@ import {
     updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    serializedNestedAnnotationSnapshot,
+    transactionsHaveAnnotationMutationEffect,
+} from "$lib/editor/plugins/annotations/NestedEditorController";
+import {
     createNewAnnotation,
     isAnnotationOfType,
     versionText,
@@ -357,6 +361,78 @@ describe("nested annotation creation enters parent undo history via version stat
         expect(view.state.doc.toString()).toBe("hello world");
         expect(getVersionDoc(view, revId)).toBe("hello world");
         expect(getRevisionSlice(view, revId)).toBe("hello world");
+    });
+
+    it("treats annotation-only nested revision version updates as flush-worthy", () => {
+        const state = EditorState.create({
+            doc: "hello world",
+            extensions: [annotationField],
+        });
+        const nestedRevision = {
+            ...createNewAnnotation(
+                state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "revision",
+            ),
+            activeVersionIndex: 0,
+            versions: [{ doc: "hello" }, { doc: "draft" }],
+        };
+        let nextState = state.update({ effects: addAnnotation.of(nestedRevision) }).state;
+        const update = updateRevisionVersionState(nextState, nestedRevision.id, 1, {
+            doc: "draft edited",
+        } as VersionState);
+        nextState = update.state;
+
+        expect(transactionsHaveAnnotationMutationEffect([update])).toBe(true);
+        const updated = nextState.field(annotationField)[nestedRevision.id];
+        if (!isAnnotationOfType(updated, "revision")) throw new Error("Expected revision");
+        expect(versionText(updated.versions[1])).toBe("draft edited");
+    });
+
+    it("nested rebuild detection ignores doc-only version text changes", () => {
+        const before = serializedNestedAnnotationSnapshot({
+            doc: "hello",
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+                    thread: [],
+                },
+            },
+        } as VersionState);
+        const after = serializedNestedAnnotationSnapshot({
+            doc: "hello!",
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+                    thread: [],
+                },
+            },
+        } as VersionState);
+
+        expect(after).toBe(before);
+    });
+
+    it("nested rebuild detection notices annotation blob changes", () => {
+        const before = serializedNestedAnnotationSnapshot({
+            doc: "hello",
+        } as VersionState);
+        const after = serializedNestedAnnotationSnapshot({
+            doc: "hello",
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+                    thread: [],
+                },
+            },
+        } as VersionState);
+
+        expect(after).not.toBe(before);
     });
 });
 

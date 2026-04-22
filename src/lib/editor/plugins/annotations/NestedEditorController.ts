@@ -21,6 +21,13 @@ import {
     removeAnnotation,
     updateRevisionVersionState,
     updateThread,
+    addSuggestion,
+    _addVersionToRevision,
+    _deleteVersionFromRevision,
+    _updateActiveRevisionVersion,
+    _updateRevisionVersionDoc,
+    _updateRevisionVersionLabel,
+    _updateRevisionVersionState,
 } from "./annotationField";
 import { createNestedEditorState, translateAndDispatch } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
@@ -39,6 +46,34 @@ export type NestedEditorCallbacks = {
 };
 
 export type FlushBehavior = "flush" | "flush-on-destroy" | "no-flush";
+
+export function transactionsHaveAnnotationMutationEffect(
+    transactions: readonly Transaction[],
+): boolean {
+    return transactions.some((tr) =>
+        tr.effects.some(
+            (e) =>
+                e.is(addAnnotation) ||
+                e.is(removeAnnotation) ||
+                e.is(updateThread) ||
+                e.is(addSuggestion) ||
+                e.is(_addVersionToRevision) ||
+                e.is(_deleteVersionFromRevision) ||
+                e.is(_updateActiveRevisionVersion) ||
+                e.is(_updateRevisionVersionDoc) ||
+                e.is(_updateRevisionVersionLabel) ||
+                e.is(_updateRevisionVersionState),
+        ),
+    );
+}
+
+export function serializedNestedAnnotationSnapshot(version: VersionState): string {
+    const raw = version as { annotationField?: unknown; selection?: unknown };
+    return JSON.stringify({
+        annotationField: raw.annotationField ?? null,
+        selection: raw.selection ?? null,
+    });
+}
 
 /**
  * Controls the lifecycle and sync of a nested CodeMirror editor within
@@ -117,9 +152,9 @@ export class NestedEditorController {
             this._editor.focus();
         }
 
-        // Snapshot the mounted blob so `needsAnnotationRebuild(version)` can
-        // detect parent-level edits that bypassed this controller.
-        this._lastMountedBlob = JSON.stringify(version);
+        // Snapshot only the serialized nested editor state that requires a
+        // rebuild. Plain doc text changes are patched by syncFromParent.
+        this._lastMountedBlob = serializedNestedAnnotationSnapshot(version);
     }
 
     /**
@@ -200,14 +235,14 @@ export class NestedEditorController {
     /**
      * Signal whether the current nested EditorView must be torn down and rebuilt.
      *
-     * Compare the CURRENT version blob (JSON-serialised) against the blob we
-     * mounted. A mismatch means annotations or text shifted outside the live
-     * editor (e.g. a parent-level undo re-wrote the version); we must rebuild
-     * so the CM state matches the parent-authoritative blob again.
+     * Compare the CURRENT serialized nested annotation state against the blob
+     * we mounted. A mismatch means nested annotations changed outside the live
+     * editor (remote sync, modal flush, parent-level undo) and CM decorations
+     * must be rebuilt from the parent-authoritative blob.
      */
     needsAnnotationRebuild(version: VersionState): boolean {
         if (!this._editor) return false;
-        const currentBlob = JSON.stringify(version);
+        const currentBlob = serializedNestedAnnotationSnapshot(version);
         return currentBlob !== this._lastMountedBlob;
     }
 
@@ -271,7 +306,7 @@ export class NestedEditorController {
 
     /**
      * Check whether any transaction in this update carried an
-     * annotation-mutating effect (add, remove, or thread update).
+     * annotation-mutating effect.
      *
      * This deliberately ignores position remapping through doc changes
      * (Phase 1), which happens on every doc-changing transaction but
@@ -280,11 +315,7 @@ export class NestedEditorController {
      * false) and only when the nested editor has sub-annotations.
      */
     private hasAnnotationMutationEffect(update: ViewUpdate): boolean {
-        return update.transactions.some((tr) =>
-            tr.effects.some(
-                (e) => e.is(addAnnotation) || e.is(removeAnnotation) || e.is(updateThread),
-            ),
-        );
+        return transactionsHaveAnnotationMutationEffect(update.transactions);
     }
 
     /**
@@ -346,7 +377,7 @@ export class NestedEditorController {
             );
             // Update the mounted blob snapshot so needsAnnotationRebuild
             // does not see this flush as an external change.
-            this._lastMountedBlob = JSON.stringify(blob);
+            this._lastMountedBlob = serializedNestedAnnotationSnapshot(blob);
         }
     }
 

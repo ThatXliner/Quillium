@@ -501,7 +501,15 @@ $effect(() => {
     }
     lastSyncedVersionIndex = rev.activeVersionIndex;
 
-    const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
+    const activeVersion = rev.versions[rev.activeVersionIndex];
+    if (controller.needsAnnotationRebuild(activeVersion)) {
+        if (isTop) {
+            send({ type: "REBUILD_REQUESTED" });
+        }
+        return;
+    }
+
+    const externalDoc = versionText(activeVersion);
     send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
 });
 
