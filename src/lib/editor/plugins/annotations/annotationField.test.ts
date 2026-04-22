@@ -850,7 +850,7 @@ describe("edge cases", () => {
                     id: 1,
                     _type: "comment",
                     selection: EditorSelection.single(10, 13),
-                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                    thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
             ],
         }).state;
@@ -884,7 +884,7 @@ describe("edge cases", () => {
                     id: 1,
                     _type: "comment",
                     selection: EditorSelection.single(0, 3),
-                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                    thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
             ],
         }).state;
@@ -911,7 +911,7 @@ describe("edge cases", () => {
                     id: 1,
                     _type: "comment",
                     selection: EditorSelection.single(3, 6),
-                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                    thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
             ],
         }).state;
@@ -975,7 +975,7 @@ describe("edge cases", () => {
                     id: 1,
                     _type: "comment",
                     selection: EditorSelection.single(5, 8),
-                    thread: [{ author: "user", text: "note", createdAt: Date.now() }],
+                    thread: [{ author: "user", message: "note", time: Date.now() }],
                 }),
             ],
         }).state;
@@ -1010,7 +1010,7 @@ describe("edge cases", () => {
                 id: 0,
                 _type: "comment",
                 selection: { ranges: [{ anchor: 1, head: 4 }], main: 0 },
-                thread: [{ author: "user", text: "note" }],
+                thread: [{ author: "user", message: "note", time: Date.now() }],
             },
         };
         state = addRevision(state, 0, 5, [
@@ -1025,10 +1025,10 @@ describe("edge cases", () => {
         // Simulate a contaminated flush: the nested editor was synced to "world"
         // which collapsed the sub-annotations, then flushed to version 0's blob.
         // This is the BAD path the guard prevents.
-        const contaminatedBlob: VersionState = {
+        const contaminatedBlob = {
             doc: "hello", // doc is preserved by merge-only flush
             annotationField: {}, // but annotations were collapsed/dropped
-        };
+        } as VersionState & { annotationField: Record<string, never> };
         state = state.update(
             updateRevisionVersionState(state, 0, 0, contaminatedBlob, { addToHistory: false }),
         ).state;

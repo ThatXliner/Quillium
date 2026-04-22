@@ -216,8 +216,8 @@ function getActiveRevisionAnnotation(state: EditorState) {
 // Intercepts comment/revision creation commands when the cursor is inside
 // an active revision — maps the selection to revision-relative offsets and
 // signals the nested editor to open and run the equivalent command there.
-function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand {
-    return (view) => {
+function redirectToNestedEditor(type: NestedEditorCommand["type"]) {
+    return (view: EditorView) => {
         if (!appSettings.atomicRevisions) return false;
         // When inline nested editors are enabled, annotation creation
         // should happen directly in the main editor — no modal redirect.
@@ -502,15 +502,11 @@ const annotationDecorations = ViewPlugin.fromClass(
                 isAnnotationOfType(a, "suggestion"),
             ) as Array<Annotation<"suggestion">>;
 
-            const dots = suggestions
-                .filter((s) => {
-                    if (!s.author || s.author === "AI") return false;
-                    return readersSettings.personas.some((p) => p.name === s.author);
+            const dots = flatMap(suggestions, (s) => {
+                    if (!s.author || s.author === "AI") return [];
+                    const persona = readersSettings.personas.find((p) => p.name === s.author);
+                    return persona ? [{ pos: s.selection.main.to, color: persona.color }] : [];
                 })
-                .map((s) => ({
-                    pos: s.selection.main.to,
-                    color: readersSettings.personas.find((p) => p.name === s.author)!.color,
-                }))
                 .sort((a, b) => a.pos - b.pos);
 
             for (const { pos, color } of dots) {
