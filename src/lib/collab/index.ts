@@ -10,7 +10,7 @@
  *   - disableCollab(): deactivate collab, disconnect provider
  */
 import type { EditorView } from "@codemirror/view";
-import { Compartment, Transaction } from "@codemirror/state";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import { history } from "@codemirror/commands";
 import type * as Y from "yjs";
 import { get } from "svelte/store";
@@ -32,7 +32,11 @@ import {
 } from "./yjsProvider";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 import { AnnotationIdMap } from "./annotationSchema";
-import { annotationField, removeAnnotation } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    addAnnotation,
+    annotationField,
+    removeAnnotation,
+} from "$lib/editor/plugins/annotations/annotationField";
 
 // Stores
 import {
@@ -43,6 +47,7 @@ import {
     collabSession,
     joinerPriorView,
     isCollabJoiner,
+    type JoinerPriorView,
 } from "./store";
 
 // Navigation (D-103: restore joiner to prior view)
@@ -290,12 +295,55 @@ export function restoreJoinerPriorView(): void {
     }
 }
 
+function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | null) {
+    if (!prior?.editorStateJson) return;
+
+    let restoredState: EditorState;
+    try {
+        restoredState = EditorState.fromJSON(
+            prior.editorStateJson,
+            { extensions: [annotationField] },
+            { annotationField },
+        );
+    } catch (err) {
+        console.warn("[collab] Failed to restore joiner editor snapshot:", err);
+        return;
+    }
+
+    const currentAnnotations = Object.values(view.state.field(annotationField, false) ?? {});
+    const restoredAnnotations = Object.values(restoredState.field(annotationField, false) ?? {});
+    const restoredDoc = restoredState.doc.toString();
+
+    view.dispatch({
+        ...(view.state.doc.toString() !== restoredDoc
+            ? {
+                  changes: {
+                      from: 0,
+                      to: view.state.doc.length,
+                      insert: restoredDoc,
+                  },
+              }
+            : {}),
+        selection: restoredState.selection,
+        effects: currentAnnotations.map((annotation) => removeAnnotation.of(annotation)),
+        annotations: [Transaction.addToHistory.of(false)],
+    });
+
+    if (restoredAnnotations.length > 0) {
+        view.dispatch({
+            effects: restoredAnnotations.map((annotation) => addAnnotation.of(annotation)),
+            annotations: [Transaction.addToHistory.of(false)],
+        });
+    }
+}
+
 /**
  * Disable collab and disconnect from relay.
  */
 export function disableCollab(view: EditorView): void {
     // D-103: Check if this is a joiner before clearing session
     const wasJoiner = get(isCollabJoiner);
+    const prior = wasJoiner ? get(joinerPriorView) : null;
 
     disconnectYjsProvider();
     currentUndoManager = null;
@@ -314,6 +362,7 @@ export function disableCollab(view: EditorView): void {
 
     // D-103: Restore joiner to prior view
     if (wasJoiner) {
+        restoreJoinerEditorSnapshot(view, prior);
         restoreJoinerPriorView();
     }
 }

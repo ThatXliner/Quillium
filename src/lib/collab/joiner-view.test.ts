@@ -2,11 +2,12 @@
 // + criteria #6 (own-edits-only undo), #7 (owner history excludes remote text),
 // and #8 (selection restored on undo/redo). Uses Phase 1 flushAll primitive
 // and Plan 02-01 makeJoinerPeer factory.
-import { historyField, undo } from "@codemirror/commands";
+import { history, historyField, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
+import { get } from "svelte/store";
 import {
     connect,
     flushAll,
@@ -17,17 +18,24 @@ import {
     type Peer,
 } from "./test-helpers/twoPeerHarness";
 import { AnnotationIdMap } from "./annotationSchema";
+import { collabCompartment, disableCollab } from "./index";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 import { createYjsBinding } from "./yjsBinding";
 import { createYjsUndoExtension } from "./yjsUndo";
+import { isCollabJoiner, joinerPriorView } from "./store";
 import type { YjsAnnotationNode } from "./types";
 import {
     addAnnotation,
     annotationField,
+    removeAnnotation,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import { historyCompartment } from "$lib/editor/extensions";
+import { currentDraftId } from "$lib/stores";
+
+vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 
 type JoinerPeer = Peer & { undoManager: Y.UndoManager };
 
@@ -95,6 +103,9 @@ describe("joiner view hardening", () => {
             const peer = peers.pop();
             if (peer) teardown(peer);
         }
+        joinerPriorView.set(null);
+        isCollabJoiner.set(false);
+        currentDraftId.set(null);
     });
 
     it("no history field - joiner state.field(historyField, false) is undefined", async () => {
@@ -291,5 +302,49 @@ describe("joiner view hardening", () => {
         expect(joinerRevision.activeVersionIndex).toBe(1);
         expect(owner.view.state.doc.toString()).toBe("hello ");
         expect(joiner.view.state.doc.toString()).toBe("hello ");
+    });
+
+    it("leaving a joined session restores the pre-session editor snapshot", () => {
+        const state = EditorState.create({
+            doc: "local draft",
+            extensions: [
+                annotationField,
+                historyCompartment.of(history({ newGroupDelay: 250 })),
+                collabCompartment.of([]),
+            ],
+        });
+        const view = new EditorView({ state, parent: document.body });
+
+        try {
+            view.dispatch({
+                effects: addAnnotation.of(comment(0, 0, 5)),
+            });
+            const snapshot = view.state.toJSON({ annotationField });
+            const localAnnotation = view.state.field(annotationField)[0];
+            view.dispatch({
+                changes: { from: 0, to: view.state.doc.length, insert: "remote live" },
+                effects: removeAnnotation.of(localAnnotation),
+            });
+
+            currentDraftId.set(null);
+            joinerPriorView.set({
+                draftId: "draft-local",
+                viewType: "editor",
+                editorStateJson: snapshot,
+            });
+            isCollabJoiner.set(true);
+
+            disableCollab(view);
+
+            expect(view.state.doc.toString()).toBe("local draft");
+            expect(Object.values(view.state.field(annotationField))).toHaveLength(1);
+            expect(Object.values(view.state.field(annotationField))[0].selection.main.from).toBe(0);
+            expect(Object.values(view.state.field(annotationField))[0].selection.main.to).toBe(5);
+            expect(get(currentDraftId)).toBe("draft-local");
+            expect(get(isCollabJoiner)).toBe(false);
+            expect(get(joinerPriorView)).toBeNull();
+        } finally {
+            view.destroy();
+        }
     });
 });

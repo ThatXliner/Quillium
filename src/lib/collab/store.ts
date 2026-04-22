@@ -49,6 +49,7 @@ export const isCollabJoiner = writable(false);
 export interface JoinerPriorView {
     draftId: string | null;
     viewType: "editor" | "library";
+    editorStateJson?: unknown;
 }
 
 export const joinerPriorView = writable<JoinerPriorView | null>(null);

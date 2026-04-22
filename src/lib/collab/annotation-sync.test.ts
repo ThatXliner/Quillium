@@ -32,7 +32,12 @@ import {
     deleteRevisionVersion,
     nestedEditorEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
-import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    isAnnotationOfType,
+    type GenericAnnotation,
+    type RawAnnotations,
+    type VersionState,
+} from "$lib/editor/plugins/annotations/models";
 
 function createComment(id: number, from: number, to: number): GenericAnnotation {
     return {
@@ -199,6 +204,47 @@ describe("annotation sync (Phase 11)", () => {
             } else {
                 expect.fail("Expected revision annotation");
             }
+        });
+
+        it("nested annotations inside revision versions sync between peers", async () => {
+            const revision = createRevision(1, 6, 11, "world");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+            await flushAll(peerA, peerB);
+
+            const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
+            const nestedAnnotations: RawAnnotations = {
+                "0": {
+                    id: 0,
+                    _type: "comment",
+                    selection: EditorSelection.single(0, 5).toJSON(),
+                    thread: [],
+                },
+            };
+            const nestedVersion = {
+                doc: "world",
+                annotationField: nestedAnnotations,
+            } as VersionState & { annotationField: RawAnnotations };
+
+            peerA.view.dispatch(
+                updateRevisionVersionState(peerA.view.state, annIdA, 0, nestedVersion),
+            );
+            await flushAll(peerA, peerB);
+
+            const revB = Object.values(peerB.view.state.field(annotationField))[0];
+            if (!isAnnotationOfType(revB, "revision")) {
+                expect.fail("Expected revision annotation");
+                return;
+            }
+
+            const nestedField = (
+                revB.versions[0] as VersionState & { annotationField?: RawAnnotations }
+            ).annotationField;
+            expect(nestedField?.["0"]?._type).toBe("comment");
+            expect(nestedField?.["0"]?.selection).toEqual(
+                EditorSelection.single(0, 5).toJSON(),
+            );
         });
 
         it("nested editor typing syncs character-by-character", async () => {

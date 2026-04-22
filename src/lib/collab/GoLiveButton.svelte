@@ -13,7 +13,16 @@ import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
-import { enableCollab, disableCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal, collabState, reconnectAttempt } from "$lib/collab";
+import {
+    enableCollab,
+    disableCollab,
+    restoreJoinerPriorView,
+    relayConfigured,
+    registerDocumentForCollab,
+    ownerLeftSignal,
+    collabState,
+    reconnectAttempt,
+} from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 
@@ -30,10 +39,13 @@ const currentId = $derived($currentDraftId ?? "");
 // React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
 $effect(() => {
     if ($ownerLeftSignal > 0 && isLive) {
-        // Provider already disconnected via handleOwnerLeft, just update UI state
+        const view = get(editorView);
+        if (view) {
+            disableCollab(view);
+        } else {
+            restoreJoinerPriorView();
+        }
         isLive = false;
-        // D-103: restoreJoinerPriorView is called by disableCollab automatically
-        // when the provider disconnects. Just update local UI state here.
         toast.error("The owner ended the session");
     }
 });
@@ -96,6 +108,7 @@ async function joinById() {
         joinerPriorView.set({
             draftId: priorDraftId,
             viewType: "editor", // We're in the editor if this button is visible
+            editorStateJson: view.state.toJSON(savedFields),
         });
 
         // D-100: Clear local draft ID -- joiner is NOT editing a local doc.

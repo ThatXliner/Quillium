@@ -73,6 +73,8 @@ import { Annotation, Transaction } from "@codemirror/state";
 import * as Y from "yjs";
 import {
     codeMirrorToYjsAnnotation,
+    getRawAnnotationField,
+    syncRawAnnotationsToYjsMap,
     yjsAnnotationToCodeMirror,
     AnnotationIdMap,
 } from "./annotationSchema";
@@ -112,6 +114,17 @@ export function createAnnotationSyncPlugin(
             ) => void;
             private destroyed = false;
             private idMap = idMap;
+            private nestedIdMaps = new WeakMap<Y.Map<YjsAnnotationNode>, AnnotationIdMap>();
+            private nestedIdMapFor = (
+                annotations: Y.Map<YjsAnnotationNode>,
+            ): AnnotationIdMap => {
+                let idMap = this.nestedIdMaps.get(annotations);
+                if (!idMap) {
+                    idMap = new AnnotationIdMap();
+                    this.nestedIdMaps.set(annotations, idMap);
+                }
+                return idMap;
+            };
             private clientId = clientId;
             private _initialSyncDone = false;
             private deepObserverAttached = false;
@@ -202,7 +215,13 @@ export function createAnnotationSyncPlugin(
                             if (!yjsKey) continue;
                             const node = scopeAnnotations.get(yjsKey);
                             if (!node) continue;
-                            const rebuilt = yjsAnnotationToCodeMirror(node, ydoc, scopeYtext, cmId);
+                            const rebuilt = yjsAnnotationToCodeMirror(
+                                node,
+                                ydoc,
+                                scopeYtext,
+                                cmId,
+                                { nestedIdMapFor: this.nestedIdMapFor },
+                            );
                             if (!rebuilt) continue;
                             const existing = current[cmId];
                             if (existing) effects.push(removeAnnotation.of(existing));
@@ -274,9 +293,16 @@ export function createAnnotationSyncPlugin(
                             // Skip if already in Yjs (reconnect case)
                             if (scopeAnnotations.has(yjsId)) continue;
 
-                            const node = codeMirrorToYjsAnnotation(ann, scopeYtext, clientId, ydoc);
+                            const node = codeMirrorToYjsAnnotation(
+                                ann,
+                                scopeYtext,
+                                clientId,
+                                ydoc,
+                                { nestedIdMapFor: this.nestedIdMapFor },
+                            );
                             node.set("id", yjsId);
                             scopeAnnotations.set(yjsId, node);
+                            this.syncAnnotationFields(ann, node, ydoc);
                         }
                     }, "local");
                 });
@@ -300,7 +326,9 @@ export function createAnnotationSyncPlugin(
                         if (this.idMap.getCmId(yjsKey) !== undefined) return;
 
                         const cmId = this.idMap.getOrCreateCmId(yjsKey);
-                        const ann = yjsAnnotationToCodeMirror(node, ydoc, scopeYtext, cmId);
+                        const ann = yjsAnnotationToCodeMirror(node, ydoc, scopeYtext, cmId, {
+                            nestedIdMapFor: this.nestedIdMapFor,
+                        });
                         if (ann) effects.push(addAnnotation.of(ann));
                     });
 
@@ -388,9 +416,11 @@ export function createAnnotationSyncPlugin(
                                 scopeYtext,
                                 this.clientId,
                                 ydoc,
+                                { nestedIdMapFor: this.nestedIdMapFor },
                             );
                             node.set("id", yjsKey); // Ensure Yjs ID matches the key
                             scopeAnnotations.set(yjsKey, node);
+                            this.syncAnnotationFields(ann, node, ydoc);
                         }
                     }
 
@@ -460,7 +490,7 @@ export function createAnnotationSyncPlugin(
             private syncRevisionVersions(
                 ann: AnnotationType<"revision">,
                 versionsMap: Y.Map<Y.Map<unknown>>,
-                _ydoc: Y.Doc,
+                ydoc: Y.Doc,
             ) {
                 const cmVersions = ann.versions;
                 const yjsKeys = new Set(versionsMap.keys());
@@ -491,7 +521,7 @@ export function createAnnotationSyncPlugin(
                     }
                 }
 
-                // Sync version text and labels
+                // Sync version text, labels, and nested annotation maps
                 for (let i = 0; i < cmVersions.length; i++) {
                     const key = String(i);
                     const vNode = versionsMap.get(key);
@@ -512,6 +542,23 @@ export function createAnnotationSyncPlugin(
                         } else if (yjsLabel !== undefined) {
                             vNode.delete("label");
                         }
+                    }
+
+                    let nestedAnnotations = vNode.get("annotations");
+                    if (!(nestedAnnotations instanceof Y.Map)) {
+                        nestedAnnotations = new Y.Map<YjsAnnotationNode>();
+                        vNode.set("annotations", nestedAnnotations);
+                    }
+                    if (vtext) {
+                        syncRawAnnotationsToYjsMap(
+                            getRawAnnotationField(cmVersions[i]),
+                            nestedAnnotations as Y.Map<YjsAnnotationNode>,
+                            vtext,
+                            this.clientId,
+                            ydoc,
+                            this.nestedIdMapFor(nestedAnnotations as Y.Map<YjsAnnotationNode>),
+                            { nestedIdMapFor: this.nestedIdMapFor },
+                        );
                     }
                 }
             }
