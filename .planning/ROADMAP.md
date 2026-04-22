@@ -81,11 +81,11 @@ Phases to be defined during `/gsd-new-milestone` after v1.1 ships.
   3. Pressing Cmd-z on a joiner immediately after connect leaves the document and annotations unchanged.
   4. Owner has N annotations + joiner connects → joiner annotation count = N (not 2N), asserted in the harness.
 **Plans**: 5 plans
-- [ ] 02-01-PLAN.md — Wave 0 probes (A1 event-name spelling, A2 compartment removal) + makeJoinerPeer harness factory
-- [ ] 02-02-PLAN.md — historyCompartment in extensions.ts + joiner branch in enableCollab (JOINER-01)
-- [ ] 02-03-PLAN.md — Selection restore ViewPlugin in yjsUndo.ts (criterion #8)
-- [ ] 02-04-PLAN.md — yjsBinding addToHistory.of(false) + _syncInitialToYjs re-entrance guard + 2x annotation race fix (JOINER-02, JOINER-05, criterion #7)
-- [ ] 02-05-PLAN.md — joiner-view.test.ts end-to-end suite (JOINER-01/-03/-05 + criteria #6/#7/#8)
+- [x] 02-01-PLAN.md — Wave 0 probes (A1 event-name spelling, A2 compartment removal) + makeJoinerPeer harness factory
+- [x] 02-02-PLAN.md — historyCompartment in extensions.ts + joiner branch in enableCollab (JOINER-01)
+- [x] 02-03-PLAN.md — Selection restore ViewPlugin in yjsUndo.ts (criterion #8)
+- [x] 02-04-PLAN.md — yjsBinding addToHistory.of(false) + _syncInitialToYjs re-entrance guard + 2x annotation race fix (JOINER-02, JOINER-05, criterion #7)
+- [x] 02-05-PLAN.md — joiner-view.test.ts end-to-end suite (JOINER-01/-03/-05 + criteria #6/#7/#8)
 
 ### Phase 3: Unified Write Path (CM → Yjs Commands)
 **Goal**: Every annotation mutation in the app flows through one `commands.ts` module that writes Yjs first; the sync plugin contains zero effect-specific branches; concurrent thread appends from two peers converge without loss.

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: PRE-V2 FIX ANNOTATION SYNC
-status: Ready for Phase 2
+status: Ready for Phase 3
 stopped_at: context exhaustion at 93% (2026-04-20)
 last_updated: "2026-04-20T01:25:37.327Z"
-last_activity: 2026-04-19 — Phase 1 complete (HARNESS-01, HARNESS-02, SYNC-06; 21/21 collab tests pass)
+last_activity: 2026-04-22 — Phase 2 complete (JOINER-01/-02/-03/-05; 159/159 collab tests pass)
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 3
-  percent: 38
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-04-19)
 ## Current Position
 
 Branch: omni-fixes
-Phase: Phase 1: Test Harness & Invariants — COMPLETE
-Plan: 3/3 plans complete
-Status: Ready for Phase 2
-Last activity: 2026-04-19 — Phase 1 complete (HARNESS-01, HARNESS-02, SYNC-06; 21/21 collab tests pass)
+Phase: Phase 2: Joiner View Hardening — COMPLETE
+Plan: 5/5 plans complete
+Status: Ready for Phase 3
+Last activity: 2026-04-22 — Phase 2 complete (JOINER-01/-02/-03/-05; 159/159 collab tests pass)
 
-Progress: [█░░░░░░░░░] 11% (1/9 phases)
+Progress: [██░░░░░░░░] 22% (2/9 phases)
 
 ## Performance Metrics
 
