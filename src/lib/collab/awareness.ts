@@ -1,3 +1,4 @@
+import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 /**
  * awareness.ts -- Awareness-based cursor sync via y-protocols.
  *
@@ -19,16 +20,17 @@
  *   - This module renders remote cursors from awareness state
  */
 import {
-    type DecorationSet,
     Decoration,
+    type DecorationSet,
     EditorView,
     ViewPlugin,
-    WidgetType,
     type ViewUpdate,
+    WidgetType,
 } from "@codemirror/view";
-import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
+import { get } from "svelte/store";
 import type { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
+import { collabPresenceUsers, followedClientId } from "./store";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,20 @@ export interface AwarenessCursorState {
 export interface AwarenessState {
     user?: AwarenessUserState;
     cursor?: AwarenessCursorState | null;
+}
+
+export interface AwarenessPositionMapper {
+    /** Convert this editor's position to the shared document position. */
+    toSharedPosition?: (position: number, state: EditorView["state"]) => number | null;
+    /** Convert a shared document position to this editor's local position. */
+    fromSharedPosition?: (position: number, state: EditorView["state"]) => number | null;
+}
+
+export interface AwarenessExtensionOptions extends AwarenessPositionMapper {
+    /** Nested editors should not clear the shared cursor when they unmount. */
+    clearCursorOnDestroy?: boolean;
+    /** Main editor broadcasts immediately; nested editors wait until focused. */
+    broadcastInitialCursor?: boolean;
 }
 
 // ── Color Palette (preserved from cursors.ts for D-60) ──────────────────────
@@ -96,11 +112,7 @@ class RemoteCursorWidget extends WidgetType {
     }
 
     eq(other: RemoteCursorWidget): boolean {
-        return (
-            this.name === other.name &&
-            this.color === other.color &&
-            this.pos === other.pos
-        );
+        return this.name === other.name && this.color === other.color && this.pos === other.pos;
     }
 
     toDOM(): HTMLElement {
@@ -191,8 +203,13 @@ export function createAwarenessExtension(
     ytext: Y.Text,
     localName: string,
     localColor: string,
+    options: AwarenessExtensionOptions = {},
 ): Extension {
-    const localColorLight = localColor + "33"; // Transparency for selection
+    const localColorLight = `${localColor}33`; // Transparency for selection
+    const toSharedPosition = options.toSharedPosition ?? ((position: number) => position);
+    const fromSharedPosition = options.fromSharedPosition ?? ((position: number) => position);
+    const clearCursorOnDestroy = options.clearCursorOnDestroy ?? true;
+    const broadcastInitialCursor = options.broadcastInitialCursor ?? true;
 
     // Set initial user state
     awareness.setLocalStateField("user", {
@@ -223,7 +240,13 @@ export function createAwarenessExtension(
         }
     }
 
-    function buildDecorations(docLength: number): DecorationSet {
+    function getRemoteCursors(editorState: EditorView["state"]): Array<{
+        clientId: number;
+        pos: number;
+        name: string;
+        color: string;
+        ts: number;
+    }> {
         const states = awareness.getStates();
         const localClientId = awareness.clientID;
         const meta = awareness.meta;
@@ -234,14 +257,20 @@ export function createAwarenessExtension(
         // recently updated entry per user.
         const byName = new Map<
             string,
-            { pos: number; name: string; color: string; ts: number }
+            {
+                clientId: number;
+                pos: number;
+                name: string;
+                color: string;
+                ts: number;
+            }
         >();
 
-        states.forEach((state: AwarenessState, clientId: number) => {
+        states.forEach((remoteState: AwarenessState, clientId: number) => {
             if (clientId === localClientId) return;
 
-            const cursor = state.cursor;
-            const user = state.user;
+            const cursor = remoteState.cursor;
+            const user = remoteState.user;
             if (!cursor || !user) return;
 
             // Resolve RelativePosition against current Y.Doc state.
@@ -249,15 +278,69 @@ export function createAwarenessExtension(
             const resolved = decodePos(cursor.headPos);
             if (resolved === null) return;
 
-            const pos = Math.max(0, Math.min(resolved, docLength));
+            const mapped = fromSharedPosition(resolved, editorState);
+            if (mapped === null) return;
+
+            const pos = Math.max(0, Math.min(mapped, editorState.doc.length));
             const ts = meta.get(clientId)?.lastUpdated ?? 0;
             const existing = byName.get(user.name);
             if (!existing || ts > existing.ts) {
-                byName.set(user.name, { pos, name: user.name, color: user.color, ts });
+                byName.set(user.name, {
+                    clientId,
+                    pos,
+                    name: user.name,
+                    color: user.color,
+                    ts,
+                });
             }
         });
 
-        const cursors = Array.from(byName.values());
+        return Array.from(byName.values());
+    }
+
+    function publishPresence(): void {
+        const states = awareness.getStates();
+        const localClientId = awareness.clientID;
+        const meta = awareness.meta;
+        const byName = new Map<
+            string,
+            {
+                clientId: number;
+                name: string;
+                color: string;
+                cursorPos: number | null;
+                lastUpdated: number;
+            }
+        >();
+
+        states.forEach((state: AwarenessState, clientId: number) => {
+            if (clientId === localClientId) return;
+            const user = state.user;
+            if (!user) return;
+            const cursorPos = decodePos(state.cursor?.headPos);
+            const lastUpdated = meta.get(clientId)?.lastUpdated ?? 0;
+            const existing = byName.get(user.name);
+            if (!existing || lastUpdated > existing.lastUpdated) {
+                byName.set(user.name, {
+                    clientId,
+                    name: user.name,
+                    color: user.color,
+                    cursorPos,
+                    lastUpdated,
+                });
+            }
+        });
+
+        const users = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+        collabPresenceUsers.set(users);
+        const followed = get(followedClientId);
+        if (followed !== null && !users.some((user) => user.clientId === followed)) {
+            followedClientId.set(null);
+        }
+    }
+
+    function buildDecorations(state: EditorView["state"]): DecorationSet {
+        const cursors = getRemoteCursors(state);
 
         if (cursors.length === 0) return Decoration.none;
 
@@ -286,15 +369,12 @@ export function createAwarenessExtension(
      *  decoration facet sees a fresh RangeSet and repaints widgets. */
     const cursorsField = StateField.define<DecorationSet>({
         create(state) {
-            return buildDecorations(state.doc.length);
+            return buildDecorations(state);
         },
         update(value, tr) {
             // Rebuild on any doc change OR explicit awareness tick.
-            if (
-                tr.docChanged ||
-                tr.effects.some((e) => e.is(awarenessTickEffect))
-            ) {
-                return buildDecorations(tr.state.doc.length);
+            if (tr.docChanged || tr.effects.some((e) => e.is(awarenessTickEffect))) {
+                return buildDecorations(tr.state);
             }
             return value;
         },
@@ -309,6 +389,7 @@ export function createAwarenessExtension(
             private lastCursorAnchor = -1;
             private destroyed = false;
             private tick = 0;
+            private stopFollowing: (() => void) | undefined;
             /** True while we're inside our own ViewPlugin.update() — setLocalStateField
              *  fires awareness "update" synchronously and would reenter dispatch. */
             private insideUpdate = false;
@@ -316,6 +397,7 @@ export function createAwarenessExtension(
             constructor(private view: EditorView) {
                 this.changeHandler = () => {
                     if (this.destroyed) return;
+                    publishPresence();
                     this.tick++;
                     const tick = this.tick;
                     const doDispatch = () => {
@@ -323,6 +405,7 @@ export function createAwarenessExtension(
                         this.view.dispatch({
                             effects: awarenessTickEffect.of(tick),
                         });
+                        this.scrollToFollowedCursor();
                     };
                     // Dispatch sync when safe (typical case: WebSocket message handler).
                     // Defer when we're inside an active CM transaction (our own
@@ -340,20 +423,19 @@ export function createAwarenessExtension(
                 // identical each keystroke, so "change" never fires and their cursor
                 // appears frozen. "update" fires on every clock bump.
                 awareness.on("update", this.changeHandler);
+                publishPresence();
+
+                this.stopFollowing = followedClientId.subscribe(() => {
+                    if (this.destroyed) return;
+                    queueMicrotask(() => this.scrollToFollowedCursor());
+                });
 
                 // Set initial cursor position.
-                this.insideUpdate = true;
-                try {
-                    const head = view.state.selection.main.head;
-                    const anchor = view.state.selection.main.anchor;
-                    awareness.setLocalStateField("cursor", {
-                        anchorPos: encodePos(anchor),
-                        headPos: encodePos(head),
-                    });
-                    this.lastCursorHead = head;
-                    this.lastCursorAnchor = anchor;
-                } finally {
-                    this.insideUpdate = false;
+                if (broadcastInitialCursor) {
+                    this.broadcastLocalCursor(
+                        view.state.selection.main.anchor,
+                        view.state.selection.main.head,
+                    );
                 }
             }
 
@@ -374,10 +456,7 @@ export function createAwarenessExtension(
                         ) {
                             this.lastCursorHead = head;
                             this.lastCursorAnchor = anchor;
-                            awareness.setLocalStateField("cursor", {
-                                anchorPos: encodePos(anchor),
-                                headPos: encodePos(head),
-                            });
+                            this.broadcastLocalCursor(anchor, head);
                         }
                     }
                 } finally {
@@ -385,12 +464,46 @@ export function createAwarenessExtension(
                 }
             }
 
+            private broadcastLocalCursor(anchor: number, head: number): void {
+                if (!broadcastInitialCursor && !this.view.hasFocus) return;
+                const sharedAnchor = toSharedPosition(anchor, this.view.state);
+                const sharedHead = toSharedPosition(head, this.view.state);
+                if (sharedAnchor === null || sharedHead === null) return;
+
+                this.insideUpdate = true;
+                try {
+                    awareness.setLocalStateField("cursor", {
+                        anchorPos: encodePos(sharedAnchor),
+                        headPos: encodePos(sharedHead),
+                    });
+                } finally {
+                    this.insideUpdate = false;
+                }
+            }
+
+            private scrollToFollowedCursor(): void {
+                const targetClientId = get(followedClientId);
+                if (targetClientId === null) return;
+
+                const target = getRemoteCursors(this.view.state).find(
+                    (cursor) => cursor.clientId === targetClientId,
+                );
+                if (!target) return;
+
+                this.view.dispatch({
+                    effects: EditorView.scrollIntoView(target.pos, { y: "center" }),
+                });
+            }
+
             destroy() {
                 this.destroyed = true;
                 awareness.off("update", this.changeHandler);
+                this.stopFollowing?.();
                 // Clear local cursor state on disconnect (prevents ghost cursors).
-                this.insideUpdate = true;
-                awareness.setLocalStateField("cursor", null);
+                if (clearCursorOnDestroy) {
+                    this.insideUpdate = true;
+                    awareness.setLocalStateField("cursor", null);
+                }
             }
         },
     );

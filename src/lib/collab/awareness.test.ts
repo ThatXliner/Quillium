@@ -1,3 +1,5 @@
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 /**
  * awareness.test.ts -- Tests for awareness-based cursor sync.
  *
@@ -11,16 +13,10 @@
  *   - Cursor position tracks through document changes (via RelativePosition)
  *   - Widget renders name label and colored caret
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import * as Y from "yjs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Awareness } from "y-protocols/awareness";
-import {
-    createAwarenessExtension,
-    colorForClient,
-    type AwarenessState,
-} from "./awareness";
+import * as Y from "yjs";
+import { type AwarenessState, colorForClient, createAwarenessExtension } from "./awareness";
 
 /**
  * Build a remote awareness cursor state using RelativePosition encoded
@@ -35,7 +31,7 @@ function makeRemoteCursorState(
     const rel = Y.createRelativePositionFromTypeIndex(ytext, absolutePos);
     const encoded = Array.from(Y.encodeRelativePosition(rel));
     return {
-        user: { name, color, colorLight: color + "33" },
+        user: { name, color, colorLight: `${color}33` },
         cursor: { anchorPos: encoded, headPos: encoded },
     };
 }
@@ -44,7 +40,7 @@ describe("awareness", () => {
     let ydoc: Y.Doc;
     let ytext: Y.Text;
     let awareness: Awareness;
-    let view: EditorView;
+    let view: EditorView | undefined;
 
     beforeEach(() => {
         ydoc = new Y.Doc();
@@ -115,10 +111,7 @@ describe("awareness", () => {
             view = new EditorView({ state, parent: document.body });
 
             const remoteClientId = 999;
-            awareness.states.set(
-                remoteClientId,
-                makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
-            );
+            awareness.states.set(remoteClientId, makeRemoteCursorState(ytext, "Bob", "#E87040", 3));
             awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -137,10 +130,7 @@ describe("awareness", () => {
             view = new EditorView({ state, parent: document.body });
 
             const remoteClientId = 999;
-            awareness.states.set(
-                remoteClientId,
-                makeRemoteCursorState(ytext, "Bob", "#E87040", 5),
-            );
+            awareness.states.set(remoteClientId, makeRemoteCursorState(ytext, "Bob", "#E87040", 5));
             awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -184,10 +174,7 @@ describe("awareness", () => {
             view = new EditorView({ state, parent: document.body });
 
             const remoteClientId = 999;
-            awareness.states.set(
-                remoteClientId,
-                makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
-            );
+            awareness.states.set(remoteClientId, makeRemoteCursorState(ytext, "Bob", "#E87040", 3));
             awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -217,7 +204,7 @@ describe("awareness", () => {
             expect(stateBefore?.cursor).not.toBeNull();
 
             view.destroy();
-            view = undefined!;
+            view = undefined;
 
             const stateAfter = awareness.getLocalState() as AwarenessState;
             expect(stateAfter?.cursor).toBeNull();
@@ -267,10 +254,7 @@ describe("awareness", () => {
 
             // Remote cursor at position 6 (start of "world")
             const remoteClientId = 999;
-            awareness.states.set(
-                remoteClientId,
-                makeRemoteCursorState(ytext, "Bob", "#E87040", 6),
-            );
+            awareness.states.set(remoteClientId, makeRemoteCursorState(ytext, "Bob", "#E87040", 6));
             awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -298,10 +282,7 @@ describe("awareness", () => {
 
             // Remote cursor at position 3 (inside "hello")
             const remoteClientId = 999;
-            awareness.states.set(
-                remoteClientId,
-                makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
-            );
+            awareness.states.set(remoteClientId, makeRemoteCursorState(ytext, "Bob", "#E87040", 3));
             awareness.emit("update", [
                 { added: [remoteClientId], updated: [], removed: [] },
                 "test",
@@ -322,6 +303,41 @@ describe("awareness", () => {
 
             const cursorElements = view.dom.querySelectorAll(".cm-remote-cursor");
             expect(cursorElements.length).toBe(0);
+        });
+
+        it("maps remote shared cursor positions into a nested editor range", () => {
+            ydoc.transact(() => ytext.insert(0, "prefix nested suffix"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2", {
+                fromSharedPosition(position) {
+                    if (position < 7 || position > 13) return null;
+                    return position - 7;
+                },
+                toSharedPosition(position) {
+                    return position + 7;
+                },
+            });
+            const state = EditorState.create({ doc: "nested", extensions: [ext] });
+            view = new EditorView({ state, parent: document.body });
+
+            const remoteClientId = 999;
+            awareness.states.set(remoteClientId, makeRemoteCursorState(ytext, "Bob", "#E87040", 9));
+            awareness.emit("update", [
+                { added: [remoteClientId], updated: [], removed: [] },
+                "test",
+            ]);
+            view.dispatch({});
+
+            expect(view.dom.querySelectorAll(".cm-remote-cursor").length).toBe(1);
+
+            awareness.states.set(remoteClientId, makeRemoteCursorState(ytext, "Bob", "#E87040", 2));
+            awareness.emit("update", [
+                { added: [], updated: [remoteClientId], removed: [] },
+                "test",
+            ]);
+            view.dispatch({});
+
+            expect(view.dom.querySelectorAll(".cm-remote-cursor").length).toBe(0);
         });
     });
 });

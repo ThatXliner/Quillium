@@ -1,3 +1,8 @@
+import { getUser } from "$lib/auth/auth.svelte";
+import { supabase } from "$lib/auth/supabase";
+import { historyCompartment } from "$lib/editor/extensions";
+import { history } from "@codemirror/commands";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 /**
  * index.ts -- Collab module entry point (Yjs implementation).
  *
@@ -10,48 +15,45 @@
  *   - disableCollab(): deactivate collab, disconnect provider
  */
 import type { EditorView } from "@codemirror/view";
-import { Compartment, EditorState, Transaction } from "@codemirror/state";
-import { history } from "@codemirror/commands";
-import type * as Y from "yjs";
 import { get } from "svelte/store";
-import { supabase } from "$lib/auth/supabase";
-import { getUser } from "$lib/auth/auth.svelte";
-import { historyCompartment } from "$lib/editor/extensions";
+import type * as Y from "yjs";
 
-// Yjs modules
-import { createYjsBinding } from "./yjsBinding";
-import { createYjsUndoExtension } from "./yjsUndo";
-import { createAwarenessExtension, colorForClient } from "./awareness";
-import {
-    createYjsProvider,
-    disconnectYjsProvider,
-    handleOwnerLeft,
-    relayConfigured,
-    getYjsProvider,
-    getCurrentDocId,
-} from "./yjsProvider";
-import { createAnnotationSyncPlugin } from "./yjsAnnotations";
-import { AnnotationIdMap } from "./annotationSchema";
 import {
     addAnnotation,
     annotationField,
     removeAnnotation,
 } from "$lib/editor/plugins/annotations/annotationField";
+import { AnnotationIdMap } from "./annotationSchema";
+import { colorForClient, createAwarenessExtension } from "./awareness";
+import { createAnnotationSyncPlugin } from "./yjsAnnotations";
+// Yjs modules
+import { createYjsBinding } from "./yjsBinding";
+import {
+    createYjsProvider,
+    disconnectYjsProvider,
+    getCurrentDocId,
+    getYjsProvider,
+    handleOwnerLeft,
+    relayConfigured,
+} from "./yjsProvider";
+import { createYjsUndoExtension } from "./yjsUndo";
 
 // Stores
 import {
+    type JoinerPriorView,
+    collabPresenceUsers,
+    collabSession,
     collabState,
+    followedClientId,
+    isCollabJoiner,
+    joinerPriorView,
     ownerLeftSignal,
     pendingUpdatesCount,
     reconnectAttempt,
-    collabSession,
-    joinerPriorView,
-    isCollabJoiner,
-    type JoinerPriorView,
 } from "./store";
 
 // Navigation (D-103: restore joiner to prior view)
-import { goToLibrary, goToEditor } from "$lib/navigation";
+import { goToEditor, goToLibrary } from "$lib/navigation";
 import { currentDraftId } from "$lib/stores";
 
 // Types
@@ -64,6 +66,8 @@ export {
     pendingUpdatesCount,
     reconnectAttempt,
     collabSession,
+    collabPresenceUsers,
+    followedClientId,
     joinerPriorView,
     isCollabJoiner,
     type JoinerPriorView,
@@ -231,6 +235,8 @@ export async function enableCollab(
     collabSession.set({
         docId,
         clientID,
+        displayName,
+        cursorColor,
         isOwner: asOwner,
         ydoc,
         provider,
@@ -348,6 +354,8 @@ export function disableCollab(view: EditorView): void {
     disconnectYjsProvider();
     currentUndoManager = null;
     collabSession.set(null);
+    collabPresenceUsers.set([]);
+    followedClientId.set(null);
 
     // Restore CM history() on disconnect. NOTE: rebuilt with empty stack;
     // joiner->owner mid-session is not supported (see CONTEXT.md).

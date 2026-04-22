@@ -18,12 +18,19 @@
         button is clicked to jump directly to the shortcuts tutorial step.
 -->
 <script lang="ts">
+import { initials } from "$lib/auth/avatarUtils";
+import {
+    collabPresenceUsers,
+    collabState,
+    followedClientId,
+    pendingUpdatesCount,
+    reconnectAttempt,
+} from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { collabState, pendingUpdatesCount, reconnectAttempt } from "$lib/collab";
 import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
@@ -81,6 +88,10 @@ function onMouseLeave() {
     hovered = false;
     clearTimeout(hoverDelayTimer);
     hoverDelayed = false;
+}
+
+function toggleFollow(clientId: number) {
+    followedClientId.set($followedClientId === clientId ? null : clientId);
 }
 
 $effect(() => {
@@ -144,6 +155,28 @@ $effect(() => {
                         Connecting...
                     {/if}
                 </span>
+                {#if $collabPresenceUsers.length > 0}
+                    <div class="flex -space-x-1 pl-1" aria-label="Online collaborators">
+                        {#each $collabPresenceUsers.slice(0, 4) as user (user.clientId)}
+                            <button
+                                type="button"
+                                onclick={() => toggleFollow(user.clientId)}
+                                aria-label={$followedClientId === user.clientId
+                                    ? `Stop following ${user.name}`
+                                    : `Follow ${user.name}`}
+                                title={$followedClientId === user.clientId
+                                    ? `Following ${user.name}`
+                                    : `Follow ${user.name}`}
+                                class="w-6 h-6 rounded-full border-2 text-[10px] font-semibold text-white leading-none flex items-center justify-center shadow-sm transition-transform hover:scale-105"
+                                class:border-black={$followedClientId === user.clientId}
+                                class:border-white={$followedClientId !== user.clientId}
+                                style="background: {user.color};"
+                            >
+                                {initials(user.name)}
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
             {:else}
                 <div
                     class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}

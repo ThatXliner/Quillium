@@ -5,7 +5,7 @@
  * collab session state.
  */
 import { writable } from "svelte/store";
-import type { CollabState, CollabSession } from "./types";
+import type { CollabSession, CollabState } from "./types";
 
 export const collabState = writable<CollabState>("disconnected");
 
@@ -14,6 +14,17 @@ export const collabState = writable<CollabState>("disconnected");
  * Plan 8.5c-01: Populated by enableCollab with undoManager + mainIdMap fields.
  */
 export const collabSession = writable<CollabSession | null>(null);
+
+export interface CollabPresenceUser {
+    clientId: number;
+    name: string;
+    color: string;
+    cursorPos: number | null;
+    lastUpdated: number;
+}
+
+export const collabPresenceUsers = writable<CollabPresenceUser[]>([]);
+export const followedClientId = writable<number | null>(null);
 
 /**
  * Incremented when the owner ends the session (ownerLeft relay event).

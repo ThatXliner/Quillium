@@ -1,3 +1,5 @@
+import type { Awareness } from "y-protocols/awareness";
+import type { WebsocketProvider } from "y-websocket";
 /**
  * types.ts — Collab-related types.
  *
@@ -7,8 +9,6 @@
  * Per D-93: Comment threads are Y.Array (append-only).
  */
 import type * as Y from "yjs";
-import type { WebsocketProvider } from "y-websocket";
-import type { Awareness } from "y-protocols/awareness";
 import type { AnnotationIdMap } from "./annotationSchema";
 
 /** Recursive Y.Map node representing a collaborative annotation.
@@ -47,6 +47,8 @@ export interface MessageObject {
 export type CollabSession = {
     docId: string;
     clientID: string;
+    displayName: string;
+    cursorColor: string;
     isOwner: boolean;
     ydoc: Y.Doc;
     provider: WebsocketProvider;

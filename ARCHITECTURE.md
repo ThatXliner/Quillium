@@ -219,34 +219,25 @@ Quillium runs two parallel state systems that must be kept in sync:
 
 **2. Svelte stores** — reactive signals consumed by components. Do not update automatically when CodeMirror state changes. Must be manually pushed by `Editor.svelte`'s `updateListener`.
 
-```
-User types / dispatches transaction
-           │
-           ▼
-    CodeMirror processes transaction
-    ┌────────────────────────────┐
-    │  historyField  (undo log)  │
-    │  annotationField (our data)│
-    │  document (text)           │
-    └────────────┬───────────────┘
-                 │ updateListener fires (Editor.svelte)
-                 ▼
-    Manually push to Svelte stores:
-    ┌──────────────────────────────┐
-    │  $annotations                │ ← read by Annotations.svelte
-    │  $activeAnnotation           │ ← read by Comment/Revision cards
-    │  $documentContent            │ ← read by AI sidebar
-    │  $selectedText               │ ← read by AI sidebar
-    │  $saveStatus                 │ ← read by StatusBar
-    │  $currentDocumentTitle       │ ← read by StatusBar, library
-    └──────────────────────────────┘
+```mermaid
+flowchart TD
+    Input["User edit or dispatched transaction"]
 
-    Collab stores (separate from updateListener):
-    ┌──────────────────────────────┐
-    │  $collabState                │ ← read by StatusBar, GoLiveButton
-    │  $ownerLeftSignal            │ ← read by GoLiveButton (session end)
-    │  $reconnectAttempt           │ ← read by StatusBar (reconnection UI)
-    └──────────────────────────────┘
+    subgraph CMState["CodeMirror state"]
+        CM["EditorView state<br/>document + historyField + annotationField"]
+    end
+
+    Listener["Editor.svelte updateListener fires"]
+    Mirrors["Svelte mirror stores<br/>$annotations, $activeAnnotation,<br/>$documentContent, $selectedText,<br/>$saveStatus, $currentDocumentTitle"]
+
+    subgraph CollabStores["Collab stores<br/>separate from updateListener"]
+        CollabState["$collabState"]
+        OwnerLeft["$ownerLeftSignal"]
+        Reconnect["$reconnectAttempt"]
+    end
+
+    Input --> CM --> Listener --> Mirrors
+    CollabStores -. "updated by collab provider/UI" .-> Mirrors
 ```
 
 ### Why `$editorView` doesn't trigger reactivity
@@ -493,13 +484,13 @@ On destroy, the controller flushes nested editor state into the parent revision�
 
 The modal editor's lifecycle is governed by a finite state machine rather than ad-hoc `$effect` chains. All transitions go through a single `send(event)` function.
 
-```
-         DIALOG_BOUND           TICK_RESOLVED
-unmounted ──────────► mounting ──────────────► ready
-                                                │ ▲
-                          REBUILD_REQUESTED /   │ │  TICK_RESOLVED
-                          VERSION_SWITCHED      ▼ │
-                                              rebuilding
+```mermaid
+stateDiagram-v2
+    [*] --> unmounted
+    unmounted --> mounting: DIALOG_BOUND
+    mounting --> ready: TICK_RESOLVED
+    ready --> rebuilding: REBUILD_REQUESTED / VERSION_SWITCHED
+    rebuilding --> ready: TICK_RESOLVED
 ```
 
 | State | Description |
@@ -1362,39 +1353,28 @@ If these are not configured, `supabaseConfigured` is `false` and auth features a
 
 ## Real-time Collaboration (Quillium Omni)
 
-Quillium Omni enables real-time collaborative editing between multiple Quillium instances. Built on `@codemirror/collab` for OT-based text sync, Socket.io for transport, and Supabase for auth and document registry.
+Quillium Omni enables Live Room collaboration between multiple Quillium instances. The local editor remains CodeMirror, but live document state is mirrored through a Yjs CRDT: main text lives in a shared `Y.Text`, annotations live in a recursive `Y.Map`, cursors use Yjs awareness, and transport is `y-websocket` with Supabase JWT auth.
+
+The current product mode is intentionally owner-led: the owner's local SQLite draft is the source of truth when a room starts, joiners are ephemeral participants, and the room ends when the owner leaves. Persistent shared-document ownership, share links, and permissions are deferred.
 
 ### Architecture Overview
 
-```
-┌─────────────────┐          ┌─────────────────┐
-│  Quillium (A)   │          │  Quillium (B)   │
-│  Owner          │          │  Joiner         │
-│                 │          │                 │
-│  ┌───────────┐  │          │  ┌───────────┐  │
-│  │CodeMirror │  │          │  │CodeMirror │  │
-│  │  collab() │  │          │  │  collab() │  │
-│  └─────┬─────┘  │          │  └─────┬─────┘  │
-│        │        │          │        │        │
-│  ┌─────┴─────┐  │          │  ┌─────┴─────┐  │
-│  │collabPlugin│ │          │  │collabPlugin│ │
-│  │push/pull  │  │          │  │push/pull  │  │
-│  └─────┬─────┘  │          │  └─────┬─────┘  │
-└────────┼────────┘          └────────┼────────┘
-         │                            │
-         │ Socket.io (JWT auth)       │
-         │                            │
-         ▼                            ▼
-    ┌────────────────────────────────────┐
-    │         Relay Server               │
-    │   (quillium-landing repo)          │
-    │                                    │
-    │  • JWT validation via Supabase     │
-    │  • Room management per document    │
-    │  • OT ordering (rebaseUpdates)     │
-    │  • Broadcasts to all clients       │
-    │  • Persists to collab_updates      │
-    └────────────────────────────────────┘
+```mermaid
+flowchart LR
+    Owner["Owner<br/>CodeMirror EditorView"]
+    Joiner["Joiner<br/>CodeMirror EditorView"]
+    OwnerExtensions["Owner collabCompartment<br/>binding + annotations + awareness<br/>keeps existing CM history"]
+    JoinerExtensions["Joiner collabCompartment<br/>binding + annotations + awareness + Y.UndoManager<br/>local persistence disabled"]
+    OwnerDoc["Owner Y.Doc<br/>Y.Text document<br/>Y.Map annotations"]
+    JoinerDoc["Joiner Y.Doc<br/>Y.Text document<br/>Y.Map annotations"]
+    Relay["Relay<br/>../quillium-landing/relay<br/>native ws + y-protocols<br/>room = document UUID"]
+    Supabase["Supabase<br/>JWT auth + sync_documents<br/>Yjs persistence tables"]
+
+    Owner --> OwnerExtensions --> OwnerDoc
+    Joiner --> JoinerExtensions --> JoinerDoc
+    OwnerDoc <-->|"Yjs websocket protocol"| Relay
+    JoinerDoc <-->|"Yjs websocket protocol"| Relay
+    Relay --> Supabase
 ```
 
 ### Files
@@ -1402,12 +1382,15 @@ Quillium Omni enables real-time collaborative editing between multiple Quillium 
 | File | Purpose |
 |---|---|
 | `src/lib/collab/index.ts` | Public API: `enableCollab()`, `disableCollab()`, `registerDocumentForCollab()` |
-| `src/lib/collab/socket.ts` | Socket.io client singleton with JWT auth |
-| `src/lib/collab/collabPlugin.ts` | ViewPlugin for push/pull loop, socket event handlers |
-| `src/lib/collab/cursors.ts` | Remote cursor StateField, ViewPlugin, WidgetType, emit plugin |
-| `src/lib/collab/protocol.ts` | Message types: `pushUpdates`, `pullUpdates`, `SerializedUpdate` |
-| `src/lib/collab/types.ts` | `CollabSession`, `CollabState` types |
-| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `ownerLeftSignal`, `reconnectAttempt` |
+| `src/lib/collab/yjsProvider.ts` | Creates/destroys `Y.Doc` and `WebsocketProvider`, passes JWT auth, tracks reconnect state |
+| `src/lib/collab/yjsBinding.ts` | Bidirectional `Y.Text` to CodeMirror document sync |
+| `src/lib/collab/yjsAnnotations.ts` | Bidirectional recursive `Y.Map` to `annotationField` sync |
+| `src/lib/collab/annotationSchema.ts` | Converts CodeMirror annotations to/from recursive Yjs nodes |
+| `src/lib/collab/relativePosition.ts` | Encodes annotation and cursor anchors as Yjs relative positions |
+| `src/lib/collab/awareness.ts` | Remote cursor rendering through Yjs awareness |
+| `src/lib/collab/yjsUndo.ts` | Y.UndoManager integration for joiner undo and nested subtree scope |
+| `src/lib/collab/types.ts` | `CollabSession`, `CollabState`, Yjs annotation, and awareness types |
+| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `collabSession`, `ownerLeftSignal`, joiner state |
 | `src/lib/collab/GoLiveButton.svelte` | UI: "Go Live" toggle, copy ID, join by ID |
 
 ### Data Model (Supabase)
@@ -1416,134 +1399,139 @@ Quillium Omni enables real-time collaborative editing between multiple Quillium 
 |---|---|
 | `users` | User profiles (populated by database trigger on auth.users insert) |
 | `sync_documents` | Document registry: `id`, `owner_id`, `title` |
-| `collab_updates` | Ordered change history for relay persistence |
-| `shares` | Access grants with tokens (v2 — not yet implemented) |
+| `yjs_documents` | Full encoded Yjs document snapshots (`state_update`, `state_vector`) |
+| `yjs_updates` | Incremental encoded Yjs updates between snapshots |
+| `collab_updates` | Legacy OT table from earlier `@codemirror/collab` planning, not used by current Yjs runtime |
+| `collab_snapshots` | Legacy OT snapshot table, not used by current Yjs runtime |
+| `shares` | Access grants with tokens (v2, not yet implemented in the app UI) |
+
+Runtime collaboration uses the `sync_documents` row to register the room and authorize relay participation. The relay stores live Yjs state in `yjs_documents` and `yjs_updates` for durability, but Live Room startup still treats the owner's local SQLite draft as authoritative: when the owner connects, the app replaces relay text with the local document.
+
+### Relay Responsibilities
+
+The relay lives outside this app repo at `../quillium-landing/relay`.
+
+| Relay file | Responsibility |
+|---|---|
+| `src/server.ts` | Handles HTTP `/health`, validates WebSocket upgrades, creates rooms, wires persistence |
+| `src/auth/middleware.ts` | Verifies Supabase JWTs and checks `sync_documents.owner_id` |
+| `src/yjs/rooms.ts` | Manages in-memory `Y.Doc` rooms, loads/persists state, clears rooms after owner disconnect |
+| `src/yjs/sync.ts` | Implements Yjs sync and awareness protocol messages over native `ws` |
+| `src/persistence/yjsUpdates.ts` | Persists `Y.encodeStateAsUpdate()` snapshots and incremental updates |
+
+The client uses `y-websocket`'s `WebsocketProvider`, while the relay implements the compatible protocol directly with `ws`, `y-protocols/sync`, and `y-protocols/awareness`.
 
 ### Collab Extension Integration
 
-The collab system uses CodeMirror's Compartment pattern for hot-swapping:
+The collab system uses CodeMirror's Compartment pattern for hot-swapping. `src/lib/editor/extensions.ts` mounts `collabCompartment.of([])` in the base extension stack; `enableCollab()` replaces it with Yjs-backed extensions after the provider syncs.
 
 ```typescript
-// extensions.ts — initially empty
+// extensions.ts - initially empty
 collabCompartment.of([])
 
-// enableCollab() — reconfigures with active extensions
+// enableCollab() - after createYjsProvider() syncs
+const binding = createYjsBinding(ytext);
+const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+const awarenessExt = createAwarenessExtension(awareness, ytext, displayName, cursorColor);
+const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap);
+
 view.dispatch({
-    effects: collabCompartment.reconfigure([
-        ...createCollabExtension(startVersion, clientID, socket),
-        ...createRemoteCursorsExtension(socket, displayName, cursorColor),
-    ]),
+    effects: [
+        collabCompartment.reconfigure(
+            asOwner
+                ? [binding, awarenessExt, annotationSync]
+                : [binding, undoExt, awarenessExt, annotationSync],
+        ),
+        ...(asOwner ? [] : [historyCompartment.reconfigure([])]),
+    ],
 });
 
-// disableCollab() — back to empty
+// disableCollab() - back to empty, restore standard CM history
 view.dispatch({
-    effects: collabCompartment.reconfigure([]),
+    effects: [
+        collabCompartment.reconfigure([]),
+        historyCompartment.reconfigure(history({ newGroupDelay: 250 })),
+    ],
 });
 ```
 
 ### Owner vs Joiner Flow
 
 **Owner goes live:**
-```
-User clicks "Go Live" → createNamedSnapshot("Before going live (auto)")
-→ registerDocumentForCollab(draftId, userId, title) — upserts to sync_documents
-→ connectToCollab(docId) — Socket.io connect with JWT
-→ Relay returns { version: 0, doc: "" } for fresh room
-→ Owner seeds relay: socket.emit("initDocument", { content: localDoc })
-→ enableCollab() reconfigures compartment at version 1
-→ isLive = true, toast "You're live!"
-```
+
+1. User clicks `Go Live`.
+2. `GoLiveButton.svelte` creates a named snapshot: `"Before going live (auto)"`.
+3. `registerDocumentForCollab(draftId, userId, title)` upserts `sync_documents`.
+4. `createYjsProvider(draftId)` opens `WebsocketProvider` with the Supabase JWT.
+5. After provider sync, the owner replaces relay `Y.Text` with the local CodeMirror document.
+6. `enableCollab()` installs Yjs binding, awareness, and annotation sync.
+7. UI sets `isLive = true` and shows `"You're live!"`.
 
 **Joiner joins by ID:**
-```
-User pastes document UUID → joinById() validates UUID format
-→ connectToCollab(docId) — Socket.io connect with JWT
-→ Relay returns { version: N, doc: "..." } with current state
-→ Joiner replaces local doc with relay content
-→ enableCollab() reconfigures compartment at version N
-→ isLive = true, toast "Joined shared document"
-```
 
-### Push/Pull Loop (`collabPlugin.ts`)
+1. User pastes a document UUID; `joinById()` validates the format.
+2. The app captures prior draft ID and editor state in `joinerPriorView`.
+3. `currentDraftId = null` and `isCollabJoiner = true`, so persistence listeners skip live edits.
+4. `createYjsProvider(docId)` opens `WebsocketProvider` with the Supabase JWT.
+5. After provider sync, the joiner replaces local editor contents with relay `Y.Text`.
+6. Local annotations are cleared, then Yjs annotation sync projects shared annotations into CodeMirror.
+7. `enableCollab()` installs Yjs binding, `Y.UndoManager`, awareness, and annotation sync.
+8. UI sets `isLive = true` and shows `"Joined shared document"`.
 
-The `collabPushPull` ViewPlugin implements the sync loop:
+**Joiner leaves or owner kicks/disconnects:**
 
-**On local change (`update.docChanged`):**
-```
-sendableUpdates(state) → serialize changes
-→ socket.emit("pushUpdates", { version, updates })
-→ Relay rebases if needed, broadcasts to others
-→ Callback returns confirmed updates → receiveUpdates()
-```
+1. `disableCollab(view)` calls `disconnectYjsProvider()`, destroying the provider and `Y.Doc`.
+2. `collabCompartment` is reconfigured back to `[]`.
+3. `historyCompartment` restores standard CodeMirror history.
+4. Joiners restore the captured editor snapshot and navigate back to the prior draft/library view.
 
-**On remote change (`socket.on("updates")`):**
-```
-Deserialize updates → ChangeSet.fromJSON()
-→ view.dispatch(receiveUpdates(state, updates))
-→ If local pending: setTimeout → push()
-```
+### Sync Loop
+
+**Local text edit:**
+
+CodeMirror transaction -> `yjsBinding` update hook -> skip Yjs-originated transactions -> write `Y.Text` inside a `"local"` transaction -> provider broadcasts the Yjs update.
+
+**Remote text edit:**
+
+Provider applies remote Yjs update -> `Y.Text.observe()` fires -> `yjsBinding` converts the delta to CodeMirror changes -> dispatch is marked with `yjsAnnotation` to prevent feedback.
+
+**Local annotation change:**
+
+`annotationField` effect -> `yjsAnnotations` update hook -> diff CodeMirror annotations against `Y.Map` -> write add/remove/thread/version/position changes to Yjs with origin `"local"`.
+
+**Remote annotation change:**
+
+`Y.Map.observeDeep()` -> `yjsAnnotations` observer -> skip `"local"` origin -> project recursive Yjs annotation nodes back to `annotationField` -> dispatch CodeMirror effects marked as Yjs-originated.
 
 ### Remote Cursors
 
-Remote cursor positions are displayed Google Docs-style with colored carets and name labels.
+Remote cursors are rendered Google Docs-style with colored carets and name labels. `awareness.ts` stores cursor anchors as encoded Yjs relative positions, not absolute CodeMirror positions, so cursors track concurrent edits correctly.
 
-**Components:**
-- `remoteCursorsField` — StateField storing `Map<clientID, RemoteCursor>`
-- `remoteCursorsPlugin` — ViewPlugin building `DecorationSet` from field
-- `RemoteCursorWidget` — WidgetType rendering label + caret DOM
-- `createCursorEmitPlugin` — ViewPlugin emitting local cursor position (throttled 100ms)
-
-**Cursor flow:**
-```
-Local selection changes → cursorEmitPlugin throttles
-→ socket.emit("cursorUpdate", { pos, name, color })
-→ Relay broadcasts to other clients
-→ socket.on("cursorUpdate") → setRemoteCursor effect
-→ remoteCursorsField maps position through doc changes
-→ remoteCursorsPlugin rebuilds decorations
-```
-
-**Position mapping:** When doc changes arrive, cursor positions are mapped through `tr.changes.mapPos(pos, 1)` with `side: 1` to keep cursors after inserted text.
-
-### Session Lifecycle Events
-
-| Event | Direction | Handler |
-|---|---|---|
-| `init` | Server → Client | Initial state `{ version, doc }` on connect |
-| `pushUpdates` | Client → Server | Local changes with base version |
-| `pullUpdates` | Client → Server | Request updates since version N |
-| `updates` | Server → Client | Broadcast of confirmed updates |
-| `initDocument` | Client → Server | Owner seeds fresh room with content |
-| `cursorUpdate` | Bidirectional | Cursor position broadcasts |
-| `ownerLeft` | Server → Client | Owner disconnected, session ends |
-| `clientLeft` | Server → Client | Collaborator disconnected |
-
-### Owner Disconnect Handling
-
-When the owner disconnects, the relay broadcasts `ownerLeft` to all clients:
-
-```
-socket.on("ownerLeft") → setTimeout (defer past update cycle)
-→ collabCompartment.reconfigure([]) — disable collab extension
-→ ownerLeftSignal.update(n => n + 1) — notify UI
-→ GoLiveButton $effect detects signal → disconnectCollab() + toast "The owner ended the session"
-```
+Flow: local selection change -> throttled `createAwarenessExtension` update -> encode selection as RelativePosition bytes -> `awareness.setLocalStateField("cursor", ...)` -> provider broadcasts awareness update -> remote peer decodes against its `Y.Text` -> `RemoteCursorWidget` renders caret and label.
 
 ### Connection States
 
 | State | Meaning |
 |---|---|
 | `disconnected` | Not connected to relay |
-| `connecting` | Socket.io handshake in progress |
+| `connecting` | WebsocketProvider handshake/sync in progress |
 | `connected` | Active session, synced |
-| `syncing` | Connected but has pending local updates |
+| `syncing` | Reserved for pending-update UI |
 | `reconnecting` | Lost connection, auto-reconnect in progress |
 | `error` | Connection failed after max retries |
 
-The `collabState` store is consumed by `StatusBar.svelte` to show a colored indicator:
+`yjsProvider.ts` updates `collabState` from provider `status`, `sync`, and `connection-close` events. `GoLiveButton.svelte` shows toasts for reconnect/reconnect-failed transitions, and `StatusBar.svelte` shows the current connection indicator:
 - Green dot + "Synced" when `connected`
 - Yellow dot + "Connecting..." when `connecting` or `reconnecting`
 - Red dot + "Disconnected" when `error`
+
+After five reconnect attempts, the provider enters `error`, disconnects, and the user must start a new live session.
+
+### Owner Disconnect Handling
+
+Live Room mode ends when the owner leaves. The relay signals owner disconnect through the websocket close reason, `enableCollab()` calls `handleOwnerLeft()`, and `GoLiveButton.svelte` reacts to `ownerLeftSignal`:
+
+Flow: provider `connection-close` reason is `"Owner left"` -> `handleOwnerLeft()` -> increment `ownerLeftSignal` -> `disconnectYjsProvider()` -> `GoLiveButton` effect calls `disableCollab(view)` -> toast `"The owner ended the session"`.
 
 ### Environment Variables
 
@@ -1558,43 +1546,39 @@ If `PUBLIC_RELAY_URL` is not configured, `relayConfigured` is `false` and the Go
 ### Known Limitations
 
 - **Live Room mode only** — session ends when owner disconnects. Shared Document mode (server as source of truth) is deferred to v2.
-- **Nested editor CRDT subtrees not wired** — revision versions sync as blobs, not as recursive Y.Text (Phase 8.5c).
-- **Offline queue not implemented** — owner can't edit offline and rebase on reconnect (Phase 9).
+- **No local persistence for joiners** — joiners are restored to their prior local draft/library view after leaving the room.
+- **No offline queue** — if reconnect attempts are exhausted, the session enters `error` and must be restarted.
 - **No sharing UI** — joiners must manually paste document UUID. Share links and permissions are deferred to v2.
 
 ---
 
 ## Yjs Sync Layer (Phase 8)
 
-Phase 8 replaces the OT-based `@codemirror/collab` with Yjs CRDTs for text, annotations, and cursors. This enables offline editing and conflict-free merging.
+The current collaboration layer uses Yjs CRDTs for text, annotations, and cursors instead of the earlier planned `@codemirror/collab` OT protocol. This gives the editor conflict-free merging primitives, though Quillium does not yet expose an offline edit queue when relay reconnection fails.
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Y.Doc                                  │
-│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
-│  │ Y.Text          │  │ Y.Map<YjsAnnotationNode>        │   │
-│  │ "document"      │  │ "annotations"                   │   │
-│  │                 │  │                                 │   │
-│  │ ← yjsBinding →  │  │ ← yjsAnnotations →              │   │
-│  │   CodeMirror    │  │   annotationField               │   │
-│  └─────────────────┘  └─────────────────────────────────┘   │
-│                                                             │
-│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
-│  │ Awareness       │  │ Y.UndoManager                   │   │
-│  │ cursor + name   │  │ tracks Y.Text + Y.Map           │   │
-│  │ ← awareness.ts  │  │ ← yjsUndo.ts                    │   │
-│  └─────────────────┘  └─────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-         │
-         │ WebsocketProvider (y-websocket)
-         │ JWT auth in params
-         ▼
-    ┌─────────────────────────────────────┐
-    │   y-websocket-server (relay)        │
-    │   quillium-landing repo             │
-    └─────────────────────────────────────┘
+```mermaid
+flowchart LR
+    CM["CodeMirror document"]
+    AF["annotationField"]
+    CursorUI["Remote cursor UI"]
+
+    subgraph YDoc["Y.Doc"]
+        YText["Y.Text<br/>document"]
+        YMap["Y.Map<br/>annotations"]
+        Awareness["Awareness<br/>cursor + user"]
+        Undo["Y.UndoManager<br/>local undo scope"]
+    end
+
+    Relay["native ws relay<br/>../quillium-landing/relay"]
+
+    CM <-->|"yjsBinding.ts"| YText
+    AF <-->|"yjsAnnotations.ts"| YMap
+    CursorUI <-->|"awareness.ts"| Awareness
+    Undo -. "tracks" .-> YText
+    Undo -. "tracks" .-> YMap
+    YDoc <-->|"WebsocketProvider + JWT"| Relay
 ```
 
 ### Files
@@ -1615,58 +1599,55 @@ Phase 8 replaces the OT-based `@codemirror/collab` with Yjs CRDTs for text, anno
 Annotations are stored as recursive Y.Map structures:
 
 ```typescript
-YjsAnnotationNode = Y.Map<unknown> with runtime shape:
-├── id: string
-├── _type: "comment" | "suggestion" | "revision"
-├── startPos: Uint8Array (encoded RelativePosition)
-├── endPos: Uint8Array (encoded RelativePosition)
-├── thread: Y.Array<MessageObject>
-├── annotations: Y.Map<YjsAnnotationNode>  // nested annotations
-│
-├── (suggestion only)
-│   ├── replacements: Y.Array<string>
-│   └── author: string | null
-│
-└── (revision only)
-    ├── versions: Y.Map<string, Y.Map<unknown>>
-    │   └── [versionId]: { content: string, title: string }
-    └── activeVersionIndex: number
+type YjsAnnotationNode = Y.Map<unknown>;
+
+// Runtime keys shared by all annotation nodes:
+{
+    id: string;
+    _type: "comment" | "suggestion" | "revision";
+    startPos: Uint8Array; // encoded RelativePosition
+    endPos: Uint8Array;   // encoded RelativePosition
+    thread: Y.Array<MessageObject>;
+    annotations: Y.Map<YjsAnnotationNode>; // nested annotations
+}
+
+// Suggestion-only keys:
+{
+    replacements: Y.Array<string>;
+    author: string | null;
+}
+
+// Revision-only keys:
+{
+    versions: Y.Map<string, Y.Map<unknown>>;
+    // versionNode keys: { text: Y.Text, label?: string, annotations: Y.Map<YjsAnnotationNode> }
+    activeVersionIndex: number;
+}
 ```
 
 ### Sync Flow
 
-**Y.Text → CodeMirror (remote edits):**
-```
-WebsocketProvider receives update → Y.Text fires observe()
-→ yjsBinding observer skips if origin === "local"
-→ Converts Yjs delta to CodeMirror ChangeSpec
-→ Dispatches with yjsAnnotation.of(true) to prevent feedback
-```
+**Y.Text to CodeMirror (remote edits):**
+1. `WebsocketProvider` receives and applies a remote Yjs update.
+2. `Y.Text.observe()` fires.
+3. `yjsBinding` ignores local-origin changes, converts the Yjs delta to CodeMirror changes, and dispatches with `yjsAnnotation.of(true)` to prevent feedback.
 
-**CodeMirror → Y.Text (local edits):**
-```
-User types → ViewPlugin.update() fires
-→ Skips if transaction has yjsAnnotation
-→ ydoc.transact(() => { ytext.delete/insert }, "local")
-→ "local" origin lets UndoManager track, prevents observer re-entry
-```
+**CodeMirror to Y.Text (local edits):**
+1. A user edit reaches the `yjsBinding` ViewPlugin.
+2. Transactions already marked with `yjsAnnotation` are ignored.
+3. Local text changes are written to `Y.Text` inside `ydoc.transact(..., "local")`.
+4. The `"local"` origin lets `Y.UndoManager` track the edit and prevents observer re-entry.
 
-**Y.Map → annotationField (remote annotations):**
-```
-Y.Map fires observeDeep() → yjsAnnotations observer
-→ Skips if origin === "local"
-→ Shallow key change: full rebuild via replaceAllAnnotations effect
-→ Thread append: updateThread effect with new messages
-→ Version change: rebuild
-```
+**Y.Map to annotationField (remote annotations):**
+1. `Y.Map.observeDeep()` fires.
+2. `yjsAnnotations` ignores local-origin changes.
+3. Shallow key changes rebuild via `replaceAllAnnotations`; thread appends use `updateThread`; version changes rebuild the projected annotation.
 
-**annotationField → Y.Map (local annotations):**
-```
-User creates annotation → addAnnotation effect
-→ yjsAnnotations.update() intercepts
-→ codeMirrorToYjsAnnotation() builds Y.Map
-→ ydoc.transact(() => ymap.set(id, node), "local")
-```
+**annotationField to Y.Map (local annotations):**
+1. User action dispatches an annotation effect such as `addAnnotation`.
+2. `yjsAnnotations.update()` intercepts the change.
+3. `codeMirrorToYjsAnnotation()` builds the recursive Yjs node.
+4. The node is written to `Y.Map` inside a `"local"` Yjs transaction.
 
 ### RelativePosition Anchoring
 
@@ -1686,15 +1667,10 @@ const selection = relativeToAbsolute(ydoc, ytext, startPos, endPos);
 
 Remote cursors use Yjs awareness protocol with position anchoring:
 
-```
-Local cursor changes → createCursorEmitPlugin (throttled 100ms)
-→ encodePos() converts to RelativePosition
-→ awareness.setLocalState({ cursor: { start, end }, user: { name, color } })
-→ WebsocketProvider broadcasts to peers
-→ Remote peers receive awareness update
-→ decodePos() resolves RelativePosition to absolute
-→ RemoteCursorWidget renders colored caret + name label
-```
+1. `createAwarenessExtension` throttles local cursor changes.
+2. Cursor positions are encoded as RelativePositions.
+3. The local awareness state stores `{ anchor, head }`.
+4. Peers receive the awareness update, decode positions against their own `Y.Text`, and render a `RemoteCursorWidget`.
 
 Position mapping: When doc changes arrive, cursor positions are re-resolved from RelativePosition, so they track concurrent edits correctly.
 
@@ -1721,9 +1697,11 @@ CodeMirror uses numeric annotation IDs; Yjs uses string IDs. `AnnotationIdMap` m
 ```typescript
 class AnnotationIdMap {
     getOrCreateCmId(yjsId: string): number  // Auto-allocates CM ID
+    getOrCreateYjsId(cmId: number, clientId: string): string
     getYjsId(cmId: number): string | undefined
-    register(cmId: number, yjsId: string): void
-    remove(cmId: number): void
+    getCmId(yjsId: string): number | undefined
+    register(yjsId: string, cmId: number): void
+    remove(yjsId: string): void
 }
 ```
 

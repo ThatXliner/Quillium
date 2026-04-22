@@ -29,19 +29,22 @@
  * versions[selected].doc. Svelte $effect patches the nested editor.
  */
 
-import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
-import { undo, redo } from "@codemirror/commands";
-import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
+import { createAwarenessExtension } from "$lib/collab/awareness";
+import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
+import { redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
+import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
+import { get } from "svelte/store";
 import {
+    _nestedEditRevision,
     annotationField,
     nestedEditorEdit,
-    _nestedEditRevision,
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
 import { annotationEventBus } from "./eventBus";
-import { versionText, type VersionState, isAnnotationOfType } from "./models";
+import { type VersionState, isAnnotationOfType, versionText } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
 
@@ -64,8 +67,44 @@ export function createNestedEditorState(
 ): EditorState {
     // Phase 10: Collab subtree bindings removed. Nested editors always use
     // local-only mode. Phase 11 will rebuild unified sync.
+    const session = get(collabSession);
+    const nestedAwareness =
+        session === null
+            ? []
+            : [
+                  createAwarenessExtension(
+                      session.awareness,
+                      session.ytext,
+                      session.displayName,
+                      session.cursorColor,
+                      {
+                          broadcastInitialCursor: false,
+                          clearCursorOnDestroy: false,
+                          toSharedPosition(position) {
+                              const annotation =
+                                  parentView.state.field(annotationField)[revisionId];
+                              if (!annotation || !isAnnotationOfType(annotation, "revision")) {
+                                  return null;
+                              }
+                              const range = annotation.selection.main;
+                              return range.from + position;
+                          },
+                          fromSharedPosition(position) {
+                              const annotation =
+                                  parentView.state.field(annotationField)[revisionId];
+                              if (!annotation || !isAnnotationOfType(annotation, "revision")) {
+                                  return null;
+                              }
+                              const range = annotation.selection.main;
+                              if (position < range.from || position > range.to) return null;
+                              return position - range.from;
+                          },
+                      },
+                  ),
+              ];
     const extensions = [
         ...getExtensions({ persist: false, history: false, updateListener }),
+        ...nestedAwareness,
         makeParentUndoKeymap(historyView ?? parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
