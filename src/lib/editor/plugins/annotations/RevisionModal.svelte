@@ -1074,7 +1074,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                   <Annotations
                     view={controller.editor}
                     annotationsData={modalAnnotations}
-                    activeAnnotationData={modalActiveAnnotation}
+                    activeAnnotationData={modalActiveAnnotation ?? null}
                     layout="inline"
                   />
                 {:else}
