@@ -17,6 +17,7 @@ import { EditorSelection } from "@codemirror/state";
 import {
     makePeerWithAnnotationSync,
     connect,
+    flushAll,
     teardown,
     type Peer,
 } from "./test-helpers/twoPeerHarness";
@@ -31,10 +32,7 @@ import {
     deleteRevisionVersion,
     nestedEditorEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
-import {
-    isAnnotationOfType,
-    type GenericAnnotation,
-} from "$lib/editor/plugins/annotations/models";
+import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 function createComment(id: number, from: number, to: number): GenericAnnotation {
     return {
@@ -45,12 +43,7 @@ function createComment(id: number, from: number, to: number): GenericAnnotation 
     };
 }
 
-function createRevision(
-    id: number,
-    from: number,
-    to: number,
-    doc: string,
-): GenericAnnotation {
+function createRevision(id: number, from: number, to: number, doc: string): GenericAnnotation {
     return {
         id,
         _type: "revision",
@@ -59,6 +52,10 @@ function createRevision(
         versions: [{ doc }],
         activeVersionIndex: 0,
     };
+}
+
+function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => queueMicrotask(() => resolve()));
 }
 
 describe("annotation sync (Phase 11)", () => {
@@ -87,7 +84,7 @@ describe("annotation sync (Phase 11)", () => {
             });
 
             // Allow microtask queue to flush for sync
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the comment
             const annB = peerB.view.state.field(annotationField);
@@ -107,7 +104,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(comment),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Owner should see the comment
             const annA = peerA.view.state.field(annotationField);
@@ -127,7 +124,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(comment),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Verify joiner has it
             let annB = peerB.view.state.field(annotationField);
@@ -140,7 +137,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: removeAnnotation.of(toDelete),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see deletion
             annB = peerB.view.state.field(annotationField);
@@ -156,7 +153,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(revision),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the revision with version
             const annB = peerB.view.state.field(annotationField);
@@ -179,7 +176,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(revision),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Get annotation ID on owner
             const annA = peerA.view.state.field(annotationField);
@@ -191,7 +188,7 @@ describe("annotation sync (Phase 11)", () => {
             });
             peerA.view.dispatch(trA);
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the updated text
             const annB = peerB.view.state.field(annotationField);
@@ -211,7 +208,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(revision),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
 
@@ -226,7 +223,7 @@ describe("annotation sync (Phase 11)", () => {
                 annotations: [nestedEditorEdit.of(annIdA)],
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the updated text
             const annB = peerB.view.state.field(annotationField);
@@ -246,7 +243,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(revision),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Get annotation ID
             const annA = peerA.view.state.field(annotationField);
@@ -256,7 +253,7 @@ describe("annotation sync (Phase 11)", () => {
             const addTr = createNewRevisionTx(peerA.view.state, annIdA);
             peerA.view.dispatch(addTr);
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Verify both peers have 2 versions
             let revA = Object.values(peerA.view.state.field(annotationField))[0];
@@ -276,7 +273,7 @@ describe("annotation sync (Phase 11)", () => {
             const switchTr = setActiveRevisionVersion(peerA.view.state, annIdA, 0);
             peerA.view.dispatch(switchTr);
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the switch
             revA = Object.values(peerA.view.state.field(annotationField))[0] as typeof revA;
@@ -286,6 +283,42 @@ describe("annotation sync (Phase 11)", () => {
             expect(revB.activeVersionIndex).toBe(0);
         });
 
+        it("activeVersionIndex switch on joiner preserves revision annotation", async () => {
+            const revision: GenericAnnotation = {
+                id: 1,
+                _type: "revision",
+                selection: EditorSelection.single(6, 11),
+                thread: [],
+                versions: [{ doc: "world" }, { doc: "earth" }],
+                activeVersionIndex: 0,
+            };
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+            await flushAll(peerA, peerB);
+
+            const annIdB = Number(Object.keys(peerB.view.state.field(annotationField))[0]);
+            peerB.view.dispatch(setActiveRevisionVersion(peerB.view.state, annIdB, 1));
+            await flushAll(peerA, peerB);
+            await Promise.resolve();
+
+            const annA = Object.values(peerA.view.state.field(annotationField));
+            const annB = Object.values(peerB.view.state.field(annotationField));
+            expect(annA).toHaveLength(1);
+            expect(annB).toHaveLength(1);
+
+            const revA = annA[0];
+            const revB = annB[0];
+            if (!isAnnotationOfType(revA, "revision") || !isAnnotationOfType(revB, "revision")) {
+                expect.fail("Expected revision annotations");
+                return;
+            }
+            expect(revA.activeVersionIndex).toBe(1);
+            expect(revB.activeVersionIndex).toBe(1);
+            expect(peerA.view.state.doc.toString()).toBe("hello earth");
+            expect(peerB.view.state.doc.toString()).toBe("hello earth");
+        });
+
         it("add version on owner propagates to joiner", async () => {
             // Owner creates revision with initial version
             const revision = createRevision(1, 6, 11, "v0");
@@ -293,7 +326,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(revision),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
 
@@ -301,7 +334,7 @@ describe("annotation sync (Phase 11)", () => {
             const addTr = createNewRevisionTx(peerA.view.state, annIdA);
             peerA.view.dispatch(addTr);
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the new version
             const revB = Object.values(peerB.view.state.field(annotationField))[0];
@@ -320,7 +353,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(revision),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
 
@@ -328,7 +361,7 @@ describe("annotation sync (Phase 11)", () => {
             const addTr = createNewRevisionTx(peerA.view.state, annIdA);
             peerA.view.dispatch(addTr);
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Verify both have 2 versions
             let revB = Object.values(peerB.view.state.field(annotationField))[0];
@@ -342,7 +375,7 @@ describe("annotation sync (Phase 11)", () => {
             const delTr = deleteRevisionVersion(peerA.view.state, annIdA, 1);
             peerA.view.dispatch(delTr);
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the deletion
             revB = Object.values(peerB.view.state.field(annotationField))[0];
@@ -367,7 +400,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(revision),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should have exact same version text from Yjs
             const revB = Object.values(peerB.view.state.field(annotationField))[0];
@@ -390,7 +423,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(comment),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Get annotation ID on owner
             const annA = peerA.view.state.field(annotationField);
@@ -404,7 +437,7 @@ describe("annotation sync (Phase 11)", () => {
                 }),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see the thread message
             const annB = peerB.view.state.field(annotationField);
@@ -422,7 +455,7 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(comment),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Get annotation IDs
             const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
@@ -436,7 +469,7 @@ describe("annotation sync (Phase 11)", () => {
                 }),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should now have owner's message
             const annB = peerB.view.state.field(annotationField);
@@ -455,7 +488,7 @@ describe("annotation sync (Phase 11)", () => {
                 }),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Both should have both messages
             const finalA = Object.values(peerA.view.state.field(annotationField))[0];
@@ -489,14 +522,14 @@ describe("annotation sync (Phase 11)", () => {
             });
 
             // Allow owner's sync to Yjs
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Now create joiner and connect
             peerB = makePeerWithAnnotationSync("peer-b");
             disconnect = connect(peerA, peerB);
 
             // Allow initial sync
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Joiner should see owner's pre-existing annotation
             const annB = peerB.view.state.field(annotationField);
@@ -525,12 +558,12 @@ describe("annotation sync (Phase 11)", () => {
                 effects: addAnnotation.of(createComment(2, 6, 11)),
             });
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Now connect
             disconnect = connect(peerA, peerB);
 
-            await new Promise((resolve) => queueMicrotask(resolve));
+            await flushMicrotasks();
 
             // Both should have both annotations
             const annA = peerA.view.state.field(annotationField);

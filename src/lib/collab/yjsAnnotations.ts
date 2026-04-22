@@ -113,6 +113,8 @@ export function createAnnotationSyncPlugin(
             private destroyed = false;
             private idMap = idMap;
             private clientId = clientId;
+            private _initialSyncDone = false;
+            private deepObserverAttached = false;
 
             constructor(private view: EditorView) {
                 this._syncIdMapFromCM();
@@ -219,7 +221,20 @@ export function createAnnotationSyncPlugin(
                     }
                 };
 
-                scopeAnnotations.observeDeep(this.deepObserver);
+                this._attachDeepObserverAfterInitialPull();
+            }
+
+            private _attachDeepObserverAfterInitialPull(): void {
+                // RESEARCH §4 fix (b): attach deepObserver only AFTER the initial
+                // pull microtask completes; otherwise a remote update arriving
+                // between mount and the pull microtask races _syncInitialFromYjs
+                // and produces 2x annotations on the joiner. See JOINER-05.
+                queueMicrotask(() => {
+                    if (this.destroyed) return;
+                    scopeAnnotations.observeDeep(this.deepObserver);
+                    this.deepObserverAttached = true;
+                    this._syncInitialFromYjs();
+                });
             }
 
             private _syncIdMapFromCM() {
@@ -232,6 +247,9 @@ export function createAnnotationSyncPlugin(
             }
 
             private _syncInitialToYjs() {
+                if (this._initialSyncDone) return;
+                this._initialSyncDone = true;
+
                 const ydoc = scopeYtext.doc;
                 if (!ydoc) return;
 
@@ -365,7 +383,12 @@ export function createAnnotationSyncPlugin(
                             if (!ann) continue;
 
                             const yjsKey = this.idMap.getOrCreateYjsId(cmId, this.clientId);
-                            const node = codeMirrorToYjsAnnotation(ann, scopeYtext, this.clientId, ydoc);
+                            const node = codeMirrorToYjsAnnotation(
+                                ann,
+                                scopeYtext,
+                                this.clientId,
+                                ydoc,
+                            );
                             node.set("id", yjsKey); // Ensure Yjs ID matches the key
                             scopeAnnotations.set(yjsKey, node);
                         }
@@ -405,6 +428,11 @@ export function createAnnotationSyncPlugin(
                     if (cmThread.length > yjsThread.length) {
                         const newMessages = cmThread.slice(yjsThread.length);
                         threadArr.push(newMessages.map((m) => ({ ...m })));
+                    } else if (cmThread.length < yjsThread.length) {
+                        threadArr.delete(0, threadArr.length);
+                        if (cmThread.length > 0) {
+                            threadArr.push(cmThread.map((m) => ({ ...m })));
+                        }
                     }
                 }
 
@@ -518,7 +546,9 @@ export function createAnnotationSyncPlugin(
 
             destroy() {
                 this.destroyed = true;
-                scopeAnnotations.unobserveDeep(this.deepObserver);
+                if (this.deepObserverAttached) {
+                    scopeAnnotations.unobserveDeep(this.deepObserver);
+                }
                 // idMap lifecycle is owned by the caller when externally provided;
                 // nested editors create their own local maps.
             }

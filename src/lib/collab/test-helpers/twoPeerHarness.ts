@@ -17,9 +17,11 @@
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { history } from "@codemirror/commands";
 import * as Y from "yjs";
 import { createYjsBinding } from "../yjsBinding";
 import { createAnnotationSyncPlugin } from "../yjsAnnotations";
+import { createYjsUndoExtension } from "../yjsUndo";
 import { AnnotationIdMap } from "../annotationSchema";
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import type { YjsAnnotationNode } from "../types";
@@ -79,6 +81,65 @@ export function makePeerWithAnnotationSync(clientId: string, initialText = ""): 
     });
     const view = new EditorView({ state, parent: document.body });
     // Cast ymap to Y.Map<unknown> to satisfy Peer interface (ymap is Y.Map<YjsAnnotationNode>)
+    return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, view, clientId, idMap };
+}
+
+export function makeJoinerPeer(
+    clientId: string,
+    initialText = "",
+): Peer & { undoManager: Y.UndoManager } {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("document");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const idMap = new AnnotationIdMap();
+
+    if (initialText) {
+        ydoc.transact(() => ytext.insert(0, initialText), "init");
+    }
+
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+    const state = EditorState.create({
+        doc: initialText,
+        extensions: [
+            annotationField,
+            createYjsBinding(ytext),
+            createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
+            // joiner-shape: history intentionally omitted; undo via Y.UndoManager.
+            undoExt,
+        ],
+    });
+    const view = new EditorView({ state, parent: document.body });
+    return {
+        ydoc,
+        ytext,
+        ymap: ymap as Y.Map<unknown>,
+        view,
+        clientId,
+        idMap,
+        undoManager,
+    };
+}
+
+export function makeOwnerPeer(clientId: string, initialText = ""): Peer {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("document");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const idMap = new AnnotationIdMap();
+
+    if (initialText) {
+        ydoc.transact(() => ytext.insert(0, initialText), "init");
+    }
+
+    const state = EditorState.create({
+        doc: initialText,
+        extensions: [
+            annotationField,
+            history({ newGroupDelay: 250 }),
+            createYjsBinding(ytext),
+            createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
+        ],
+    });
+    const view = new EditorView({ state, parent: document.body });
     return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, view, clientId, idMap };
 }
 

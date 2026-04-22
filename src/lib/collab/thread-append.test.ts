@@ -16,7 +16,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
 import { EditorState, EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { makePeer, connect, teardown, type Peer } from "./test-helpers/twoPeerHarness";
+import {
+    makePeerWithAnnotationSync,
+    connect,
+    teardown,
+    flushAll,
+    type Peer,
+} from "./test-helpers/twoPeerHarness";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 import { createYjsBinding } from "./yjsBinding";
 import {
@@ -34,8 +40,8 @@ describe("thread Y.Array sync", () => {
     let disconnect: () => void;
 
     beforeEach(() => {
-        peerA = makePeer("client-a", "hello world");
-        peerB = makePeer("client-b");
+        peerA = makePeerWithAnnotationSync("client-a", "hello world");
+        peerB = makePeerWithAnnotationSync("client-b");
         disconnect = connect(peerA, peerB);
     });
 
@@ -46,7 +52,7 @@ describe("thread Y.Array sync", () => {
     });
 
     // Phase 10: write path disabled — skipped until Phase 11 rebuilds it
-    it.skip("concurrent append from two peers surfaces both messages", async () => {
+    it("concurrent append from two peers surfaces both messages", async () => {
         // Seed a comment annotation on A
         const comment: GenericAnnotation = {
             _type: "comment",
@@ -104,7 +110,7 @@ describe("thread Y.Array sync", () => {
     });
 
     // Phase 10: write path disabled — skipped until Phase 11 rebuilds it
-    it.skip("single-peer append is mirrored remotely via observeDeep", async () => {
+    it("single-peer append is mirrored remotely via observeDeep", async () => {
         // Seed a comment annotation on A with one initial message
         const comment: GenericAnnotation = {
             _type: "comment",
@@ -144,7 +150,7 @@ describe("thread Y.Array sync", () => {
     });
 
     // Phase 10: write path disabled — skipped until Phase 11 rebuilds it
-    it.skip("shrink-path fallback replaces the full thread array", async () => {
+    it("shrink-path fallback replaces the full thread array", async () => {
         // Create a standalone peer with a comment that has 3 messages
         const ydoc = new Y.Doc();
         const ytext = ydoc.getText("document");

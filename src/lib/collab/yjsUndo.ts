@@ -15,10 +15,11 @@
  *   - yjsBinding.ts applies local changes with origin='local'
  *   - This module creates UndoManager that only tracks 'local' origin
  *   - Keymap intercepts Mod-z/Mod-Shift-z for undo/redo
+ *   - Phase 02: paired ViewPlugin restores CM selection on undo/redo via stackItem.meta.
  */
-import { keymap, type KeyBinding } from "@codemirror/view";
+import { keymap, ViewPlugin, type EditorView, type KeyBinding } from "@codemirror/view";
 import * as Y from "yjs";
-import { Prec, type Extension } from "@codemirror/state";
+import { EditorSelection, Prec, type Extension } from "@codemirror/state";
 
 /**
  * Create UndoManager extension for per-user undo.
@@ -45,6 +46,42 @@ export function createYjsUndoExtension<T = unknown>(
         trackedOrigins: new Set(["local"]), // Only undo local changes (per D-74)
         captureTimeout: 500, // Merge rapid typing into single undo step
     });
+
+    const selectionRestorePlugin = ViewPlugin.fromClass(
+        class {
+            private added: (event: { stackItem: { meta: Map<unknown, unknown> } }) => void;
+            private popped: (event: { stackItem: { meta: Map<unknown, unknown> } }) => void;
+
+            constructor(view: EditorView) {
+                this.added = (event) => {
+                    event.stackItem.meta.set("selection", view.state.selection);
+                };
+                this.popped = (event) => {
+                    const sel = event.stackItem.meta.get("selection") as
+                        | EditorSelection
+                        | undefined;
+                    if (!sel) return;
+                    const docLen = view.state.doc.length;
+                    const safe = EditorSelection.create(
+                        sel.ranges.map((r) =>
+                            EditorSelection.range(
+                                Math.min(r.anchor, docLen),
+                                Math.min(r.head, docLen),
+                            ),
+                        ),
+                    );
+                    view.dispatch({ selection: safe });
+                };
+                undoManager.on("stack-item-added", this.added);
+                undoManager.on("stack-item-popped", this.popped);
+            }
+
+            destroy() {
+                undoManager.off("stack-item-added", this.added);
+                undoManager.off("stack-item-popped", this.popped);
+            }
+        },
+    );
 
     const undoKeymap: KeyBinding[] = [
         {
@@ -79,7 +116,7 @@ export function createYjsUndoExtension<T = unknown>(
         // Prec.highest so Yjs undo wins over CodeMirror's historyKeymap Mod-z —
         // otherwise CM history (which still accumulated pre-collab events) would
         // run first and revert to the joiner's pre-connect local doc.
-        extension: Prec.highest(keymap.of(undoKeymap)),
+        extension: [Prec.highest(keymap.of(undoKeymap)), selectionRestorePlugin],
         undoManager,
     };
 }

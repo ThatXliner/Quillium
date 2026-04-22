@@ -11,10 +11,12 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { Compartment, Transaction } from "@codemirror/state";
+import { history } from "@codemirror/commands";
 import type * as Y from "yjs";
 import { get } from "svelte/store";
 import { supabase } from "$lib/auth/supabase";
 import { getUser } from "$lib/auth/auth.svelte";
+import { historyCompartment } from "$lib/editor/extensions";
 
 // Yjs modules
 import { createYjsBinding } from "./yjsBinding";
@@ -30,6 +32,7 @@ import {
 } from "./yjsProvider";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
 import { AnnotationIdMap } from "./annotationSchema";
+import { annotationField, removeAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 
 // Stores
 import {
@@ -123,9 +126,7 @@ export async function enableCollab(
     // Get local content before connecting
     const localDoc = view.state.doc.toString();
 
-    console.log(
-        `[collab] enableCollab: localDoc.length=${localDoc.length}, asOwner=${asOwner}`,
-    );
+    console.log(`[collab] enableCollab: localDoc.length=${localDoc.length}, asOwner=${asOwner}`);
 
     // Wait for initial sync with timeout
     await new Promise<void>((resolve, reject) => {
@@ -186,9 +187,21 @@ export async function enableCollab(
     // should not appear in the undo stack — otherwise cmd-z right after
     // connect would revert the sync and strand the editor in a stale state.
     const currentContent = view.state.doc.toString();
-    if (currentContent !== authoritativeContent) {
+    const preJoinLocalAnnotations = !asOwner
+        ? Object.values(view.state.field(annotationField, false) ?? {})
+        : [];
+    if (currentContent !== authoritativeContent || preJoinLocalAnnotations.length > 0) {
         view.dispatch({
-            changes: { from: 0, to: view.state.doc.length, insert: authoritativeContent },
+            ...(currentContent !== authoritativeContent
+                ? {
+                      changes: {
+                          from: 0,
+                          to: view.state.doc.length,
+                          insert: authoritativeContent,
+                      },
+                  }
+                : {}),
+            effects: preJoinLocalAnnotations.map((annotation) => removeAnnotation.of(annotation)),
             annotations: [Transaction.addToHistory.of(false)],
         });
     }
@@ -223,14 +236,24 @@ export async function enableCollab(
         mainIdMap,
     });
 
-    // Install Yjs collab extension - includes annotation sync
+    // Install Yjs collab extension - includes annotation sync.
+    // Joiners use Y.UndoManager only; owners keep their existing CM history.
+    const collabExts = asOwner
+        ? [binding, awarenessExt, annotationSync]
+        : [binding, undoExt, awarenessExt, annotationSync];
     view.dispatch({
-        effects: collabCompartment.reconfigure([binding, undoExt, awarenessExt, annotationSync]),
+        effects: [
+            collabCompartment.reconfigure(collabExts),
+            ...(asOwner ? [] : [historyCompartment.reconfigure([])]),
+        ],
     });
 
     // Listen for owner left (custom message from server)
     // y-websocket doesn't have built-in custom messages, so we listen on provider events
-    provider.on("connection-close" as any, (event: CloseEvent | null) => {
+    const providerWithConnectionClose = provider as unknown as {
+        on(eventName: "connection-close", handler: (event: CloseEvent | null) => void): void;
+    };
+    providerWithConnectionClose.on("connection-close", (event) => {
         // Check close reason for owner disconnect (event may be null on manual disconnect)
         if (event?.reason === "Owner left") {
             handleOwnerLeft();
@@ -278,8 +301,13 @@ export function disableCollab(view: EditorView): void {
     currentUndoManager = null;
     collabSession.set(null);
 
+    // Restore CM history() on disconnect. NOTE: rebuilt with empty stack;
+    // joiner->owner mid-session is not supported (see CONTEXT.md).
     view.dispatch({
-        effects: collabCompartment.reconfigure([]),
+        effects: [
+            collabCompartment.reconfigure([]),
+            historyCompartment.reconfigure(history({ newGroupDelay: 250 })),
+        ],
     });
 
     console.log("[collab] Collab disabled");
@@ -296,4 +324,3 @@ export function disableCollab(view: EditorView): void {
 export function getUndoManager(): Y.UndoManager | null {
     return currentUndoManager;
 }
-
