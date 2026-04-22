@@ -100,6 +100,19 @@ const controller = new NestedEditorController(
     "flush-on-destroy",
 );
 
+function readCurrentRevision(): Annotation<"revision"> | undefined {
+    const current = view.state.field(annotationField)[revision.id];
+    return current && isAnnotationOfType(current, "revision") ? current : undefined;
+}
+
+function readCurrentActiveVersion(): { version: VersionState; versionIndex: number } | undefined {
+    const current = readCurrentRevision();
+    if (!current) return undefined;
+    const versionIndex = current.activeVersionIndex;
+    const version = current.versions[versionIndex];
+    return version ? { version, versionIndex } : undefined;
+}
+
 let cursorArriving = $state(false);
 let cursorArrivingTimeout: ReturnType<typeof setTimeout> | undefined;
 let pendingFocusPos: number | undefined;
@@ -265,9 +278,14 @@ $effect(() => {
 /**
  * Mount a nested CodeMirror editor for the given version.
  */
-function createNestedEditor(version: VersionState) {
+function createNestedEditor(versionOverride?: VersionState, versionIndexOverride?: number) {
     if (!nestedEditorHost || controller.editor) return;
-    controller.create(nestedEditorHost, version, revision.activeVersionIndex);
+    const current = readCurrentActiveVersion();
+    const version = versionOverride ?? current?.version;
+    const versionIndex =
+        versionIndexOverride ?? current?.versionIndex ?? revision.activeVersionIndex;
+    if (!version) return;
+    controller.create(nestedEditorHost, version, versionIndex);
     controller.applyPendingSelection();
     // Apply pending focus from revision-focus-request that arrived before
     // the editor was created (event bus fires synchronously before Svelte flush).
@@ -310,9 +328,10 @@ $effect(() => {
         destroyNestedEditor();
         return;
     }
+    void activeVersion; // re-run when a version becomes available while open
     tick().then(() => {
-        if (!isEditorOpen || !activeVersion || !nestedEditorHost?.isConnected) return;
-        createNestedEditor(activeVersion);
+        if (!isEditorOpen || !nestedEditorHost?.isConnected) return;
+        createNestedEditor();
     });
 });
 
@@ -324,8 +343,8 @@ $effect(() => {
     destroyNestedEditor();
 
     tick().then(() => {
-        if (!isEditorOpen || !activeVersion || !nestedEditorHost?.isConnected) return;
-        createNestedEditor(activeVersion);
+        if (!isEditorOpen || !nestedEditorHost?.isConnected) return;
+        createNestedEditor();
         if (controller.editor) {
             const end = controller.editor.state.doc.length;
             controller.editor.dispatch({
@@ -342,11 +361,16 @@ $effect(() => {
 // needsAnnotationRebuild compares against the mounted snapshot.
 // Plan 8.5c-01: In collab mode this is a no-op (observeDeep reconciles live).
 $effect(() => {
-    if (!controller.editor || !isEditorOpen || !activeVersion) return;
+    const trackedVersion = activeVersion;
+    const trackedVersionIndex = revision.activeVersionIndex;
+    if (!controller.editor || !isEditorOpen || !trackedVersion) return;
     if (controller.needsVersionSwitch(revision.activeVersionIndex)) return;
-    if (!controller.needsAnnotationRebuild(activeVersion)) return;
-    destroyNestedEditor();
-    createNestedEditor(activeVersion);
+    const current = readCurrentActiveVersion();
+    const version = current?.version ?? trackedVersion;
+    if (!controller.needsAnnotationRebuild(version)) return;
+    controller.destroy({ skipFlush: true });
+    activeAnnotation = undefined;
+    createNestedEditor(version, current?.versionIndex ?? trackedVersionIndex);
 });
 
 // Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
@@ -375,15 +399,25 @@ $effect(() => {
         // Destroy WITHOUT flushing — the modal already wrote the correct state.
         controller.destroy({ skipFlush: true });
         activeAnnotation = undefined;
-        createNestedEditor(latestVersion);
+        createNestedEditor(latestVersion, rev.activeVersionIndex);
     });
 });
 
 // When the version doc changes externally (undo, parent typing), patch
 // the nested editor. The controller handles skipping self-originated changes.
 $effect(() => {
-    const externalDoc = activeVersion?.doc ?? "";
+    const trackedVersion = activeVersion;
     if (!controller.editor) return;
+    const current = readCurrentActiveVersion();
+    if (current && controller.needsVersionSwitch(current.versionIndex)) {
+        controller.destroy({ skipFlush: true });
+        activeAnnotation = undefined;
+        createNestedEditor(current.version, current.versionIndex);
+        return;
+    }
+    const externalDoc = current?.version
+        ? versionText(current.version)
+        : (trackedVersion?.doc ?? "");
     controller.syncFromParent(externalDoc);
 });
 
@@ -402,6 +436,7 @@ $effect(() => {
         );
         if (modalOpen) return;
         posthog.capture("revision_version_created", { version_count: revision.versions.length });
+        controller.flushCurrentStateToParent(false);
         view.dispatch(createNewRevision(view.state, revision.id));
         tick().then(() => {
             if (appSettings.showNestedEditor) {
@@ -508,6 +543,7 @@ onDestroy(() => {
                                     version_index: i,
                                     version_count: revision.versions.length,
                                 });
+                                controller.flushCurrentStateToParent(false);
                                 view.dispatch(
                                     setActiveRevisionVersion(view.state, revision.id, i),
                                 );
@@ -529,6 +565,7 @@ onDestroy(() => {
                         {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
                     onclick={() => {
                         if (editingLabelIndex === i) cancelLabelEdit();
+                        controller.flushCurrentStateToParent(false);
                         view.dispatch(
                             deleteRevisionVersion(view.state, revision.id, i),
                         );
@@ -550,6 +587,7 @@ onDestroy(() => {
                 posthog.capture("revision_version_created", {
                     version_count: revision.versions.length,
                 });
+                controller.flushCurrentStateToParent(false);
                 view.dispatch(createNewRevision(view.state, revision.id));
                 await tick();
                 if (appSettings.showNestedEditor) {

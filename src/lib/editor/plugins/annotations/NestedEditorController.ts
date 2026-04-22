@@ -29,7 +29,11 @@ import {
     _updateRevisionVersionLabel,
     _updateRevisionVersionState,
 } from "./annotationField";
-import { createNestedEditorState, translateAndDispatch } from "./nestedEditor";
+import {
+    createNestedEditorState,
+    mergeNestedVersionState,
+    translateAndDispatch,
+} from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import { getActiveAnnotation } from "./utils";
 import { annotationEventBus } from "./eventBus";
@@ -247,6 +251,18 @@ export class NestedEditorController {
     }
 
     /**
+     * Persist the mounted nested editor's annotation state to its current
+     * parent version without changing document text.
+     *
+     * Call this immediately before version transitions. Once the parent
+     * activeVersionIndex changes, destroy-time flushing intentionally skips
+     * to avoid writing stale state into the newly active version.
+     */
+    flushCurrentStateToParent(addToHistory = false): void {
+        this.flushAnnotationStateToParent(addToHistory);
+    }
+
+    /**
      * Consume a pending selection event from the event bus for
      * the controller's revision, if one exists.
      */
@@ -361,11 +377,7 @@ export class NestedEditorController {
                 string,
                 unknown
             >;
-            const blob = {
-                ...existing,
-                annotationField: nestedState.annotationField,
-                selection: nestedState.selection,
-            } as VersionState;
+            const blob = mergeNestedVersionState(existing, nestedState);
             this.parentView.dispatch(
                 updateRevisionVersionState(
                     this.parentView.state,
@@ -419,11 +431,7 @@ export class NestedEditorController {
                 string,
                 unknown
             >;
-            const blob = {
-                ...existing,
-                annotationField: nestedState.annotationField,
-                selection: nestedState.selection,
-            } as VersionState;
+            const blob = mergeNestedVersionState(existing, nestedState);
 
             // Compare against what the parent already has to detect
             // whether this flush actually contributes new state.

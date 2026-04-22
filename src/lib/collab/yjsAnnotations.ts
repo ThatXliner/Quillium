@@ -78,6 +78,7 @@ import {
     yjsAnnotationToCodeMirror,
     AnnotationIdMap,
 } from "./annotationSchema";
+import { absoluteToRelative } from "./relativePosition";
 import type { YjsAnnotationNode, MessageObject } from "./types";
 import {
     addAnnotation,
@@ -115,9 +116,7 @@ export function createAnnotationSyncPlugin(
             private destroyed = false;
             private idMap = idMap;
             private nestedIdMaps = new WeakMap<Y.Map<YjsAnnotationNode>, AnnotationIdMap>();
-            private nestedIdMapFor = (
-                annotations: Y.Map<YjsAnnotationNode>,
-            ): AnnotationIdMap => {
+            private nestedIdMapFor = (annotations: Y.Map<YjsAnnotationNode>): AnnotationIdMap => {
                 let idMap = this.nestedIdMaps.get(annotations);
                 if (!idMap) {
                     idMap = new AnnotationIdMap();
@@ -449,6 +448,8 @@ export function createAnnotationSyncPlugin(
                 node: YjsAnnotationNode,
                 ydoc: Y.Doc,
             ) {
+                this.syncAnnotationPositions(ann, node);
+
                 // Thread sync (all annotation types)
                 const threadArr = node.get("thread") as Y.Array<MessageObject> | undefined;
                 if (threadArr) {
@@ -480,6 +481,21 @@ export function createAnnotationSyncPlugin(
                     if (versionsMap) {
                         this.syncRevisionVersions(ann, versionsMap, ydoc);
                     }
+                }
+            }
+
+            private syncAnnotationPositions(ann: GenericAnnotation, node: YjsAnnotationNode) {
+                if (ann.selection.main.to > scopeYtext.length) return;
+
+                const { startPos, endPos } = absoluteToRelative(scopeYtext, ann.selection);
+                const currentStart = node.get("startPos");
+                const currentEnd = node.get("endPos");
+
+                if (!(currentStart instanceof Uint8Array) || !equalUint8(currentStart, startPos)) {
+                    node.set("startPos", startPos);
+                }
+                if (!(currentEnd instanceof Uint8Array) || !equalUint8(currentEnd, endPos)) {
+                    node.set("endPos", endPos);
                 }
             }
 
@@ -601,4 +617,12 @@ export function createAnnotationSyncPlugin(
             }
         },
     );
+}
+
+function equalUint8(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
 }

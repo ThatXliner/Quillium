@@ -242,9 +242,7 @@ describe("annotation sync (Phase 11)", () => {
                 revB.versions[0] as VersionState & { annotationField?: RawAnnotations }
             ).annotationField;
             expect(nestedField?.["0"]?._type).toBe("comment");
-            expect(nestedField?.["0"]?.selection).toEqual(
-                EditorSelection.single(0, 5).toJSON(),
-            );
+            expect(nestedField?.["0"]?.selection).toEqual(EditorSelection.single(0, 5).toJSON());
         });
 
         it("nested editor typing syncs character-by-character", async () => {
@@ -277,9 +275,47 @@ describe("annotation sync (Phase 11)", () => {
 
             if (isAnnotationOfType(revB, "revision")) {
                 expect(revB.versions[0].doc).toBe("hello");
+                expect(revB.selection.main.from).toBe(6);
+                expect(revB.selection.main.to).toBe(11);
             } else {
                 expect.fail("Expected revision annotation");
             }
+        });
+
+        it("remote revision range expands after collaborator edits a newly-created empty version", async () => {
+            const revision = createRevision(1, 6, 11, "world");
+            peerA.view.dispatch({
+                effects: addAnnotation.of(revision),
+            });
+            await flushAll(peerA, peerB);
+
+            const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
+            peerA.view.dispatch(createNewRevisionTx(peerA.view.state, annIdA));
+            await flushAll(peerA, peerB);
+
+            const revA = peerA.view.state.field(annotationField)[annIdA];
+            if (!isAnnotationOfType(revA, "revision")) {
+                expect.fail("Expected owner revision annotation");
+                return;
+            }
+
+            peerA.view.dispatch({
+                changes: { from: revA.selection.main.from, insert: "draft" },
+                annotations: [nestedEditorEdit.of(annIdA)],
+            });
+            await flushAll(peerA, peerB);
+
+            const revB = Object.values(peerB.view.state.field(annotationField))[0];
+            if (!isAnnotationOfType(revB, "revision")) {
+                expect.fail("Expected remote revision annotation");
+                return;
+            }
+
+            expect(revB.activeVersionIndex).toBe(1);
+            expect(revB.versions[1].doc).toBe("draft");
+            expect(revB.selection.main.from).toBe(6);
+            expect(revB.selection.main.to).toBe(11);
+            expect(peerB.view.state.sliceDoc(6, 11)).toBe("draft");
         });
 
         it("activeVersionIndex switch on owner propagates to joiner", async () => {

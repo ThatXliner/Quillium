@@ -3,6 +3,8 @@ import type { Page } from "@playwright/test";
 export async function installTauriMock(page: Page) {
     await page.addInitScript(() => {
         localStorage.setItem("quillium_tutorial_seen", "1");
+        localStorage.setItem("quillium_beta_accepted", "true");
+        localStorage.setItem("quillium_changelog_seen", "999.999");
 
         let nextCallbackId = 1;
         const callbacks = new Map<number, (...args: unknown[]) => unknown>();

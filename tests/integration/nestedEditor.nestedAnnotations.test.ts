@@ -27,6 +27,7 @@ import {
     versionText,
     type VersionState,
 } from "$lib/editor/plugins/annotations/models";
+import { normalizeSerializedSelection } from "$lib/editor/plugins/annotations/nestedEditor";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { nestedSavedFields } from "$lib/editor/extensions";
 
@@ -676,6 +677,134 @@ describe("EditorState.fromJSON hydrates annotations from version blob", () => {
         expect(anns[0]).toBeDefined();
         expect(anns[0].selection.main.from).toBe(0);
         expect(anns[0].selection.main.to).toBe(5);
+    });
+
+    it("renders nested annotation decorations on first EditorView render", async () => {
+        const blob = {
+            doc: "hello world",
+            selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: {
+                        ranges: [{ anchor: 0, head: 5 }],
+                        main: 0,
+                    },
+                    thread: [],
+                },
+            },
+        };
+        const state = EditorState.fromJSON(
+            blob,
+            { extensions: [annotationExtensions()] },
+            nestedSavedFields,
+        );
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const nestedView = new EditorView({ state, parent: host });
+
+        try {
+            await Promise.resolve();
+            expect(nestedView.dom.querySelector(".cm-comment")).not.toBeNull();
+        } finally {
+            nestedView.destroy();
+            host.remove();
+        }
+    });
+
+    it("hydrates annotationField-only blobs with a quiet fallback selection", async () => {
+        const blob = {
+            doc: "hello world",
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: {
+                        ranges: [{ anchor: 0, head: 5 }],
+                        main: 0,
+                    },
+                    thread: [],
+                },
+            },
+        };
+        const normalizedSelection = normalizeSerializedSelection(undefined, blob.doc.length);
+        expect(normalizedSelection.shouldWarn).toBe(false);
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const state = EditorState.fromJSON(
+            { ...blob, selection: normalizedSelection.selection },
+            { extensions: [annotationExtensions()] },
+            nestedSavedFields,
+        );
+        const nestedView = new EditorView({ state, parent: host });
+
+        try {
+            await Promise.resolve();
+            expect(nestedView.dom.querySelector(".cm-comment")).not.toBeNull();
+        } finally {
+            nestedView.destroy();
+            host.remove();
+        }
+    });
+
+    it("renders nested annotation decorations after recreating an inline editor for a prior version", async () => {
+        const versionWithAnnotation = {
+            doc: "hello world",
+            selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+            annotationField: {
+                0: {
+                    _type: "comment",
+                    id: 0,
+                    selection: {
+                        ranges: [{ anchor: 6, head: 11 }],
+                        main: 0,
+                    },
+                    thread: [],
+                },
+            },
+        };
+        const emptyVersion = {
+            doc: "",
+            selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+        };
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        let nestedView = new EditorView({
+            state: EditorState.fromJSON(
+                versionWithAnnotation,
+                { extensions: [annotationExtensions()] },
+                nestedSavedFields,
+            ),
+            parent: host,
+        });
+
+        try {
+            nestedView.destroy();
+            nestedView = new EditorView({
+                state: EditorState.fromJSON(
+                    emptyVersion,
+                    { extensions: [annotationExtensions()] },
+                    nestedSavedFields,
+                ),
+                parent: host,
+            });
+            nestedView.destroy();
+            nestedView = new EditorView({
+                state: EditorState.fromJSON(
+                    versionWithAnnotation,
+                    { extensions: [annotationExtensions()] },
+                    nestedSavedFields,
+                ),
+                parent: host,
+            });
+
+            await Promise.resolve();
+            expect(nestedView.dom.querySelector(".cm-comment")).not.toBeNull();
+        } finally {
+            nestedView.destroy();
+            host.remove();
+        }
     });
 
     it("annotationField is empty when blob has no annotationField key", () => {
