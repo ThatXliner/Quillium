@@ -82,6 +82,9 @@ const nestedEditorKeymap: KeyBinding[] = [
 ] as unknown as KeyBinding[];
 
 export const harperCompartment = new Compartment();
+// Wraps history() so enableCollab(asOwner=false) can reconfigure it to []
+// (joiner peer has no CM history; undo via Y.UndoManager instead). See JOINER-01.
+export const historyCompartment = new Compartment();
 
 export const getExtensions = (options?: ListenerOptions) => {
     const withHistory = options?.history !== false;
@@ -89,7 +92,7 @@ export const getExtensions = (options?: ListenerOptions) => {
         highlightSpecialChars(),
         // Default is 500 milliseconds
         // but I find that too long
-        ...(withHistory ? [history({ newGroupDelay: 250 })] : []),
+        ...(withHistory ? [historyCompartment.of(history({ newGroupDelay: 250 }))] : []),
         // Will re-enable for multi-selection support
         // drawSelection(),
         dropCursor(),

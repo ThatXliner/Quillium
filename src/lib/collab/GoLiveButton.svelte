@@ -11,9 +11,18 @@
 import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
-import { isCollabJoiner } from "$lib/collab/store";
+import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
-import { enableCollab, disableCollab, relayConfigured, registerDocumentForCollab, ownerLeftSignal, collabState, reconnectAttempt } from "$lib/collab";
+import {
+    enableCollab,
+    disableCollab,
+    restoreJoinerPriorView,
+    relayConfigured,
+    registerDocumentForCollab,
+    ownerLeftSignal,
+    collabState,
+    reconnectAttempt,
+} from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 
@@ -30,10 +39,13 @@ const currentId = $derived($currentDraftId ?? "");
 // React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
 $effect(() => {
     if ($ownerLeftSignal > 0 && isLive) {
-        // Provider already disconnected via handleOwnerLeft, just update UI state
+        const view = get(editorView);
+        if (view) {
+            disableCollab(view);
+        } else {
+            restoreJoinerPriorView();
+        }
         isLive = false;
-        // Reset joiner flag -- persistence resumes normally after kick
-        isCollabJoiner.set(false);
         toast.error("The owner ended the session");
     }
 });
@@ -91,8 +103,19 @@ async function joinById() {
             isLive = false;
         }
 
-        // Switch to shared document ID (skip sync_documents registration -- owner already did that)
-        currentDraftId.set(id);
+        // D-100: Capture prior view state BEFORE joining
+        const priorDraftId = get(currentDraftId);
+        joinerPriorView.set({
+            draftId: priorDraftId,
+            viewType: "editor", // We're in the editor if this button is visible
+            editorStateJson: view.state.toJSON(savedFields),
+        });
+
+        // D-100: Clear local draft ID -- joiner is NOT editing a local doc.
+        // The collab view is ephemeral and backed entirely by the room's Y.Doc.
+        // Setting to null ensures persistence listeners skip this session.
+        // Note: We still pass `id` to enableCollab for room identification.
+        currentDraftId.set(null);
 
         // Mark this client as an ephemeral joiner BEFORE connecting so the
         // persistence listener skips Yjs-driven document updates. Joiners in
@@ -108,8 +131,14 @@ async function joinById() {
         toast.success("Joined shared document");
     } catch (err) {
         console.error("[collab] Failed to join:", err);
-        // Reset joiner flag on failure so normal persistence resumes
+        // Reset joiner state on failure
+        const prior = get(joinerPriorView);
+        joinerPriorView.set(null);
         isCollabJoiner.set(false);
+        // Restore draft ID on failure
+        if (prior?.draftId) {
+            currentDraftId.set(prior.draftId);
+        }
         const message = err instanceof Error && err.message.includes("relay")
             ? "Couldn't connect to relay server"
             : "Failed to join document";
@@ -127,8 +156,8 @@ async function handleToggle() {
             disableCollab(view);
         }
         isLive = false;
-        // Reset joiner flag -- persistence resumes normally after disconnect
-        isCollabJoiner.set(false);
+        // D-103: restoreJoinerPriorView is called by disableCollab automatically
+        // for joiners. Owners stay on current document (no navigation).
         toast.success("Session ended");
     } else {
         // Go live -- snapshot first (D-58)

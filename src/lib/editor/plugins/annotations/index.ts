@@ -216,8 +216,8 @@ function getActiveRevisionAnnotation(state: EditorState) {
 // Intercepts comment/revision creation commands when the cursor is inside
 // an active revision — maps the selection to revision-relative offsets and
 // signals the nested editor to open and run the equivalent command there.
-function redirectToNestedEditor(type: NestedEditorCommand["type"]): StateCommand {
-    return (view) => {
+function redirectToNestedEditor(type: NestedEditorCommand["type"]) {
+    return (view: EditorView) => {
         if (!appSettings.atomicRevisions) return false;
         // When inline nested editors are enabled, annotation creation
         // should happen directly in the main editor — no modal redirect.
@@ -412,146 +412,116 @@ class PersonaDotWidget extends WidgetType {
 }
 
 // -------------------------------------------------------
-// annotationDecorations ViewPlugin
+// annotationDecorations
 //
-// Builds DecorationSets for all three annotation types
-// (comment, revision, suggestion) and joins them into a
-// single decoration layer. Each annotation's range gets a
-// CSS class mark (e.g. cm-comment, cm-revision), and the
-// "active" annotation (the one under the cursor) gets an
-// additional -active variant class for highlighted styling.
-//
-// Rebuilt on: cursor movement (selectionSet), doc changes,
-// or annotation map changes.
-//
-// Also contains getPreviewDecoration() for rendering
-// inline suggestion diffs via SuggestionDiffWidget, though
-// this is not currently wired into the decoration provider.
+// Builds DecorationSets directly from EditorState so initial serialized
+// annotation state and first-join collab hydration both render without waiting
+// for a ViewPlugin update cycle.
 // -------------------------------------------------------
-const annotationDecorations = ViewPlugin.fromClass(
-    class {
-        decorations: DecorationSet;
-
-        constructor(view: EditorView) {
-            this.decorations = this.buildAll(view);
-        }
-
-        update(update: ViewUpdate) {
-            // update.selectionSet also means "if cursor changed"
-            if (update.selectionSet || update.docChanged || annotationsChanged(update)) {
-                this.decorations = this.buildAll(update.view);
-            }
-        }
-
-        buildAll(view: EditorView): DecorationSet {
-            return RangeSet.join([
-                this.getDecorations(view, "comment", "cm-comment"),
-                this.getDecorations(view, "revision", "cm-revision"),
-                this.getDecorations(view, "suggestion", "cm-suggestion"),
-                this.getPersonaDots(view),
-            ]);
-        }
-
-        getDecorations(view: EditorView, type: AnnotationType, classPrefix: string): DecorationSet {
-            // See issue #38: this is O(n*m); could be optimized to O(n log n)
-            // with a greedy sweep-line / interval-merge approach.
-            const builder = new RangeSetBuilder<Decoration>();
-            const annotationRanges = flatMap(
-                filter(Object.values(view.state.field(annotationField)), (annotation) =>
-                    isAnnotationOfType(annotation, type),
-                ),
-                // Currently only .main is used; multi-range support tracked in #38.
-                (annotation) => annotation.selection.main,
-            );
-            // Only .main is used for active ranges; multi-range support tracked in #38.
-            const activeRanges: readonly SelectionRange[] =
-                getActiveAnnotation(view.state, type)?.selection?.ranges ?? [];
-            // If you don't add annotations in order, the plugin will crash
-            annotationRanges.sort((a, b) => a.from - b.from);
-
-            const toHighlight = [
-                ...annotationRanges.map((x) => ({
-                    active: false,
-                    x,
-                })),
-                ...activeRanges.map((x) => ({
-                    active: true,
-                    x,
-                })),
-            ].sort((a, b) => a.x.from - b.x.from);
-            for (const {
-                x: { from, to },
-                active,
-            } of toHighlight) {
-                builder.add(
-                    from,
-                    to,
-                    Decoration.mark({
-                        class: active ? `${classPrefix}-active` : classPrefix,
-                        inclusive: true,
-                        // inclusive: type === "revision",
-                    }),
-                );
-            }
-            return builder.finish();
-        }
-
-        getPersonaDots(view: EditorView): DecorationSet {
-            const builder = new RangeSetBuilder<Decoration>();
-            const suggestions = filter(Object.values(view.state.field(annotationField)), (a) =>
-                isAnnotationOfType(a, "suggestion"),
-            ) as Array<Annotation<"suggestion">>;
-
-            const dots = suggestions
-                .filter((s) => {
-                    if (!s.author || s.author === "AI") return false;
-                    return readersSettings.personas.some((p) => p.name === s.author);
-                })
-                .map((s) => ({
-                    pos: s.selection.main.to,
-                    color: readersSettings.personas.find((p) => p.name === s.author)!.color,
-                }))
-                .sort((a, b) => a.pos - b.pos);
-
-            for (const { pos, color } of dots) {
-                builder.add(
-                    pos,
-                    pos,
-                    Decoration.widget({
-                        widget: new PersonaDotWidget(color),
-                        side: 1,
-                    }),
-                );
-            }
-            return builder.finish();
-        }
-
-        getPreviewDecoration(view: EditorView): DecorationSet {
-            const preview = view.state.field(suggestionPreviewField);
-            if (!preview) return Decoration.none;
-            const annotation = view.state.field(annotationField)[preview.annotationId];
-            if (!annotation || !isAnnotationOfType(annotation, "suggestion"))
-                return Decoration.none;
-            const replacement = annotation.replacements[preview.replacementIndex];
-            if (replacement === undefined) return Decoration.none;
-            const { from, to } = annotation.selection.main;
-            const original = view.state.sliceDoc(from, to);
-            const builder = new RangeSetBuilder<Decoration>();
-            builder.add(
-                from,
-                to,
-                Decoration.replace({
-                    widget: new SuggestionDiffWidget(original, replacement.text),
-                    inclusive: true,
-                }),
-            );
-            return builder.finish();
-        }
-    },
-    {
-        decorations: (v) => v.decorations,
-    },
+const annotationDecorations = EditorView.decorations.compute(
+    ["doc", "selection", annotationField],
+    (state) =>
+        RangeSet.join([
+            getAnnotationDecorations(state, "comment", "cm-comment"),
+            getAnnotationDecorations(state, "revision", "cm-revision"),
+            getAnnotationDecorations(state, "suggestion", "cm-suggestion"),
+            getPersonaDots(state),
+        ]),
 );
+
+function getAnnotationDecorations(
+    state: EditorState,
+    type: AnnotationType,
+    classPrefix: string,
+): DecorationSet {
+    // See issue #38: this is O(n*m); could be optimized to O(n log n)
+    // with a greedy sweep-line / interval-merge approach.
+    const builder = new RangeSetBuilder<Decoration>();
+    const annotationRanges = flatMap(
+        filter(Object.values(state.field(annotationField)), (annotation) =>
+            isAnnotationOfType(annotation, type),
+        ),
+        // Currently only .main is used; multi-range support tracked in #38.
+        (annotation) => annotation.selection.main,
+    );
+    // Only .main is used for active ranges; multi-range support tracked in #38.
+    const activeRanges: readonly SelectionRange[] =
+        getActiveAnnotation(state, type)?.selection?.ranges ?? [];
+    // If you don't add annotations in order, the plugin will crash
+    annotationRanges.sort((a, b) => a.from - b.from);
+
+    const toHighlight = [
+        ...annotationRanges.map((x) => ({
+            active: false,
+            x,
+        })),
+        ...activeRanges.map((x) => ({
+            active: true,
+            x,
+        })),
+    ].sort((a, b) => a.x.from - b.x.from);
+    for (const {
+        x: { from, to },
+        active,
+    } of toHighlight) {
+        builder.add(
+            from,
+            to,
+            Decoration.mark({
+                class: active ? `${classPrefix}-active` : classPrefix,
+                inclusive: true,
+                // inclusive: type === "revision",
+            }),
+        );
+    }
+    return builder.finish();
+}
+
+function getPersonaDots(state: EditorState): DecorationSet {
+    const builder = new RangeSetBuilder<Decoration>();
+    const suggestions = filter(Object.values(state.field(annotationField)), (a) =>
+        isAnnotationOfType(a, "suggestion"),
+    ) as Array<Annotation<"suggestion">>;
+
+    const dots = flatMap(suggestions, (s) => {
+        if (!s.author || s.author === "AI") return [];
+        const persona = readersSettings.personas.find((p) => p.name === s.author);
+        return persona ? [{ pos: s.selection.main.to, color: persona.color }] : [];
+    }).sort((a, b) => a.pos - b.pos);
+
+    for (const { pos, color } of dots) {
+        builder.add(
+            pos,
+            pos,
+            Decoration.widget({
+                widget: new PersonaDotWidget(color),
+                side: 1,
+            }),
+        );
+    }
+    return builder.finish();
+}
+
+function getPreviewDecoration(state: EditorState): DecorationSet {
+    const preview = state.field(suggestionPreviewField);
+    if (!preview) return Decoration.none;
+    const annotation = state.field(annotationField)[preview.annotationId];
+    if (!annotation || !isAnnotationOfType(annotation, "suggestion")) return Decoration.none;
+    const replacement = annotation.replacements[preview.replacementIndex];
+    if (replacement === undefined) return Decoration.none;
+    const { from, to } = annotation.selection.main;
+    const original = state.sliceDoc(from, to);
+    const builder = new RangeSetBuilder<Decoration>();
+    builder.add(
+        from,
+        to,
+        Decoration.replace({
+            widget: new SuggestionDiffWidget(original, replacement.text),
+            inclusive: true,
+        }),
+    );
+    return builder.finish();
+}
 // Resolves an annotation target to an EditorSelection.
 // Accepts either an explicit EditorSelection or a targetText
 // string (searched via SearchCursor). Exactly one must be

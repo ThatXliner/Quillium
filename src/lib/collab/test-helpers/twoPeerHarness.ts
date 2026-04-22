@@ -4,23 +4,27 @@
  * Role: Eliminates duplicated makePeer/connect helpers across convergence suites.
  *   - yjsBinding.convergence.test.ts (existing)
  *   - yjsAnnotations.convergence.test.ts (existing)
- *   - subtree-convergence.test.ts (Phase 8.5, new)
- *   - convergence-edgecases.test.ts (Phase 8.5, new)
- *   - recursive-mount.test.ts (Phase 8.5, new)
  *
  * Key dependencies: yjs, @codemirror/state, @codemirror/view.
  *
  * Interactions: Each peer owns a Y.Doc, a "document" Y.Text, an "annotations"
- * Y.Map, and a CodeMirror EditorView with createYjsBinding + createAnnotationSyncPlugin
- * installed. connect() manually pipes updates between two peers with "remote"
- * origin to prevent feedback loops in the UndoManager.
+ * Y.Map, and a CodeMirror EditorView with createYjsBinding installed.
+ * connect() manually pipes updates between two peers with "remote" origin to
+ * prevent feedback loops in the UndoManager.
+ *
+ * Phase 10: Annotation sync plugin removed. Main text sync only.
+ * Phase 11 will rebuild annotation sync with unified diff-and-write.
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { history } from "@codemirror/commands";
 import * as Y from "yjs";
 import { createYjsBinding } from "../yjsBinding";
 import { createAnnotationSyncPlugin } from "../yjsAnnotations";
+import { createYjsUndoExtension } from "../yjsUndo";
+import { AnnotationIdMap } from "../annotationSchema";
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import type { YjsAnnotationNode } from "../types";
 
 export interface Peer {
     ydoc: Y.Doc;
@@ -31,6 +35,7 @@ export interface Peer {
     ymap: Y.Map<unknown>;
     view: EditorView;
     clientId: string;
+    idMap?: AnnotationIdMap; // Present when annotation sync is enabled
 }
 
 export function makePeer(clientId: string, initialText = ""): Peer {
@@ -45,17 +50,97 @@ export function makePeer(clientId: string, initialText = ""): Peer {
         extensions: [
             annotationField,
             createYjsBinding(ytext),
-            // CAST: tests declare ymap as Y.Map<unknown>; after Plan 8.5b-01 the plugin
-            // is parameterised on Y.Map<YjsAnnotationNode>, which is itself
-            // Y.Map<unknown> at runtime, so this cast narrows the type parameter
-            // without changing the runtime shape. Still required because TypeScript
-            // generics on Y.Map are invariant (no structural assignability between
-            // Y.Map<A> and Y.Map<B> even when A extends B).
-            createAnnotationSyncPlugin(ytext, ymap as Y.Map<never>, clientId),
+            // Phase 10: Annotation sync plugin removed. Main text sync only.
         ],
     });
     const view = new EditorView({ state, parent: document.body });
     return { ydoc, ytext, ymap, view, clientId };
+}
+
+/**
+ * Create a peer with both text sync AND annotation sync enabled.
+ * Use for Phase 11+ tests that exercise annotation synchronization.
+ */
+export function makePeerWithAnnotationSync(clientId: string, initialText = ""): Peer {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("document");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const idMap = new AnnotationIdMap();
+
+    if (initialText) {
+        ydoc.transact(() => ytext.insert(0, initialText), "init");
+    }
+
+    const state = EditorState.create({
+        doc: initialText,
+        extensions: [
+            annotationField,
+            createYjsBinding(ytext),
+            createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
+        ],
+    });
+    const view = new EditorView({ state, parent: document.body });
+    // Cast ymap to Y.Map<unknown> to satisfy Peer interface (ymap is Y.Map<YjsAnnotationNode>)
+    return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, view, clientId, idMap };
+}
+
+export function makeJoinerPeer(
+    clientId: string,
+    initialText = "",
+): Peer & { undoManager: Y.UndoManager } {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("document");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const idMap = new AnnotationIdMap();
+
+    if (initialText) {
+        ydoc.transact(() => ytext.insert(0, initialText), "init");
+    }
+
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+    const state = EditorState.create({
+        doc: initialText,
+        extensions: [
+            annotationField,
+            createYjsBinding(ytext),
+            createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
+            // joiner-shape: history intentionally omitted; undo via Y.UndoManager.
+            undoExt,
+        ],
+    });
+    const view = new EditorView({ state, parent: document.body });
+    return {
+        ydoc,
+        ytext,
+        ymap: ymap as Y.Map<unknown>,
+        view,
+        clientId,
+        idMap,
+        undoManager,
+    };
+}
+
+export function makeOwnerPeer(clientId: string, initialText = ""): Peer {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("document");
+    const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+    const idMap = new AnnotationIdMap();
+
+    if (initialText) {
+        ydoc.transact(() => ytext.insert(0, initialText), "init");
+    }
+
+    const state = EditorState.create({
+        doc: initialText,
+        extensions: [
+            annotationField,
+            history({ newGroupDelay: 250 }),
+            createYjsBinding(ytext),
+            createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
+        ],
+    });
+    const view = new EditorView({ state, parent: document.body });
+    return { ydoc, ytext, ymap: ymap as Y.Map<unknown>, view, clientId, idMap };
 }
 
 export function connect(a: Peer, b: Peer): () => void {
@@ -81,4 +166,50 @@ export function connect(a: Peer, b: Peer): () => void {
 export function teardown(peer: Peer): void {
     peer.view.destroy();
     peer.ydoc.destroy();
+}
+
+/**
+ * flushAll -- Variadic state-vector-equality flush primitive for N-peer convergence tests.
+ *
+ * Drains queued microtasks, then checks pairwise Y.encodeStateVector equality
+ * across every peer. Repeats until stable or until MAX_ITERATIONS is exceeded
+ * (in which case it throws a loud error -- this signals real amplification or
+ * a feedback loop, not a transient miss).
+ *
+ * This is the ONLY flush primitive used by two-peer convergence tests in Phases
+ * 1-9. Do not introduce alternative flush helpers (fixed-N microtask ticks,
+ * explicit update-queue drains, single awaits) -- they hide amplification bugs
+ * behind their own counters or tick budgets.
+ *
+ * Decisions: D-01 (variadic), D-02 (state-vector loop with cap), D-03 (rejected alts).
+ */
+export const FLUSH_ALL_MAX_ITERATIONS = 20;
+
+export async function flushAll(...peers: Peer[]): Promise<void> {
+    if (peers.length < 2) {
+        throw new Error("flushAll: requires at least 2 peers");
+    }
+    for (let iter = 0; iter < FLUSH_ALL_MAX_ITERATIONS; iter++) {
+        await Promise.resolve();
+        await Promise.resolve();
+        const sv0 = Y.encodeStateVector(peers[0].ydoc);
+        let converged = true;
+        for (let i = 1; i < peers.length; i++) {
+            const svi = Y.encodeStateVector(peers[i].ydoc);
+            if (!equalUint8(sv0, svi)) {
+                converged = false;
+                break;
+            }
+        }
+        if (converged) return;
+    }
+    throw new Error(
+        `flushAll: peers did not converge after ${FLUSH_ALL_MAX_ITERATIONS} iterations -- likely amplification or feedback loop (one local op produced an unbounded chain of remote updates)`,
+    );
+}
+
+function equalUint8(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
 }

@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-stopped_at: 
-last_updated: "2026-04-19T00:00:00.000Z"
-last_activity: "2026-04-18 -- Phase 7 context gathered; old OT-based plans deleted, replanning needed"
+milestone: v1.1
+milestone_name: PRE-V2 FIX ANNOTATION SYNC
+status: Ready for Phase 3
+stopped_at: context exhaustion at 93% (2026-04-20)
+last_updated: "2026-04-20T01:25:37.327Z"
+last_activity: 2026-04-22 — Phase 2 complete (JOINER-01/-02/-03/-05; 159/159 collab tests pass)
 progress:
-  total_phases: 13
-  completed_phases: 12
-  total_plans: 40
-  completed_plans: 40
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 8
+  completed_plans: 8
   percent: 100
 ---
 
@@ -18,19 +18,20 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-18)
+See: .planning/PROJECT.md (updated 2026-04-19)
 
-**Core value:** Two Quillium instances can connect and see each other's edits in real-time
-**Current focus:** All phases complete — milestone ready for final verification
+**Core value:** Two Quillium instances can connect and see each other's edits in real-time, including annotations and revision versions, without divergence or data loss
+**Current focus:** v1.1 milestone — re-architect annotation sync (CM annotationField ↔ Y.Map) as a single source of truth (Yjs canonical, annotationField derived projection)
 
 ## Current Position
 
-Phase: All complete (1-8.5c)
-Plan: N/A
-Status: All 13 phases complete — ready for milestone wrap-up
-Last activity: 2026-04-19 -- Phase 7 executed; ROADMAP sync (7.5, 8 were already done)
+Branch: omni-fixes
+Phase: Phase 2: Joiner View Hardening — COMPLETE
+Plan: 5/5 plans complete
+Status: Ready for Phase 3
+Last activity: 2026-04-22 — Phase 2 complete (JOINER-01/-02/-03/-05; 159/159 collab tests pass)
 
-Progress: [██████████] 100%
+Progress: [██░░░░░░░░] 22% (2/9 phases)
 
 ## Performance Metrics
 
@@ -74,6 +75,8 @@ Progress: [██████████] 100%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- v1.1 phase numbering reset to 1 (v1.0 phases archived under `milestones/v1.0-ROADMAP.md`).
+- v1.1 phase ordering follows research SUMMARY.md "Proposed Phase Ordering" — invariants/harness first, single SOT before Phase 3 deletion, nested rewire after Phase 3 deletion, fuzz/dogfood last.
 - 08.5a-01: Use `it.todo` (not `it.skip`) for Wave 0 scaffolds so Vitest reports TODO count distinctly and the suite stays green.
 - 08.5a-01: Keep harness `Peer.ymap` typed as `Y.Map<unknown>` with a `Y.Map<never>` cast at the plugin boundary so the harness survives the shape rewrite in 08.5a-02.
 - 08.5a-01: Wave 0 scaffolds do NOT import the harness yet; downstream plans add imports when they rewrite a todo into a real test.
@@ -91,16 +94,24 @@ None yet.
 
 ### Roadmap Evolution
 
+- 2026-04-19: v1.1 roadmap created — 9 phases, 32/32 requirements mapped, phase numbering reset to 1, v1.0 phases archived under milestones/v1.0-ROADMAP.md.
 - Phase 7.5 inserted: Yjs Migration - Replace OT with Yjs CRDT (moved from Phase 10)
 - Phases 8/9 updated: Now build on Yjs instead of OT assumptions
+- Phase 9 added: Fix Live Collab Revision Editing Bugs (post-8.5c dogfooding regressions)
+- Phase 9 reopened 2026-04-19: plans landed but inline-editor and active-version bugs persist in dogfooding; continuation split into phases 10–13 on the `omni-fixes` branch
+- Phase 10 added: Strip Broken Collab Sync Layer
+- Phase 11 added: Unified Subtree Sync Rebuild
+- Phase 12 added: Nested Editor Reunification
+- Phase 13 added: Dogfooding Regression Suite
 
 ### Blockers/Concerns
 
-Research identified key risks to track:
+Research identified key risks to track for v1.1:
 
-- **Annotation divergence**: OT guarantees document convergence but not position convergence. Comment/revision anchors may drift. Mitigation strategy needed before Phase 8.
-- **Relay must use rebaseUpdates**: Demo server rejects stale versions. Production relay must implement rebaseUpdates from day one (Phase 4).
-- **Per-user undo required**: Multi-user editing needs per-user undo stacks. Must tag operations with author in Phase 6.
+- **Pattern 7c prototype unproven**: Atomic parent-slice ↔ version Y.Text dual-write inside one `ydoc.transact` has not been prototyped end-to-end. Build a minimal two-peer test in Phase 1 or early Phase 5 before committing to the design.
+- **observeDeep event ordering (yjs#591)**: Phase 4 must preserve and test the read-all-then-rebuild-once pattern; ordering quirk may surprise multi-mutation transactions.
+- **Persistence migration for RelativePositions (yjs#340)**: Phase 7 must audit current snapshot format; if RelativePositions are JSON-encoded today, a small binary migration is required.
+- **`activeVersionIndex` semantics under concurrent version add**: Decision pending — numeric index vs stable string ID. Cheap to make safe (string ID); deferred only if version add stays owner-only.
 
 ### Quick Tasks Completed
 
@@ -110,14 +121,20 @@ Research identified key risks to track:
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged and deferred at v1.0 milestone close on 2026-04-19:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| phase | Phase 12: Nested Editor Reunification — tactical patches, architecture debt | absorbed into v1.1 Phase 6 | 2026-04-19 |
+| phase | Phase 13: Dogfooding Regression Suite — never planned | absorbed into v1.1 Phase 1 + Phase 9 | 2026-04-19 |
+| quick_task | 260419-annotation-sync-initial | addressed in v1.1 Phase 4 (JOINER-04) | 2026-04-19 |
+| quick_task | 260419-revision-version-live-edit-sync | addressed in v1.1 Phase 5 (REVISION-01) | 2026-04-19 |
+| architecture | Dual-source-of-truth: annotationField ↔ Y.Map causes recurring sync bugs | addressed by v1.1 milestone | 2026-04-19 |
 
 ## Session Continuity
 
-Last session: 2026-04-19T06:23:40.395Z
-Stopped at: context exhaustion at 90% (2026-04-19)
+Last session: 2026-04-20T01:25:24.097Z
+Stopped at: context exhaustion at 93% (2026-04-20)
 Resume file: None
+
+**Planned Phase:** 2 (Joiner View Hardening) — 5 plans — 2026-04-20T01:25:37.323Z

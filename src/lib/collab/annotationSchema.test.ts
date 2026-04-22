@@ -9,11 +9,16 @@ import { EditorSelection } from "@codemirror/state";
 import * as Y from "yjs";
 import {
     codeMirrorToYjsAnnotation,
+    syncRawAnnotationsToYjsMap,
     yjsAnnotationToCodeMirror,
     generateAnnotationId,
     AnnotationIdMap,
 } from "./annotationSchema";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import type {
+    GenericAnnotation,
+    RawAnnotations,
+    VersionState,
+} from "$lib/editor/plugins/annotations/models";
 import type { YjsAnnotationNode, MessageObject } from "./types";
 
 describe("annotationSchema", () => {
@@ -116,6 +121,50 @@ describe("annotationSchema", () => {
             expect(v0.get("label")).toBe("v1");
             expect(retrieved.get("activeVersionIndex")).toBe(0);
         });
+
+        it("syncs nested annotations inside integrated revision versions", () => {
+            const nestedAnnotations: RawAnnotations = {
+                "0": {
+                    id: 0,
+                    _type: "comment",
+                    selection: EditorSelection.single(0, 7).toJSON(),
+                    thread: [],
+                },
+            };
+            const version = {
+                doc: "version text",
+                annotationField: nestedAnnotations,
+            } as VersionState & { annotationField: RawAnnotations };
+            const ann: GenericAnnotation = {
+                id: 3,
+                _type: "revision",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+                versions: [version],
+                activeVersionIndex: 0,
+            };
+
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
+            const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
+            const v0 = versions.get("0") as Y.Map<unknown>;
+            const nestedMap = v0.get("annotations") as Y.Map<YjsAnnotationNode>;
+            const vtext = v0.get("text") as Y.Text;
+
+            expect(nestedMap).toBeInstanceOf(Y.Map);
+            expect(nestedMap.size).toBe(0);
+
+            syncRawAnnotationsToYjsMap(
+                nestedAnnotations,
+                nestedMap,
+                vtext,
+                CLIENT_ID,
+                ydoc,
+                new AnnotationIdMap(),
+            );
+            expect(nestedMap.size).toBe(1);
+        });
     });
 
     describe("yjsAnnotationToCodeMirror", () => {
@@ -183,6 +232,59 @@ describe("annotationSchema", () => {
             if (restored !== null && restored._type === "revision") {
                 expect(restored.versions[0].doc).toBe("v1 text");
                 expect(restored.activeVersionIndex).toBe(0);
+            }
+        });
+
+        it("round-trips nested annotations inside revision versions", () => {
+            const nestedAnnotations: RawAnnotations = {
+                "0": {
+                    id: 0,
+                    _type: "comment",
+                    selection: EditorSelection.single(0, 2).toJSON(),
+                    thread: [],
+                },
+            };
+            const version = {
+                doc: "v1 text",
+                annotationField: nestedAnnotations,
+            } as VersionState & { annotationField: RawAnnotations };
+            const ann: GenericAnnotation = {
+                id: 3,
+                _type: "revision",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+                versions: [version],
+                activeVersionIndex: 0,
+            };
+
+            const idMap = new AnnotationIdMap();
+            const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
+            ydoc.transact(() => ymap.set("test", node));
+            const retrieved = ymap.get("test")!;
+            const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
+            const v0 = versions.get("0") as Y.Map<unknown>;
+            syncRawAnnotationsToYjsMap(
+                nestedAnnotations,
+                v0.get("annotations") as Y.Map<YjsAnnotationNode>,
+                v0.get("text") as Y.Text,
+                CLIENT_ID,
+                ydoc,
+                idMap,
+            );
+            const restored = yjsAnnotationToCodeMirror(retrieved, ydoc, ytext, 5, {
+                nestedIdMapFor: () => idMap,
+            });
+
+            expect(restored).not.toBeNull();
+            expect(restored!._type).toBe("revision");
+            if (restored !== null && restored._type === "revision") {
+                const restoredField = (
+                    restored.versions[0] as VersionState & { annotationField?: RawAnnotations }
+                ).annotationField;
+                expect(restoredField?.["0"]?._type).toBe("comment");
+                expect(restoredField?.["0"]?.selection).toEqual(
+                    EditorSelection.single(0, 2).toJSON(),
+                );
             }
         });
 

@@ -501,9 +501,20 @@ $effect(() => {
     }
     lastSyncedVersionIndex = rev.activeVersionIndex;
 
-    const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
+    const activeVersion = rev.versions[rev.activeVersionIndex];
+    if (controller.needsAnnotationRebuild(activeVersion)) {
+        if (isTop) {
+            send({ type: "REBUILD_REQUESTED" });
+        }
+        return;
+    }
+
+    const externalDoc = versionText(activeVersion);
     send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
 });
+
+// Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
+// is no longer needed - nested editors always use local-only mode.
 
 // Close the version dropdown when clicking outside of it.
 $effect(() => {

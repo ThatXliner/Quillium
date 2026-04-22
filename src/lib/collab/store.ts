@@ -5,9 +5,15 @@
  * collab session state.
  */
 import { writable } from "svelte/store";
-import type { CollabState } from "./types";
+import type { CollabState, CollabSession } from "./types";
 
 export const collabState = writable<CollabState>("disconnected");
+
+/**
+ * Active collab session (null when not in collab mode).
+ * Plan 8.5c-01: Populated by enableCollab with undoManager + mainIdMap fields.
+ */
+export const collabSession = writable<CollabSession | null>(null);
 
 /**
  * Incremented when the owner ends the session (ownerLeft relay event).
@@ -34,3 +40,16 @@ export const reconnectAttempt = writable(0);
  * Set true on join, reset to false on disconnect.
  */
 export const isCollabJoiner = writable(false);
+
+/**
+ * Prior view state for joiner to restore on disconnect (D-103).
+ * Captured when joiner enters a room, read when joiner leaves or is kicked.
+ * Contains the draftId and view type from before joining.
+ */
+export interface JoinerPriorView {
+    draftId: string | null;
+    viewType: "editor" | "library";
+    editorStateJson?: unknown;
+}
+
+export const joinerPriorView = writable<JoinerPriorView | null>(null);

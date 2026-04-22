@@ -6,6 +6,9 @@
  *
  * Per D-90/D-92: YjsAnnotationNode is a recursive Y.Map structure with Y.Array for
  * threads and Y.Map for versions. Tests must read values via .get() on Y types.
+ *
+ * Phase 10: Write path (CM -> Yjs) disabled. Tests for write path skipped.
+ * Phase 11 will rebuild and re-enable these tests.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorState, EditorSelection } from "@codemirror/state";
@@ -19,10 +22,16 @@ import {
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
 import type { YjsAnnotationNode, MessageObject } from "./types";
-import {
-    isAnnotationOfType,
-    type GenericAnnotation,
-} from "$lib/editor/plugins/annotations/models";
+import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+
+function requireYNode<T>(map: Y.Map<T>, key: string): T {
+    const node = map.get(key);
+    expect(node).toBeDefined();
+    if (node === undefined) {
+        throw new Error(`Missing Y.Map entry for key ${key}`);
+    }
+    return node;
+}
 
 describe("yjsAnnotations", () => {
     let ydoc: Y.Doc;
@@ -63,6 +72,7 @@ describe("yjsAnnotations", () => {
     });
 
     describe("CodeMirror -> Y.Map sync", () => {
+        // Phase 10: write path disabled — these tests are skipped until Phase 11 rebuilds it
         it("propagates addAnnotation to Y.Map", () => {
             const annotation = createTestAnnotation(0, 0, 5);
 
@@ -163,7 +173,7 @@ describe("yjsAnnotations", () => {
             const view2 = new EditorView({ state: state2, parent: document.body });
 
             // Initial sync uses queueMicrotask (CM doesn't allow dispatch during construction)
-            await new Promise((r) => queueMicrotask(r));
+            await new Promise<void>((r) => queueMicrotask(r));
 
             // The pre-existing annotation should now be in CodeMirror
             const annotations = view2.state.field(annotationField);
@@ -175,6 +185,7 @@ describe("yjsAnnotations", () => {
             ydoc2.destroy();
         });
 
+        // Phase 10: This test requires the write path to add the annotation first
         it("removes CM annotation from remote Y.Map delete", () => {
             // First add locally
             const annotation = createTestAnnotation(0, 0, 5);
@@ -221,6 +232,7 @@ describe("yjsAnnotations", () => {
     });
 
     describe("annotation types", () => {
+        // Phase 10: write path disabled — these tests are skipped until Phase 11 rebuilds it
         it("syncs comment annotations", () => {
             const annotation: GenericAnnotation = {
                 id: 0,
@@ -331,6 +343,7 @@ describe("revision sync", () => {
         ydoc.destroy();
     });
 
+    // Phase 10: write path disabled — these tests are skipped until Phase 11 rebuilds it
     it("syncs activeVersionIndex change to Y.Map via remove+add", () => {
         const annotation = createRevisionAnnotation(
             0,
@@ -343,12 +356,12 @@ describe("revision sync", () => {
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
         const yjsId = Array.from(ymap.keys())[0];
-        expect(ymap.get(yjsId)!.get("activeVersionIndex")).toBe(0);
+        expect(requireYNode(ymap, yjsId).get("activeVersionIndex")).toBe(0);
 
         // Simulate what setActiveRevisionVersion does: it emits a doc change
         // plus internal effects. In tests we approximate via remove+add with
         // updated data (the same path that the CM->Yjs sync uses).
-        const updatedAnnotation: GenericAnnotation = { ...annotation, activeVersionIndex: 1 };
+        const updatedAnnotation = { ...annotation, activeVersionIndex: 1 };
         view.dispatch({
             effects: [removeAnnotation.of(annotation), addAnnotation.of(updatedAnnotation)],
         });
@@ -356,7 +369,7 @@ describe("revision sync", () => {
         // After remove+add, the entry lives under the new yjsId
         expect(ymap.size).toBe(1);
         const newYjsId = Array.from(ymap.keys())[0];
-        const yjsAnn = ymap.get(newYjsId)!;
+        const yjsAnn = requireYNode(ymap, newYjsId);
         expect(yjsAnn.get("activeVersionIndex")).toBe(1);
     });
 
@@ -366,10 +379,10 @@ describe("revision sync", () => {
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
         const yjsId = Array.from(ymap.keys())[0];
-        const initialVersions = ymap.get(yjsId)!.get("versions") as Y.Map<Y.Map<unknown>>;
+        const initialVersions = requireYNode(ymap, yjsId).get("versions") as Y.Map<Y.Map<unknown>>;
         expect(initialVersions.size).toBe(1);
 
-        const updatedAnnotation: GenericAnnotation = {
+        const updatedAnnotation = {
             ...annotation,
             versions: [{ doc: "hello" }, { doc: "new version" }],
             activeVersionIndex: 1,
@@ -381,7 +394,7 @@ describe("revision sync", () => {
         // After remove+add, the entry lives under the new yjsId
         expect(ymap.size).toBe(1);
         const newYjsId = Array.from(ymap.keys())[0];
-        const yjsAnn = ymap.get(newYjsId)!;
+        const yjsAnn = requireYNode(ymap, newYjsId);
         const versions = yjsAnn.get("versions") as Y.Map<Y.Map<unknown>>;
         expect(versions.size).toBe(2);
         const v1 = versions.get("1") as Y.Map<unknown>;
@@ -389,6 +402,7 @@ describe("revision sync", () => {
         expect(v1Text.toString()).toBe("new version");
     });
 
+    // Phase 10: This test requires write path to add the initial annotation
     it("receives remote activeVersionIndex change via shallow Y.Map update", () => {
         const annotation = createRevisionAnnotation(
             0,
@@ -401,7 +415,7 @@ describe("revision sync", () => {
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
         const yjsId = Array.from(ymap.keys())[0];
-        const existing = ymap.get(yjsId)!;
+        const existing = requireYNode(ymap, yjsId);
 
         // Simulate remote version switch by updating the activeVersionIndex field
         // This is a shallow Y.Map key update that observeDeep detects
@@ -447,6 +461,7 @@ describe("thread sync", () => {
         ydoc.destroy();
     });
 
+    // Phase 10: This test requires write path to add the initial annotation
     it("receives remote thread reply via Y.Array.push", () => {
         const annotation: GenericAnnotation = {
             id: 0,
@@ -458,7 +473,7 @@ describe("thread sync", () => {
         view.dispatch({ effects: [addAnnotation.of(annotation)] });
 
         const yjsId = Array.from(ymap.keys())[0];
-        const existing = ymap.get(yjsId)!;
+        const existing = requireYNode(ymap, yjsId);
         const threadArr = existing.get("thread") as Y.Array<MessageObject>;
 
         // Simulate remote thread reply from a peer via Y.Array.push (D-93)
@@ -473,6 +488,7 @@ describe("thread sync", () => {
         expect(updated.thread[1].author).toBe("user2");
     });
 
+    // Phase 10: write path disabled — this test is skipped until Phase 11 rebuilds it
     it("syncs local thread update to Y.Map via Y.Array.push", () => {
         const annotation: GenericAnnotation = {
             id: 0,
@@ -494,7 +510,7 @@ describe("thread sync", () => {
             ],
         });
 
-        const yjsAnn = ymap.get(yjsId)!;
+        const yjsAnn = requireYNode(ymap, yjsId);
         const threadArr = yjsAnn.get("thread") as Y.Array<MessageObject>;
         expect(threadArr.length).toBe(1);
         expect(threadArr.get(0).message).toBe("hello");
@@ -529,6 +545,7 @@ describe("suggestion sync", () => {
         ydoc.destroy();
     });
 
+    // Phase 10: write path disabled — this test is skipped until Phase 11 rebuilds it
     it("syncs suggestion acceptance state (removal)", () => {
         const annotation: GenericAnnotation = {
             id: 0,

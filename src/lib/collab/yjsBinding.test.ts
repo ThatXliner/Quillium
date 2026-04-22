@@ -5,10 +5,16 @@
  * Verifies origin tracking for UndoManager compatibility (D-74).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { EditorState, StateEffect } from "@codemirror/state";
+import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
 import { createYjsBinding, yjsAnnotation } from "./yjsBinding";
+import {
+    addAnnotation,
+    annotationField,
+} from "$lib/editor/plugins/annotations/annotationField";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 
 describe("yjsBinding", () => {
     let ydoc: Y.Doc;
@@ -114,6 +120,30 @@ describe("yjsBinding", () => {
             expect(hasAnnotation).toBe(true);
         });
 
+        it("hydrates CodeMirror from existing Y.Text when binding mounts after remote content arrives", async () => {
+            view.destroy();
+            ydoc.destroy();
+
+            ydoc = new Y.Doc();
+            ytext = ydoc.getText("document");
+            ydoc.transact(() => {
+                ytext.insert(0, "owner seeded text");
+            }, "remote-before-bind");
+
+            view = new EditorView({
+                state: EditorState.create({
+                    doc: "",
+                    extensions: [createYjsBinding(ytext)],
+                }),
+                parent: document.body,
+            });
+
+            await Promise.resolve();
+
+            expect(view.state.doc.toString()).toBe("owner seeded text");
+            expect(ytext.toString()).toBe("owner seeded text");
+        });
+
         it("skips Y.Text changes with 'local' origin (prevents feedback loop)", () => {
             // Changes with origin "local" are from CodeMirror, should be skipped by observer
             // This prevents infinite loops: CM -> Y.Text -> CM -> ...
@@ -132,6 +162,51 @@ describe("yjsBinding", () => {
             expect(ytext.toString()).toBe("local-origin");
             // But CM does not (observer skipped it, which is correct for local origin)
             expect(view.state.doc.toString()).toBe("");
+        });
+
+        it("does not auto-remove a revision annotation when remote Y.Text changes collapse its range", async () => {
+            view.destroy();
+            ydoc.destroy();
+
+            ydoc = new Y.Doc();
+            ytext = ydoc.getText("document");
+            ydoc.transact(() => {
+                ytext.insert(0, "hello world");
+            }, "init");
+            view = new EditorView({
+                state: EditorState.create({
+                    doc: "hello world",
+                    extensions: [annotationExtensions(), createYjsBinding(ytext)],
+                }),
+                parent: document.body,
+            });
+
+            view.dispatch({
+                effects: addAnnotation.of({
+                    id: 0,
+                    _type: "revision",
+                    selection: EditorSelection.single(6, 11),
+                    thread: [],
+                    versions: [{ doc: "world" }, { doc: "" }],
+                    activeVersionIndex: 0,
+                }),
+            });
+
+            ydoc.transact(() => {
+                ytext.delete(6, 5);
+            }, "remote-client");
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const syncedAnnotations = Object.values(view.state.field(annotationField));
+            expect(syncedAnnotations).toHaveLength(1);
+            const revision = syncedAnnotations[0];
+            if (!isAnnotationOfType(revision, "revision")) {
+                expect.fail("Expected a revision annotation");
+                return;
+            }
+            expect(view.state.doc.toString()).toBe("hello ");
+            expect(revision.selection.main.empty).toBe(true);
         });
     });
 

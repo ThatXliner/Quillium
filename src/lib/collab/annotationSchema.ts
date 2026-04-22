@@ -6,22 +6,26 @@
  * Per D-94: No migration; Phase 8 wire format was never shipped.
  *
  * Converter invariants:
- *   - codeMirrorToYjsAnnotation runs all child-Y-type creation inside a single
- *     ydoc.transact(..., "init") so remote peers see atomic node insertion.
+ *   - codeMirrorToYjsAnnotation runs structural child-Y-type creation inside a
+ *     single ydoc.transact(..., "init").
  *   - yjsAnnotationToCodeMirror never throws; it returns null on malformed data.
- *   - Subtree annotations (`annotations` field on each node / version) start empty;
- *     Plan 8.5c-01 populates them when nested editors create child annotations.
+ *   - Revision version subtree annotations are synced only after their Y.Text is
+ *     integrated into a Y.Doc, because Yjs relative positions require that.
  *
  * Key dependencies:
  *   - yjs (Y.Map, Y.Text, Y.Array) for runtime construction
  *   - ./relativePosition for position encoding
  *   - ../editor/plugins/annotations/models for CM types
  */
+import { EditorSelection } from "@codemirror/state";
 import * as Y from "yjs";
 import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
 import {
     isAnnotationOfType,
+    RawAnnotationsSchema,
     type GenericAnnotation,
+    type RawAnnotation,
+    type RawAnnotations,
     type SuggestionReplacement,
     type VersionState,
 } from "$lib/editor/plugins/annotations/models";
@@ -43,14 +47,18 @@ export function generateAnnotationId(clientId: string): string {
 
 /**
  * Convert a CodeMirror annotation to a freshly constructed YjsAnnotationNode.
- * Creates and populates every child Y type inside a single ydoc.transact so
- * peers never observe a partially assembled node.
+ * Creates the structural child Y types inside a single ydoc.transact. Nested
+ * version annotations are populated later by syncRawAnnotationsToYjsMap once
+ * the version Y.Text has been integrated into a document.
  */
 export function codeMirrorToYjsAnnotation(
     annotation: GenericAnnotation,
     ytext: Y.Text,
     clientId: string,
     ydoc: Y.Doc,
+    _options?: {
+        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+    },
 ): YjsAnnotationNode {
     const { startPos, endPos } = absoluteToRelative(ytext, annotation.selection);
     const node: YjsAnnotationNode = new Y.Map<unknown>();
@@ -112,6 +120,9 @@ export function yjsAnnotationToCodeMirror(
     ydoc: Y.Doc,
     ytext: Y.Text,
     numericId: number,
+    options?: {
+        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+    },
 ): GenericAnnotation | null {
     const startPos = node.get("startPos") as Uint8Array | undefined;
     const endPos = node.get("endPos") as Uint8Array | undefined;
@@ -120,7 +131,7 @@ export function yjsAnnotationToCodeMirror(
         return null;
     }
 
-    let selection;
+    let selection: EditorSelection | null;
     try {
         selection = relativeToAbsolute(ydoc, ytext, startPos, endPos);
     } catch {
@@ -179,10 +190,17 @@ export function yjsAnnotationToCodeMirror(
         const vtext = v.get("text");
         const doc = vtext instanceof Y.Text ? vtext.toString() : "";
         const label = v.get("label");
+        const nestedAnnotations = v.get("annotations");
+        const annotationField =
+            nestedAnnotations instanceof Y.Map && vtext instanceof Y.Text
+                ? yjsAnnotationMapToRawAnnotations(nestedAnnotations, ydoc, vtext, options)
+                : undefined;
         return {
             doc,
             ...(typeof label === "string" ? { label } : {}),
-            annotationGeneration: 0,
+            ...(annotationField && Object.keys(annotationField).length > 0
+                ? { annotationField }
+                : {}),
         };
     });
 
@@ -200,6 +218,121 @@ export function yjsAnnotationToCodeMirror(
     };
 }
 
+export function getRawAnnotationField(version: VersionState): RawAnnotations | undefined {
+    const candidate = (version as { annotationField?: unknown }).annotationField;
+    if (candidate == null) return undefined;
+    const parsed = RawAnnotationsSchema.safeParse(candidate);
+    return parsed.success ? parsed.data : undefined;
+}
+
+function rawAnnotationToCodeMirror(raw: RawAnnotation): GenericAnnotation {
+    return {
+        ...raw,
+        selection: EditorSelection.fromJSON(raw.selection),
+    } as GenericAnnotation;
+}
+
+function codeMirrorAnnotationToRaw(annotation: GenericAnnotation): RawAnnotation {
+    return {
+        ...annotation,
+        selection: annotation.selection.toJSON(),
+    } as RawAnnotation;
+}
+
+export function syncRawAnnotationsToYjsMap(
+    rawAnnotations: RawAnnotations | undefined,
+    annotationsMap: Y.Map<YjsAnnotationNode>,
+    ytext: Y.Text,
+    clientId: string,
+    ydoc: Y.Doc,
+    idMap: AnnotationIdMap,
+    options?: {
+        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+    },
+): void {
+    const entries = rawAnnotations ? Object.entries(rawAnnotations) : [];
+    const rawIds = new Set(entries.map(([id]) => Number(id)));
+
+    for (const yjsKey of Array.from(annotationsMap.keys())) {
+        const cmId = idMap.getCmId(yjsKey);
+        if (cmId === undefined || !rawIds.has(cmId)) {
+            annotationsMap.delete(yjsKey);
+            idMap.remove(yjsKey);
+        }
+    }
+
+    for (const [id, raw] of entries) {
+        const cmId = Number(id);
+        if (!Number.isFinite(cmId)) continue;
+        const annotation = rawAnnotationToCodeMirror(raw);
+        const yjsKey = idMap.getOrCreateYjsId(cmId, clientId);
+        const node = codeMirrorToYjsAnnotation(annotation, ytext, clientId, ydoc, options);
+        node.set("id", yjsKey);
+        annotationsMap.set(yjsKey, node);
+        syncIntegratedAnnotationSubtrees(annotation, node, clientId, ydoc, options);
+    }
+}
+
+function syncIntegratedAnnotationSubtrees(
+    annotation: GenericAnnotation,
+    node: YjsAnnotationNode,
+    clientId: string,
+    ydoc: Y.Doc,
+    options?: {
+        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+    },
+): void {
+    if (!isAnnotationOfType(annotation, "revision")) return;
+
+    const versionsMap = node.get("versions");
+    if (!(versionsMap instanceof Y.Map)) return;
+
+    annotation.versions.forEach((version, index) => {
+        const versionNode = versionsMap.get(String(index));
+        if (!(versionNode instanceof Y.Map)) return;
+
+        const vtext = versionNode.get("text");
+        if (!(vtext instanceof Y.Text)) return;
+
+        let nestedAnnotations = versionNode.get("annotations");
+        if (!(nestedAnnotations instanceof Y.Map)) {
+            nestedAnnotations = new Y.Map<YjsAnnotationNode>();
+            versionNode.set("annotations", nestedAnnotations);
+        }
+
+        syncRawAnnotationsToYjsMap(
+            getRawAnnotationField(version),
+            nestedAnnotations,
+            vtext,
+            clientId,
+            ydoc,
+            options?.nestedIdMapFor?.(nestedAnnotations) ?? new AnnotationIdMap(),
+            options,
+        );
+    });
+}
+
+function yjsAnnotationMapToRawAnnotations(
+    annotationsMap: Y.Map<YjsAnnotationNode>,
+    ydoc: Y.Doc,
+    ytext: Y.Text,
+    options?: {
+        nestedIdMapFor?: (annotations: Y.Map<YjsAnnotationNode>) => AnnotationIdMap;
+    },
+): RawAnnotations {
+    const idMap = options?.nestedIdMapFor?.(annotationsMap) ?? new AnnotationIdMap();
+    const raw: RawAnnotations = {};
+
+    annotationsMap.forEach((node, yjsKey) => {
+        const cmId = idMap.getOrCreateCmId(yjsKey);
+        const annotation = yjsAnnotationToCodeMirror(node, ydoc, ytext, cmId, options);
+        if (!annotation) return;
+        raw[String(annotation.id)] = codeMirrorAnnotationToRaw(annotation);
+    });
+
+    return raw;
+}
+
 // ── ID mapping utilities (unchanged; preserved verbatim) ─────────────
 
 export class AnnotationIdMap {
@@ -215,6 +348,16 @@ export class AnnotationIdMap {
             this.cmToYjs.set(cmId, yjsId);
         }
         return cmId;
+    }
+
+    getOrCreateYjsId(cmId: number, clientId: string): string {
+        let yjsId = this.cmToYjs.get(cmId);
+        if (yjsId === undefined) {
+            yjsId = generateAnnotationId(clientId);
+            this.yjsToCm.set(yjsId, cmId);
+            this.cmToYjs.set(cmId, yjsId);
+        }
+        return yjsId;
     }
 
     getYjsId(cmId: number): string | undefined {

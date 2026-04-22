@@ -9,6 +9,7 @@
 import type * as Y from "yjs";
 import type { WebsocketProvider } from "y-websocket";
 import type { Awareness } from "y-protocols/awareness";
+import type { AnnotationIdMap } from "./annotationSchema";
 
 /** Recursive Y.Map node representing a collaborative annotation.
  *
@@ -50,7 +51,10 @@ export type CollabSession = {
     ydoc: Y.Doc;
     provider: WebsocketProvider;
     awareness: Awareness;
+    ytext: Y.Text; // Main document Y.Text
     ymap: Y.Map<YjsAnnotationNode>; // Annotation sync map (recursive Y.Map entries)
+    undoManager: Y.UndoManager; // Plan 8.5c-02: For subtree undo scope registration
+    mainIdMap: AnnotationIdMap; // Plan 8.5c-02: For CM ID ↔ Yjs ID resolution
 };
 
 /** Connection state for UI display */

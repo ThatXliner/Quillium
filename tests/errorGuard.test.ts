@@ -119,7 +119,13 @@ function makeComment(id: number): GenericAnnotation {
     return { _type: "comment", id, thread: [], selection: makeSelection(0, 5) };
 }
 
-function makeRevision(id: number, versions: object[]): GenericAnnotation {
+type TestVersionState = {
+    doc: string;
+    label?: string;
+    annotationField?: unknown;
+};
+
+function makeRevision(id: number, versions: TestVersionState[]): GenericAnnotation {
     return {
         _type: "revision",
         id,

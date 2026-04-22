@@ -1,103 +1,105 @@
-# Requirements: Quillium Omni
+# Requirements: Quillium Omni v1.1 — PRE-V2 FIX ANNOTATION SYNC
 
-**Defined:** 2025-04-16
-**Core Value:** Two Quillium instances can connect and see each other's edits in real-time
-**Source:** GitHub #164
+**Defined:** 2026-04-19
+**Core Value:** Two Quillium instances can connect and see each other's edits in real-time, including annotations and revision versions, without divergence or data loss.
 
-## v1 Requirements
+## v1.1 Requirements
 
-Requirements for initial release. Each maps to roadmap phases.
+Requirements for the v1.1 sync re-architecture. Each maps to roadmap phases.
 
-### Authentication
+### Sync Architecture (SYNC)
 
-- [ ] **AUTH-01**: User can sign up with email and password via Supabase
-- [ ] **AUTH-02**: User can log in with existing account
-- [ ] **AUTH-03**: User session persists across app restarts
-- [ ] **AUTH-04**: User can log out
-- [ ] **AUTH-05**: Anonymous users get automatic Supabase anonymous auth token (no account needed to join)
+- [ ] **SYNC-01**: Yjs is the single source of truth for annotation state; `annotationField` is a derived projection (no code path writes annotation state outside the projector dispatch)
+- [ ] **SYNC-02**: All CM → Yjs writes go through a single `commands.ts` module; sync plugin contains zero `.is(<specific effect>)` branches
+- [ ] **SYNC-03**: Local Yjs writes use `ydoc.transact(fn, "local")`; observer skips `tr.origin === "local"`; remote CM dispatches carry `yjsAnnotationSync.of(true)` + `Transaction.addToHistory.of(false)`
+- [ ] **SYNC-04**: Decoration ViewPlugin rebuilds DecorationSet from Y.Map state on every update (no cached StateField shape)
+- [ ] **SYNC-05**: `observeDeep` lifecycle is matched — every observer has a stored reference and matching `unobserveDeep` in `destroy()`; every `queueMicrotask` callback checks `destroyed` first
+- [ ] **SYNC-06**: A feedback-loop test asserts ≤ N Yjs updates for N keystrokes from one peer
 
-### Real-Time Sync
+### Revision Versions (REVISION)
 
-- [ ] **SYNC-01**: Document text syncs in real-time (~100ms latency)
-- [ ] **SYNC-02**: Concurrent edits auto-merge via OT (no manual conflict UI)
-- [ ] **SYNC-03**: Connection status indicator shows connected/syncing/offline
-- [ ] **SYNC-04**: Reconnection recovers pending changes (queue + rebase)
-- [ ] **SYNC-05**: Annotations (comments, revisions, suggestions) sync as part of document state
+- [ ] **REVISION-01**: Each revision version is an isolated Y type (`Y.Array<Y.Map>` element with own `Y.Text`) supporting character-level concurrent merge inside a version
+- [ ] **REVISION-02**: `pushDocToVersionState` (Phase 3 of `annotationField.update`) is deleted; `_updateRevisionVersionDoc` and `revisionsWithExplicitEffect` removed
+- [ ] **REVISION-03**: A remote-originated transaction never reads parent doc to write version state (invariant enforced post-Phase 5)
+- [ ] **REVISION-04**: Active-version `Y.Text` observer drives the nested editor's CM doc; nested view binds via `createYjsBinding` to `versionYText`
+- [ ] **REVISION-05**: Version switch is data-only — destroy binding + rebind; never tear down annotation on switch; rebuild = single batched `{remove, add}` dispatch
+- [ ] **REVISION-06**: Nested editors recurse for infinite nesting (revision-inside-revision syncs same as top-level) using the same binding pattern
+- [ ] **REVISION-07**: Atomic dual-write (Pattern 7c) — nested editor binding writes both parent `Y.Text` slice and version `Y.Text` inside the same `ydoc.transact`
+- [ ] **REVISION-08**: `NestedEditorController` flush pathways deleted (`flushToParent`, `flushAnnotationStateToParent`, `_lastMountedBlob`, `_lastDispatchedDoc`, `syncFromParent`)
 
+### Joiner View (JOINER)
 
-### Offline (Owner)
+- [ ] **JOINER-01**: Joiner collab `EditorView` has no `history()` extension; assertion `view.state.field(historyField, false) === undefined` passes
+- [ ] **JOINER-02**: Joiner initial annotationField is empty; owner `_syncInitialToYjs` is guarded against re-entrance
+- [ ] **JOINER-03**: Cmd-z on joiner immediately after connect does not revert past the connect state
+- [ ] **JOINER-04**: Decorations render on joiner immediately on connect (no "switch once" workaround); `provider.on('sync')` triggers explicit annotationField rebuild
+- [ ] **JOINER-05**: Joiner annotation count after owner-has-N + joiner-connects equals N (not 2N); duplicate-on-seed asserted in harness
+- [ ] **JOINER-06**: Two-gate initial sync — annotationField rebuild fires only after both `Y.Text` synced AND `Y.Map` synced
 
-- [ ] **OFFL-01**: Owner can edit offline (local SQLite continues working)
-- [ ] **OFFL-02**: Owner's offline edits queue and rebase on reconnect
-- [ ] **OFFL-03**: Pre-merge snapshot taken as safety net before rebase
+### Thread Append (THREAD)
 
-### Relay Server
+- [ ] **THREAD-01**: Concurrent thread message appends from two peers converge without loss (no last-write-wins on the thread array)
+- [ ] **THREAD-02**: `appendThreadMessageCommand` writes through Yjs first; projector derives thread state for `annotationField`
 
-- [ ] **RELY-01**: WebSocket server accepts connections with JWT auth
-- [ ] **RELY-02**: Relay validates permissions via Supabase
-- [ ] **RELY-03**: Relay assigns version numbers and orders changes
-- [ ] **RELY-04**: Relay broadcasts updates to all connected clients
-- [ ] **RELY-05**: Relay persists updates to Supabase Postgres
-- [ ] **RELY-06**: Relay can reload state from DB on restart (stateless-ish)
+### Position Anchoring (ANCHOR)
 
-### Data Model
+- [ ] **ANCHOR-01**: Annotation `from`/`to` stored as `Y.RelativePosition` in the Y.Map; CM offsets resolved at render time only
+- [ ] **ANCHOR-02**: Annotation positions survive remote rebuild without rot or collapsed ranges
+- [ ] **ANCHOR-03**: Persistence uses binary `Y.encodeRelativePosition` (never JSON-round-tripped); end-of-text positions handled via null-`item` fallback
 
-- [ ] **DATA-01**: `users` table for profiles and subscription status
-- [ ] **DATA-02**: `sync_documents` table for document registry
-- [ ] **DATA-03**: `collab_updates` table for ordered change history
-- [ ] **DATA-04**: `shares` table for access grants with tokens and permissions
+### Test Harness & Validation (HARNESS)
+
+- [ ] **HARNESS-01**: Deterministic `flushAll(...peers)` helper exists and is used by every two-peer test
+- [ ] **HARNESS-02**: Convergence property test asserts `yjsAnnotationToCodeMirror(yMap) === annotationField` after every microtask flush
+- [ ] **HARNESS-03**: 10k-op convergence fuzz over random local-effect sequences on both peers passes green
+- [ ] **HARNESS-04**: Cross-peer undo (`Y.UndoManager`) validated end-to-end; `captureTimeout` tuned (start at 0)
+- [ ] **HARNESS-05**: Dogfood checklist passed across two real devices for the v1.0-regression scenarios (concurrent typing inside a version, version switch propagation, joiner pre-existing annotations, Cmd-z post-connect, concurrent thread appends)
+
+### Schema Migration (SCHEMA)
+
+- [ ] **SCHEMA-01**: `versions: Y.Map<string-index, Y.Map>` migrated to `versions: Y.Array<Y.Map>` for proper concurrent-insert CRDT semantics (clean break per D-94, no legacy wire format)
+- [ ] **SCHEMA-02**: Detached-type audit — every `new Y.Map()` / `new Y.Text()` site is inside a `ydoc.transact` that immediately attaches via `parentMap.set(key, child)` before any read
 
 ## v2 Requirements
 
-Deferred to future release. Tracked but not in current roadmap.
+Deferred to v2.0 / future milestones.
 
-### OAuth
+### Pattern 7b Migration
 
-- **AUTH-10**: User can sign up/in with Google OAuth
-- **AUTH-11**: User can sign up/in with GitHub OAuth
+- **PAT7B-01**: Replace Pattern 7c (atomic dual-write) with Pattern 7b (parent doc projected from non-revision text + revision-hole projections) — strictly cleaner, no dual storage, but every parent-doc position calculation must span holes
 
-### Presence (Deferred from v1)
+### Persistence Modernization
 
-- **PRES-01**: Online/offline status shows for each collaborator
-- **PRES-02**: Collaborator cursor positions visible in document
-- **PRES-03**: Follow mode: opt-in to mirror another user's viewport and view state
-- **PRES-04**: Collaborator avatars/names shown in UI
+- **PERSIST-01**: Replace SQLite seed/drain with SQLite-as-Yjs-persistence-provider
+- **PERSIST-02**: Per-annotation `expand` config (Peritext-style mark semantics)
 
-### Sharing UI (Deferred from v1)
+### CRDT Library Evaluation
 
-- **SHAR-01**: Owner can create share link with permission level (view/comment/edit)
-- **SHAR-02**: Share link opens app via deep link (`quillium://join/{token}`)
-- **SHAR-03**: Owner can revoke share access
-- **SHAR-04**: Collaborators can join without creating an account (anonymous)
+- **CRDT-01**: Evaluate `loro-crdt` `LoroTree` as Y.Map-of-Y.Map replacement if hierarchy hits a wall
 
-### Yjs Migration
+### Subdocument Architecture
 
-- **SYNC-10**: Replace @codemirror/collab with Yjs for better offline/P2P
-- **SYNC-11**: Yjs awareness protocol for presence
-
-### Web Client
-
-- **WEB-01**: Lightweight browser client for collaborators (view + comment)
-- **WEB-02**: Full editing for subscribers in browser
-
-### Mobile
-
-- **MOBI-01**: Cross-device sync via mobile app
+- **SUBDOC-01**: True Y.Doc subdocument per revision version with relay multiplexing
 
 ## Out of Scope
 
-Explicitly excluded. Documented to prevent scope creep.
+Explicitly excluded from v1.1.
 
 | Feature | Reason |
 |---------|--------|
-| Version history sync | Collaborators don't get snapshots — owner is the safety net |
-| AI sidebar state sync | Per-user, not shared |
-| AutoAI config sync | Per-user preferences |
-| UI state sync (modals) | Only syncs during follow mode |
-| Manual merge/conflict UI | Auto-merge via OT handles everything |
-| Collaborator offline editing | Server-dependent by design |
-| Web client (v1) | Desktop-only for v1 |
-| Mobile (v1) | Desktop-only for v1 |
+| ProseMirror migration | Requires editor swap; orthogonal to sync layer fix |
+| Loro / Automerge migration | Wholesale CRDT swap; out of scope; logged as v2 candidate |
+| `y-codemirror.next` adoption | Stable 0.3.5 only binds Y.Text, not annotations; explicitly warns absolute index sync not guaranteed for comment-style features |
+| Y.Doc subdocuments per version | Relay protocol changes + cross-doc position encoding break — defer |
+| Y.XmlFragment for annotation tree | No payoff over Y.Map for our shape |
+| Separate annotation broadcast channel | Reintroduces dual source of truth (anti-feature) |
+| Serialized annotation blob into Y.Map value | Current v1.0 approach — root cause of thread-append collisions |
+| LWW-per-block text | Loses character-level merge |
+| Presence/cursors UX | Already shipped via Phase 6.5; not part of sync re-architecture |
+| Sharing UI + permissions | Deferred to v2 |
+| Version history sync | Deferred to v2 |
+| Production hardening | Prototype quality acceptable for v1.1 |
+| Product/UX redesign | v1.1 is sync-layer only |
 
 ## Traceability
 
@@ -105,36 +107,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
-| DATA-03 | Phase 1 | Pending |
-| DATA-04 | Phase 1 | Pending |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| AUTH-03 | Phase 2 | Pending |
-| AUTH-04 | Phase 2 | Pending |
-| AUTH-05 | Phase 3 | Pending |
-| RELY-01 | Phase 4 | Pending |
-| RELY-02 | Phase 4 | Pending |
-| RELY-03 | Phase 4 | Pending |
-| RELY-04 | Phase 4 | Pending |
-| RELY-05 | Phase 5 | Pending |
-| RELY-06 | Phase 5 | Pending |
-| SYNC-01 | Phase 6 | Pending |
-| SYNC-02 | Phase 6 | Pending |
-| SYNC-03 | Phase 7 | Pending |
-| SYNC-04 | Phase 7 | Pending |
-| SYNC-05 | Phase 8 | Pending |
-| OFFL-01 | Phase 9 | Pending |
-| OFFL-02 | Phase 9 | Pending |
-| OFFL-03 | Phase 9 | Pending |
+| SYNC-01 | Phase 4 | Pending |
+| SYNC-02 | Phase 3 | Pending |
+| SYNC-03 | Phase 3 | Pending |
+| SYNC-04 | Phase 4 | Pending |
+| SYNC-05 | Phase 3 | Pending |
+| SYNC-06 | Phase 1 | Pending |
+| REVISION-01 | Phase 5 | Pending |
+| REVISION-02 | Phase 5 | Pending |
+| REVISION-03 | Phase 5 | Pending |
+| REVISION-04 | Phase 6 | Pending |
+| REVISION-05 | Phase 6 | Pending |
+| REVISION-06 | Phase 6 | Pending |
+| REVISION-07 | Phase 5 | Pending |
+| REVISION-08 | Phase 6 | Pending |
+| JOINER-01 | Phase 2 | Pending |
+| JOINER-02 | Phase 2 | Pending |
+| JOINER-03 | Phase 2 | Pending |
+| JOINER-04 | Phase 4 | Pending |
+| JOINER-05 | Phase 2 | Pending |
+| JOINER-06 | Phase 4 | Pending |
+| THREAD-01 | Phase 3 | Pending |
+| THREAD-02 | Phase 3 | Pending |
+| ANCHOR-01 | Phase 7 | Pending |
+| ANCHOR-02 | Phase 7 | Pending |
+| ANCHOR-03 | Phase 7 | Pending |
+| HARNESS-01 | Phase 1 | Pending |
+| HARNESS-02 | Phase 1 | Pending |
+| HARNESS-03 | Phase 9 | Pending |
+| HARNESS-04 | Phase 9 | Pending |
+| HARNESS-05 | Phase 9 | Pending |
+| SCHEMA-01 | Phase 3 | Pending |
+| SCHEMA-02 | Phase 8 | Pending |
 
 **Coverage:**
-- v1 requirements: 23 total
-- Mapped to phases: 23
+- v1.1 requirements: 32 total
+- Mapped to phases: 32 ✓
 - Unmapped: 0
 
 ---
-*Requirements defined: 2025-04-16*
-*Source: GitHub #164*
-*Traceability updated: 2025-04-16*
+*Requirements defined: 2026-04-19*
+*Last updated: 2026-04-19 after roadmap creation (32/32 mapped across 9 phases)*

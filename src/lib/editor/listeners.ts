@@ -220,8 +220,10 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
  * order rather than DB completion order.
  */
 function persistTransaction(update: ViewUpdate): void {
-    // Live Room mode: joiners are ephemeral viewers of the owner's document.
-    // Skip all local persistence -- the owner's relay is the source of truth.
+    // D-100 / Live Room mode: joiners are ephemeral viewers of the owner's document.
+    // The joiner's collab session is a separate ephemeral view that never touches
+    // local docs. Skip all local persistence -- the owner's relay is source of truth.
+    // The joiner's currentDraftId is null during the session (set by GoLiveButton).
     if (get(isCollabJoiner)) return;
 
     const enqueueDocId = get(currentDocumentId);

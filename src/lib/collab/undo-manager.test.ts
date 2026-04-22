@@ -9,9 +9,80 @@ import * as Y from "yjs";
 import { addSubtreeToUndoScope, breakUndoCapture, createYjsUndoExtension } from "./yjsUndo";
 
 describe("yjs undo manager", () => {
-    it.todo("chronological across scopes");
-    it.todo("nested local undo");
-    it.todo("auto-nav event emitted");
+    it("chronological across scopes", () => {
+        // Setup: main ytext + ymap, then a subtree Y.Text
+        const ydoc = new Y.Doc();
+        const ytext = ydoc.getText("content");
+        const ymap = ydoc.getMap<unknown>("annotations");
+        const { undoManager } = createYjsUndoExtension(ytext, ymap);
+
+        // Create and register a subtree
+        const subtree = new Y.Text();
+        ydoc.getMap("subtrees").set("rev-1", subtree);
+        addSubtreeToUndoScope(undoManager, subtree);
+
+        // Edit 1: main ytext
+        ydoc.transact(() => {
+            ytext.insert(0, "main");
+        }, "local");
+
+        breakUndoCapture(undoManager);
+
+        // Edit 2: subtree
+        ydoc.transact(() => {
+            subtree.insert(0, "nested");
+        }, "local");
+
+        expect(ytext.toString()).toBe("main");
+        expect(subtree.toString()).toBe("nested");
+
+        // Undo once → subtree edit reverts
+        undoManager.undo();
+        expect(ytext.toString()).toBe("main");
+        expect(subtree.toString()).toBe("");
+
+        // Undo again → main edit reverts
+        undoManager.undo();
+        expect(ytext.toString()).toBe("");
+        expect(subtree.toString()).toBe("");
+    });
+
+    it("nested local undo", () => {
+        // Two subtrees; undo respects chronological order
+        const ydoc = new Y.Doc();
+        const ytext = ydoc.getText("content");
+        const ymap = ydoc.getMap<unknown>("annotations");
+        const { undoManager } = createYjsUndoExtension(ytext, ymap);
+
+        const subtree1 = new Y.Text();
+        const subtree2 = new Y.Text();
+        ydoc.getMap("subtrees").set("rev-1", subtree1);
+        ydoc.getMap("subtrees").set("rev-2", subtree2);
+        addSubtreeToUndoScope(undoManager, subtree1);
+        addSubtreeToUndoScope(undoManager, subtree2);
+
+        // Edit subtree1, then subtree2
+        ydoc.transact(() => subtree1.insert(0, "first"), "local");
+        breakUndoCapture(undoManager);
+        ydoc.transact(() => subtree2.insert(0, "second"), "local");
+
+        expect(subtree1.toString()).toBe("first");
+        expect(subtree2.toString()).toBe("second");
+
+        // Undo once → subtree2 reverts
+        undoManager.undo();
+        expect(subtree1.toString()).toBe("first");
+        expect(subtree2.toString()).toBe("");
+
+        // Undo again → subtree1 reverts
+        undoManager.undo();
+        expect(subtree1.toString()).toBe("");
+        expect(subtree2.toString()).toBe("");
+    });
+
+    // Phase 10: "auto-nav event emitted" test removed. findOwningAnnotationId
+    // and stack-item-popped listener were deleted as part of removing the
+    // broken collab sync layer.
 
     it("addToScope captures new type", () => {
         // Setup: Create an UndoManager with just ytext + ymap

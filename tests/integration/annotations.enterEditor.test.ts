@@ -26,7 +26,11 @@ import {
     annotationField,
     createNewRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation, type VersionState } from "$lib/editor/plugins/annotations/models";
+import {
+    createNewAnnotation,
+    isAnnotationOfType,
+    type VersionState,
+} from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
 import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
 
@@ -54,6 +58,14 @@ function addRevision(view: EditorView, from: number, to: number) {
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
     return revision.id;
+}
+
+function getRevision(view: EditorView, id: number) {
+    const annotation = view.state.field(annotationField)[id];
+    if (!annotation || !isAnnotationOfType(annotation, "revision")) {
+        throw new Error(`Expected revision annotation ${id}`);
+    }
+    return annotation;
 }
 
 function runKey(view: EditorView, key: string) {
@@ -181,15 +193,15 @@ describe("Mod-Enter in nested editor still creates version", () => {
         // Fire the event (as Mod-Enter would)
         annotationEventBus.emit({ type: "annotation-add-version", annotationId: revisionId });
 
-        const rev = view.state.field(annotationField)[revisionId];
-        expect(rev?.versions).toHaveLength(2);
-        expect(rev?.activeVersionIndex).toBe(1);
+        const rev = getRevision(view, revisionId);
+        expect(rev.versions).toHaveLength(2);
+        expect(rev.activeVersionIndex).toBe(1);
 
         // Undo should revert to one version
         undo(view);
-        const revAfterUndo = view.state.field(annotationField)[revisionId];
-        expect(revAfterUndo?.versions).toHaveLength(1);
-        expect(revAfterUndo?.activeVersionIndex).toBe(0);
+        const revAfterUndo = getRevision(view, revisionId);
+        expect(revAfterUndo.versions).toHaveLength(1);
+        expect(revAfterUndo.activeVersionIndex).toBe(0);
     });
 });
 

@@ -27,7 +27,7 @@ import {
     type ViewUpdate,
 } from "@codemirror/view";
 import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
-import { Awareness } from "y-protocols/awareness";
+import type { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 
 // ── Types ────────────────────────────────────────────────────────────────────

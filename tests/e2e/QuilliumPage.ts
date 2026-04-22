@@ -99,6 +99,8 @@ export class QuilliumPage {
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
+                    localStorage.setItem("quillium_beta_accepted", "true");
+                    localStorage.setItem("quillium_changelog_seen", "999.999");
                 }
                 if (Object.keys(payload.settings).length > 0) {
                     localStorage.setItem("quillium-app-settings", JSON.stringify(payload.settings));
