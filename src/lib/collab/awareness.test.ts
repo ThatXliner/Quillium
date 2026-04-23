@@ -1,4 +1,4 @@
-import { EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 /**
  * awareness.test.ts -- Tests for awareness-based cursor sync.
@@ -22,6 +22,7 @@ import { activeAnnotation, modalStack } from "$lib/stores";
 import { followedClientId } from "./store";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
+import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
 
 /**
  * Build a remote awareness cursor state using RelativePosition encoded
@@ -39,6 +40,14 @@ function makeRemoteCursorState(
         user: { name, color, colorLight: `${color}33` },
         cursor: { anchorPos: encoded, headPos: encoded },
     };
+}
+
+function decodeLocalHeadPos(awareness: Awareness, ydoc: Y.Doc): number | null {
+    const localState = awareness.getLocalState() as AwarenessState | null;
+    const encoded = localState?.cursor?.headPos;
+    if (!encoded || encoded.length === 0) return null;
+    const rel = Y.decodeRelativePosition(new Uint8Array(encoded));
+    return Y.createAbsolutePositionFromRelativePosition(rel, ydoc)?.index ?? null;
 }
 
 describe("awareness", () => {
@@ -107,6 +116,62 @@ describe("awareness", () => {
             const after = awareness.getLocalState() as AwarenessState;
             const encodedAfter = JSON.stringify(after?.cursor?.headPos);
             expect(encodedAfter).not.toBe(encodedBefore);
+        });
+
+        it("does not let translated parent transactions overwrite nested cursor presence", () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const parentExt = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
+            const parentState = EditorState.create({
+                doc: "hello world",
+                extensions: [annotationField, parentExt],
+            });
+            view = new EditorView({ state: parentState, parent: document.body });
+
+            view.dispatch({
+                effects: [
+                    addAnnotation.of({
+                        id: 0,
+                        _type: "revision",
+                        thread: [],
+                        selection: EditorSelection.range(6, 11),
+                        activeVersionIndex: 0,
+                        versions: [{ doc: "world" }],
+                    }),
+                ],
+            });
+
+            const nestedState = EditorState.create({
+                doc: "world",
+                extensions: [
+                    EditorView.updateListener.of((update) => {
+                        translateAndDispatch(update, view!, 0);
+                    }),
+                    createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2", {
+                        broadcastInitialCursor: false,
+                        clearCursorOnDestroy: false,
+                        toSharedPosition(position) {
+                            return 6 + position;
+                        },
+                        fromSharedPosition(position) {
+                            if (position < 6 || position > 11) return null;
+                            return position - 6;
+                        },
+                    }),
+                ],
+            });
+            const nestedView = new EditorView({ state: nestedState, parent: document.body });
+
+            try {
+                nestedView.dispatch({ selection: { anchor: 1 } });
+                expect(decodeLocalHeadPos(awareness, ydoc)).toBe(7);
+
+                nestedView.dispatch({ changes: { from: 1, insert: "X" } });
+
+                expect(decodeLocalHeadPos(awareness, ydoc)).toBe(8);
+            } finally {
+                nestedView.destroy();
+            }
         });
     });
 
