@@ -16,14 +16,14 @@ import {
     makePeerWithAnnotationSync,
     teardown,
     type Peer,
-} from "./test-helpers/twoPeerHarness";
-import { AnnotationIdMap } from "./annotationSchema";
-import { collabCompartment, disableCollab } from "./index";
-import { createAnnotationSyncPlugin } from "./yjsAnnotations";
-import { createYjsBinding } from "./yjsBinding";
-import { createYjsUndoExtension } from "./yjsUndo";
-import { isCollabJoiner, joinerPriorView } from "./store";
-import type { YjsAnnotationNode } from "./types";
+} from "$lib/collab/test-helpers/twoPeerHarness";
+import { AnnotationIdMap } from "$lib/collab/annotationSchema";
+import { collabCompartment, disableCollab } from "$lib/collab/index";
+import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
+import { createYjsBinding } from "$lib/collab/yjsBinding";
+import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
+import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
+import type { YjsAnnotationNode } from "$lib/collab/types";
 import {
     addAnnotation,
     annotationField,

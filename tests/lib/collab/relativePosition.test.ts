@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EditorSelection } from "@codemirror/state";
 import * as Y from "yjs";
-import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
+import { absoluteToRelative, relativeToAbsolute } from "$lib/collab/relativePosition";
 
 describe("relativePosition", () => {
     let ydoc: Y.Doc;

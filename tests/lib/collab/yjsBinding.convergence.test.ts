@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
-import { createYjsBinding } from "./yjsBinding";
+import { createYjsBinding } from "$lib/collab/yjsBinding";
 import fc from "fast-check";
 
 interface Peer {

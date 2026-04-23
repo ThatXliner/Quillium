@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import type { YjsAnnotationNode, CollabSession, MessageObject } from "./types";
+import type { YjsAnnotationNode, CollabSession, MessageObject } from "$lib/collab/types";
 
 describe("YjsAnnotationNode type", () => {
     it("can construct a comment YjsAnnotationNode", () => {

@@ -20,7 +20,7 @@ import {
     flushAll,
     teardown,
     type Peer,
-} from "./test-helpers/twoPeerHarness";
+} from "$lib/collab/test-helpers/twoPeerHarness";
 import {
     annotationField,
     addAnnotation,

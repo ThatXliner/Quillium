@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
-import { createYjsBinding, yjsAnnotation } from "./yjsBinding";
+import { createYjsBinding, yjsAnnotation } from "$lib/collab/yjsBinding";
 import {
     addAnnotation,
     annotationField,

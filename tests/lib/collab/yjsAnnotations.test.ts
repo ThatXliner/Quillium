@@ -14,14 +14,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorState, EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
-import { createAnnotationSyncPlugin, yjsAnnotationSync } from "./yjsAnnotations";
+import { createAnnotationSyncPlugin, yjsAnnotationSync } from "$lib/collab/yjsAnnotations";
 import {
     addAnnotation,
     removeAnnotation,
     updateThread,
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
-import type { YjsAnnotationNode, MessageObject } from "./types";
+import type { YjsAnnotationNode, MessageObject } from "$lib/collab/types";
 import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 function requireYNode<T>(map: Y.Map<T>, key: string): T {

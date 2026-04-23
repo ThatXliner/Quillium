@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { get } from "svelte/store";
-import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
+import { collabState, ownerLeftSignal, reconnectAttempt } from "$lib/collab/store";
 
 // Mock y-websocket - factory must define class inline
 vi.mock("y-websocket", () => {
@@ -65,7 +65,7 @@ vi.mock("$env/static/public", () => ({
 }));
 
 // Import after mocks
-import { createYjsProvider, disconnectYjsProvider, handleOwnerLeft } from "./yjsProvider";
+import { createYjsProvider, disconnectYjsProvider, handleOwnerLeft } from "$lib/collab/yjsProvider";
 
 describe("yjsProvider", () => {
     beforeEach(() => {

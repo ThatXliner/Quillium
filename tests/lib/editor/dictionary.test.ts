@@ -14,7 +14,7 @@ import {
     getPhonetic,
     type DictEntry,
     type Meaning,
-} from "./dictionaryUtils";
+} from "$lib/editor/dictionaryUtils";
 
 // ── Helpers ─────────────────────────────────────────────────────
 

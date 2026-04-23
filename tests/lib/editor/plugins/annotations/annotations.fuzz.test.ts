@@ -20,8 +20,8 @@ import {
     isAnnotationOfType,
     type Annotations,
     type GenericAnnotation,
-} from "./models";
-import { canCreateNewComment, canCreateRevision, cleanRangesOf, positionIntersects } from "./utils";
+} from "$lib/editor/plugins/annotations/models";
+import { canCreateNewComment, canCreateRevision, cleanRangesOf, positionIntersects } from "$lib/editor/plugins/annotations/utils";
 
 // ── Arbitraries ─────────────────────────────────────────────────────────────
 

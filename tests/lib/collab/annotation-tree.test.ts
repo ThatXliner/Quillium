@@ -17,9 +17,9 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import { EditorSelection } from "@codemirror/state";
-import { codeMirrorToYjsAnnotation, yjsAnnotationToCodeMirror } from "./annotationSchema";
+import { codeMirrorToYjsAnnotation, yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode } from "./types";
+import type { YjsAnnotationNode } from "$lib/collab/types";
 
 const CLIENT_ID = "client-A";
 

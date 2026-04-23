@@ -22,7 +22,7 @@ import {
     flushAll,
     makePeerWithAnnotationSync,
     teardown,
-} from "./test-helpers/twoPeerHarness";
+} from "$lib/collab/test-helpers/twoPeerHarness";
 
 describe("SYNC-06: feedback-loop / amplification regression", () => {
     let peerA: Peer;

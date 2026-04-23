@@ -8,7 +8,7 @@
  * that Yjs text binding still works after Phase 10's cleanup.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { makePeer, connect, teardown, type Peer } from "./test-helpers/twoPeerHarness";
+import { makePeer, connect, teardown, type Peer } from "$lib/collab/test-helpers/twoPeerHarness";
 
 describe("main text sync (Phase 10 verification)", () => {
     let peerA: Peer;

@@ -22,16 +22,16 @@ import {
     teardown,
     flushAll,
     type Peer,
-} from "./test-helpers/twoPeerHarness";
-import { createAnnotationSyncPlugin } from "./yjsAnnotations";
-import { createYjsBinding } from "./yjsBinding";
+} from "$lib/collab/test-helpers/twoPeerHarness";
+import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
+import { createYjsBinding } from "$lib/collab/yjsBinding";
 import {
     annotationField,
     addAnnotation,
     updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
-import { codeMirrorToYjsAnnotation } from "./annotationSchema";
-import type { YjsAnnotationNode, MessageObject } from "./types";
+import { codeMirrorToYjsAnnotation } from "$lib/collab/annotationSchema";
+import type { YjsAnnotationNode, MessageObject } from "$lib/collab/types";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 describe("thread Y.Array sync", () => {

@@ -13,13 +13,13 @@ import {
     yjsAnnotationToCodeMirror,
     generateAnnotationId,
     AnnotationIdMap,
-} from "./annotationSchema";
+} from "$lib/collab/annotationSchema";
 import type {
     GenericAnnotation,
     RawAnnotations,
     VersionState,
 } from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode, MessageObject } from "./types";
+import type { YjsAnnotationNode, MessageObject } from "$lib/collab/types";
 
 describe("annotationSchema", () => {
     let ydoc: Y.Doc;

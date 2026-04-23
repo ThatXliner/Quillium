@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as Y from "yjs";
-import { createYjsUndoExtension } from "./yjsUndo";
+import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
 
 describe("yjsUndo", () => {
     let ydoc: Y.Doc;

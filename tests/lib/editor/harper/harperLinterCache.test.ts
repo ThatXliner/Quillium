@@ -22,11 +22,11 @@ vi.mock("harper.js", () => {
 });
 
 vi.mock("harper.js/slimBinaryInlined", () => ({ slimBinaryInlined: "mock-binary" }));
-vi.mock("./lint", () => ({ linter: vi.fn() }));
-vi.mock("./lintKindColor", () => ({ lintKindClass: vi.fn() }));
+vi.mock("$lib/editor/harper/lint", () => ({ linter: vi.fn() }));
+vi.mock("$lib/editor/harper/lintKindColor", () => ({ lintKindClass: vi.fn() }));
 
 // Import after mocks are set up
-const { lintWithCache, resetCache } = await import("./harperLinter");
+const { lintWithCache, resetCache } = await import("$lib/editor/harper/harperLinter");
 
 /** Build a minimal EditorView stub with controllable visibleRanges. */
 function makeView(visibleRanges: Array<{ from: number; to: number }>): EditorView {

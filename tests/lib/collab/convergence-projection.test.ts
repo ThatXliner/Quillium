@@ -15,15 +15,15 @@
 import * as fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { yjsAnnotationToCodeMirror } from "./annotationSchema";
+import { yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
 import {
     type Peer,
     connect,
     flushAll,
     makePeerWithAnnotationSync,
     teardown,
-} from "./test-helpers/twoPeerHarness";
-import type { YjsAnnotationNode } from "./types";
+} from "$lib/collab/test-helpers/twoPeerHarness";
+import type { YjsAnnotationNode } from "$lib/collab/types";
 
 // -- helpers ---------------------------------------------------------------
 
