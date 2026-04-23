@@ -9,18 +9,25 @@
       - onauthclick: () => void — callback when sign in button clicked
 -->
 <script lang="ts">
-import { getUser, getDisplayName, getUserEmail, signOut, isLoading, isAuthenticated } from "./auth.svelte";
+import {
+    getCurrentUserName,
+    getUserEmail,
+    signOut,
+    isLoading,
+    isAuthenticated,
+} from "./auth.svelte";
 import { initials, avatarColor } from "./avatarUtils";
 import { toast } from "svelte-sonner";
 import AvatarDropdown from "./AvatarDropdown.svelte";
+import ProfileModal from "./ProfileModal.svelte";
 
 const { onauthclick }: { onauthclick: () => void } = $props();
 
 let dropdownOpen = $state(false);
+let profileOpen = $state(false);
 
 // Reactive derivations
-const user = $derived(getUser());
-const displayName = $derived(getDisplayName() ?? "User");
+const displayName = $derived(getCurrentUserName());
 const email = $derived(getUserEmail() ?? "");
 const loading = $derived(isLoading());
 const authenticated = $derived(isAuthenticated());
@@ -29,10 +36,16 @@ async function handleLogout() {
     try {
         await signOut();
         dropdownOpen = false;
+        profileOpen = false;
         toast.success("Logged out");
     } catch (err) {
         toast.error("Failed to log out");
     }
+}
+
+function openProfile() {
+    dropdownOpen = false;
+    profileOpen = true;
 }
 </script>
 
@@ -57,6 +70,7 @@ async function handleLogout() {
             <AvatarDropdown
                 {displayName}
                 {email}
+                onviewprofile={openProfile}
                 onlogout={handleLogout}
                 onclose={() => (dropdownOpen = false)}
             />
@@ -73,3 +87,12 @@ async function handleLogout() {
         </button>
     {/if}
 </div>
+
+{#if profileOpen && authenticated}
+    <ProfileModal
+        {displayName}
+        {email}
+        onlogout={handleLogout}
+        onclose={() => (profileOpen = false)}
+    />
+{/if}

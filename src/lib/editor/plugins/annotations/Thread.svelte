@@ -20,6 +20,7 @@
  * Children: ThreadMessage.svelte (one per message)
  */
 import { SparklesIcon } from "lucide-svelte";
+import { getCurrentUserName } from "$lib/auth";
 import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
 import ThreadMessage from "./ThreadMessage.svelte";
@@ -63,6 +64,7 @@ let {
 let newMessage = $state("");
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
+const currentUserName = $derived(getCurrentUserName());
 const hasText = $derived(!!newMessage.trim());
 const sendActive = $derived(hasText);
 function blurToEditor() {
@@ -79,7 +81,10 @@ $effect(() => {
 
 function send() {
     if (!newMessage.trim()) return;
-    updateThread([...thread, { message: newMessage.trim(), author: "User", time: Date.now() }]);
+    updateThread([
+        ...thread,
+        { message: newMessage.trim(), author: currentUserName, time: Date.now() },
+    ]);
     newMessage = "";
 }
 </script>

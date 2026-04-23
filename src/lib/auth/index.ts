@@ -3,6 +3,7 @@
  */
 export { supabase, supabaseConfigured } from "./supabase";
 export {
+    getCurrentUserName,
     getDisplayName,
     getSession,
     getUser,
