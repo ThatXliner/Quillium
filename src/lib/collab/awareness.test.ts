@@ -17,6 +17,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { type AwarenessState, colorForClient, createAwarenessExtension } from "./awareness";
+import { get } from "svelte/store";
+import { activeAnnotation, modalStack } from "$lib/stores";
+import { followedClientId } from "./store";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
 
 /**
  * Build a remote awareness cursor state using RelativePosition encoded
@@ -49,6 +54,9 @@ describe("awareness", () => {
     });
 
     afterEach(() => {
+        modalStack.clear();
+        activeAnnotation.set(undefined);
+        followedClientId.set(null);
         view?.destroy();
         awareness.destroy();
         ydoc.destroy();
@@ -241,6 +249,100 @@ describe("awareness", () => {
 
             const color = colorForClient("test-user");
             expect(CURSOR_COLORS).toContain(color);
+        });
+    });
+
+    describe("followed UI context", () => {
+        it("publishes the local root modal stack into awareness", () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
+            const state = EditorState.create({
+                doc: "hello world",
+                extensions: [annotationField, ext],
+            });
+            view = new EditorView({ state, parent: document.body });
+
+            const comment = createNewAnnotation(
+                view.state.field(annotationField),
+                view.state.selection,
+                "comment",
+            );
+            view.dispatch({ effects: [addAnnotation.of(comment)] });
+
+            modalStack.push({
+                type: "comment",
+                commentId: comment.id,
+                parentView: view,
+                label: "Comment",
+            });
+
+            const localState = awareness.getLocalState() as AwarenessState;
+            expect(localState.ui?.modalStack).toEqual([{ type: "comment", id: comment.id }]);
+        });
+
+        it("opens a followed collaborator's root modal locally", async () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
+            const state = EditorState.create({
+                doc: "hello world",
+                extensions: [annotationField, ext],
+            });
+            view = new EditorView({ state, parent: document.body });
+
+            const comment = createNewAnnotation(
+                view.state.field(annotationField),
+                view.state.selection,
+                "comment",
+            );
+            view.dispatch({ effects: [addAnnotation.of(comment)] });
+
+            const remoteClientId = 999;
+            awareness.states.set(remoteClientId, {
+                ...makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
+                ui: {
+                    modalStack: [{ type: "comment", id: comment.id }],
+                    activeAnnotation: null,
+                },
+            });
+            followedClientId.set(remoteClientId);
+            awareness.emit("update", [
+                { added: [remoteClientId], updated: [], removed: [] },
+                "test",
+            ]);
+            await Promise.resolve();
+
+            expect(get(modalStack)).toMatchObject([
+                { type: "comment", commentId: comment.id, parentView: view },
+            ]);
+        });
+
+        it("does not mirror a collaborator's modal when not following them", async () => {
+            ydoc.transact(() => ytext.insert(0, "hello world"), "init");
+
+            const ext = createAwarenessExtension(awareness, ytext, "Alice", "#4A90E2");
+            const state = EditorState.create({
+                doc: "hello world",
+                extensions: [annotationField, ext],
+            });
+            view = new EditorView({ state, parent: document.body });
+
+            const remoteClientId = 999;
+            awareness.states.set(remoteClientId, {
+                ...makeRemoteCursorState(ytext, "Bob", "#E87040", 3),
+                ui: {
+                    modalStack: [{ type: "comment", id: 0 }],
+                    activeAnnotation: null,
+                },
+            });
+            awareness.emit("update", [
+                { added: [remoteClientId], updated: [], removed: [] },
+                "test",
+            ]);
+            await Promise.resolve();
+
+            expect(get(modalStack)).toEqual([]);
         });
     });
 

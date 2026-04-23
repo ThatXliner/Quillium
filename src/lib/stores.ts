@@ -364,6 +364,10 @@ export const modalStack = {
             };
             return trimmed;
         }),
+    replace: (entries: ModalEntry[]) => {
+        _modalAnnotationStores.set({});
+        _modalStack.set(entries);
+    },
     consumePendingCommand: (index: number) => {
         let pending: PendingNestedCommand | undefined;
         _modalStack.update((s) => {

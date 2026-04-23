@@ -31,6 +31,9 @@ import { get } from "svelte/store";
 import type { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { collabPresenceUsers, followedClientId } from "./store";
+import { activeAnnotation, modalStack, type ModalEntry } from "$lib/stores";
+import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +57,22 @@ export interface AwarenessCursorState {
 export interface AwarenessState {
     user?: AwarenessUserState;
     cursor?: AwarenessCursorState | null;
+    ui?: AwarenessUiState;
+}
+
+export type AwarenessAnnotationRef =
+    | { type: "comment"; id: number }
+    | { type: "revision"; id: number }
+    | { type: "suggestion"; id: number };
+
+export type AwarenessModalRef =
+    | { type: "comment"; id: number }
+    | { type: "revision"; id: number }
+    | { type: "diff"; id: number };
+
+export interface AwarenessUiState {
+    modalStack: AwarenessModalRef[];
+    activeAnnotation: AwarenessAnnotationRef | null;
 }
 
 export interface AwarenessPositionMapper {
@@ -339,6 +358,35 @@ export function createAwarenessExtension(
         }
     }
 
+    function serializeAnnotationRef(
+        annotation: GenericAnnotation | undefined,
+    ): AwarenessAnnotationRef | null {
+        if (!annotation) return null;
+        if (isAnnotationOfType(annotation, "comment"))
+            return { type: "comment", id: annotation.id };
+        if (isAnnotationOfType(annotation, "revision"))
+            return { type: "revision", id: annotation.id };
+        if (isAnnotationOfType(annotation, "suggestion")) {
+            return { type: "suggestion", id: annotation.id };
+        }
+        return null;
+    }
+
+    function serializeModalEntry(
+        entry: ModalEntry,
+        rootView: EditorView,
+    ): AwarenessModalRef | null {
+        if (entry.parentView !== rootView) return null;
+        if (entry.type === "comment") return { type: "comment", id: entry.commentId };
+        if (entry.type === "revision") return { type: "revision", id: entry.revisionId };
+        if (entry.type === "diff") return { type: "diff", id: entry.suggestionId };
+        return null;
+    }
+
+    function modalSignature(entries: AwarenessModalRef[]): string {
+        return JSON.stringify(entries);
+    }
+
     function buildDecorations(state: EditorView["state"]): DecorationSet {
         const cursors = getRemoteCursors(state);
 
@@ -390,6 +438,10 @@ export function createAwarenessExtension(
             private destroyed = false;
             private tick = 0;
             private stopFollowing: (() => void) | undefined;
+            private stopModalStack: (() => void) | undefined;
+            private stopActiveAnnotation: (() => void) | undefined;
+            private lastPublishedUiSignature = "";
+            private lastAppliedUiSignature = "";
             /** True while we're inside our own ViewPlugin.update() — setLocalStateField
              *  fires awareness "update" synchronously and would reenter dispatch. */
             private insideUpdate = false;
@@ -406,11 +458,12 @@ export function createAwarenessExtension(
                             effects: awarenessTickEffect.of(tick),
                         });
                         this.scrollToFollowedCursor();
+                        this.syncFollowedUi();
                     };
                     // Dispatch sync when safe (typical case: WebSocket message handler).
                     // Defer when we're inside an active CM transaction (our own
                     // setLocalStateField echoing back to us).
-                    if (this.insideUpdate) {
+                    if (this.insideUpdate || this.viewIsUpdating()) {
                         queueMicrotask(doDispatch);
                     } else {
                         doDispatch();
@@ -427,8 +480,21 @@ export function createAwarenessExtension(
 
                 this.stopFollowing = followedClientId.subscribe(() => {
                     if (this.destroyed) return;
-                    queueMicrotask(() => this.scrollToFollowedCursor());
+                    queueMicrotask(() => {
+                        this.scrollToFollowedCursor();
+                        this.syncFollowedUi();
+                    });
                 });
+
+                this.stopModalStack = modalStack.subscribe(() => {
+                    if (this.destroyed) return;
+                    this.publishLocalUi();
+                });
+                this.stopActiveAnnotation = activeAnnotation.subscribe(() => {
+                    if (this.destroyed) return;
+                    this.publishLocalUi();
+                });
+                this.publishLocalUi();
 
                 // Set initial cursor position.
                 if (broadcastInitialCursor) {
@@ -495,10 +561,115 @@ export function createAwarenessExtension(
                 });
             }
 
+            private publishLocalUi(): void {
+                const serializedModalStack = get(modalStack)
+                    .map((entry) => serializeModalEntry(entry, this.view))
+                    .filter((entry): entry is AwarenessModalRef => entry !== null);
+                const ui: AwarenessUiState = {
+                    modalStack: serializedModalStack,
+                    activeAnnotation: serializeAnnotationRef(get(activeAnnotation)),
+                };
+                const signature = JSON.stringify(ui);
+                if (signature === this.lastPublishedUiSignature) return;
+                this.lastPublishedUiSignature = signature;
+                this.insideUpdate = true;
+                try {
+                    awareness.setLocalStateField("ui", ui);
+                } finally {
+                    this.insideUpdate = false;
+                }
+            }
+
+            private syncFollowedUi(): void {
+                const targetClientId = get(followedClientId);
+                if (targetClientId === null) return;
+                const remoteState = awareness.getStates().get(targetClientId) as
+                    | AwarenessState
+                    | undefined;
+                const remoteUi = remoteState?.ui;
+                const desiredStack = remoteUi?.modalStack ?? [];
+                const signature = JSON.stringify({
+                    modalStack: desiredStack,
+                    activeAnnotation: remoteUi?.activeAnnotation ?? null,
+                });
+                if (signature === this.lastAppliedUiSignature) return;
+                this.lastAppliedUiSignature = signature;
+
+                const localRootStack = get(modalStack)
+                    .map((entry) => serializeModalEntry(entry, this.view))
+                    .filter((entry): entry is AwarenessModalRef => entry !== null);
+                if (modalSignature(localRootStack) !== modalSignature(desiredStack)) {
+                    modalStack.replace(
+                        desiredStack
+                            .map((entry) => this.hydrateModalEntry(entry))
+                            .filter((entry): entry is ModalEntry => entry !== null),
+                    );
+                }
+
+                if (desiredStack.length === 0 && remoteUi?.activeAnnotation) {
+                    this.focusAnnotation(remoteUi.activeAnnotation);
+                }
+            }
+
+            private hydrateModalEntry(entry: AwarenessModalRef): ModalEntry | null {
+                const annotations = this.view.state.field(annotationField);
+                if (entry.type === "comment") {
+                    const annotation = annotations[entry.id];
+                    const label =
+                        annotation && isAnnotationOfType(annotation, "comment")
+                            ? this.view.state
+                                  .sliceDoc(
+                                      annotation.selection.main.from,
+                                      annotation.selection.main.to,
+                                  )
+                                  .slice(0, 40) || "Comment"
+                            : "Comment";
+                    return { type: "comment", commentId: entry.id, parentView: this.view, label };
+                }
+                if (entry.type === "revision") {
+                    return {
+                        type: "revision",
+                        revisionId: entry.id,
+                        parentView: this.view,
+                        label: "Revision",
+                    };
+                }
+                return {
+                    type: "diff",
+                    suggestionId: entry.id,
+                    parentView: this.view,
+                    label: "AI Suggestion",
+                };
+            }
+
+            private focusAnnotation(ref: AwarenessAnnotationRef): void {
+                const annotation = this.view.state.field(annotationField)[ref.id];
+                if (!annotation) return;
+                if (
+                    (ref.type === "comment" && !isAnnotationOfType(annotation, "comment")) ||
+                    (ref.type === "revision" && !isAnnotationOfType(annotation, "revision")) ||
+                    (ref.type === "suggestion" && !isAnnotationOfType(annotation, "suggestion"))
+                ) {
+                    return;
+                }
+                this.view.dispatch({
+                    selection: annotation.selection,
+                    effects: EditorView.scrollIntoView(annotation.selection.main.from, {
+                        y: "center",
+                    }),
+                });
+            }
+
+            private viewIsUpdating(): boolean {
+                return ((this.view as unknown as { updateState?: number }).updateState ?? 0) !== 0;
+            }
+
             destroy() {
                 this.destroyed = true;
                 awareness.off("update", this.changeHandler);
                 this.stopFollowing?.();
+                this.stopModalStack?.();
+                this.stopActiveAnnotation?.();
                 // Clear local cursor state on disconnect (prevents ghost cursors).
                 if (clearCursorOnDestroy) {
                     this.insideUpdate = true;
