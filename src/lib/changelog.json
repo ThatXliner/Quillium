@@ -1,4 +1,8 @@
 {
+  "0.14": {
+    "date": "April 2026",
+    "content": "This update lays the groundwork for **Quillium Omni**, our upcoming [sync and real-time collaboration service](https://quillium.bryanhu.com/blog/introducing-omni).\n\nYou may see new Omni surfaces in the app while we keep access in waitlist mode and continue developing hosted pieces. Don't worry, Omni will always be explicitly opt-in (you have to pay for it, after all). This means that **local writing still works exactly as before** when Omni is not enabled.\n\nAs with our [commitment to privacy](https://quillium.bryanhu.com/blog/quillium-privacy), we will *never* send your documents to our servers unless you ask for it."
+  },
   "0.13": {
     "date": "April 2026",
     "content": "Quillium now includes a built-in **grammar and spelling checker** powered by Harper. Misspellings show red squiggles, grammar issues show blue — click any underlined word to see suggestions and apply fixes with one click. You can add words to your personal dictionary, ignore individual suggestions, or mute all suggestions when you want to write distraction-free.\n\nConfigure the checker in **Settings → Grammar** — choose your English dialect (American, British, Australian, or Canadian) or disable it entirely."
