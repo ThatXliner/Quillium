@@ -23,9 +23,9 @@ Quillium is built as a modern web application using SvelteKit, packaged as a cro
 The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 
 ```
-                                        ┌─────────────────────┐
-                                        │ GoLive │ AuthButton │  ← Top-right cluster
-                                        └─────────────────────┘
+                                        ┌────────┐
+                                        │ Share  │  ← Top-right entry point
+                                        └────────┘
 ┌──────────────┬──────────────────────┬──────────────────┐
 │  AI Sidebar  │       Editor         │   Annotations    │
 │              │                      │                  │
@@ -38,9 +38,7 @@ The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
                         └─────┘
 ```
 
-The top-right cluster contains:
-- `GoLiveButton` — collab toggle ("Go Live" / "Live"), copy ID, join by ID menu
-- `AuthButton` — sign in button (logged out) or avatar dropdown (logged in)
+The top-right entry point is `GoLiveButton`, which now renders the Share modal. Authentication is contextual inside that modal because the current reason to sign in is Quillium Omni sharing.
 
 Modal overlays (revision editors, diff views) are rendered on top via `modalStack` — a stack of `<RevisionModal>` and `<DiffModal>` instances managed by `src/lib/stores.ts`.
 
@@ -66,8 +64,8 @@ src/
 │   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
 │   │   └── utils.ts           # Shared AI utilities
 │   ├── auth/
-│   │   ├── AuthButton.svelte    # Top-right auth button (sign in / avatar dropdown)
-│   │   ├── AuthModal.svelte     # Sign in / sign up modal
+│   │   ├── AuthButton.svelte    # Legacy contextual auth button (not mounted on main editor)
+│   │   ├── AuthModal.svelte     # Sign in modal; signup is dev-only, production routes to Omni waitlist
 │   │   ├── AvatarDropdown.svelte # Dropdown menu for logged-in user
 │   │   ├── NameEntryModal.svelte # Anonymous user display name prompt
 │   │   ├── auth.svelte.ts       # Reactive auth state store (Svelte 5 $state runes)
@@ -82,12 +80,12 @@ src/
 │   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
 │   │   └── settings.svelte.ts   # AutoAI settings store (reactive, persisted)
 │   ├── collab/
-│   │   ├── GoLiveButton.svelte    # Top-right collab toggle + join-by-ID menu
+│   │   ├── GoLiveButton.svelte    # Top-right Share button + Omni/Web Preview modal
 │   │   ├── annotationSchema.ts    # CM ↔ Yjs bidirectional converters for annotations
 │   │   ├── awareness.ts           # Yjs awareness protocol for cursor/presence sync
 │   │   ├── index.ts               # Public API: enableCollab, disableCollab, etc.
 │   │   ├── relativePosition.ts    # RelativePosition utilities for cursor anchoring
-│   │   ├── store.ts               # Svelte stores: collabState, ownerLeftSignal, etc.
+│   │   ├── store.ts               # Svelte stores: collabState, ownerLeftSignal, reconnectAttempt, etc.
 │   │   ├── types.ts               # CollabSession, YjsAnnotationNode, awareness types
 │   │   ├── yjsAnnotations.ts      # Y.Map-based annotation sync ViewPlugin
 │   │   ├── yjsBinding.ts          # CodeMirror ↔ Y.Text binding (custom, not y-codemirror.next)
@@ -1312,18 +1310,24 @@ Quillium uses Supabase Auth for user identity, enabling real-time collaboration 
 |---|---|
 | `src/lib/auth/supabase.ts` | Supabase client singleton with localStorage session persistence |
 | `src/lib/auth/auth.svelte.ts` | Reactive auth state store using Svelte 5 `$state` runes |
-| `src/lib/auth/AuthButton.svelte` | Top-right button: "Sign in" when logged out, avatar when logged in |
-| `src/lib/auth/AuthModal.svelte` | Sign in / sign up form modal |
+| `src/lib/auth/AuthButton.svelte` | Legacy button component: "Sign in" when logged out, avatar when logged in; not mounted on the main editor |
+| `src/lib/auth/AuthModal.svelte` | Sign in modal; email/password signup is available only in dev builds and production signup routes to the Omni waitlist |
 | `src/lib/auth/AvatarDropdown.svelte` | Dropdown menu with user info and logout |
 | `src/lib/auth/NameEntryModal.svelte` | Display name prompt for anonymous users |
 | `src/lib/auth/avatarUtils.ts` | `initials()` and `avatarColor()` for avatar rendering |
 
 ### Auth Flows
 
-**Email/password sign up:**
+**Email/password sign in:**
 ```
-User clicks "Sign in" → AuthModal opens → User fills form → signUp(email, password, displayName)
-→ Supabase creates user with display_name in raw_user_meta_data → Session stored in localStorage
+User opens Share → clicks "Sign in" → AuthModal opens → User fills email/password
+→ signIn(email, password) → Session stored in localStorage
+```
+
+**Signup gating:**
+```
+Dev build → AuthModal exposes the signup tab for local/testing account creation.
+Production build → signup entry points open the Omni waitlist URL instead of creating an account.
 ```
 
 **Anonymous auth (for collaborators):**
@@ -1349,7 +1353,7 @@ The `initAuth()` function is called once at app startup from `+page.svelte`. It 
 | `PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY` | Supabase anon key for client-side auth |
 
-If these are not configured, `supabaseConfigured` is `false` and auth features are disabled (GoLiveButton hidden, AuthButton hidden).
+If these are not configured, `supabaseConfigured` is `false` and auth features are disabled. Collaboration sharing is also hidden when the relay is not configured.
 
 ---
 
@@ -1392,8 +1396,8 @@ flowchart LR
 | `src/lib/collab/awareness.ts` | Remote cursor rendering, mapped nested-editor cursor presence, and follow-mode scrolling through Yjs awareness |
 | `src/lib/collab/yjsUndo.ts` | Y.UndoManager integration for joiner undo and nested subtree scope |
 | `src/lib/collab/types.ts` | `CollabSession`, `CollabState`, Yjs annotation, and awareness types |
-| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `collabSession`, presence users, followed client, owner-left, joiner state |
-| `src/lib/collab/GoLiveButton.svelte` | UI: "Go Live" toggle, copy ID, join by ID |
+| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `collabSession`, presence users, followed client, owner-left, joiner state, reconnect attempt |
+| `src/lib/collab/GoLiveButton.svelte` | Top-right Share button and modal: Omni live room controls, join-by-ID, dev/prod auth entry points, disabled Shared Document and Web Preview teasers |
 
 ### Data Model (Supabase)
 
@@ -1461,7 +1465,7 @@ view.dispatch({
 
 **Owner goes live:**
 
-1. User clicks `Go Live`.
+1. User opens Share → Omni and clicks `Start live room`.
 2. `GoLiveButton.svelte` creates a named snapshot: `"Before going live (auto)"`.
 3. `registerDocumentForCollab(draftId, userId, title)` upserts `sync_documents`.
 4. `createYjsProvider(draftId)` opens `WebsocketProvider` with the Supabase JWT.
@@ -1471,7 +1475,7 @@ view.dispatch({
 
 **Joiner joins by ID:**
 
-1. User pastes a document UUID; `joinById()` validates the format.
+1. User opens Share → Omni and pastes a document UUID; `joinById()` validates the format.
 2. The app captures prior draft ID and editor state in `joinerPriorView`.
 3. `currentDraftId = null` and `isCollabJoiner = true`, so persistence listeners skip live edits.
 4. `createYjsProvider(docId)` opens `WebsocketProvider` with the Supabase JWT.
@@ -1531,12 +1535,13 @@ Presence UI is derived from the same awareness states. `awareness.ts` publishes 
 | `reconnecting` | Lost connection, auto-reconnect in progress |
 | `error` | Connection failed after max retries |
 
-`yjsProvider.ts` updates `collabState` from provider `status`, `sync`, and `connection-close` events. `GoLiveButton.svelte` shows toasts for reconnect/reconnect-failed transitions, and `StatusBar.svelte` shows the current connection indicator:
+`yjsProvider.ts` updates `collabState` from provider `status`, `sync`, and `connection-close` events. `GoLiveButton.svelte` shows toasts for reconnect/reconnect-failed transitions and cleans up the provider when initial connect or retry exhaustion fails. `StatusBar.svelte` shows the current connection indicator:
 - Green dot + "Synced" when `connected`
-- Yellow dot + "Connecting..." when `connecting` or `reconnecting`
+- Yellow dot + "Connecting..." when `connecting`
+- Yellow dot + "Retrying N/5" when `reconnecting`
 - Red dot + "Disconnected" when `error`
 
-After five reconnect attempts, the provider enters `error`, disconnects, and the user must start a new live session.
+After five reconnect attempts, the provider enters `error`, disconnects, and the UI returns to the normal non-collab status. The user must start a new live session.
 
 ### Owner Disconnect Handling
 
@@ -1557,9 +1562,11 @@ If `PUBLIC_RELAY_URL` is not configured, `relayConfigured` is `false` and the Go
 ### Known Limitations
 
 - **Live Room mode only** — session ends when owner disconnects. Shared Document mode (server as source of truth) is deferred to v2.
+- **Shared Document not implemented** — the Share modal exposes it as an "In the making" section: a shared draft on Quillium servers, separate from temporary Live Rooms.
+- **Web Preview not implemented** — the Share modal exposes it as a disabled future feature, separate from Quillium Omni.
 - **No local persistence for joiners** — joiners are restored to their prior local draft/library view after leaving the room.
 - **No offline queue** — if reconnect attempts are exhausted, the session enters `error` and must be restarted.
-- **No sharing UI** — joiners must manually paste document UUID. Share links and permissions are deferred to v2.
+- **No share links or permissions** — joiners must manually paste document UUID. Share links and permissions are deferred to v2.
 
 ---
 

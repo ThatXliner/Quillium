@@ -73,7 +73,12 @@ export {
     type JoinerPriorView,
 } from "./store";
 export { colorForClient } from "./awareness";
-export { relayConfigured, getYjsProvider, getCurrentDocId } from "./yjsProvider";
+export {
+    relayConfigured,
+    getYjsProvider,
+    getCurrentDocId,
+    MAX_RECONNECT_ATTEMPTS,
+} from "./yjsProvider";
 
 /** Compartment for hot-swapping collab extension (per D-51) */
 export const collabCompartment = new Compartment();

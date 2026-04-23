@@ -45,7 +45,7 @@ let currentDocId: string | null = null;
 
 // ── Reconnection tracking ───────────────────────────────────────────────────
 
-const MAX_RECONNECT_ATTEMPTS = 5;
+export const MAX_RECONNECT_ATTEMPTS = 5;
 let currentAttemptCount = 0;
 
 // ── Types ───────────────────────────────────────────────────────────────────

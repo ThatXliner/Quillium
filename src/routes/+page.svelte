@@ -25,7 +25,6 @@ import AiSidebar from "$lib/ai/AISidebar.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
-import AuthButton from "$lib/auth/AuthButton.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
 import { initAuth } from "$lib/auth";
@@ -486,10 +485,9 @@ if (import.meta.env.DEV) {
 </BottomLeftStack>
 <Toaster position="bottom-right" />
 
-<!-- Top-right cluster: Go Live + Auth (per D-10, D-56) -->
+<!-- Top-right share entry point (auth lives inside the Share modal) -->
 <div class="fixed top-8 right-8 z-40 flex items-center gap-3">
     <GoLiveButton onauthclick={() => (authModalOpen = true)} />
-    <AuthButton onauthclick={() => (authModalOpen = true)} />
 </div>
 
 <!-- Auth modal -->

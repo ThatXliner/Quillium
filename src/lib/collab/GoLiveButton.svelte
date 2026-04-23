@@ -13,6 +13,7 @@ import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
+import { OMNI_WAITLIST_URL } from "$lib/constants";
 import {
     enableCollab,
     disableCollab,
@@ -22,10 +23,11 @@ import {
     ownerLeftSignal,
     collabState,
     reconnectAttempt,
+    MAX_RECONNECT_ATTEMPTS,
 } from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
-import { Check, Cloud, Copy, Link, Loader2, LogIn, Radio, Share2, X } from "lucide-svelte";
+import { ArrowLeftRight, Cloud, Copy, Link, Loader2, LogIn, Radio, Share2, X } from "lucide-svelte";
 
 const { onauthclick }: { onauthclick?: () => void } = $props();
 
@@ -40,13 +42,16 @@ let prevCollabState = $state<string>("disconnected");
 let activeTab = $state<ShareTab>("collaborate");
 let tabTrackEl = $state<HTMLElement | undefined>(undefined);
 let tabPillStyle = $state("");
-let acceptedPreviewTerms = $state(false);
 
 const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured);
 const currentId = $derived($currentDraftId ?? "");
 const canStartLive = $derived(authenticated && relayConfigured && !!currentId && !connecting);
 const liveStatusLabel = $derived(isLive ? "Live Room is open" : "Live Room is off");
+const isReconnecting = $derived($collabState === "reconnecting");
+const retryLabel = $derived(
+    `Retrying ${Math.min($reconnectAttempt, MAX_RECONNECT_ATTEMPTS)}/${MAX_RECONNECT_ATTEMPTS}`,
+);
 
 $effect(() => {
     if (modalOpen && dialogEl && !dialogEl.open) {
@@ -57,7 +62,7 @@ $effect(() => {
 $effect(() => {
     if (!tabTrackEl) return;
     const buttons = tabTrackEl.querySelectorAll<HTMLButtonElement>(".share-tab-btn");
-    const idx = activeTab === "preview" ? 0 : 1;
+    const idx = activeTab === "collaborate" ? 0 : 1;
     const btn = buttons[idx];
     if (!btn) return;
     tabPillStyle = `--share-pill-width: ${btn.offsetWidth}px; --share-pill-x: ${btn.offsetLeft - 3}px;`;
@@ -90,6 +95,12 @@ $effect(() => {
     // Reconnection failed (error state after reconnecting)
     if (prevCollabState === "reconnecting" && state === "error") {
         toast.error("Connection lost. Please go live again to reconnect.");
+        const view = get(editorView);
+        if (view) {
+            disableCollab(view);
+        } else {
+            restoreJoinerPriorView();
+        }
         isLive = false;
     }
 
@@ -178,6 +189,10 @@ async function joinById() {
         toast.success("Joined shared document");
     } catch (err) {
         console.error("[collab] Failed to join:", err);
+        const view = get(editorView);
+        if (view) {
+            disableCollab(view);
+        }
         // Reset joiner state on failure
         const prior = get(joinerPriorView);
         joinerPriorView.set(null);
@@ -236,6 +251,10 @@ async function handleToggle() {
             toast.success("You're live!");
         } catch (err) {
             console.error("[collab] Failed to go live:", err);
+            const view = get(editorView);
+            if (view) {
+                disableCollab(view);
+            }
             const message =
                 err instanceof Error && err.message.includes("relay")
                     ? "Couldn't connect to relay server"
@@ -271,8 +290,10 @@ async function handleToggle() {
             <div class="share-modal-inner">
                 <header class="share-modal-header">
                     <div>
-                        <p class="share-kicker">Quillium Omni beta</p>
-                        <h2>Share your document</h2>
+                        <div class="title-row">
+                            <h2>Share your document</h2>
+                            <span class="beta-pill">Beta</span>
+                        </div>
                     </div>
                     <button
                         onclick={closeModal}
@@ -285,8 +306,7 @@ async function handleToggle() {
                 </header>
 
                 <p class="share-note">
-                    Collaboration and sync are currently available through Quillium Omni beta access.
-                    Public web previews and server-stored documents are on the waitlist.
+                    Because writing is better together, always.
                 </p>
 
                 <div
@@ -299,21 +319,21 @@ async function handleToggle() {
                     <div class="share-tab-pill"></div>
                     <button
                         role="tab"
-                        aria-selected={activeTab === "preview"}
-                        onclick={() => (activeTab = "preview")}
-                        class="share-tab-btn"
-                        class:active={activeTab === "preview"}
-                    >
-                        Share preview to web
-                    </button>
-                    <button
-                        role="tab"
                         aria-selected={activeTab === "collaborate"}
                         onclick={() => (activeTab = "collaborate")}
                         class="share-tab-btn"
                         class:active={activeTab === "collaborate"}
                     >
-                        Collaborate
+                        Omni
+                    </button>
+                    <button
+                        role="tab"
+                        aria-selected={activeTab === "preview"}
+                        onclick={() => (activeTab = "preview")}
+                        class="share-tab-btn"
+                        class:active={activeTab === "preview"}
+                    >
+                        Web preview
                     </button>
                 </div>
 
@@ -324,22 +344,16 @@ async function handleToggle() {
                                 <Link size={18} />
                             </div>
                             <div>
-                                <h3>Publish a read-only preview</h3>
+                                <h3>Web preview</h3>
                                 <p>
-                                    Create a web preview link anyone with the URL can open. This is disabled
-                                    while the sharing terms and public preview service are finalized.
+                                    A read-only page for people without Quillium.
                                 </p>
                             </div>
                         </div>
 
-                        <label class="terms-row">
-                            <input type="checkbox" bind:checked={acceptedPreviewTerms} disabled />
-                            <span>I accept the beta sharing terms and understand this would make a preview public.</span>
-                        </label>
-
-                        <button class="primary-action" disabled title="Public previews are waitlist-only for now">
-                            <Check size={15} />
-                            Accept terms and share
+                        <button class="primary-action" disabled title="Web previews are coming later">
+                            <Link size={15} />
+                            Coming later
                         </button>
                     {:else}
                         {#if authenticated}
@@ -347,16 +361,15 @@ async function handleToggle() {
                                 <div class="status-copy">
                                     <span class="session-state" class:online={isLive}>
                                         <span class="status-dot"></span>
-                                        {isLive ? "Active" : "Inactive"}
+                                        {isReconnecting ? retryLabel : isLive ? "Active" : "Inactive"}
                                     </span>
                                     <div>
-                                        <h3>{liveStatusLabel}</h3>
-                                        <p>
-                                            Live Room shares this editor session with other Quillium users.
-                                            The session ends when the owner leaves.
-                                        </p>
-                                    </div>
+                                    <h3>{liveStatusLabel}</h3>
+                                    <p>
+                                            Invite another writer into this draft.
+                                    </p>
                                 </div>
+                            </div>
                                 <button
                                     onclick={handleToggle}
                                     disabled={!canStartLive && !isLive}
@@ -368,6 +381,11 @@ async function handleToggle() {
                                             <Loader2 size={15} />
                                         </span>
                                         Connecting
+                                    {:else if isReconnecting}
+                                        <span class="spin" aria-hidden="true">
+                                            <Loader2 size={15} />
+                                        </span>
+                                        {retryLabel}
                                     {:else if isLive}
                                         End session
                                     {:else}
@@ -409,13 +427,25 @@ async function handleToggle() {
                                 </div>
                             </form>
 
-                            <div class="disabled-option" aria-disabled="true">
-                                <div class="icon-badge muted">
-                                    <Cloud size={17} />
+                            <div class="future-section">
+                                <div class="future-label">In the making</div>
+                                <div class="disabled-option" aria-disabled="true">
+                                    <div class="icon-badge muted">
+                                        <ArrowLeftRight size={17} />
+                                    </div>
+                                    <div>
+                                        <h3>Async Collaboration</h3>
+                                        <p>Stored on our servers to stay available even after you close Quillium.</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3>Store on server</h3>
-                                    <p>Google Docs-style synced documents are waitlist-only for now.</p>
+                                <div class="disabled-option" aria-disabled="true">
+                                    <div class="icon-badge muted">
+                                        <Cloud size={17} />
+                                    </div>
+                                    <div>
+                                        <h3>Cloud Sync</h3>
+                                        <p>Make this document available on all of your devices.</p>
+                                    </div>
                                 </div>
                             </div>
                         {:else}
@@ -426,16 +456,24 @@ async function handleToggle() {
                                 <div>
                                     <h3>Sign in to collaborate</h3>
                                     <p>
-                                        Live Rooms need an account so collaborators can see who is present
-                                        and so the relay can authorize the session.
+                                        Omni sharing requires a Quillium account.
                                     </p>
                                 </div>
                             </div>
 
                             <div class="auth-actions">
-                                <button onclick={openAuth}>Sign up</button>
+                                <button disabled title="Quillium Omni signups are waitlist-only right now">
+                                    Sign up
+                                </button>
                                 <button onclick={openAuth}>Sign in</button>
                             </div>
+
+                            <p class="waitlist-note">
+                                New accounts are waitlist-only.
+                                <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer">
+                                    Join the waitlist
+                                </a>
+                            </p>
                         {/if}
                     {/if}
                 </section>
@@ -480,13 +518,24 @@ async function handleToggle() {
         padding: 22px 24px 10px;
     }
 
-    .share-kicker {
-        margin: 0 0 4px;
+    .title-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .beta-pill {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: rgba(245, 158, 11, 0.14);
+        color: rgba(146, 64, 14, 0.88);
         font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
+        font-weight: 750;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: rgba(16, 185, 129, 0.85);
     }
 
     h2 {
@@ -622,23 +671,6 @@ async function handleToggle() {
         font-size: 12px;
         line-height: 1.45;
         color: rgba(0, 0, 0, 0.48);
-    }
-
-    .terms-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 9px;
-        margin-top: 18px;
-        padding: 12px;
-        border-radius: 10px;
-        background: rgba(0, 0, 0, 0.035);
-        font-size: 12px;
-        line-height: 1.35;
-        color: rgba(0, 0, 0, 0.48);
-    }
-
-    .terms-row input {
-        margin-top: 2px;
     }
 
     .primary-action,
@@ -813,8 +845,22 @@ async function handleToggle() {
         color: rgba(0, 0, 0, 0.74);
     }
 
+    .future-section {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(0, 0, 0, 0.065);
+    }
+
+    .future-label {
+        margin-bottom: 8px;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.34);
+    }
+
     .disabled-option {
-        margin-top: 16px;
         padding: 12px;
         border-radius: 12px;
         background: rgba(0, 0, 0, 0.035);
@@ -835,6 +881,33 @@ async function handleToggle() {
 
     .auth-actions button:last-child:hover {
         background: rgba(0, 0, 0, 0.095);
+    }
+
+    .auth-actions button:disabled {
+        color: rgba(0, 0, 0, 0.32);
+        background: rgba(0, 0, 0, 0.04);
+        cursor: not-allowed;
+        opacity: 0.8;
+    }
+
+    .waitlist-note {
+        margin: 10px 0 0;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(16, 185, 129, 0.08);
+        font-size: 11px;
+        line-height: 1.4;
+        color: rgba(0, 0, 0, 0.48);
+    }
+
+    .waitlist-note a {
+        font-weight: 650;
+        color: rgba(4, 120, 87, 0.92);
+        text-decoration: none;
+    }
+
+    .waitlist-note a:hover {
+        text-decoration: underline;
     }
 
     @media (max-width: 520px) {

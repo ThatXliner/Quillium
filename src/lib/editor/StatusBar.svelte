@@ -23,6 +23,7 @@ import {
     collabPresenceUsers,
     collabState,
     followedClientId,
+    MAX_RECONNECT_ATTEMPTS,
     pendingUpdatesCount,
     reconnectAttempt,
 } from "$lib/collab";
@@ -148,7 +149,9 @@ $effect(() => {
                     {:else if $collabState === "syncing"}
                         Syncing{$pendingUpdatesCount > 0 ? ` (${$pendingUpdatesCount})` : "..."}
                     {:else if $collabState === "reconnecting"}
-                        Reconnecting{$reconnectAttempt > 0 ? ` (${$reconnectAttempt}/5)` : "..."}
+                        Retrying{$reconnectAttempt > 0
+                            ? ` (${$reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`
+                            : "..."}
                     {:else if $collabState === "error"}
                         Disconnected
                     {:else}
