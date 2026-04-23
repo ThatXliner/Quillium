@@ -32,7 +32,10 @@ import type { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { collabPresenceUsers, followedClientId } from "./store";
 import { activeAnnotation, modalStack, type ModalEntry } from "$lib/stores";
-import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    annotationField,
+    nestedEditorEdit,
+} from "$lib/editor/plugins/annotations/annotationField";
 import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -508,6 +511,15 @@ export function createAwarenessExtension(
             update(update: ViewUpdate) {
                 this.insideUpdate = true;
                 try {
+                    // Nested typing is mirrored into the parent editor with a
+                    // translated transaction. Let the nested editor own cursor
+                    // presence for those edits so the parent doesn't overwrite
+                    // awareness with the revision boundary selection.
+                    const isTranslatedNestedEdit = update.transactions.some(
+                        (tr) => tr.annotation(nestedEditorEdit) !== undefined,
+                    );
+                    if (isTranslatedNestedEdit) return;
+
                     // Update local cursor in awareness whenever selection OR doc
                     // changes. Doc changes matter because remote edits shift our
                     // absolute position even when we haven't moved the cursor.
