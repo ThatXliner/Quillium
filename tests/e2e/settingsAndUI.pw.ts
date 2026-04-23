@@ -82,6 +82,33 @@ test.describe("AI sidebar", () => {
         // After escape, the expanded panel should collapse
         await expect(page.locator("#ai-sidebar .overflow-x-auto")).not.toBeVisible();
     });
+
+    test("quillium:open-chat opens AI settings when no API key is available", async ({
+        page,
+    }) => {
+        const q = new QuilliumPage(page, {
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+
+        await page.evaluate(() => {
+            window.dispatchEvent(new CustomEvent("quillium:open-chat"));
+        });
+
+        await expect(q.aiSidebar).toContainText("AI Settings");
+    });
+
+    test("AutoAI widget opens AI settings through the external event path", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+
+        await page.getByRole("button", { name: "AutoAI — add an API key to enable" }).click();
+        await page.getByRole("button", { name: "Add an API key", exact: true }).click();
+
+        await expect(q.aiSidebar).toContainText("AI Settings");
+    });
 });
 
 // ── Tutorial ────────────────────────────────────────────────────────────────
