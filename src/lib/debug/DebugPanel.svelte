@@ -47,8 +47,9 @@ import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAI
 // Face preview state
 const FACE_STATES: FaceState[] = ["idle", "tracking", "thinking", "reviewing", "sleeping", "waking", "disabled"];
 const IDLE_VARIANTS: IdleVariant[] = ["blink", "double-blink", "look-around", "squint", "wide-eyed", "drowsy"];
+type IdlePreviewMode = IdleVariant | "auto";
 let previewFaceState = $state<FaceState>("idle");
-let previewIdleVariant = $state<IdleVariant>("blink");
+let previewIdleMode = $state<IdlePreviewMode>("auto");
 
 const {
     reloadEditor,
@@ -377,7 +378,9 @@ function handleKeydown(e: KeyboardEvent) {
                     faceState={previewFaceState}
                     eyeOffsetX={0}
                     eyeOffsetY={0}
-                    forceIdleVariant={previewFaceState === "idle" ? previewIdleVariant : undefined}
+                    forceIdleVariant={
+                        previewFaceState === "idle" && previewIdleMode !== "auto" ? previewIdleMode : undefined
+                    }
                 />
             </div>
             <div class="flex flex-col gap-1.5">
@@ -398,11 +401,18 @@ function handleKeydown(e: KeyboardEvent) {
                 <div class="flex items-center gap-1">
                     <span class="text-[10px] text-black/40 w-10">Idle</span>
                     <div class="flex flex-wrap gap-1">
+                        <button
+                            onclick={() => { previewFaceState = "idle"; previewIdleMode = "auto"; }}
+                            class="text-[10px] px-1.5 py-0.5 rounded transition-colors
+                                {previewFaceState === 'idle' && previewIdleMode === 'auto'
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                    : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                        >auto</button>
                         {#each IDLE_VARIANTS as iv}
                             <button
-                                onclick={() => { previewFaceState = "idle"; previewIdleVariant = iv; }}
+                                onclick={() => { previewFaceState = "idle"; previewIdleMode = iv; }}
                                 class="text-[10px] px-1.5 py-0.5 rounded transition-colors
-                                    {previewFaceState === 'idle' && previewIdleVariant === iv
+                                    {previewFaceState === 'idle' && previewIdleMode === iv
                                         ? 'bg-blue-100 text-blue-700 border border-blue-200'
                                         : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
                             >{iv}</button>

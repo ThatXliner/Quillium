@@ -76,6 +76,7 @@ function scheduleNextVariant() {
 
 // The active idle variant — forced override or random cycling
 const activeIdleVariant = $derived(forceIdleVariant ?? idleVariant);
+const activeIdleDuration = $derived(VARIANT_DURATIONS[activeIdleVariant]);
 
 // Start/stop variant cycling based on faceState (skip when forced)
 $effect(() => {
@@ -155,12 +156,14 @@ onMount(() => {
         <g class="tracker {faceState === 'tracking' ? 'live' : ''}" style="transform: {tx}">
             <rect
                 class="bar-eye {faceState === 'idle' ? `idle-${activeIdleVariant}` : ''}"
+                style={faceState === "idle" ? `--idle-duration: ${activeIdleDuration}ms` : undefined}
                 x="9"  y="7" width="4" height="14" rx="2" fill="#5c4a2a"
             />
         </g>
         <g class="tracker {faceState === 'tracking' ? 'live' : ''}" style="transform: {tx}">
             <rect
                 class="bar-eye {faceState === 'idle' ? `idle-${activeIdleVariant}` : ''}"
+                style={faceState === "idle" ? `--idle-duration: ${activeIdleDuration}ms` : undefined}
                 x="25" y="7" width="4" height="14" rx="2" fill="#5c4a2a"
             />
         </g>
@@ -195,7 +198,7 @@ onMount(() => {
         96%            { transform: scaleY(1); }
     }
     .idle-blink {
-        animation: idle-blink 6s ease-in-out infinite;
+        animation: idle-blink var(--idle-duration) ease-in-out infinite;
     }
 
     /* Double-blink — two quick blinks in succession */
@@ -207,7 +210,7 @@ onMount(() => {
         90%            { transform: scaleY(1); }
     }
     .idle-double-blink {
-        animation: idle-double-blink 4s ease-in-out infinite;
+        animation: idle-double-blink var(--idle-duration) ease-in-out infinite;
     }
 
     /* Look-around — eyes glance left, center, right */
@@ -221,7 +224,7 @@ onMount(() => {
         95%       { transform: translateX(0px); }
     }
     .idle-look-around {
-        animation: idle-look-around 5s ease-in-out infinite;
+        animation: idle-look-around var(--idle-duration) ease-in-out infinite;
     }
 
     /* Squint — brief narrowing like focusing on something */
@@ -232,7 +235,7 @@ onMount(() => {
         85%       { transform: scaleY(1); }
     }
     .idle-squint {
-        animation: idle-squint 3.5s ease-in-out infinite;
+        animation: idle-squint var(--idle-duration) ease-in-out infinite;
     }
 
     /* Wide-eyed — surprised/alert moment with taller eyes */
@@ -243,7 +246,7 @@ onMount(() => {
         90%       { transform: scaleY(1) scaleX(1); }
     }
     .idle-wide-eyed {
-        animation: idle-wide-eyed 3s ease-in-out infinite;
+        animation: idle-wide-eyed var(--idle-duration) ease-in-out infinite;
     }
 
     /* Drowsy — slow heavy blink like getting sleepy */
@@ -255,7 +258,7 @@ onMount(() => {
         95%       { transform: scaleY(1); }
     }
     .idle-drowsy {
-        animation: idle-drowsy 4.5s ease-in-out infinite;
+        animation: idle-drowsy var(--idle-duration) ease-in-out infinite;
     }
 
     /* ── Thinking: >_< head bob ── */
