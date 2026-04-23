@@ -530,8 +530,8 @@ async function handleToggle() {
         height: 20px;
         padding: 0 8px;
         border-radius: 999px;
-        background: rgba(245, 158, 11, 0.14);
-        color: rgba(146, 64, 14, 0.88);
+        background: rgba(251, 191, 36, 0.15);
+        color: rgb(217, 119, 6);
         font-size: 10px;
         font-weight: 750;
         letter-spacing: 0.06em;
