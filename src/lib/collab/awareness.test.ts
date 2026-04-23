@@ -163,6 +163,8 @@ describe("awareness", () => {
             const nestedView = new EditorView({ state: nestedState, parent: document.body });
 
             try {
+                nestedView.focus();
+                nestedView.contentDOM.focus();
                 nestedView.dispatch({ selection: { anchor: 1 } });
                 expect(decodeLocalHeadPos(awareness, ydoc)).toBe(7);
 
