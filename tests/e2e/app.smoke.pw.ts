@@ -10,9 +10,17 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
     await page.addInitScript(
         (payload: { apiKey: string | null }) => {
             localStorage.setItem("quillium_tutorial_seen", "1");
+            localStorage.setItem("quillium_beta_accepted", "true");
+            localStorage.setItem("quillium_changelog_seen", "999.999");
+            localStorage.setItem(
+                "quillium-app-settings",
+                JSON.stringify({
+                    autoVersionOnRevisionCreate: false,
+                    ...(payload.apiKey ? { aiEnabled: true } : {}),
+                }),
+            );
             if (payload.apiKey) {
                 localStorage.setItem("quillium-has-api-key", "1");
-                localStorage.setItem("quillium-app-settings", JSON.stringify({ aiEnabled: true }));
             }
 
             let nextCallbackId = 1;
@@ -169,7 +177,10 @@ test("tutorial opens from status bar", async ({ page }) => {
 test("AI sidebar can open chat and feedback panels", async ({ page }) => {
     await installTauriMock(page, { apiKey: "test-api-key" });
     await page.addInitScript(() => {
-        localStorage.setItem("quillium-app-settings", JSON.stringify({ aiEnabled: true }));
+        localStorage.setItem(
+            "quillium-app-settings",
+            JSON.stringify({ aiEnabled: true, autoVersionOnRevisionCreate: false }),
+        );
     });
     await page.goto("/");
 
@@ -192,6 +203,6 @@ test("settings modal opens from status bar", async ({ page }) => {
     await page.locator("#status-bar button[aria-label='Open settings']").click();
     const modal = page.locator(".settings-modal-inner");
     await expect(modal.getByText("Settings")).toBeVisible();
-    await expect(modal.getByText("Document", { exact: true })).toBeVisible();
-    await expect(modal.getByText("Interface", { exact: true })).toBeVisible();
+    await expect(modal.getByRole("button", { name: "Basic" })).toBeVisible();
+    await expect(modal.getByRole("button", { name: "Advanced" })).toBeVisible();
 });

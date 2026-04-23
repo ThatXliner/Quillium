@@ -3,6 +3,7 @@
  */
 
 export const FEEDBACK_FORM_URL = "https://forms.gle/1BEa4XwXXtuEuTqo7";
+export const OMNI_WAITLIST_URL = "https://quillium.bryanhu.com/omni";
 
 // Filled in once the app is live on the App Store.
 // Format: https://apps.apple.com/app/id<APP_ID>

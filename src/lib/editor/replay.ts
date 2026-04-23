@@ -146,7 +146,7 @@ export function replayEvents(state: EditorState, events: EventRecord[]): EditorS
                 event_type: tryParseType(record.payload),
                 total_events: events.length,
                 doc_length: current.doc.length,
-                annotation_count: current.field(annotationField).length,
+                annotation_count: Object.keys(current.field(annotationField)).length,
                 // TODO(#191): include raw payload when shareDocumentAnalytics is re-enabled
                 // ...(appSettings.shareDocumentAnalytics ? { payload: record.payload } : {}),
             });

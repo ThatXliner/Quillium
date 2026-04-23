@@ -50,6 +50,14 @@ function addRevision(
     return revision.id;
 }
 
+function getRevision(view: EditorView, id: number) {
+    const annotation = view.state.field(annotationField)[id];
+    if (!annotation || !isAnnotationOfType(annotation, "revision")) {
+        throw new Error(`Expected revision annotation ${id}`);
+    }
+    return annotation;
+}
+
 let view: EditorView | undefined;
 let unsubs: (() => void)[] = [];
 
@@ -238,8 +246,8 @@ describe("Ctrl-[ / Ctrl-] version navigation in main editor", () => {
         const consumed = runKey(view, "Ctrl-]");
 
         expect(consumed).toBe(true);
-        const rev = view.state.field(annotationField)[revId];
-        expect(rev?.activeVersionIndex).toBe(1);
+        const rev = getRevision(view, revId);
+        expect(rev.activeVersionIndex).toBe(1);
     });
 
     it("Ctrl-[ goes back to the previous version", () => {
@@ -252,12 +260,12 @@ describe("Ctrl-[ / Ctrl-] version navigation in main editor", () => {
         view.dispatch({ selection: { anchor: 2 } });
         // Advance to v2 first
         runKey(view, "Ctrl-]");
-        expect(view.state.field(annotationField)[revId]?.activeVersionIndex).toBe(1);
+        expect(getRevision(view, revId).activeVersionIndex).toBe(1);
 
         // Then go back
         const consumed = runKey(view, "Ctrl-[");
         expect(consumed).toBe(true);
-        expect(view.state.field(annotationField)[revId]?.activeVersionIndex).toBe(0);
+        expect(getRevision(view, revId).activeVersionIndex).toBe(0);
     });
 
     it("Ctrl-] wraps around from last version to first", () => {
@@ -271,7 +279,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in main editor", () => {
         runKey(view, "Ctrl-]"); // → v2
         runKey(view, "Ctrl-]"); // → wraps back to v1
 
-        expect(view.state.field(annotationField)[revId]?.activeVersionIndex).toBe(0);
+        expect(getRevision(view, revId).activeVersionIndex).toBe(0);
     });
 
     it("Ctrl-] fires boundary nudge when cursor is outside any revision", () => {

@@ -1,28 +1,90 @@
+import { getUser } from "$lib/auth/auth.svelte";
+import { supabase } from "$lib/auth/supabase";
+import { historyCompartment } from "$lib/editor/extensions";
+import { history } from "@codemirror/commands";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 /**
- * index.ts -- Collab module entry point.
+ * index.ts -- Collab module entry point (Yjs implementation).
  *
- * Re-exports the public API for collaborative editing:
+ * Per D-70: Clean migration -- uses Yjs instead of @codemirror/collab.
+ * Per D-72: Custom Y.Text <-> CodeMirror binding.
+ *
+ * Re-exports public API:
  *   - collabCompartment: Compartment for hot-swapping collab extension
- *   - enableCollab(): activate collab with socket + version
- *   - disableCollab(): deactivate collab, disconnect socket
- *
- * Key dependencies:
- *   - @codemirror/state (Compartment)
- *   - @codemirror/collab (collab, getSyncedVersion)
- *   - ./socket (connectToCollab, disconnectCollab)
- *   - ./collabPlugin (collabPushPull, createCollabExtension)
+ *   - enableCollab(): activate collab with Yjs provider
+ *   - disableCollab(): deactivate collab, disconnect provider
  */
 import type { EditorView } from "@codemirror/view";
-import { connectToCollab, disconnectCollab, getSocket, relayConfigured } from "./socket";
-import { collabCompartment, createCollabExtension } from "./collabPlugin";
-import { supabase } from "$lib/auth/supabase";
+import { get } from "svelte/store";
+import type * as Y from "yjs";
+
+import {
+    addAnnotation,
+    annotationField,
+    removeAnnotation,
+} from "$lib/editor/plugins/annotations/annotationField";
+import { AnnotationIdMap } from "./annotationSchema";
+import { colorForClient, createAwarenessExtension } from "./awareness";
+import { createAnnotationSyncPlugin } from "./yjsAnnotations";
+// Yjs modules
+import { createYjsBinding } from "./yjsBinding";
+import {
+    createYjsProvider,
+    disconnectYjsProvider,
+    getCurrentDocId,
+    getYjsProvider,
+    handleOwnerLeft,
+    relayConfigured,
+} from "./yjsProvider";
+import { createYjsUndoExtension } from "./yjsUndo";
+
+// Stores
+import {
+    type JoinerPriorView,
+    collabPresenceUsers,
+    collabSession,
+    collabState,
+    followedClientId,
+    isCollabJoiner,
+    joinerPriorView,
+    ownerLeftSignal,
+    pendingUpdatesCount,
+    reconnectAttempt,
+} from "./store";
+
+// Navigation (D-103: restore joiner to prior view)
+import { goToEditor, goToLibrary } from "$lib/navigation";
+import { currentDraftId } from "$lib/stores";
+
+// Types
+export type { CollabSession, CollabState } from "./types";
 
 // Re-exports
-export { collabCompartment } from "./collabPlugin";
-export { relayConfigured, getSocket, connectToCollab, disconnectCollab } from "./socket";
-export { collabState } from "./store";
-export * from "./types";
-export * from "./protocol";
+export {
+    collabState,
+    ownerLeftSignal,
+    pendingUpdatesCount,
+    reconnectAttempt,
+    collabSession,
+    collabPresenceUsers,
+    followedClientId,
+    joinerPriorView,
+    isCollabJoiner,
+    type JoinerPriorView,
+} from "./store";
+export { colorForClient } from "./awareness";
+export {
+    relayConfigured,
+    getYjsProvider,
+    getCurrentDocId,
+    MAX_RECONNECT_ATTEMPTS,
+} from "./yjsProvider";
+
+/** Compartment for hot-swapping collab extension (per D-51) */
+export const collabCompartment = new Compartment();
+
+/** Current Y.UndoManager (for external access if needed) */
+let currentUndoManager: Y.UndoManager | null = null;
 
 /**
  * Register a document with the relay's sync_documents table.
@@ -55,73 +117,272 @@ export async function registerDocumentForCollab(
 
 /**
  * Enable collab for the given editor view.
- * Per D-52: Creates per-document socket instance.
- * Per D-50: clientID enables per-user undo.
+ *
+ * Per D-70: Uses Yjs instead of @codemirror/collab.
+ * Per D-72: Custom Y.Text <-> CodeMirror binding.
+ * Per D-74: UndoManager tracks local changes only.
  *
  * @param view - The EditorView to enable collab on
  * @param docId - The document ID for the relay room
- * @param clientID - The user's ID for per-user undo (typically Supabase user.id)
+ * @param clientID - The user's ID (typically Supabase user.id)
+ * @param asOwner - Whether connecting as document owner
  * @throws If connection to relay fails
  */
 export async function enableCollab(
     view: EditorView,
     docId: string,
     clientID: string,
-    asOwner: boolean = true,
+    asOwner = true,
 ): Promise<void> {
-    const { socket, initialState } = await connectToCollab(docId);
+    // Connect to Yjs relay
+    const { provider, awareness, ydoc, ytext, ymap } = await createYjsProvider(docId);
 
+    // Get local content before connecting
     const localDoc = view.state.doc.toString();
-    const relayDoc = initialState.doc;
-    const startVersion = initialState.version;
-    let shouldReplaceLocal = false;
 
-    // Determine authoritative content (what the relay will have at startVersion).
+    console.log(`[collab] enableCollab: localDoc.length=${localDoc.length}, asOwner=${asOwner}`);
+
+    // Wait for initial sync with timeout
+    await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            console.error("[collab] Sync timeout after 10s - provider.synced:", provider.synced);
+            reject(new Error("Sync timeout - relay may not be responding correctly"));
+        }, 10000);
+
+        const checkSync = () => {
+            if (provider.synced) {
+                clearTimeout(timeout);
+                resolve();
+            } else {
+                provider.once("sync", () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+            }
+        };
+        checkSync();
+    });
+
+    // After sync, determine authoritative content
+    // Per D-55: Owner's local SQLite is source of truth; relay is broadcast layer
+    // Per D-57: Live Room mode — session ends when owner leaves
+    const remoteContent = ytext.toString();
     let authoritativeContent: string;
 
-    if (asOwner && initialState.version === 0 && relayDoc.length === 0) {
-        // Owner connecting to empty/fresh room — seed relay with snapshot of current local content.
-        // This keeps owner as source of truth (no cloud storage — owner's local wins).
-        console.log("[collab] Owner seeding relay with local content, length:", localDoc.length);
-        const initResult = await new Promise<{ ok: boolean; version?: number }>((resolve) => {
-            socket.emit("initDocument", { content: localDoc }, resolve);
-        });
-        if (!initResult.ok) {
-            throw new Error("Failed to seed relay with document content");
+    if (asOwner) {
+        // Owner ALWAYS seeds with local content (D-55: owner's local is source of truth)
+        // Clear any stale relay content first, then insert local
+        if (remoteContent.length > 0 || localDoc.length > 0) {
+            console.log(
+                `[collab] Owner replacing relay content (remote=${remoteContent.length}, local=${localDoc.length})`,
+            );
+            ydoc.transact(() => {
+                if (ytext.length > 0) {
+                    ytext.delete(0, ytext.length);
+                }
+                if (localDoc.length > 0) {
+                    ytext.insert(0, localDoc);
+                }
+            }, "init");
         }
-        // Relay now has our captured content at v0. Any typing during the async gap
-        // must be discarded because collab's v0 baseline must match relay's v0.
         authoritativeContent = localDoc;
+    } else if (remoteContent.length > 0) {
+        // Joiner: relay content is authoritative (owner already seeded it)
+        console.log(`[collab] Joiner using relay content (length ${remoteContent.length})`);
+        authoritativeContent = remoteContent;
     } else {
-        // Joiner, or owner joining existing room — relay content is truth.
-        console.log(
-            `[collab] ${asOwner ? "Owner" : "Joiner"} syncing to relay state (v${startVersion}, length ${relayDoc.length})`,
-        );
-        authoritativeContent = relayDoc;
+        // Joiner connecting to empty room — unusual, but use empty
+        console.warn("[collab] Joiner connected to empty room — owner may not have seeded yet");
+        authoritativeContent = "";
     }
 
-    // Force editor to the authoritative content AND enable collab in a single transaction.
-    // This ensures @codemirror/collab's v0 baseline matches the relay's v0 exactly,
-    // regardless of any typing that happened during the async connect/init flow.
+    // Sync editor to authoritative content (without triggering Yjs update).
+    // addToHistory.of(false): the initial doc sync is not a user edit and
+    // should not appear in the undo stack — otherwise cmd-z right after
+    // connect would revert the sync and strand the editor in a stale state.
     const currentContent = view.state.doc.toString();
-    view.dispatch({
-        changes:
-            currentContent !== authoritativeContent
-                ? { from: 0, to: view.state.doc.length, insert: authoritativeContent }
-                : undefined,
-        effects: collabCompartment.reconfigure(
-            createCollabExtension(startVersion, clientID, socket),
-        ),
+    const preJoinLocalAnnotations = !asOwner
+        ? Object.values(view.state.field(annotationField, false) ?? {})
+        : [];
+    if (currentContent !== authoritativeContent || preJoinLocalAnnotations.length > 0) {
+        view.dispatch({
+            ...(currentContent !== authoritativeContent
+                ? {
+                      changes: {
+                          from: 0,
+                          to: view.state.doc.length,
+                          insert: authoritativeContent,
+                      },
+                  }
+                : {}),
+            effects: preJoinLocalAnnotations.map((annotation) => removeAnnotation.of(annotation)),
+            annotations: [Transaction.addToHistory.of(false)],
+        });
+    }
+
+    // Create Yjs extensions
+    const user = getUser();
+    const displayName = user?.user_metadata?.full_name ?? user?.email ?? clientID.slice(0, 8);
+    const cursorColor = colorForClient(clientID);
+
+    const binding = createYjsBinding(ytext);
+    // Per D-83: Pass ymap to UndoManager for unified undo stack
+    const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+    const awarenessExt = createAwarenessExtension(awareness, ytext, displayName, cursorColor);
+
+    // Plan 8.5c-02: Caller-owned idMap so subtree controllers can resolve CM ids
+    const mainIdMap = new AnnotationIdMap();
+    const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap);
+
+    currentUndoManager = undoManager;
+
+    // Plan 8.5c-02: Populate collabSession for subtree helpers
+    collabSession.set({
+        docId,
+        clientID,
+        displayName,
+        cursorColor,
+        isOwner: asOwner,
+        ydoc,
+        provider,
+        awareness,
+        ymap,
+        ytext,
+        undoManager,
+        mainIdMap,
     });
+
+    // Install Yjs collab extension - includes annotation sync.
+    // Joiners use Y.UndoManager only; owners keep their existing CM history.
+    const collabExts = asOwner
+        ? [binding, awarenessExt, annotationSync]
+        : [binding, undoExt, awarenessExt, annotationSync];
+    view.dispatch({
+        effects: [
+            collabCompartment.reconfigure(collabExts),
+            ...(asOwner ? [] : [historyCompartment.reconfigure([])]),
+        ],
+    });
+
+    // Listen for owner left (custom message from server)
+    // y-websocket doesn't have built-in custom messages, so we listen on provider events
+    const providerWithConnectionClose = provider as unknown as {
+        on(eventName: "connection-close", handler: (event: CloseEvent | null) => void): void;
+    };
+    providerWithConnectionClose.on("connection-close", (event) => {
+        // Check close reason for owner disconnect (event may be null on manual disconnect)
+        if (event?.reason === "Owner left") {
+            handleOwnerLeft();
+        }
+    });
+
+    console.log(`[collab] Collab enabled for ${docId.slice(0, 8)}...`);
+}
+
+/**
+ * Restore joiner to their prior view after leaving/being kicked (D-103).
+ * Called by disableCollab when isCollabJoiner is true.
+ */
+export function restoreJoinerPriorView(): void {
+    const prior = get(joinerPriorView);
+
+    // Clear joiner state first
+    joinerPriorView.set(null);
+    isCollabJoiner.set(false);
+
+    if (!prior) {
+        // No prior view recorded, go to library
+        goToLibrary();
+        return;
+    }
+
+    if (prior.draftId) {
+        // Restore to previous document
+        currentDraftId.set(prior.draftId);
+        goToEditor();
+    } else {
+        // Was in library before
+        goToLibrary();
+    }
+}
+
+function restoreJoinerEditorSnapshot(view: EditorView, prior: JoinerPriorView | null) {
+    if (!prior?.editorStateJson) return;
+
+    let restoredState: EditorState;
+    try {
+        restoredState = EditorState.fromJSON(
+            prior.editorStateJson,
+            { extensions: [annotationField] },
+            { annotationField },
+        );
+    } catch (err) {
+        console.warn("[collab] Failed to restore joiner editor snapshot:", err);
+        return;
+    }
+
+    const currentAnnotations = Object.values(view.state.field(annotationField, false) ?? {});
+    const restoredAnnotations = Object.values(restoredState.field(annotationField, false) ?? {});
+    const restoredDoc = restoredState.doc.toString();
+
+    view.dispatch({
+        ...(view.state.doc.toString() !== restoredDoc
+            ? {
+                  changes: {
+                      from: 0,
+                      to: view.state.doc.length,
+                      insert: restoredDoc,
+                  },
+              }
+            : {}),
+        selection: restoredState.selection,
+        effects: currentAnnotations.map((annotation) => removeAnnotation.of(annotation)),
+        annotations: [Transaction.addToHistory.of(false)],
+    });
+
+    if (restoredAnnotations.length > 0) {
+        view.dispatch({
+            effects: restoredAnnotations.map((annotation) => addAnnotation.of(annotation)),
+            annotations: [Transaction.addToHistory.of(false)],
+        });
+    }
 }
 
 /**
  * Disable collab and disconnect from relay.
- * Per D-52: Destroys the per-document socket instance.
  */
 export function disableCollab(view: EditorView): void {
-    disconnectCollab();
+    // D-103: Check if this is a joiner before clearing session
+    const wasJoiner = get(isCollabJoiner);
+    const prior = wasJoiner ? get(joinerPriorView) : null;
+
+    disconnectYjsProvider();
+    currentUndoManager = null;
+    collabSession.set(null);
+    collabPresenceUsers.set([]);
+    followedClientId.set(null);
+
+    // Restore CM history() on disconnect. NOTE: rebuilt with empty stack;
+    // joiner->owner mid-session is not supported (see CONTEXT.md).
     view.dispatch({
-        effects: collabCompartment.reconfigure([]),
+        effects: [
+            collabCompartment.reconfigure([]),
+            historyCompartment.reconfigure(history({ newGroupDelay: 250 })),
+        ],
     });
+
+    console.log("[collab] Collab disabled");
+
+    // D-103: Restore joiner to prior view
+    if (wasJoiner) {
+        restoreJoinerEditorSnapshot(view, prior);
+        restoreJoinerPriorView();
+    }
+}
+
+/**
+ * Get current UndoManager (or null if not in collab mode).
+ */
+export function getUndoManager(): Y.UndoManager | null {
+    return currentUndoManager;
 }

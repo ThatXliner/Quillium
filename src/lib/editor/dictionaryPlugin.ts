@@ -5,6 +5,7 @@
  * popover for the currently selected word. If nothing is selected or
  * the selection is multi-word, the command is a no-op.
  */
+import { dev } from "$app/environment";
 import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { dictionaryTrigger } from "$lib/stores";
@@ -33,4 +34,14 @@ function openDictionary(view: EditorView): boolean {
     return true;
 }
 
-export const dictionaryExtension = Prec.high(keymap.of([{ key: "Mod-b", run: openDictionary }]));
+export const dictionaryExtension = Prec.high(
+    keymap.of([
+        { key: "Mod-b", run: openDictionary },
+        ...(dev
+            ? [
+                  { key: "Ctrl-b", run: openDictionary },
+                  { key: "Meta-b", run: openDictionary },
+              ]
+            : []),
+    ]),
+);

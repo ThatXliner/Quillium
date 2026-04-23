@@ -10,8 +10,9 @@
  *     the global editorView store)
  *   - annotationsData?: AnnotationMap — annotation map (falls
  *     back to the global annotations store)
- *   - activeAnnotationData?: GenericAnnotation — currently
- *     selected annotation (falls back to activeAnnotation store)
+ *   - activeAnnotationData?: GenericAnnotation | null — currently
+ *     selected annotation. `undefined` falls back to the global
+ *     activeAnnotation store; `null` means explicitly none.
  *   - layout?: "floating" | "inline" — positioning strategy
  *
  * Events emitted: none (dispatches CodeMirror effects directly)
@@ -62,7 +63,7 @@ const {
 }: {
     view?: EditorView;
     annotationsData?: AnnotationMap;
-    activeAnnotationData?: GenericAnnotation;
+    activeAnnotationData?: GenericAnnotation | null;
     layout?: "floating" | "inline";
 } = $props();
 
@@ -70,7 +71,9 @@ const {
 // single consistent data source regardless of context.
 const resolvedView = $derived(view ?? $editorView);
 const resolvedAnnotations = $derived(annotationsData ?? $annotations);
-const resolvedActiveAnnotation = $derived(activeAnnotationData ?? $activeAnnotation);
+const resolvedActiveAnnotation = $derived(
+    activeAnnotationData === undefined ? $activeAnnotation : activeAnnotationData,
+);
 const isFloating = $derived(layout === "floating");
 
 /**

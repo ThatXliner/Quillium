@@ -13,8 +13,11 @@ import { signUp, signIn } from "./auth.svelte";
 import { loginSchema, signUpSchema } from "./schemas";
 import { toast } from "svelte-sonner";
 import { X } from "lucide-svelte";
+import { OMNI_WAITLIST_URL } from "$lib/constants";
+import { debugAuthWaitlistMode } from "$lib/debug/store.svelte";
 
 const { onclose }: { onclose: () => void } = $props();
+const signupsEnabled = $derived(import.meta.env.DEV && !$debugAuthWaitlistMode);
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let activeTab = $state<"login" | "signup">("login");
@@ -51,6 +54,10 @@ function resetForm() {
 }
 
 function switchTab(tab: "login" | "signup") {
+    if (tab === "signup" && !signupsEnabled) {
+        window.open(OMNI_WAITLIST_URL, "_blank", "noopener,noreferrer");
+        return;
+    }
     activeTab = tab;
     resetForm();
 }
@@ -72,6 +79,11 @@ async function handleSubmit(e: Event) {
             toast.success("Welcome back!");
             onclose();
         } else {
+            if (!signupsEnabled) {
+                window.open(OMNI_WAITLIST_URL, "_blank", "noopener,noreferrer");
+                error = "New accounts are waitlist-only during beta.";
+                return;
+            }
             const result = signUpSchema.safeParse({ email, password, displayName });
             if (!result.success) {
                 error = result.error.issues[0]?.message ?? "Invalid input";
@@ -121,7 +133,9 @@ async function handleSubmit(e: Event) {
                 onclick={() => switchTab("signup")}
                 class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
                     {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
-            >Sign up</button>
+            >
+                {signupsEnabled ? "Sign up" : "Waitlist"}
+            </button>
         </div>
 
         <!-- Form -->

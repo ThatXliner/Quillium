@@ -54,12 +54,13 @@ sed -i '' "s/^version = \"${CURRENT}\"/version = \"${NEXT}\"/" src-tauri/Cargo.t
 
 echo "All manifests updated to $NEXT."
 
-# For minor/major bumps, ask Claude to update the changelog if needed.
+# For minor/major bumps, ask Codex to update the changelog if needed.
 MINOR_KEY=$(echo "$NEXT" | cut -d. -f1-2)
 if [[ "$PART" == "minor" || "$PART" == "major" ]]; then
     echo ""
     echo "Minor/major bump detected — checking if changelog needs updating..."
-    claude --print \
+    codex exec \
+        --sandbox workspace-write \
         "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
 
 Check src/lib/changelog.json — if there is no entry for \"$MINOR_KEY\", add one.

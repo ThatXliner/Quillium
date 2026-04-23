@@ -18,12 +18,20 @@
         button is clicked to jump directly to the shortcuts tutorial step.
 -->
 <script lang="ts">
+import { initials } from "$lib/auth/avatarUtils";
+import {
+    collabPresenceUsers,
+    collabState,
+    followedClientId,
+    MAX_RECONNECT_ATTEMPTS,
+    pendingUpdatesCount,
+    reconnectAttempt,
+} from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { collabState } from "$lib/collab";
 import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
@@ -83,6 +91,10 @@ function onMouseLeave() {
     hoverDelayed = false;
 }
 
+function toggleFollow(clientId: number) {
+    followedClientId.set($followedClientId === clientId ? null : clientId);
+}
+
 $effect(() => {
     if (!titleForced) {
         // titleForced just dropped — start the linger
@@ -122,18 +134,52 @@ $effect(() => {
                     class={`w-2 h-2 rounded-full ${
                         $collabState === "connected"
                             ? "bg-green-400"
-                            : $collabState === "error"
-                              ? "bg-red-400"
-                              : "bg-yellow-400"
+                            : $collabState === "syncing"
+                              ? "bg-blue-400 animate-pulse"
+                              : $collabState === "reconnecting"
+                                ? "bg-yellow-400 animate-pulse"
+                                : $collabState === "error"
+                                  ? "bg-red-400"
+                                  : "bg-yellow-400"
                     }`}
                 ></div>
-                <span class="text-sm text-black/90"
-                    >{$collabState === "connected"
-                        ? "Synced"
-                        : $collabState === "error"
-                          ? "Disconnected"
-                          : "Connecting..."}</span
-                >
+                <span class="text-sm text-black/90">
+                    {#if $collabState === "connected"}
+                        Synced
+                    {:else if $collabState === "syncing"}
+                        Syncing{$pendingUpdatesCount > 0 ? ` (${$pendingUpdatesCount})` : "..."}
+                    {:else if $collabState === "reconnecting"}
+                        Retrying{$reconnectAttempt > 0
+                            ? ` (${$reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})`
+                            : "..."}
+                    {:else if $collabState === "error"}
+                        Disconnected
+                    {:else}
+                        Connecting...
+                    {/if}
+                </span>
+                {#if $collabPresenceUsers.length > 0}
+                    <div class="flex -space-x-1 pl-1" aria-label="Online collaborators">
+                        {#each $collabPresenceUsers.slice(0, 4) as user (user.clientId)}
+                            <button
+                                type="button"
+                                onclick={() => toggleFollow(user.clientId)}
+                                aria-label={$followedClientId === user.clientId
+                                    ? `Stop following ${user.name}`
+                                    : `Follow ${user.name}`}
+                                title={$followedClientId === user.clientId
+                                    ? `Following ${user.name}`
+                                    : `Follow ${user.name}`}
+                                class="w-6 h-6 rounded-full border-2 text-[10px] font-semibold text-white leading-none flex items-center justify-center shadow-sm transition-transform hover:scale-105"
+                                class:border-black={$followedClientId === user.clientId}
+                                class:border-white={$followedClientId !== user.clientId}
+                                style="background: {user.color};"
+                            >
+                                {initials(user.name)}
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
             {:else}
                 <div
                     class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}

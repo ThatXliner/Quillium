@@ -1,6 +1,6 @@
 {
   "name": "quillium",
-  "version": "0.13.14",
+  "version": "0.14.0",
   "description": "",
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
+    "tauri:dev2": "QUILLIUM_DEV_PORT=1422 tauri dev --config src-tauri/tauri.dev2.toml",
     "tauri:mas": "VITE_MAS=true tauri build --bundles app --target universal-apple-darwin -- --no-default-features --features mas",
     "test": "vitest",
     "test:run": "vitest run",
@@ -73,6 +74,9 @@
     "socket.io-client": "^4.8.3",
     "svelte-sonner": "^1.1.0",
     "unified": "^11.0.5",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.30",
     "zod": "^4.3.6"
   },
   "devDependencies": {

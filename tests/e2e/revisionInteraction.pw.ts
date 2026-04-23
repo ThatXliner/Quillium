@@ -20,7 +20,7 @@ async function setupRevisionWithPrefix(page: Page) {
     // Select just "world" (last 5 chars)
     await page.keyboard.press("End");
     for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
-    await page.keyboard.press("ControlOrMeta+Alt+k");
+    await page.keyboard.press("Control+Alt+k");
     return editor;
 }
 
@@ -33,7 +33,7 @@ async function setupFullRevision(page: Page, text: string) {
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type(text);
     await page.keyboard.press("ControlOrMeta+a");
-    await page.keyboard.press("ControlOrMeta+Alt+k");
+    await page.keyboard.press("Control+Alt+k");
     return editor;
 }
 
@@ -43,7 +43,7 @@ test.describe("revision cursor teleport", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true }),
+                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, autoVersionOnRevisionCreate: false }),
             );
         });
         await page.goto("/");
@@ -112,7 +112,7 @@ test.describe("nested annotation creation from inline editor", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true }),
+                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, autoVersionOnRevisionCreate: false }),
             );
         });
         await page.goto("/");
@@ -132,7 +132,7 @@ test.describe("nested annotation creation from inline editor", () => {
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
 
         // Press Mod-Alt-K to create a nested revision
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
 
         // A revision modal should open
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
@@ -151,7 +151,7 @@ test.describe("nested annotation creation from inline editor", () => {
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
 
         // Press Mod-Alt-M to create a nested comment
-        await page.keyboard.press("ControlOrMeta+Alt+m");
+        await page.keyboard.press("Control+Alt+m");
 
         // A revision modal should open (to host the nested comment)
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
@@ -165,7 +165,7 @@ test.describe("revision modal annotation visibility", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true }),
+                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, autoVersionOnRevisionCreate: false }),
             );
         });
         await page.goto("/");
@@ -185,7 +185,7 @@ test.describe("revision modal annotation visibility", () => {
         // Open the revision modal
         const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
         if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
-            await expand.click();
+            await expand.dispatchEvent("click");
         }
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
@@ -197,7 +197,7 @@ test.describe("revision modal annotation visibility", () => {
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
 
         // Create a comment via Mod-Alt-M
-        await page.keyboard.press("ControlOrMeta+Alt+m");
+        await page.keyboard.press("Control+Alt+m");
 
         // The modal's annotations sidebar should show the annotation card
         const annotationCard = page.locator("dialog .annotation-card-inline").first();
@@ -219,7 +219,7 @@ test.describe("revision modal annotation visibility", () => {
         // Open the revision modal
         const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
         if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
-            await expand.click();
+            await expand.dispatchEvent("click");
         }
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
@@ -231,7 +231,7 @@ test.describe("revision modal annotation visibility", () => {
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
 
         // Create a nested revision via Mod-Alt-K
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
 
         // Wait for annotation to be processed
         await page.waitForTimeout(1000);
@@ -254,7 +254,7 @@ test.describe("revision modal annotation visibility", () => {
         // Open the revision modal
         const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
         if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
-            await expand.click();
+            await expand.dispatchEvent("click");
         }
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
@@ -266,11 +266,11 @@ test.describe("revision modal annotation visibility", () => {
         await expect.poll(() => getCmText(modalEditor)).toBe("hello world!");
 
         // Undo from the modal (delegates to parent)
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
         await expect.poll(() => getCmText(modalEditor)).toBe("hello world");
 
         // Redo
-        await page.keyboard.press("ControlOrMeta+Shift+z");
+        await page.keyboard.press("Control+y");
         await expect.poll(() => getCmText(modalEditor)).toBe("hello world!");
 
         expect(errors).toHaveLength(0);
@@ -287,7 +287,7 @@ test.describe("revision modal annotation visibility", () => {
         // Open the revision modal
         const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
         if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
-            await expand.click();
+            await expand.dispatchEvent("click");
         }
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
@@ -298,14 +298,14 @@ test.describe("revision modal annotation visibility", () => {
         await modalEditor.click();
         await page.keyboard.press("Home");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
         await page.waitForTimeout(500);
 
         // Second: select "world"
         await modalEditor.click();
         await page.keyboard.press("End");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
 
         // Wait for both annotation cards to appear
         const cards = page.locator("dialog .annotation-card-inline");
@@ -315,7 +315,7 @@ test.describe("revision modal annotation visibility", () => {
         const firstCard = cards.first();
         const expandBtn = firstCard.locator("[data-tutorial-action='expand-revision-modal']");
         await expect(expandBtn).toBeVisible({ timeout: 3000 });
-        await expandBtn.click();
+        await expandBtn.dispatchEvent("click");
 
         // The deeper modal's editor should contain the revision text.
         // Use dialog[open] to target the visible (child) modal, not the

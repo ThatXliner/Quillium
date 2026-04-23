@@ -1,0 +1,10 @@
+[build]
+beforeDevCommand = "QUILLIUM_DEV_PORT=1422 bun run dev"
+devUrl = "http://localhost:1422"
+
+[[app.windows]]
+title = "Quillium (Collaborator)"
+width = 1373
+height = 1170
+minWidth = 900
+minHeight = 600

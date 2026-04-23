@@ -29,6 +29,7 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
     versionText,
+    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ function addRevision(
     view: EditorView,
     from: number,
     to: number,
-    versions: { doc: string }[],
+    versions: VersionState[],
     activeVersionIndex = 0,
 ): number {
     const annotation = {
@@ -164,12 +165,12 @@ describe("Phase 3: pushDocToVersionState keeps version text current", () => {
     it("phase 3 creates a new versions array reference for Svelte reactivity", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
-        const beforeVersions = view.state.field(annotationField)[id]!.versions;
+        const beforeVersions = getRevision(view, id)!.versions;
 
         // Insert inside the range so Phase 3 actually updates the text.
         view.dispatch({ changes: { from: 3, to: 3, insert: "XY" } });
 
-        const afterVersions = view.state.field(annotationField)[id]!.versions;
+        const afterVersions = getRevision(view, id)!.versions;
         // Phase 3 must produce a new array so Svelte $derived chains re-run.
         expect(afterVersions).not.toBe(beforeVersions);
         expect(afterVersions[0]!.doc).toBe("HelXYlo");

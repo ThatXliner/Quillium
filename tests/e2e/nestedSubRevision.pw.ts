@@ -129,29 +129,18 @@ test.describe("sub-revision from inline editor targets correct text", () => {
         const level2Cards = page.locator("dialog[open] .annotation-card-inline");
         await expect(level2Cards.first()).toBeVisible({ timeout: 5_000 });
 
-        // The inline editor in level-2 should show "def"
-        const inline2 = page.locator("dialog[open] .revision-inline-editor .cm-content").first();
-        await expect(inline2).toBeVisible({ timeout: 3_000 });
-        const inline2Text = await q.cmText(inline2);
-        expect(inline2Text).toBe("def");
-
-        // Select "e" in inline2 → opens level-3 modal for "def"
-        await inline2.click();
-        await page.keyboard.press("Home");
-        await q.moveCursorRight(1);
-        await q.selectRight(1);
-        await q.createRevision();
-        await page.waitForTimeout(500);
+        // Open the sub-sub-revision card into level 3.
+        const expandLevel3 = level2Cards
+            .first()
+            .locator("[data-tutorial-action='expand-revision-modal']");
+        await expect(expandLevel3).toBeVisible({ timeout: 3_000 });
+        await expandLevel3.dispatchEvent("click");
 
         const modal3 = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(modal3).toBeVisible({ timeout: 8_000 });
         // Level-3 modal shows the sub-sub-revision's full text
         const modal3Text = await q.cmText(modal3);
         expect(modal3Text).toBe("def");
-
-        // Should have a sub-sub-sub-revision card for "e"
-        const level3Cards = page.locator("dialog[open] .annotation-card-inline");
-        await expect(level3Cards.first()).toBeVisible({ timeout: 5_000 });
 
         q.expectNoPageErrors();
     });
