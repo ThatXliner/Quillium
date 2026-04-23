@@ -488,7 +488,7 @@ if (import.meta.env.DEV) {
 
 <!-- Top-right cluster: Go Live + Auth (per D-10, D-56) -->
 <div class="fixed top-8 right-8 z-40 flex items-center gap-3">
-    <GoLiveButton />
+    <GoLiveButton onauthclick={() => (authModalOpen = true)} />
     <AuthButton onauthclick={() => (authModalOpen = true)} />
 </div>
 

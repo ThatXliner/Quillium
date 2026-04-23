@@ -465,6 +465,8 @@ Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors deleg
 
 Replacing the whole buffer is the tradeoff we accepted for this reactive path: the cursor/selection and scroll position do not survive the rewrite, so the nested editor appears to jump back to the top. There is no dedicated cursor-persistence mechanism yet.
 
+When collab is active, `createNestedEditorState` also installs `createAwarenessExtension` with position mappers over the parent revision range. The nested editor still has no Yjs text binding and still syncs edits through `translateAndDispatch`; awareness only maps cursor coordinates so collaborators can see each other inside inline and modal annotation editors. Nested awareness uses `broadcastInitialCursor: false` and `clearCursorOnDestroy: false` so mounting a background nested editor does not steal or clear the user's shared cursor. It broadcasts only once that nested editor has focus.
+
 ### Inline editor
 
 `Revision.svelte` creates a `NestedEditorController` with `flushBehavior: "no-flush"` (the parent doc is the source of truth via Phase 3). Svelte `$effect` blocks watch `activeVersion?.doc` and delegate to `controller.syncFromParent()`. Version switches and annotation blob changes trigger destroy + recreate via the controller.
@@ -1387,10 +1389,10 @@ flowchart LR
 | `src/lib/collab/yjsAnnotations.ts` | Bidirectional recursive `Y.Map` to `annotationField` sync |
 | `src/lib/collab/annotationSchema.ts` | Converts CodeMirror annotations to/from recursive Yjs nodes |
 | `src/lib/collab/relativePosition.ts` | Encodes annotation and cursor anchors as Yjs relative positions |
-| `src/lib/collab/awareness.ts` | Remote cursor rendering through Yjs awareness |
+| `src/lib/collab/awareness.ts` | Remote cursor rendering, mapped nested-editor cursor presence, and follow-mode scrolling through Yjs awareness |
 | `src/lib/collab/yjsUndo.ts` | Y.UndoManager integration for joiner undo and nested subtree scope |
 | `src/lib/collab/types.ts` | `CollabSession`, `CollabState`, Yjs annotation, and awareness types |
-| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `collabSession`, `ownerLeftSignal`, joiner state |
+| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `collabSession`, presence users, followed client, owner-left, joiner state |
 | `src/lib/collab/GoLiveButton.svelte` | UI: "Go Live" toggle, copy ID, join by ID |
 
 ### Data Model (Supabase)
@@ -1508,6 +1510,15 @@ Provider applies remote Yjs update -> `Y.Text.observe()` fires -> `yjsBinding` c
 Remote cursors are rendered Google Docs-style with colored carets and name labels. `awareness.ts` stores cursor anchors as encoded Yjs relative positions, not absolute CodeMirror positions, so cursors track concurrent edits correctly.
 
 Flow: local selection change -> throttled `createAwarenessExtension` update -> encode selection as RelativePosition bytes -> `awareness.setLocalStateField("cursor", ...)` -> provider broadcasts awareness update -> remote peer decodes against its `Y.Text` -> `RemoteCursorWidget` renders caret and label.
+
+`createAwarenessExtension` also accepts optional position mappers:
+
+- `toSharedPosition(localPos, state)` converts an editor-local cursor position to a shared document position before encoding it as a Yjs RelativePosition.
+- `fromSharedPosition(sharedPos, state)` converts a decoded shared document position back into the current editor's coordinate space before rendering a cursor widget.
+
+The main editor uses identity mapping. Nested revision editors install the same awareness extension with mapping functions that translate through the parent revision range: nested `0` maps to `rev.selection.main.from`, and remote shared positions outside `[rev.from, rev.to]` are hidden from that nested editor. This lets cursor presence work inside annotation editors without giving nested editors their own independent Yjs text binding.
+
+Presence UI is derived from the same awareness states. `awareness.ts` publishes deduped remote users to `collabPresenceUsers`, and `StatusBar.svelte` renders small colored avatar buttons while collab is active. Clicking an avatar toggles `followedClientId`; every awareness tick asks the active awareness extension to scroll the relevant `EditorView` toward that collaborator's decoded cursor. If the followed collaborator disappears from awareness, follow mode clears itself.
 
 ### Connection States
 
@@ -1667,12 +1678,16 @@ const selection = relativeToAbsolute(ydoc, ytext, startPos, endPos);
 
 Remote cursors use Yjs awareness protocol with position anchoring:
 
-1. `createAwarenessExtension` throttles local cursor changes.
+1. `createAwarenessExtension` observes local cursor changes.
 2. Cursor positions are encoded as RelativePositions.
-3. The local awareness state stores `{ anchor, head }`.
+3. The local awareness state stores `{ anchorPos, headPos }` as JSON-safe byte arrays.
 4. Peers receive the awareness update, decode positions against their own `Y.Text`, and render a `RemoteCursorWidget`.
 
 Position mapping: When doc changes arrive, cursor positions are re-resolved from RelativePosition, so they track concurrent edits correctly.
+
+Nested annotation editors use the same extension with `toSharedPosition`/`fromSharedPosition` hooks. Those hooks translate between nested-editor offsets and root document offsets through the parent revision's current `selection.main` range. A remote cursor outside the revision range returns `null` from `fromSharedPosition`, so it is not rendered in that nested editor.
+
+Follow mode is awareness-driven, not a separate transport. `collabPresenceUsers` stores the deduped remote awareness users shown in the status bar. Clicking a collaborator avatar sets `followedClientId`, and each awareness tick scrolls the active editor view toward that user's decoded cursor. If the target client disappears, the followed id is cleared.
 
 ### Unified Undo (D-83)
 
