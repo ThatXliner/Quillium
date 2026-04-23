@@ -42,6 +42,14 @@ import {
 } from "$lib/db";
 import type { EventPayload } from "$lib/db/events";
 import { buildEventPayload } from "$lib/editor/listeners";
+import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
+
+// Face preview state
+const FACE_STATES: FaceState[] = ["idle", "tracking", "thinking", "reviewing", "sleeping", "waking", "disabled"];
+const IDLE_VARIANTS: IdleVariant[] = ["blink", "double-blink", "look-around", "squint", "wide-eyed", "drowsy"];
+type IdlePreviewMode = IdleVariant | "auto";
+let previewFaceState = $state<FaceState>("idle");
+let previewIdleMode = $state<IdlePreviewMode>("auto");
 
 const {
     reloadEditor,
@@ -360,6 +368,58 @@ function handleKeydown(e: KeyboardEvent) {
                 </div>
             </div>
 
+        </div>
+
+        <!-- AutoAI Face Preview -->
+        <div class="px-5 py-3 border-t border-black/10 flex items-center gap-3">
+            <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Face</span>
+            <div class="w-[67px] h-[67px] rounded-full bg-[#faf8f5] border-2 border-[#d6b87a] flex items-center justify-center shrink-0">
+                <AutoAIFace
+                    faceState={previewFaceState}
+                    eyeOffsetX={0}
+                    eyeOffsetY={0}
+                    forceIdleVariant={
+                        previewFaceState === "idle" && previewIdleMode !== "auto" ? previewIdleMode : undefined
+                    }
+                />
+            </div>
+            <div class="flex flex-col gap-1.5">
+                <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-black/40 w-10">State</span>
+                    <div class="flex flex-wrap gap-1">
+                        {#each FACE_STATES as fs}
+                            <button
+                                onclick={() => previewFaceState = fs}
+                                class="text-[10px] px-1.5 py-0.5 rounded transition-colors
+                                    {previewFaceState === fs
+                                        ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                                        : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                            >{fs}</button>
+                        {/each}
+                    </div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-black/40 w-10">Idle</span>
+                    <div class="flex flex-wrap gap-1">
+                        <button
+                            onclick={() => { previewFaceState = "idle"; previewIdleMode = "auto"; }}
+                            class="text-[10px] px-1.5 py-0.5 rounded transition-colors
+                                {previewFaceState === 'idle' && previewIdleMode === 'auto'
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                    : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                        >auto</button>
+                        {#each IDLE_VARIANTS as iv}
+                            <button
+                                onclick={() => { previewFaceState = "idle"; previewIdleMode = iv; }}
+                                class="text-[10px] px-1.5 py-0.5 rounded transition-colors
+                                    {previewFaceState === 'idle' && previewIdleMode === iv
+                                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                        : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                            >{iv}</button>
+                        {/each}
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Simulate section -->

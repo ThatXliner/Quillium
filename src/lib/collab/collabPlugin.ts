@@ -1,0 +1,130 @@
+/**
+ * collabPlugin.ts -- ViewPlugin for collab push/pull loop.
+ *
+ * Sends local changes via sendableUpdates() on docChanged.
+ * Receives remote changes via Socket.io events.
+ * Applies remote changes via receiveUpdates().
+ *
+ * Per D-51: Static collab extension in stack, enabled/disabled via Compartment.
+ * Per D-50: Per-user undo via clientID in collab() config.
+ */
+import { ViewPlugin, type ViewUpdate, type EditorView } from "@codemirror/view";
+import { Compartment, ChangeSet } from "@codemirror/state";
+import {
+    collab,
+    sendableUpdates,
+    receiveUpdates,
+    getSyncedVersion,
+    type Update,
+} from "@codemirror/collab";
+import type { Socket } from "socket.io-client";
+import type { SerializedUpdate } from "./protocol";
+
+/** Compartment for hot-swapping collab extension (per D-51) */
+export const collabCompartment = new Compartment();
+
+/**
+ * Create the push/pull ViewPlugin for a specific Socket.io connection.
+ *
+ * The plugin:
+ * 1. On docChanged: sends local changes to relay via pushUpdates
+ * 2. On socket pullUpdates event: applies remote changes via receiveUpdates
+ * 3. Handles push rejection by pulling first, then retrying
+ */
+export function collabPushPull(socket: Socket) {
+    return ViewPlugin.fromClass(
+        class {
+            private pushing = false;
+            private destroyed = false;
+
+            constructor(private view: EditorView) {
+                // Set up Socket.io event handler for receiving broadcast updates from other clients
+                socket.on("updates", (data: { updates: SerializedUpdate[] }) => {
+                    this.handlePullResponse(data.updates);
+                });
+
+                // Initial pull to sync with server state
+                this.pullUpdates();
+            }
+
+            update(update: ViewUpdate) {
+                if (update.docChanged && !this.pushing) {
+                    this.push();
+                }
+            }
+
+            private push() {
+                const updates = sendableUpdates(this.view.state);
+                if (!updates.length || this.pushing) return;
+
+                this.pushing = true;
+                const version = getSyncedVersion(this.view.state);
+
+                socket.emit(
+                    "pushUpdates",
+                    {
+                        version,
+                        updates: updates.map((u) => ({
+                            changes: u.changes.toJSON(),
+                            clientID: u.clientID,
+                        })),
+                    },
+                    (response: { version?: number; error?: string }) => {
+                        this.pushing = false;
+                        if (response.error) {
+                            // Stale base version or other error -- pull first, then retry
+                            console.log("[collab] Push rejected:", response.error);
+                            this.pullUpdates();
+                        } else {
+                            // Check for more accumulated updates
+                            if (sendableUpdates(this.view.state).length) {
+                                setTimeout(() => this.push(), 100);
+                            }
+                        }
+                    },
+                );
+            }
+
+            private pullUpdates() {
+                const version = getSyncedVersion(this.view.state);
+                socket.emit(
+                    "pullUpdates",
+                    { version },
+                    (response: { updates: SerializedUpdate[] }) => {
+                        this.handlePullResponse(response.updates);
+                    },
+                );
+            }
+
+            private handlePullResponse(updates: SerializedUpdate[]) {
+                if (this.destroyed) return;
+
+                if (updates.length > 0) {
+                    const parsed: Update[] = updates.map((u) => ({
+                        changes: ChangeSet.fromJSON(u.changes),
+                        clientID: u.clientID,
+                    }));
+                    this.view.dispatch(receiveUpdates(this.view.state, parsed));
+                }
+
+                // After applying, check if we have pending local changes
+                if (sendableUpdates(this.view.state).length) {
+                    setTimeout(() => this.push(), 100);
+                }
+            }
+
+            destroy() {
+                this.destroyed = true;
+                socket.off("updates");
+            }
+        },
+    );
+}
+
+/**
+ * Create the collab extension stack for a session.
+ * Per D-50: clientID enables per-user undo (author-tagged changes).
+ */
+export function createCollabExtension(startVersion: number, clientID: string, socket: Socket) {
+    return [collab({ startVersion, clientID }), collabPushPull(socket)];
+}
