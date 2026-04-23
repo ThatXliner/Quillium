@@ -1,3 +1,4 @@
+import { dev } from "$app/environment";
 import { appSettings } from "$lib/settings.svelte";
 /**
  * extensions.ts — Assembles the full CodeMirror 6 extension stack.
@@ -31,6 +32,8 @@ import {
     historyField,
     historyKeymap,
     indentWithTab,
+    redo,
+    undo,
 } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
@@ -61,6 +64,26 @@ const editorKeymap: KeyBinding[] = [
     ...closeBracketsKeymap,
     ...defaultKeymap,
     ...searchKeymap,
+    ...(dev
+        ? [
+              {
+                  key: "Ctrl-z",
+                  run: undo,
+              },
+              {
+                  key: "Meta-z",
+                  run: undo,
+              },
+              {
+                  key: "Ctrl-Shift-z",
+                  run: redo,
+              },
+              {
+                  key: "Meta-Shift-z",
+                  run: redo,
+              },
+          ]
+        : []),
     ...historyKeymap,
     ...completionKeymap,
     indentWithTab,

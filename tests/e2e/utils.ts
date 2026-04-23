@@ -5,6 +5,14 @@ export async function installTauriMock(page: Page) {
         localStorage.setItem("quillium_tutorial_seen", "1");
         localStorage.setItem("quillium_beta_accepted", "true");
         localStorage.setItem("quillium_changelog_seen", "999.999");
+        localStorage.setItem(
+            "quillium-app-settings",
+            JSON.stringify({
+                showNestedEditor: true,
+                atomicRevisions: true,
+                autoVersionOnRevisionCreate: false,
+            }),
+        );
 
         let nextCallbackId = 1;
         const callbacks = new Map<number, (...args: unknown[]) => unknown>();

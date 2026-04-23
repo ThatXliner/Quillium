@@ -1,30 +1,37 @@
 [
   {
     "name": "@ai-sdk/anthropic",
-    "version": "3.0.69",
+    "version": "3.0.71",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/google",
-    "version": "3.0.62",
+    "version": "3.0.64",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/openai",
-    "version": "2.0.102",
+    "version": "2.0.103",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/svelte",
-    "version": "3.0.172",
+    "version": "3.0.179",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@codemirror/collab",
+    "version": "6.1.1",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/collab",
     "ecosystem": "js"
   },
   {
@@ -126,10 +133,31 @@
     "ecosystem": "js"
   },
   {
+    "name": "@supabase/supabase-js",
+    "version": "2.103.3",
+    "license": "MIT",
+    "url": "https://github.com/supabase/supabase-js",
+    "ecosystem": "js"
+  },
+  {
     "name": "@tauri-apps/api",
     "version": "2.10.1",
     "license": "Apache-2.0 OR MIT",
     "url": "https://github.com/tauri-apps/tauri",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@tauri-apps/plugin-dialog",
+    "version": "2.7.0",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
+    "ecosystem": "js"
+  },
+  {
+    "name": "@tauri-apps/plugin-fs",
+    "version": "2.5.0",
+    "license": "MIT OR Apache-2.0",
+    "url": "https://github.com/tauri-apps/plugins-workspace",
     "ecosystem": "js"
   },
   {
@@ -155,7 +183,7 @@
   },
   {
     "name": "ai",
-    "version": "5.0.172",
+    "version": "5.0.179",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
@@ -183,7 +211,7 @@
   },
   {
     "name": "dompurify",
-    "version": "3.3.3",
+    "version": "3.4.0",
     "license": "(MPL-2.0 OR Apache-2.0)",
     "url": "https://github.com/cure53/DOMPurify",
     "ecosystem": "js"
@@ -225,7 +253,7 @@
   },
   {
     "name": "posthog-js",
-    "version": "1.367.0",
+    "version": "1.369.3",
     "license": "Apache-2.0",
     "url": "https://github.com/PostHog/posthog-js",
     "ecosystem": "js"
@@ -287,6 +315,13 @@
     "ecosystem": "rust"
   },
   {
+    "name": "socket.io-client",
+    "version": "4.8.3",
+    "license": "MIT",
+    "url": "https://github.com/socketio/socket.io",
+    "ecosystem": "js"
+  },
+  {
     "name": "svelte-sonner",
     "version": "1.1.0",
     "license": "MIT",
@@ -334,6 +369,27 @@
     "license": "MIT/Apache-2.0",
     "url": "https://github.com/uuid-rs/uuid",
     "ecosystem": "rust"
+  },
+  {
+    "name": "y-protocols",
+    "version": "1.0.7",
+    "license": "MIT",
+    "url": "https://github.com/yjs/y-protocols",
+    "ecosystem": "js"
+  },
+  {
+    "name": "y-websocket",
+    "version": "3.0.0",
+    "license": "MIT",
+    "url": "https://github.com/yjs/y-websocket",
+    "ecosystem": "js"
+  },
+  {
+    "name": "yjs",
+    "version": "13.6.30",
+    "license": "MIT",
+    "url": "https://github.com/yjs/yjs",
+    "ecosystem": "js"
   },
   {
     "name": "zod",

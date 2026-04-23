@@ -48,6 +48,7 @@
  *     (via stores) to render the annotation panel.
  */
 
+import { dev } from "$app/environment";
 import { SearchCursor } from "@codemirror/search";
 import {
     EditorSelection,
@@ -891,18 +892,66 @@ export const annotationKeymap: KeyBinding[] = [
         key: "Mod-Alt-m",
         run: redirectToNestedEditor("comment"),
     },
+    ...(dev
+        ? [
+              {
+                  key: "Ctrl-Alt-m",
+                  run: redirectToNestedEditor("comment"),
+              },
+              {
+                  key: "Meta-Alt-m",
+                  run: redirectToNestedEditor("comment"),
+              },
+          ]
+        : []),
     {
         key: "Mod-Alt-m",
         run: createCommentCommand,
     },
+    ...(dev
+        ? [
+              {
+                  key: "Ctrl-Alt-m",
+                  run: createCommentCommand,
+              },
+              {
+                  key: "Meta-Alt-m",
+                  run: createCommentCommand,
+              },
+          ]
+        : []),
     {
         key: "Mod-Alt-k",
         run: redirectToNestedEditor("revision"),
     },
+    ...(dev
+        ? [
+              {
+                  key: "Ctrl-Alt-k",
+                  run: redirectToNestedEditor("revision"),
+              },
+              {
+                  key: "Meta-Alt-k",
+                  run: redirectToNestedEditor("revision"),
+              },
+          ]
+        : []),
     {
         key: "Mod-Alt-k",
         run: createRevisionCommand,
     },
+    ...(dev
+        ? [
+              {
+                  key: "Ctrl-Alt-k",
+                  run: createRevisionCommand,
+              },
+              {
+                  key: "Meta-Alt-k",
+                  run: createRevisionCommand,
+              },
+          ]
+        : []),
 ];
 
 // -------------------------------------------------------

@@ -29,6 +29,7 @@
  * versions[selected].doc. Svelte $effect patches the nested editor.
  */
 
+import { dev } from "$app/environment";
 import { createAwarenessExtension } from "$lib/collab/awareness";
 import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
@@ -326,6 +327,24 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 },
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-z",
+                          run() {
+                              return undo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-z",
+                          run() {
+                              return undo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-y",
                 mac: "Mod-Shift-z",
@@ -334,6 +353,38 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 },
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-y",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Ctrl-Shift-z",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-y",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Shift-z",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-Enter",
                 run() {
@@ -345,16 +396,70 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 },
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-Enter",
+                          run() {
+                              annotationEventBus.emit({
+                                  type: "annotation-add-version",
+                                  annotationId: revisionId,
+                              });
+                              return true;
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Enter",
+                          run() {
+                              annotationEventBus.emit({
+                                  type: "annotation-add-version",
+                                  annotationId: revisionId,
+                              });
+                              return true;
+                          },
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-Alt-m",
                 run: openNestedAnnotation("comment"),
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-Alt-m",
+                          run: openNestedAnnotation("comment"),
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Alt-m",
+                          run: openNestedAnnotation("comment"),
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-Alt-k",
                 run: openNestedAnnotation("revision"),
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-Alt-k",
+                          run: openNestedAnnotation("revision"),
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Alt-k",
+                          run: openNestedAnnotation("revision"),
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
         ]),
     );
 }

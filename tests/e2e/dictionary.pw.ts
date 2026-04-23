@@ -55,7 +55,7 @@ async function mockDictionaryApiNotFound(page: Page) {
 async function openDictionaryOn(q: QuilliumPage, word: string) {
     await q.typeInEditor(word);
     await q.selectAll();
-    await q.page.keyboard.press("ControlOrMeta+b");
+    await q.page.keyboard.press("Control+b");
 }
 
 /**
@@ -193,7 +193,7 @@ test.describe("dictionary popover", () => {
 
         await q.typeInEditor("two words");
         await q.selectAll();
-        await q.page.keyboard.press("ControlOrMeta+b");
+        await q.page.keyboard.press("Control+b");
 
         // Popover should not appear for multi-word selections
         await expectPopoverHidden(page);

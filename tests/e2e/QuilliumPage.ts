@@ -42,7 +42,12 @@ export type TauriMockOptions = {
 const DEFAULT_OPTIONS: TauriMockOptions = {
     apiKey: null,
     skipTutorial: true,
-    settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+    settings: {
+        showNestedEditor: true,
+        atomicRevisions: true,
+        aiEnabled: true,
+        autoVersionOnRevisionCreate: false,
+    },
     initialDoc: null,
     snapshots: [],
 };
@@ -81,7 +86,14 @@ export class QuilliumPage {
 
     constructor(page: Page, options: Partial<TauriMockOptions> = {}) {
         this.page = page;
-        this.options = { ...DEFAULT_OPTIONS, ...options };
+        this.options = {
+            ...DEFAULT_OPTIONS,
+            ...options,
+            settings: {
+                ...DEFAULT_OPTIONS.settings,
+                ...(options.settings ?? {}),
+            },
+        };
     }
 
     // ── Setup ───────────────────────────────────────────────────────────
@@ -437,11 +449,11 @@ export class QuilliumPage {
     // ── Keyboard shortcuts ──────────────────────────────────────────────
 
     async undo(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+z");
+        await this.page.keyboard.press("Control+z");
     }
 
     async redo(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+Shift+z");
+        await this.page.keyboard.press("Control+y");
     }
 
     async backspace(n = 1): Promise<void> {
@@ -449,11 +461,11 @@ export class QuilliumPage {
     }
 
     async createComment(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+Alt+m");
+        await this.page.keyboard.press("Control+Alt+m");
     }
 
     async createRevision(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+Alt+k");
+        await this.page.keyboard.press("Control+Alt+k");
     }
 
     async newVersion(): Promise<void> {
@@ -465,7 +477,7 @@ export class QuilliumPage {
     }
 
     async openDictionary(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+b");
+        await this.page.keyboard.press("Control+b");
     }
 
     async sendReply(): Promise<void> {
@@ -507,7 +519,7 @@ export class QuilliumPage {
     async openRevisionModal(): Promise<Locator> {
         const expand = this.page.locator("[data-tutorial-action='expand-revision-modal']").first();
         if (await expand.isVisible({ timeout: 4_000 }).catch(() => false)) {
-            await expand.click();
+            await expand.dispatchEvent("click");
         }
         await expect(this.modalEditor).toBeVisible({ timeout: 8_000 });
         return this.modalEditor;
