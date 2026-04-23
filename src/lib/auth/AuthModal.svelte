@@ -14,9 +14,10 @@ import { loginSchema, signUpSchema } from "./schemas";
 import { toast } from "svelte-sonner";
 import { X } from "lucide-svelte";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
+import { debugAuthWaitlistMode } from "$lib/debug/store.svelte";
 
 const { onclose }: { onclose: () => void } = $props();
-const signupsEnabled = import.meta.env.DEV;
+const signupsEnabled = $derived(import.meta.env.DEV && !$debugAuthWaitlistMode);
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let activeTab = $state<"login" | "signup">("login");

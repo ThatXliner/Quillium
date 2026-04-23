@@ -271,10 +271,15 @@ onMount(() => {
         debugMasMode = mas;
     }
 
+    function handleShowAuthModal() {
+        authModalOpen = true;
+    }
+
     window.addEventListener("quillium:restore-backup", handleRestoreBackup);
     window.addEventListener("quillium:manual-review", handleManualReviewEvent);
     window.addEventListener("quillium:show-changelog", forceShowChangelog);
     window.addEventListener("quillium:show-update-banner", handleShowUpdateBanner);
+    window.addEventListener("quillium:show-auth-modal", handleShowAuthModal);
 
     // Listen for Tauri menu events
     let destroyed = false;
@@ -314,6 +319,7 @@ onMount(() => {
         window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
         window.removeEventListener("quillium:show-changelog", forceShowChangelog);
         window.removeEventListener("quillium:show-update-banner", handleShowUpdateBanner);
+        window.removeEventListener("quillium:show-auth-modal", handleShowAuthModal);
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });

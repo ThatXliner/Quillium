@@ -10,3 +10,6 @@ import { writable } from "svelte/store";
 
 /** Whether the debug panel overlay is currently open. */
 export const debugPanelActive = writable(false);
+
+/** DEV only: make auth signup UI behave like production waitlist gating. */
+export const debugAuthWaitlistMode = writable(false);

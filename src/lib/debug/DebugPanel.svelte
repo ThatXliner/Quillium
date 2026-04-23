@@ -27,7 +27,7 @@ import {
     errorBanner,
 } from "$lib/stores";
 import { saveEmergencyBackup } from "$lib/errorGuard";
-import { debugPanelActive } from "$lib/debug/store.svelte";
+import { debugAuthWaitlistMode, debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -218,6 +218,11 @@ function triggerSuspiciousRemoval() {
     });
 }
 
+function triggerAuthModal() {
+    close();
+    window.dispatchEvent(new CustomEvent("quillium:show-auth-modal"));
+}
+
 function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") close();
 }
@@ -385,6 +390,21 @@ function handleKeydown(e: KeyboardEvent) {
                 disabled={pendingSimulation !== null}
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "update-mas" ? `Firing in ${countdownSeconds}s…` : "Update banner (MAS)"}</button>
+            <label
+                class="ml-auto flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                title="Make the auth modal behave like production waitlist gating"
+            >
+                <input
+                    type="checkbox"
+                    bind:checked={$debugAuthWaitlistMode}
+                    class="h-3.5 w-3.5 accent-blue-500"
+                />
+                Auth waitlist
+            </label>
+            <button
+                onclick={triggerAuthModal}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
+            >Auth modal</button>
         </div>
 
         <!-- Footer -->
