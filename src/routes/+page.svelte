@@ -25,6 +25,9 @@ import AiSidebar from "$lib/ai/AISidebar.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import AuthModal from "$lib/auth/AuthModal.svelte";
+import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
+import { initAuth } from "$lib/auth";
 import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
@@ -60,6 +63,7 @@ import LicensesModal from "$lib/ui/LicensesModal.svelte";
 import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
 
+let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
 let showChangelog = $state(false);
 let licensesOpen = $state(false);
@@ -220,6 +224,9 @@ async function installUpdate() {
 }
 
 onMount(() => {
+    // Initialize auth state
+    initAuth();
+
     showTutorialOnFirstVisit();
 
     // Check for updates silently in the background.
@@ -477,6 +484,16 @@ if (import.meta.env.DEV) {
     <WordCountOverlay />
 </BottomLeftStack>
 <Toaster position="bottom-right" />
+
+<!-- Top-right share entry point (auth lives inside the Share modal) -->
+<div class="fixed top-8 right-8 z-40 flex items-center gap-3">
+    <GoLiveButton onauthclick={() => (authModalOpen = true)} />
+</div>
+
+<!-- Auth modal -->
+{#if authModalOpen}
+    <AuthModal onclose={() => (authModalOpen = false)} />
+{/if}
 
 <!-- Modal stack — render all entries so parent editors stay alive when a
      child modal is pushed on top. Each modal manages its own dialog

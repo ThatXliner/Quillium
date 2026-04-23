@@ -185,23 +185,34 @@ export const _revisionCleanup = Annotation.define<boolean>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 // There is no "updateRevisionVersion" since we sniff that from document changes
-const _addVersionToRevision = StateEffect.define<{
+export const _addVersionToRevision = StateEffect.define<{
     annotationId: number;
     newVersion: VersionState;
     at?: number;
 }>();
-const _deleteVersionFromRevision = StateEffect.define<{
+export const _deleteVersionFromRevision = StateEffect.define<{
     annotationId: number;
     versionId: number;
 }>();
-const _updateActiveRevisionVersion = StateEffect.define<{
+export const _updateActiveRevisionVersion = StateEffect.define<{
     annotationId: number;
     to: number;
 }>();
-const _updateRevisionVersionState = StateEffect.define<{
+export const _updateRevisionVersionState = StateEffect.define<{
     annotationId: number;
     versionId: number;
     versionState: VersionState;
+}>();
+/**
+ * Collab-mode effect: updates ONLY versions[i].doc without triggering parent
+ * doc changes. Used by NestedEditorController when collab owns the subtree
+ * Y.Text — the nested editor's content is authoritative, and we just need to
+ * keep the parent's annotation state in sync for UI rendering.
+ */
+export const _updateRevisionVersionDoc = StateEffect.define<{
+    annotationId: number;
+    versionIndex: number;
+    doc: string;
 }>();
 export const _updateRevisionVersionLabel = StateEffect.define<{
     annotationId: number;
@@ -213,6 +224,7 @@ export function setActiveRevisionVersion(state: EditorState, annotationId: numbe
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
     }
+    const insert = versionText(original.versions[to]);
     return state.update({
         effects: [
             _updateActiveRevisionVersion.of({
@@ -224,7 +236,7 @@ export function setActiveRevisionVersion(state: EditorState, annotationId: numbe
         changes: state.changes({
             from: original.selection.main.from,
             to: original.selection.main.to,
-            insert: versionText(original.versions[to]),
+            insert,
         }),
     });
 }
@@ -614,8 +626,20 @@ export const annotationField = StateField.define<Annotations>({
         for (const e of tr.effects) {
             if (e.is(addAnnotation)) {
                 annotations[e.value.id] = e.value;
+                // Skip Phase 3 for revisions added via addAnnotation (e.g., from
+                // remote sync). The annotation already has correct versions[].doc
+                // from the source; pulling from the main doc would overwrite it
+                // with stale content. (#12-01 fix for version switch corruption)
+                if (isAnnotationOfType(e.value, "revision")) {
+                    revisionsWithExplicitEffect.add(e.value.id);
+                }
             } else if (e.is(_restoreAnnotation)) {
                 annotations[e.value.id] = e.value;
+                // Same logic for restore — the restored annotation has the correct
+                // version doc from the undo history.
+                if (isAnnotationOfType(e.value, "revision")) {
+                    revisionsWithExplicitEffect.add(e.value.id);
+                }
             } else if (e.is(removeAnnotation)) {
                 delete annotations[e.value.id];
             } else if (e.is(updateThread)) {
@@ -669,6 +693,23 @@ export const annotationField = StateField.define<Annotations>({
                     versions: newVersions,
                     selection,
                 };
+            } else if (e.is(_updateRevisionVersionDoc)) {
+                // Collab-mode: update ONLY the version's doc text without
+                // affecting parent document or selection. The nested editor's
+                // Y.Text is authoritative; this just keeps the annotation state
+                // in sync for UI rendering and persistence.
+                const annotation = annotations[e.value.annotationId];
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
+                revisionsWithExplicitEffect.add(e.value.annotationId);
+                const newVersions = annotation.versions.slice();
+                const existing = newVersions[e.value.versionIndex];
+                if (existing) {
+                    newVersions[e.value.versionIndex] = { ...existing, doc: e.value.doc };
+                    annotations[e.value.annotationId] = {
+                        ...annotation,
+                        versions: newVersions,
+                    };
+                }
             } else if (e.is(addSuggestion)) {
                 const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
                 for (const { from, to } of cursor) {

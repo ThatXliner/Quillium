@@ -39,7 +39,13 @@ export type AnnotationEvent =
     | { type: "annotation-focus-reply"; annotationId: number }
     | { type: "annotation-add-version"; annotationId: number }
     | { type: "annotation-enter-editor"; annotationId: number }
-    | { type: "revision-modal-flushed"; revisionId: number; sourceView: EditorView };
+    | { type: "revision-modal-flushed"; revisionId: number; sourceView: EditorView }
+    | {
+          type: "undo-target";
+          annotationId: number;
+          versionIndex?: number;
+          undoType: "undo" | "redo";
+      };
 
 type EventType = AnnotationEvent["type"];
 
@@ -47,11 +53,12 @@ type EventType = AnnotationEvent["type"];
 export type EventOfType<T extends EventType> = Extract<AnnotationEvent, { type: T }>;
 
 type Listener<T extends EventType> = (event: EventOfType<T>) => void;
+type AnyListener = (event: AnnotationEvent) => void;
 
 // ── Bus implementation ───────────────────────────────────────
 
 class AnnotationEventBus {
-    private listeners = new Map<EventType, Set<Listener<never>>>();
+    private listeners = new Map<EventType, Set<AnyListener>>();
 
     /**
      * Pending nested editor selections need out-of-band storage because
@@ -68,9 +75,9 @@ class AnnotationEventBus {
             set = new Set();
             this.listeners.set(type, set);
         }
-        const fn = listener as Listener<never>;
+        const fn: AnyListener = (event) => listener(event as EventOfType<T>);
         set.add(fn);
-        return () => set!.delete(fn);
+        return () => set.delete(fn);
     }
 
     /** Emit an event, delivering to all listeners of that type. */
@@ -84,7 +91,7 @@ class AnnotationEventBus {
         const set = this.listeners.get(event.type);
         if (!set) return;
         for (const listener of set) {
-            (listener as Listener<typeof event.type>)(event as never);
+            listener(event);
         }
     }
 

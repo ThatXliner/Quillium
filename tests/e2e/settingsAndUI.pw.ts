@@ -19,8 +19,8 @@ test.describe("settings modal", () => {
 
         const modal = await q.openSettings();
         await expect(modal.getByText("Settings")).toBeVisible();
-        await expect(modal.getByText("Document", { exact: true })).toBeVisible();
-        await expect(modal.getByText("Interface", { exact: true })).toBeVisible();
+        await expect(modal.getByRole("button", { name: "Basic" })).toBeVisible();
+        await expect(modal.getByRole("button", { name: "Advanced" })).toBeVisible();
     });
 
     test("closes when clicking outside or pressing escape", async ({ page }) => {

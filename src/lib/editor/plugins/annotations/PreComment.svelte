@@ -7,7 +7,7 @@
  * Props:
  *   - view: EditorView — the CodeMirror editor instance
  *   - annotationsData: Annotations — current annotation map
- *   - activeAnnotationData?: GenericAnnotation — the annotation
+ *   - activeAnnotationData?: GenericAnnotation | null — the annotation
  *     that is currently selected (should be the pending comment)
  *
  * Events emitted: none (dispatches CodeMirror effects directly)
@@ -36,7 +36,7 @@ const {
     view: EditorView;
     annotationsData: Annotations;
     pendingAnnotation?: GenericAnnotation;
-    activeAnnotationData?: GenericAnnotation;
+    activeAnnotationData?: GenericAnnotation | null;
 } = $props();
 
 let commentText = $state("");

@@ -1,0 +1,24 @@
+// Zellij layout for collab development
+// Usage: zellij --layout collab-dev.kdl
+
+layout {
+    pane split_direction="horizontal" {
+        pane split_direction="vertical" size="70%" {
+            pane {
+                name "Quillium 1 (Owner)"
+                command "bun"
+                args "run" "tauri" "dev"
+            }
+            pane {
+                name "Quillium 2 (Collaborator)"
+                command "bash"
+                args "-c" "QUILLIUM_DATA_DIR=/tmp/quillium-collab2 bun run tauri:dev2"
+            }
+        }
+        pane size="30%" {
+            name "Relay Server"
+            command "bash"
+            args "-c" "cd ../quillium-landing/relay && bun run dev"
+        }
+    }
+}

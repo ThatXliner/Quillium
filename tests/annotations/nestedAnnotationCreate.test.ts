@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { get } from "svelte/store";
+import { mount, unmount } from "svelte";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
@@ -71,20 +72,21 @@ describe.skip("nested annotation creation routing", () => {
         const revisionId = addRevision(view, 0, 5, "hello");
         const revision = view.state.field(annotationField)[revisionId];
         expect(isAnnotationOfType(revision, "revision")).toBe(true);
+        if (!isAnnotationOfType(revision, "revision")) return;
 
         const target = document.createElement("div");
         document.body.appendChild(target);
-        const comp = new Revision({
+        const comp = mount(Revision, {
             target,
             props: {
-                revision: revision!,
+                revision,
                 isActive: true,
                 view,
                 remove: () => {},
                 updateThread: () => {},
             },
         });
-        components.push({ destroy: () => comp.$destroy() });
+        components.push({ destroy: () => void unmount(comp) });
 
         publishNestedCommand(
             {
@@ -127,11 +129,11 @@ describe.skip("nested annotation creation routing", () => {
 
         const target = document.createElement("div");
         document.body.appendChild(target);
-        const modal = new RevisionModal({
+        const modal = mount(RevisionModal, {
             target,
             props: { revisionId, view, stackIndex: 0 },
         });
-        components.push({ destroy: () => modal.$destroy() });
+        components.push({ destroy: () => void unmount(modal) });
 
         publishNestedCommand(
             {
@@ -165,11 +167,11 @@ describe.skip("nested annotation creation routing", () => {
 
         const target = document.createElement("div");
         document.body.appendChild(target);
-        const modal = new RevisionModal({
+        const modal = mount(RevisionModal, {
             target,
             props: { revisionId, view, stackIndex: 0 },
         });
-        components.push({ destroy: () => modal.$destroy() });
+        components.push({ destroy: () => void unmount(modal) });
 
         publishNestedCommand(
             {

@@ -23,6 +23,9 @@ Quillium is built as a modern web application using SvelteKit, packaged as a cro
 The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 
 ```
+                                        ┌────────┐
+                                        │ Share  │  ← Top-right entry point
+                                        └────────┘
 ┌──────────────┬──────────────────────┬──────────────────┐
 │  AI Sidebar  │       Editor         │   Annotations    │
 │              │                      │                  │
@@ -30,7 +33,12 @@ The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
 │  Feedback    │  (816px fixed width) │  Revision cards  │
 │  Revise      │  Status bar          │  Suggestion cards│
 └──────────────┴──────────────────────┴──────────────────┘
+                        ┌─────┐
+                        │AutoAI│  ← Bottom-left bubble
+                        └─────┘
 ```
+
+The top-right entry point is `GoLiveButton`, which now renders the Share modal. Authentication is contextual inside that modal because the current reason to sign in is Quillium Omni sharing.
 
 Modal overlays (revision editors, diff views) are rendered on top via `modalStack` — a stack of `<RevisionModal>` and `<DiffModal>` instances managed by `src/lib/stores.ts`.
 
@@ -55,12 +63,36 @@ src/
 │   │   ├── provider.ts        # Provider-agnostic client setup
 │   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
 │   │   └── utils.ts           # Shared AI utilities
+│   ├── auth/
+│   │   ├── AuthButton.svelte    # Legacy contextual auth button (not mounted on main editor)
+│   │   ├── AuthModal.svelte     # Sign in modal; signup is dev-only, production routes to Omni waitlist
+│   │   ├── AvatarDropdown.svelte # Dropdown menu for logged-in user
+│   │   ├── NameEntryModal.svelte # Anonymous user display name prompt
+│   │   ├── auth.svelte.ts       # Reactive auth state store (Svelte 5 $state runes)
+│   │   ├── avatarUtils.ts       # initials() and avatarColor() helpers
+│   │   ├── schemas.ts           # Zod schemas for auth forms
+│   │   ├── supabase.ts          # Supabase client singleton
+│   │   └── index.ts             # Re-exports for public API
 │   ├── autoai/
 │   │   ├── AutoAIFace.svelte         # Animated face SVG component (purely presentational)
 │   │   ├── AutoAIWidget.svelte       # Bubble + expanded panel UI, face state machine
 │   │   ├── faceAnimation.svelte.ts   # Eye tracking + sleep/wake state (extracted from widget)
 │   │   ├── engine.ts            # Review orchestration, AI calls, annotation application
 │   │   └── settings.svelte.ts   # AutoAI settings store (reactive, persisted)
+│   ├── collab/
+│   │   ├── GoLiveButton.svelte    # Top-right Share button + Omni/Web Preview modal
+│   │   ├── annotationSchema.ts    # CM ↔ Yjs bidirectional converters for annotations
+│   │   ├── awareness.ts           # Yjs awareness protocol for cursor/presence sync
+│   │   ├── index.ts               # Public API: enableCollab, disableCollab, etc.
+│   │   ├── relativePosition.ts    # RelativePosition utilities for cursor anchoring
+│   │   ├── store.ts               # Svelte stores: collabState, ownerLeftSignal, reconnectAttempt, etc.
+│   │   ├── types.ts               # CollabSession, YjsAnnotationNode, awareness types
+│   │   ├── yjsAnnotations.ts      # Y.Map-based annotation sync ViewPlugin
+│   │   ├── yjsBinding.ts          # CodeMirror ↔ Y.Text binding (custom, not y-codemirror.next)
+│   │   ├── yjsProvider.ts         # Y.Doc + WebsocketProvider setup with JWT auth
+│   │   ├── yjsUndo.ts             # Unified undo stack via Y.UndoManager
+│   │   └── test-helpers/
+│   │       └── twoPeerHarness.ts  # Two-peer test harness for convergence tests
 │   ├── db/
 │   │   ├── index.ts           # Typed invoke() wrappers for all Rust DB commands
 │   │   ├── types.ts           # TypeScript mirrors of Rust structs (DocumentMeta, DraftMeta, etc.)
@@ -185,27 +217,25 @@ Quillium runs two parallel state systems that must be kept in sync:
 
 **2. Svelte stores** — reactive signals consumed by components. Do not update automatically when CodeMirror state changes. Must be manually pushed by `Editor.svelte`'s `updateListener`.
 
-```
-User types / dispatches transaction
-           │
-           ▼
-    CodeMirror processes transaction
-    ┌────────────────────────────┐
-    │  historyField  (undo log)  │
-    │  annotationField (our data)│
-    │  document (text)           │
-    └────────────┬───────────────┘
-                 │ updateListener fires (Editor.svelte)
-                 ▼
-    Manually push to Svelte stores:
-    ┌──────────────────────────────┐
-    │  $annotations                │ ← read by Annotations.svelte
-    │  $activeAnnotation           │ ← read by Comment/Revision cards
-    │  $documentContent            │ ← read by AI sidebar
-    │  $selectedText               │ ← read by AI sidebar
-    │  $saveStatus                 │ ← read by StatusBar
-    │  $currentDocumentTitle       │ ← read by StatusBar, library
-    └──────────────────────────────┘
+```mermaid
+flowchart TD
+    Input["User edit or dispatched transaction"]
+
+    subgraph CMState["CodeMirror state"]
+        CM["EditorView state<br/>document + historyField + annotationField"]
+    end
+
+    Listener["Editor.svelte updateListener fires"]
+    Mirrors["Svelte mirror stores<br/>$annotations, $activeAnnotation,<br/>$documentContent, $selectedText,<br/>$saveStatus, $currentDocumentTitle"]
+
+    subgraph CollabStores["Collab stores<br/>separate from updateListener"]
+        CollabState["$collabState"]
+        OwnerLeft["$ownerLeftSignal"]
+        Reconnect["$reconnectAttempt"]
+    end
+
+    Input --> CM --> Listener --> Mirrors
+    CollabStores -. "updated by collab provider/UI" .-> Mirrors
 ```
 
 ### Why `$editorView` doesn't trigger reactivity
@@ -433,6 +463,8 @@ Both inline (`Revision.svelte`) and modal (`RevisionModal.svelte`) editors deleg
 
 Replacing the whole buffer is the tradeoff we accepted for this reactive path: the cursor/selection and scroll position do not survive the rewrite, so the nested editor appears to jump back to the top. There is no dedicated cursor-persistence mechanism yet.
 
+When collab is active, `createNestedEditorState` also installs `createAwarenessExtension` with position mappers over the parent revision range. The nested editor still has no Yjs text binding and still syncs edits through `translateAndDispatch`; awareness only maps cursor coordinates so collaborators can see each other inside inline and modal annotation editors. Nested awareness uses `broadcastInitialCursor: false` and `clearCursorOnDestroy: false` so mounting a background nested editor does not steal or clear the user's shared cursor. It broadcasts only once that nested editor has focus.
+
 ### Inline editor
 
 `Revision.svelte` creates a `NestedEditorController` with `flushBehavior: "no-flush"` (the parent doc is the source of truth via Phase 3). Svelte `$effect` blocks watch `activeVersion?.doc` and delegate to `controller.syncFromParent()`. Version switches and annotation blob changes trigger destroy + recreate via the controller.
@@ -452,13 +484,13 @@ On destroy, the controller flushes nested editor state into the parent revision�
 
 The modal editor's lifecycle is governed by a finite state machine rather than ad-hoc `$effect` chains. All transitions go through a single `send(event)` function.
 
-```
-         DIALOG_BOUND           TICK_RESOLVED
-unmounted ──────────► mounting ──────────────► ready
-                                                │ ▲
-                          REBUILD_REQUESTED /   │ │  TICK_RESOLVED
-                          VERSION_SWITCHED      ▼ │
-                                              rebuilding
+```mermaid
+stateDiagram-v2
+    [*] --> unmounted
+    unmounted --> mounting: DIALOG_BOUND
+    mounting --> ready: TICK_RESOLVED
+    ready --> rebuilding: REBUILD_REQUESTED / VERSION_SWITCHED
+    rebuilding --> ready: TICK_RESOLVED
 ```
 
 | State | Description |
@@ -1265,6 +1297,459 @@ A Discord-style "What's New" modal shown on startup when the user upgrades to a 
 **Adding a changelog entry:** Add a `"major.minor"` key to `src/lib/changelog.json` with `date` (display string like `"April 2026"`) and `content` (markdown string). The modal renders the markdown via `renderMarkdown()`.
 
 **PostHog:** A `changelog_viewed` event with the version is captured on dismiss.
+
+---
+
+## Authentication
+
+Quillium uses Supabase Auth for user identity, enabling real-time collaboration features. Authentication is optional — the app works fully offline without an account.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/auth/supabase.ts` | Supabase client singleton with localStorage session persistence |
+| `src/lib/auth/auth.svelte.ts` | Reactive auth state store using Svelte 5 `$state` runes |
+| `src/lib/auth/AuthButton.svelte` | Legacy button component: "Sign in" when logged out, avatar when logged in; not mounted on the main editor |
+| `src/lib/auth/AuthModal.svelte` | Sign in modal; email/password signup is available only in dev builds and production signup routes to the Omni waitlist |
+| `src/lib/auth/AvatarDropdown.svelte` | Dropdown menu with user info and logout |
+| `src/lib/auth/NameEntryModal.svelte` | Display name prompt for anonymous users |
+| `src/lib/auth/avatarUtils.ts` | `initials()` and `avatarColor()` for avatar rendering |
+
+### Auth Flows
+
+**Email/password sign in:**
+```
+User opens Share → clicks "Sign in" → AuthModal opens → User fills email/password
+→ signIn(email, password) → Session stored in localStorage
+```
+
+**Signup gating:**
+```
+Dev build → AuthModal exposes the signup tab for local/testing account creation.
+Production build → signup entry points open the Omni waitlist URL instead of creating an account.
+```
+
+**Anonymous auth (for collaborators):**
+```
+User clicks "Join" on a shared document → NameEntryModal prompts for display name
+→ signInAnonymously(displayName) → Supabase creates anonymous user with is_anonymous: true
+→ Session stored in localStorage → Can join collab sessions without full account
+```
+
+### Session Persistence
+
+Sessions are stored in localStorage (not SQLite) because:
+1. Auth state must be available before Tauri backend loads
+2. Supabase SDK expects synchronous storage access
+3. Per-device sessions align with desktop app model
+
+The `initAuth()` function is called once at app startup from `+page.svelte`. It checks for an existing session and subscribes to auth state changes.
+
+### Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY` | Supabase anon key for client-side auth |
+
+If these are not configured, `supabaseConfigured` is `false` and auth features are disabled. Collaboration sharing is also hidden when the relay is not configured.
+
+---
+
+## Real-time Collaboration (Quillium Omni)
+
+Quillium Omni enables Live Room collaboration between multiple Quillium instances. The local editor remains CodeMirror, but live document state is mirrored through a Yjs CRDT: main text lives in a shared `Y.Text`, annotations live in a recursive `Y.Map`, cursors use Yjs awareness, and transport is `y-websocket` with Supabase JWT auth.
+
+The current product mode is intentionally owner-led: the owner's local SQLite draft is the source of truth when a room starts, joiners are ephemeral participants, and the room ends when the owner leaves. Persistent shared-document ownership, share links, and permissions are deferred.
+
+### Architecture Overview
+
+```mermaid
+flowchart LR
+    Owner["Owner<br/>CodeMirror EditorView"]
+    Joiner["Joiner<br/>CodeMirror EditorView"]
+    OwnerExtensions["Owner collabCompartment<br/>binding + annotations + awareness<br/>keeps existing CM history"]
+    JoinerExtensions["Joiner collabCompartment<br/>binding + annotations + awareness + Y.UndoManager<br/>local persistence disabled"]
+    OwnerDoc["Owner Y.Doc<br/>Y.Text document<br/>Y.Map annotations"]
+    JoinerDoc["Joiner Y.Doc<br/>Y.Text document<br/>Y.Map annotations"]
+    Relay["Relay<br/>../quillium-landing/relay<br/>native ws + y-protocols<br/>room = document UUID"]
+    Supabase["Supabase<br/>JWT auth + sync_documents<br/>Yjs persistence tables"]
+
+    Owner --> OwnerExtensions --> OwnerDoc
+    Joiner --> JoinerExtensions --> JoinerDoc
+    OwnerDoc <-->|"Yjs websocket protocol"| Relay
+    JoinerDoc <-->|"Yjs websocket protocol"| Relay
+    Relay --> Supabase
+```
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/collab/index.ts` | Public API: `enableCollab()`, `disableCollab()`, `registerDocumentForCollab()` |
+| `src/lib/collab/yjsProvider.ts` | Creates/destroys `Y.Doc` and `WebsocketProvider`, passes JWT auth, tracks reconnect state |
+| `src/lib/collab/yjsBinding.ts` | Bidirectional `Y.Text` to CodeMirror document sync |
+| `src/lib/collab/yjsAnnotations.ts` | Bidirectional recursive `Y.Map` to `annotationField` sync |
+| `src/lib/collab/annotationSchema.ts` | Converts CodeMirror annotations to/from recursive Yjs nodes |
+| `src/lib/collab/relativePosition.ts` | Encodes annotation and cursor anchors as Yjs relative positions |
+| `src/lib/collab/awareness.ts` | Remote cursor rendering, mapped nested-editor cursor presence, and follow-mode scrolling through Yjs awareness |
+| `src/lib/collab/yjsUndo.ts` | Y.UndoManager integration for joiner undo and nested subtree scope |
+| `src/lib/collab/types.ts` | `CollabSession`, `CollabState`, Yjs annotation, and awareness types |
+| `src/lib/collab/store.ts` | Svelte stores: `collabState`, `collabSession`, presence users, followed client, owner-left, joiner state, reconnect attempt |
+| `src/lib/collab/GoLiveButton.svelte` | Top-right Share button and modal: Omni live room controls, join-by-ID, dev/prod auth entry points, disabled Shared Document and Web Preview teasers |
+
+### Data Model (Supabase)
+
+| Table | Purpose |
+|---|---|
+| `users` | User profiles (populated by database trigger on auth.users insert) |
+| `sync_documents` | Document registry: `id`, `owner_id`, `title` |
+| `yjs_documents` | Full encoded Yjs document snapshots (`state_update`, `state_vector`) |
+| `yjs_updates` | Incremental encoded Yjs updates between snapshots |
+| `collab_updates` | Legacy OT table from earlier `@codemirror/collab` planning, not used by current Yjs runtime |
+| `collab_snapshots` | Legacy OT snapshot table, not used by current Yjs runtime |
+| `shares` | Access grants with tokens (v2, not yet implemented in the app UI) |
+
+Runtime collaboration uses the `sync_documents` row to register the room and authorize relay participation. The relay stores live Yjs state in `yjs_documents` and `yjs_updates` for durability, but Live Room startup still treats the owner's local SQLite draft as authoritative: when the owner connects, the app replaces relay text with the local document.
+
+### Relay Responsibilities
+
+The relay lives outside this app repo at `../quillium-landing/relay`.
+
+| Relay file | Responsibility |
+|---|---|
+| `src/server.ts` | Handles HTTP `/health`, validates WebSocket upgrades, creates rooms, wires persistence |
+| `src/auth/middleware.ts` | Verifies Supabase JWTs and checks `sync_documents.owner_id` |
+| `src/yjs/rooms.ts` | Manages in-memory `Y.Doc` rooms, loads/persists state, clears rooms after owner disconnect |
+| `src/yjs/sync.ts` | Implements Yjs sync and awareness protocol messages over native `ws` |
+| `src/persistence/yjsUpdates.ts` | Persists `Y.encodeStateAsUpdate()` snapshots and incremental updates |
+
+The client uses `y-websocket`'s `WebsocketProvider`, while the relay implements the compatible protocol directly with `ws`, `y-protocols/sync`, and `y-protocols/awareness`.
+
+### Collab Extension Integration
+
+The collab system uses CodeMirror's Compartment pattern for hot-swapping. `src/lib/editor/extensions.ts` mounts `collabCompartment.of([])` in the base extension stack; `enableCollab()` replaces it with Yjs-backed extensions after the provider syncs.
+
+```typescript
+// extensions.ts - initially empty
+collabCompartment.of([])
+
+// enableCollab() - after createYjsProvider() syncs
+const binding = createYjsBinding(ytext);
+const { extension: undoExt, undoManager } = createYjsUndoExtension(ytext, ymap);
+const awarenessExt = createAwarenessExtension(awareness, ytext, displayName, cursorColor);
+const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap);
+
+view.dispatch({
+    effects: [
+        collabCompartment.reconfigure(
+            asOwner
+                ? [binding, awarenessExt, annotationSync]
+                : [binding, undoExt, awarenessExt, annotationSync],
+        ),
+        ...(asOwner ? [] : [historyCompartment.reconfigure([])]),
+    ],
+});
+
+// disableCollab() - back to empty, restore standard CM history
+view.dispatch({
+    effects: [
+        collabCompartment.reconfigure([]),
+        historyCompartment.reconfigure(history({ newGroupDelay: 250 })),
+    ],
+});
+```
+
+### Owner vs Joiner Flow
+
+**Owner goes live:**
+
+1. User opens Share → Omni and clicks `Start live room`.
+2. `GoLiveButton.svelte` creates a named snapshot: `"Before going live (auto)"`.
+3. `registerDocumentForCollab(draftId, userId, title)` upserts `sync_documents`.
+4. `createYjsProvider(draftId)` opens `WebsocketProvider` with the Supabase JWT.
+5. After provider sync, the owner replaces relay `Y.Text` with the local CodeMirror document.
+6. `enableCollab()` installs Yjs binding, awareness, and annotation sync.
+7. UI sets `isLive = true` and shows `"You're live!"`.
+
+**Joiner joins by ID:**
+
+1. User opens Share → Omni and pastes a document UUID; `joinById()` validates the format.
+2. The app captures prior draft ID and editor state in `joinerPriorView`.
+3. `currentDraftId = null` and `isCollabJoiner = true`, so persistence listeners skip live edits.
+4. `createYjsProvider(docId)` opens `WebsocketProvider` with the Supabase JWT.
+5. After provider sync, the joiner replaces local editor contents with relay `Y.Text`.
+6. Local annotations are cleared, then Yjs annotation sync projects shared annotations into CodeMirror.
+7. `enableCollab()` installs Yjs binding, `Y.UndoManager`, awareness, and annotation sync.
+8. UI sets `isLive = true` and shows `"Joined shared document"`.
+
+**Joiner leaves or owner kicks/disconnects:**
+
+1. `disableCollab(view)` calls `disconnectYjsProvider()`, destroying the provider and `Y.Doc`.
+2. `collabCompartment` is reconfigured back to `[]`.
+3. `historyCompartment` restores standard CodeMirror history.
+4. Joiners restore the captured editor snapshot and navigate back to the prior draft/library view.
+
+### Sync Loop
+
+**Local text edit:**
+
+CodeMirror transaction -> `yjsBinding` update hook -> skip Yjs-originated transactions -> write `Y.Text` inside a `"local"` transaction -> provider broadcasts the Yjs update.
+
+**Remote text edit:**
+
+Provider applies remote Yjs update -> `Y.Text.observe()` fires -> `yjsBinding` converts the delta to CodeMirror changes -> dispatch is marked with `yjsAnnotation` to prevent feedback.
+
+**Local annotation change:**
+
+`annotationField` effect -> `yjsAnnotations` update hook -> diff CodeMirror annotations against `Y.Map` -> write add/remove/thread/version/position changes to Yjs with origin `"local"`.
+
+**Remote annotation change:**
+
+`Y.Map.observeDeep()` -> `yjsAnnotations` observer -> skip `"local"` origin -> project recursive Yjs annotation nodes back to `annotationField` -> dispatch CodeMirror effects marked as Yjs-originated.
+
+### Remote Cursors
+
+Remote cursors are rendered Google Docs-style with colored carets and name labels. `awareness.ts` stores cursor anchors as encoded Yjs relative positions, not absolute CodeMirror positions, so cursors track concurrent edits correctly.
+
+Flow: local selection change -> throttled `createAwarenessExtension` update -> encode selection as RelativePosition bytes -> `awareness.setLocalStateField("cursor", ...)` -> provider broadcasts awareness update -> remote peer decodes against its `Y.Text` -> `RemoteCursorWidget` renders caret and label.
+
+`createAwarenessExtension` also accepts optional position mappers:
+
+- `toSharedPosition(localPos, state)` converts an editor-local cursor position to a shared document position before encoding it as a Yjs RelativePosition.
+- `fromSharedPosition(sharedPos, state)` converts a decoded shared document position back into the current editor's coordinate space before rendering a cursor widget.
+
+The main editor uses identity mapping. Nested revision editors install the same awareness extension with mapping functions that translate through the parent revision range: nested `0` maps to `rev.selection.main.from`, and remote shared positions outside `[rev.from, rev.to]` are hidden from that nested editor. This lets cursor presence work inside annotation editors without giving nested editors their own independent Yjs text binding.
+
+Presence UI is derived from the same awareness states. `awareness.ts` publishes deduped remote users to `collabPresenceUsers`, and `StatusBar.svelte` renders small colored avatar buttons while collab is active. Clicking an avatar toggles `followedClientId`; every awareness tick asks the active awareness extension to scroll the relevant `EditorView` toward that collaborator's decoded cursor. If the followed collaborator disappears from awareness, follow mode clears itself.
+
+### Connection States
+
+| State | Meaning |
+|---|---|
+| `disconnected` | Not connected to relay |
+| `connecting` | WebsocketProvider handshake/sync in progress |
+| `connected` | Active session, synced |
+| `syncing` | Reserved for pending-update UI |
+| `reconnecting` | Lost connection, auto-reconnect in progress |
+| `error` | Connection failed after max retries |
+
+`yjsProvider.ts` updates `collabState` from provider `status`, `sync`, and `connection-close` events. `GoLiveButton.svelte` shows toasts for reconnect/reconnect-failed transitions and cleans up the provider when initial connect or retry exhaustion fails. `StatusBar.svelte` shows the current connection indicator:
+- Green dot + "Synced" when `connected`
+- Yellow dot + "Connecting..." when `connecting`
+- Yellow dot + "Retrying N/5" when `reconnecting`
+- Red dot + "Disconnected" when `error`
+
+After five reconnect attempts, the provider enters `error`, disconnects, and the UI returns to the normal non-collab status. The user must start a new live session.
+
+### Owner Disconnect Handling
+
+Live Room mode ends when the owner leaves. The relay signals owner disconnect through the websocket close reason, `enableCollab()` calls `handleOwnerLeft()`, and `GoLiveButton.svelte` reacts to `ownerLeftSignal`:
+
+Flow: provider `connection-close` reason is `"Owner left"` -> `handleOwnerLeft()` -> increment `ownerLeftSignal` -> `disconnectYjsProvider()` -> `GoLiveButton` effect calls `disableCollab(view)` -> toast `"The owner ended the session"`.
+
+### Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `PUBLIC_RELAY_URL` | WebSocket relay server URL |
+| `PUBLIC_SUPABASE_URL` | Supabase project URL (for sync_documents table) |
+| `PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY` | Supabase anon key |
+
+If `PUBLIC_RELAY_URL` is not configured, `relayConfigured` is `false` and the GoLiveButton is hidden.
+
+### Known Limitations
+
+- **Live Room mode only** — session ends when owner disconnects. Shared Document mode (server as source of truth) is deferred to v2.
+- **Shared Document not implemented** — the Share modal exposes it as an "In the making" section: a shared draft on Quillium servers, separate from temporary Live Rooms.
+- **Web Preview not implemented** — the Share modal exposes it as a disabled future feature, separate from Quillium Omni.
+- **No local persistence for joiners** — joiners are restored to their prior local draft/library view after leaving the room.
+- **No offline queue** — if reconnect attempts are exhausted, the session enters `error` and must be restarted.
+- **No share links or permissions** — joiners must manually paste document UUID. Share links and permissions are deferred to v2.
+
+---
+
+## Yjs Sync Layer (Phase 8)
+
+The current collaboration layer uses Yjs CRDTs for text, annotations, and cursors instead of the earlier planned `@codemirror/collab` OT protocol. This gives the editor conflict-free merging primitives, though Quillium does not yet expose an offline edit queue when relay reconnection fails.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    CM["CodeMirror document"]
+    AF["annotationField"]
+    CursorUI["Remote cursor UI"]
+
+    subgraph YDoc["Y.Doc"]
+        YText["Y.Text<br/>document"]
+        YMap["Y.Map<br/>annotations"]
+        Awareness["Awareness<br/>cursor + user"]
+        Undo["Y.UndoManager<br/>local undo scope"]
+    end
+
+    Relay["native ws relay<br/>../quillium-landing/relay"]
+
+    CM <-->|"yjsBinding.ts"| YText
+    AF <-->|"yjsAnnotations.ts"| YMap
+    CursorUI <-->|"awareness.ts"| Awareness
+    Undo -. "tracks" .-> YText
+    Undo -. "tracks" .-> YMap
+    YDoc <-->|"WebsocketProvider + JWT"| Relay
+```
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `yjsProvider.ts` | Creates Y.Doc, Y.Text, Y.Map, WebsocketProvider with JWT auth |
+| `yjsBinding.ts` | Bidirectional Y.Text ↔ CodeMirror sync ViewPlugin |
+| `yjsAnnotations.ts` | Bidirectional Y.Map ↔ annotationField sync ViewPlugin |
+| `annotationSchema.ts` | Converters: `codeMirrorToYjsAnnotation()`, `yjsAnnotationToCodeMirror()` |
+| `relativePosition.ts` | `absoluteToRelative()`, `relativeToAbsolute()` for position anchoring |
+| `awareness.ts` | Remote cursor rendering via Yjs awareness protocol |
+| `yjsUndo.ts` | Unified undo stack via Y.UndoManager (text + annotations) |
+| `types.ts` | `YjsAnnotationNode`, `CollabSession`, awareness state types |
+
+### YjsAnnotationNode Shape
+
+Annotations are stored as recursive Y.Map structures:
+
+```typescript
+type YjsAnnotationNode = Y.Map<unknown>;
+
+// Runtime keys shared by all annotation nodes:
+{
+    id: string;
+    _type: "comment" | "suggestion" | "revision";
+    startPos: Uint8Array; // encoded RelativePosition
+    endPos: Uint8Array;   // encoded RelativePosition
+    thread: Y.Array<MessageObject>;
+    annotations: Y.Map<YjsAnnotationNode>; // nested annotations
+}
+
+// Suggestion-only keys:
+{
+    replacements: Y.Array<string>;
+    author: string | null;
+}
+
+// Revision-only keys:
+{
+    versions: Y.Map<string, Y.Map<unknown>>;
+    // versionNode keys: { text: Y.Text, label?: string, annotations: Y.Map<YjsAnnotationNode> }
+    activeVersionIndex: number;
+}
+```
+
+### Sync Flow
+
+**Y.Text to CodeMirror (remote edits):**
+1. `WebsocketProvider` receives and applies a remote Yjs update.
+2. `Y.Text.observe()` fires.
+3. `yjsBinding` ignores local-origin changes, converts the Yjs delta to CodeMirror changes, and dispatches with `yjsAnnotation.of(true)` to prevent feedback.
+
+**CodeMirror to Y.Text (local edits):**
+1. A user edit reaches the `yjsBinding` ViewPlugin.
+2. Transactions already marked with `yjsAnnotation` are ignored.
+3. Local text changes are written to `Y.Text` inside `ydoc.transact(..., "local")`.
+4. The `"local"` origin lets `Y.UndoManager` track the edit and prevents observer re-entry.
+
+**Y.Map to annotationField (remote annotations):**
+1. `Y.Map.observeDeep()` fires.
+2. `yjsAnnotations` ignores local-origin changes.
+3. Shallow key changes rebuild via `replaceAllAnnotations`; thread appends use `updateThread`; version changes rebuild the projected annotation.
+
+**annotationField to Y.Map (local annotations):**
+1. User action dispatches an annotation effect such as `addAnnotation`.
+2. `yjsAnnotations.update()` intercepts the change.
+3. `codeMirrorToYjsAnnotation()` builds the recursive Yjs node.
+4. The node is written to `Y.Map` inside a `"local"` Yjs transaction.
+
+### RelativePosition Anchoring
+
+Annotation positions use Yjs RelativePosition instead of absolute indices. This survives concurrent edits:
+
+```typescript
+// Save: absolute CM selection → encoded RelativePosition
+const { startPos, endPos } = absoluteToRelative(ytext, selection);
+// startPos, endPos are Uint8Array
+
+// Load: encoded RelativePosition → absolute CM selection
+const selection = relativeToAbsolute(ydoc, ytext, startPos, endPos);
+// Returns null if anchored text was deleted
+```
+
+### Awareness (Remote Cursors)
+
+Remote cursors use Yjs awareness protocol with position anchoring:
+
+1. `createAwarenessExtension` observes local cursor changes.
+2. Cursor positions are encoded as RelativePositions.
+3. The local awareness state stores `{ anchorPos, headPos }` as JSON-safe byte arrays.
+4. Peers receive the awareness update, decode positions against their own `Y.Text`, and render a `RemoteCursorWidget`.
+
+Position mapping: When doc changes arrive, cursor positions are re-resolved from RelativePosition, so they track concurrent edits correctly.
+
+Nested annotation editors use the same extension with `toSharedPosition`/`fromSharedPosition` hooks. Those hooks translate between nested-editor offsets and root document offsets through the parent revision's current `selection.main` range. A remote cursor outside the revision range returns `null` from `fromSharedPosition`, so it is not rendered in that nested editor.
+
+Follow mode is awareness-driven, not a separate transport. `collabPresenceUsers` stores the deduped remote awareness users shown in the status bar. Clicking a collaborator avatar sets `followedClientId`, and each awareness tick scrolls the active editor view toward that user's decoded cursor. If the target client disappears, the followed id is cleared.
+
+### Unified Undo (D-83)
+
+Y.UndoManager tracks both Y.Text and Y.Map changes in a single stack:
+
+```typescript
+const undoManager = new Y.UndoManager([ytext, ymap], {
+    trackedOrigins: new Set(["local"]), // Only undo local changes
+    captureTimeout: 500, // Merge rapid edits
+});
+```
+
+- `Mod-z` → `undoManager.undo()` (undoes text + annotation changes together)
+- `Mod-Shift-z` / `Mod-y` → `undoManager.redo()`
+- `breakUndoCapture()` forces a new undo step (used at modal boundaries)
+- `addSubtreeToUndoScope()` registers nested editor Y.Text with the stack (Phase 8.5c)
+
+### ID Mapping
+
+CodeMirror uses numeric annotation IDs; Yjs uses string IDs. `AnnotationIdMap` maintains bidirectional mapping:
+
+```typescript
+class AnnotationIdMap {
+    getOrCreateCmId(yjsId: string): number  // Auto-allocates CM ID
+    getOrCreateYjsId(cmId: number, clientId: string): string
+    getYjsId(cmId: number): string | undefined
+    getCmId(yjsId: string): number | undefined
+    register(yjsId: string, cmId: number): void
+    remove(yjsId: string): void
+}
+```
+
+### Test Harness
+
+`test-helpers/twoPeerHarness.ts` provides a two-peer test harness:
+
+```typescript
+const peerA = makePeer("A", "initial text");
+const peerB = makePeer("B", "");
+
+const disconnect = connect(peerA, peerB);
+// Peers now sync bidirectionally
+
+peerA.view.dispatch({ changes: { from: 0, insert: "Hello " } });
+// peerB.view.state.doc.toString() === "Hello initial text"
+
+disconnect();
+teardown(peerA);
+teardown(peerB);
+```
+
+Key patterns:
+- Origin-based filtering: updates marked "remote" skip local undo logic
+- Bidirectional state sync on connect
+- Explicit teardown prevents memory leaks
 
 ---
 

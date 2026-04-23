@@ -47,7 +47,7 @@ test.describe("rapid ctrl+z spam resilience", () => {
 
         // Select all and add a comment annotation
         await page.keyboard.press("ControlOrMeta+a");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
 
         // Type some more after the comment
         await editor.click();
@@ -82,7 +82,7 @@ test.describe("rapid ctrl+z spam resilience", () => {
         // Create text with a comment
         await page.keyboard.type("Annotated text here");
         await page.keyboard.press("ControlOrMeta+a");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
 
         // Delete all the annotated text
         await editor.click();
@@ -122,7 +122,7 @@ test.describe("rapid ctrl+z spam resilience", () => {
 
         await page.keyboard.type("Hello world!");
         await page.keyboard.press("ControlOrMeta+a");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
         await editor.click();
         await page.keyboard.press("End");
         await page.keyboard.type(" Extra text.");
