@@ -125,7 +125,7 @@ export function isAnonymous(): boolean {
  * Get display name from user metadata.
  */
 export function getDisplayName(): string | null {
-    return user?.user_metadata?.display_name ?? null;
+    return user?.user_metadata?.display_name ?? user?.user_metadata?.full_name ?? null;
 }
 
 /**
@@ -133,4 +133,22 @@ export function getDisplayName(): string | null {
  */
 export function getUserEmail(): string | null {
     return user?.email ?? null;
+}
+
+/**
+ * Get the best available human-readable name for the current user.
+ * Falls back to email or a generic label when auth/profile metadata is missing.
+ */
+export function getCurrentUserName(): string {
+    const displayName = getDisplayName()?.trim();
+    if (displayName) return displayName;
+
+    const email = getUserEmail()?.trim();
+    if (email) {
+        const localPart = email.split("@")[0]?.trim();
+        if (localPart) return localPart;
+        return email;
+    }
+
+    return "User";
 }

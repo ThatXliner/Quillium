@@ -26,6 +26,7 @@ import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
 import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
+import AuthButton from "$lib/auth/AuthButton.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
 import { initAuth } from "$lib/auth";
 import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
@@ -491,8 +492,9 @@ if (import.meta.env.DEV) {
 </BottomLeftStack>
 <Toaster position="bottom-right" />
 
-<!-- Top-right share entry point (auth lives inside the Share modal) -->
+<!-- Top-right collab + account entry points -->
 <div class="fixed top-8 right-8 z-40 flex items-center gap-3">
+    <AuthButton onauthclick={() => (authModalOpen = true)} />
     <GoLiveButton onauthclick={() => (authModalOpen = true)} />
 </div>
 

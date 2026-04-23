@@ -27,6 +27,7 @@ import {
     X,
 } from "lucide-svelte";
 import { slide } from "svelte/transition";
+import { getCurrentUserName } from "$lib/auth";
 import type { EditorView } from "@codemirror/view";
 import { modalStack, annotations as annotationsStore, modalAnnotationStores } from "$lib/stores";
 import { updateThread, annotationField } from "./annotationField";
@@ -175,13 +176,14 @@ $effect(() => {
 let newMessage = $state("");
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
+const currentUserName = $derived(getCurrentUserName());
 const sendActive = $derived(!!newMessage.trim());
 
 function send() {
     if (!newMessage.trim() || !comment) return;
     handleUpdateThread([
         ...comment.thread,
-        { message: newMessage.trim(), author: "User", time: Date.now() },
+        { message: newMessage.trim(), author: currentUserName, time: Date.now() },
     ]);
     newMessage = "";
 }

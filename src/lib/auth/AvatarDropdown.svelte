@@ -11,16 +11,18 @@
 -->
 <script lang="ts">
 import { initials, avatarColor } from "./avatarUtils";
-import { LogOut } from "lucide-svelte";
+import { LogOut, UserRound } from "lucide-svelte";
 
 const {
     displayName,
     email,
+    onviewprofile,
     onlogout,
     onclose,
 }: {
     displayName: string;
     email: string;
+    onviewprofile: () => void;
     onlogout: () => void;
     onclose: () => void;
 } = $props();
@@ -60,6 +62,13 @@ function handleClickOutside(e: MouseEvent) {
 
     <!-- Menu items -->
     <div class="py-1">
+        <button
+            onclick={onviewprofile}
+            class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-black/70 hover:bg-black/[0.04] transition-colors"
+        >
+            <UserRound size={14} class="text-black/40" />
+            View profile
+        </button>
         <button
             onclick={onlogout}
             class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-black/70 hover:bg-black/[0.04] transition-colors"

@@ -22,6 +22,7 @@
  *   - editMessage: draft text while editing
  */
 import type { Thread, ThreadMessage } from ".";
+import { avatarColor, initials } from "$lib/auth/avatarUtils";
 import { readersSettings } from "$lib/readers/settings.svelte";
 import { lightTint, mediumTint } from "$lib/readers/colors";
 
@@ -53,16 +54,6 @@ function saveEdit() {
     editing = false;
 }
 
-/** Extract up to 2-character initials from an author name. */
-function initials(author: string) {
-    return author
-        .split(" ")
-        .map((w) => w[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2);
-}
-
 /** Format a unix-ms timestamp into a short human-readable string. */
 function formatTime(ts: number) {
     return new Intl.DateTimeFormat("default", {
@@ -83,7 +74,11 @@ function formatTime(ts: number) {
             {persona.emoji}
         </div>
     {:else}
-        <div class="shrink-0 w-7 h-7 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white shadow-sm flex items-center justify-center text-black/70 text-xs font-semibold">
+        <div
+            class="shrink-0 w-7 h-7 rounded-full shadow-sm flex items-center justify-center text-white text-xs font-semibold"
+            style="background: {avatarColor(message.author)};"
+            title={message.author}
+        >
             {initials(message.author)}
         </div>
     {/if}

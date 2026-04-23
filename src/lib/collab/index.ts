@@ -1,4 +1,4 @@
-import { getUser } from "$lib/auth/auth.svelte";
+import { getCurrentUserName, getUser } from "$lib/auth/auth.svelte";
 import { supabase } from "$lib/auth/supabase";
 import { historyCompartment } from "$lib/editor/extensions";
 import { history } from "@codemirror/commands";
@@ -222,7 +222,7 @@ export async function enableCollab(
 
     // Create Yjs extensions
     const user = getUser();
-    const displayName = user?.user_metadata?.full_name ?? user?.email ?? clientID.slice(0, 8);
+    const displayName = user ? getCurrentUserName() : clientID.slice(0, 8);
     const cursorColor = colorForClient(clientID);
 
     const binding = createYjsBinding(ytext);
