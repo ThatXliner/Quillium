@@ -26,7 +26,7 @@ import { cubicOut } from "svelte/easing";
 import ThreadMessage from "./ThreadMessage.svelte";
 import type { Thread as ThreadType } from ".";
 import { editorView } from "$lib/stores";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { EditorView } from "@codemirror/view";
 

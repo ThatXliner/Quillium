@@ -104,7 +104,7 @@ import {
     setActiveRevisionVersion,
 } from "./annotationField";
 import type { NestedEditorCommand } from "$lib/stores";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { appSettings } from "$lib/settings.svelte";
 import { nestedEditorEdit } from "./annotationField";
 import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";

@@ -136,6 +136,9 @@ src/
 │   │           ├── ThreadMessage.svelte # Single message (with inline edit)
 │   │           ├── TutorialGuide.svelte # In-editor tutorial callouts
 │   │           └── default.css        # Highlight CSS classes for all annotation types
+│   ├── events/
+│   │   ├── createEventBus.ts    # Generic typed event bus primitive
+│   │   └── appEventBus.ts       # App-wide cross-component event channels
 │   ├── readers/
 │   │   ├── colors.ts            # Hex → lightTint/mediumTint helpers for persona avatar backgrounds
 │   │   ├── presets.ts           # ReaderPersona type, DEFAULT_PERSONAS (8 builtin personas)
@@ -248,6 +251,72 @@ CodeMirror has two mechanisms for attaching metadata to a transaction:
 
 - **`StateEffect`** — persistent. Stored in history, can be inverted for undo. Used for all annotation mutations.
 - **`Transaction.annotation()`** — ephemeral metadata on the transaction itself. Not stored in history, not invertible. Used for flags like `revisionInternalEdit` (signals to `ViewPlugin`s that a transaction is revision-system-driven) and `nestedEditorEdit` (identifies the revision whose nested editor originated a parent dispatch).
+
+---
+
+## Event Routing
+
+Quillium now has two typed event buses, each for a different scope:
+
+- **`appEventBus`** in `src/lib/events/appEventBus.ts`
+  Used for app-level, cross-component one-shot messages such as:
+  - opening the dictionary popover
+  - opening the AI chat with a prefilled message
+  - opening AI settings
+
+- **`annotationEventBus`** in `src/lib/events/annotationEventBus.ts`
+  Used for annotation-system routing where the sender and receiver may live in different editor layers (main editor, nested editor, revision card, modal).
+
+Both are built on the same generic primitive in `src/lib/events/createEventBus.ts`.
+
+### Why use an event bus instead of stores?
+
+Some messages in the app are not durable state. They are one-shot intents:
+
+- "open the dictionary popover at this position"
+- "open chat with this message"
+- "open AI settings now"
+
+These are awkward as Svelte stores because stores model current state, not fire-and-forget signals. The old pattern required:
+
+- writing a transient value into a store
+- reacting to it elsewhere
+- clearing it manually after consumption
+
+The event bus removes that bookkeeping. Emitters just send an event, and listeners react immediately.
+
+### Bus shape
+
+The generic bus is intentionally small:
+
+- `on(type, listener)` registers a typed listener and returns an unsubscribe function
+- `emit(event)` synchronously delivers the event to all listeners for that type
+
+There is no replay, buffering, or global history in the generic bus.
+
+### App-level event flow
+
+Current app-level flows routed through `appEventBus`:
+
+1. `dictionaryPlugin.ts` emits `dictionary-open`
+2. `DictionaryPopover.svelte` listens for `dictionary-open`
+3. `DictionaryPopover.svelte` emits `ai-open-chat` when the user chooses "Open in Chat"
+4. `Chat.svelte` listens for `ai-open-chat` to prefill the input
+5. `AISidebar.svelte` listens for `ai-open-chat` and `ai-open-settings` to switch tabs
+6. `AutoAIWidget.svelte` emits `ai-open-settings`
+
+The important detail is that senders and receivers no longer communicate through transient Svelte stores or `window` `CustomEvent`s.
+
+### Annotation bus special case
+
+`annotationEventBus` uses the same typed-bus base, but adds one piece of extra behavior: pending nested-editor selections.
+
+That special case exists because some annotation targets are rendered asynchronously. A selection event can fire before the receiving revision component exists. For that case, `annotationEventBus` stores the pending selection by `annotationId` so the component can consume it on mount.
+
+So:
+
+- `appEventBus` is pure fire-and-forget
+- `annotationEventBus` is fire-and-forget plus one annotation-specific pending-selection cache
 
 ---
 

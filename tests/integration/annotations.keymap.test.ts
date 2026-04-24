@@ -9,7 +9,7 @@ import {
 } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
-import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 
 function createView(doc: string) {
     const state = EditorState.create({

@@ -8,7 +8,7 @@
 import { dev } from "$app/environment";
 import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
-import { dictionaryTrigger } from "$lib/stores";
+import { appEventBus } from "$lib/events/appEventBus";
 import { extractDictionaryWord } from "./dictionaryUtils";
 import posthog from "$lib/posthog";
 
@@ -29,7 +29,7 @@ function openDictionary(view: EditorView): boolean {
     const x = (fromCoords.left + toCoords.right) / 2;
     const y = Math.max(fromCoords.bottom, toCoords.bottom) + 8;
 
-    dictionaryTrigger.set({ word, selectionFrom, selectionTo, x, y });
+    appEventBus.emit({ type: "dictionary-open", word, selectionFrom, selectionTo, x, y });
     posthog.capture("dictionary_opened");
     return true;
 }

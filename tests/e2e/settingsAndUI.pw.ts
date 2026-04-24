@@ -83,21 +83,6 @@ test.describe("AI sidebar", () => {
         await expect(page.locator("#ai-sidebar .overflow-x-auto")).not.toBeVisible();
     });
 
-    test("quillium:open-chat opens AI settings when no API key is available", async ({
-        page,
-    }) => {
-        const q = new QuilliumPage(page, {
-            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
-        });
-        await q.init();
-
-        await page.evaluate(() => {
-            window.dispatchEvent(new CustomEvent("quillium:open-chat"));
-        });
-
-        await expect(q.aiSidebar).toContainText("AI Settings");
-    });
-
     test("AutoAI widget opens AI settings through the external event path", async ({ page }) => {
         const q = new QuilliumPage(page, {
             settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },

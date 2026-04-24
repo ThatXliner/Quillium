@@ -75,6 +75,7 @@ import {
     SquareIcon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey, ensureApiKeyLoaded, stopAllAi } from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
@@ -299,6 +300,14 @@ function onResizeEnd() {
     document.body.style.cursor = "";
 }
 
+function openAiSettingsFromExternalRequest() {
+    action = "settings";
+}
+
+function openChatFromExternalRequest() {
+    action = hasApiKey() ? "chat" : "settings";
+}
+
 // Center the active icon whenever the panel opens
 $effect(() => {
     if (expanded && action && action !== "settings") {
@@ -320,13 +329,9 @@ $effect(() => {
     };
 });
 
-// Allow external callers (e.g. AutoAIWidget) to open AI settings via event.
+// App-level event bus for cross-component AI navigation.
 $effect(() => {
-    function handleOpenAiSettings() {
-        action = "settings";
-    }
-    window.addEventListener("quillium:open-ai-settings", handleOpenAiSettings);
-    return () => window.removeEventListener("quillium:open-ai-settings", handleOpenAiSettings);
+    return appEventBus.on("ai-open-settings", openAiSettingsFromExternalRequest);
 });
 
 // Cleanup resize listeners on unmount
@@ -339,13 +344,9 @@ $effect(() => {
     };
 });
 
-// Open Chat (or Settings if no key) when DictionaryPopover triggers "Open in Chat"
+// App-level requests to open the chat panel.
 $effect(() => {
-    function handleOpenChat() {
-        action = hasApiKey() ? "chat" : "settings";
-    }
-    window.addEventListener("quillium:open-chat", handleOpenChat);
-    return () => window.removeEventListener("quillium:open-chat", handleOpenChat);
+    return appEventBus.on("ai-open-chat", openChatFromExternalRequest);
 });
 
 // Keyboard shortcuts for the sidebar

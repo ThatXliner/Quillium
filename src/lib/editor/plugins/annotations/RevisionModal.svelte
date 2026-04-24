@@ -63,7 +63,7 @@ import {
     modalAnnotationStores,
     type ModalEntry,
 } from "$lib/stores";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { appSettings } from "$lib/settings.svelte";

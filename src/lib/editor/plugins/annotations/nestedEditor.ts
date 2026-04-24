@@ -44,7 +44,7 @@ import {
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { type VersionState, isAnnotationOfType, versionText } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;

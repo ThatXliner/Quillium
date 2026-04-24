@@ -11,7 +11,7 @@ import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/ann
 import Revision from "$lib/editor/plugins/annotations/Revision.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 import { modalStack, type NestedEditorCommand } from "$lib/stores";
-import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { appSettings } from "$lib/settings.svelte";
 
 function createView(doc: string) {

@@ -27,7 +27,7 @@ import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { modalStack } from "$lib/stores";
-import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
