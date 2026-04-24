@@ -1,5 +1,7 @@
 import type { Annotations } from "$lib/editor/plugins/annotations";
+import { getRawAnnotationField } from "$lib/collab/annotationSchema";
 import { isAnnotationOfType, versionText } from "$lib/editor/plugins/annotations/models";
+import { RawAnnotationsSchema, type RawAnnotations } from "$lib/editor/plugins/annotations/models";
 
 export type SerializedThreadMessage = {
     message: string;
@@ -8,7 +10,7 @@ export type SerializedThreadMessage = {
 };
 
 type SerializedAnnotationBase = {
-    id: number;
+    id: string;
     type: "comment" | "suggestion" | "revision";
     from: number;
     to: number;
@@ -29,7 +31,7 @@ export type SerializedSuggestionAnnotation = SerializedAnnotationBase & {
 export type SerializedRevisionAnnotation = SerializedAnnotationBase & {
     type: "revision";
     activeVersionIndex: number;
-    versions: { index: number; text: string; label?: string }[];
+    versions: { index: number; text: string; label?: string; annotations: SerializedAnnotation[] }[];
 };
 
 export type SerializedAnnotation =
@@ -58,13 +60,84 @@ export function serializeAnnotations(
 ): SerializedAnnotation[] {
     if (!annotations) return [];
 
+    return serializeAnnotationMap(doc, annotations);
+}
+
+function serializeRawAnnotationMap(
+    doc: string,
+    rawAnnotations: RawAnnotations | undefined,
+    idPrefix = "",
+): SerializedAnnotation[] {
+    if (!rawAnnotations) return [];
+
+    const parsed = RawAnnotationsSchema.safeParse(rawAnnotations);
+    if (!parsed.success) return [];
+
+    return Object.values(parsed.data)
+        .map((annotation) => {
+            const range = annotation.selection.ranges[0];
+            const from = Math.min(range?.anchor ?? 0, range?.head ?? 0);
+            const to = Math.max(range?.anchor ?? 0, range?.head ?? 0);
+            const annotationId = `${idPrefix}${annotation.id}`;
+            const base: SerializedAnnotationBase = {
+                id: annotationId,
+                type: annotation._type,
+                from,
+                to,
+                selectedText: doc.slice(from, to),
+                thread: annotation.thread.map((message) => ({ ...message })),
+            };
+
+            if (annotation._type === "suggestion") {
+                return {
+                    ...base,
+                    type: "suggestion",
+                    replacements: annotation.replacements.map((replacement) => ({ ...replacement })),
+                    author: annotation.author,
+                } satisfies SerializedSuggestionAnnotation;
+            }
+
+            if (annotation._type === "revision") {
+                return {
+                    ...base,
+                    type: "revision",
+                    activeVersionIndex: annotation.activeVersionIndex,
+                    versions: annotation.versions.map((version, index) => ({
+                        index,
+                        text: versionText(version),
+                        label: version.label,
+                        annotations: serializeRawAnnotationMap(
+                            versionText(version),
+                            getRawAnnotationField(version),
+                            `${annotationId}.v${index}.`,
+                        ),
+                    })),
+                } satisfies SerializedRevisionAnnotation;
+            }
+
+            return {
+                ...base,
+                type: "comment",
+            } satisfies SerializedCommentAnnotation;
+        })
+        .sort((a, b) => a.from - b.from || a.id.localeCompare(b.id));
+}
+
+function serializeAnnotationMap(
+    doc: string,
+    annotations: Annotations,
+    idPrefix = "",
+): SerializedAnnotation[] {
+    if (!annotations) return [];
+
     return Object.values(annotations)
         .map((annotation) => {
             const range = annotation.selection.ranges[0];
             const from = range?.from ?? annotation.selection.main.from;
             const to = range?.to ?? annotation.selection.main.to;
+            const annotationId = `${idPrefix}${annotation.id}`;
             const base: SerializedAnnotationBase = {
-                id: annotation.id,
+                id: annotationId,
                 type: annotation._type,
                 from,
                 to,
@@ -90,6 +163,11 @@ export function serializeAnnotations(
                         index,
                         text: versionText(version),
                         label: version.label,
+                        annotations: serializeRawAnnotationMap(
+                            versionText(version),
+                            getRawAnnotationField(version),
+                            `${annotationId}.v${index}.`,
+                        ),
                     })),
                 } satisfies SerializedRevisionAnnotation;
             }
