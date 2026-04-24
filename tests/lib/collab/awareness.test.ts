@@ -169,10 +169,9 @@ describe("awareness", () => {
                 expect(decodeLocalHeadPos(awareness, ydoc)).toBe(7);
 
                 nestedView.dispatch({ changes: { from: 1, insert: "X" } });
-                expect(decodeLocalHeadPos(awareness, ydoc)).toBe(
-                    6 + nestedView.state.selection.main.head,
-                );
-                expect(decodeLocalHeadPos(awareness, ydoc)).not.toBe(6);
+                const localHeadPos = decodeLocalHeadPos(awareness, ydoc);
+                expect(localHeadPos).toBe(6 + nestedView.state.selection.main.head);
+                expect(localHeadPos).not.toBe(6);
             } finally {
                 nestedView.destroy();
             }
