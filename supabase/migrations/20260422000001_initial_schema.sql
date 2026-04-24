@@ -3,6 +3,9 @@
 -- Purpose: Squashed Quillium Omni schema. Keep Supabase migrations in this
 -- repo; relay/landing services should consume this schema rather than keeping
 -- duplicate migration files.
+-- This migration supersedes the earlier incremental schema-building migrations.
+-- Keep it as the single baseline in this directory so `supabase db reset`
+-- replays each schema object exactly once.
 
 
 
@@ -803,5 +806,4 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 --
 
 CREATE OR REPLACE TRIGGER "on_auth_user_created" AFTER INSERT ON "auth"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_new_user"();
-
 
