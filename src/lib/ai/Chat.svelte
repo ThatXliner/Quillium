@@ -50,10 +50,11 @@
  *   ready -> submitted -> streaming -> ready
  *                                   \-> error
  */
-import { selectedText, documentContent, pendingChatMessage } from "$lib/stores";
+import { selectedText, documentContent } from "$lib/stores";
 import { renderMarkdown } from "$lib/ai/utils";
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 
 let input = $state("");
@@ -68,12 +69,11 @@ function useQuickPrompt(prompt: string) {
     chat.sendMessage({ text: prompt });
 }
 
-// Pre-fill input from DictionaryPopover "Open in Chat"
+// Pre-fill input from app-level "open chat" requests.
 $effect(() => {
-    if ($pendingChatMessage !== null) {
-        input = $pendingChatMessage;
-        pendingChatMessage.set(null);
-    }
+    return appEventBus.on("ai-open-chat", (event) => {
+        input = event.message;
+    });
 });
 
 // Wire up processing indicator + global stop listener.

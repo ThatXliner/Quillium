@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 import { hasApiKey } from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { onDestroy, onMount } from "svelte";
@@ -158,7 +159,7 @@ function handleNameKeydown(e: KeyboardEvent) {
 
 function openSettings() {
     open = false;
-    window.dispatchEvent(new CustomEvent("quillium:open-ai-settings"));
+    appEventBus.emit({ type: "ai-open-settings" });
 }
 
 function handleDocClick(e: MouseEvent) {

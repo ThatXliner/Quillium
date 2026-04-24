@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
 import { get } from "svelte/store";
-import { editorView, pendingChatMessage, dictionaryTrigger, selectedText } from "$lib/stores";
+import { editorView, selectedText } from "$lib/stores";
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { renderMarkdown } from "$lib/ai/utils";
 import { hasApiKey } from "$lib/ai/settings.svelte";
@@ -18,6 +18,7 @@ import { Transaction } from "@codemirror/state";
 import { ExternalLinkIcon, XIcon } from "lucide-svelte";
 import { capture } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import { getPhonetic, collectSynonyms, collectAntonyms, type DictEntry } from "./dictionaryUtils";
 
 // ── State ──────────────────────────────────────────────────────
@@ -45,23 +46,23 @@ const { chat, clearChat } = createAiChat({ mode: "dictionary" });
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat);
 
-// ── React to trigger store ─────────────────────────────────────
+// ── React to bus events ────────────────────────────────────────
 
 $effect(() => {
-    const trigger = $dictionaryTrigger;
-    if (!trigger) return;
-    word = trigger.word;
-    anchorWord = trigger.word;
-    selFrom = trigger.selectionFrom;
-    selTo = trigger.selectionTo;
-    centerX = trigger.x;
-    centerY = trigger.y;
-    visible = true;
-    describeInput = "";
-    clearChat();
-    lookupResult = null;
-    lookupError = null;
-    lookupWord(trigger.word);
+    return appEventBus.on("dictionary-open", (event) => {
+        word = event.word;
+        anchorWord = event.word;
+        selFrom = event.selectionFrom;
+        selTo = event.selectionTo;
+        centerX = event.x;
+        centerY = event.y;
+        visible = true;
+        describeInput = "";
+        clearChat();
+        lookupResult = null;
+        lookupError = null;
+        lookupWord(event.word);
+    });
 });
 
 // The word the editor selection was on when the popover opened.
@@ -99,7 +100,6 @@ $effect(() => {
 
 function dismiss() {
     visible = false;
-    dictionaryTrigger.set(null);
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -185,8 +185,7 @@ function openInChat() {
             ? `Tell me more about the word "${word}": ${def}`
             : `Tell me more about the word "${word}"`;
     }
-    pendingChatMessage.set(msg);
-    window.dispatchEvent(new CustomEvent("quillium:open-chat"));
+    appEventBus.emit({ type: "ai-open-chat", message: msg });
     capture("dictionary_open_in_chat", {
         word,
         has_describe_history: chat.messages.length > 0,

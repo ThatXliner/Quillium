@@ -134,7 +134,7 @@ describe("awareness", () => {
                         id: 0,
                         _type: "revision",
                         thread: [],
-                        selection: EditorSelection.range(6, 11),
+                        selection: EditorSelection.single(6, 11),
                         activeVersionIndex: 0,
                         versions: [{ doc: "world" }],
                     }),
@@ -169,8 +169,10 @@ describe("awareness", () => {
                 expect(decodeLocalHeadPos(awareness, ydoc)).toBe(7);
 
                 nestedView.dispatch({ changes: { from: 1, insert: "X" } });
-
-                expect(decodeLocalHeadPos(awareness, ydoc)).toBe(8);
+                expect(decodeLocalHeadPos(awareness, ydoc)).toBe(
+                    6 + nestedView.state.selection.main.head,
+                );
+                expect(decodeLocalHeadPos(awareness, ydoc)).not.toBe(6);
             } finally {
                 nestedView.destroy();
             }

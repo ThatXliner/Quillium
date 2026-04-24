@@ -14,6 +14,7 @@
  */
 
 import type { EditorView } from "@codemirror/view";
+import { TypedEventBus, type EventOfType } from "$lib/events/createEventBus";
 import type { NestedEditorCommand } from "$lib/stores";
 
 // ── Event types ──────────────────────────────────────────────
@@ -47,58 +48,36 @@ export type AnnotationEvent =
           undoType: "undo" | "redo";
       };
 
-type EventType = AnnotationEvent["type"];
-
-/** Extract the specific event shape for a given type string. */
-export type EventOfType<T extends EventType> = Extract<AnnotationEvent, { type: T }>;
-
-type Listener<T extends EventType> = (event: EventOfType<T>) => void;
-type AnyListener = (event: AnnotationEvent) => void;
-
 // ── Bus implementation ───────────────────────────────────────
 
-class AnnotationEventBus {
-    private listeners = new Map<EventType, Set<AnyListener>>();
-
+class AnnotationEventBus extends TypedEventBus<AnnotationEvent> {
     /**
      * Pending nested editor selections need out-of-band storage because
      * the consuming Revision.svelte component may not exist yet when the
      * event fires (the annotation card renders asynchronously). Stored
      * here by annotationId so the component can pull on mount.
      */
-    private pendingSelections = new Map<number, EventOfType<"pending-nested-editor-selection">>();
-
-    /** Subscribe to events of a specific type. Returns an unsubscribe function. */
-    on<T extends EventType>(type: T, listener: Listener<T>): () => void {
-        let set = this.listeners.get(type);
-        if (!set) {
-            set = new Set();
-            this.listeners.set(type, set);
-        }
-        const fn: AnyListener = (event) => listener(event as EventOfType<T>);
-        set.add(fn);
-        return () => set.delete(fn);
-    }
+    private pendingSelections = new Map<
+        number,
+        EventOfType<AnnotationEvent, "pending-nested-editor-selection">
+    >();
 
     /** Emit an event, delivering to all listeners of that type. */
-    emit(event: AnnotationEvent): void {
+    override emit(event: AnnotationEvent): void {
         if (event.type === "pending-nested-editor-selection") {
             this.pendingSelections.set(
-                (event as EventOfType<"pending-nested-editor-selection">).annotationId,
-                event as EventOfType<"pending-nested-editor-selection">,
+                (event as EventOfType<AnnotationEvent, "pending-nested-editor-selection">)
+                    .annotationId,
+                event as EventOfType<AnnotationEvent, "pending-nested-editor-selection">,
             );
         }
-        const set = this.listeners.get(event.type);
-        if (!set) return;
-        for (const listener of set) {
-            listener(event);
-        }
+        super.emit(event);
     }
 
     /** Pull a pending selection for the given annotation (one-shot). */
     consumePendingSelection(
         annotationId: number,
-    ): EventOfType<"pending-nested-editor-selection"> | undefined {
+    ): EventOfType<AnnotationEvent, "pending-nested-editor-selection"> | undefined {
         const event = this.pendingSelections.get(annotationId);
         if (event) this.pendingSelections.delete(annotationId);
         return event;
