@@ -98,6 +98,7 @@ const publishedShareFingerprint = $derived(
 const shareUpToDate = $derived(
     !!readonlyShare?.enabled && currentShareFingerprint === publishedShareFingerprint,
 );
+const shareNeedsUpdate = $derived(!!readonlyShare?.enabled && !shareUpToDate);
 const canStartLive = $derived(authenticated && relayConfigured && !!currentId && !connecting);
 const liveStatusLabel = $derived(isLive ? "Live Room is open" : "Live Room is off");
 const isReconnecting = $derived($collabState === "reconnecting");
@@ -262,6 +263,11 @@ async function publishCurrentSnapshot() {
     }
 }
 
+async function updateWebPreviewQuickAction() {
+    activeTab = "preview";
+    await publishCurrentSnapshot();
+}
+
 async function toggleReadonlyShare() {
     if (!readonlyShare?.enabled) {
         await publishCurrentSnapshot();
@@ -414,7 +420,7 @@ async function handleToggle() {
 <svelte:window onkeydown={handleKeydown} />
 
 {#if canShowShare}
-    <div class="relative flex items-center gap-1">
+    <div class="share-trigger-wrap relative flex flex-col items-end gap-2">
         <button
             onclick={() => (modalOpen = true)}
             class="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-full shadow-md transition-colors
@@ -426,6 +432,25 @@ async function handleToggle() {
             <Share2 size={14} />
             Share
         </button>
+
+        {#if shareNeedsUpdate}
+            <button
+                type="button"
+                class="share-update-pill"
+                onclick={updateWebPreviewQuickAction}
+                disabled={shareBusy || shareLoading || !currentId}
+            >
+                {#if shareBusy}
+                    <span class="spin" aria-hidden="true">
+                        <Loader2 size={13} />
+                    </span>
+                    Updating link
+                {:else}
+                    <RefreshCcw size={13} />
+                    Update link
+                {/if}
+            </button>
+        {/if}
     </div>
 
     {#if modalOpen}
@@ -609,154 +634,121 @@ async function handleToggle() {
                             </div>
                         {/if}
                     {:else}
-                        <div class="omni-hero">
-                            <div class="panel-copy">
-                                <div class="icon-badge">
-                                    <Cloud size={18} />
-                                </div>
-                                <div>
-                                    <h3>Collaborate in real time</h3>
-                                    <p>
-                                        Shared invites, persistent collaboration, and the polished multiplayer flow are
-                                        rolling into Quillium Omni.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <a
-                                href={OMNI_WAITLIST_URL}
-                                target="_blank"
-                                rel="noreferrer"
-                                class="primary-action share-primary link-action"
-                            >
-                                <ExternalLink size={15} />
-                                Learn about Omni
-                            </a>
-                        </div>
-
                         {#if authenticated}
-                            <div class="future-section current-beta-section">
-                                <div class="future-label">Current beta</div>
-                                <p class="future-copy">
-                                    Live Room is still available while we build the fuller Omni collaboration flow.
-                                </p>
-                            </div>
-
-                            <div class="status-card">
-                                <div class="status-copy">
-                                    <span class="session-state" class:online={isLive}>
-                                        <span class="status-dot"></span>
-                                        {isReconnecting ? retryLabel : isLive ? "Active" : "Inactive"}
-                                    </span>
+                            <div class="omni-hero">
+                                <div class="panel-copy">
+                                    <div class="icon-badge">
+                                        <Cloud size={18} />
+                                    </div>
                                     <div>
-                                    <h3>{liveStatusLabel}</h3>
-                                    <p>
-                                            Invite another writer into this draft.
-                                    </p>
+                                        <h3>Collaboration is part of Quillium Omni</h3>
+                                        <p>
+                                            Live Room, shared invites, cloud sync, and the rest of Quillium's collaboration
+                                            features are available exclusively to Omni users.
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-                                <button
-                                    onclick={handleToggle}
-                                    disabled={!canStartLive && !isLive}
-                                    class="live-action"
-                                    class:danger={isLive}
+
+                                <div class="share-detail-card">
+                                    <div class="detail-row">
+                                        <span>Account</span>
+                                        <strong>Signed in</strong>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Status</span>
+                                        <strong>Omni is currently waitlist only</strong>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Access</span>
+                                        <strong>Signing in does not unlock Omni by itself. Access still comes through the waitlist.</strong>
+                                    </div>
+                                </div>
+
+                                <a
+                                    href={OMNI_WAITLIST_URL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    class="primary-action share-primary link-action"
                                 >
-                                    {#if connecting}
-                                        <span class="spin" aria-hidden="true">
-                                            <Loader2 size={15} />
-                                        </span>
-                                        Connecting
-                                    {:else if isReconnecting}
-                                        <span class="spin" aria-hidden="true">
-                                            <Loader2 size={15} />
-                                        </span>
-                                        {retryLabel}
-                                    {:else if isLive}
-                                        End session
-                                    {:else}
-                                        <Radio size={15} />
-                                        Start live room
-                                    {/if}
-                                </button>
+                                    <ExternalLink size={15} />
+                                    Join the Omni waitlist
+                                </a>
                             </div>
-
-                            <div class="doc-id-block">
-                                <div class="field-label">This document's room ID</div>
-                                <div class="copy-row">
-                                    <input readonly value={currentId} aria-label="Current document room ID" />
-                                    <button onclick={copyId} disabled={!currentId} aria-label="Copy document room ID">
-                                        <Copy size={14} />
-                                        Copy
-                                    </button>
-                                </div>
-                            </div>
-
-                            <form
-                                onsubmit={(e) => {
-                                    e.preventDefault();
-                                    joinById();
-                                }}
-                                class="join-block"
-                            >
-                                <label for="join-id">Join doc</label>
-                                <div class="copy-row">
-                                    <input
-                                        id="join-id"
-                                        bind:value={joinIdInput}
-                                        placeholder="Paste UUID..."
-                                        autocomplete="off"
-                                    />
-                                    <button type="submit" disabled={connecting || !joinIdInput.trim()}>
-                                        Join doc
-                                    </button>
-                                </div>
-                            </form>
 
                             <div class="future-section">
-                                <div class="future-label">In the making</div>
-                                <div class="disabled-option" aria-disabled="true">
+                                <div class="panel-copy">
                                     <div class="icon-badge muted">
                                         <ArrowLeftRight size={17} />
                                     </div>
                                     <div>
-                                        <h3>Async Collaboration</h3>
-                                        <p>Stored on our servers to stay available even after you close Quillium.</p>
-                                    </div>
-                                </div>
-                                <div class="disabled-option" aria-disabled="true">
-                                    <div class="icon-badge muted">
-                                        <Cloud size={17} />
-                                    </div>
-                                    <div>
-                                        <h3>Cloud Sync</h3>
-                                        <p>Make this document available on all of your devices.</p>
+                                        <h3>What happens next</h3>
+                                        <p>
+                                            If you already joined the waitlist, we'll use that to grant Omni access. If not, the next step is still joining it.
+                                        </p>
                                     </div>
                                 </div>
                             </div>
                         {:else}
-                            <div class="panel-copy">
-                                <div class="icon-badge">
-                                    <LogIn size={18} />
+                            <div class="omni-hero">
+                                <div class="panel-copy">
+                                    <div class="icon-badge">
+                                        <Cloud size={18} />
+                                    </div>
+                                    <div>
+                                        <h3>Collaboration is part of Quillium Omni</h3>
+                                        <p>
+                                            Live Room, shared invites, cloud sync, and the rest of Quillium's collaboration
+                                            features are available exclusively to Omni users.
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3>Sign in to try Live Room</h3>
-                                    <p>
-                                        Omni invites are coming later, but the current beta room still needs a
-                                        Quillium account.
-                                    </p>
+
+                                <div class="share-detail-card">
+                                    <div class="detail-row">
+                                        <span>Account</span>
+                                        <strong>Not signed in</strong>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Status</span>
+                                        <strong>Omni is currently waitlist only</strong>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Access</span>
+                                        <strong>You can't sign up for Omni directly yet. Join the waitlist to get access.</strong>
+                                    </div>
+                                </div>
+
+                                <div class="share-actions">
+                                    <a
+                                        href={OMNI_WAITLIST_URL}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        class="primary-action share-primary link-action"
+                                    >
+                                        <ExternalLink size={15} />
+                                        Join the Omni waitlist
+                                    </a>
+
+                                    <button class="secondary-action" onclick={openAuth}>
+                                        <LogIn size={15} />
+                                        Sign in
+                                    </button>
                                 </div>
                             </div>
 
-                            <div class="auth-actions auth-actions-single">
-                                <button onclick={openAuth}>Sign in</button>
+                            <div class="future-section">
+                                <div class="panel-copy">
+                                    <div class="icon-badge muted">
+                                        <ArrowLeftRight size={17} />
+                                    </div>
+                                    <div>
+                                        <h3>Already have access?</h3>
+                                        <p>
+                                            Sign in with the account tied to your Omni invite once access has been enabled for you.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
-
-                            <p class="waitlist-note">
-                                Want the polished version?
-                                <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer">
-                                    Join the Omni waitlist
-                                </a>
-                            </p>
                         {/if}
                     {/if}
                 </section>
@@ -903,6 +895,52 @@ async function handleToggle() {
         color: rgba(0, 0, 0, 0.72);
     }
 
+    .share-trigger-wrap {
+        position: relative;
+    }
+
+    .share-update-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.12);
+        border: 1px solid rgba(59, 130, 246, 0.16);
+        color: rgba(29, 78, 216, 0.9);
+        font-size: 12px;
+        font-weight: 650;
+        box-shadow:
+            0 10px 28px rgba(59, 130, 246, 0.12),
+            inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        transition:
+            background 0.16s,
+            color 0.16s,
+            transform 0.18s ease,
+            opacity 0.18s ease,
+            visibility 0.18s ease;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-8px) scale(0.96);
+        pointer-events: none;
+    }
+
+    .share-update-pill:hover:not(:disabled) {
+        background: rgba(59, 130, 246, 0.18);
+        color: rgba(30, 64, 175, 0.96);
+        transform: translateY(-1px);
+    }
+
+    .share-trigger-wrap:hover .share-update-pill,
+    .share-trigger-wrap:focus-within .share-update-pill {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+    }
+
     .share-tab-btn:hover {
         color: rgba(0, 0, 0, 0.6);
     }
@@ -921,9 +959,7 @@ async function handleToggle() {
         gap: 16px;
     }
 
-    .panel-copy,
-    .status-copy,
-    .disabled-option {
+    .panel-copy {
         display: flex;
         gap: 12px;
         align-items: flex-start;
@@ -953,9 +989,7 @@ async function handleToggle() {
         color: rgba(0, 0, 0, 0.72);
     }
 
-    .panel-copy p,
-    .status-copy p,
-    .disabled-option p {
+    .panel-copy p {
         margin: 0;
         font-size: 12px;
         line-height: 1.45;
@@ -963,7 +997,6 @@ async function handleToggle() {
     }
 
     .primary-action,
-    .live-action,
     .auth-actions button {
         display: inline-flex;
         align-items: center;
@@ -991,8 +1024,6 @@ async function handleToggle() {
     }
 
     .primary-action:disabled,
-    .live-action:disabled,
-    .copy-row button:disabled,
     .secondary-action:disabled,
     .share-switch:disabled {
         opacity: 0.45;
@@ -1003,78 +1034,8 @@ async function handleToggle() {
         text-decoration: none;
     }
 
-    .status-card {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 18px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.065);
-    }
-
-    .status-copy {
-        align-items: center;
-    }
-
-    .session-state {
-        display: inline-flex;
-        flex: 0 0 auto;
-        align-items: center;
-        gap: 6px;
-        min-width: 76px;
-        height: 28px;
-        padding: 0 10px;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.045);
-        font-size: 11px;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.42);
-    }
-
-    .session-state.online {
-        color: rgba(4, 120, 87, 0.9);
-        background: rgba(16, 185, 129, 0.12);
-    }
-
-    .status-dot {
-        width: 7px;
-        height: 7px;
-        flex: 0 0 auto;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.22);
-    }
-
-    .session-state.online .status-dot {
-        background: rgb(16, 185, 129);
-    }
-
     .auth-actions button:hover {
         background: rgb(29, 78, 216);
-    }
-
-    .live-action {
-        flex: 0 0 auto;
-        min-width: 142px;
-        color: rgba(0, 0, 0, 0.7);
-        background: rgba(16, 185, 129, 0.12);
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-    }
-
-    .live-action:hover:not(:disabled) {
-        color: rgba(4, 120, 87, 0.96);
-        background: rgba(16, 185, 129, 0.18);
-    }
-
-    .live-action.danger {
-        color: rgba(0, 0, 0, 0.64);
-        background: rgba(0, 0, 0, 0.055);
-        border-color: rgba(0, 0, 0, 0.08);
-    }
-
-    .live-action.danger:hover {
-        color: rgba(0, 0, 0, 0.78);
-        background: rgba(0, 0, 0, 0.085);
     }
 
     .spin {
@@ -1085,65 +1046,6 @@ async function handleToggle() {
         to {
             transform: rotate(360deg);
         }
-    }
-
-    .doc-id-block,
-    .join-block {
-        margin-top: 16px;
-    }
-
-    .field-label,
-    .join-block label {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 11px;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.48);
-    }
-
-    .copy-row {
-        display: flex;
-        gap: 8px;
-    }
-
-    .copy-row input {
-        min-width: 0;
-        flex: 1;
-        height: 36px;
-        padding: 0 10px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 10px;
-        background: rgba(0, 0, 0, 0.035);
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 11px;
-        color: rgba(0, 0, 0, 0.64);
-        outline: none;
-    }
-
-    .copy-row input:focus {
-        border-color: rgba(37, 99, 235, 0.38);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-    }
-
-    .copy-row button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        min-width: 76px;
-        height: 36px;
-        padding: 0 12px;
-        border-radius: 10px;
-        background: rgba(0, 0, 0, 0.055);
-        font-size: 12px;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.58);
-        transition: background 0.16s, color 0.16s;
-    }
-
-    .copy-row button:hover:not(:disabled) {
-        background: rgba(0, 0, 0, 0.085);
-        color: rgba(0, 0, 0, 0.74);
     }
 
     .share-toggle-row {
@@ -1163,8 +1065,7 @@ async function handleToggle() {
     }
 
     .toggle-help,
-    .share-status-line,
-    .future-copy {
+    .share-status-line {
         margin: 4px 0 0;
         font-size: 12px;
         line-height: 1.45;
@@ -1271,22 +1172,6 @@ async function handleToggle() {
         border-top: 1px solid rgba(0, 0, 0, 0.065);
     }
 
-    .future-label {
-        margin-bottom: 8px;
-        font-size: 10px;
-        font-weight: 750;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.34);
-    }
-
-    .disabled-option {
-        padding: 12px;
-        border-radius: 12px;
-        background: rgba(0, 0, 0, 0.035);
-        opacity: 0.72;
-    }
-
     .auth-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1303,10 +1188,6 @@ async function handleToggle() {
         background: rgba(0, 0, 0, 0.095);
     }
 
-    .auth-actions-single {
-        grid-template-columns: 1fr;
-    }
-
     .auth-actions button:disabled {
         color: rgba(0, 0, 0, 0.32);
         background: rgba(0, 0, 0, 0.04);
@@ -1314,33 +1195,18 @@ async function handleToggle() {
         opacity: 0.8;
     }
 
-    .waitlist-note {
-        margin: 10px 0 0;
-        padding: 10px 12px;
-        border-radius: 10px;
-        background: rgba(16, 185, 129, 0.08);
-        font-size: 11px;
-        line-height: 1.4;
-        color: rgba(0, 0, 0, 0.48);
-    }
-
-    .waitlist-note a {
-        font-weight: 650;
-        color: rgba(4, 120, 87, 0.92);
-        text-decoration: none;
-    }
-
-    .waitlist-note a:hover {
-        text-decoration: underline;
-    }
-
     @media (max-width: 520px) {
+        .share-update-pill {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
         .share-modal-inner {
             width: calc(100vw - 20px);
         }
 
-        .status-card,
-        .copy-row,
         .auth-actions,
         .share-actions {
             grid-template-columns: 1fr;
@@ -1348,8 +1214,6 @@ async function handleToggle() {
             align-items: stretch;
         }
 
-        .live-action,
-        .copy-row button,
         .share-primary,
         .secondary-action {
             width: 100%;

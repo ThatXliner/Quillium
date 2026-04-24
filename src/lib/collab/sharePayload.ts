@@ -37,6 +37,21 @@ export type SerializedAnnotation =
     | SerializedSuggestionAnnotation
     | SerializedRevisionAnnotation;
 
+function stableSerialize(value: unknown): string {
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+    }
+
+    if (value && typeof value === "object") {
+        const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+            a.localeCompare(b),
+        );
+        return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(",")}}`;
+    }
+
+    return JSON.stringify(value);
+}
+
 export function serializeAnnotations(
     doc: string,
     annotations: Annotations | undefined,
@@ -92,7 +107,7 @@ export function buildShareFingerprint(
     content: string,
     annotations: SerializedAnnotation[],
 ): string {
-    return JSON.stringify({
+    return stableSerialize({
         title: title.trim() || "Untitled",
         content,
         annotations,

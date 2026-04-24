@@ -26,3 +26,11 @@ COMMENT ON COLUMN public.shares.author_name IS
 
 COMMENT ON COLUMN public.shares.published_at IS
     'When the current public snapshot was last explicitly published from the app.';
+
+GRANT SELECT ON TABLE public.shares TO anon;
+
+CREATE POLICY "Public readonly shares are visible to anon"
+    ON public.shares
+    FOR SELECT
+    TO anon
+    USING (enabled = true);

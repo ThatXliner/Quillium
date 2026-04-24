@@ -215,16 +215,9 @@ $effect(() => {
                 <div
                     class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
                 ></div>
-                <div class="flex flex-col leading-tight">
-                    <span class="text-sm text-black/90"
-                        >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
-                    >
-                    {#if hasPublicShare && $saveStatus !== "error"}
-                        <span class="text-[11px] text-black/45">
-                            {publicShareUpToDate ? "Public link is live" : "Public link live, update pending"}
-                        </span>
-                    {/if}
-                </div>
+                <span class="text-sm text-black/90"
+                    >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
+                >
             {/if}
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>

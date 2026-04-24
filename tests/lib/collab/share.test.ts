@@ -33,4 +33,36 @@ describe("buildShareFingerprint", () => {
             ]),
         );
     });
+
+    it("stays stable when annotation object keys are reordered", () => {
+        const localShape = [
+            {
+                id: 1,
+                type: "suggestion",
+                from: 0,
+                to: 5,
+                selectedText: "hello",
+                thread: [{ message: "Try this", author: "A", time: 1 }],
+                replacements: [{ text: "hi", rationale: "shorter" }],
+                author: "A",
+            },
+        ];
+
+        const roundTrippedShape = [
+            {
+                author: "A",
+                from: 0,
+                id: 1,
+                replacements: [{ rationale: "shorter", text: "hi" }],
+                selectedText: "hello",
+                thread: [{ author: "A", message: "Try this", time: 1 }],
+                to: 5,
+                type: "suggestion",
+            },
+        ];
+
+        expect(buildShareFingerprint("Doc", "hello", localShape as never[])).toBe(
+            buildShareFingerprint("Doc", "hello", roundTrippedShape as never[]),
+        );
+    });
 });
