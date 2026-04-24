@@ -65,11 +65,7 @@ class AnnotationEventBus extends TypedEventBus<AnnotationEvent> {
     /** Emit an event, delivering to all listeners of that type. */
     override emit(event: AnnotationEvent): void {
         if (event.type === "pending-nested-editor-selection") {
-            this.pendingSelections.set(
-                (event as EventOfType<AnnotationEvent, "pending-nested-editor-selection">)
-                    .annotationId,
-                event as EventOfType<AnnotationEvent, "pending-nested-editor-selection">,
-            );
+            this.pendingSelections.set(event.annotationId, event);
         }
         super.emit(event);
     }
