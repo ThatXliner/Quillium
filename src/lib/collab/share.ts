@@ -1,5 +1,7 @@
 import { getCurrentUserName } from "$lib/auth/auth.svelte";
 import { supabase } from "$lib/auth/supabase";
+import { writable } from "svelte/store";
+import type { SerializedAnnotation } from "./sharePayload";
 
 const SHARE_BASE_URL = "https://quillium.bryanhu.com/share";
 
@@ -9,10 +11,13 @@ export type ReadonlyShare = {
     publishedTitle: string;
     previewText: string;
     publishedContent: string;
+    publishedAnnotations: SerializedAnnotation[];
     authorName: string | null;
     publishedAt: string | null;
     updatedAt: string;
 };
+
+export const readonlyShareState = writable<ReadonlyShare | null>(null);
 
 type ShareRow = {
     share_token: string;
@@ -20,6 +25,7 @@ type ShareRow = {
     published_title: string;
     preview_text: string;
     published_content: string;
+    published_annotations: SerializedAnnotation[] | null;
     author_name: string | null;
     published_at: string | null;
     updated_at: string;
@@ -30,6 +36,7 @@ type PublishReadonlyShareInput = {
     ownerId: string;
     title: string;
     content: string;
+    annotations: SerializedAnnotation[];
 };
 
 function requireSupabase() {
@@ -46,6 +53,7 @@ function mapShare(row: ShareRow): ReadonlyShare {
         publishedTitle: row.published_title,
         previewText: row.preview_text,
         publishedContent: row.published_content,
+        publishedAnnotations: row.published_annotations ?? [],
         authorName: row.author_name,
         publishedAt: row.published_at,
         updatedAt: row.updated_at,
@@ -83,7 +91,7 @@ export async function getReadonlyShare(documentId: string): Promise<ReadonlyShar
     const { data, error } = await client
         .from("shares")
         .select(
-            "share_token, enabled, published_title, preview_text, published_content, author_name, published_at, updated_at",
+            "share_token, enabled, published_title, preview_text, published_content, published_annotations, author_name, published_at, updated_at",
         )
         .eq("document_id", documentId)
         .maybeSingle<ShareRow>();
@@ -111,13 +119,14 @@ export async function publishReadonlyShare(
                 published_title: input.title.trim() || "Untitled",
                 preview_text: buildSharePreviewText(input.content),
                 published_content: input.content,
+                published_annotations: input.annotations,
                 author_name: getCurrentUserName(),
                 published_at: new Date().toISOString(),
             },
             { onConflict: "document_id" },
         )
         .select(
-            "share_token, enabled, published_title, preview_text, published_content, author_name, published_at, updated_at",
+            "share_token, enabled, published_title, preview_text, published_content, published_annotations, author_name, published_at, updated_at",
         )
         .single<ShareRow>();
 
@@ -135,7 +144,7 @@ export async function disableReadonlyShare(documentId: string): Promise<Readonly
         .update({ enabled: false })
         .eq("document_id", documentId)
         .select(
-            "share_token, enabled, published_title, preview_text, published_content, author_name, published_at, updated_at",
+            "share_token, enabled, published_title, preview_text, published_content, published_annotations, author_name, published_at, updated_at",
         )
         .single<ShareRow>();
 

@@ -10,18 +10,29 @@
 <script lang="ts">
 import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
-import { editorView, currentDraftId, currentDocumentTitle, lastPersistedEventId } from "$lib/stores";
+import {
+    annotations,
+    currentDocumentTitle,
+    currentDraftId,
+    documentContent,
+    editorView,
+    lastPersistedEventId,
+} from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
+import { annotationField } from "$lib/editor/plugins/annotations";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
 import {
+    buildSharePreviewText,
     buildReadonlyShareUrl,
     disableReadonlyShare,
     getReadonlyShare,
     publishReadonlyShare,
+    readonlyShareState,
     type ReadonlyShare,
 } from "$lib/collab/share";
+import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
 import {
     enableCollab,
     disableCollab,
@@ -71,6 +82,22 @@ const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured);
 const currentId = $derived($currentDraftId ?? "");
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
+const currentSerializedAnnotations = $derived(serializeAnnotations($documentContent, $annotations));
+const currentShareFingerprint = $derived(
+    buildShareFingerprint($currentDocumentTitle, $documentContent, currentSerializedAnnotations),
+);
+const publishedShareFingerprint = $derived(
+    readonlyShare
+        ? buildShareFingerprint(
+              readonlyShare.publishedTitle,
+              readonlyShare.publishedContent,
+              readonlyShare.publishedAnnotations,
+          )
+        : "",
+);
+const shareUpToDate = $derived(
+    !!readonlyShare?.enabled && currentShareFingerprint === publishedShareFingerprint,
+);
 const canStartLive = $derived(authenticated && relayConfigured && !!currentId && !connecting);
 const liveStatusLabel = $derived(isLive ? "Live Room is open" : "Live Room is off");
 const isReconnecting = $derived($collabState === "reconnecting");
@@ -81,12 +108,14 @@ const retryLabel = $derived(
 async function refreshReadonlyShare() {
     if (!authenticated || !currentId) {
         readonlyShare = null;
+        readonlyShareState.set(null);
         return;
     }
 
     shareLoading = true;
     try {
         readonlyShare = await getReadonlyShare(currentId);
+        readonlyShareState.set(readonlyShare);
     } catch (err) {
         console.error("[share] Failed to load readonly share:", err);
         toast.error("Couldn't load public link settings");
@@ -111,7 +140,11 @@ $effect(() => {
 });
 
 $effect(() => {
-    if (!modalOpen || !authenticated) return;
+    if (!authenticated || !currentId) {
+        readonlyShare = null;
+        readonlyShareState.set(null);
+        return;
+    }
     refreshReadonlyShare();
 });
 
@@ -216,7 +249,9 @@ async function publishCurrentSnapshot() {
             ownerId: user.id,
             title: $currentDocumentTitle,
             content: view.state.doc.toString(),
+            annotations: serializeAnnotations(view.state.doc.toString(), view.state.field(annotationField)),
         });
+        readonlyShareState.set(readonlyShare);
         posthog.capture(hadShare ? "readonly_share_updated" : "readonly_share_published");
         toast.success(hadShare ? "Public page updated" : "Public page published");
     } catch (err) {
@@ -236,6 +271,7 @@ async function toggleReadonlyShare() {
     shareBusy = true;
     try {
         readonlyShare = await disableReadonlyShare(currentId);
+        readonlyShareState.set(readonlyShare);
         posthog.capture("readonly_share_disabled");
         toast.success("Public link turned off");
     } catch (err) {
@@ -487,27 +523,42 @@ async function handleToggle() {
                                 </div>
 
                                 <div class="share-detail-card">
-                                    <div class="detail-row">
-                                        <span>Public URL</span>
-                                        <strong>{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
+                                        <div class="detail-row">
+                                            <span>Public URL</span>
+                                            <strong>{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span>Last published</span>
+                                            <strong>{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span>Snapshot status</span>
+                                            <strong
+                                                class:muted-detail={shareUpToDate}
+                                                >{readonlyShare?.enabled
+                                                    ? shareUpToDate
+                                                        ? "Already up to date"
+                                                        : "Local draft has unpublished changes"
+                                                    : `Ready to publish${buildSharePreviewText($documentContent).length > 0 ? ` • ${currentSerializedAnnotations.length} annotation${currentSerializedAnnotations.length === 1 ? "" : "s"}` : ""}`}</strong
+                                            >
+                                        </div>
                                     </div>
-                                    <div class="detail-row">
-                                        <span>Last published</span>
-                                        <strong>{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
-                                    </div>
-                                </div>
 
                                 <div class="share-actions">
                                     <button
                                         class="primary-action share-primary"
                                         onclick={publishCurrentSnapshot}
-                                        disabled={shareBusy || shareLoading || !currentId}
+                                        class:primary-action-muted={shareUpToDate}
+                                        disabled={shareBusy || shareLoading || !currentId || shareUpToDate}
                                     >
                                         {#if shareBusy}
                                             <span class="spin" aria-hidden="true">
                                                 <Loader2 size={15} />
                                             </span>
                                             Saving
+                                        {:else if readonlyShare?.enabled && shareUpToDate}
+                                            <RefreshCcw size={15} />
+                                            Already up to date
                                         {:else if readonlyShare?.enabled}
                                             <RefreshCcw size={15} />
                                             Update shared version
@@ -531,8 +582,12 @@ async function handleToggle() {
                                     <p class="share-status-line">Loading your public link settings…</p>
                                 {:else if readonlyShare?.enabled}
                                     <p class="share-status-line">
-                                        Readers keep seeing the current snapshot until you click
-                                        <strong>Update shared version</strong>.
+                                        {#if shareUpToDate}
+                                            The public page already matches this draft.
+                                        {:else}
+                                            Readers keep seeing the current snapshot until you click
+                                            <strong>Update shared version</strong>.
+                                        {/if}
                                     </p>
                                 {/if}
                             </div>
@@ -1174,6 +1229,10 @@ async function handleToggle() {
         word-break: break-word;
     }
 
+    .detail-row strong.muted-detail {
+        color: rgba(0, 0, 0, 0.52);
+    }
+
     .share-actions {
         display: flex;
         gap: 10px;
@@ -1199,6 +1258,11 @@ async function handleToggle() {
     .secondary-action:hover:not(:disabled) {
         background: rgba(0, 0, 0, 0.085);
         color: rgba(0, 0, 0, 0.78);
+    }
+
+    .primary-action-muted {
+        background: rgba(0, 0, 0, 0.22);
+        color: rgba(255, 255, 255, 0.92);
     }
 
     .future-section {

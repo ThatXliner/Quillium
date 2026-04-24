@@ -5,6 +5,7 @@ ALTER TABLE public.shares
     ADD COLUMN IF NOT EXISTS published_title text NOT NULL DEFAULT 'Untitled',
     ADD COLUMN IF NOT EXISTS preview_text text NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS published_content text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS published_annotations jsonb NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS author_name text,
     ADD COLUMN IF NOT EXISTS published_at timestamp with time zone;
 
@@ -16,6 +17,9 @@ COMMENT ON COLUMN public.shares.preview_text IS
 
 COMMENT ON COLUMN public.shares.published_content IS
     'Snapshot of the published plain-text document body.';
+
+COMMENT ON COLUMN public.shares.published_annotations IS
+    'Serialized annotations rendered on the public shared page.';
 
 COMMENT ON COLUMN public.shares.author_name IS
     'Author name shown on the public shared page.';

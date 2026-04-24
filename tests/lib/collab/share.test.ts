@@ -1,4 +1,5 @@
 import { buildReadonlyShareUrl, buildSharePreviewText } from "$lib/collab/share";
+import { buildShareFingerprint } from "$lib/collab/sharePayload";
 import { describe, expect, it } from "vitest";
 
 describe("buildReadonlyShareUrl", () => {
@@ -14,5 +15,22 @@ describe("buildSharePreviewText", () => {
 
     it("truncates long previews with an ellipsis", () => {
         expect(buildSharePreviewText("abcdefghijklmnopqrstuvwxyz", 10)).toBe("abcdefghi…");
+    });
+});
+
+describe("buildShareFingerprint", () => {
+    it("changes when annotations change", () => {
+        expect(buildShareFingerprint("Doc", "hello", [])).not.toBe(
+            buildShareFingerprint("Doc", "hello", [
+                {
+                    id: 1,
+                    type: "comment",
+                    from: 0,
+                    to: 5,
+                    selectedText: "hello",
+                    thread: [],
+                },
+            ]),
+        );
     });
 });

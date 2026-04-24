@@ -29,9 +29,19 @@ import {
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToHistory, goToLibrary } from "$lib/navigation";
+import { readonlyShareState } from "$lib/collab/share";
+import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import {
+    annotations,
+    currentDocumentTitle,
+    documentContent,
+    saveStatus,
+    settingsOpen,
+    statsOpen,
+    tutorialActive,
+} from "$lib/stores";
 import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
@@ -50,6 +60,27 @@ let secondaryStrip = $state<HTMLDivElement>();
 let stripOverflows = $state(false);
 let canScrollLeft = $state(false);
 let canScrollRight = $state(false);
+
+const currentShareFingerprint = $derived(
+    buildShareFingerprint(
+        $currentDocumentTitle,
+        $documentContent,
+        serializeAnnotations($documentContent, $annotations),
+    ),
+);
+const publicShareFingerprint = $derived(
+    $readonlyShareState
+        ? buildShareFingerprint(
+              $readonlyShareState.publishedTitle,
+              $readonlyShareState.publishedContent,
+              $readonlyShareState.publishedAnnotations,
+          )
+        : "",
+);
+const hasPublicShare = $derived(!!$readonlyShareState?.enabled);
+const publicShareUpToDate = $derived(
+    hasPublicShare && currentShareFingerprint === publicShareFingerprint,
+);
 
 function updateScrollState() {
     if (!secondaryStrip) return;
@@ -184,9 +215,16 @@ $effect(() => {
                 <div
                     class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
                 ></div>
-                <span class="text-sm text-black/90"
-                    >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
-                >
+                <div class="flex flex-col leading-tight">
+                    <span class="text-sm text-black/90"
+                        >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
+                    >
+                    {#if hasPublicShare && $saveStatus !== "error"}
+                        <span class="text-[11px] text-black/45">
+                            {publicShareUpToDate ? "Public link is live" : "Public link live, update pending"}
+                        </span>
+                    {/if}
+                </div>
             {/if}
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
