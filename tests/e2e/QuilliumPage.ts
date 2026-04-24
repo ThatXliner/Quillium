@@ -380,9 +380,20 @@ export class QuilliumPage {
 
     /** Focus the main editor and replace all text with `text`. */
     async typeInEditor(text: string): Promise<void> {
-        await this.editor.click();
-        await this.selectAll();
-        await this.page.keyboard.type(text);
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            await expect(this.editor).toBeVisible({ timeout: 10_000 });
+            await this.editor.click();
+            await this.selectAll();
+            await this.page.keyboard.type(text);
+            try {
+                await expect.poll(() => this.cmText(), { timeout: 10_000 }).toBe(text);
+                return;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError;
     }
 
     /** Type into a specific CodeMirror editor locator. */
@@ -496,9 +507,21 @@ export class QuilliumPage {
      */
     async createRevisionOnRange(fullText: string, from: number, to: number): Promise<string> {
         await this.typeInEditor(fullText);
-        await this.selectRange(from, to);
-        await this.createRevision();
-        return fullText.slice(from, to);
+        const selectedText = fullText.slice(from, to);
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            await this.selectRange(from, to);
+            await this.createRevision();
+            try {
+                await expect(this.page.locator("[data-revision-id]").first()).toBeVisible({
+                    timeout: attempt === 0 ? 5_000 : 10_000,
+                });
+                return selectedText;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError;
     }
 
     /** Create a revision spanning all text and return it. */
@@ -541,6 +564,7 @@ export class QuilliumPage {
         await expect(textarea).toBeVisible({ timeout: 5_000 });
         await textarea.fill(text);
         await this.sendReply();
+        await expect(textarea).toBeHidden({ timeout: 5_000 });
     }
 
     /** Wait for a separate undo group (history newGroupDelay). */
