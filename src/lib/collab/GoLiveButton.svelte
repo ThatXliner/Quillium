@@ -48,6 +48,7 @@ import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 import {
     ArrowLeftRight,
+    ChevronDown,
     Cloud,
     Copy,
     ExternalLink,
@@ -82,9 +83,18 @@ const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured);
 const currentId = $derived($currentDraftId ?? "");
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
-const currentSerializedAnnotations = $derived(serializeAnnotations($documentContent, $annotations));
+const currentSharePayload = $derived({
+    title: $currentDocumentTitle,
+    content: $documentContent,
+    annotations: serializeAnnotations($documentContent, $annotations),
+});
+const currentSerializedAnnotations = $derived(currentSharePayload.annotations);
 const currentShareFingerprint = $derived(
-    buildShareFingerprint($currentDocumentTitle, $documentContent, currentSerializedAnnotations),
+    buildShareFingerprint(
+        currentSharePayload.title,
+        currentSharePayload.content,
+        currentSharePayload.annotations,
+    ),
 );
 const publishedShareFingerprint = $derived(
     readonlyShare
@@ -99,12 +109,6 @@ const shareUpToDate = $derived(
     !!readonlyShare?.enabled && currentShareFingerprint === publishedShareFingerprint,
 );
 const shareNeedsUpdate = $derived(!!readonlyShare?.enabled && !shareUpToDate);
-const canStartLive = $derived(authenticated && relayConfigured && !!currentId && !connecting);
-const liveStatusLabel = $derived(isLive ? "Live Room is open" : "Live Room is off");
-const isReconnecting = $derived($collabState === "reconnecting");
-const retryLabel = $derived(
-    `Retrying ${Math.min($reconnectAttempt, MAX_RECONNECT_ATTEMPTS)}/${MAX_RECONNECT_ATTEMPTS}`,
-);
 
 async function refreshReadonlyShare() {
     if (!authenticated || !currentId) {
@@ -227,6 +231,20 @@ function formatShareTimestamp(value: string | null): string {
     }).format(new Date(value));
 }
 
+function buildPublishPayload() {
+    const view = get(editorView);
+    const content = view?.state.doc.toString() ?? $documentContent;
+    const liveAnnotations = view?.state.field(annotationField, false) ?? $annotations;
+
+    return {
+        documentId: currentId,
+        ownerId: getUser()?.id ?? "",
+        title: $currentDocumentTitle,
+        content,
+        annotations: serializeAnnotations(content, liveAnnotations),
+    };
+}
+
 async function copyReadonlyLink() {
     if (!shareUrl) return;
     await navigator.clipboard.writeText(shareUrl);
@@ -236,22 +254,24 @@ async function copyReadonlyLink() {
 
 async function publishCurrentSnapshot() {
     const user = getUser();
-    const view = get(editorView);
-    if (!user || !currentId || !view) {
+    if (!user || !currentId) {
         toast.error("Open a document and sign in to publish it");
         return;
     }
 
+    const payload = buildPublishPayload();
+    payload.ownerId = user.id;
+
     shareBusy = true;
     try {
         const hadShare = readonlyShare?.enabled ?? false;
-        readonlyShare = await publishReadonlyShare({
-            documentId: currentId,
-            ownerId: user.id,
-            title: $currentDocumentTitle,
-            content: view.state.doc.toString(),
-            annotations: serializeAnnotations(view.state.doc.toString(), view.state.field(annotationField)),
-        });
+        const publishedShare = await publishReadonlyShare(payload);
+        readonlyShare = {
+            ...publishedShare,
+            publishedTitle: payload.title.trim() || "Untitled",
+            publishedContent: payload.content,
+            publishedAnnotations: payload.annotations,
+        };
         readonlyShareState.set(readonlyShare);
         posthog.capture(hadShare ? "readonly_share_updated" : "readonly_share_published");
         toast.success(hadShare ? "Public page updated" : "Public page published");
@@ -423,14 +443,19 @@ async function handleToggle() {
     <div class="share-trigger-wrap relative flex flex-col items-end gap-2">
         <button
             onclick={() => (modalOpen = true)}
-            class="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-full shadow-md transition-colors
+            class="share-trigger-button inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-full shadow-md transition-colors
                 {isLive
                     ? 'bg-emerald-500 text-white hover:bg-emerald-600'
                     : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
             aria-haspopup="dialog"
+            aria-label={shareNeedsUpdate ? "Share, public link has unpublished changes" : "Share"}
         >
             <Share2 size={14} />
             Share
+
+            {#if shareNeedsUpdate}
+                <span class="share-update-dot" aria-hidden="true"></span>
+            {/if}
         </button>
 
         {#if shareNeedsUpdate}
@@ -635,56 +660,137 @@ async function handleToggle() {
                         {/if}
                     {:else}
                         {#if authenticated}
-                            <div class="omni-hero">
+                            <div class="omni-intro">
                                 <div class="panel-copy">
                                     <div class="icon-badge">
                                         <Cloud size={18} />
                                     </div>
                                     <div>
-                                        <h3>Collaboration is part of Quillium Omni</h3>
+                                        <h3>Live collaboration</h3>
                                         <p>
-                                            Live Room, shared invites, cloud sync, and the rest of Quillium's collaboration
-                                            features are available exclusively to Omni users.
+                                            Bring another writer into this draft right now. Omni will expand this into
+                                            persistent sync later, but this room flow still works today.
                                         </p>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div class="share-detail-card">
-                                    <div class="detail-row">
-                                        <span>Account</span>
-                                        <strong>Signed in</strong>
+                            <div class="status-card">
+                                <!-- <div class="status-copy">
+                                    <div>
+                                        <h3>{isLive ? "Live Room is open" : "Live Room is off"}</h3>
+                                        <p>
+                                            Invite another writer into this draft.
+                                        </p>
                                     </div>
-                                    <div class="detail-row">
-                                        <span>Status</span>
-                                        <strong>Omni is currently waitlist only</strong>
+                                </div> -->
+                                <button
+                                    onclick={handleToggle}
+                                    disabled={!isLive && !(authenticated && relayConfigured && !!currentId && !connecting)}
+                                    class="live-action"
+                                    class:danger={isLive}
+                                >
+                                    {#if connecting}
+                                        <span class="spin" aria-hidden="true">
+                                            <Loader2 size={15} />
+                                        </span>
+                                        Connecting
+                                    {:else if $collabState === "reconnecting"}
+                                        <span class="spin" aria-hidden="true">
+                                            <Loader2 size={15} />
+                                        </span>
+                                        Retrying {Math.min($reconnectAttempt, MAX_RECONNECT_ATTEMPTS)}/{MAX_RECONNECT_ATTEMPTS}
+                                    {:else if isLive}
+                                        End session
+                                    {:else}
+                                        <Radio size={15} />
+                                        Start live room
+                                    {/if}
+                                </button>
+                            </div>
+
+                            <details class="live-tools-disclosure">
+                                <summary>
+                                    <span class="live-tools-summary-main">
+                                        <span>Room details</span>
+                                        <span class="live-tools-summary-copy">
+                                            Copy this room ID or join another room
+                                        </span>
+                                    </span>
+                                    <span class="live-tools-summary-icon" aria-hidden="true">
+                                        <ChevronDown size={16} />
+                                    </span>
+                                </summary>
+
+                                <div class="live-tools-disclosure-body">
+                                <div class="live-tools">
+                                    <div class="doc-id-block room-field">
+                                        <div class="field-label">Room ID</div>
+                                        <div class="copy-row">
+                                            <input readonly value={currentId} aria-label="Current document room ID" />
+                                            <button onclick={copyId} disabled={!currentId} aria-label="Copy document room ID">
+                                                <Copy size={14} />
+                                                Copy
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="detail-row">
-                                        <span>Access</span>
-                                        <strong>Signing in does not unlock Omni by itself. Access still comes through the waitlist.</strong>
-                                    </div>
+
+                                    <form
+                                        onsubmit={(e) => {
+                                            e.preventDefault();
+                                            joinById();
+                                        }}
+                                        class="join-block room-field"
+                                    >
+                                        <label for="join-id">Join with room ID</label>
+                                        <div class="copy-row">
+                                            <input
+                                                id="join-id"
+                                                bind:value={joinIdInput}
+                                                placeholder="Paste UUID..."
+                                                autocomplete="off"
+                                            />
+                                            <button type="submit" disabled={connecting || !joinIdInput.trim()}>
+                                                Join
+                                            </button>
+                                        </div>
+                                    </form>
                                 </div>
+                                </div>
+                            </details>
 
+                            <div class="omni-link-row">
                                 <a
                                     href={OMNI_WAITLIST_URL}
                                     target="_blank"
                                     rel="noreferrer"
-                                    class="primary-action share-primary link-action"
+                                    class="omni-inline-link"
                                 >
-                                    <ExternalLink size={15} />
-                                    Join the Omni waitlist
+                                    Learn about Omni
+                                    <ExternalLink size={14} />
                                 </a>
                             </div>
 
                             <div class="future-section">
-                                <div class="panel-copy">
+                                <div class="future-label">In the making</div>
+                                <div class="disabled-option" aria-disabled="true">
                                     <div class="icon-badge muted">
                                         <ArrowLeftRight size={17} />
                                     </div>
                                     <div>
-                                        <h3>What happens next</h3>
+                                        <h3>Async Collaboration</h3>
                                         <p>
-                                            If you already joined the waitlist, we'll use that to grant Omni access. If not, the next step is still joining it.
+                                            Stored on our servers to stay available even after you close Quillium.
                                         </p>
+                                    </div>
+                                </div>
+                                <div class="disabled-option" aria-disabled="true">
+                                    <div class="icon-badge muted">
+                                        <Cloud size={17} />
+                                    </div>
+                                    <div>
+                                        <h3>Cloud Sync</h3>
+                                        <p>Make this document available on all of your devices.</p>
                                     </div>
                                 </div>
                             </div>
@@ -899,6 +1005,23 @@ async function handleToggle() {
         position: relative;
     }
 
+    .share-trigger-button {
+        position: relative;
+    }
+
+    .share-update-dot {
+        position: absolute;
+        top: -3px;
+        right: -3px;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgb(37, 99, 235);
+        box-shadow:
+            0 0 0 3px rgba(255, 255, 255, 0.92),
+            0 4px 10px rgba(59, 130, 246, 0.2);
+    }
+
     .share-update-pill {
         display: inline-flex;
         align-items: center;
@@ -950,16 +1073,24 @@ async function handleToggle() {
         padding: 18px;
         border: 1px solid rgba(0, 0, 0, 0.07);
         border-radius: 14px;
-        background: rgba(255, 255, 255, 0.72);
+        background: rgba(255, 255, 255, 0.78);
     }
 
     .share-mode-card,
-    .omni-hero {
+    .omni-hero,
+    .omni-intro {
         display: grid;
         gap: 16px;
     }
 
     .panel-copy {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .status-copy,
+    .disabled-option {
         display: flex;
         gap: 12px;
         align-items: flex-start;
@@ -990,6 +1121,14 @@ async function handleToggle() {
     }
 
     .panel-copy p {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.45;
+        color: rgba(0, 0, 0, 0.48);
+    }
+
+    .status-copy p,
+    .disabled-option p {
         margin: 0;
         font-size: 12px;
         line-height: 1.45;
@@ -1034,8 +1173,55 @@ async function handleToggle() {
         text-decoration: none;
     }
 
+    .status-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 10px 0 0;
+    }
+
+    .status-copy {
+        align-items: center;
+    }
+
     .auth-actions button:hover {
         background: rgb(29, 78, 216);
+    }
+
+    .live-action {
+        flex: 0 0 auto;
+        min-width: 142px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 38px;
+        padding: 0 16px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 650;
+        color: rgba(0, 0, 0, 0.7);
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        transition: background 0.16s, color 0.16s, opacity 0.16s;
+    }
+
+    .live-action:hover:not(:disabled) {
+        color: rgba(4, 120, 87, 0.96);
+        background: rgba(16, 185, 129, 0.18);
+    }
+
+    .live-action.danger {
+        color: rgba(0, 0, 0, 0.64);
+        background: rgba(0, 0, 0, 0.055);
+        border-color: rgba(0, 0, 0, 0.08);
+    }
+
+    .live-action.danger:hover:not(:disabled) {
+        color: rgba(0, 0, 0, 0.78);
+        background: rgba(0, 0, 0, 0.085);
     }
 
     .spin {
@@ -1046,6 +1232,154 @@ async function handleToggle() {
         to {
             transform: rotate(360deg);
         }
+    }
+
+    .doc-id-block,
+    .join-block {
+        margin-top: 0;
+    }
+
+    .live-tools {
+        display: grid;
+        gap: 12px;
+        margin-top: 12px;
+    }
+
+    .room-field {
+        padding: 0;
+    }
+
+    .live-tools-disclosure {
+        margin-top: 14px;
+        border-top: 1px solid rgba(0, 0, 0, 0.065);
+        padding-top: 14px;
+    }
+
+    .live-tools-disclosure summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        cursor: pointer;
+        list-style: none;
+        color: rgba(0, 0, 0, 0.7);
+    }
+
+    .live-tools-disclosure summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .live-tools-disclosure summary span:first-child {
+        display: block;
+    }
+
+    .live-tools-summary-main {
+        display: grid;
+        gap: 2px;
+    }
+
+    .live-tools-summary-main span:first-child {
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .live-tools-summary-copy {
+        font-size: 12px;
+        line-height: 1.4;
+        color: rgba(0, 0, 0, 0.44);
+    }
+
+    .live-tools-summary-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        color: rgba(0, 0, 0, 0.46);
+        background: rgba(0, 0, 0, 0.045);
+        transition:
+            transform 0.18s ease,
+            background 0.18s ease,
+            color 0.18s ease;
+    }
+
+    .live-tools-disclosure[open] .live-tools-summary-icon {
+        transform: rotate(180deg);
+        color: rgba(0, 0, 0, 0.64);
+        background: rgba(0, 0, 0, 0.065);
+    }
+
+    .live-tools-disclosure-body {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.22s ease;
+    }
+
+    .live-tools-disclosure[open] .live-tools-disclosure-body {
+        grid-template-rows: 1fr;
+    }
+
+    .live-tools-disclosure-body > .live-tools {
+        overflow: hidden;
+    }
+
+    .field-label,
+    .join-block label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 11px;
+        font-weight: 650;
+        color: rgba(0, 0, 0, 0.48);
+    }
+
+    .copy-row {
+        display: flex;
+        gap: 8px;
+    }
+
+    .copy-row input {
+        min-width: 0;
+        flex: 1;
+        height: 36px;
+        padding: 0 10px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.035);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.64);
+        outline: none;
+    }
+
+    .room-field input[readonly] {
+        background: rgba(37, 99, 235, 0.04);
+    }
+
+    .copy-row input:focus {
+        border-color: rgba(37, 99, 235, 0.38);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .copy-row button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-width: 76px;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.055);
+        font-size: 12px;
+        font-weight: 650;
+        color: rgba(0, 0, 0, 0.58);
+        transition: background 0.16s, color 0.16s, opacity 0.16s;
+    }
+
+    .copy-row button:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.085);
+        color: rgba(0, 0, 0, 0.74);
     }
 
     .share-toggle-row {
@@ -1172,6 +1506,45 @@ async function handleToggle() {
         border-top: 1px solid rgba(0, 0, 0, 0.065);
     }
 
+    .omni-link-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        margin-top: 14px;
+    }
+
+    .omni-inline-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: rgba(0, 0, 0, 0.52);
+        font-size: 12px;
+        font-weight: 650;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: color 0.16s;
+    }
+
+    .omni-inline-link:hover {
+        color: rgba(0, 0, 0, 0.72);
+    }
+
+    .future-label {
+        margin-bottom: 8px;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.34);
+    }
+
+    .disabled-option {
+        padding: 12px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.035);
+        opacity: 0.72;
+    }
+
     .auth-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1207,6 +1580,8 @@ async function handleToggle() {
             width: calc(100vw - 20px);
         }
 
+        .status-card,
+        .copy-row,
         .auth-actions,
         .share-actions {
             grid-template-columns: 1fr;
@@ -1214,9 +1589,20 @@ async function handleToggle() {
             align-items: stretch;
         }
 
+        .omni-link-row {
+            justify-content: flex-start;
+        }
+
+        .live-action,
+        .copy-row button,
         .share-primary,
         .secondary-action {
             width: 100%;
+        }
+
+        .live-tools-disclosure summary {
+            align-items: flex-start;
+            flex-direction: column;
         }
     }
 </style>
