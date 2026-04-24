@@ -63,6 +63,7 @@ import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 import LicensesModal from "$lib/ui/LicensesModal.svelte";
 import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
+import { appEventBus } from "$lib/events/appEventBus";
 
 let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
@@ -252,20 +253,18 @@ onMount(() => {
     }
 
     // Handle crash-restore events dispatched by ErrorBanner.svelte.
-    function handleRestoreBackup(e: Event) {
+    function handleRestoreBackup(backup: BackupEntry) {
         const view = $editorView;
         if (!view) return;
-        const { documentText } = (e as CustomEvent<BackupEntry>).detail;
-        restoreBackup(view, documentText);
+        restoreBackup(view, backup.documentText);
     }
 
     function handleManualReviewEvent() {
         if (appSettings.aiEnabled && autoAISettings.enabled) triggerManualReview();
     }
 
-    function handleShowUpdateBanner(e: Event) {
-        const { version: v, mas } = (e as CustomEvent<{ version: string; mas: boolean }>).detail;
-        updateVersion = v;
+    function handleShowUpdateBanner(version: string, mas: boolean) {
+        updateVersion = version;
         updateAvailable = true;
         updateReady = false;
         updateInstalling = false;
@@ -276,11 +275,15 @@ onMount(() => {
         authModalOpen = true;
     }
 
-    window.addEventListener("quillium:restore-backup", handleRestoreBackup);
-    window.addEventListener("quillium:manual-review", handleManualReviewEvent);
-    window.addEventListener("quillium:show-changelog", forceShowChangelog);
-    window.addEventListener("quillium:show-update-banner", handleShowUpdateBanner);
-    window.addEventListener("quillium:show-auth-modal", handleShowAuthModal);
+    const unsubRestoreBackup = appEventBus.on("restore-backup", (event) => {
+        handleRestoreBackup(event.backup);
+    });
+    const unsubManualReview = appEventBus.on("manual-review", handleManualReviewEvent);
+    const unsubShowChangelog = appEventBus.on("show-changelog", forceShowChangelog);
+    const unsubShowUpdateBanner = appEventBus.on("show-update-banner", (event) => {
+        handleShowUpdateBanner(event.version, event.mas);
+    });
+    const unsubShowAuthModal = appEventBus.on("show-auth-modal", handleShowAuthModal);
 
     // Listen for Tauri menu events
     let destroyed = false;
@@ -316,11 +319,11 @@ onMount(() => {
 
     return () => {
         destroyed = true;
-        window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
-        window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
-        window.removeEventListener("quillium:show-changelog", forceShowChangelog);
-        window.removeEventListener("quillium:show-update-banner", handleShowUpdateBanner);
-        window.removeEventListener("quillium:show-auth-modal", handleShowAuthModal);
+        unsubRestoreBackup();
+        unsubManualReview();
+        unsubShowChangelog();
+        unsubShowUpdateBanner();
+        unsubShowAuthModal();
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });

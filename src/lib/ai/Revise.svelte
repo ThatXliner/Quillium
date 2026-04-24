@@ -72,6 +72,7 @@ import { appSettings } from "$lib/settings.svelte";
 import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { streamRevise } from "$lib/ai/clientStreams";
+import { appEventBus } from "$lib/events/appEventBus";
 
 let input = $state("");
 let personaInFlight = $state(false);
@@ -83,11 +84,10 @@ useAiChatEffects(chat);
 
 // Also reset persona state on global stop.
 $effect(() => {
-    function handleStop() {
+    const unsub = appEventBus.on("stop-ai", () => {
         personaInFlight = false;
-    }
-    window.addEventListener("quillium:stop-ai", handleStop);
-    return () => window.removeEventListener("quillium:stop-ai", handleStop);
+    });
+    return unsub;
 });
 
 /**

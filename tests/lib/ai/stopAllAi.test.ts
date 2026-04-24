@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { aiProcessing, setAiProcessing, getAiAbortSignal, stopAllAi } from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 
 describe("stopAllAi", () => {
     beforeEach(() => {
@@ -36,14 +37,13 @@ describe("stopAllAi", () => {
         expect(signal2.aborted).toBe(false);
     });
 
-    it("dispatches quillium:stop-ai window event", () => {
+    it("emits a stop-ai app event", () => {
         const handler = vi.fn();
-        window.addEventListener("quillium:stop-ai", handler);
+        const unsub = appEventBus.on("stop-ai", handler);
 
         stopAllAi();
         expect(handler).toHaveBeenCalledOnce();
-
-        window.removeEventListener("quillium:stop-ai", handler);
+        unsub();
     });
 
     it("is safe to call when no AbortController exists", () => {
