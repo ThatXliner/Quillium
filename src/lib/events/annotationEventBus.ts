@@ -1,5 +1,5 @@
 /**
- * eventBus.ts — Typed event bus for annotation UI events.
+ * annotationEventBus.ts — Typed event bus for annotation UI events.
  *
  * Replaces the previous token-based deduplication pattern where a single
  * Svelte writable store held the latest event and each consumer tracked
@@ -14,10 +14,8 @@
  */
 
 import type { EditorView } from "@codemirror/view";
-import { TypedEventBus, type EventOfType } from "$lib/events/createEventBus";
+import { TypedEventBus, type EventOfType } from "./createEventBus";
 import type { NestedEditorCommand } from "$lib/stores";
-
-// ── Event types ──────────────────────────────────────────────
 
 export type AnnotationEvent =
     | { type: "revision-boundary-nudge"; revisionId: number }
@@ -48,8 +46,6 @@ export type AnnotationEvent =
           undoType: "undo" | "redo";
       };
 
-// ── Bus implementation ───────────────────────────────────────
-
 class AnnotationEventBus extends TypedEventBus<AnnotationEvent> {
     /**
      * Pending nested editor selections need out-of-band storage because
@@ -62,7 +58,6 @@ class AnnotationEventBus extends TypedEventBus<AnnotationEvent> {
         EventOfType<AnnotationEvent, "pending-nested-editor-selection">
     >();
 
-    /** Emit an event, delivering to all listeners of that type. */
     override emit(event: AnnotationEvent): void {
         if (event.type === "pending-nested-editor-selection") {
             this.pendingSelections.set(event.annotationId, event);
@@ -70,7 +65,6 @@ class AnnotationEventBus extends TypedEventBus<AnnotationEvent> {
         super.emit(event);
     }
 
-    /** Pull a pending selection for the given annotation (one-shot). */
     consumePendingSelection(
         annotationId: number,
     ): EventOfType<AnnotationEvent, "pending-nested-editor-selection"> | undefined {
@@ -79,7 +73,6 @@ class AnnotationEventBus extends TypedEventBus<AnnotationEvent> {
         return event;
     }
 
-    /** Clear all pending selections (called on document switch). */
     clearPendingSelections(): void {
         this.pendingSelections.clear();
     }

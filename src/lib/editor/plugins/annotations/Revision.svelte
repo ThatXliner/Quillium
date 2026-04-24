@@ -41,7 +41,7 @@ import { versionText, type VersionState } from "./models";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { modalStack } from "$lib/stores";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";

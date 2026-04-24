@@ -40,7 +40,7 @@ import {
     type Thread,
 } from "$lib/editor/plugins/annotations";
 import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";

@@ -36,7 +36,7 @@ import {
 } from "./nestedEditor";
 import { nestedSavedFields } from "$lib/editor/extensions";
 import { getActiveAnnotation } from "./utils";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import type { VersionState, Annotation as AnnotationType, Annotations } from "./models";
 import type { GenericAnnotation } from "./models";
 import posthog from "$lib/posthog";

@@ -9,7 +9,7 @@ import {
     loadDocumentState,
     updateDocumentMeta,
 } from "$lib/db";
-import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
 import {
     activeAnnotation,

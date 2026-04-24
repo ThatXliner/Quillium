@@ -24,7 +24,7 @@ import {
     makeParentUndoKeymap,
     makeParentRevisionNavKeymap,
 } from "$lib/editor/plugins/annotations/nestedEditor";
-import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 
 // ── Helpers ──────────────────────────────────────────────────────
 

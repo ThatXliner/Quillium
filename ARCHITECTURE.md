@@ -264,7 +264,7 @@ Quillium now has two typed event buses, each for a different scope:
   - opening the AI chat with a prefilled message
   - opening AI settings
 
-- **`annotationEventBus`** in `src/lib/editor/plugins/annotations/eventBus.ts`
+- **`annotationEventBus`** in `src/lib/events/annotationEventBus.ts`
   Used for annotation-system routing where the sender and receiver may live in different editor layers (main editor, nested editor, revision card, modal).
 
 Both are built on the same generic primitive in `src/lib/events/createEventBus.ts`.
