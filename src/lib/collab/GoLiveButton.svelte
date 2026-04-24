@@ -48,7 +48,6 @@ import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 import {
     ArrowLeftRight,
-    ChevronDown,
     Cloud,
     Copy,
     ExternalLink,
@@ -440,10 +439,10 @@ async function handleToggle() {
 <svelte:window onkeydown={handleKeydown} />
 
 {#if canShowShare}
-    <div class="share-trigger-wrap relative flex flex-col items-end gap-2">
+    <div class="group relative flex flex-col items-end gap-2">
         <button
             onclick={() => (modalOpen = true)}
-            class="share-trigger-button inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-full shadow-md transition-colors
+            class="relative inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-md transition-colors
                 {isLive
                     ? 'bg-emerald-500 text-white hover:bg-emerald-600'
                     : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
@@ -454,19 +453,22 @@ async function handleToggle() {
             Share
 
             {#if shareNeedsUpdate}
-                <span class="share-update-dot" aria-hidden="true"></span>
+                <span
+                    class="absolute -right-[3px] -top-[3px] size-2.5 rounded-full bg-blue-600 shadow-[0_0_0_3px_rgba(255,255,255,0.92),0_4px_10px_rgba(59,130,246,0.2)]"
+                    aria-hidden="true"
+                ></span>
             {/if}
         </button>
 
         {#if shareNeedsUpdate}
             <button
                 type="button"
-                class="share-update-pill"
+                class="pointer-events-none inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-blue-500/15 bg-blue-500/10 px-3 text-xs font-[650] text-blue-700 shadow-[0_10px_28px_rgba(59,130,246,0.12),inset_0_1px_0_rgba(255,255,255,0.7)] opacity-0 transition-[background,color,transform,opacity,visibility] duration-150 invisible -translate-y-2 scale-95 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:scale-100 group-focus-within:opacity-100 hover:bg-blue-500/20 hover:text-blue-800 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:pointer-events-auto max-[520px]:visible max-[520px]:translate-y-0 max-[520px]:scale-100 max-[520px]:opacity-100"
                 onclick={updateWebPreviewQuickAction}
                 disabled={shareBusy || shareLoading || !currentId}
             >
                 {#if shareBusy}
-                    <span class="spin" aria-hidden="true">
+                    <span class="animate-spin" aria-hidden="true">
                         <Loader2 size={13} />
                     </span>
                     Updating link
@@ -480,43 +482,49 @@ async function handleToggle() {
 
     {#if modalOpen}
         <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-        <dialog bind:this={dialogEl} class="share-modal" onclick={handleBackdropClick}>
-            <div class="share-modal-inner">
-                <header class="share-modal-header">
+        <dialog
+            bind:this={dialogEl}
+            class="m-0 flex h-screen max-h-screen w-screen max-w-screen items-center justify-center border-none bg-transparent p-0 [&::backdrop]:bg-black/20 [&::backdrop]:backdrop-blur-[5px]"
+            onclick={handleBackdropClick}
+        >
+            <div class="w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]">
+                <header class="flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]">
                     <div>
-                        <div class="title-row">
-                            <h2>Share your document</h2>
-                            <span class="beta-pill">Beta</span>
+                        <div class="flex items-center gap-2.5">
+                            <h2 class="m-0 text-2xl/[1.1] font-[650] text-black/80">Share your document</h2>
+                            <span class="inline-flex h-5 items-center rounded-full bg-amber-400/15 px-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-amber-600">Beta</span>
                         </div>
                     </div>
                     <button
                         onclick={closeModal}
                         aria-label="Close"
-                        class="close-btn"
+                        class="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 pl-2 text-black/30 transition-[color,background] duration-150 hover:bg-black/5 hover:text-black/55"
                     >
-                        <span>esc</span>
+                        <span class="font-mono text-[9px] text-black/20">esc</span>
                         <X size={15} />
                     </button>
                 </header>
 
-                <p class="share-note">
+                <p class="m-0 px-6 pb-4 text-xs/[1.45] text-black/45">
                     Because writing is better together, always.
                 </p>
 
                 <div
-                    class="share-tabs"
+                    class="relative mx-6 flex gap-0.5 rounded-full bg-black/[0.055] p-[3px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]"
                     bind:this={tabTrackEl}
                     style={tabPillStyle}
                     role="tablist"
                     aria-label="Share modes"
                 >
-                    <div class="share-tab-pill"></div>
+                    <div
+                        class="absolute left-[3px] top-[3px] h-[calc(100%-6px)] rounded-full bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.95)] transition-[transform,width] duration-[250ms] [transition-timing-function:cubic-bezier(0.34,1.2,0.64,1)]"
+                        style="width: var(--share-pill-width, 50%); transform: translateX(var(--share-pill-x, 0px));"
+                    ></div>
                     <button
                         role="tab"
                         aria-selected={activeTab === "collaborate"}
                         onclick={() => (activeTab = "collaborate")}
-                        class="share-tab-btn"
-                        class:active={activeTab === "collaborate"}
+                        class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "collaborate" ? "text-black/70" : "text-black/40 hover:text-black/60"}`}
                     >
                         Omni
                     </button>
@@ -524,34 +532,33 @@ async function handleToggle() {
                         role="tab"
                         aria-selected={activeTab === "preview"}
                         onclick={() => (activeTab = "preview")}
-                        class="share-tab-btn"
-                        class:active={activeTab === "preview"}
+                        class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "preview" ? "text-black/70" : "text-black/40 hover:text-black/60"}`}
                     >
                         Web preview
                     </button>
                 </div>
 
-                <section class="share-panel">
+                <section class="m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
                     {#if activeTab === "preview"}
                         {#if authenticated}
-                            <div class="share-mode-card">
-                                <div class="panel-copy">
-                                    <div class="icon-badge">
+                            <div class="grid gap-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
                                         <Link size={18} />
                                     </div>
                                     <div>
-                                        <h3>Anyone with the link can read your document</h3>
-                                        <p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Anyone with the link can read your document</h3>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">
                                             Publish a read-only web page with Quillium branding. It only updates when
                                             you explicitly publish again.
                                         </p>
                                     </div>
                                 </div>
 
-                                <div class="share-toggle-row">
+                                <div class="flex items-center justify-between gap-4 rounded-2xl bg-black/[0.035] px-4 py-[14px]">
                                     <div>
-                                        <div class="toggle-label">Public link</div>
-                                        <div class="toggle-help">
+                                        <div class="text-[13px] font-bold text-black/75">Public link</div>
+                                        <div class="mt-1 text-xs/[1.45] text-black/50">
                                             {#if readonlyShare?.enabled}
                                                 On. Readers can open the last published snapshot.
                                             {:else}
@@ -561,48 +568,44 @@ async function handleToggle() {
                                     </div>
                                     <button
                                         type="button"
-                                        class="share-switch"
+                                        class={`relative h-[31px] w-[52px] rounded-full p-[3px] transition-colors duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 ${readonlyShare?.enabled ? "bg-[linear-gradient(135deg,rgba(16,185,129,0.95),rgba(5,150,105,0.95))]" : "bg-black/10"}`}
                                         role="switch"
                                         aria-checked={readonlyShare?.enabled ?? false}
                                         aria-label="Toggle public read-only link"
                                         onclick={toggleReadonlyShare}
                                         disabled={shareBusy || shareLoading || !currentId}
                                     >
-                                        <span></span>
+                                        <span class={`block size-[25px] rounded-full bg-white shadow-[0_3px_10px_rgba(0,0,0,0.18)] transition-transform duration-200 ease-out ${readonlyShare?.enabled ? "translate-x-[21px]" : "translate-x-0"}`}></span>
                                     </button>
                                 </div>
 
-                                <div class="share-detail-card">
-                                        <div class="detail-row">
-                                            <span>Public URL</span>
-                                            <strong>{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
-                                        </div>
-                                        <div class="detail-row">
-                                            <span>Last published</span>
-                                            <strong>{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
-                                        </div>
-                                        <div class="detail-row">
-                                            <span>Snapshot status</span>
-                                            <strong
-                                                class:muted-detail={shareUpToDate}
-                                                >{readonlyShare?.enabled
-                                                    ? shareUpToDate
-                                                        ? "Already up to date"
-                                                        : "Local draft has unpublished changes"
-                                                    : `Ready to publish${buildSharePreviewText($documentContent).length > 0 ? ` • ${currentSerializedAnnotations.length} annotation${currentSerializedAnnotations.length === 1 ? "" : "s"}` : ""}`}</strong
-                                            >
-                                        </div>
+                                <div class="grid gap-2.5 rounded-2xl border border-black/[0.055] bg-black/[0.035] px-4 py-[14px]">
+                                    <div class="grid gap-1">
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Public URL</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-black/75">{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
                                     </div>
+                                    <div class="grid gap-1">
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Last published</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-black/75">{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
+                                    </div>
+                                    <div class="grid gap-1">
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Snapshot status</span>
+                                        <strong class={`break-words text-[13px]/[1.45] ${shareUpToDate ? "text-black/50" : "text-black/75"}`}>{readonlyShare?.enabled
+                                            ? shareUpToDate
+                                                ? "Already up to date"
+                                                : "Local draft has unpublished changes"
+                                            : `Ready to publish${buildSharePreviewText($documentContent).length > 0 ? ` • ${currentSerializedAnnotations.length} annotation${currentSerializedAnnotations.length === 1 ? "" : "s"}` : ""}`}</strong>
+                                    </div>
+                                </div>
 
-                                <div class="share-actions">
+                                <div class="mt-1 flex flex-wrap gap-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
                                     <button
-                                        class="primary-action share-primary"
+                                        class={`inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 max-[520px]:w-full ${shareUpToDate ? "bg-black/20 text-white/90" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-45`}
                                         onclick={publishCurrentSnapshot}
-                                        class:primary-action-muted={shareUpToDate}
                                         disabled={shareBusy || shareLoading || !currentId || shareUpToDate}
                                     >
                                         {#if shareBusy}
-                                            <span class="spin" aria-hidden="true">
+                                            <span class="animate-spin" aria-hidden="true">
                                                 <Loader2 size={15} />
                                             </span>
                                             Saving
@@ -619,7 +622,7 @@ async function handleToggle() {
                                     </button>
 
                                     <button
-                                        class="secondary-action"
+                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-black/[0.055] px-4 text-[13px] font-[650] text-black/70 transition-[background,color] duration-150 hover:bg-black/[0.085] hover:text-black/80 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
                                         onclick={copyReadonlyLink}
                                         disabled={!readonlyShare?.enabled || !shareUrl}
                                     >
@@ -629,9 +632,9 @@ async function handleToggle() {
                                 </div>
 
                                 {#if shareLoading}
-                                    <p class="share-status-line">Loading your public link settings…</p>
+                                    <p class="mt-1 text-xs/[1.45] text-black/50">Loading your public link settings…</p>
                                 {:else if readonlyShare?.enabled}
-                                    <p class="share-status-line">
+                                    <p class="mt-1 text-xs/[1.45] text-black/50">
                                         {#if shareUpToDate}
                                             The public page already matches this draft.
                                         {:else}
@@ -642,32 +645,37 @@ async function handleToggle() {
                                 {/if}
                             </div>
                         {:else}
-                            <div class="panel-copy">
-                                <div class="icon-badge">
+                            <div class="flex items-start gap-3">
+                                <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
                                     <LogIn size={18} />
                                 </div>
                                 <div>
-                                    <h3>Sign in to publish a public link</h3>
-                                    <p>
+                                    <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Sign in to publish a public link</h3>
+                                    <p class="m-0 text-xs/[1.45] text-black/50">
                                         Read-only sharing uses your Quillium account so you can turn links on and off.
                                     </p>
                                 </div>
                             </div>
 
-                            <div class="auth-actions auth-actions-single">
-                                <button onclick={openAuth}>Sign in</button>
+                            <div class="mt-[18px] grid gap-2.5">
+                                <button
+                                    onclick={openAuth}
+                                    class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-blue-600 px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-80 disabled:bg-black/[0.04] disabled:text-black/30"
+                                >
+                                    Sign in
+                                </button>
                             </div>
                         {/if}
                     {:else}
                         {#if authenticated}
-                            <div class="omni-intro">
-                                <div class="panel-copy">
-                                    <div class="icon-badge">
+                            <div class="grid gap-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
                                         <Cloud size={18} />
                                     </div>
                                     <div>
-                                        <h3>Live collaboration</h3>
-                                        <p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Live collaboration</h3>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">
                                             Bring another writer into this draft right now. Omni will expand this into
                                             persistent sync later, but this room flow still works today.
                                         </p>
@@ -675,28 +683,28 @@ async function handleToggle() {
                                 </div>
                             </div>
 
-                            <div class="status-card">
-                                <!-- <div class="status-copy">
-                                    <div>
-                                        <h3>{isLive ? "Live Room is open" : "Live Room is off"}</h3>
-                                        <p>
-                                            Invite another writer into this draft.
-                                        </p>
+                            <div class="flex items-center justify-between gap-[18px] pt-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
+                                <div class="flex items-center gap-3">
+                                    <div class={`grid size-9 shrink-0 place-items-center rounded-[10px] ${isLive ? "bg-emerald-500/10 text-emerald-600" : "bg-black/[0.055] text-black/35"}`}>
+                                        <Radio size={17} />
                                     </div>
-                                </div> -->
+                                    <div>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">{isLive ? "Live Room is open" : "Live Room is off"}</h3>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">Invite another writer into this draft.</p>
+                                    </div>
+                                </div>
                                 <button
                                     onclick={handleToggle}
                                     disabled={!isLive && !(authenticated && relayConfigured && !!currentId && !connecting)}
-                                    class="live-action"
-                                    class:danger={isLive}
+                                    class={`inline-flex min-h-[38px] min-w-[142px] items-center justify-center gap-[7px] rounded-[10px] border px-4 text-[13px] font-[650] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-[background,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full ${isLive ? "border-black/[0.08] bg-black/[0.055] text-black/65 hover:bg-black/[0.085] hover:text-black/80" : "border-emerald-500/20 bg-emerald-500/10 text-black/70 hover:bg-emerald-500/20 hover:text-emerald-800"}`}
                                 >
                                     {#if connecting}
-                                        <span class="spin" aria-hidden="true">
+                                        <span class="animate-spin" aria-hidden="true">
                                             <Loader2 size={15} />
                                         </span>
                                         Connecting
                                     {:else if $collabState === "reconnecting"}
-                                        <span class="spin" aria-hidden="true">
+                                        <span class="animate-spin" aria-hidden="true">
                                             <Loader2 size={15} />
                                         </span>
                                         Retrying {Math.min($reconnectAttempt, MAX_RECONNECT_ATTEMPTS)}/{MAX_RECONNECT_ATTEMPTS}
@@ -709,26 +717,28 @@ async function handleToggle() {
                                 </button>
                             </div>
 
-                            <details class="live-tools-disclosure">
-                                <summary>
-                                    <span class="live-tools-summary-main">
-                                        <span>Room details</span>
-                                        <span class="live-tools-summary-copy">
-                                            Copy this room ID or join another room
-                                        </span>
-                                    </span>
-                                    <span class="live-tools-summary-icon" aria-hidden="true">
-                                        <ChevronDown size={16} />
-                                    </span>
-                                </summary>
+                            <div class="mt-[14px] border-t border-black/[0.065] pt-[14px]">
+                                <div class="grid gap-0.5">
+                                    <span class="text-[13px] font-bold text-black/70">Room details</span>
+                                    <span class="text-xs/[1.4] text-black/[0.44]">Copy this room ID or join another room</span>
+                                </div>
 
-                                <div class="live-tools-disclosure-body">
-                                <div class="live-tools">
-                                    <div class="doc-id-block room-field">
-                                        <div class="field-label">Room ID</div>
-                                        <div class="copy-row">
-                                            <input readonly value={currentId} aria-label="Current document room ID" />
-                                            <button onclick={copyId} disabled={!currentId} aria-label="Copy document room ID">
+                                <div class="mt-3 grid gap-3">
+                                    <div>
+                                        <div class="mb-1.5 block text-[11px] font-[650] text-black/50">Room ID</div>
+                                        <div class="flex gap-2 max-[520px]:flex-col">
+                                            <input
+                                                readonly
+                                                value={currentId}
+                                                aria-label="Current document room ID"
+                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-blue-600/[0.04] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
+                                            />
+                                            <button
+                                                onclick={copyId}
+                                                disabled={!currentId}
+                                                aria-label="Copy document room ID"
+                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
+                                            >
                                                 <Copy size={14} />
                                                 Copy
                                             </button>
@@ -740,116 +750,122 @@ async function handleToggle() {
                                             e.preventDefault();
                                             joinById();
                                         }}
-                                        class="join-block room-field"
                                     >
-                                        <label for="join-id">Join with room ID</label>
-                                        <div class="copy-row">
+                                        <label for="join-id" class="mb-1.5 block text-[11px] font-[650] text-black/50">Join with room ID</label>
+                                        <div class="flex gap-2 max-[520px]:flex-col">
                                             <input
                                                 id="join-id"
                                                 bind:value={joinIdInput}
                                                 placeholder="Paste UUID..."
                                                 autocomplete="off"
+                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-black/[0.035] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
                                             />
-                                            <button type="submit" disabled={connecting || !joinIdInput.trim()}>
+                                            <button
+                                                type="submit"
+                                                disabled={connecting || !joinIdInput.trim()}
+                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
+                                            >
                                                 Join
                                             </button>
                                         </div>
                                     </form>
                                 </div>
-                                </div>
-                            </details>
+                            </div>
 
-                            <div class="omni-link-row">
+                            <div class="mt-[14px] flex items-center justify-end max-[520px]:justify-start">
                                 <a
                                     href={OMNI_WAITLIST_URL}
                                     target="_blank"
                                     rel="noreferrer"
-                                    class="omni-inline-link"
+                                    class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-[650] text-black/50 transition-colors duration-150 hover:text-black/70"
                                 >
                                     Learn about Omni
                                     <ExternalLink size={14} />
                                 </a>
                             </div>
 
-                            <div class="future-section">
-                                <div class="future-label">In the making</div>
-                                <div class="disabled-option" aria-disabled="true">
-                                    <div class="icon-badge muted">
+                            <div class="mt-[18px] border-t border-black/[0.065] pt-4">
+                                <div class="mb-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-black/35">In the making</div>
+                                <div class="flex items-start gap-3 rounded-xl bg-black/[0.035] p-3 opacity-70">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
                                         <ArrowLeftRight size={17} />
                                     </div>
                                     <div>
-                                        <h3>Async Collaboration</h3>
-                                        <p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Async Collaboration</h3>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">
                                             Stored on our servers to stay available even after you close Quillium.
                                         </p>
                                     </div>
                                 </div>
-                                <div class="disabled-option" aria-disabled="true">
-                                    <div class="icon-badge muted">
+                                <div class="mt-2 flex items-start gap-3 rounded-xl bg-black/[0.035] p-3 opacity-70">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
                                         <Cloud size={17} />
                                     </div>
                                     <div>
-                                        <h3>Cloud Sync</h3>
-                                        <p>Make this document available on all of your devices.</p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Cloud Sync</h3>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">Make this document available on all of your devices.</p>
                                     </div>
                                 </div>
                             </div>
                         {:else}
-                            <div class="omni-hero">
-                                <div class="panel-copy">
-                                    <div class="icon-badge">
+                            <div class="grid gap-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-blue-500/10 text-blue-600">
                                         <Cloud size={18} />
                                     </div>
                                     <div>
-                                        <h3>Collaboration is part of Quillium Omni</h3>
-                                        <p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Collaboration is part of Quillium Omni</h3>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">
                                             Live Room, shared invites, cloud sync, and the rest of Quillium's collaboration
                                             features are available exclusively to Omni users.
                                         </p>
                                     </div>
                                 </div>
 
-                                <div class="share-detail-card">
-                                    <div class="detail-row">
-                                        <span>Account</span>
-                                        <strong>Not signed in</strong>
+                                <div class="grid gap-2.5 rounded-2xl border border-black/[0.055] bg-black/[0.035] px-4 py-[14px]">
+                                    <div class="grid gap-1">
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Account</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-black/75">Not signed in</strong>
                                     </div>
-                                    <div class="detail-row">
-                                        <span>Status</span>
-                                        <strong>Omni is currently waitlist only</strong>
+                                    <div class="grid gap-1">
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Status</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-black/75">Omni is currently waitlist only</strong>
                                     </div>
-                                    <div class="detail-row">
-                                        <span>Access</span>
-                                        <strong>You can't sign up for Omni directly yet. Join the waitlist to get access.</strong>
+                                    <div class="grid gap-1">
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Access</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-black/75">You can't sign up for Omni directly yet. Join the waitlist to get access.</strong>
                                     </div>
                                 </div>
 
-                                <div class="share-actions">
+                                <div class="mt-1 flex flex-wrap gap-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
                                     <a
                                         href={OMNI_WAITLIST_URL}
                                         target="_blank"
                                         rel="noreferrer"
-                                        class="primary-action share-primary link-action"
+                                        class="inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] bg-blue-600 px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 hover:bg-blue-700"
                                     >
                                         <ExternalLink size={15} />
                                         Join the Omni waitlist
                                     </a>
 
-                                    <button class="secondary-action" onclick={openAuth}>
+                                    <button
+                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-black/[0.055] px-4 text-[13px] font-[650] text-black/70 transition-[background,color] duration-150 hover:bg-black/[0.085] hover:text-black/80 max-[520px]:w-full"
+                                        onclick={openAuth}
+                                    >
                                         <LogIn size={15} />
                                         Sign in
                                     </button>
                                 </div>
                             </div>
 
-                            <div class="future-section">
-                                <div class="panel-copy">
-                                    <div class="icon-badge muted">
+                            <div class="mt-[18px] border-t border-black/[0.065] pt-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
                                         <ArrowLeftRight size={17} />
                                     </div>
                                     <div>
-                                        <h3>Already have access?</h3>
-                                        <p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Already have access?</h3>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">
                                             Sign in with the account tied to your Omni invite once access has been enabled for you.
                                         </p>
                                     </div>
@@ -862,747 +878,3 @@ async function handleToggle() {
         </dialog>
     {/if}
 {/if}
-
-<style>
-    .share-modal {
-        border: none;
-        padding: 0;
-        background: transparent;
-        width: 100vw;
-        height: 100vh;
-        max-width: 100vw;
-        max-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .share-modal::backdrop {
-        background: rgba(0, 0, 0, 0.22);
-        backdrop-filter: blur(5px);
-    }
-
-    .share-modal-inner {
-        width: min(560px, calc(100vw - 32px));
-        background: rgba(255, 255, 255, 0.96);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 16px;
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.2);
-        overflow: hidden;
-    }
-
-    .share-modal-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 22px 24px 10px;
-    }
-
-    .title-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .beta-pill {
-        display: inline-flex;
-        align-items: center;
-        height: 20px;
-        padding: 0 8px;
-        border-radius: 999px;
-        background: rgba(251, 191, 36, 0.15);
-        color: rgb(217, 119, 6);
-        font-size: 10px;
-        font-weight: 750;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    h2 {
-        margin: 0;
-        font-size: 24px;
-        line-height: 1.1;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.78);
-    }
-
-    .close-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 6px 4px 8px;
-        border-radius: 8px;
-        color: rgba(0, 0, 0, 0.28);
-        transition: color 0.16s, background 0.16s;
-    }
-
-    .close-btn:hover {
-        color: rgba(0, 0, 0, 0.55);
-        background: rgba(0, 0, 0, 0.05);
-    }
-
-    .close-btn span {
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 9px;
-        color: rgba(0, 0, 0, 0.22);
-    }
-
-    .share-note {
-        margin: 0;
-        padding: 0 24px 16px;
-        font-size: 12px;
-        line-height: 1.45;
-        color: rgba(0, 0, 0, 0.46);
-    }
-
-    .share-tabs {
-        position: relative;
-        display: flex;
-        gap: 2px;
-        margin: 0 24px;
-        padding: 3px;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.055);
-        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
-    }
-
-    .share-tab-pill {
-        position: absolute;
-        top: 3px;
-        left: 3px;
-        height: calc(100% - 6px);
-        width: var(--share-pill-width, 50%);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.82);
-        box-shadow:
-            0 1px 4px rgba(0, 0, 0, 0.12),
-            inset 0 1px 0 rgba(255, 255, 255, 0.95);
-        transform: translateX(var(--share-pill-x, 0px));
-        transition:
-            transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1),
-            width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
-    }
-
-    .share-tab-btn {
-        position: relative;
-        z-index: 1;
-        flex: 1;
-        min-width: 0;
-        padding: 7px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-        color: rgba(0, 0, 0, 0.42);
-        transition: color 0.18s;
-    }
-
-    .share-tab-btn.active {
-        color: rgba(0, 0, 0, 0.72);
-    }
-
-    .share-trigger-wrap {
-        position: relative;
-    }
-
-    .share-trigger-button {
-        position: relative;
-    }
-
-    .share-update-dot {
-        position: absolute;
-        top: -3px;
-        right: -3px;
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        background: rgb(37, 99, 235);
-        box-shadow:
-            0 0 0 3px rgba(255, 255, 255, 0.92),
-            0 4px 10px rgba(59, 130, 246, 0.2);
-    }
-
-    .share-update-pill {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        min-height: 32px;
-        padding: 0 12px;
-        border-radius: 999px;
-        background: rgba(59, 130, 246, 0.12);
-        border: 1px solid rgba(59, 130, 246, 0.16);
-        color: rgba(29, 78, 216, 0.9);
-        font-size: 12px;
-        font-weight: 650;
-        box-shadow:
-            0 10px 28px rgba(59, 130, 246, 0.12),
-            inset 0 1px 0 rgba(255, 255, 255, 0.7);
-        transition:
-            background 0.16s,
-            color 0.16s,
-            transform 0.18s ease,
-            opacity 0.18s ease,
-            visibility 0.18s ease;
-        opacity: 0;
-        visibility: hidden;
-        transform: translateY(-8px) scale(0.96);
-        pointer-events: none;
-    }
-
-    .share-update-pill:hover:not(:disabled) {
-        background: rgba(59, 130, 246, 0.18);
-        color: rgba(30, 64, 175, 0.96);
-        transform: translateY(-1px);
-    }
-
-    .share-trigger-wrap:hover .share-update-pill,
-    .share-trigger-wrap:focus-within .share-update-pill {
-        opacity: 1;
-        visibility: visible;
-        transform: translateY(0) scale(1);
-        pointer-events: auto;
-    }
-
-    .share-tab-btn:hover {
-        color: rgba(0, 0, 0, 0.6);
-    }
-
-    .share-panel {
-        margin: 14px 18px 18px;
-        padding: 18px;
-        border: 1px solid rgba(0, 0, 0, 0.07);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.78);
-    }
-
-    .share-mode-card,
-    .omni-hero,
-    .omni-intro {
-        display: grid;
-        gap: 16px;
-    }
-
-    .panel-copy {
-        display: flex;
-        gap: 12px;
-        align-items: flex-start;
-    }
-
-    .status-copy,
-    .disabled-option {
-        display: flex;
-        gap: 12px;
-        align-items: flex-start;
-    }
-
-    .icon-badge {
-        width: 36px;
-        height: 36px;
-        flex: 0 0 auto;
-        display: grid;
-        place-items: center;
-        border-radius: 10px;
-        color: rgb(37, 99, 235);
-        background: rgba(59, 130, 246, 0.1);
-    }
-
-    .icon-badge.muted {
-        color: rgba(0, 0, 0, 0.36);
-        background: rgba(0, 0, 0, 0.055);
-    }
-
-    h3 {
-        margin: 0 0 4px;
-        font-size: 14px;
-        line-height: 1.25;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.72);
-    }
-
-    .panel-copy p {
-        margin: 0;
-        font-size: 12px;
-        line-height: 1.45;
-        color: rgba(0, 0, 0, 0.48);
-    }
-
-    .status-copy p,
-    .disabled-option p {
-        margin: 0;
-        font-size: 12px;
-        line-height: 1.45;
-        color: rgba(0, 0, 0, 0.48);
-    }
-
-    .primary-action,
-    .auth-actions button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        min-height: 38px;
-        padding: 0 16px;
-        border-radius: 10px;
-        font-size: 13px;
-        font-weight: 650;
-        color: white;
-        background: rgb(37, 99, 235);
-        transition: background 0.16s, opacity 0.16s;
-    }
-
-    .primary-action {
-        width: 100%;
-        margin-top: 12px;
-    }
-
-    .share-primary {
-        width: auto;
-        margin-top: 0;
-        flex: 1 1 220px;
-    }
-
-    .primary-action:disabled,
-    .secondary-action:disabled,
-    .share-switch:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-    }
-
-    .link-action {
-        text-decoration: none;
-    }
-
-    .status-card {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 18px;
-        padding: 10px 0 0;
-    }
-
-    .status-copy {
-        align-items: center;
-    }
-
-    .auth-actions button:hover {
-        background: rgb(29, 78, 216);
-    }
-
-    .live-action {
-        flex: 0 0 auto;
-        min-width: 142px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        min-height: 38px;
-        padding: 0 16px;
-        border-radius: 10px;
-        font-size: 13px;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.7);
-        background: rgba(16, 185, 129, 0.12);
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-        transition: background 0.16s, color 0.16s, opacity 0.16s;
-    }
-
-    .live-action:hover:not(:disabled) {
-        color: rgba(4, 120, 87, 0.96);
-        background: rgba(16, 185, 129, 0.18);
-    }
-
-    .live-action.danger {
-        color: rgba(0, 0, 0, 0.64);
-        background: rgba(0, 0, 0, 0.055);
-        border-color: rgba(0, 0, 0, 0.08);
-    }
-
-    .live-action.danger:hover:not(:disabled) {
-        color: rgba(0, 0, 0, 0.78);
-        background: rgba(0, 0, 0, 0.085);
-    }
-
-    .spin {
-        animation: spin 0.9s linear infinite;
-    }
-
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    .doc-id-block,
-    .join-block {
-        margin-top: 0;
-    }
-
-    .live-tools {
-        display: grid;
-        gap: 12px;
-        margin-top: 12px;
-    }
-
-    .room-field {
-        padding: 0;
-    }
-
-    .live-tools-disclosure {
-        margin-top: 14px;
-        border-top: 1px solid rgba(0, 0, 0, 0.065);
-        padding-top: 14px;
-    }
-
-    .live-tools-disclosure summary {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        cursor: pointer;
-        list-style: none;
-        color: rgba(0, 0, 0, 0.7);
-    }
-
-    .live-tools-disclosure summary::-webkit-details-marker {
-        display: none;
-    }
-
-    .live-tools-disclosure summary span:first-child {
-        display: block;
-    }
-
-    .live-tools-summary-main {
-        display: grid;
-        gap: 2px;
-    }
-
-    .live-tools-summary-main span:first-child {
-        font-size: 13px;
-        font-weight: 700;
-    }
-
-    .live-tools-summary-copy {
-        font-size: 12px;
-        line-height: 1.4;
-        color: rgba(0, 0, 0, 0.44);
-    }
-
-    .live-tools-summary-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 999px;
-        color: rgba(0, 0, 0, 0.46);
-        background: rgba(0, 0, 0, 0.045);
-        transition:
-            transform 0.18s ease,
-            background 0.18s ease,
-            color 0.18s ease;
-    }
-
-    .live-tools-disclosure[open] .live-tools-summary-icon {
-        transform: rotate(180deg);
-        color: rgba(0, 0, 0, 0.64);
-        background: rgba(0, 0, 0, 0.065);
-    }
-
-    .live-tools-disclosure-body {
-        display: grid;
-        grid-template-rows: 0fr;
-        transition: grid-template-rows 0.22s ease;
-    }
-
-    .live-tools-disclosure[open] .live-tools-disclosure-body {
-        grid-template-rows: 1fr;
-    }
-
-    .live-tools-disclosure-body > .live-tools {
-        overflow: hidden;
-    }
-
-    .field-label,
-    .join-block label {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 11px;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.48);
-    }
-
-    .copy-row {
-        display: flex;
-        gap: 8px;
-    }
-
-    .copy-row input {
-        min-width: 0;
-        flex: 1;
-        height: 36px;
-        padding: 0 10px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 10px;
-        background: rgba(0, 0, 0, 0.035);
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 11px;
-        color: rgba(0, 0, 0, 0.64);
-        outline: none;
-    }
-
-    .room-field input[readonly] {
-        background: rgba(37, 99, 235, 0.04);
-    }
-
-    .copy-row input:focus {
-        border-color: rgba(37, 99, 235, 0.38);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-    }
-
-    .copy-row button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        min-width: 76px;
-        height: 36px;
-        padding: 0 12px;
-        border-radius: 10px;
-        background: rgba(0, 0, 0, 0.055);
-        font-size: 12px;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.58);
-        transition: background 0.16s, color 0.16s, opacity 0.16s;
-    }
-
-    .copy-row button:hover:not(:disabled) {
-        background: rgba(0, 0, 0, 0.085);
-        color: rgba(0, 0, 0, 0.74);
-    }
-
-    .share-toggle-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 14px 16px;
-        border-radius: 16px;
-        background: rgba(0, 0, 0, 0.035);
-    }
-
-    .toggle-label {
-        font-size: 13px;
-        font-weight: 700;
-        color: rgba(0, 0, 0, 0.76);
-    }
-
-    .toggle-help,
-    .share-status-line {
-        margin: 4px 0 0;
-        font-size: 12px;
-        line-height: 1.45;
-        color: rgba(0, 0, 0, 0.5);
-    }
-
-    .share-switch {
-        position: relative;
-        width: 52px;
-        height: 31px;
-        padding: 3px;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.12);
-        transition: background 0.18s ease;
-    }
-
-    .share-switch[aria-checked="true"] {
-        background: linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95));
-    }
-
-    .share-switch span {
-        display: block;
-        width: 25px;
-        height: 25px;
-        border-radius: 999px;
-        background: white;
-        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
-        transform: translateX(0);
-        transition: transform 0.18s ease;
-    }
-
-    .share-switch[aria-checked="true"] span {
-        transform: translateX(21px);
-    }
-
-    .share-detail-card {
-        display: grid;
-        gap: 10px;
-        padding: 14px 16px;
-        border-radius: 16px;
-        background: rgba(0, 0, 0, 0.035);
-        border: 1px solid rgba(0, 0, 0, 0.055);
-    }
-
-    .detail-row {
-        display: grid;
-        gap: 4px;
-    }
-
-    .detail-row span {
-        font-size: 10px;
-        font-weight: 750;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.38);
-    }
-
-    .detail-row strong {
-        font-size: 13px;
-        line-height: 1.45;
-        color: rgba(0, 0, 0, 0.74);
-        word-break: break-word;
-    }
-
-    .detail-row strong.muted-detail {
-        color: rgba(0, 0, 0, 0.52);
-    }
-
-    .share-actions {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-top: 4px;
-    }
-
-    .secondary-action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        min-height: 38px;
-        padding: 0 16px;
-        border-radius: 10px;
-        font-size: 13px;
-        font-weight: 650;
-        color: rgba(0, 0, 0, 0.68);
-        background: rgba(0, 0, 0, 0.055);
-        transition: background 0.16s, color 0.16s;
-    }
-
-    .secondary-action:hover:not(:disabled) {
-        background: rgba(0, 0, 0, 0.085);
-        color: rgba(0, 0, 0, 0.78);
-    }
-
-    .primary-action-muted {
-        background: rgba(0, 0, 0, 0.22);
-        color: rgba(255, 255, 255, 0.92);
-    }
-
-    .future-section {
-        margin-top: 18px;
-        padding-top: 16px;
-        border-top: 1px solid rgba(0, 0, 0, 0.065);
-    }
-
-    .omni-link-row {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        margin-top: 14px;
-    }
-
-    .omni-inline-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        color: rgba(0, 0, 0, 0.52);
-        font-size: 12px;
-        font-weight: 650;
-        text-decoration: none;
-        white-space: nowrap;
-        transition: color 0.16s;
-    }
-
-    .omni-inline-link:hover {
-        color: rgba(0, 0, 0, 0.72);
-    }
-
-    .future-label {
-        margin-bottom: 8px;
-        font-size: 10px;
-        font-weight: 750;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.34);
-    }
-
-    .disabled-option {
-        padding: 12px;
-        border-radius: 12px;
-        background: rgba(0, 0, 0, 0.035);
-        opacity: 0.72;
-    }
-
-    .auth-actions {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin-top: 18px;
-    }
-
-    .auth-actions button:last-child {
-        color: rgba(0, 0, 0, 0.68);
-        background: rgba(0, 0, 0, 0.065);
-    }
-
-    .auth-actions button:last-child:hover {
-        background: rgba(0, 0, 0, 0.095);
-    }
-
-    .auth-actions button:disabled {
-        color: rgba(0, 0, 0, 0.32);
-        background: rgba(0, 0, 0, 0.04);
-        cursor: not-allowed;
-        opacity: 0.8;
-    }
-
-    @media (max-width: 520px) {
-        .share-update-pill {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(0) scale(1);
-            pointer-events: auto;
-        }
-
-        .share-modal-inner {
-            width: calc(100vw - 20px);
-        }
-
-        .status-card,
-        .copy-row,
-        .auth-actions,
-        .share-actions {
-            grid-template-columns: 1fr;
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .omni-link-row {
-            justify-content: flex-start;
-        }
-
-        .live-action,
-        .copy-row button,
-        .share-primary,
-        .secondary-action {
-            width: 100%;
-        }
-
-        .live-tools-disclosure summary {
-            align-items: flex-start;
-            flex-direction: column;
-        }
-    }
-</style>
