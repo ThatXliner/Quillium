@@ -93,7 +93,7 @@ IMPORTANT RULES:
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastReviewedContent = "";
 let unsubscribe: (() => void) | null = null;
-let stopStopAiListener: (() => void) | null = null;
+let unsubStopAi: (() => void) | null = null;
 
 function applyAnnotations(result: ReviewResult, doc: string): number {
     const view = get(editorView);
@@ -237,14 +237,14 @@ export function startAutoAI() {
     });
 
     // Cancel pending reviews when the global stop event fires.
-    stopStopAiListener = appEventBus.on("stop-ai", cancelPendingReview);
+    unsubStopAi = appEventBus.on("stop-ai", cancelPendingReview);
 }
 
 /** Stop the engine and cancel any pending review. */
 export function stopAutoAI() {
     cancelPendingReview();
-    stopStopAiListener?.();
-    stopStopAiListener = null;
+    unsubStopAi?.();
+    unsubStopAi = null;
     if (unsubscribe) {
         unsubscribe();
         unsubscribe = null;
