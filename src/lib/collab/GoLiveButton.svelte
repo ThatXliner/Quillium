@@ -9,11 +9,19 @@
 -->
 <script lang="ts">
 import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
-import { editorView, currentDraftId, lastPersistedEventId } from "$lib/stores";
+import { supabaseConfigured } from "$lib/auth/supabase";
+import { editorView, currentDraftId, currentDocumentTitle, lastPersistedEventId } from "$lib/stores";
 import { createNamedSnapshot } from "$lib/db";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { savedFields } from "$lib/editor/extensions";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
+import {
+    buildReadonlyShareUrl,
+    disableReadonlyShare,
+    getReadonlyShare,
+    publishReadonlyShare,
+    type ReadonlyShare,
+} from "$lib/collab/share";
 import {
     enableCollab,
     disableCollab,
@@ -27,7 +35,20 @@ import {
 } from "$lib/collab";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
-import { ArrowLeftRight, Cloud, Copy, Link, Loader2, LogIn, Radio, Share2, X } from "lucide-svelte";
+import {
+    ArrowLeftRight,
+    Cloud,
+    Copy,
+    ExternalLink,
+    Link,
+    Loader2,
+    LogIn,
+    Radio,
+    RefreshCcw,
+    Share2,
+    X,
+} from "lucide-svelte";
+import posthog from "$lib/posthog";
 
 const { onauthclick }: { onauthclick?: () => void } = $props();
 
@@ -39,19 +60,40 @@ let modalOpen = $state(false);
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let joinIdInput = $state("");
 let prevCollabState = $state<string>("disconnected");
-let activeTab = $state<ShareTab>("collaborate");
+let activeTab = $state<ShareTab>("preview");
 let tabTrackEl = $state<HTMLElement | undefined>(undefined);
 let tabPillStyle = $state("");
+let shareLoading = $state(false);
+let shareBusy = $state(false);
+let readonlyShare = $state<ReadonlyShare | null>(null);
 
 const authenticated = $derived(isAuthenticated());
-const canShowShare = $derived(relayConfigured);
+const canShowShare = $derived(relayConfigured || supabaseConfigured);
 const currentId = $derived($currentDraftId ?? "");
+const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
 const canStartLive = $derived(authenticated && relayConfigured && !!currentId && !connecting);
 const liveStatusLabel = $derived(isLive ? "Live Room is open" : "Live Room is off");
 const isReconnecting = $derived($collabState === "reconnecting");
 const retryLabel = $derived(
     `Retrying ${Math.min($reconnectAttempt, MAX_RECONNECT_ATTEMPTS)}/${MAX_RECONNECT_ATTEMPTS}`,
 );
+
+async function refreshReadonlyShare() {
+    if (!authenticated || !currentId) {
+        readonlyShare = null;
+        return;
+    }
+
+    shareLoading = true;
+    try {
+        readonlyShare = await getReadonlyShare(currentId);
+    } catch (err) {
+        console.error("[share] Failed to load readonly share:", err);
+        toast.error("Couldn't load public link settings");
+    } finally {
+        shareLoading = false;
+    }
+}
 
 $effect(() => {
     if (modalOpen && dialogEl && !dialogEl.open) {
@@ -66,6 +108,11 @@ $effect(() => {
     const btn = buttons[idx];
     if (!btn) return;
     tabPillStyle = `--share-pill-width: ${btn.offsetWidth}px; --share-pill-x: ${btn.offsetLeft - 3}px;`;
+});
+
+$effect(() => {
+    if (!modalOpen || !authenticated) return;
+    refreshReadonlyShare();
 });
 
 // React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
@@ -136,6 +183,67 @@ function handleKeydown(e: KeyboardEvent) {
 function openAuth() {
     closeModal();
     onauthclick?.();
+}
+
+function formatShareTimestamp(value: string | null): string {
+    if (!value) return "Not published yet";
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+    }).format(new Date(value));
+}
+
+async function copyReadonlyLink() {
+    if (!shareUrl) return;
+    await navigator.clipboard.writeText(shareUrl);
+    posthog.capture("readonly_share_link_copied");
+    toast.success("Public link copied");
+}
+
+async function publishCurrentSnapshot() {
+    const user = getUser();
+    const view = get(editorView);
+    if (!user || !currentId || !view) {
+        toast.error("Open a document and sign in to publish it");
+        return;
+    }
+
+    shareBusy = true;
+    try {
+        const hadShare = readonlyShare?.enabled ?? false;
+        readonlyShare = await publishReadonlyShare({
+            documentId: currentId,
+            ownerId: user.id,
+            title: $currentDocumentTitle,
+            content: view.state.doc.toString(),
+        });
+        posthog.capture(hadShare ? "readonly_share_updated" : "readonly_share_published");
+        toast.success(hadShare ? "Public page updated" : "Public page published");
+    } catch (err) {
+        console.error("[share] Failed to publish readonly share:", err);
+        toast.error("Couldn't publish your public page");
+    } finally {
+        shareBusy = false;
+    }
+}
+
+async function toggleReadonlyShare() {
+    if (!readonlyShare?.enabled) {
+        await publishCurrentSnapshot();
+        return;
+    }
+
+    shareBusy = true;
+    try {
+        readonlyShare = await disableReadonlyShare(currentId);
+        posthog.capture("readonly_share_disabled");
+        toast.success("Public link turned off");
+    } catch (err) {
+        console.error("[share] Failed to disable readonly share:", err);
+        toast.error("Couldn't turn off the public link");
+    } finally {
+        shareBusy = false;
+    }
 }
 
 async function joinById() {
@@ -339,24 +447,146 @@ async function handleToggle() {
 
                 <section class="share-panel">
                     {#if activeTab === "preview"}
-                        <div class="panel-copy">
-                            <div class="icon-badge muted">
-                                <Link size={18} />
+                        {#if authenticated}
+                            <div class="share-mode-card">
+                                <div class="panel-copy">
+                                    <div class="icon-badge">
+                                        <Link size={18} />
+                                    </div>
+                                    <div>
+                                        <h3>Anyone with the link can read your document</h3>
+                                        <p>
+                                            Publish a read-only web page with Quillium branding. It only updates when
+                                            you explicitly publish again.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="share-toggle-row">
+                                    <div>
+                                        <div class="toggle-label">Public link</div>
+                                        <div class="toggle-help">
+                                            {#if readonlyShare?.enabled}
+                                                On. Readers can open the last published snapshot.
+                                            {:else}
+                                                Off. Your document stays private until you publish it.
+                                            {/if}
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="share-switch"
+                                        role="switch"
+                                        aria-checked={readonlyShare?.enabled ?? false}
+                                        aria-label="Toggle public read-only link"
+                                        onclick={toggleReadonlyShare}
+                                        disabled={shareBusy || shareLoading || !currentId}
+                                    >
+                                        <span></span>
+                                    </button>
+                                </div>
+
+                                <div class="share-detail-card">
+                                    <div class="detail-row">
+                                        <span>Public URL</span>
+                                        <strong>{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Last published</span>
+                                        <strong>{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
+                                    </div>
+                                </div>
+
+                                <div class="share-actions">
+                                    <button
+                                        class="primary-action share-primary"
+                                        onclick={publishCurrentSnapshot}
+                                        disabled={shareBusy || shareLoading || !currentId}
+                                    >
+                                        {#if shareBusy}
+                                            <span class="spin" aria-hidden="true">
+                                                <Loader2 size={15} />
+                                            </span>
+                                            Saving
+                                        {:else if readonlyShare?.enabled}
+                                            <RefreshCcw size={15} />
+                                            Update shared version
+                                        {:else}
+                                            <Link size={15} />
+                                            Publish link
+                                        {/if}
+                                    </button>
+
+                                    <button
+                                        class="secondary-action"
+                                        onclick={copyReadonlyLink}
+                                        disabled={!readonlyShare?.enabled || !shareUrl}
+                                    >
+                                        <Copy size={15} />
+                                        Copy link
+                                    </button>
+                                </div>
+
+                                {#if shareLoading}
+                                    <p class="share-status-line">Loading your public link settings…</p>
+                                {:else if readonlyShare?.enabled}
+                                    <p class="share-status-line">
+                                        Readers keep seeing the current snapshot until you click
+                                        <strong>Update shared version</strong>.
+                                    </p>
+                                {/if}
                             </div>
-                            <div>
-                                <h3>Web preview</h3>
-                                <p>
-                                    A read-only page for people without Quillium.
-                                </p>
+                        {:else}
+                            <div class="panel-copy">
+                                <div class="icon-badge">
+                                    <LogIn size={18} />
+                                </div>
+                                <div>
+                                    <h3>Sign in to publish a public link</h3>
+                                    <p>
+                                        Read-only sharing uses your Quillium account so you can turn links on and off.
+                                    </p>
+                                </div>
                             </div>
+
+                            <div class="auth-actions auth-actions-single">
+                                <button onclick={openAuth}>Sign in</button>
+                            </div>
+                        {/if}
+                    {:else}
+                        <div class="omni-hero">
+                            <div class="panel-copy">
+                                <div class="icon-badge">
+                                    <Cloud size={18} />
+                                </div>
+                                <div>
+                                    <h3>Collaborate in real time</h3>
+                                    <p>
+                                        Shared invites, persistent collaboration, and the polished multiplayer flow are
+                                        rolling into Quillium Omni.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <a
+                                href={OMNI_WAITLIST_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                                class="primary-action share-primary link-action"
+                            >
+                                <ExternalLink size={15} />
+                                Learn about Omni
+                            </a>
                         </div>
 
-                        <button class="primary-action" disabled title="Web previews are coming later">
-                            <Link size={15} />
-                            Coming later
-                        </button>
-                    {:else}
                         {#if authenticated}
+                            <div class="future-section current-beta-section">
+                                <div class="future-label">Current beta</div>
+                                <p class="future-copy">
+                                    Live Room is still available while we build the fuller Omni collaboration flow.
+                                </p>
+                            </div>
+
                             <div class="status-card">
                                 <div class="status-copy">
                                     <span class="session-state" class:online={isLive}>
@@ -454,24 +684,22 @@ async function handleToggle() {
                                     <LogIn size={18} />
                                 </div>
                                 <div>
-                                    <h3>Sign in to collaborate</h3>
+                                    <h3>Sign in to try Live Room</h3>
                                     <p>
-                                        Omni sharing requires a Quillium account.
+                                        Omni invites are coming later, but the current beta room still needs a
+                                        Quillium account.
                                     </p>
                                 </div>
                             </div>
 
-                            <div class="auth-actions">
-                                <button disabled title="Quillium Omni signups are waitlist-only right now">
-                                    Sign up
-                                </button>
+                            <div class="auth-actions auth-actions-single">
                                 <button onclick={openAuth}>Sign in</button>
                             </div>
 
                             <p class="waitlist-note">
-                                New accounts are waitlist-only.
+                                Want the polished version?
                                 <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer">
-                                    Join the waitlist
+                                    Join the Omni waitlist
                                 </a>
                             </p>
                         {/if}
@@ -632,6 +860,12 @@ async function handleToggle() {
         background: rgba(255, 255, 255, 0.72);
     }
 
+    .share-mode-card,
+    .omni-hero {
+        display: grid;
+        gap: 16px;
+    }
+
     .panel-copy,
     .status-copy,
     .disabled-option {
@@ -695,11 +929,23 @@ async function handleToggle() {
         margin-top: 12px;
     }
 
+    .share-primary {
+        width: auto;
+        margin-top: 0;
+        flex: 1 1 220px;
+    }
+
     .primary-action:disabled,
     .live-action:disabled,
-    .copy-row button:disabled {
+    .copy-row button:disabled,
+    .secondary-action:disabled,
+    .share-switch:disabled {
         opacity: 0.45;
         cursor: not-allowed;
+    }
+
+    .link-action {
+        text-decoration: none;
     }
 
     .status-card {
@@ -845,6 +1091,116 @@ async function handleToggle() {
         color: rgba(0, 0, 0, 0.74);
     }
 
+    .share-toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.035);
+    }
+
+    .toggle-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: rgba(0, 0, 0, 0.76);
+    }
+
+    .toggle-help,
+    .share-status-line,
+    .future-copy {
+        margin: 4px 0 0;
+        font-size: 12px;
+        line-height: 1.45;
+        color: rgba(0, 0, 0, 0.5);
+    }
+
+    .share-switch {
+        position: relative;
+        width: 52px;
+        height: 31px;
+        padding: 3px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.12);
+        transition: background 0.18s ease;
+    }
+
+    .share-switch[aria-checked="true"] {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95));
+    }
+
+    .share-switch span {
+        display: block;
+        width: 25px;
+        height: 25px;
+        border-radius: 999px;
+        background: white;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+        transform: translateX(0);
+        transition: transform 0.18s ease;
+    }
+
+    .share-switch[aria-checked="true"] span {
+        transform: translateX(21px);
+    }
+
+    .share-detail-card {
+        display: grid;
+        gap: 10px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.035);
+        border: 1px solid rgba(0, 0, 0, 0.055);
+    }
+
+    .detail-row {
+        display: grid;
+        gap: 4px;
+    }
+
+    .detail-row span {
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.38);
+    }
+
+    .detail-row strong {
+        font-size: 13px;
+        line-height: 1.45;
+        color: rgba(0, 0, 0, 0.74);
+        word-break: break-word;
+    }
+
+    .share-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+    }
+
+    .secondary-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 38px;
+        padding: 0 16px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 650;
+        color: rgba(0, 0, 0, 0.68);
+        background: rgba(0, 0, 0, 0.055);
+        transition: background 0.16s, color 0.16s;
+    }
+
+    .secondary-action:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.085);
+        color: rgba(0, 0, 0, 0.78);
+    }
+
     .future-section {
         margin-top: 18px;
         padding-top: 16px;
@@ -883,6 +1239,10 @@ async function handleToggle() {
         background: rgba(0, 0, 0, 0.095);
     }
 
+    .auth-actions-single {
+        grid-template-columns: 1fr;
+    }
+
     .auth-actions button:disabled {
         color: rgba(0, 0, 0, 0.32);
         background: rgba(0, 0, 0, 0.04);
@@ -917,14 +1277,17 @@ async function handleToggle() {
 
         .status-card,
         .copy-row,
-        .auth-actions {
+        .auth-actions,
+        .share-actions {
             grid-template-columns: 1fr;
             flex-direction: column;
             align-items: stretch;
         }
 
         .live-action,
-        .copy-row button {
+        .copy-row button,
+        .share-primary,
+        .secondary-action {
             width: 100%;
         }
     }
