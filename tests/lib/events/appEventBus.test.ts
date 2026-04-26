@@ -40,4 +40,17 @@ describe("appEventBus", () => {
 
         expect(received).toEqual([]);
     });
+
+    it("delivers payloads for transient UI events", () => {
+        const received: Array<{ version: string; mas: boolean }> = [];
+        unsubs.push(
+            appEventBus.on("show-update-banner", (event) => {
+                received.push({ version: event.version, mas: event.mas });
+            }),
+        );
+
+        appEventBus.emit({ type: "show-update-banner", version: "99.0.0", mas: true });
+
+        expect(received).toEqual([{ version: "99.0.0", mas: true }]);
+    });
 });

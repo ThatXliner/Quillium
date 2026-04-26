@@ -25,6 +25,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider } from "./provider";
+import { appEventBus } from "$lib/events/appEventBus";
 
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
@@ -79,19 +80,18 @@ export function useAiChatEffects(chat: { status: string; stop: () => void }) {
     });
 
     $effect(() => {
-        function handleStop() {
+        const unsub = appEventBus.on("stop-ai", () => {
             if (chat.status === "submitted" || chat.status === "streaming") {
                 chat.stop();
             }
-        }
-        window.addEventListener("quillium:stop-ai", handleStop);
-        return () => window.removeEventListener("quillium:stop-ai", handleStop);
+        });
+        return unsub;
     });
 }
 
 /**
  * Global abort controller for all AI requests. Calling `stopAllAi()`
- * aborts any in-flight streams and fires a window event so each panel
+ * aborts any in-flight streams and emits an app event so each panel
  * can call `chat.stop()` on its own Chat instance.
  */
 let _aiAbortController: AbortController | null = null;
@@ -106,7 +106,7 @@ export function stopAllAi() {
         _aiAbortController.abort();
         _aiAbortController = null;
     }
-    window.dispatchEvent(new CustomEvent("quillium:stop-ai"));
+    appEventBus.emit({ type: "stop-ai" });
     aiProcessing.active = false;
 }
 

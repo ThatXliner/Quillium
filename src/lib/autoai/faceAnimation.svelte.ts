@@ -26,6 +26,8 @@
  *   // ...then read face.eyeOffsetX, face.isTracking, face.isSleeping, etc.
  */
 
+import { appEventBus } from "$lib/events/appEventBus";
+
 const SLEEP_AFTER_MS = 30_000;
 const TRACKING_LINGER_MS = 2_000;
 const WAKE_DURATION_MS = 1600;
@@ -82,6 +84,7 @@ export function createFaceAnimation(config: FaceAnimationConfig): FaceAnimation 
     let trackingTimer: ReturnType<typeof setTimeout> | null = null;
     let sleepTimer: ReturnType<typeof setTimeout> | null = null;
     let wakeTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopCaretTracking: (() => void) | null = null;
     // Sustained-typing tracking: `typingStreakStart` is the timestamp of
     // the first caret event in the current streak, or null if no streak
     // is in progress. `typingStreakTimer` fires TYPING_STREAK_GAP_MS after
@@ -154,8 +157,7 @@ export function createFaceAnimation(config: FaceAnimationConfig): FaceAnimation 
         resetSleepTimer();
     }
 
-    function handleCaretMoved(e: Event) {
-        const { x, y } = (e as CustomEvent<{ x: number; y: number }>).detail;
+    function handleCaretMoved(x: number, y: number) {
         if (config.getIsPanelOpen()) return;
         if (isSleeping) {
             triggerWake();
@@ -245,13 +247,16 @@ export function createFaceAnimation(config: FaceAnimationConfig): FaceAnimation 
         start() {
             document.addEventListener("mousemove", handleMouseMove);
             document.addEventListener("keydown", handleAnyInteraction);
-            window.addEventListener("quillium:caret-moved", handleCaretMoved);
+            stopCaretTracking = appEventBus.on("caret-moved", (event) => {
+                handleCaretMoved(event.x, event.y);
+            });
             resetSleepTimer();
         },
         stop() {
             document.removeEventListener("mousemove", handleMouseMove);
             document.removeEventListener("keydown", handleAnyInteraction);
-            window.removeEventListener("quillium:caret-moved", handleCaretMoved);
+            stopCaretTracking?.();
+            stopCaretTracking = null;
             if (trackingTimer !== null) clearTimeout(trackingTimer);
             if (sleepTimer !== null) clearTimeout(sleepTimer);
             if (wakeTimer !== null) clearTimeout(wakeTimer);

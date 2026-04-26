@@ -51,6 +51,7 @@ import { harperExtension } from "./harper/harperLinter";
 import { type ListenerOptions, listeners } from "./listeners";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
+import { appEventBus } from "$lib/events/appEventBus";
 
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
@@ -90,7 +91,7 @@ const editorKeymap: KeyBinding[] = [
     {
         key: "Mod-Shift-r",
         run() {
-            window.dispatchEvent(new CustomEvent("quillium:manual-review"));
+            appEventBus.emit({ type: "manual-review" });
             return true;
         },
     },

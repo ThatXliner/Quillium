@@ -34,6 +34,7 @@ import { Check, ChevronDown, HelpCircle, MessageSquare, Plus, Trash2, X } from "
 import { get } from "svelte/store";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
+import { appEventBus } from "$lib/events/appEventBus";
 
 const { onclose, scrollTo }: { onclose: () => void; scrollTo?: string } = $props();
 
@@ -386,7 +387,10 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="flex items-center gap-1.5">
                 {#if currentChangelog}
                     <button
-                        onclick={() => { window.dispatchEvent(new CustomEvent("quillium:show-changelog")); onclose(); }}
+                        onclick={() => {
+                            appEventBus.emit({ type: "show-changelog" });
+                            onclose();
+                        }}
                         class="text-[10px] font-medium px-2.5 py-1 rounded-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
                     >
                         What's New

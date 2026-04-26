@@ -45,6 +45,7 @@ import {
 import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
 import type { Transaction } from "@codemirror/state";
 import posthog from "$lib/posthog";
+import { appEventBus } from "$lib/events/appEventBus";
 
 export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
@@ -485,11 +486,11 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
             return;
         }
         if (coords) {
-            window.dispatchEvent(
-                new CustomEvent("quillium:caret-moved", {
-                    detail: { x: coords.left, y: (coords.top + coords.bottom) / 2 },
-                }),
-            );
+            appEventBus.emit({
+                type: "caret-moved",
+                x: coords.left,
+                y: (coords.top + coords.bottom) / 2,
+            });
         }
     });
 });

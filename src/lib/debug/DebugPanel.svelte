@@ -43,6 +43,7 @@ import {
 import type { EventPayload } from "$lib/db/events";
 import { buildEventPayload } from "$lib/editor/listeners";
 import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 
 // Face preview state
 const FACE_STATES: FaceState[] = ["idle", "tracking", "thinking", "reviewing", "sleeping", "waking", "disabled"];
@@ -185,18 +186,14 @@ function clearUndoHistory() {
 function triggerChangelog() {
     startCountdown("changelog", () => {
         close();
-        window.dispatchEvent(new CustomEvent("quillium:show-changelog"));
+        appEventBus.emit({ type: "show-changelog" });
     });
 }
 
 function triggerUpdateBanner(mas: boolean) {
     startCountdown(mas ? "update-mas" : "update", () => {
         close();
-        window.dispatchEvent(
-            new CustomEvent("quillium:show-update-banner", {
-                detail: { version: "99.0.0", mas },
-            }),
-        );
+        appEventBus.emit({ type: "show-update-banner", version: "99.0.0", mas });
     });
 }
 
@@ -228,7 +225,7 @@ function triggerSuspiciousRemoval() {
 
 function triggerAuthModal() {
     close();
-    window.dispatchEvent(new CustomEvent("quillium:show-auth-modal"));
+    appEventBus.emit({ type: "show-auth-modal" });
 }
 
 function handleKeydown(e: KeyboardEvent) {
