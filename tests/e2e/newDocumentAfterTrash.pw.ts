@@ -145,7 +145,10 @@ async function installMock(page: Page, options: MockOptions = {}) {
                     const draftId = args.draftId;
                     const snapshot = snapshots.filter((s) => s.draftId === draftId).pop();
                     const eventsSince = events
-                        .filter((e) => e.draftId === draftId && (!snapshot || e.id > snapshot.upToEventId))
+                        .filter(
+                            (e) =>
+                                e.draftId === draftId && (!snapshot || e.id > snapshot.upToEventId),
+                        )
                         .map((e) => ({
                             id: e.id,
                             eventType: e.eventType,
@@ -477,13 +480,12 @@ test("immediate navigation to history still allows saving a checkpoint from the 
 
     await expect
         .poll(async () => {
-            return page.evaluate(
-                () =>
-                    (
-                        window as unknown as {
-                            __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> };
-                        }
-                    ).__TAURI_MOCK__.invokeCalls.map((x) => x.cmd),
+            return page.evaluate(() =>
+                (
+                    window as unknown as {
+                        __TAURI_MOCK__: { invokeCalls: Array<{ cmd: string }> };
+                    }
+                ).__TAURI_MOCK__.invokeCalls.map((x) => x.cmd),
             );
         })
         .toContain("cmd_create_named_snapshot");

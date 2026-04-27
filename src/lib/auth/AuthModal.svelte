@@ -136,13 +136,9 @@ async function handleSubmit(e: Event) {
                    Sign up
                 </button>
             {:else}
-                <button
-                    onclick={() => window.open(OMNI_WAITLIST_URL, "_blank", "noopener,noreferrer")}
-                    class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
-                        {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
-                >
+                <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer" class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}">
                     Join the waitlist
-                </button>
+                </a>
             {/if}
 
         </div>

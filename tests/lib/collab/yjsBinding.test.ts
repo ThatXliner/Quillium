@@ -9,10 +9,7 @@ import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import * as Y from "yjs";
 import { createYjsBinding, yjsAnnotation } from "$lib/collab/yjsBinding";
-import {
-    addAnnotation,
-    annotationField,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 

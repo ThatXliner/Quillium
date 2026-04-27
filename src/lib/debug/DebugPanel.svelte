@@ -46,8 +46,23 @@ import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAI
 import { appEventBus } from "$lib/events/appEventBus";
 
 // Face preview state
-const FACE_STATES: FaceState[] = ["idle", "tracking", "thinking", "reviewing", "sleeping", "waking", "disabled"];
-const IDLE_VARIANTS: IdleVariant[] = ["blink", "double-blink", "look-around", "squint", "wide-eyed", "drowsy"];
+const FACE_STATES: FaceState[] = [
+    "idle",
+    "tracking",
+    "thinking",
+    "reviewing",
+    "sleeping",
+    "waking",
+    "disabled",
+];
+const IDLE_VARIANTS: IdleVariant[] = [
+    "blink",
+    "double-blink",
+    "look-around",
+    "squint",
+    "wide-eyed",
+    "drowsy",
+];
 type IdlePreviewMode = IdleVariant | "auto";
 let previewFaceState = $state<FaceState>("idle");
 let previewIdleMode = $state<IdlePreviewMode>("auto");

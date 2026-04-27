@@ -32,10 +32,7 @@ import type { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { collabPresenceUsers, followedClientId } from "./store";
 import { activeAnnotation, modalStack, type ModalEntry } from "$lib/stores";
-import {
-    annotationField,
-    nestedEditorEdit,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { annotationField, nestedEditorEdit } from "$lib/editor/plugins/annotations/annotationField";
 import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 // ── Types ────────────────────────────────────────────────────────────────────

@@ -6,7 +6,11 @@
  */
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { addSubtreeToUndoScope, breakUndoCapture, createYjsUndoExtension } from "$lib/collab/yjsUndo";
+import {
+    addSubtreeToUndoScope,
+    breakUndoCapture,
+    createYjsUndoExtension,
+} from "$lib/collab/yjsUndo";
 
 describe("yjs undo manager", () => {
     it("chronological across scopes", () => {

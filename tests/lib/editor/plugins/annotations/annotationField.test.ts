@@ -22,7 +22,11 @@ import {
     _updateRevisionVersionLabel,
 } from "$lib/editor/plugins/annotations/annotationField";
 import { Transaction } from "@codemirror/state";
-import { isAnnotationOfType, type Annotations, type VersionState } from "$lib/editor/plugins/annotations/models";
+import {
+    isAnnotationOfType,
+    type Annotations,
+    type VersionState,
+} from "$lib/editor/plugins/annotations/models";
 import { history, undo, redo } from "@codemirror/commands";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

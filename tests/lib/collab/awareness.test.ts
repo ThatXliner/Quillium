@@ -16,7 +16,11 @@ import { EditorView } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
-import { type AwarenessState, colorForClient, createAwarenessExtension } from "$lib/collab/awareness";
+import {
+    type AwarenessState,
+    colorForClient,
+    createAwarenessExtension,
+} from "$lib/collab/awareness";
 import { get } from "svelte/store";
 import { activeAnnotation, modalStack } from "$lib/stores";
 import { followedClientId } from "$lib/collab/store";

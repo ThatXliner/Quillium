@@ -16,7 +16,9 @@ export default defineConfig(async () => ({
         dedupe: ["@codemirror/state", "@codemirror/view"],
     },
     // Separate cache dirs when running multiple instances to avoid chunk hash conflicts
-    cacheDir: process.env.QUILLIUM_DEV_PORT ? `node_modules/.vite-${process.env.QUILLIUM_DEV_PORT}` : "node_modules/.vite",
+    cacheDir: process.env.QUILLIUM_DEV_PORT
+        ? `node_modules/.vite-${process.env.QUILLIUM_DEV_PORT}`
+        : "node_modules/.vite",
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
     //

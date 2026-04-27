@@ -10,7 +10,13 @@ export type FaceState =
     | "waking"
     | "disabled";
 
-export type IdleVariant = "blink" | "double-blink" | "look-around" | "squint" | "wide-eyed" | "drowsy";
+export type IdleVariant =
+    | "blink"
+    | "double-blink"
+    | "look-around"
+    | "squint"
+    | "wide-eyed"
+    | "drowsy";
 
 interface Props {
     faceState: FaceState;
@@ -31,15 +37,22 @@ const tx = $derived(
 );
 
 // Idle animation variants — randomly selected when idle begins
-const IDLE_VARIANTS: IdleVariant[] = ["blink", "double-blink", "look-around", "squint", "wide-eyed", "drowsy"];
+const IDLE_VARIANTS: IdleVariant[] = [
+    "blink",
+    "double-blink",
+    "look-around",
+    "squint",
+    "wide-eyed",
+    "drowsy",
+];
 // Weights: blink is most common, others are occasional treats
 const VARIANT_WEIGHTS: Record<IdleVariant, number> = {
-    "blink": 40,
+    blink: 40,
     "double-blink": 20,
     "look-around": 15,
-    "squint": 10,
+    squint: 10,
     "wide-eyed": 8,
-    "drowsy": 7,
+    drowsy: 7,
 };
 
 let idleVariant = $state<IdleVariant>("blink");
@@ -57,12 +70,12 @@ function pickRandomVariant(): IdleVariant {
 
 // Duration of each variant's animation cycle (ms)
 const VARIANT_DURATIONS: Record<IdleVariant, number> = {
-    "blink": 6000,
+    blink: 6000,
     "double-blink": 4000,
     "look-around": 5000,
-    "squint": 3500,
+    squint: 3500,
     "wide-eyed": 3000,
-    "drowsy": 4500,
+    drowsy: 4500,
 };
 
 function scheduleNextVariant() {

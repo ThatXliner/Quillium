@@ -11,38 +11,35 @@
       - onviewprofile: () => void — callback when view profile is clicked
 -->
 <script lang="ts">
-    import { initials, avatarColor } from "./avatarUtils";
-    import { LogOut, UserRound } from "lucide-svelte";
+import { initials, avatarColor } from "./avatarUtils";
+import { LogOut, UserRound } from "lucide-svelte";
 
-    const {
-        displayName,
-        email,
-        onviewprofile,
-        onlogout,
-        onclose,
-    }: {
-        displayName: string;
-        email: string;
-        onviewprofile: () => void;
-        onlogout: () => void;
-        onclose: () => void;
-    } = $props();
+const {
+    displayName,
+    email,
+    onviewprofile,
+    onlogout,
+    onclose,
+}: {
+    displayName: string;
+    email: string;
+    onviewprofile: () => void;
+    onlogout: () => void;
+    onclose: () => void;
+} = $props();
 
-    function handleKeydown(e: KeyboardEvent) {
-        if (e.key === "Escape") onclose();
+function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") onclose();
+}
+
+function handleClickOutside(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    // Don't close if clicking the avatar button itself (parent handles toggle)
+    if (target.closest(".avatar-dropdown") || target.closest("[aria-label='Account menu']")) {
+        return;
     }
-
-    function handleClickOutside(e: MouseEvent) {
-        const target = e.target as HTMLElement;
-        // Don't close if clicking the avatar button itself (parent handles toggle)
-        if (
-            target.closest(".avatar-dropdown") ||
-            target.closest("[aria-label='Account menu']")
-        ) {
-            return;
-        }
-        onclose();
-    }
+    onclose();
+}
 </script>
 
 <svelte:window onkeydown={handleKeydown} onmousedown={handleClickOutside} />

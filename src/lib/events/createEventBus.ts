@@ -14,10 +14,7 @@ type AnyListener<TEvent extends EventWithType> = (event: TEvent) => void;
 export class TypedEventBus<TEvent extends EventWithType> {
     private listeners = new Map<TEvent["type"], Set<AnyListener<TEvent>>>();
 
-    on<TType extends TEvent["type"]>(
-        type: TType,
-        listener: Listener<TEvent, TType>,
-    ): () => void {
+    on<TType extends TEvent["type"]>(type: TType, listener: Listener<TEvent, TType>): () => void {
         let set = this.listeners.get(type);
         if (!set) {
             set = new Set();

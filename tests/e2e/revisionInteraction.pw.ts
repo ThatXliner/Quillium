@@ -43,7 +43,11 @@ test.describe("revision cursor teleport", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, autoVersionOnRevisionCreate: false }),
+                JSON.stringify({
+                    showNestedEditor: true,
+                    atomicRevisions: true,
+                    autoVersionOnRevisionCreate: false,
+                }),
             );
         });
         await page.goto("/");
@@ -112,7 +116,11 @@ test.describe("nested annotation creation from inline editor", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, autoVersionOnRevisionCreate: false }),
+                JSON.stringify({
+                    showNestedEditor: true,
+                    atomicRevisions: true,
+                    autoVersionOnRevisionCreate: false,
+                }),
             );
         });
         await page.goto("/");
@@ -165,7 +173,11 @@ test.describe("revision modal annotation visibility", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, autoVersionOnRevisionCreate: false }),
+                JSON.stringify({
+                    showNestedEditor: true,
+                    atomicRevisions: true,
+                    autoVersionOnRevisionCreate: false,
+                }),
             );
         });
         await page.goto("/");
