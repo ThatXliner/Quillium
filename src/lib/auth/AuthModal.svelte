@@ -54,10 +54,6 @@ function resetForm() {
 }
 
 function switchTab(tab: "login" | "signup") {
-    if (tab === "signup" && !signupsEnabled) {
-        window.open(OMNI_WAITLIST_URL, "_blank", "noopener,noreferrer");
-        return;
-    }
     activeTab = tab;
     resetForm();
 }
@@ -80,6 +76,8 @@ async function handleSubmit(e: Event) {
             onclose();
         } else {
             if (!signupsEnabled) {
+                // This should never happen
+                console.assert(false);
                 window.open(OMNI_WAITLIST_URL, "_blank", "noopener,noreferrer");
                 error = "New accounts are waitlist-only during beta.";
                 return;
@@ -129,13 +127,24 @@ async function handleSubmit(e: Event) {
                 class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
                     {activeTab === 'login' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
             >Log in</button>
-            <button
-                onclick={() => switchTab("signup")}
-                class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
-                    {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
-            >
-                {signupsEnabled ? "Sign up" : "Waitlist"}
-            </button>
+            {#if signupsEnabled}
+                <button
+                    onclick={() => switchTab("signup")}
+                    class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
+                        {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
+                >
+                   Sign up
+                </button>
+            {:else}
+                <button
+                    onclick={() => window.open(OMNI_WAITLIST_URL, "_blank", "noopener,noreferrer")}
+                    class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
+                        {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
+                >
+                    Join the waitlist
+                </button>
+            {/if}
+
         </div>
 
         <!-- Form -->
