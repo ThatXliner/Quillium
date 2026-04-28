@@ -20,7 +20,9 @@ Quillium is built as a modern web application using SvelteKit, packaged as a cro
 
 ## Application Layout
 
-The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
+`src/routes/+page.svelte` is the app shell and overlay host. It mounts a single `<Editor />` root, then layers app-wide UI on top of it: update/banner flows, tutorial and legal modals, auth/collab entry points, the bottom-left utility stack, and the nested annotation modal stack.
+
+The actual three-panel writing workspace is rendered inside `src/lib/editor/Editor.svelte`:
 
 ```
                                         ┌────────┐
@@ -38,9 +40,9 @@ The UI is a three-panel layout rendered by `src/routes/+page.svelte`:
                         └─────┘
 ```
 
-The top-right entry point is `GoLiveButton`, which now renders the Share modal. Authentication is contextual inside that modal because the current reason to sign in is Quillium Omni sharing.
+The top-right controls are `AuthButton` and `GoLiveButton`. `GoLiveButton` renders the Share / live-collaboration modal, while `AuthButton` owns the account/profile flow.
 
-Modal overlays (revision editors, diff views) are rendered on top via `modalStack` — a stack of `<RevisionModal>` and `<DiffModal>` instances managed by `src/lib/stores.ts`.
+App-wide overlays such as the tutorial, beta disclaimer, changelog, licenses, stats modal, and update banner are rendered directly by `+page.svelte`. Annotation overlays are rendered via `modalStack` from `src/lib/stores.ts` as a stack of `<RevisionModal>`, `<DiffModal>`, and `<CommentModal>` instances so parent editors stay mounted while children are open.
 
 ---
 
@@ -64,10 +66,11 @@ src/
 │   │   ├── settings.svelte.ts # AI settings (reactive, persisted)
 │   │   └── utils.ts           # Shared AI utilities
 │   ├── auth/
-│   │   ├── AuthButton.svelte    # Legacy contextual auth button (not mounted on main editor)
+│   │   ├── AuthButton.svelte    # Top-right auth/profile button
 │   │   ├── AuthModal.svelte     # Sign in modal; signup is dev-only, production routes to Omni waitlist
 │   │   ├── AvatarDropdown.svelte # Dropdown menu for logged-in user
 │   │   ├── NameEntryModal.svelte # Anonymous user display name prompt
+│   │   ├── ProfileModal.svelte   # Logged-in profile/settings modal
 │   │   ├── auth.svelte.ts       # Reactive auth state store (Svelte 5 $state runes)
 │   │   ├── avatarUtils.ts       # initials() and avatarColor() helpers
 │   │   ├── schemas.ts           # Zod schemas for auth forms
@@ -83,10 +86,13 @@ src/
 │   │   ├── GoLiveButton.svelte    # Top-right Share button + Omni/Web Preview modal
 │   │   ├── annotationSchema.ts    # CM ↔ Yjs bidirectional converters for annotations
 │   │   ├── awareness.ts           # Yjs awareness protocol for cursor/presence sync
+│   │   ├── collabPlugin.ts        # CM extension helpers for shared-cursor rendering
 │   │   ├── index.ts               # Public API: enableCollab, disableCollab, etc.
 │   │   ├── relativePosition.ts    # RelativePosition utilities for cursor anchoring
+│   │   ├── socket.ts              # Relay socket helpers/messages
 │   │   ├── store.ts               # Svelte stores: collabState, ownerLeftSignal, reconnectAttempt, etc.
 │   │   ├── types.ts               # CollabSession, YjsAnnotationNode, awareness types
+│   │   ├── protocol.ts            # Relay protocol constants/helpers
 │   │   ├── yjsAnnotations.ts      # Y.Map-based annotation sync ViewPlugin
 │   │   ├── yjsBinding.ts          # CodeMirror ↔ Y.Text binding (custom, not y-codemirror.next)
 │   │   ├── yjsProvider.ts         # Y.Doc + WebsocketProvider setup with JWT auth
@@ -112,6 +118,14 @@ src/
 │   │   ├── DictionaryPopover.svelte # Floating dictionary/thesaurus UI
 │   │   ├── StatusBar.svelte   # Word count, WPM, character count
 │   │   ├── VersionHistory.svelte # Full-screen snapshot browser
+│   │   ├── WordCountOverlay.svelte # Bottom-left word/char pill
+│   │   ├── sampleDocument.ts   # Seed content/title for first-run document creation
+│   │   ├── harper/
+│   │   │   ├── harperLinter.ts  # Grammar-check integration and CM extension
+│   │   │   ├── lint.ts          # Harper issue translation helpers
+│   │   │   ├── lintKindColor.ts # Severity/color mapping for lint UI
+│   │   │   ├── HarperTooltip.svelte # Hover tooltip for grammar issues
+│   │   │   └── harper.css       # Grammar-check styling
 │   │   └── plugins/
 │   │       └── annotations/
 │   │           ├── models.ts          # Type defs, factory helpers, type guards
@@ -121,7 +135,6 @@ src/
 │   │           ├── nestedEditor.ts    # Nested editor lifecycle helpers
 │   │           ├── commentAi.ts       # Shared AI prompt/stream helpers for comment threads
 │   │           ├── revisionModalKeyguard.ts # Prevents modal shortcuts when CM editor has focus
-│   │           ├── eventBus.ts        # Typed pub/sub bus decoupling plugins from components
 │   │           ├── NestedEditorController.ts # Shared lifecycle/sync for nested editors
 │   │           ├── index.ts           # Keybindings, ViewPlugins, public API
 │   │           ├── Annotations.svelte # Right panel container + card positioning
@@ -138,7 +151,8 @@ src/
 │   │           └── default.css        # Highlight CSS classes for all annotation types
 │   ├── events/
 │   │   ├── createEventBus.ts    # Generic typed event bus primitive
-│   │   └── appEventBus.ts       # App-wide cross-component event channels
+│   │   ├── appEventBus.ts       # App-wide cross-component event channels
+│   │   └── annotationEventBus.ts # Annotation-specific event bus + pending-selection cache
 │   ├── readers/
 │   │   ├── colors.ts            # Hex → lightTint/mediumTint helpers for persona avatar backgrounds
 │   │   ├── presets.ts           # ReaderPersona type, DEFAULT_PERSONAS (8 builtin personas)
@@ -157,11 +171,20 @@ src/
 │   │   ├── SettingsModal.svelte # App-level settings overlay
 │   │   ├── FontGuideModal.svelte # Font guide with descriptions and samples
 │   │   └── fonts.ts             # Canonical font list with metadata
+│   ├── stats/
+│   │   ├── compute.ts           # Writing-stats calculations
+│   │   ├── StatsModal.svelte    # Full writing statistics modal
+│   │   └── StatsInfoModal.svelte # Secondary explainer modal inside stats
 │   ├── tutorial/
 │   │   ├── Tutorial.svelte      # Onboarding tutorial overlay
 │   │   └── steps.ts             # Tutorial step definitions
 │   ├── ui/
+│   │   ├── BetaDisclaimer.svelte # First-run beta terms dialog
+│   │   ├── BottomLeftStack.svelte # Fixed bottom-left stack container
+│   │   ├── ChangelogModal.svelte # "What's New" overlay
 │   │   ├── Kbd.svelte           # Keyboard shortcut display component
+│   │   ├── LicensesModal.svelte # Open-source licenses overlay
+│   │   ├── PrivacyNudgeToast.svelte # Analytics/privacy reminder toast
 │   │   └── UpdateBanner.svelte  # In-app auto-update notification
 │   ├── constants.ts             # App-wide constants (feedback form URL, etc.)
 │   ├── errorGuard.ts            # Suspicious change detection + crash backups
@@ -229,7 +252,7 @@ flowchart TD
     end
 
     Listener["Editor.svelte updateListener fires"]
-    Mirrors["Svelte mirror stores<br/>$annotations, $activeAnnotation,<br/>$documentContent, $selectedText,<br/>$saveStatus, $currentDocumentTitle"]
+    Mirrors["Svelte mirror stores<br/>$annotations, $activeAnnotation,<br/>$documentContent, $selectedText,<br/>$writingStats, $saveStatus,<br/>$currentDocumentTitle"]
 
     subgraph CollabStores["Collab stores<br/>separate from updateListener"]
         CollabState["$collabState"]
@@ -650,7 +673,7 @@ type ModalEntry =
 
 ## The Annotation Event Bus
 
-`annotationEventBus` (in `eventBus.ts`) is a typed publish/subscribe bus that decouples `ViewPlugin` / command logic from component-specific reactions.
+`annotationEventBus` (in `src/lib/events/annotationEventBus.ts`) is a typed publish/subscribe bus that decouples `ViewPlugin` / command logic from component-specific reactions.
 
 Components subscribe via `annotationEventBus.on(type, handler)` inside `$effect` blocks and return the unsubscribe function as cleanup. Events are delivered directly to all listeners of the matching type — no deduplication tokens needed.
 
@@ -661,9 +684,13 @@ Components subscribe via `annotationEventBus.on(type, handler)` inside `$effect`
 | `nested-annotation-create` | `makeParentUndoKeymap` (Mod-Alt-m/k) | `Revision.svelte` (opens modal), `RevisionModal.svelte` (FSM event) |
 | `revision-focus-request` | `revisionClickHandler` dom event | `Revision.svelte` (places cursor or opens modal) |
 | `pending-comment-alert` | `createCommentCommand` | `Annotations.svelte` (flashes existing pending comment) |
+| `overlapping-revision-alert` | Revision creation guards | Annotation UI (overlap warning) |
 | `pending-nested-editor-selection` | `createRevisionCommand` | Stored in bus, consumed by `controller.applyPendingSelection()` on mount |
 | `annotation-focus-reply` | Keyboard shortcut (Cmd+/) | `Thread.svelte` (focuses reply textarea) |
 | `annotation-add-version` | `addRevisionVersionCommand`, keyboard shortcuts | `RevisionModal.svelte` (creates new version + synchronous FSM transition when modal is open), `Revision.svelte` (creates new version when no modal is open) |
+| `annotation-enter-editor` | Annotation commands / shortcuts | `Revision.svelte` (focuses inline editor) |
+| `revision-modal-flushed` | `RevisionModal.svelte` destroy path | Parent revision consumers / telemetry hooks |
+| `undo-target` | Nested-editor undo routing | Revision version targeting logic |
 
 **Pattern for consuming events in Svelte:**
 ```typescript
@@ -753,6 +780,8 @@ Each event has a `type` field that determines its shape:
 
 `extractAnnotationEvents` writes `addAnnotation`, `removeAnnotation`, and `updateThread` as explicit event log entries. Revision-specific internal effects (`_updateRevisionVersionState`, `_addVersionToRevision`, etc.) are captured by a pre/post diff on `annotationField`: any annotation whose identity changed between `tr.startState` and `tr.state` (and wasn't already handled by an explicit effect) gets an `annotation_update` event emitted. This ensures version switches, label edits, and structural changes are persisted per-action without needing to export internal effects.
 
+Nested-editor flushes do not bypass this model or compete with collaboration sync. They first write back into the parent editor via `updateRevisionVersionState`, making the parent `annotationField` the source of truth; from there, the normal persistence and Yjs annotation-sync paths observe the parent transaction and propagate it outward. The only meaningful conflict risk is a stale destroy-time flush overwriting newer parent state after a version switch or remote update, which is why `flushAnnotationStateToParent()` and `flushToParent()` both bail out when `rev.activeVersionIndex !== this._editorVersionIndex`.
+
 ---
 
 ## Keybindings
@@ -776,6 +805,7 @@ The native app menu (see § Native App Menu) also registers accelerators that ar
 | `Mod-,` | Toggle settings modal |
 | `Mod-O` | Navigate to library |
 | `Mod-Shift-H` | Navigate to version history |
+| `Mod-Shift-E` | Export plain text |
 
 ---
 
@@ -1379,10 +1409,11 @@ Quillium uses Supabase Auth for user identity, enabling real-time collaboration 
 |---|---|
 | `src/lib/auth/supabase.ts` | Supabase client singleton with localStorage session persistence |
 | `src/lib/auth/auth.svelte.ts` | Reactive auth state store using Svelte 5 `$state` runes |
-| `src/lib/auth/AuthButton.svelte` | Legacy button component: "Sign in" when logged out, avatar when logged in; not mounted on the main editor |
+| `src/lib/auth/AuthButton.svelte` | Mounted top-right account entry: "Sign in" when logged out, avatar/profile flow when logged in |
 | `src/lib/auth/AuthModal.svelte` | Sign in modal; email/password signup is available only in dev builds and production signup routes to the Omni waitlist |
 | `src/lib/auth/AvatarDropdown.svelte` | Dropdown menu with user info and logout |
 | `src/lib/auth/NameEntryModal.svelte` | Display name prompt for anonymous users |
+| `src/lib/auth/ProfileModal.svelte` | Logged-in profile/settings modal launched from `AuthButton` |
 | `src/lib/auth/avatarUtils.ts` | `initials()` and `avatarColor()` for avatar rendering |
 
 ### Auth Flows
@@ -1834,7 +1865,9 @@ Key patterns:
 | View | Version History | `Cmd+Shift+H` / `Ctrl+Shift+H` |
 | Window | (standard: Minimize, Maximize, Close) | — |
 
-Custom menu items emit Tauri events (`menu:settings`, `menu:library`, `menu:history`) to the frontend webview. `+page.svelte` listens for these events via `@tauri-apps/api/event` and dispatches the appropriate action (toggle `$settingsOpen`, call `goToLibrary()`, or call `goToHistory()`).
+The menu also includes Quillium -> Open Source Licenses… and File -> Export variants for plain text, text + annotations, JSON, and Markdown.
+
+Custom menu items emit Tauri events to the frontend webview. `+page.svelte` listens for `menu:settings`, `menu:library`, `menu:history`, `menu:licenses`, and the export events (`menu:export-txt`, `menu:export-txt-json`, `menu:export-json`, `menu:export-md`) via `@tauri-apps/api/event`, then toggles UI state or calls the corresponding navigation/export helpers.
 
 The `settingsOpen` store is exported from `stores.ts` so that both the native menu handler and in-app UI (StatusBar gear button, `Cmd+,` keydown) can toggle it.
 
