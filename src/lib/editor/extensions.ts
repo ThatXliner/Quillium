@@ -36,6 +36,7 @@ import {
     undo,
 } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
+import { markdown } from "@codemirror/lang-markdown";
 import { search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
 import {
@@ -106,9 +107,14 @@ const nestedEditorKeymap: KeyBinding[] = [
 ] as unknown as KeyBinding[];
 
 export const harperCompartment = new Compartment();
+export const languageCompartment = new Compartment();
 // Wraps history() so enableCollab(asOwner=false) can reconfigure it to []
 // (joiner peer has no CM history; undo via Y.UndoManager instead). See JOINER-01.
 export const historyCompartment = new Compartment();
+
+export function getEditorLanguageExtension(mode = appSettings.editorMode) {
+    return mode === "markdown" ? markdown() : [];
+}
 
 export const getExtensions = (options?: ListenerOptions) => {
     const withHistory = options?.history !== false;
@@ -134,6 +140,7 @@ export const getExtensions = (options?: ListenerOptions) => {
             autocorrect: "on",
             autocapitalize: "on",
         }),
+        languageCompartment.of(getEditorLanguageExtension()),
         listeners(options),
         annotations(),
         dictionaryExtension,

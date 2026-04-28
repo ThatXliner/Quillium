@@ -23,6 +23,7 @@ const mockAppSettings = {
     selectTextInNestedEditor: true,
     showNestedEditor: true,
     atomicRevisions: true,
+    editorMode: "markdown",
     docFontFamily: "",
     docFontSize: 18,
     uiFontFamily: "",

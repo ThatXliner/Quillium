@@ -33,6 +33,17 @@ test.describe("settings modal", () => {
             timeout: 3_000,
         });
     });
+
+    test("switches editor mode to plain text", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        const modal = await q.openSettings();
+        await modal.getByRole("button", { name: "Plain text" }).click();
+        await modal.getByRole("button", { name: "Save" }).click();
+
+        await expect(page.getByText("Markdown")).not.toBeVisible();
+    });
 });
 
 // ── AI sidebar ──────────────────────────────────────────────────────────────
@@ -213,6 +224,19 @@ test.describe("error resilience", () => {
         }
 
         q.expectNoPageErrors();
+    });
+});
+
+test.describe("markdown formatting", () => {
+    test("applies bold formatting from the toolbar", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await page.getByRole("button", { name: "Bold" }).click();
+
+        await q.expectEditorText("**hello** world");
     });
 });
 
