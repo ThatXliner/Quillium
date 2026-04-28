@@ -2,10 +2,14 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { EditorHarness } from "../helpers/EditorHarness";
 import { exportDocument } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
+import { save } from "@tauri-apps/plugin-dialog";
 
 let h: EditorHarness;
 let savedContent: string;
 let savedPath: string;
+let printedHtml: string;
+let printCalled: number;
+let closeCalled: number;
 
 // Mock Tauri dialog and fs plugins
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -22,14 +26,40 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
 }));
 
 beforeEach(() => {
+    vi.useFakeTimers();
     savedContent = "";
     savedPath = "";
+    printedHtml = "";
+    printCalled = 0;
+    closeCalled = 0;
     currentDocumentTitle.set("Test Document");
+
+    vi.stubGlobal(
+        "open",
+        vi.fn(() => ({
+            document: {
+                open: vi.fn(),
+                write: vi.fn((html: string) => {
+                    printedHtml = html;
+                }),
+                close: vi.fn(),
+            },
+            focus: vi.fn(),
+            print: vi.fn(() => {
+                printCalled += 1;
+            }),
+            close: vi.fn(() => {
+                closeCalled += 1;
+            }),
+        })),
+    );
 });
 
 afterEach(() => {
     h?.destroy();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
     currentDocumentTitle.set("");
 });
 
@@ -191,6 +221,40 @@ describe("exportDocument", () => {
             const parsed = JSON.parse(jsonPart);
             expect(parsed[0].type).toBe("revision");
             expect(parsed[0].versions).toHaveLength(2);
+        });
+    });
+
+    describe("PDF export", () => {
+        it("opens the print flow instead of saving raw text", async () => {
+            h = EditorHarness.create("Hello world");
+            vi.mocked(save).mockClear();
+            const exportPromise = exportDocument(h.view, "pdf");
+            await vi.runAllTimersAsync();
+            await exportPromise;
+
+            expect(printCalled).toBe(1);
+            expect(closeCalled).toBe(1);
+            expect(printedHtml).toContain("<!DOCTYPE html>");
+            expect(printedHtml).toContain("<h1>Test Document</h1>");
+            expect(printedHtml).toContain("<p>Hello world</p>");
+            expect(savedContent).toBe("");
+            expect(vi.mocked(save)).not.toHaveBeenCalled();
+        });
+
+        it("includes annotations in the rendered PDF document", async () => {
+            h = EditorHarness.create("Hello world");
+            const id = h.addComment(0, 5);
+            h.addThreadMessage(id, "Nice greeting!", "Alice");
+
+            vi.mocked(save).mockClear();
+            const exportPromise = exportDocument(h.view, "pdf");
+            await vi.runAllTimersAsync();
+            await exportPromise;
+
+            expect(printedHtml).toContain("Annotations");
+            expect(printedHtml).toContain("1. Comment (0-5)");
+            expect(printedHtml).toContain("On: &quot;Hello&quot;");
+            expect(printedHtml).toContain("Alice: Nice greeting!");
         });
     });
 

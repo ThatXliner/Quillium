@@ -316,6 +316,10 @@ onMount(() => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "md");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-pdf", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "pdf");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
 
     return () => {
         destroyed = true;
