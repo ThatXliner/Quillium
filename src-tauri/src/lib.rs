@@ -1,5 +1,6 @@
 pub mod db;
 mod keychain;
+mod pdf_export;
 
 use std::sync::Mutex;
 use tauri::{
@@ -13,12 +14,18 @@ use db::{
         list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
         set_trash_retention, trash_document, update_document_meta,
     },
-    events::{append_event, create_snapshot, create_named_snapshot, list_snapshots, label_snapshot, restore_to_snapshot, load_snapshot_state, get_snapshot_storage_size, prune_snapshots_keep_last_n, prune_snapshots_older_than, get_snapshot_retention, set_snapshot_retention},
+    events::{
+        append_event, create_named_snapshot, create_snapshot, get_snapshot_retention,
+        get_snapshot_storage_size, label_snapshot, list_snapshots, load_snapshot_state,
+        prune_snapshots_keep_last_n, prune_snapshots_older_than, restore_to_snapshot,
+        set_snapshot_retention,
+    },
     load::load_document_state,
     schema::open_db,
     AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
+use pdf_export::{export_pdf_to_path, PdfExportPayload};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
@@ -262,6 +269,11 @@ fn cmd_purge_expired_trash(state: tauri::State<DbState>) -> Result<u64, String> 
     }
 }
 
+#[tauri::command]
+fn cmd_export_pdf(path: String, payload: PdfExportPayload) -> Result<(), String> {
+    export_pdf_to_path(&path, &payload)
+}
+
 // ── Debug reset command ───────────────────────────────────────────
 
 /// Wipes all user data from the database (documents, drafts, events,
@@ -352,10 +364,7 @@ pub fn run() {
                         .accelerator("CmdOrCtrl+,")
                         .build(app)?,
                 )
-                .item(
-                    &MenuItemBuilder::with_id("licenses", "Open Source Licenses…")
-                        .build(app)?,
-                )
+                .item(&MenuItemBuilder::with_id("licenses", "Open Source Licenses…").build(app)?)
                 .separator()
                 .services()
                 .separator()
@@ -367,20 +376,16 @@ pub fn run() {
                 .build()?;
 
             let export_submenu = SubmenuBuilder::new(app, "Export")
-                .item(
-                    &MenuItemBuilder::with_id("export-txt", "Plain Text (.txt)")
-                        .build(app)?,
-                )
+                .item(&MenuItemBuilder::with_id("export-txt", "Plain Text (.txt)").build(app)?)
                 .item(
                     &MenuItemBuilder::with_id("export-txt-json", "Text + Annotations (.txt)")
                         .build(app)?,
                 )
+                .item(&MenuItemBuilder::with_id("export-json", "JSON (.json)").build(app)?)
+                .item(&MenuItemBuilder::with_id("export-md", "Markdown (.md)").build(app)?)
+                .item(&MenuItemBuilder::with_id("export-pdf", "PDF (.pdf)").build(app)?)
                 .item(
-                    &MenuItemBuilder::with_id("export-json", "JSON (.json)")
-                        .build(app)?,
-                )
-                .item(
-                    &MenuItemBuilder::with_id("export-md", "Markdown (.md)")
+                    &MenuItemBuilder::with_id("export-pdf-annotations", "PDF + Annotations (.pdf)")
                         .build(app)?,
                 )
                 .build()?;
@@ -420,15 +425,19 @@ pub fn run() {
                 .close_window()
                 .build()?;
 
-            let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])?;
+            let menu = Menu::with_items(
+                app,
+                &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+            )?;
             app.set_menu(menu)?;
 
             // Handle custom menu events by emitting them to the frontend.
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().as_ref();
                 match id {
-                    "settings" | "history" | "library" | "licenses"
-                    | "export-txt" | "export-txt-json" | "export-json" | "export-md" => {
+                    "settings" | "history" | "library" | "licenses" | "export-txt"
+                    | "export-txt-json" | "export-json" | "export-md" | "export-pdf"
+                    | "export-pdf-annotations" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.emit(&format!("menu:{id}"), ());
                         }
@@ -443,6 +452,7 @@ pub fn run() {
             cmd_reset_db,
             scrap,
             cmd_get_trash_retention,
+            cmd_export_pdf,
             cmd_set_trash_retention,
             cmd_purge_expired_trash,
             cmd_list_documents,

@@ -1,11 +1,37 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { EditorHarness } from "../helpers/EditorHarness";
-import { exportDocument } from "$lib/export";
+import type { DraftMeta, LoadResult } from "$lib/db/types";
+import type { VersionState } from "$lib/editor/plugins/annotations/models";
+import { exportDocument, exportDocumentById } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
 
 let h: EditorHarness;
 let savedContent: string;
 let savedPath: string;
+let invokedPdfPath: string;
+let invokedPdfPayload: unknown;
+let mockedDrafts: DraftMeta[];
+let mockedLoadResult: LoadResult;
+
+vi.mock("$lib/db", () => ({
+    listDrafts: vi.fn(async () => mockedDrafts),
+    loadDocumentState: vi.fn(async () => mockedLoadResult),
+}));
+
+vi.mock("$lib/editor/replay", () => ({
+    replayEvents: vi.fn((state) => state),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+    invoke: vi.fn().mockImplementation(async (command: string, args?: { path?: string; payload?: unknown }) => {
+        if (command === "cmd_export_pdf") {
+            invokedPdfPath = args?.path ?? "";
+            invokedPdfPayload = args?.payload;
+        }
+    }),
+}));
 
 // Mock Tauri dialog and fs plugins
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -24,6 +50,22 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
 beforeEach(() => {
     savedContent = "";
     savedPath = "";
+    invokedPdfPath = "";
+    invokedPdfPayload = null;
+    mockedDrafts = [
+        {
+            id: "draft-1",
+            documentId: "doc-1",
+            label: "Draft 1",
+            createdAt: 0,
+            isActive: true,
+        },
+    ];
+    mockedLoadResult = {
+        snapshotStateJson: null,
+        snapshotEventId: 0,
+        eventsSince: [],
+    };
     currentDocumentTitle.set("Test Document");
 });
 
@@ -194,6 +236,131 @@ describe("exportDocument", () => {
         });
     });
 
+    describe("PDF export", () => {
+        it("writes a plain PDF without annotations through the Rust command", async () => {
+            h = EditorHarness.create("Hello world");
+            vi.mocked(save).mockClear();
+            await exportDocument(h.view, "pdf");
+
+            expect(savedPath).toBe("Test Document.pdf");
+            expect(invokedPdfPath).toBe("/fake/path/Test Document.pdf");
+            expect(savedContent).toBe("");
+            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_pdf", {
+                path: "/fake/path/Test Document.pdf",
+                payload: {
+                    title: "Test Document",
+                    bodyParagraphs: ["Hello world"],
+                    annotations: [],
+                },
+            });
+        });
+
+        it("keeps plain PDF free of annotations even when they exist", async () => {
+            h = EditorHarness.create("Hello world");
+            const id = h.addComment(0, 5);
+            h.addThreadMessage(id, "Nice greeting!", "Alice");
+
+            await exportDocument(h.view, "pdf");
+
+            expect(invokedPdfPayload).toEqual({
+                title: "Test Document",
+                bodyParagraphs: ["Hello world"],
+                annotations: [],
+            });
+        });
+
+        it("includes annotations in the annotated PDF payload", async () => {
+            h = EditorHarness.create("Hello world");
+            const id = h.addComment(0, 5);
+            h.addThreadMessage(id, "Nice greeting!", "Alice");
+
+            await exportDocument(h.view, "pdf+annotations");
+
+            expect(invokedPdfPayload).toEqual({
+                title: "Test Document",
+                bodyParagraphs: ["Hello world"],
+                annotations: [
+                    {
+                        kind: "comment",
+                        title: "1. Comment (0-5)",
+                        subtitle: 'On: "Hello"',
+                        body: ["Alice: Nice greeting!"],
+                        children: [],
+                    },
+                ],
+            });
+        });
+
+        it("includes revision threads and nested annotations in the annotated PDF payload", async () => {
+            h = EditorHarness.create("Hello world");
+            const revisionId = h.addRevision(
+                0,
+                5,
+                [
+                    {
+                        doc: "Hello",
+                        annotationField: {
+                            "0": {
+                                _type: "comment",
+                                id: 0,
+                                thread: [{ message: "Nested note", author: "Bob", time: 1 }],
+                                selection: {
+                                    ranges: [{ anchor: 0, head: 5 }],
+                                    main: 0,
+                                },
+                            },
+                        },
+                    } as VersionState,
+                ],
+                0,
+            );
+            h.addThreadMessage(revisionId, "Top-level revision thread", "Alice");
+
+            await exportDocument(h.view, "pdf+annotations");
+
+            expect(invokedPdfPayload).toEqual({
+                title: "Test Document",
+                bodyParagraphs: ["Hello world"],
+                annotations: [
+                    {
+                        kind: "revision",
+                        title: "1. Revision (0-5)",
+                        subtitle: 'On: "Hello"',
+                        body: ["Alice: Top-level revision thread"],
+                        children: [
+                            {
+                                kind: "version",
+                                title: "Version 1 [active]",
+                                body: ["Hello"],
+                                children: [
+                                    {
+                                        kind: "comment",
+                                        title: "1. Comment (0-5)",
+                                        subtitle: 'On: "Hello"',
+                                        body: ["Bob: Nested note"],
+                                        children: [],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            });
+        });
+
+        it("exports library PDFs through the Rust command with the unsanitized title", async () => {
+            await exportDocumentById("doc-1", 'My/Doc: "Draft"', "pdf");
+
+            expect(savedPath).toBe("My-Doc- -Draft-.pdf");
+            expect(invokedPdfPath).toBe('/fake/path/My-Doc- -Draft-.pdf');
+            expect(invokedPdfPayload).toEqual({
+                title: 'My/Doc: "Draft"',
+                bodyParagraphs: [],
+                annotations: [],
+            });
+        });
+    });
+
     describe("filename sanitization", () => {
         it("sanitizes special characters in filename", async () => {
             currentDocumentTitle.set('My/Doc: "Draft"');
@@ -205,6 +372,15 @@ describe("exportDocument", () => {
             expect(savedPath).not.toContain(":");
             expect(savedPath).not.toContain('"');
             expect(savedPath).toMatch(/\.txt$/);
+        });
+
+        it("preserves the original title inside exported JSON", async () => {
+            currentDocumentTitle.set('My/Doc: "Draft"');
+            h = EditorHarness.create("test");
+            await exportDocument(h.view, "json");
+
+            const parsed = JSON.parse(savedContent);
+            expect(parsed.title).toBe('My/Doc: "Draft"');
         });
 
         it("falls back to 'document' for empty title", async () => {
