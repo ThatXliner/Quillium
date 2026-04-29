@@ -5,7 +5,7 @@
  * Initializes via initAuth() on app mount, subscribes to auth changes.
  */
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
+import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from "./supabase";
 
 type AuthConnectionState = "idle" | "connecting" | "online" | "offline";
 
@@ -20,24 +20,29 @@ let connectionState = $state<AuthConnectionState>("idle");
 let initialized = false;
 let initRun = 0;
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => reject(new Error("Auth server did not respond")), ms);
-        promise.then(
-            (value) => {
-                clearTimeout(timeoutId);
-                resolve(value);
+async function canReachAuthServer(): Promise<boolean> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AUTH_INIT_TIMEOUT_MS);
+
+    try {
+        const response = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+            cache: "no-store",
+            headers: {
+                apikey: SUPABASE_ANON_KEY,
             },
-            (error) => {
-                clearTimeout(timeoutId);
-                reject(error);
-            },
-        );
-    });
+            signal: controller.signal,
+        });
+        return response.ok || response.status < 500;
+    } catch (error) {
+        console.error("[auth] Failed to reach auth server:", error);
+        return false;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
-async function getSessionWithTimeout(): Promise<Session | null> {
-    const result = await withTimeout(supabase!.auth.getSession(), AUTH_INIT_TIMEOUT_MS);
+async function fetchCurrentSession(): Promise<Session | null> {
+    const result = await supabase!.auth.getSession();
     if (result.error) throw result.error;
     return result.data.session;
 }
@@ -47,27 +52,38 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
     loading = true;
 
     for (let attempt = 1; attempt <= AUTH_INIT_ATTEMPTS; attempt += 1) {
-        try {
-            const existingSession = await getSessionWithTimeout();
+        if (await canReachAuthServer()) break;
+        console.error(`[auth] Auth server unreachable (attempt ${attempt}/${AUTH_INIT_ATTEMPTS})`);
+        if (attempt === AUTH_INIT_ATTEMPTS) {
             if (run !== initRun) return false;
 
-            session = existingSession;
-            user = existingSession?.user ?? null;
-            connectionState = "online";
+            session = null;
+            user = null;
+            connectionState = "offline";
             loading = false;
-            return true;
-        } catch (error) {
-            console.error(`[auth] Failed to get session (attempt ${attempt}/${AUTH_INIT_ATTEMPTS}):`, error);
+            return false;
         }
     }
 
     if (run !== initRun) return false;
 
-    session = null;
-    user = null;
-    connectionState = "offline";
+    try {
+        const existingSession = await fetchCurrentSession();
+        if (run !== initRun) return false;
+
+        session = existingSession;
+        user = existingSession?.user ?? null;
+    } catch (error) {
+        console.error("[auth] Failed to get session:", error);
+        if (run !== initRun) return false;
+
+        session = null;
+        user = null;
+    }
+
+    connectionState = "online";
     loading = false;
-    return false;
+    return true;
 }
 
 /**

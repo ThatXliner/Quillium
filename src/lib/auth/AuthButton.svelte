@@ -11,12 +11,8 @@
 <script lang="ts">
 import {
     getCurrentUserName,
-    getConnectionState,
     getUserEmail,
-    isOffline,
-    reconnectAuth,
     signOut,
-    isLoading,
     isAuthenticated,
 } from "./auth.svelte";
 import { initials, avatarColor } from "./avatarUtils";
@@ -28,15 +24,11 @@ const { onauthclick }: { onauthclick: () => void } = $props();
 
 let dropdownOpen = $state(false);
 let profileOpen = $state(false);
-let reconnecting = $state(false);
 
 // Reactive derivations
 const displayName = $derived(getCurrentUserName());
 const email = $derived(getUserEmail() ?? "");
-const loading = $derived(isLoading());
 const authenticated = $derived(isAuthenticated());
-const offline = $derived(isOffline());
-const connectionState = $derived(getConnectionState());
 
 async function handleLogout() {
     try {
@@ -53,43 +45,10 @@ function openProfile() {
     dropdownOpen = false;
     profileOpen = true;
 }
-
-async function handleReconnect() {
-    reconnecting = true;
-    try {
-        const connected = await reconnectAuth();
-        if (!connected) toast.error("Still offline");
-    } catch (err) {
-        toast.error("Still offline");
-    } finally {
-        reconnecting = false;
-    }
-}
 </script>
 
 <div class="relative">
-    {#if loading && connectionState === "connecting" && reconnecting}
-        <button
-            disabled
-            class="px-4 py-2 text-xs font-semibold text-red-700/60 bg-red-50/70 backdrop-blur-md
-                rounded-full shadow-md inset-shadow-sm inset-shadow-white
-                ring-1 ring-red-200/60 cursor-default"
-        >
-            Reconnecting
-        </button>
-    {:else if loading}
-        <!-- Loading state: match the signed-out pill shape. -->
-        <div class="h-8 w-[74px] rounded-full bg-black/[0.06] animate-pulse"></div>
-    {:else if offline}
-        <button
-            onclick={handleReconnect}
-            class="px-4 py-2 text-xs font-semibold text-red-700 bg-red-50/90 backdrop-blur-md
-                rounded-full shadow-md inset-shadow-sm inset-shadow-white
-                ring-1 ring-red-200/80 hover:text-red-800 hover:bg-red-100/90 transition-colors"
-        >
-            Reconnect
-        </button>
-    {:else if authenticated}
+    {#if authenticated}
         <!-- Logged in: Avatar button per D-15b -->
         <button
             onclick={() => (dropdownOpen = !dropdownOpen)}
