@@ -28,7 +28,7 @@ import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import AuthModal from "$lib/auth/AuthModal.svelte";
 import AuthButton from "$lib/auth/AuthButton.svelte";
 import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
-import { initAuth } from "$lib/auth";
+import { getConnectionState, initAuth, isLoading, isOffline, reconnectAuth } from "$lib/auth";
 import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
@@ -77,6 +77,10 @@ let updateReady = $state(false);
 // DEV only: allows the debug panel to simulate the banner in either mode.
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
+let authReconnecting = $state(false);
+const authLoading = $derived(isLoading());
+const authOffline = $derived(isOffline());
+const authConnectionState = $derived(getConnectionState());
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
@@ -222,6 +226,20 @@ async function installUpdate() {
         console.error("Update install failed:", e);
         posthog.capture("update_failed", { version: updateVersion, error: String(e) });
         updateInstalling = false;
+    }
+}
+
+async function handleAuthReconnect() {
+    authReconnecting = true;
+    try {
+        const connected = await reconnectAuth();
+        if (!connected) {
+            toast.error("Still offline");
+        }
+    } catch {
+        toast.error("Still offline");
+    } finally {
+        authReconnecting = false;
     }
 }
 
@@ -505,8 +523,31 @@ if (import.meta.env.DEV) {
 
 <!-- Top-right collab + account entry points -->
 <div class="fixed top-8 right-8 z-40 flex items-center gap-3">
-    <AuthButton onauthclick={() => (authModalOpen = true)} />
-    <GoLiveButton onauthclick={() => (authModalOpen = true)} />
+    {#if authLoading && authConnectionState === "connecting" && authReconnecting}
+        <button
+            disabled
+            class="px-4 py-2 text-xs font-semibold text-red-700/60 bg-red-50/70 backdrop-blur-md
+                rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                ring-1 ring-red-200/60 cursor-default"
+        >
+            Reconnecting
+        </button>
+    {:else if authLoading}
+        <div class="h-8 w-[74px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
+        <div class="h-8 w-[84px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
+    {:else if authOffline}
+        <button
+            onclick={handleAuthReconnect}
+            class="px-4 py-2 text-xs font-semibold text-red-700 bg-red-50/90 backdrop-blur-md
+                rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                ring-1 ring-red-200/80 hover:text-red-800 hover:bg-red-100/90 transition-colors"
+        >
+            Reconnect
+        </button>
+    {:else}
+        <AuthButton onauthclick={() => (authModalOpen = true)} />
+        <GoLiveButton onauthclick={() => (authModalOpen = true)} />
+    {/if}
 </div>
 
 <!-- Auth modal -->
