@@ -64,6 +64,7 @@ import LicensesModal from "$lib/ui/LicensesModal.svelte";
 import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
 import { appEventBus } from "$lib/events/appEventBus";
+import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
 
 let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
@@ -262,7 +263,8 @@ onMount(() => {
                     posthog.capture("update_available", { version: update.version });
                 }
             })
-            .catch(() => {
+            .catch((error) => {
+                if (isGithubRateLimitUpdateError(error)) return;
                 toast.error("Unable to check for updates", {
                     description:
                         "https://github.com/ThatXliner/quillium-releases could not be reached",
