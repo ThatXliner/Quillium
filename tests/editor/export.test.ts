@@ -2,8 +2,9 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { EditorHarness } from "../helpers/EditorHarness";
+import type { DraftMeta, LoadResult } from "$lib/db/types";
 import type { VersionState } from "$lib/editor/plugins/annotations/models";
-import { exportDocument } from "$lib/export";
+import { exportDocument, exportDocumentById } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
 
 let h: EditorHarness;
@@ -11,6 +12,17 @@ let savedContent: string;
 let savedPath: string;
 let invokedPdfPath: string;
 let invokedPdfPayload: unknown;
+let mockedDrafts: DraftMeta[];
+let mockedLoadResult: LoadResult;
+
+vi.mock("$lib/db", () => ({
+    listDrafts: vi.fn(async () => mockedDrafts),
+    loadDocumentState: vi.fn(async () => mockedLoadResult),
+}));
+
+vi.mock("$lib/editor/replay", () => ({
+    replayEvents: vi.fn((state) => state),
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({
     invoke: vi.fn().mockImplementation(async (command: string, args?: { path?: string; payload?: unknown }) => {
@@ -40,6 +52,20 @@ beforeEach(() => {
     savedPath = "";
     invokedPdfPath = "";
     invokedPdfPayload = null;
+    mockedDrafts = [
+        {
+            id: "draft-1",
+            documentId: "doc-1",
+            label: "Draft 1",
+            createdAt: 0,
+            isActive: true,
+        },
+    ];
+    mockedLoadResult = {
+        snapshotStateJson: null,
+        snapshotEventId: 0,
+        eventsSince: [],
+    };
     currentDocumentTitle.set("Test Document");
 });
 
@@ -321,6 +347,18 @@ describe("exportDocument", () => {
                 ],
             });
         });
+
+        it("exports library PDFs through the Rust command with the unsanitized title", async () => {
+            await exportDocumentById("doc-1", 'My/Doc: "Draft"', "pdf");
+
+            expect(savedPath).toBe("My-Doc- -Draft-.pdf");
+            expect(invokedPdfPath).toBe('/fake/path/My-Doc- -Draft-.pdf');
+            expect(invokedPdfPayload).toEqual({
+                title: 'My/Doc: "Draft"',
+                bodyParagraphs: [],
+                annotations: [],
+            });
+        });
     });
 
     describe("filename sanitization", () => {
@@ -334,6 +372,15 @@ describe("exportDocument", () => {
             expect(savedPath).not.toContain(":");
             expect(savedPath).not.toContain('"');
             expect(savedPath).toMatch(/\.txt$/);
+        });
+
+        it("preserves the original title inside exported JSON", async () => {
+            currentDocumentTitle.set('My/Doc: "Draft"');
+            h = EditorHarness.create("test");
+            await exportDocument(h.view, "json");
+
+            const parsed = JSON.parse(savedContent);
+            expect(parsed.title).toBe('My/Doc: "Draft"');
         });
 
         it("falls back to 'document' for empty title", async () => {

@@ -385,31 +385,38 @@ fn wrap_block(text: &str, max_chars: usize) -> Vec<String> {
 fn wrap_line(text: &str, max_chars: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
+    let mut current_len = 0usize;
 
     for word in text.split_whitespace() {
-        if word.chars().count() > max_chars {
+        let word_len = word.chars().count();
+
+        if word_len > max_chars {
             if !current.is_empty() {
                 lines.push(current);
                 current = String::new();
+                current_len = 0;
             }
             lines.extend(chunk_long_word(word, max_chars));
             continue;
         }
 
         let candidate_len = if current.is_empty() {
-            word.chars().count()
+            word_len
         } else {
-            current.chars().count() + 1 + word.chars().count()
+            current_len + 1 + word_len
         };
 
         if candidate_len > max_chars && !current.is_empty() {
             lines.push(current);
             current = word.to_string();
+            current_len = word_len;
         } else if current.is_empty() {
             current = word.to_string();
+            current_len = word_len;
         } else {
             current.push(' ');
             current.push_str(word);
+            current_len += 1 + word_len;
         }
     }
 
@@ -423,12 +430,15 @@ fn wrap_line(text: &str, max_chars: usize) -> Vec<String> {
 fn chunk_long_word(word: &str, max_chars: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
+    let mut current_len = 0usize;
 
     for ch in word.chars() {
         current.push(ch);
-        if current.chars().count() >= max_chars {
+        current_len += 1;
+        if current_len >= max_chars {
             chunks.push(current);
             current = String::new();
+            current_len = 0;
         }
     }
 

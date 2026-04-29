@@ -6,6 +6,8 @@
  *   - Text with annotations (.txt) — document content + annotations as JSON after a separator
  *   - JSON (.json) — document content + all annotations
  *   - Markdown (.md) — document text with annotations as footnotes
+ *   - PDF (.pdf) — document content only
+ *   - PDF + annotations (.pdf) — document content plus styled annotation cards
  *
  * Uses native save dialog via Tauri's dialog plugin.
  */
@@ -218,13 +220,6 @@ function annotationRangeLike(annotation: PdfAnnotationLike): { from: number; to:
     };
 }
 
-function indentLines(text: string, prefix: string): string {
-    return text
-        .split("\n")
-        .map((line) => `${prefix}${line}`)
-        .join("\n");
-}
-
 function threadLines(thread: Array<{ author: string; message: string }>): string[] {
     return thread.map((message) => `${message.author}: ${message.message}`);
 }
@@ -361,16 +356,17 @@ function buildContent(state: EditorState, format: TextExportFormat, title: strin
 
 /** Export from an active EditorView (used from the editor). */
 export async function exportDocument(view: EditorView, format: ExportFormat) {
-    const title = sanitizeFilename(get(currentDocumentTitle));
+    const rawTitle = get(currentDocumentTitle).trim() || "document";
+    const safeTitle = sanitizeFilename(rawTitle);
     const saved =
         format === "pdf" || format === "pdf+annotations"
             ? await savePdfWithDialog(
-                  buildPdfPayload(view.state, title, format === "pdf+annotations"),
-                  `${title}.${fileExtensions[format]}`,
+                  buildPdfPayload(view.state, rawTitle, format === "pdf+annotations"),
+                  `${safeTitle}.${fileExtensions[format]}`,
               )
             : await saveWithDialog(
-                  buildContent(view.state, format, title),
-                  `${title}.${fileExtensions[format]}`,
+                  buildContent(view.state, format, rawTitle),
+                  `${safeTitle}.${fileExtensions[format]}`,
                   fileExtensions[format],
               );
     if (saved) {
@@ -412,16 +408,17 @@ export async function exportDocumentById(docId: string, docTitle: string, format
         state = replayEvents(state, loaded.eventsSince);
     }
 
-    const title = sanitizeFilename(docTitle);
+    const rawTitle = docTitle.trim() || "document";
+    const safeTitle = sanitizeFilename(rawTitle);
     const saved =
         format === "pdf" || format === "pdf+annotations"
             ? await savePdfWithDialog(
-                  buildPdfPayload(state, title, format === "pdf+annotations"),
-                  `${title}.${fileExtensions[format]}`,
+                  buildPdfPayload(state, rawTitle, format === "pdf+annotations"),
+                  `${safeTitle}.${fileExtensions[format]}`,
               )
             : await saveWithDialog(
-                  buildContent(state, format, title),
-                  `${title}.${fileExtensions[format]}`,
+                  buildContent(state, format, rawTitle),
+                  `${safeTitle}.${fileExtensions[format]}`,
                   fileExtensions[format],
               );
     if (saved) {
