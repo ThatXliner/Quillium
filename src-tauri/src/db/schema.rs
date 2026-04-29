@@ -10,7 +10,8 @@ pub fn open_db(path: &Path) -> Result<Connection> {
     // Migration: add label column to snapshots if it doesn't exist yet.
     let label_exists = {
         let mut stmt = conn.prepare("PRAGMA table_info(snapshots)")?;
-        let result = stmt.query_map([], |row| row.get::<_, String>(1))?
+        let result = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
             .filter_map(|res| res.ok())
             .any(|name| name == "label");
         result

@@ -12,6 +12,7 @@
 
 import type { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { get } from "svelte/store";
@@ -25,6 +26,13 @@ import { currentDocumentTitle } from "./stores";
 import posthog from "./posthog";
 
 export type ExportFormat = "txt" | "json" | "md" | "txt+json" | "pdf";
+type TextExportFormat = Exclude<ExportFormat, "pdf">;
+
+type PdfExportPayload = {
+    title: string;
+    bodyParagraphs: string[];
+    annotations: string[];
+};
 
 async function saveWithDialog(
     content: string,
@@ -50,6 +58,16 @@ async function saveWithDialog(
     return true;
 }
 
+async function savePdfWithDialog(payload: PdfExportPayload, defaultName: string): Promise<boolean> {
+    const path = await save({
+        defaultPath: defaultName,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (!path) return false;
+    await invoke("cmd_export_pdf", { path, payload });
+    return true;
+}
+
 function sanitizeFilename(title: string): string {
     return title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "document";
 }
@@ -61,15 +79,6 @@ function annotationRange(annotation: GenericAnnotation): { from: number; to: num
 
 function buildPlainText(state: EditorState): string {
     return state.doc.toString();
-}
-
-function escapeHtml(value: string): string {
-    return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
 }
 
 function buildJSON(state: EditorState, title: string): string {
@@ -208,136 +217,16 @@ function buildPdfAnnotationLines(state: EditorState): string[] {
     });
 }
 
-function buildPdfHtml(state: EditorState, title: string): string {
-    const docText = state.doc.toString();
-    const annotationLines = buildPdfAnnotationLines(state);
-    const bodyParagraphs = docText
-        .split(/\n{2,}/)
-        .map((paragraph) => paragraph.trimEnd())
-        .filter((paragraph) => paragraph.length > 0);
-    const renderedBody =
-        bodyParagraphs.length > 0
-            ? bodyParagraphs
-                  .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
-                  .join("\n")
-            : "<p></p>";
-    const renderedAnnotations =
-        annotationLines.length > 0
-            ? `
-        <section class="annotations">
-            <h2>Annotations</h2>
-            ${annotationLines.map((line) => `<article>${escapeHtml(line)}</article>`).join("\n")}
-        </section>`
-            : "";
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(title)}</title>
-    <style>
-        :root {
-            color-scheme: light;
-            font-family: "Georgia", "Times New Roman", serif;
-        }
-
-        @page {
-            margin: 0.75in;
-            size: auto;
-        }
-
-        body {
-            margin: 0;
-            color: #1f2937;
-            background: white;
-        }
-
-        main {
-            max-width: 7in;
-            margin: 0 auto;
-        }
-
-        h1 {
-            font-size: 24pt;
-            margin: 0 0 0.35in;
-            line-height: 1.1;
-        }
-
-        h2 {
-            font-size: 15pt;
-            margin: 0 0 0.2in;
-        }
-
-        .document {
-            white-space: pre-wrap;
-            font-size: 12pt;
-            line-height: 1.7;
-        }
-
-        .document p {
-            margin: 0 0 0.18in;
-        }
-
-        .annotations {
-            margin-top: 0.45in;
-            border-top: 1px solid #d1d5db;
-            padding-top: 0.25in;
-        }
-
-        .annotations article {
-            white-space: pre-wrap;
-            break-inside: avoid;
-            margin: 0 0 0.18in;
-            padding: 0.14in 0.16in;
-            background: #f8fafc;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-        }
-    </style>
-</head>
-<body>
-    <main>
-        <h1>${escapeHtml(title)}</h1>
-        <section class="document">
-            ${renderedBody}
-        </section>
-        ${renderedAnnotations}
-    </main>
-</body>
-</html>`;
-}
-
-async function printToPdf(html: string): Promise<boolean> {
-    if (typeof window === "undefined") return false;
-
-    const printWindow = window.open("", "_blank", "popup,width=900,height=1200");
-    if (!printWindow) return false;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-
-    await new Promise((resolve) => window.setTimeout(resolve, 50));
-
-    try {
-        printWindow.focus();
-        printWindow.print();
-        window.setTimeout(() => {
-            try {
-                printWindow.close();
-            } catch {
-                // Ignore close failures after the system print flow opens.
-            }
-        }, 1000);
-        return true;
-    } catch {
-        try {
-            printWindow.close();
-        } catch {
-            // Ignore close failures when print setup failed.
-        }
-        return false;
-    }
+function buildPdfPayload(state: EditorState, title: string): PdfExportPayload {
+    return {
+        title,
+        bodyParagraphs: state.doc
+            .toString()
+            .split(/\n{2,}/)
+            .map((paragraph) => paragraph.trimEnd())
+            .filter((paragraph) => paragraph.length > 0),
+        annotations: buildPdfAnnotationLines(state),
+    };
 }
 
 const fileExtensions: Record<ExportFormat, string> = {
@@ -348,7 +237,7 @@ const fileExtensions: Record<ExportFormat, string> = {
     pdf: "pdf",
 };
 
-function buildContent(state: EditorState, format: ExportFormat, title: string): string {
+function buildContent(state: EditorState, format: TextExportFormat, title: string): string {
     switch (format) {
         case "txt":
             return buildPlainText(state);
@@ -358,19 +247,20 @@ function buildContent(state: EditorState, format: ExportFormat, title: string): 
             return buildMarkdown(state);
         case "txt+json":
             return buildPlainTextWithAnnotations(state);
-        case "pdf":
-            return buildPdfHtml(state, title);
     }
 }
 
 /** Export from an active EditorView (used from the editor). */
 export async function exportDocument(view: EditorView, format: ExportFormat) {
     const title = sanitizeFilename(get(currentDocumentTitle));
-    const content = buildContent(view.state, format, title);
     const saved =
         format === "pdf"
-            ? await printToPdf(content)
-            : await saveWithDialog(content, `${title}.${fileExtensions[format]}`, fileExtensions[format]);
+            ? await savePdfWithDialog(buildPdfPayload(view.state, title), `${title}.pdf`)
+            : await saveWithDialog(
+                  buildContent(view.state, format, title),
+                  `${title}.${fileExtensions[format]}`,
+                  fileExtensions[format],
+              );
     if (saved) {
         posthog.capture("document_exported", { format });
     }
@@ -411,11 +301,14 @@ export async function exportDocumentById(docId: string, docTitle: string, format
     }
 
     const title = sanitizeFilename(docTitle);
-    const content = buildContent(state, format, title);
     const saved =
         format === "pdf"
-            ? await printToPdf(content)
-            : await saveWithDialog(content, `${title}.${fileExtensions[format]}`, fileExtensions[format]);
+            ? await savePdfWithDialog(buildPdfPayload(state, title), `${title}.pdf`)
+            : await saveWithDialog(
+                  buildContent(state, format, title),
+                  `${title}.${fileExtensions[format]}`,
+                  fileExtensions[format],
+              );
     if (saved) {
         posthog.capture("document_exported", { format, source: "library" });
     }

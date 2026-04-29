@@ -1,15 +1,24 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { EditorHarness } from "../helpers/EditorHarness";
 import { exportDocument } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
-import { save } from "@tauri-apps/plugin-dialog";
 
 let h: EditorHarness;
 let savedContent: string;
 let savedPath: string;
-let printedHtml: string;
-let printCalled: number;
-let closeCalled: number;
+let invokedPdfPath: string;
+let invokedPdfPayload: unknown;
+
+vi.mock("@tauri-apps/api/core", () => ({
+    invoke: vi.fn().mockImplementation(async (command: string, args?: { path?: string; payload?: unknown }) => {
+        if (command === "cmd_export_pdf") {
+            invokedPdfPath = args?.path ?? "";
+            invokedPdfPayload = args?.payload;
+        }
+    }),
+}));
 
 // Mock Tauri dialog and fs plugins
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -26,40 +35,16 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
 }));
 
 beforeEach(() => {
-    vi.useFakeTimers();
     savedContent = "";
     savedPath = "";
-    printedHtml = "";
-    printCalled = 0;
-    closeCalled = 0;
+    invokedPdfPath = "";
+    invokedPdfPayload = null;
     currentDocumentTitle.set("Test Document");
-
-    vi.stubGlobal(
-        "open",
-        vi.fn(() => ({
-            document: {
-                open: vi.fn(),
-                write: vi.fn((html: string) => {
-                    printedHtml = html;
-                }),
-                close: vi.fn(),
-            },
-            focus: vi.fn(),
-            print: vi.fn(() => {
-                printCalled += 1;
-            }),
-            close: vi.fn(() => {
-                closeCalled += 1;
-            }),
-        })),
-    );
 });
 
 afterEach(() => {
     h?.destroy();
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
     currentDocumentTitle.set("");
 });
 
@@ -225,36 +210,36 @@ describe("exportDocument", () => {
     });
 
     describe("PDF export", () => {
-        it("opens the print flow instead of saving raw text", async () => {
+        it("writes a PDF through the Rust command instead of saving raw text", async () => {
             h = EditorHarness.create("Hello world");
             vi.mocked(save).mockClear();
-            const exportPromise = exportDocument(h.view, "pdf");
-            await vi.runAllTimersAsync();
-            await exportPromise;
+            await exportDocument(h.view, "pdf");
 
-            expect(printCalled).toBe(1);
-            expect(closeCalled).toBe(1);
-            expect(printedHtml).toContain("<!DOCTYPE html>");
-            expect(printedHtml).toContain("<h1>Test Document</h1>");
-            expect(printedHtml).toContain("<p>Hello world</p>");
+            expect(savedPath).toBe("Test Document.pdf");
+            expect(invokedPdfPath).toBe("/fake/path/Test Document.pdf");
             expect(savedContent).toBe("");
-            expect(vi.mocked(save)).not.toHaveBeenCalled();
+            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_pdf", {
+                path: "/fake/path/Test Document.pdf",
+                payload: {
+                    title: "Test Document",
+                    bodyParagraphs: ["Hello world"],
+                    annotations: [],
+                },
+            });
         });
 
-        it("includes annotations in the rendered PDF document", async () => {
+        it("includes annotations in the PDF payload", async () => {
             h = EditorHarness.create("Hello world");
             const id = h.addComment(0, 5);
             h.addThreadMessage(id, "Nice greeting!", "Alice");
 
-            vi.mocked(save).mockClear();
-            const exportPromise = exportDocument(h.view, "pdf");
-            await vi.runAllTimersAsync();
-            await exportPromise;
+            await exportDocument(h.view, "pdf");
 
-            expect(printedHtml).toContain("Annotations");
-            expect(printedHtml).toContain("1. Comment (0-5)");
-            expect(printedHtml).toContain("On: &quot;Hello&quot;");
-            expect(printedHtml).toContain("Alice: Nice greeting!");
+            expect(invokedPdfPayload).toEqual({
+                title: "Test Document",
+                bodyParagraphs: ["Hello world"],
+                annotations: ['1. Comment (0-5)\nOn: "Hello"\nAlice: Nice greeting!'],
+            });
         });
     });
 
