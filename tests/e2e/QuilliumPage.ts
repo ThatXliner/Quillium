@@ -6,7 +6,7 @@
  * `page.locator(...)` directly.
  */
 
-import { expect, type Page, type Locator } from "@playwright/test";
+import { type Locator, type Page, expect } from "@playwright/test";
 
 // ── Tauri mock configuration ────────────────────────────────────────────────
 
@@ -488,7 +488,7 @@ export class QuilliumPage {
     }
 
     async openDictionary(): Promise<void> {
-        await this.page.keyboard.press("Control+b");
+        await this.page.keyboard.press("Control+d");
     }
 
     async sendReply(): Promise<void> {

@@ -17,6 +17,7 @@ type AppSettings = {
     selectTextInNestedEditor: boolean;
     showNestedEditor: boolean;
     atomicRevisions: boolean;
+    editorMode: "plain" | "markdown";
     docFontFamily: string;
     docFontSize: number;
     uiFontFamily: string;
@@ -44,6 +45,7 @@ const DEFAULTS: AppSettings = {
     selectTextInNestedEditor: true,
     showNestedEditor: true,
     atomicRevisions: true,
+    editorMode: "markdown",
     docFontFamily: "Georgia, serif",
     docFontSize: 18,
     uiFontFamily: "system-ui, -apple-system, sans-serif",

@@ -1,16 +1,16 @@
 /**
  * dictionaryPlugin.ts — CodeMirror keymap for the dictionary popover.
  *
- * Registers Cmd-b (⌘B on Mac) as a shortcut to open the dictionary
+ * Registers Cmd-d (⌘D on Mac) as a shortcut to open the dictionary
  * popover for the currently selected word. If nothing is selected or
  * the selection is multi-word, the command is a no-op.
  */
 import { dev } from "$app/environment";
-import { keymap, type EditorView } from "@codemirror/view";
-import { Prec } from "@codemirror/state";
 import { appEventBus } from "$lib/events/appEventBus";
-import { extractDictionaryWord } from "./dictionaryUtils";
 import posthog from "$lib/posthog";
+import { Prec } from "@codemirror/state";
+import { type EditorView, keymap } from "@codemirror/view";
+import { extractDictionaryWord } from "./dictionaryUtils";
 
 function openDictionary(view: EditorView): boolean {
     const sel = view.state.selection.main;
@@ -36,11 +36,11 @@ function openDictionary(view: EditorView): boolean {
 
 export const dictionaryExtension = Prec.high(
     keymap.of([
-        { key: "Mod-b", run: openDictionary },
+        { key: "Mod-d", run: openDictionary },
         ...(dev
             ? [
-                  { key: "Ctrl-b", run: openDictionary },
-                  { key: "Meta-b", run: openDictionary },
+                  { key: "Ctrl-d", run: openDictionary },
+                  { key: "Meta-d", run: openDictionary },
               ]
             : []),
     ]),
