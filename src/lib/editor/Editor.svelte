@@ -67,23 +67,12 @@ import { appSettings } from "$lib/settings.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { ViewUpdate } from "@codemirror/view";
 import { generateText } from "ai";
-import {
-    Bold,
-    Heading1,
-    Heading2,
-    Italic,
-    List,
-    ListOrdered,
-    Pencil,
-    Quote,
-    SparklesIcon,
-} from "lucide-svelte";
+import { Pencil, SparklesIcon } from "lucide-svelte";
 import StatusBar from "./StatusBar.svelte";
 import type { ListenerOptions } from "./listeners";
 import { annotationField } from "./plugins/annotations";
 import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
-import { formatMarkdownSelection, type MarkdownFormat } from "./markdownFormatting";
 import { replayEvents } from "./replay";
 import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
 
@@ -176,31 +165,6 @@ function computeWritingStats(doc: string, selText: string) {
         selWords: selText ? getWordCount(selText) : 0,
         selChars: selText.length,
     };
-}
-
-const formattingActions: Array<{
-    format: MarkdownFormat;
-    label: string;
-    title: string;
-    icon: typeof Bold;
-}> = [
-    { format: "bold", label: "Bold", title: "Bold", icon: Bold },
-    { format: "italic", label: "Italic", title: "Italic", icon: Italic },
-    { format: "heading1", label: "Heading 1", title: "Heading 1", icon: Heading1 },
-    { format: "heading2", label: "Heading 2", title: "Heading 2", icon: Heading2 },
-    { format: "bulletList", label: "Bulleted list", title: "Bulleted list", icon: List },
-    {
-        format: "numberedList",
-        label: "Numbered list",
-        title: "Numbered list",
-        icon: ListOrdered,
-    },
-    { format: "blockquote", label: "Block quote", title: "Block quote", icon: Quote },
-];
-
-function applyFormatting(format: MarkdownFormat) {
-    if (!$editorView) return;
-    formatMarkdownSelection($editorView, format);
 }
 
 // Bridge from CodeMirror → Svelte reactivity.
@@ -498,25 +462,6 @@ onMount(() => {
                 {/snippet}
             </StatusBar>
         </div>
-        {#if appSettings.editorMode === "markdown"}
-            <div class="pointer-events-auto flex items-center gap-1 rounded-full border border-black/10 bg-white/85 px-2 py-1 shadow-lg backdrop-blur-sm">
-                <span class="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-black/35">
-                    Markdown
-                </span>
-                <div class="h-4 w-px bg-black/10"></div>
-                {#each formattingActions as action}
-                    <button
-                        type="button"
-                        aria-label={action.label}
-                        title={action.title}
-                        onclick={() => applyFormatting(action.format)}
-                        class="flex h-8 w-8 items-center justify-center rounded-full text-black/45 transition-colors hover:bg-black/5 hover:text-black/75"
-                    >
-                        <action.icon size={15} />
-                    </button>
-                {/each}
-            </div>
-        {/if}
     </div>
 
     {#await fromSave then}

@@ -1,5 +1,5 @@
-import { EditorSelection } from "@codemirror/state";
-import type { EditorView } from "@codemirror/view";
+import { EditorSelection, Prec } from "@codemirror/state";
+import { type EditorView, keymap } from "@codemirror/view";
 
 export type MarkdownFormat =
     | "bold"
@@ -172,4 +172,18 @@ export function formatMarkdownSelection(view: EditorView, format: MarkdownFormat
         userEvent: "input",
     });
     view.focus();
+    return true;
 }
+
+function runFormat(format: MarkdownFormat) {
+    return (view: EditorView) => formatMarkdownSelection(view, format);
+}
+
+export const markdownFormattingKeymap = Prec.high(
+    keymap.of([
+        { key: "Mod-b", run: runFormat("bold"), preventDefault: true },
+        { key: "Mod-i", run: runFormat("italic"), preventDefault: true },
+        { key: "Mod-Alt-1", run: runFormat("heading1"), preventDefault: true },
+        { key: "Mod-Alt-2", run: runFormat("heading2"), preventDefault: true },
+    ]),
+);

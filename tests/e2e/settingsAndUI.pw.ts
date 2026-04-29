@@ -228,15 +228,16 @@ test.describe("error resilience", () => {
 });
 
 test.describe("markdown formatting", () => {
-    test("applies bold formatting from the toolbar", async ({ page }) => {
+    test("applies bold formatting from the keyboard shortcut", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
 
         await q.typeInEditor("hello world");
         await q.selectRange(0, 5);
-        await page.getByRole("button", { name: "Bold" }).click();
+        await page.keyboard.press("ControlOrMeta+b");
 
         await q.expectEditorText("**hello** world");
+        await expect(page.getByRole("button", { name: "Bold" })).toHaveCount(0);
     });
 });
 

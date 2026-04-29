@@ -1,4 +1,6 @@
 import { dev } from "$app/environment";
+import { collabCompartment } from "$lib/collab";
+import { appEventBus } from "$lib/events/appEventBus";
 import { appSettings } from "$lib/settings.svelte";
 /**
  * extensions.ts — Assembles the full CodeMirror 6 extension stack.
@@ -35,8 +37,8 @@ import {
     redo,
     undo,
 } from "@codemirror/commands";
-import { bracketMatching } from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
+import { bracketMatching } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
 import {
@@ -46,13 +48,13 @@ import {
     highlightSpecialChars,
     keymap,
 } from "@codemirror/view";
-import { collabCompartment } from "$lib/collab";
 import { dictionaryExtension } from "./dictionaryPlugin";
 import { harperExtension } from "./harper/harperLinter";
 import { type ListenerOptions, listeners } from "./listeners";
+import { markdownFormattingKeymap } from "./markdownFormatting";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
-import { appEventBus } from "$lib/events/appEventBus";
+import { richMarkdownExtension } from "./richMarkdown";
 
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
@@ -141,6 +143,8 @@ export const getExtensions = (options?: ListenerOptions) => {
             autocapitalize: "on",
         }),
         languageCompartment.of(getEditorLanguageExtension()),
+        richMarkdownExtension(),
+        markdownFormattingKeymap,
         listeners(options),
         annotations(),
         dictionaryExtension,
