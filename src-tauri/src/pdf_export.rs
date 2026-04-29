@@ -1,8 +1,9 @@
 use std::{collections::BTreeMap, fs};
+use textwrap::wrap;
 
 use printpdf::{
-    BuiltinFont, Color, LinePoint, Mm, Op, PaintMode, PdfDocument, PdfPage, PdfSaveOptions,
-    Point, Polygon, PolygonRing, Pt, Rgb, TextItem, WindingOrder,
+    BuiltinFont, Color, LinePoint, Mm, Op, PaintMode, PdfDocument, PdfPage, PdfSaveOptions, Point,
+    Polygon, PolygonRing, Pt, Rgb, TextItem, WindingOrder,
 };
 use serde::Deserialize;
 
@@ -336,7 +337,7 @@ fn push_wrapped_block(
     gap_after_pt: f32,
 ) -> bool {
     let max_chars = max_chars_for_width(style, width_pt);
-    let mut block_lines = wrap_block(text, max_chars);
+    let mut block_lines = wrap(text, max_chars);
     if block_lines.is_empty() {
         return false;
     }
@@ -344,7 +345,7 @@ fn push_wrapped_block(
     let last_index = block_lines.len().saturating_sub(1);
     for (index, line) in block_lines.drain(..).enumerate() {
         lines.push(FlowLine {
-            text: line,
+            text: line.to_string(),
             style,
             x_pt,
             gap_after_pt: if index == last_index {
@@ -366,87 +367,6 @@ fn add_gap_to_last_line(lines: &mut [FlowLine], gap_after_pt: f32) {
     if let Some(last) = lines.last_mut() {
         last.gap_after_pt += gap_after_pt;
     }
-}
-
-fn wrap_block(text: &str, max_chars: usize) -> Vec<String> {
-    let mut wrapped = Vec::new();
-
-    for raw_line in text.lines() {
-        if raw_line.trim().is_empty() {
-            wrapped.push(String::new());
-            continue;
-        }
-        wrapped.extend(wrap_line(raw_line, max_chars));
-    }
-
-    wrapped
-}
-
-fn wrap_line(text: &str, max_chars: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut current = String::new();
-    let mut current_len = 0usize;
-
-    for word in text.split_whitespace() {
-        let word_len = word.chars().count();
-
-        if word_len > max_chars {
-            if !current.is_empty() {
-                lines.push(current);
-                current = String::new();
-                current_len = 0;
-            }
-            lines.extend(chunk_long_word(word, max_chars));
-            continue;
-        }
-
-        let candidate_len = if current.is_empty() {
-            word_len
-        } else {
-            current_len + 1 + word_len
-        };
-
-        if candidate_len > max_chars && !current.is_empty() {
-            lines.push(current);
-            current = word.to_string();
-            current_len = word_len;
-        } else if current.is_empty() {
-            current = word.to_string();
-            current_len = word_len;
-        } else {
-            current.push(' ');
-            current.push_str(word);
-            current_len += 1 + word_len;
-        }
-    }
-
-    if !current.is_empty() {
-        lines.push(current);
-    }
-
-    lines
-}
-
-fn chunk_long_word(word: &str, max_chars: usize) -> Vec<String> {
-    let mut chunks = Vec::new();
-    let mut current = String::new();
-    let mut current_len = 0usize;
-
-    for ch in word.chars() {
-        current.push(ch);
-        current_len += 1;
-        if current_len >= max_chars {
-            chunks.push(current);
-            current = String::new();
-            current_len = 0;
-        }
-    }
-
-    if !current.is_empty() {
-        chunks.push(current);
-    }
-
-    chunks
 }
 
 fn max_chars_for_width(style: TextStyle, width_pt: f32) -> usize {
