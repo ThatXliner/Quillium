@@ -44,6 +44,7 @@ import type { EventPayload } from "$lib/db/events";
 import { buildEventPayload } from "$lib/editor/listeners";
 import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
+import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
 
 // Face preview state
 const FACE_STATES: FaceState[] = [
@@ -241,6 +242,11 @@ function triggerSuspiciousRemoval() {
 function triggerAuthModal() {
     close();
     appEventBus.emit({ type: "show-auth-modal" });
+}
+
+function triggerAuthOffline() {
+    debugForceAuthOffline();
+    close();
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -477,6 +483,10 @@ function handleKeydown(e: KeyboardEvent) {
                 onclick={triggerAuthModal}
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
             >Auth modal</button>
+            <button
+                onclick={triggerAuthOffline}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
+            >Auth offline</button>
         </div>
 
         <!-- Footer -->

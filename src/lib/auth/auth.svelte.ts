@@ -5,13 +5,70 @@
  * Initializes via initAuth() on app mount, subscribes to auth changes.
  */
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
-import { supabase, supabaseConfigured } from "./supabase";
+import { supabase } from "./supabase";
+
+type AuthConnectionState = "idle" | "connecting" | "online" | "offline";
+
+const AUTH_INIT_ATTEMPTS = 3;
+const AUTH_INIT_TIMEOUT_MS = 2500;
 
 // Reactive state
 let user = $state<User | null>(null);
 let session = $state<Session | null>(null);
 let loading = $state(true);
+let connectionState = $state<AuthConnectionState>("idle");
 let initialized = false;
+let initRun = 0;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => reject(new Error("Auth server did not respond")), ms);
+        promise.then(
+            (value) => {
+                clearTimeout(timeoutId);
+                resolve(value);
+            },
+            (error) => {
+                clearTimeout(timeoutId);
+                reject(error);
+            },
+        );
+    });
+}
+
+async function getSessionWithTimeout(): Promise<Session | null> {
+    const result = await withTimeout(supabase!.auth.getSession(), AUTH_INIT_TIMEOUT_MS);
+    if (result.error) throw result.error;
+    return result.data.session;
+}
+
+async function loadSessionWithRetries(run: number): Promise<boolean> {
+    connectionState = "connecting";
+    loading = true;
+
+    for (let attempt = 1; attempt <= AUTH_INIT_ATTEMPTS; attempt += 1) {
+        try {
+            const existingSession = await getSessionWithTimeout();
+            if (run !== initRun) return false;
+
+            session = existingSession;
+            user = existingSession?.user ?? null;
+            connectionState = "online";
+            loading = false;
+            return true;
+        } catch (error) {
+            console.error(`[auth] Failed to get session (attempt ${attempt}/${AUTH_INIT_ATTEMPTS}):`, error);
+        }
+    }
+
+    if (run !== initRun) return false;
+
+    session = null;
+    user = null;
+    connectionState = "offline";
+    loading = false;
+    return false;
+}
 
 /**
  * Initialize auth state. Call once at app startup.
@@ -23,24 +80,45 @@ export async function initAuth(): Promise<void> {
 
     if (!supabase) {
         loading = false;
+        connectionState = "offline";
         return;
     }
 
-    const {
-        data: { session: existingSession },
-        error,
-    } = await supabase.auth.getSession();
-    if (error) {
-        console.error("[auth] Failed to get session:", error);
-    }
-    session = existingSession;
-    user = existingSession?.user ?? null;
-    loading = false;
+    const run = ++initRun;
+    await loadSessionWithRetries(run);
 
     supabase.auth.onAuthStateChange((_event: AuthChangeEvent, newSession: Session | null) => {
         session = newSession;
         user = newSession?.user ?? null;
+        connectionState = "online";
+        loading = false;
     });
+}
+
+/**
+ * Retry the initial auth connection after the app has decided it is offline.
+ */
+export async function reconnectAuth(): Promise<boolean> {
+    if (!supabase) {
+        connectionState = "offline";
+        loading = false;
+        return false;
+    }
+
+    const run = ++initRun;
+    return loadSessionWithRetries(run);
+}
+
+/**
+ * DEV-only helper for the debug panel: force the auth UI into its offline state.
+ */
+export function debugForceAuthOffline(): void {
+    if (!import.meta.env.DEV) return;
+    initRun++;
+    session = null;
+    user = null;
+    connectionState = "offline";
+    loading = false;
 }
 
 /**
@@ -108,6 +186,12 @@ export function getSession() {
 }
 export function isLoading() {
     return loading;
+}
+export function getConnectionState() {
+    return connectionState;
+}
+export function isOffline() {
+    return connectionState === "offline";
 }
 export function isAuthenticated() {
     return !!user;
