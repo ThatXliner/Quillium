@@ -20,18 +20,35 @@ import { annotationField } from "./editor/plugins/annotations";
 import {
     isAnnotationOfType,
     versionText,
+    RawAnnotationsSchema,
     type GenericAnnotation,
+    type VersionState,
 } from "./editor/plugins/annotations/models";
 import { currentDocumentTitle } from "./stores";
 import posthog from "./posthog";
 
-export type ExportFormat = "txt" | "json" | "md" | "txt+json" | "pdf";
-type TextExportFormat = Exclude<ExportFormat, "pdf">;
+export type ExportFormat =
+    | "txt"
+    | "json"
+    | "md"
+    | "txt+json"
+    | "pdf"
+    | "pdf+annotations";
+type TextExportFormat = Exclude<ExportFormat, "pdf" | "pdf+annotations">;
+
+type PdfAnnotationCardKind = "comment" | "suggestion" | "revision" | "version";
+type PdfAnnotationCard = {
+    kind: PdfAnnotationCardKind;
+    title: string;
+    subtitle?: string;
+    body: string[];
+    children: PdfAnnotationCard[];
+};
 
 type PdfExportPayload = {
     title: string;
     bodyParagraphs: string[];
-    annotations: string[];
+    annotations: PdfAnnotationCard[];
 };
 
 async function saveWithDialog(
@@ -184,40 +201,131 @@ function buildMarkdown(state: EditorState): string {
     return result;
 }
 
-function buildPdfAnnotationLines(state: EditorState): string[] {
-    const doc = state.doc.toString();
-    const annots = state.field(annotationField);
-    const sorted = Object.values(annots).sort((a, b) => annotationRange(a).from - annotationRange(b).from);
+type PdfAnnotationLike = {
+    _type: "comment" | "suggestion" | "revision";
+    selection: { ranges: ReadonlyArray<{ anchor: number; head: number }> };
+    thread: Array<{ author: string; message: string }>;
+    replacements?: Array<{ text: string; rationale?: string }>;
+    activeVersionIndex?: number;
+    versions?: VersionState[];
+};
 
-    return sorted.flatMap((a, index) => {
-        const { from, to } = annotationRange(a);
-        const selectedText = doc.slice(from, to);
-        const label = `${index + 1}. ${a._type[0].toUpperCase()}${a._type.slice(1)} (${from}-${to})`;
-
-        if (isAnnotationOfType(a, "comment")) {
-            const messages = a.thread.map((m) => `${m.author}: ${m.message}`).join("\n");
-            return [`${label}\nOn: "${selectedText}"${messages ? `\n${messages}` : ""}`];
-        }
-
-        if (isAnnotationOfType(a, "suggestion")) {
-            const replacements = a.replacements.map((r) => r.text).join(", ");
-            return [`${label}\nOn: "${selectedText}"\nSuggestions: ${replacements}`];
-        }
-
-        if (isAnnotationOfType(a, "revision")) {
-            const versions = a.versions.map((v, i) => {
-                const labelSuffix = v.label ? ` (${v.label})` : "";
-                const active = i === a.activeVersionIndex ? " [active]" : "";
-                return `v${i + 1}${labelSuffix}${active}: ${versionText(v)}`;
-            });
-            return [`${label}\nOn: "${selectedText}"\n${versions.join("\n")}`];
-        }
-
-        return [];
-    });
+function annotationRangeLike(annotation: PdfAnnotationLike): { from: number; to: number } {
+    const range = annotation.selection.ranges[0];
+    return {
+        from: Math.min(range.anchor, range.head),
+        to: Math.max(range.anchor, range.head),
+    };
 }
 
-function buildPdfPayload(state: EditorState, title: string): PdfExportPayload {
+function indentLines(text: string, prefix: string): string {
+    return text
+        .split("\n")
+        .map((line) => `${prefix}${line}`)
+        .join("\n");
+}
+
+function threadLines(thread: Array<{ author: string; message: string }>): string[] {
+    return thread.map((message) => `${message.author}: ${message.message}`);
+}
+
+function nestedVersionAnnotations(version: VersionState): PdfAnnotationLike[] {
+    const nested = RawAnnotationsSchema.safeParse(
+        (version as { annotationField?: unknown }).annotationField,
+    );
+    if (!nested.success) return [];
+    return Object.values(nested.data) as PdfAnnotationLike[];
+}
+
+function sortPdfAnnotations(annotations: PdfAnnotationLike[]): PdfAnnotationLike[] {
+    return [...annotations].sort(
+        (a, b) => annotationRangeLike(a).from - annotationRangeLike(b).from,
+    );
+}
+
+function buildPdfVersionCard(
+    version: VersionState,
+    index: number,
+    activeVersionIndex: number,
+): PdfAnnotationCard {
+    const labelSuffix = version.label ? ` (${version.label})` : "";
+    const active = index === activeVersionIndex ? " [active]" : "";
+
+    return {
+        kind: "version",
+        title: `Version ${index + 1}${labelSuffix}${active}`,
+        body: versionText(version) ? [versionText(version)] : [],
+        children: buildPdfAnnotationCards(nestedVersionAnnotations(version), version.doc),
+    };
+}
+
+function buildPdfAnnotationCard(
+    annotation: PdfAnnotationLike,
+    doc: string,
+    index: number,
+): PdfAnnotationCard {
+    const { from, to } = annotationRangeLike(annotation);
+    const selectedText = doc.slice(from, to);
+    const label = `${index + 1}. ${annotation._type[0].toUpperCase()}${annotation._type.slice(1)} (${from}-${to})`;
+    const body: string[] = [];
+
+    if (annotation._type === "suggestion") {
+        const replacements = annotation.replacements ?? [];
+        if (replacements.length > 0) {
+            body.push("Suggestions:");
+            body.push(
+                ...replacements.map((replacement) =>
+                    replacement.rationale
+                        ? `- ${replacement.text} (${replacement.rationale})`
+                        : `- ${replacement.text}`,
+                ),
+            );
+        }
+    }
+
+    if (annotation.thread.length > 0) {
+        body.push(...threadLines(annotation.thread));
+    }
+
+    return {
+        kind: annotation._type,
+        title: label,
+        subtitle: `On: "${selectedText}"`,
+        body,
+        children:
+            annotation._type === "revision"
+                ? (annotation.versions ?? []).map((version, versionIndex) =>
+                      buildPdfVersionCard(
+                          version,
+                          versionIndex,
+                          annotation.activeVersionIndex ?? 0,
+                      ),
+                  )
+                : [],
+    };
+}
+
+function buildPdfAnnotationCards(
+    annotations: PdfAnnotationLike[],
+    doc: string,
+): PdfAnnotationCard[] {
+    return sortPdfAnnotations(annotations).map((annotation, index) =>
+        buildPdfAnnotationCard(annotation, doc, index),
+    );
+}
+
+function buildPdfAnnotations(state: EditorState): PdfAnnotationCard[] {
+    return buildPdfAnnotationCards(
+        Object.values(state.field(annotationField)) as PdfAnnotationLike[],
+        state.doc.toString(),
+    );
+}
+
+function buildPdfPayload(
+    state: EditorState,
+    title: string,
+    includeAnnotations: boolean,
+): PdfExportPayload {
     return {
         title,
         bodyParagraphs: state.doc
@@ -225,7 +333,7 @@ function buildPdfPayload(state: EditorState, title: string): PdfExportPayload {
             .split(/\n{2,}/)
             .map((paragraph) => paragraph.trimEnd())
             .filter((paragraph) => paragraph.length > 0),
-        annotations: buildPdfAnnotationLines(state),
+        annotations: includeAnnotations ? buildPdfAnnotations(state) : [],
     };
 }
 
@@ -235,6 +343,7 @@ const fileExtensions: Record<ExportFormat, string> = {
     md: "md",
     "txt+json": "txt",
     pdf: "pdf",
+    "pdf+annotations": "pdf",
 };
 
 function buildContent(state: EditorState, format: TextExportFormat, title: string): string {
@@ -254,8 +363,11 @@ function buildContent(state: EditorState, format: TextExportFormat, title: strin
 export async function exportDocument(view: EditorView, format: ExportFormat) {
     const title = sanitizeFilename(get(currentDocumentTitle));
     const saved =
-        format === "pdf"
-            ? await savePdfWithDialog(buildPdfPayload(view.state, title), `${title}.pdf`)
+        format === "pdf" || format === "pdf+annotations"
+            ? await savePdfWithDialog(
+                  buildPdfPayload(view.state, title, format === "pdf+annotations"),
+                  `${title}.${fileExtensions[format]}`,
+              )
             : await saveWithDialog(
                   buildContent(view.state, format, title),
                   `${title}.${fileExtensions[format]}`,
@@ -302,8 +414,11 @@ export async function exportDocumentById(docId: string, docTitle: string, format
 
     const title = sanitizeFilename(docTitle);
     const saved =
-        format === "pdf"
-            ? await savePdfWithDialog(buildPdfPayload(state, title), `${title}.pdf`)
+        format === "pdf" || format === "pdf+annotations"
+            ? await savePdfWithDialog(
+                  buildPdfPayload(state, title, format === "pdf+annotations"),
+                  `${title}.${fileExtensions[format]}`,
+              )
             : await saveWithDialog(
                   buildContent(state, format, title),
                   `${title}.${fileExtensions[format]}`,

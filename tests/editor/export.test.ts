@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { EditorHarness } from "../helpers/EditorHarness";
+import type { VersionState } from "$lib/editor/plugins/annotations/models";
 import { exportDocument } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
 
@@ -210,7 +211,7 @@ describe("exportDocument", () => {
     });
 
     describe("PDF export", () => {
-        it("writes a PDF through the Rust command instead of saving raw text", async () => {
+        it("writes a plain PDF without annotations through the Rust command", async () => {
             h = EditorHarness.create("Hello world");
             vi.mocked(save).mockClear();
             await exportDocument(h.view, "pdf");
@@ -228,7 +229,7 @@ describe("exportDocument", () => {
             });
         });
 
-        it("includes annotations in the PDF payload", async () => {
+        it("keeps plain PDF free of annotations even when they exist", async () => {
             h = EditorHarness.create("Hello world");
             const id = h.addComment(0, 5);
             h.addThreadMessage(id, "Nice greeting!", "Alice");
@@ -238,7 +239,86 @@ describe("exportDocument", () => {
             expect(invokedPdfPayload).toEqual({
                 title: "Test Document",
                 bodyParagraphs: ["Hello world"],
-                annotations: ['1. Comment (0-5)\nOn: "Hello"\nAlice: Nice greeting!'],
+                annotations: [],
+            });
+        });
+
+        it("includes annotations in the annotated PDF payload", async () => {
+            h = EditorHarness.create("Hello world");
+            const id = h.addComment(0, 5);
+            h.addThreadMessage(id, "Nice greeting!", "Alice");
+
+            await exportDocument(h.view, "pdf+annotations");
+
+            expect(invokedPdfPayload).toEqual({
+                title: "Test Document",
+                bodyParagraphs: ["Hello world"],
+                annotations: [
+                    {
+                        kind: "comment",
+                        title: "1. Comment (0-5)",
+                        subtitle: 'On: "Hello"',
+                        body: ["Alice: Nice greeting!"],
+                        children: [],
+                    },
+                ],
+            });
+        });
+
+        it("includes revision threads and nested annotations in the annotated PDF payload", async () => {
+            h = EditorHarness.create("Hello world");
+            const revisionId = h.addRevision(
+                0,
+                5,
+                [
+                    {
+                        doc: "Hello",
+                        annotationField: {
+                            "0": {
+                                _type: "comment",
+                                id: 0,
+                                thread: [{ message: "Nested note", author: "Bob", time: 1 }],
+                                selection: {
+                                    ranges: [{ anchor: 0, head: 5 }],
+                                    main: 0,
+                                },
+                            },
+                        },
+                    } as VersionState,
+                ],
+                0,
+            );
+            h.addThreadMessage(revisionId, "Top-level revision thread", "Alice");
+
+            await exportDocument(h.view, "pdf+annotations");
+
+            expect(invokedPdfPayload).toEqual({
+                title: "Test Document",
+                bodyParagraphs: ["Hello world"],
+                annotations: [
+                    {
+                        kind: "revision",
+                        title: "1. Revision (0-5)",
+                        subtitle: 'On: "Hello"',
+                        body: ["Alice: Top-level revision thread"],
+                        children: [
+                            {
+                                kind: "version",
+                                title: "Version 1 [active]",
+                                body: ["Hello"],
+                                children: [
+                                    {
+                                        kind: "comment",
+                                        title: "1. Comment (0-5)",
+                                        subtitle: 'On: "Hello"',
+                                        body: ["Bob: Nested note"],
+                                        children: [],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
             });
         });
     });

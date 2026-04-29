@@ -289,6 +289,7 @@ function handleDeletePermanent() {
                                     { format: "json" as ExportFormat, label: "JSON (.json)" },
                                     { format: "md" as ExportFormat, label: "Markdown (.md)" },
                                     { format: "pdf" as ExportFormat, label: "PDF (.pdf)" },
+                                    { format: "pdf+annotations" as ExportFormat, label: "PDF + Annotations (.pdf)" },
                                 ] as item, i}
                                     <button
                                         onclick={() => doExport(item.format)}

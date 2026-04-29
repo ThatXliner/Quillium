@@ -320,6 +320,10 @@ onMount(() => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "pdf");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-pdf-annotations", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "pdf+annotations");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
 
     return () => {
         destroyed = true;

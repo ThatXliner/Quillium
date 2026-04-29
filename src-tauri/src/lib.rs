@@ -384,6 +384,10 @@ pub fn run() {
                 .item(&MenuItemBuilder::with_id("export-json", "JSON (.json)").build(app)?)
                 .item(&MenuItemBuilder::with_id("export-md", "Markdown (.md)").build(app)?)
                 .item(&MenuItemBuilder::with_id("export-pdf", "PDF (.pdf)").build(app)?)
+                .item(
+                    &MenuItemBuilder::with_id("export-pdf-annotations", "PDF + Annotations (.pdf)")
+                        .build(app)?,
+                )
                 .build()?;
 
             let file_menu = SubmenuBuilder::new(app, "File")
@@ -432,7 +436,8 @@ pub fn run() {
                 let id = event.id().as_ref();
                 match id {
                     "settings" | "history" | "library" | "licenses" | "export-txt"
-                    | "export-txt-json" | "export-json" | "export-md" | "export-pdf" => {
+                    | "export-txt-json" | "export-json" | "export-md" | "export-pdf"
+                    | "export-pdf-annotations" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.emit(&format!("menu:{id}"), ());
                         }
