@@ -1,4 +1,4 @@
-function errorText(error: unknown): string {
+export function errorText(error: unknown): string {
     if (typeof error === "string") return error;
     if (error instanceof Error) return `${error.name} ${error.message} ${error.stack ?? ""}`;
     if (typeof error === "object" && error !== null) {

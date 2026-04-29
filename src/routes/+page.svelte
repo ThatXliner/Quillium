@@ -65,6 +65,7 @@ import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
 import { appEventBus } from "$lib/events/appEventBus";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
+import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
 
 let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
@@ -252,7 +253,7 @@ onMount(() => {
 
     // Check for updates silently in the background.
     // On MAS builds the banner redirects to the App Store instead of self-updating.
-    if (appSettings.checkForUpdates) {
+    if (appSettings.checkForUpdates && canCheckForUpdatesNow()) {
         check()
             .then((update) => {
                 if (update) {
@@ -264,7 +265,10 @@ onMount(() => {
                 }
             })
             .catch((error) => {
-                if (isGithubRateLimitUpdateError(error)) return;
+                if (isGithubRateLimitUpdateError(error)) {
+                    deferUpdateChecksAfterRateLimit(error);
+                    return;
+                }
                 toast.error("Unable to check for updates", {
                     description:
                         "https://github.com/ThatXliner/quillium-releases could not be reached",
