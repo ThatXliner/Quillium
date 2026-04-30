@@ -31,7 +31,12 @@ import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import {
+    saveStatus,
+    settingsOpen,
+    statsOpen,
+    tutorialActive,
+} from "$lib/stores";
 import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
