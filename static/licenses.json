@@ -1,28 +1,28 @@
 [
   {
     "name": "@ai-sdk/anthropic",
-    "version": "3.0.71",
+    "version": "3.0.72",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/google",
-    "version": "3.0.64",
+    "version": "3.0.65",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/openai",
-    "version": "2.0.103",
+    "version": "2.0.105",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
   },
   {
     "name": "@ai-sdk/svelte",
-    "version": "3.0.179",
+    "version": "3.0.181",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
@@ -50,9 +50,9 @@
   },
   {
     "name": "@codemirror/search",
-    "version": "6.6.0",
+    "version": "6.7.0",
     "license": "MIT",
-    "url": "https://github.com/codemirror/search",
+    "url": "https://code.haverbeke.berlin/codemirror/search",
     "ecosystem": "js"
   },
   {
@@ -64,9 +64,9 @@
   },
   {
     "name": "@codemirror/view",
-    "version": "6.41.0",
+    "version": "6.41.1",
     "license": "MIT",
-    "url": "https://github.com/codemirror/view",
+    "url": "https://code.haverbeke.berlin/codemirror/view",
     "ecosystem": "js"
   },
   {
@@ -134,14 +134,14 @@
   },
   {
     "name": "@supabase/supabase-js",
-    "version": "2.103.3",
+    "version": "2.105.1",
     "license": "MIT",
     "url": "https://github.com/supabase/supabase-js",
     "ecosystem": "js"
   },
   {
     "name": "@tauri-apps/api",
-    "version": "2.10.1",
+    "version": "2.11.0",
     "license": "Apache-2.0 OR MIT",
     "url": "https://github.com/tauri-apps/tauri",
     "ecosystem": "js"
@@ -183,7 +183,7 @@
   },
   {
     "name": "ai",
-    "version": "5.0.179",
+    "version": "5.0.181",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
@@ -211,7 +211,7 @@
   },
   {
     "name": "dompurify",
-    "version": "3.4.0",
+    "version": "3.4.2",
     "license": "(MPL-2.0 OR Apache-2.0)",
     "url": "https://github.com/cure53/DOMPurify",
     "ecosystem": "js"
@@ -253,7 +253,7 @@
   },
   {
     "name": "posthog-js",
-    "version": "1.369.3",
+    "version": "1.372.5",
     "license": "Apache-2.0",
     "url": "https://github.com/PostHog/posthog-js",
     "ecosystem": "js"
@@ -323,7 +323,7 @@
   },
   {
     "name": "svelte-sonner",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "license": "MIT",
     "url": "https://github.com/wobsoriano/svelte-sonner",
     "ecosystem": "js"
@@ -393,7 +393,7 @@
   },
   {
     "name": "zod",
-    "version": "4.3.6",
+    "version": "4.4.1",
     "license": "MIT",
     "url": "https://github.com/colinhacks/zod",
     "ecosystem": "js"
