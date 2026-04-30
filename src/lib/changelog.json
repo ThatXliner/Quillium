@@ -1,7 +1,7 @@
 {
   "0.15": {
     "date": "April 2026",
-    "content": "Quillium now has a **Markdown rich text mode** for writers who like Markdown shortcuts but still want a polished editing surface. Common formatting markers can appear as clean rich text while you keep writing in the flow of Markdown.\n\nYou can also **export to PDF** directly from Quillium. When you need to share a finished draft, archive a copy, or send work somewhere that expects a fixed layout, PDF export is now built into the app."
+    "content": "Quillium now has a **Markdown rich text mode** for writers who like Markdown shortcuts but still want a polished editing surface. The formatting controls are the same as Google Docs (e.g. Command+B for bolding on macOS), and you can make markdown headers. The keyboard shortcut for pulling up the dictionary has been changed.\n\nYou can also **export to PDF** directly from Quillium. When you need to share a finished draft, archive a copy, or send work somewhere that expects a fixed layout, PDF export is now built into the app.\n\nFinally, **web sharing** is now functional. You don't need an account to access it!"
   },
   "0.14": {
     "date": "April 2026",
