@@ -40,14 +40,18 @@ export type SerializedAnnotation =
     | SerializedRevisionAnnotation;
 
 function stableSerialize(value: unknown): string {
+    if (value === undefined) {
+        return "undefined";
+    }
+
     if (Array.isArray(value)) {
         return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
     }
 
     if (value && typeof value === "object") {
-        const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-            a.localeCompare(b),
-        );
+        const entries = Object.entries(value as Record<string, unknown>)
+            .filter(([, item]) => item !== undefined)
+            .sort(([a], [b]) => a.localeCompare(b));
         return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(",")}}`;
     }
 
@@ -177,7 +181,7 @@ function serializeAnnotationMap(
                 type: "comment",
             } satisfies SerializedCommentAnnotation;
         })
-        .sort((a, b) => a.from - b.from || a.id - b.id);
+        .sort((a, b) => a.from - b.from || a.id.localeCompare(b.id));
 }
 
 export function buildShareFingerprint(

@@ -27,10 +27,35 @@ COMMENT ON COLUMN public.shares.author_name IS
 COMMENT ON COLUMN public.shares.published_at IS
     'When the current public snapshot was last explicitly published from the app.';
 
-GRANT SELECT ON TABLE public.shares TO anon;
+REVOKE SELECT ON TABLE public.shares FROM anon;
 
-CREATE POLICY "Public readonly shares are visible to anon"
-    ON public.shares
-    FOR SELECT
-    TO anon
-    USING (enabled = true);
+DROP POLICY IF EXISTS "Public readonly shares are visible to anon"
+    ON public.shares;
+
+CREATE OR REPLACE FUNCTION public.get_public_share_by_token(p_share_token text)
+RETURNS TABLE (
+    published_title text,
+    preview_text text,
+    published_content text,
+    published_annotations jsonb,
+    author_name text,
+    published_at timestamp with time zone
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT
+        s.published_title,
+        s.preview_text,
+        s.published_content,
+        s.published_annotations,
+        s.author_name,
+        s.published_at
+    FROM public.shares AS s
+    WHERE s.share_token::text = p_share_token
+      AND s.enabled = true
+    LIMIT 1;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_public_share_by_token(text) TO anon;

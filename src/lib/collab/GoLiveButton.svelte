@@ -82,21 +82,26 @@ const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured);
 const currentId = $derived($currentDraftId ?? "");
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
-const currentSharePayload = $derived({
-    title: $currentDocumentTitle,
-    content: $documentContent,
-    annotations: serializeAnnotations($documentContent, $annotations),
-});
-const currentSerializedAnnotations = $derived(currentSharePayload.annotations);
+const shareComparisonPayload = $derived(
+    readonlyShare?.enabled
+        ? {
+              title: $currentDocumentTitle,
+              content: $documentContent,
+              annotations: serializeAnnotations($documentContent, $annotations),
+          }
+        : null,
+);
 const currentShareFingerprint = $derived(
-    buildShareFingerprint(
-        currentSharePayload.title,
-        currentSharePayload.content,
-        currentSharePayload.annotations,
-    ),
+    shareComparisonPayload
+        ? buildShareFingerprint(
+              shareComparisonPayload.title,
+              shareComparisonPayload.content,
+              shareComparisonPayload.annotations,
+          )
+        : "",
 );
 const publishedShareFingerprint = $derived(
-    readonlyShare
+    readonlyShare?.enabled
         ? buildShareFingerprint(
               readonlyShare.publishedTitle,
               readonlyShare.publishedContent,
@@ -108,6 +113,11 @@ const shareUpToDate = $derived(
     !!readonlyShare?.enabled && currentShareFingerprint === publishedShareFingerprint,
 );
 const shareNeedsUpdate = $derived(!!readonlyShare?.enabled && !shareUpToDate);
+const draftAnnotationCount = $derived(
+    modalOpen && activeTab === "preview" && !readonlyShare?.enabled
+        ? serializeAnnotations($documentContent, $annotations).length
+        : 0,
+);
 
 async function refreshReadonlyShare() {
     if (!authenticated || !currentId) {
@@ -594,7 +604,7 @@ async function handleToggle() {
                                             ? shareUpToDate
                                                 ? "Already up to date"
                                                 : "Local draft has unpublished changes"
-                                            : `Ready to publish${buildSharePreviewText($documentContent).length > 0 ? ` • ${currentSerializedAnnotations.length} annotation${currentSerializedAnnotations.length === 1 ? "" : "s"}` : ""}`}</strong>
+                                            : `Ready to publish${buildSharePreviewText($documentContent).length > 0 ? ` • ${draftAnnotationCount} annotation${draftAnnotationCount === 1 ? "" : "s"}` : ""}`}</strong>
                                     </div>
                                 </div>
 

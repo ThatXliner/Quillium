@@ -66,9 +66,57 @@ describe("buildShareFingerprint", () => {
             buildShareFingerprint("Doc", "hello", roundTrippedShape as never[]),
         );
     });
+
+    it("normalizes undefined object fields to match omitted fields", () => {
+        expect(
+            buildShareFingerprint("Doc", "hello", [
+                {
+                    id: "1",
+                    type: "suggestion",
+                    from: 0,
+                    to: 5,
+                    selectedText: "hello",
+                    thread: [],
+                    replacements: [{ text: "hi", rationale: undefined }],
+                    author: undefined,
+                },
+            ] as never[]),
+        ).toBe(
+            buildShareFingerprint("Doc", "hello", [
+                {
+                    id: "1",
+                    type: "suggestion",
+                    from: 0,
+                    to: 5,
+                    selectedText: "hello",
+                    thread: [],
+                    replacements: [{ text: "hi" }],
+                },
+            ] as never[]),
+        );
+    });
 });
 
 describe("serializeAnnotations", () => {
+    it("sorts annotations with matching positions by string id", () => {
+        const serialized = serializeAnnotations("hello", {
+            10: {
+                id: "b",
+                _type: "comment",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+            },
+            11: {
+                id: "a",
+                _type: "comment",
+                selection: EditorSelection.single(0, 5),
+                thread: [],
+            },
+        } as never);
+
+        expect(serialized.map((annotation) => annotation.id)).toEqual(["a", "b"]);
+    });
+
     it("includes nested revision annotations from revision version state", () => {
         const serialized = serializeAnnotations("hello", {
             0: {
@@ -78,7 +126,7 @@ describe("serializeAnnotations", () => {
                 thread: [],
                 activeVersionIndex: 0,
                 versions: [
-                    {
+                    ({
                         doc: "hello",
                         annotationField: {
                             0: {
@@ -93,13 +141,17 @@ describe("serializeAnnotations", () => {
                                 },
                             },
                         },
-                    },
+                    } as never),
                 ],
             },
         });
 
-        expect(serialized[0]?.type).toBe("revision");
-        expect(serialized[0]?.versions[0]?.annotations).toEqual([
+        const revision = serialized[0];
+        expect(revision?.type).toBe("revision");
+        if (!revision || revision.type !== "revision") {
+            throw new Error("Expected serialized revision annotation");
+        }
+        expect(revision.versions[0]?.annotations).toEqual([
             expect.objectContaining({
                 id: "0.v0.0",
                 type: "revision",

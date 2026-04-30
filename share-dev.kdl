@@ -1,5 +1,5 @@
 // Zellij layout for collab development
-// Usage: zellij --layout collab-dev.kdl
+// Usage: zellij --layout share-dev.kdl
 
 layout {
     pane split_direction="horizontal" {

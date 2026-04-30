@@ -29,14 +29,9 @@ import {
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
 import { goToHistory, goToLibrary } from "$lib/navigation";
-import { readonlyShareState } from "$lib/collab/share";
-import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import {
-    annotations,
-    currentDocumentTitle,
-    documentContent,
     saveStatus,
     settingsOpen,
     statsOpen,
@@ -60,27 +55,6 @@ let secondaryStrip = $state<HTMLDivElement>();
 let stripOverflows = $state(false);
 let canScrollLeft = $state(false);
 let canScrollRight = $state(false);
-
-const currentShareFingerprint = $derived(
-    buildShareFingerprint(
-        $currentDocumentTitle,
-        $documentContent,
-        serializeAnnotations($documentContent, $annotations),
-    ),
-);
-const publicShareFingerprint = $derived(
-    $readonlyShareState
-        ? buildShareFingerprint(
-              $readonlyShareState.publishedTitle,
-              $readonlyShareState.publishedContent,
-              $readonlyShareState.publishedAnnotations,
-          )
-        : "",
-);
-const hasPublicShare = $derived(!!$readonlyShareState?.enabled);
-const publicShareUpToDate = $derived(
-    hasPublicShare && currentShareFingerprint === publicShareFingerprint,
-);
 
 function updateScrollState() {
     if (!secondaryStrip) return;
