@@ -189,7 +189,12 @@ async function runReview(content: string, manual = false) {
         // so the >_< face is visible during the ensureApiKeyLoaded wait.
         autoAIPhase.set("reviewing");
         setAiProcessing(true);
-        const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
+        const model = createModel(
+            aiSettings.provider,
+            aiSettings.apiKey,
+            aiSettings.model,
+            aiSettings.baseURL,
+        );
         const { object } = await generateObject({
             model,
             schema: AnnotationSchema,

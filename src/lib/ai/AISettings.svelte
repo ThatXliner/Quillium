@@ -1,60 +1,59 @@
 <!--
-    AISettings.svelte — Provider, model, and API key configuration panel.
+AISettings.svelte — Provider, model, and API key configuration panel.
 
-    This component lets the writer choose their LLM provider (OpenAI,
-    Anthropic, Google), select a model, and manage their API key. It
-    writes directly to the global `aiSettings` reactive object in
-    settings.svelte.ts, which is read by chatFactory.ts at send-time.
+This component lets the writer choose their LLM provider (OpenAI,
+Anthropic, Google), select a model, and manage their API key. It
+writes directly to the global `aiSettings` reactive object in
+settings.svelte.ts, which is read by chatFactory.ts at send-time.
 
-    API key lifecycle:
-      - On mount / provider switch: loaded from the system keychain via
-        Tauri's `get_api_key` command (the `$effect` block).
-      - On save: stored to the keychain via `set_api_key`, or deleted
-        via `delete_api_key` if the field is cleared.
+API key lifecycle:
+- On mount / provider switch: loaded from the system keychain via
+  Tauri's `get_api_key` command (the `$effect` block).
+- On save: stored to the keychain via `set_api_key`, or deleted
+  via `delete_api_key` if the field is cleared.
 
-    State variables:
-      `selectedProvider` — current provider, synced to localStorage.
-      `selectedModel`    — current model ID, synced to localStorage.
-      `apiKey`           — local copy of the key (reactive input bind).
-      `keyLoading`       — true while fetching the key from keychain.
-      `showKey`          — toggle password/text visibility.
-      `saveStatus`       — idle | saved | error (controls button label).
+State variables:
+`selectedProvider` — current provider, synced to localStorage.
+`selectedModel` — current model ID, synced to localStorage.
+`apiKey` — local copy of the key (reactive input bind).
+`keyLoading` — true while fetching the key from keychain.
+`showKey` — toggle password/text visibility.
+`saveStatus` — idle | saved | error (controls button label).
+`useCustomEndpoint` — when true, switches OpenAI to openai-compatible
+  mode with a custom base URL and freeform model input.
 
-    The `$effect` block watches `selectedProvider` and re-fetches the
-    API key from the keychain whenever the provider changes.
+The `$effect` block watches `selectedProvider` and re-fetches the
+API key from the keychain whenever the provider changes.
 
-    Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
-    provider.ts (Provider type), Tauri invoke API, posthog.
+Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
+provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon } from "lucide-svelte";
+import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon, ChevronDownIcon } from "lucide-svelte";
 import {
     aiSettings,
     hasApiKey,
     loadApiKeyForProvider,
     HAS_API_KEY_KEY,
     resetApiKeyLoadPromise,
+    persistBaseUrl,
 } from "$lib/ai/settings.svelte";
 import type { Provider } from "$lib/ai/provider";
 import posthog from "$lib/posthog";
 import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 
-const PROVIDERS: { id: Provider; label: string; color: string }[] = [
-    { id: "openai", label: "OpenAI", color: "#10a37f" },
-    { id: "anthropic", label: "Anthropic", color: "#d97706" },
-    { id: "google", label: "Google", color: "#4285f4" },
+type TabProvider = "openai" | "anthropic" | "google";
+
+const PROVIDERS: { id: TabProvider; label: string }[] = [
+    { id: "openai", label: "OpenAI" },
+    { id: "anthropic", label: "Anthropic" },
+    { id: "google", label: "Google" },
 ];
 
-const MODEL_OPTIONS: Partial<
-    Record<Provider, { id: string; label: string; description: string }[]>
-> &
-    Record<
-        "openai" | "anthropic" | "google",
-        { id: string; label: string; description: string }[]
-    > = {
+const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; description: string }[]> = {
     openai: [
         { id: "gpt-5.4", label: "GPT-5.4", description: "Most capable" },
         {
@@ -103,12 +102,20 @@ const MODEL_OPTIONS: Partial<
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
 
-function loadProvider(): Provider {
+function loadTabProvider(): TabProvider {
     if (typeof localStorage === "undefined") return "openai";
-    const stored = (localStorage.getItem(PROVIDER_KEY) as Provider) ?? "openai";
-    // "openai-codex" is stored when codex mode is active, but the tab still
-    // shows "openai" — map it back for selectedProvider state.
-    return stored === "openai-codex" ? "openai" : stored;
+    const stored = localStorage.getItem(PROVIDER_KEY) ?? "openai";
+    // "openai-codex" and "openai-compatible" both show the OpenAI tab
+    // with the custom endpoint toggle enabled.
+    if (stored === "openai-codex" || stored === "openai-compatible") return "openai";
+    if (stored === "anthropic" || stored === "google") return stored;
+    return "openai";
+}
+
+function loadUseCustomEndpoint(): boolean {
+    if (typeof localStorage === "undefined") return false;
+    const stored = localStorage.getItem(PROVIDER_KEY);
+    return stored === "openai-compatible" || stored === "openai-codex";
 }
 
 function loadModel(): string {
@@ -116,55 +123,30 @@ function loadModel(): string {
     return localStorage.getItem(MODEL_KEY) ?? "gpt-4o-mini";
 }
 
-let selectedProvider = $state<Provider>(loadProvider());
+let selectedTab = $state<TabProvider>(loadTabProvider());
+let useCustomEndpoint = $state(loadUseCustomEndpoint());
 let selectedModel = $state(loadModel());
-// "openai-codex" is stored as the provider when codex mode is active,
-// but the tab still shows "openai" — this tracks the toggle state.
-let useCodex = $state(
-    typeof localStorage !== "undefined" && localStorage.getItem(PROVIDER_KEY) === "openai-codex",
-);
+    let baseUrl = $state(aiSettings.baseURL);
 
-const KONAMI = [
-    "ArrowUp",
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight",
-    "ArrowLeft",
-    "ArrowRight",
-    "b",
-    "a",
-];
-const CODEX_UNLOCKED_KEY = "quillium-codex-unlocked";
-let konamiProgress = 0;
-let codexUnlocked = $state(
-    typeof localStorage !== "undefined" && !!localStorage.getItem(CODEX_UNLOCKED_KEY),
-);
-
-function onApiKeyKeydown(e: KeyboardEvent) {
-    if (e.key === KONAMI[konamiProgress]) {
-        konamiProgress++;
-        if (konamiProgress === KONAMI.length) {
-            codexUnlocked = true;
-            localStorage.setItem(CODEX_UNLOCKED_KEY, "1");
-            konamiProgress = 0;
-        }
-    } else {
-        konamiProgress = e.key === KONAMI[0] ? 1 : 0;
-    }
-}
 let apiKey = $state(aiSettings.apiKey);
 let keyLoading = $state(!aiSettings.apiKey);
 let showKey = $state(false);
 let saveStatus = $state<"idle" | "saved" | "error">("idle");
 let saveTimer: ReturnType<typeof setTimeout>;
-// Technically hasApiKey already does the length check but
-// we need to do it here for Svelte to detect it
 let canSave = $derived(!!apiKey.trim() || hasApiKey());
 
+let effectiveProvider = $derived<Provider>(
+    selectedTab === "openai" && useCustomEndpoint ? "openai-compatible" : selectedTab,
+);
+
 $effect(() => {
-    const provider = selectedProvider;
+    const provider = effectiveProvider;
+    aiSettings.provider = provider;
+    localStorage.setItem(PROVIDER_KEY, provider);
+});
+
+$effect(() => {
+    const provider = effectiveProvider;
     // Only query the keychain if the user has previously saved an API key
     // (avoids the keychain prompt before AI is configured).
     if (!localStorage.getItem(HAS_API_KEY_KEY)) {
@@ -193,33 +175,31 @@ $effect(() => {
     };
 });
 
-/**
- * Switch LLM provider: update local + global state, persist to
- * localStorage, reset model to the provider's first option, and
- * re-fetch the API key from the system keychain.
- */
-function selectProvider(id: Provider) {
-    // "openai-codex" is not a tab — tabs only show the three base providers.
-    // When codex mode is active, selectedProvider stays "openai" for UI
-    // purposes; the real provider written to aiSettings is "openai-codex".
-    selectedProvider = id;
-    if (id !== "openai") useCodex = false;
-    const effectiveId: Provider = id === "openai" && useCodex ? "openai-codex" : id;
-    localStorage.setItem(PROVIDER_KEY, effectiveId);
-    const first = (MODEL_OPTIONS[id] ?? MODEL_OPTIONS["openai"])[0];
+    function selectTab(id: TabProvider) {
+        selectedTab = id;
+        if (id !== "openai") {
+            useCustomEndpoint = false;
+        }
+    const first = MODEL_OPTIONS[id][0];
     selectedModel = first.id;
     localStorage.setItem(MODEL_KEY, first.id);
-    aiSettings.provider = effectiveId;
     aiSettings.model = first.id;
-    posthog.capture("ai_settings_provider_changed", { provider: effectiveId });
+    posthog.capture("ai_settings_provider_changed", { provider: effectiveProvider });
 }
 
-function toggleCodex(enabled: boolean) {
-    useCodex = enabled;
-    const effectiveId: Provider = enabled ? "openai-codex" : "openai";
-    localStorage.setItem(PROVIDER_KEY, effectiveId);
-    aiSettings.provider = effectiveId;
-    posthog.capture("ai_settings_provider_changed", { provider: effectiveId });
+    function toggleCustomEndpoint(enabled: boolean) {
+        useCustomEndpoint = enabled;
+    if (enabled) {
+        // Switch to freeform model — keep whatever the user types.
+        posthog.capture("ai_settings_provider_changed", { provider: "openai-compatible" });
+    } else {
+        // Reset to first OpenAI model.
+        const first = MODEL_OPTIONS.openai[0];
+        selectedModel = first.id;
+        localStorage.setItem(MODEL_KEY, first.id);
+        aiSettings.model = first.id;
+        posthog.capture("ai_settings_provider_changed", { provider: "openai" });
+    }
 }
 
 function selectModel(id: string) {
@@ -227,31 +207,31 @@ function selectModel(id: string) {
     localStorage.setItem(MODEL_KEY, id);
     aiSettings.model = id;
     posthog.capture("ai_settings_model_changed", {
-        provider: selectedProvider,
+        provider: effectiveProvider,
         model: id,
     });
 }
 
+function updateBaseUrl(url: string) {
+    baseUrl = url;
+    persistBaseUrl(url.trim());
+}
+
 let saveError = $state("");
 
-/**
- * Persist the API key to the system keychain (or delete it if
- * cleared). Updates saveStatus for the button label animation:
- * idle -> saved|error -> idle (after 3s timeout).
- */
 async function saveApiKey() {
     clearTimeout(saveTimer);
     saveError = "";
     try {
         if (apiKey.trim()) {
             await invoke("set_api_key", {
-                provider: selectedProvider,
+                provider: effectiveProvider,
                 key: apiKey.trim(),
             });
             aiSettings.apiKey = apiKey.trim();
             localStorage.setItem(HAS_API_KEY_KEY, "1");
         } else {
-            await invoke("delete_api_key", { provider: selectedProvider });
+            await invoke("delete_api_key", { provider: effectiveProvider });
             aiSettings.apiKey = "";
             localStorage.removeItem(HAS_API_KEY_KEY);
             resetApiKeyLoadPromise();
@@ -276,7 +256,7 @@ async function saveApiKey() {
 
 <div class="flex flex-col gap-4 p-3 overflow-y-auto h-full">
     <!-- No API key banner -->
-    {#if !hasApiKey() && !keyLoading && !useCodex}
+    {#if !hasApiKey() && !keyLoading}
         <div class="flex items-start gap-2 rounded-lg bg-amber-50/80 border border-amber-200/60 px-3 py-2.5">
             <KeyRoundIcon size={13} class="text-amber-500 shrink-0 mt-0.5" />
             <p class="text-[11px] text-amber-700/90 leading-snug">
@@ -292,14 +272,14 @@ async function saveApiKey() {
         </p>
         <div class="flex gap-1.5">
             {#each PROVIDERS as provider}
-                {@const active = selectedProvider === provider.id}
+                {@const active = selectedTab === provider.id}
                 <button
-                    onclick={() => selectProvider(provider.id)}
+                    onclick={() => selectTab(provider.id)}
                     title={provider.label}
                     class="flex flex-1 items-center justify-center gap-1.5 py-2 rounded-lg transition-all duration-200 ease-out
                         {active
-                            ? 'bg-white/70 shadow-sm border border-black/8 px-2.5'
-                            : 'hover:bg-white/40 border border-transparent px-2 opacity-50 hover:opacity-80'}"
+                        ? 'bg-white/70 shadow-sm border border-black/8 px-2.5'
+                        : 'hover:bg-white/40 border border-transparent px-2 opacity-50 hover:opacity-80'}"
                 >
                     <div class="w-[18px] h-[18px] shrink-0 flex items-center justify-center">
                         {#if provider.id === "openai"}
@@ -328,159 +308,226 @@ async function saveApiKey() {
         </div>
     </div>
 
+    <!-- Custom endpoint toggle (OpenAI tab only) -->
+    {#if selectedTab === "openai"}
+        <div class="flex flex-col gap-2">
+            <div
+                onclick={() => toggleCustomEndpoint(!useCustomEndpoint)}
+                class="flex items-center gap-2 rounded-lg bg-white/50 border border-black/10 px-3 py-2.5 text-left transition-colors hover:bg-white/70 cursor-pointer"
+            >
+                <ChevronDownIcon
+                    size={13}
+                    class="text-black/40 shrink-0 transition-transform duration-200
+                        {useCustomEndpoint ? 'rotate-0' : '-rotate-90'}"
+                />
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs font-medium text-black/70 leading-tight">Custom endpoint</p>
+                    <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
+                        {#if useCustomEndpoint}
+                            Using <span class="font-mono text-black/50">{baseUrl || "http://localhost:11434/v1"}</span>
+                        {:else}
+                            Use a compatible API (Ollama, LM Studio, etc.)
+                        {/if}
+                    </p>
+                </div>
+                <button
+                    role="switch"
+                    aria-checked={useCustomEndpoint}
+                    aria-label="Use custom endpoint"
+                    onclick={(e) => { e.stopPropagation(); toggleCustomEndpoint(!useCustomEndpoint); }}
+                    class="relative shrink-0 w-8 h-4.5 rounded-full transition-colors duration-200
+                        {useCustomEndpoint ? 'bg-blue-500' : 'bg-black/15'}"
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200
+                            {useCustomEndpoint ? 'translate-x-3.5' : 'translate-x-0'}"
+                    ></span>
+                </button>
+            </div>
+            {#if useCustomEndpoint}
+                <div class="flex flex-col gap-2 pl-1">
+                    <div>
+                        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-1.5">
+                            Base URL
+                        </p>
+                        <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                            <input
+                                type="text"
+                                bind:value={baseUrl}
+                                oninput={() => updateBaseUrl(baseUrl)}
+                                placeholder="http://localhost:11434/v1"
+                                class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                            />
+                        </div>
+                        <p class="text-[10px] text-black/35 mt-1 leading-relaxed">
+                            Endpoint for any OpenAI-compatible API.
+                        </p>
+                    </div>
+                </div>
+            {/if}
+        </div>
+    {/if}
 
     <!-- Model -->
     <div>
         <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
             Model
         </p>
-        <div class="flex flex-col gap-1">
-            {#each MODEL_OPTIONS[selectedProvider] as option}
-                <button
-                    onclick={() => selectModel(option.id)}
-                    class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors
-                        {selectedModel === option.id
+        {#if useCustomEndpoint}
+            <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                <input
+                    type="text"
+                    bind:value={selectedModel}
+                    oninput={() => selectModel(selectedModel)}
+                    placeholder="e.g. llama3, gpt-4o-mini"
+                    class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                />
+            </div>
+            <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                Type the model ID your endpoint supports.
+            </p>
+        {:else}
+            <div class="flex flex-col gap-1">
+                {#each MODEL_OPTIONS[selectedTab] as option}
+                    <button
+                        onclick={() => selectModel(option.id)}
+                        class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors
+                            {selectedModel === option.id
                             ? 'bg-white/70 shadow-sm border border-black/8'
                             : 'hover:bg-white/40 border border-transparent'}"
-                >
-                    <div class="flex-1 min-w-0">
-                        <div class="text-sm font-medium text-black/80 leading-tight">
-                            {option.label}
+                    >
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-black/80 leading-tight">
+                                {option.label}
+                            </div>
+                            <div class="text-xs text-black/40 mt-0.5">{option.description}</div>
                         </div>
-                        <div class="text-xs text-black/40 mt-0.5">{option.description}</div>
-                    </div>
-                    {#if selectedModel === option.id}
-                        <div class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></div>
-                    {/if}
-                </button>
-            {/each}
-        </div>
-    </div>
-
-    <!-- Codex subscription toggle (OpenAI only, unlocked via Konami code on the API key input) -->
-    {#if selectedProvider === "openai" && codexUnlocked}
-        <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between rounded-lg bg-white/50 border border-black/10 px-3 py-2.5">
-                <div class="flex-1 min-w-0 pr-3">
-                    <p class="text-xs font-medium text-black/70 leading-tight">Use Codex subscription</p>
-                    <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
-                        Use your ChatGPT Plus/Pro plan instead of an API key.
-                    </p>
-                </div>
-                <button
-                    role="switch"
-                    aria-checked={useCodex}
-                    aria-label="Use Codex subscription"
-                    onclick={() => toggleCodex(!useCodex)}
-                    class="relative shrink-0 w-8 h-4.5 rounded-full transition-colors duration-200
-                        {useCodex ? 'bg-blue-500' : 'bg-black/15'}"
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200
-                            {useCodex ? 'translate-x-3.5' : 'translate-x-0'}"
-                    ></span>
-                </button>
+                        {#if selectedModel === option.id}
+                            <div class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></div>
+                        {/if}
+                    </button>
+                {/each}
             </div>
-            {#if useCodex}
-                <div class="rounded-lg bg-blue-50/60 border border-blue-200/50 px-3 py-2.5 flex flex-col gap-2">
-                    <p class="text-[10px] font-semibold text-blue-700/80 uppercase tracking-wider">Setup required</p>
-                    <div class="flex flex-col gap-1">
-                        <p class="text-[10px] text-black/50 leading-snug">1. Log in once (opens browser):</p>
-                        <div class="rounded-md bg-black/5 border border-black/8 px-2.5 py-1.5 font-mono text-[11px] text-black/70 select-all">
-                            npx @openai/codex login
-                        </div>
-                    </div>
-                    <div class="flex flex-col gap-1">
-                        <p class="text-[10px] text-black/50 leading-snug">2. Start the local proxy before each session:</p>
-                        <div class="rounded-md bg-black/5 border border-black/8 px-2.5 py-1.5 font-mono text-[11px] text-black/70 select-all">
-                            npx openai-oauth
-                        </div>
-                    </div>
-                    <p class="text-[10px] text-black/35 leading-snug">
-                        Keep the proxy running while using Quillium. It routes requests through your ChatGPT subscription on port 10531.
-                    </p>
-                </div>
-            {/if}
-        </div>
-    {/if}
+        {/if}
+    </div>
 
     <div class="w-full h-px bg-black/8"></div>
 
     <!-- API Key -->
-    {#if !useCodex || selectedProvider !== "openai"}
-    <div>
-        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
-            API Key
-        </p>
-        <div class="flex flex-col gap-1.5">
-            <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
-                {#if keyLoading}
-                    <span class="flex-1 text-xs text-black/30 font-mono animate-pulse">Loading…</span>
-                {:else}
-                    <input
-                        type={showKey ? "text" : "password"}
-                        bind:value={apiKey}
-                        placeholder="sk-..."
-                        onkeydown={selectedProvider === "openai" ? onApiKeyKeydown : undefined}
-                        class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
-                    />
-                    <button
-                        onclick={() => (showKey = !showKey)}
-                        class="text-black/30 hover:text-black/60 transition-colors shrink-0"
-                        aria-label={showKey ? "Hide key" : "Show key"}
-                    >
-                        {#if showKey}
-                            <EyeOffIcon size={13} />
-                        {:else}
-                            <EyeIcon size={13} />
-                        {/if}
-                    </button>
-                {/if}
-            </div>
-            <button
-                onclick={saveApiKey}
-                disabled={!canSave && !keyLoading}
-                class="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-colors
-                    {saveStatus === 'saved'
+    {#if !useCustomEndpoint}
+        <div>
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
+                API Key
+            </p>
+            <div class="flex flex-col gap-1.5">
+                <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                    {#if keyLoading}
+                        <span class="flex-1 text-xs text-black/30 font-mono animate-pulse">Loading…</span>
+                    {:else}
+                        <input
+                            type={showKey ? "text" : "password"}
+                            bind:value={apiKey}
+                            placeholder="sk-..."
+                            class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                        />
+                        <button
+                            onclick={() => (showKey = !showKey)}
+                            class="text-black/30 hover:text-black/60 transition-colors shrink-0"
+                            aria-label={showKey ? "Hide key" : "Show key"}
+                        >
+                            {#if showKey}
+                                <EyeOffIcon size={13} />
+                            {:else}
+                                <EyeIcon size={13} />
+                            {/if}
+                        </button>
+                    {/if}
+                </div>
+                <button
+                    onclick={saveApiKey}
+                    disabled={!canSave && !keyLoading}
+                    class="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-colors
+                        {saveStatus === 'saved'
                         ? 'bg-green-500/15 text-green-700'
                         : saveStatus === 'error'
-                          ? 'bg-red-500/15 text-red-700'
-                          : !canSave
-                            ? 'bg-black/5 text-black/25 cursor-not-allowed'
-                            : !apiKey.trim()
-                              ? 'bg-red-500/15 text-red-700 hover:bg-red-500/25'
-                              : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25'}"
-            >
-                {#if saveStatus === "saved"}
-                    <CheckIcon size={12} />
-                    {apiKey.trim() ? "Saved to keychain" : "Key removed"}
-                {:else if saveStatus === "error"}
-                    Failed to save
-                {:else if !apiKey.trim() && hasApiKey()}
-                    Remove key
-                {:else}
-                    Save to keychain
-                {/if}
-            </button>
+                        ? 'bg-red-500/15 text-red-700'
+                        : !canSave
+                        ? 'bg-black/5 text-black/25 cursor-not-allowed'
+                        : !apiKey.trim()
+                        ? 'bg-red-500/15 text-red-700 hover:bg-red-500/25'
+                        : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25'}"
+                >
+                    {#if saveStatus === "saved"}
+                        <CheckIcon size={12} />
+                        {apiKey.trim() ? "Saved to keychain" : "Key removed"}
+                    {:else if saveStatus === "error"}
+                        Failed to save
+                    {:else if !apiKey.trim() && hasApiKey()}
+                        Remove key
+                    {:else}
+                        Save to keychain
+                    {/if}
+                </button>
+            </div>
+            {#if saveError}
+                <p class="text-[10px] text-red-600/80 mt-1.5 leading-relaxed break-all">{saveError}</p>
+            {:else}
+                <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                    Stored securely in your system keychain.
+                </p>
+            {/if}
         </div>
-        {#if saveError}
-            <p class="text-[10px] text-red-600/80 mt-1.5 leading-relaxed break-all">{saveError}</p>
-        {:else}
-            <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
-                Stored securely in your system keychain.
+    {:else}
+        <!-- Optional API Key for custom endpoint -->
+        <div>
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
+                API Key <span class="normal-case font-normal text-black/25">(optional)</span>
             </p>
-        {/if}
-    </div>
+            <div class="flex flex-col gap-1.5">
+                <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                    {#if keyLoading}
+                        <span class="flex-1 text-xs text-black/30 font-mono animate-pulse">Loading…</span>
+                    {:else}
+                        <input
+                            type={showKey ? "text" : "password"}
+                            bind:value={apiKey}
+                            placeholder="Optional, if your endpoint requires one"
+                            oninput={() => (aiSettings.apiKey = apiKey)}
+                            class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                        />
+                        <button
+                            onclick={() => (showKey = !showKey)}
+                            class="text-black/30 hover:text-black/60 transition-colors shrink-0"
+                            aria-label={showKey ? "Hide key" : "Show key"}
+                        >
+                            {#if showKey}
+                                <EyeOffIcon size={13} />
+                            {:else}
+                                <EyeIcon size={13} />
+                            {/if}
+                        </button>
+                    {/if}
+                </div>
+            </div>
+            <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                Some endpoints don't require a key. If yours does, enter it here — it won't be stored in the keychain.
+            </p>
+        </div>
     {/if}
 
     <!-- Third-party notice -->
     <p class="text-[10px] text-black/30 leading-relaxed px-0.5">
-        By using AI features, your writing is sent directly to {PROVIDERS.find((p) => p.id === selectedProvider)?.label ?? "your chosen provider"}. You agree to their
-        {#if selectedProvider === "openai"}
+        By using AI features, your writing is sent directly to
+        {#if useCustomEndpoint}
+            your custom endpoint. Check its terms and privacy policy.
+        {:else if selectedTab === "openai"}
+            OpenAI. You agree to their
             <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>privacy policy</button>.
-        {:else if selectedProvider === "anthropic"}
+        {:else if selectedTab === "anthropic"}
+            Anthropic. You agree to their
             <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/consumer-terms")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/privacy")}>privacy policy</button>.
-        {:else if selectedProvider === "google"}
+        {:else if selectedTab === "google"}
+            Google. You agree to their
             <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://ai.google.dev/gemini-api/terms")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://policies.google.com/privacy")}>privacy policy</button>.
         {/if}
     </p>

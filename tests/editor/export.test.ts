@@ -25,12 +25,16 @@ vi.mock("$lib/editor/replay", () => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-    invoke: vi.fn().mockImplementation(async (command: string, args?: { path?: string; payload?: unknown }) => {
-        if (command === "cmd_export_pdf") {
-            invokedPdfPath = args?.path ?? "";
-            invokedPdfPayload = args?.payload;
-        }
-    }),
+    invoke: vi
+        .fn()
+        .mockImplementation(
+            async (command: string, args?: { path?: string; payload?: unknown }) => {
+                if (command === "cmd_export_pdf") {
+                    invokedPdfPath = args?.path ?? "";
+                    invokedPdfPayload = args?.payload;
+                }
+            },
+        ),
 }));
 
 // Mock Tauri dialog and fs plugins
@@ -352,7 +356,7 @@ describe("exportDocument", () => {
             await exportDocumentById("doc-1", 'My/Doc: "Draft"', "pdf");
 
             expect(savedPath).toBe("My-Doc- -Draft-.pdf");
-            expect(invokedPdfPath).toBe('/fake/path/My-Doc- -Draft-.pdf');
+            expect(invokedPdfPath).toBe("/fake/path/My-Doc- -Draft-.pdf");
             expect(invokedPdfPayload).toEqual({
                 title: 'My/Doc: "Draft"',
                 bodyParagraphs: [],

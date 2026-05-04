@@ -29,6 +29,7 @@ import { appEventBus } from "$lib/events/appEventBus";
 
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
+const BASE_URL_KEY = "quillium-ai-base-url";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
 
@@ -115,14 +116,20 @@ function loadString(key: string, defaultValue: string): string {
     return localStorage.getItem(key) ?? defaultValue;
 }
 
+function loadBaseUrl(): string {
+    if (typeof localStorage === "undefined") return "";
+    return localStorage.getItem(BASE_URL_KEY) ?? "";
+}
+
 export const aiSettings = $state({
     provider: loadString(PROVIDER_KEY, "openai") as Provider,
     model: loadString(MODEL_KEY, "gpt-4o-mini"),
     apiKey: "",
+    baseURL: loadBaseUrl(),
 });
 
 export function hasApiKey(): boolean {
-    if (aiSettings.provider === "openai-codex") return true;
+    if (aiSettings.provider === "openai-compatible") return true;
     if (aiSettings.apiKey.trim().length > 0) return true;
     // The key hasn't loaded from the keychain yet, but we know one
     // exists — avoid flashing "no API key" UI on startup.
@@ -163,4 +170,14 @@ export function ensureApiKeyLoaded(): Promise<void> {
  */
 export function resetApiKeyLoadPromise() {
     _apiKeyLoadPromise = null;
+}
+
+export function persistBaseUrl(url: string) {
+    if (typeof localStorage === "undefined") return;
+    if (url) {
+        localStorage.setItem(BASE_URL_KEY, url);
+    } else {
+        localStorage.removeItem(BASE_URL_KEY);
+    }
+    aiSettings.baseURL = url;
 }

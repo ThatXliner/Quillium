@@ -147,6 +147,7 @@ export async function runMultiPersonaStreams({
             provider: aiSettings.provider,
             model: aiSettings.model,
             apiKey: aiSettings.apiKey,
+            baseURL: aiSettings.baseURL,
             documentContext: { ...documentContext },
             persona,
             abortSignal,
@@ -204,6 +205,7 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
                 provider: aiSettings.provider,
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
+                baseURL: aiSettings.baseURL,
                 documentContext: { ...documentContext },
                 abortSignal,
             });

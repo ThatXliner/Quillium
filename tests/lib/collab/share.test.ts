@@ -126,7 +126,7 @@ describe("serializeAnnotations", () => {
                 thread: [],
                 activeVersionIndex: 0,
                 versions: [
-                    ({
+                    {
                         doc: "hello",
                         annotationField: {
                             0: {
@@ -141,7 +141,7 @@ describe("serializeAnnotations", () => {
                                 },
                             },
                         },
-                    } as never),
+                    } as never,
                 ],
             },
         });

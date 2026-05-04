@@ -47,6 +47,7 @@ interface BaseOpts {
     provider: Provider;
     model: string;
     apiKey: string;
+    baseURL?: string;
     abortSignal?: AbortSignal;
 }
 
@@ -166,7 +167,7 @@ function buildStream(
     system: string,
     tools?: Parameters<typeof streamText>[0]["tools"],
 ): ReadableStream<UIMessageChunk> {
-    const llm = createModel(opts.provider, opts.apiKey, opts.model);
+    const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
     const fullSystem = opts.persona ? buildPersonaPrompt(opts.persona) + system : system;
     const result = streamText({
         model: llm,
@@ -345,7 +346,7 @@ export async function generateContext(
     const variant = (posthog.getFeatureFlag("context-generation-format") ?? "control") as
         | "control"
         | "structured";
-    const llm = createModel(opts.provider, opts.apiKey, opts.model);
+    const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
     const { text } = await generateText({
         model: llm,
         prompt: CONTEXT_PROMPTS[variant](opts.prompt),
@@ -389,7 +390,7 @@ export type CharacterizerResult = z.infer<typeof characterizerSchema>;
 export async function generateCharacterization(
     opts: BaseOpts & { documentContent: string },
 ): Promise<CharacterizerResult> {
-    const llm = createModel(opts.provider, opts.apiKey, opts.model);
+    const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
     const { object } = await generateObject({
         model: llm,
         schema: characterizerSchema,

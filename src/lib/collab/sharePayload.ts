@@ -31,7 +31,12 @@ export type SerializedSuggestionAnnotation = SerializedAnnotationBase & {
 export type SerializedRevisionAnnotation = SerializedAnnotationBase & {
     type: "revision";
     activeVersionIndex: number;
-    versions: { index: number; text: string; label?: string; annotations: SerializedAnnotation[] }[];
+    versions: {
+        index: number;
+        text: string;
+        label?: string;
+        annotations: SerializedAnnotation[];
+    }[];
 };
 
 export type SerializedAnnotation =
@@ -96,7 +101,9 @@ function serializeRawAnnotationMap(
                 return {
                     ...base,
                     type: "suggestion",
-                    replacements: annotation.replacements.map((replacement) => ({ ...replacement })),
+                    replacements: annotation.replacements.map((replacement) => ({
+                        ...replacement,
+                    })),
                     author: annotation.author,
                 } satisfies SerializedSuggestionAnnotation;
             }
@@ -153,7 +160,9 @@ function serializeAnnotationMap(
                 return {
                     ...base,
                     type: "suggestion",
-                    replacements: annotation.replacements.map((replacement) => ({ ...replacement })),
+                    replacements: annotation.replacements.map((replacement) => ({
+                        ...replacement,
+                    })),
                     author: annotation.author,
                 } satisfies SerializedSuggestionAnnotation;
             }

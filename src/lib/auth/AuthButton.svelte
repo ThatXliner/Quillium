@@ -9,12 +9,7 @@
       - onauthclick: () => void — callback when sign in button clicked
 -->
 <script lang="ts">
-import {
-    getCurrentUserName,
-    getUserEmail,
-    signOut,
-    isAuthenticated,
-} from "./auth.svelte";
+import { getCurrentUserName, getUserEmail, signOut, isAuthenticated } from "./auth.svelte";
 import { initials, avatarColor } from "./avatarUtils";
 import { toast } from "svelte-sonner";
 import AvatarDropdown from "./AvatarDropdown.svelte";

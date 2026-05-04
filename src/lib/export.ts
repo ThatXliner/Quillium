@@ -29,13 +29,7 @@ import {
 import { currentDocumentTitle } from "./stores";
 import posthog from "./posthog";
 
-export type ExportFormat =
-    | "txt"
-    | "json"
-    | "md"
-    | "txt+json"
-    | "pdf"
-    | "pdf+annotations";
+export type ExportFormat = "txt" | "json" | "md" | "txt+json" | "pdf" | "pdf+annotations";
 type TextExportFormat = Exclude<ExportFormat, "pdf" | "pdf+annotations">;
 
 type PdfAnnotationCardKind = "comment" | "suggestion" | "revision" | "version";
@@ -63,11 +57,11 @@ async function saveWithDialog(
             ? "Text"
             : extension === "json"
               ? "JSON"
-            : extension === "md"
+              : extension === "md"
                 ? "Markdown"
                 : extension === "pdf"
                   ? "PDF"
-                : "Text";
+                  : "Text";
     const path = await save({
         defaultPath: defaultName,
         filters: [{ name: filterName, extensions: [extension] }],

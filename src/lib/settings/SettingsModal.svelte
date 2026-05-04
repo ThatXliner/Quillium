@@ -282,9 +282,7 @@ function save() {
     if (view) {
         view.dispatch({
             effects: [
-                harperCompartment.reconfigure(
-                    draft.grammarCheckEnabled ? harperExtension() : [],
-                ),
+                harperCompartment.reconfigure(draft.grammarCheckEnabled ? harperExtension() : []),
                 languageCompartment.reconfigure(getEditorLanguageExtension(draft.editorMode)),
             ],
         });
