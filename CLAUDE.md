@@ -93,7 +93,6 @@ All systems are documented in ARCHITECTURE.md.
 
 See `BRANDING.md` for the full brand bible: color system, typography, spacing, depth, motion, component patterns, voice/copy guidelines, anti-patterns, and design tokens. See `DESIGN.md` for the conceptual model (how revisions, nested editors, undo, and annotations are intended to work from the user's perspective).
 
-<!-- GSD:project-start source:PROJECT.md -->
 ## Project
 
 **Quillium Omni**
@@ -109,9 +108,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - **Timeline**: A few weeks, no hard deadline
 - **Quality bar**: Dogfoodable — stable enough to use for real writing across devices
 - **Dependencies**: Supabase (Auth + Postgres), Fly.io for relay (~$7/mo)
-<!-- GSD:project-end -->
 
-<!-- GSD:stack-start source:codebase/STACK.md -->
 ## Technology Stack
 
 ## Languages
@@ -200,9 +197,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - Deployment: macOS (.app), Windows (.exe), Linux (.AppImage)
 - Tauri bundles app with built SvelteKit frontend (`build/` directory)
 - Auto-updater via GitHub Releases
-<!-- GSD:stack-end -->
 
-<!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
 ## Naming Patterns
@@ -315,9 +310,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - `src/lib/ui/` — Reusable UI components
 - `tests/` — Unit, integration, and E2E tests
 - `src-tauri/` — Tauri backend (Rust)
-<!-- GSD:conventions-end -->
 
-<!-- GSD:architecture-start source:ARCHITECTURE.md -->
 ## Architecture
 
 ## Pattern Overview
@@ -438,32 +431,5 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 | `src/lib/autoai/engine.ts` | AutoAI review orchestration and annotation dispatch |
 | `src/lib/editor/replay.ts` | Event log replay with error handling |
 | `src/lib/errorGuard.ts` | Suspicious deletion detection before persistence |
-<!-- GSD:architecture-end -->
 
-<!-- GSD:skills-start source:skills/ -->
-## Project Skills
 
-| Skill | Description | Path |
-|-------|-------------|------|
-| integration-sveltekit | PostHog integration for SvelteKit applications | `.claude/skills/posthog-integration-sveltekit/SKILL.md` |
-<!-- GSD:skills-end -->
-
-<!-- GSD:workflow-start source:GSD defaults -->
-## GSD Workflow Enforcement
-
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
-
-Use these entry points:
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
-
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
-
-<!-- GSD:profile-start -->
-## Developer Profile
-
-> Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
-> This section is managed by `generate-claude-profile` -- do not edit manually.
-<!-- GSD:profile-end -->
