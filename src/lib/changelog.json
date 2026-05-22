@@ -1,4 +1,8 @@
 {
+  "0.16": {
+    "date": "May 2026",
+    "content": "This update makes everyday drafting smoother across the editor and library. You can now **export from the editor status bar**, manage **document tags** from the library preview, and follow related dictionary lookups in stacked popovers without losing the word you started from.\n\nThe writing surface is easier to tune, too: the annotation sidebar can be resized, AI panel resize handles are easier to grab, and Markdown bold/italic shortcuts now unwrap selected text when it is already formatted.\n\nWe also tightened up collaboration and sharing behavior: joiners now see a clear **Leave** action for live rooms, disabled public links are removed instead of quietly lingering, and Inter is kept out of the document font choices so drafts keep their intended reading face."
+  },
   "0.15": {
     "date": "April 2026",
     "content": "Quillium now has a **Markdown rich text mode** for writers who like Markdown shortcuts but still want a polished editing surface. The formatting controls are the same as Google Docs (e.g. Command+B for bolding on macOS), and you can make markdown headers. The keyboard shortcut for pulling up the dictionary has been changed.\n\nYou can also **export to PDF** directly from Quillium. When you need to share a finished draft, archive a copy, or send work somewhere that expects a fixed layout, PDF export is now built into the app.\n\nFinally, **web sharing** is now functional for those who have a Quillium/Omni account. *Join the waitlist at quillium.bryanhu.com/omni*"
