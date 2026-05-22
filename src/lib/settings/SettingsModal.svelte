@@ -85,7 +85,7 @@ const DOC_FONTS: FontOption[] = [
         group: f.group,
         featured: f.docFeatured,
     })),
-    { group: "Sans", label: sans.label, value: sansStack },
+    ...(sans.label === "Inter" ? [] : [{ group: "Sans", label: sans.label, value: sansStack }]),
     { group: "Typewriter", label: mono.label, value: monoStack },
 ];
 

@@ -73,13 +73,20 @@ function loadSettings(): AppSettings {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return { ...DEFAULTS };
-        const parsed = JSON.parse(raw);
+        let parsed = JSON.parse(raw);
         // Migrate legacy alwaysShowTitle boolean
         if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
-            parsed.titleVisibility = parsed.alwaysShowTitle ? "always" : "hover";
-            delete parsed.alwaysShowTitle;
+            const { alwaysShowTitle, ...rest } = parsed;
+            parsed = {
+                ...rest,
+                titleVisibility: alwaysShowTitle ? "always" : "hover",
+            };
         }
-        return { ...DEFAULTS, ...parsed };
+        const merged = { ...DEFAULTS, ...parsed };
+        if (typeof merged.docFontFamily === "string" && merged.docFontFamily.includes("Inter")) {
+            merged.docFontFamily = DEFAULTS.docFontFamily;
+        }
+        return merged;
     } catch {
         return { ...DEFAULTS };
     }
