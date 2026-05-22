@@ -28,11 +28,12 @@ import {
     reconnectAttempt,
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
+import { exportDocument, type ExportFormat } from "$lib/export";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
-import { saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, History, LayoutGrid, Settings } from "lucide-svelte";
+import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import { BarChart3, Download, History, LayoutGrid, Settings } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -50,6 +51,21 @@ let secondaryStrip = $state<HTMLDivElement>();
 let stripOverflows = $state(false);
 let canScrollLeft = $state(false);
 let canScrollRight = $state(false);
+let exportOpen = $state(false);
+let exportWrapperEl = $state<HTMLDivElement>();
+let exportButtonEl = $state<HTMLButtonElement>();
+let exportMenuEl = $state<HTMLDivElement>();
+let exportMenuStyle = $state("");
+let exporting = $state(false);
+
+const exportItems: { format: ExportFormat; label: string }[] = [
+    { format: "txt", label: "Plain Text" },
+    { format: "txt+json", label: "Text + Annotations" },
+    { format: "json", label: "JSON" },
+    { format: "md", label: "Markdown" },
+    { format: "pdf", label: "PDF" },
+    { format: "pdf+annotations", label: "PDF + Annotations" },
+];
 
 function updateScrollState() {
     if (!secondaryStrip) return;
@@ -95,6 +111,50 @@ function toggleFollow(clientId: number) {
     followedClientId.set($followedClientId === clientId ? null : clientId);
 }
 
+function handleWindowClick(e: MouseEvent) {
+    const target = e.target as Node;
+    if (
+        exportOpen &&
+        !exportWrapperEl?.contains(target) &&
+        !exportMenuEl?.contains(target)
+    ) {
+        exportOpen = false;
+    }
+}
+
+function positionExportMenu() {
+    if (!exportButtonEl || typeof window === "undefined") return;
+
+    const rect = exportButtonEl.getBoundingClientRect();
+    const menuWidth = 192;
+    const edgePadding = 12;
+    const center = Math.min(
+        window.innerWidth - edgePadding - menuWidth / 2,
+        Math.max(edgePadding + menuWidth / 2, rect.left + rect.width / 2),
+    );
+    const top = Math.max(edgePadding, rect.top - 8);
+    exportMenuStyle = `left: ${center}px; top: ${top}px;`;
+}
+
+function toggleExportMenu() {
+    exportOpen = !exportOpen;
+    if (exportOpen) {
+        positionExportMenu();
+    }
+}
+
+async function doExport(format: ExportFormat) {
+    const view = $editorView;
+    if (!view || exporting) return;
+    exporting = true;
+    try {
+        await exportDocument(view, format);
+    } finally {
+        exporting = false;
+        exportOpen = false;
+    }
+}
+
 $effect(() => {
     if (!titleForced) {
         // titleForced just dropped — start the linger
@@ -110,6 +170,12 @@ $effect(() => {
     }
 });
 </script>
+
+<svelte:window
+    onclick={handleWindowClick}
+    onresize={positionExportMenu}
+    onscroll={positionExportMenu}
+/>
 
 {#if $settingsOpen}
     <SettingsModal
@@ -232,6 +298,39 @@ $effect(() => {
             >
                 <BarChart3 size={20} />
             </button>
+            <div
+                class="relative shrink-0"
+                bind:this={exportWrapperEl}
+            >
+                <button
+                    bind:this={exportButtonEl}
+                    onclick={toggleExportMenu}
+                    aria-label="Export document"
+                    title="Export ({modKey}Shift+E)"
+                    class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
+                        {exportOpen ? 'text-purple-600' : 'text-purple-400 hover:text-purple-600'}"
+                >
+                    <Download size={20} />
+                </button>
+                {#if exportOpen}
+                    <div
+                        bind:this={exportMenuEl}
+                        class="fixed z-[80] w-48 -translate-x-1/2 -translate-y-full overflow-hidden rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-md"
+                        style={exportMenuStyle}
+                    >
+                        {#each exportItems as item}
+                            <button
+                                type="button"
+                                onclick={() => doExport(item.format)}
+                                disabled={exporting || !$editorView}
+                                class="w-full px-3 py-2 text-left text-xs text-black/65 transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                                {item.label}
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
         <!-- Right side (pinned) -->
