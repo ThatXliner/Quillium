@@ -394,13 +394,14 @@ async function handleToggle() {
     if (isLive) {
         // Go offline
         const view = get(editorView);
+        const wasJoiner = get(isCollabJoiner);
         if (view) {
             disableCollab(view);
         }
         isLive = false;
         // D-103: restoreJoinerPriorView is called by disableCollab automatically
         // for joiners. Owners stay on current document (no navigation).
-        toast.success("Session ended");
+        toast.success(wasJoiner ? "Left live room" : "Session ended");
     } else {
         // Go live -- snapshot first (D-58)
         connecting = true;
@@ -699,7 +700,7 @@ async function handleToggle() {
                                         <Radio size={17} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">{isLive ? "Live Room is open" : "Live Room is off"}</h3>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">{isLive ? ($isCollabJoiner ? "You're in a Live Room" : "Live Room is open") : "Live Room is off"}</h3>
                                         <p class="m-0 text-xs/[1.45] text-black/50">Invite another writer into this draft.</p>
                                     </div>
                                 </div>
@@ -719,7 +720,7 @@ async function handleToggle() {
                                         </span>
                                         Retrying {Math.min($reconnectAttempt, MAX_RECONNECT_ATTEMPTS)}/{MAX_RECONNECT_ATTEMPTS}
                                     {:else if isLive}
-                                        End session
+                                        {$isCollabJoiner ? "Leave" : "End session"}
                                     {:else}
                                         <Radio size={15} />
                                         Start live room
