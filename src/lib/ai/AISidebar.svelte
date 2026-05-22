@@ -593,16 +593,16 @@ function handleKeydown(e: KeyboardEvent) {
     .resize-handle-right {
         top: 14px;
         bottom: 14px;
-        right: 0;
-        width: 6px;
+        right: -2px;
+        width: 10px;
         cursor: ew-resize;
     }
 
     .resize-handle-bottom {
         left: 14px;
         right: 14px;
-        bottom: 0;
-        height: 6px;
+        bottom: -2px;
+        height: 10px;
         cursor: ns-resize;
     }
 
@@ -619,15 +619,19 @@ function handleKeydown(e: KeyboardEvent) {
         position: absolute;
         top: 25%;
         bottom: 25%;
-        right: 2px;
+        right: 4px;
         width: 2px;
         border-radius: 9999px;
-        background-color: transparent;
-        transition: background-color 200ms ease;
+        background-color: rgba(0, 0, 0, 0.08);
+        opacity: 0;
+        transition:
+            background-color 200ms ease,
+            opacity 200ms ease;
     }
 
     .resize-handle-right:hover::after {
         background-color: rgba(0, 0, 0, 0.18);
+        opacity: 1;
     }
 
     .resize-handle-bottom::after {
@@ -635,15 +639,19 @@ function handleKeydown(e: KeyboardEvent) {
         position: absolute;
         left: 25%;
         right: 25%;
-        bottom: 2px;
+        bottom: 4px;
         height: 2px;
         border-radius: 9999px;
-        background-color: transparent;
-        transition: background-color 200ms ease;
+        background-color: rgba(0, 0, 0, 0.08);
+        opacity: 0;
+        transition:
+            background-color 200ms ease,
+            opacity 200ms ease;
     }
 
     .resize-handle-bottom:hover::after {
         background-color: rgba(0, 0, 0, 0.18);
+        opacity: 1;
     }
 
     .resize-handle-corner::after {
