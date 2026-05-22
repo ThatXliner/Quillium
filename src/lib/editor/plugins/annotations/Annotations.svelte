@@ -82,6 +82,8 @@ const isFloating = $derived(layout === "floating");
  * decoration opens a modal instead of the floating card.
  */
 const MIN_ANNOTATION_WIDTH = 150;
+const MIN_PANEL_WIDTH = 180;
+const MAX_PANEL_WIDTH = 420;
 let narrowMode = $state(false);
 
 $effect(() => {
@@ -209,7 +211,10 @@ function getAnnotationLeft(): number {
     return rect.left + rect.width / 2 + 408 + 16;
 }
 
-let scrollContainer: HTMLDivElement | undefined;
+let scrollContainer = $state<HTMLDivElement | undefined>(undefined);
+let resizingPanel = $state(false);
+let panelResizeStartX = 0;
+let panelResizeStartWidth = 0;
 
 // Sort annotations by document position for stable rendering
 const sortedAnnotations = $derived(
@@ -314,6 +319,12 @@ $effect(() => {
     if (resolvedActiveAnnotation !== undefined || sortedAnnotations.length) {
         tick().then(updateAnnotationPositions);
     }
+});
+
+$effect(() => {
+    if (!isFloating) return;
+    void appSettings.annotationPanelWidth;
+    tick().then(updateAnnotationPositions);
 });
 
 // Re-run positioning whenever any card changes height
@@ -451,16 +462,50 @@ function updateAnnotationPositions() {
  */
 function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     if (!scrollContainer) return;
-    const inner = scrollContainer.firstElementChild as HTMLElement | null;
+    const inner = scrollContainer.querySelector<HTMLElement>(".annotation-scroll-inner");
     if (inner) inner.style.height = `${lastBottom + 24}px`;
     scrollContainer.style.left = `${leftPx}px`;
     const RIGHT_MARGIN = 32;
-    const MAX_CARD_WIDTH = 280;
+    const desiredWidth = Math.min(
+        MAX_PANEL_WIDTH,
+        Math.max(MIN_PANEL_WIDTH, appSettings.annotationPanelWidth),
+    );
     const availableWidth = Math.min(
-        MAX_CARD_WIDTH,
+        desiredWidth,
         Math.max(0, window.innerWidth - leftPx - RIGHT_MARGIN),
     );
     scrollContainer.style.width = `${availableWidth}px`;
+}
+
+function startPanelResize(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingPanel = true;
+    panelResizeStartX = e.clientX;
+    panelResizeStartWidth = appSettings.annotationPanelWidth;
+    window.addEventListener("mousemove", onPanelResizeMove);
+    window.addEventListener("mouseup", onPanelResizeEnd);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ew-resize";
+}
+
+function onPanelResizeMove(e: MouseEvent) {
+    if (!resizingPanel) return;
+    const dx = e.clientX - panelResizeStartX;
+    appSettings.annotationPanelWidth = Math.min(
+        MAX_PANEL_WIDTH,
+        Math.max(MIN_PANEL_WIDTH, Math.round(panelResizeStartWidth + dx)),
+    );
+}
+
+function onPanelResizeEnd() {
+    if (!resizingPanel) return;
+    resizingPanel = false;
+    window.removeEventListener("mousemove", onPanelResizeMove);
+    window.removeEventListener("mouseup", onPanelResizeEnd);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+    persistSettings();
 }
 
 /**
@@ -572,6 +617,15 @@ $effect(() => {
         window.removeEventListener("resize", update);
     };
 });
+
+$effect(() => {
+    return () => {
+        window.removeEventListener("mousemove", onPanelResizeMove);
+        window.removeEventListener("mouseup", onPanelResizeEnd);
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+    };
+});
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
@@ -613,6 +667,15 @@ $effect(() => {
     {/if}
     {#if isFloating && !narrowMode}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <div
+                role="separator"
+                aria-label="Resize annotations panel"
+                aria-orientation="vertical"
+                class="annotation-resize-handle"
+                class:is-resizing={resizingPanel}
+                onmousedown={startPanelResize}
+            ></div>
             <div class="annotation-scroll-inner">
                 {#each visibleAnnotations as c (c.id)}
                     {@const i = c.id}
@@ -783,6 +846,38 @@ $effect(() => {
 
     .annotation-scroll-container::-webkit-scrollbar {
         display: none;
+    }
+
+    .annotation-resize-handle {
+        position: absolute;
+        top: 16px;
+        bottom: 16px;
+        left: -7px;
+        width: 10px;
+        cursor: ew-resize;
+        pointer-events: auto;
+        z-index: 160;
+    }
+
+    .annotation-resize-handle::after {
+        content: "";
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        left: 4px;
+        width: 2px;
+        border-radius: 9999px;
+        background-color: rgba(0, 0, 0, 0.1);
+        opacity: 0;
+        transition:
+            background-color 180ms ease,
+            opacity 180ms ease;
+    }
+
+    .annotation-resize-handle:hover::after,
+    .annotation-resize-handle.is-resizing::after {
+        background-color: rgba(0, 0, 0, 0.2);
+        opacity: 1;
     }
 
     .annotation-scroll-inner {
