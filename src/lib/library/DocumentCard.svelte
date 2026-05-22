@@ -5,6 +5,7 @@
 import type { DocumentMeta } from "$lib/db/types";
 import { Trash2, RotateCcw, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
+import { parseTags } from "./tags";
 
 interface Props {
     doc: DocumentMeta;
@@ -16,6 +17,7 @@ interface Props {
     onTrash: () => void;
     onRestore: () => void;
     onDeletePermanent: () => void;
+    onTagClick?: (tag: string) => void;
 }
 
 const {
@@ -28,10 +30,12 @@ const {
     onTrash,
     onRestore,
     onDeletePermanent,
+    onTagClick,
 }: Props = $props();
 
 let confirmingDelete = $state(false);
 let confirmTimeout: ReturnType<typeof setTimeout> | undefined;
+const tags = $derived(parseTags(doc.tags));
 
 onDestroy(() => clearTimeout(confirmTimeout));
 
@@ -100,6 +104,22 @@ function formatDate(ms: number): string {
                 <span>·</span>
                 <span>{formatDate(doc.updatedAt)}</span>
             </div>
+            {#if tags.length > 0}
+                <div class="mt-1 flex flex-wrap gap-1">
+                    {#each tags.slice(0, 3) as tag}
+                        <button
+                            type="button"
+                            onclick={(e) => {
+                                e.stopPropagation();
+                                onTagClick?.(tag);
+                            }}
+                            class="max-w-full truncate rounded-full bg-black/[0.045] px-2 py-0.5 text-[10px] text-black/45 transition-colors hover:bg-blue-500/10 hover:text-blue-700"
+                        >
+                            {tag}
+                        </button>
+                    {/each}
+                </div>
+            {/if}
         </div>
 
         <!-- Action buttons overlay -->
@@ -168,6 +188,22 @@ function formatDate(ms: number): string {
         <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-black/80 truncate">{doc.title}</p>
             <p class="text-xs text-black/40 mt-0.5 truncate">{doc.previewText || "Empty document"}</p>
+            {#if tags.length > 0}
+                <div class="mt-1.5 flex flex-wrap gap-1">
+                    {#each tags.slice(0, 4) as tag}
+                        <button
+                            type="button"
+                            onclick={(e) => {
+                                e.stopPropagation();
+                                onTagClick?.(tag);
+                            }}
+                            class="max-w-[120px] truncate rounded-full bg-black/[0.045] px-2 py-0.5 text-[10px] text-black/45 transition-colors hover:bg-blue-500/10 hover:text-blue-700"
+                        >
+                            {tag}
+                        </button>
+                    {/each}
+                </div>
+            {/if}
         </div>
         <div class="flex-shrink-0 flex items-center gap-2">
             <div class="text-right">
