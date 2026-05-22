@@ -137,20 +137,16 @@ export async function publishReadonlyShare(
     return mapShare(data);
 }
 
-export async function disableReadonlyShare(documentId: string): Promise<ReadonlyShare> {
+export async function disableReadonlyShare(documentId: string): Promise<ReadonlyShare | null> {
     const client = requireSupabase();
-    const { data, error } = await client
+    const { error } = await client
         .from("shares")
-        .update({ enabled: false })
-        .eq("document_id", documentId)
-        .select(
-            "share_token, enabled, published_title, preview_text, published_content, published_annotations, author_name, published_at, updated_at",
-        )
-        .single<ShareRow>();
+        .delete()
+        .eq("document_id", documentId);
 
     if (error) {
         throw new Error(`Failed to disable share: ${error.message}`);
     }
 
-    return mapShare(data);
+    return null;
 }
