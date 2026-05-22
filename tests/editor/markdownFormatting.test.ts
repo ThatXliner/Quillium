@@ -8,6 +8,18 @@ describe("applyMarkdownFormat", () => {
         expect(result.selection).toEqual({ from: 2, to: 7 });
     });
 
+    it("unwraps bold markers around the selected text", () => {
+        const result = applyMarkdownFormat("**hello** world", 2, 7, "bold");
+        expect(result.text).toBe("hello world");
+        expect(result.selection).toEqual({ from: 0, to: 5 });
+    });
+
+    it("unwraps italic markers around the selected text", () => {
+        const result = applyMarkdownFormat("_hello_ world", 1, 6, "italic");
+        expect(result.text).toBe("hello world");
+        expect(result.selection).toEqual({ from: 0, to: 5 });
+    });
+
     it("inserts paired italic markers at the cursor", () => {
         const result = applyMarkdownFormat("hello", 5, 5, "italic");
         expect(result.text).toBe("hello__");

@@ -42,6 +42,15 @@ function wrapSelection(doc: string, from: number, to: number, token: string): Fo
         };
     }
 
+    const before = doc.slice(Math.max(0, from - token.length), from);
+    const after = doc.slice(to, to + token.length);
+    if (before === token && after === token) {
+        return {
+            text: doc.slice(0, from - token.length) + selected + doc.slice(to + token.length),
+            selection: { from: from - token.length, to: to - token.length },
+        };
+    }
+
     const wrapped = `${token}${selected}${token}`;
     return {
         text: doc.slice(0, from) + wrapped + doc.slice(to),
