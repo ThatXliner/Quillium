@@ -1,7 +1,7 @@
 {
   "0.16": {
     "date": "May 2026",
-    "content": "This update makes everyday drafting smoother across the editor and library. You can now **export from the editor status bar**, manage **document tags** from the library preview, and follow related dictionary lookups in stacked popovers without losing the word you started from.\n\nThe writing surface is easier to tune, too: the annotation sidebar can be resized, AI panel resize handles are easier to grab, and Markdown bold/italic shortcuts now unwrap selected text when it is already formatted.\n\nWe also tightened up collaboration and sharing behavior: joiners now see a clear **Leave** action for live rooms, disabled public links are removed instead of quietly lingering, and Inter is kept out of the document font choices so drafts keep their intended reading face."
+    "content": "**Export from the editor status bar**, manage **document tags** from the library preview, and stack related **dictionary lookups** without losing context.\n\nAlso: resizable annotation sidebar, easier AI panel resize handles, and Markdown bold/italic shortcuts now toggle off when text is already formatted."
   },
   "0.15": {
     "date": "April 2026",
