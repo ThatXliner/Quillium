@@ -4,7 +4,7 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 
 ## Quick Orientation
 
-- **Two routes**: `/` (editor) and `/library` (document grid)
+- **Main routes**: `/` (editor), `/library` (document grid), `/history` (version browser)
 - **Two state worlds**: CodeMirror (immutable, transaction-based) and Svelte stores (reactive, manually synced)
 - **Always use `isAnnotationOfType(annotation, "revision")`** — never compare `_type` directly
 

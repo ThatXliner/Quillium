@@ -52,10 +52,12 @@ Clicking size badge opens collapsible panel:
 
 Both prune actions require two-click confirmation.
 
-## Tauri Commands
+## DB Wrapper Functions (TypeScript)
 
-| Command | Purpose |
-|---------|---------|
+These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Tauri commands (actual Tauri command names are `cmd_*` variants).
+
+| Function | Purpose |
+|----------|---------|
 | `listSnapshots` | Get all snapshots for draft |
 | `loadSnapshotState` | Get specific snapshot blob |
 | `labelSnapshot` | Add/update label |

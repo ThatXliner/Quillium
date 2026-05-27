@@ -6,20 +6,29 @@ User preferences in a Svelte 5 `$state` proxy (`appSettings`) persisted to local
 
 | Setting | Type | Default | Controls |
 |---------|------|---------|----------|
-| `docFontFamily` | string | `"Georgia, serif"` | Editor body font |
-| `docFontSize` | number | `18` | Editor body font size |
-| `uiFontFamily` | string | `"system-ui, ..."` | UI chrome font |
-| `uiZoom` | number | `1` | `document.documentElement.zoom` |
 | `selectTextInNestedEditor` | boolean | `true` | Auto-select in nested editor |
 | `showNestedEditor` | boolean | `true` | Show inline nested editor |
 | `atomicRevisions` | boolean | `true` | Block direct revision editing |
+| `editorMode` | enum | `"markdown"` | Plain or markdown mode |
+| `docFontFamily` | string | `"Georgia, serif"` | Editor body font |
+| `docFontSize` | number | `18` | Editor body font size |
+| `uiFontFamily` | string | `"system-ui, ..."` | UI chrome font |
 | `customQuickActions` | array | `[]` | User-defined AI quick actions |
 | `titleVisibility` | enum | `"hover"` | Title display mode |
 | `titleHoverDelay` | number | `350` | ms before title appears |
 | `titleLingerDuration` | number | `3000` | ms title stays visible |
+| `uiZoom` | number | `1` | `document.documentElement.zoom` |
 | `analyticsEnabled` | boolean | `true` | PostHog opt-in/out |
 | `aiEnabled` | boolean | `false` | AI features active |
 | `showShortcutHints` | boolean | `true` | Keyboard hints in panel |
+| `showWordCount` | boolean | `true` | Word count in status bar |
+| `wordCountDisplayMode` | enum | `"words"` | Words, chars, or both |
+| `autoVersionOnRevisionCreate` | boolean | `true` | Auto-add version when creating revision |
+| `showAiSuggestions` | boolean | `true` | Show AI suggestions in annotations |
+| `checkForUpdates` | boolean | `true` | Auto-check for app updates |
+| `grammarCheckEnabled` | boolean | `true` | Harper grammar checking |
+| `grammarDialect` | enum | `"american"` | American, British, or Australian |
+| `annotationPanelWidth` | number | `320` | Width of annotation sidebar |
 
 ## Why localStorage Instead of SQLite
 

@@ -1,6 +1,6 @@
 # PostHog Events
 
-Analytics event catalog. All events are captured via `posthog.capture()`.
+Analytics event catalog (curated subset). All events are captured via `posthog.capture()`. To find all events, grep for `posthog.capture` in the codebase.
 
 ## Session & Editor
 

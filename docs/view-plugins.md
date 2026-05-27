@@ -16,7 +16,7 @@ Active state is determined by `getActiveAnnotation()` — the annotation whose r
 
 ## revisionAtomicRanges
 
-Registered via `EditorView.atomicRanges.of(...)` (a facet provider, not a `ViewPlugin`). Marks all **inactive** revision ranges as atomic. The cursor jumps over the entire span instead of entering it.
+Registered via `EditorView.atomicRanges.of(...)` (a facet provider, not a `ViewPlugin`). When `appSettings.atomicRevisions` is enabled, marks **all** revision ranges as atomic. The cursor jumps over the entire span instead of entering it.
 
 This does **not** block edits — `atomicRanges` only governs cursor placement.
 

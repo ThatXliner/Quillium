@@ -99,35 +99,37 @@ Manual pruning via Version History:
 
 Nested-editor flushes write back through `updateRevisionVersionState`, making the parent `annotationField` the source of truth. The normal persistence path observes the parent transaction.
 
-## Tauri Commands
+## DB Wrapper Functions (TypeScript)
+
+These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Tauri commands (actual Tauri command names are `cmd_*` variants).
 
 ### Documents
 
-| Command | Purpose |
-|---------|---------|
-| `list_documents` | Get all documents with metadata |
-| `create_document` | Create new document |
-| `update_document_meta` | Update title, tags, etc. |
-| `trash_document` | Soft-delete |
-| `restore_document` | Restore from trash |
-| `delete_document` | Permanent delete |
-| `get_trash_retention` | Get auto-empty period |
-| `set_trash_retention` | Set auto-empty period |
+| Function | Purpose |
+|----------|---------|
+| `listDocuments` | Get all documents with metadata |
+| `createDocument` | Create new document |
+| `updateDocumentMeta` | Update title, tags, etc. |
+| `trashDocument` | Soft-delete |
+| `restoreDocument` | Restore from trash |
+| `deleteDocument` | Permanent delete |
+| `getTrashRetention` | Get auto-empty period |
+| `setTrashRetention` | Set auto-empty period |
 
 ### Events & Snapshots
 
-| Command | Purpose |
-|---------|---------|
-| `append_event` | Add event to log |
-| `load_document_state` | Get snapshot + events |
-| `create_snapshot` | Create manual snapshot |
-| `create_named_snapshot` | Create labeled snapshot |
-| `list_snapshots` | Get all snapshots for draft |
-| `load_snapshot_state` | Get specific snapshot blob |
-| `label_snapshot` | Add/update label |
-| `restore_to_snapshot` | Reset to snapshot state |
-| `get_snapshot_storage_size` | Get total size |
-| `get_snapshot_retention` | Get retention policy |
-| `set_snapshot_retention` | Set retention policy |
-| `prune_snapshots_keep_last_n` | Keep only N most recent |
-| `prune_snapshots_older_than` | Delete older than N days |
+| Function | Purpose |
+|----------|---------|
+| `appendEvent` | Add event to log |
+| `loadDocumentState` | Get snapshot + events |
+| `createSnapshot` | Create manual snapshot |
+| `createNamedSnapshot` | Create labeled snapshot |
+| `listSnapshots` | Get all snapshots for draft |
+| `loadSnapshotState` | Get specific snapshot blob |
+| `labelSnapshot` | Add/update label |
+| `restoreToSnapshot` | Reset to snapshot state |
+| `getSnapshotStorageSize` | Get total size |
+| `getSnapshotRetention` | Get retention policy |
+| `setSnapshotRetention` | Set retention policy |
+| `pruneSnapshotsKeepLastN` | Keep only N most recent |
+| `pruneSnapshotsOlderThan` | Delete older than N days |

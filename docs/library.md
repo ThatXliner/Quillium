@@ -71,15 +71,17 @@ Both set `data-direction` on `<html>` before calling SvelteKit's `goto()`. CSS t
 | `PreviewPanel.svelte` | Document preview sidebar |
 | `ContinuePill.svelte` | "Continue writing" shortcut |
 
-## Tauri Commands
+## DB Wrapper Functions (TypeScript)
 
-| Command | Purpose |
-|---------|---------|
-| `list_documents` | Get all documents |
-| `create_document` | Create new document |
-| `update_document_meta` | Update title, tags |
-| `trash_document` | Soft-delete |
-| `restore_document` | Restore from trash |
-| `delete_document` | Permanent delete |
-| `get_trash_retention` | Get auto-empty period |
-| `set_trash_retention` | Set auto-empty period |
+These are the TypeScript wrapper functions in `src/lib/db/index.ts` that call Tauri commands (actual Tauri command names are `cmd_*` variants).
+
+| Function | Purpose |
+|----------|---------|
+| `listDocuments` | Get all documents |
+| `createDocument` | Create new document |
+| `updateDocumentMeta` | Update title, tags |
+| `trashDocument` | Soft-delete |
+| `restoreDocument` | Restore from trash |
+| `deleteDocument` | Permanent delete |
+| `getTrashRetention` | Get auto-empty period |
+| `setTrashRetention` | Set auto-empty period |
