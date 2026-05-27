@@ -50,7 +50,9 @@ import {
 
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { appSettings } from "$lib/settings.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { createResizeController } from "$lib/ui/useResize.svelte";
+import { Minimize2 } from "lucide-svelte";
 import {
     type ModalEntry,
     annotations as annotationsStore,
@@ -89,6 +91,39 @@ const isTop = $derived(stackIndex === $modalStack.length - 1);
 
 // Capture and consume any pending nested command once on mount.
 const initialPendingCommand = modalStack.consumePendingCommand(stackIndex);
+
+// ── Modal resize ───────────────────────────────────────────────────────────
+const DEFAULT_WIDTH = 1160;
+const DEFAULT_HEIGHT_VH = 72;
+const MIN_WIDTH = 700;
+const MAX_WIDTH = 1600;
+const MIN_HEIGHT = 400;
+const MAX_HEIGHT = 1000;
+
+const defaultHeight = $derived(Math.round(window.innerHeight * (DEFAULT_HEIGHT_VH / 100)));
+const effectiveWidth = $derived(appSettings.revisionModalWidth ?? DEFAULT_WIDTH);
+const effectiveHeight = $derived(appSettings.revisionModalHeight ?? defaultHeight);
+const isCustomSize = $derived(
+    appSettings.revisionModalWidth !== null || appSettings.revisionModalHeight !== null,
+);
+
+const resize = createResizeController({
+    minWidth: MIN_WIDTH,
+    maxWidth: MAX_WIDTH,
+    minHeight: MIN_HEIGHT,
+    maxHeight: MAX_HEIGHT,
+    onResize: (w, h) => {
+        if (w !== null) appSettings.revisionModalWidth = w;
+        if (h !== null) appSettings.revisionModalHeight = h;
+    },
+    onResizeEnd: () => persistSettings(),
+});
+
+function resetModalSize() {
+    appSettings.revisionModalWidth = null;
+    appSettings.revisionModalHeight = null;
+    persistSettings();
+}
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
@@ -808,7 +843,37 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   onkeydowncapture={onDialogKeydownCapture}
   onkeydown={onDialogKeydown}
 >
-  <div class="revision-modal-inner">
+  <div
+    class="revision-modal-inner"
+    class:is-resizing={resize.isResizing}
+    style="width: {effectiveWidth}px; height: {effectiveHeight}px;"
+  >
+    <!-- Resize handles -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="modal-resize-handle modal-resize-right"
+      onmousedown={(e) => resize.startResize(e, "right", effectiveWidth, effectiveHeight)}
+    ></div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="modal-resize-handle modal-resize-bottom"
+      onmousedown={(e) => resize.startResize(e, "bottom", effectiveWidth, effectiveHeight)}
+    ></div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="modal-resize-handle modal-resize-corner"
+      onmousedown={(e) => resize.startResize(e, "corner", effectiveWidth, effectiveHeight)}
+    ></div>
+    {#if isCustomSize}
+      <button
+        class="modal-reset-btn"
+        onclick={resetModalSize}
+        aria-label="Reset to default size"
+        title="Reset size"
+      >
+        <Minimize2 size={14} />
+      </button>
+    {/if}
     <!-- Header -->
     <div
       class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0"
@@ -1136,14 +1201,77 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   }
 
   .revision-modal-inner {
+    position: relative;
     display: flex;
     flex-direction: column;
-    width: 1160px;
-    height: 72vh;
     background: white;
     border-radius: 1rem;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     overflow: hidden;
+    transition: width 180ms ease, height 180ms ease;
+  }
+
+  .revision-modal-inner.is-resizing {
+    transition: none;
+  }
+
+  /* Resize handles */
+  .modal-resize-handle {
+    position: absolute;
+    z-index: 200;
+  }
+
+  .modal-resize-right {
+    top: 16px;
+    bottom: 16px;
+    right: -4px;
+    width: 8px;
+    cursor: ew-resize;
+  }
+
+  .modal-resize-bottom {
+    left: 16px;
+    right: 16px;
+    bottom: -4px;
+    height: 8px;
+    cursor: ns-resize;
+  }
+
+  .modal-resize-corner {
+    right: -4px;
+    bottom: -4px;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+  }
+
+  .modal-reset-btn {
+    position: absolute;
+    top: 8px;
+    right: 48px;
+    z-index: 210;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 180ms ease, color 180ms ease, background 180ms ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  .revision-modal-inner:hover .modal-reset-btn {
+    opacity: 1;
+  }
+
+  .modal-reset-btn:hover {
+    color: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.04);
   }
 
   .revision-modal-thread {

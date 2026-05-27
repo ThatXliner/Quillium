@@ -50,11 +50,9 @@
  *   visibility to avoid re-mount jank on tab switches.
  *
  * Resize system:
- *   - `startResize` attaches window-level mousemove/mouseup listeners.
- *   - `onResizeMove` clamps deltas to [MIN, MAX] width/height.
- *   - `onResizeEnd` cleans up listeners and resets cursor overrides.
- *   - `isResizing` disables CSS transitions so the panel tracks the
- *     cursor without animation lag.
+ *   - Uses shared `createResizeController` from `$lib/ui/useResize`.
+ *   - `resize.isResizing` disables CSS transitions so the panel tracks
+ *     the cursor without animation lag.
  */
 import { tick } from "svelte";
 import Chat from "./Chat.svelte";
@@ -75,6 +73,7 @@ import {
     SquareIcon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey, ensureApiKeyLoaded, stopAllAi } from "$lib/ai/settings.svelte";
+import { createResizeController } from "$lib/ui/useResize.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 
@@ -162,15 +161,21 @@ const MAX_HEIGHT = 800;
 
 let customWidth = $state<number | null>(null);
 let customHeight = $state<number | null>(null);
-let isResizing = $state(false);
-
-// Plain vars — not reactive, only used inside handlers
-let resizeStartX = 0;
-let resizeStartY = 0;
-let resizeStartWidth = 0;
-let resizeStartHeight = 0;
-let activeHandle: "right" | "bottom" | "corner" | null = null;
 let justResized = false;
+
+const resize = createResizeController({
+    minWidth: MIN_WIDTH,
+    maxWidth: MAX_WIDTH,
+    minHeight: MIN_HEIGHT,
+    maxHeight: MAX_HEIGHT,
+    onResize: (w, h) => {
+        if (w !== null) customWidth = w;
+        if (h !== null) customHeight = h;
+    },
+    onResizeEnd: () => {
+        justResized = true;
+    },
+});
 
 const defaultWidthForTab = $derived(
     actions.find((a) => a.id === action)?.preferredWidth ?? DEFAULT_WIDTH,
@@ -189,7 +194,7 @@ const containerSizeStyle = $derived(
 
 // Disable transition during active drag; keep it for expand/collapse
 const transitionClass = $derived(
-    isResizing
+    resize.isResizing
         ? ""
         : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
 );
@@ -262,44 +267,6 @@ function resetSize() {
     customHeight = null;
 }
 
-function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
-    e.preventDefault();
-    e.stopPropagation();
-    activeHandle = handle;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    resizeStartWidth = effectiveWidth;
-    resizeStartHeight = effectiveHeight;
-    isResizing = true;
-    window.addEventListener("mousemove", onResizeMove);
-    window.addEventListener("mouseup", onResizeEnd);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor =
-        handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
-}
-
-function onResizeMove(e: MouseEvent) {
-    if (!activeHandle) return;
-    const dx = e.clientX - resizeStartX;
-    const dy = e.clientY - resizeStartY;
-    if (activeHandle === "right" || activeHandle === "corner") {
-        customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
-    }
-    if (activeHandle === "bottom" || activeHandle === "corner") {
-        customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
-    }
-}
-
-function onResizeEnd() {
-    isResizing = false;
-    activeHandle = null;
-    justResized = true;
-    window.removeEventListener("mousemove", onResizeMove);
-    window.removeEventListener("mouseup", onResizeEnd);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
-}
-
 function openAiSettingsFromExternalRequest() {
     action = "settings";
 }
@@ -336,12 +303,7 @@ $effect(() => {
 
 // Cleanup resize listeners on unmount
 $effect(() => {
-    return () => {
-        window.removeEventListener("mousemove", onResizeMove);
-        window.removeEventListener("mouseup", onResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-    };
+    return () => resize.cleanup();
 });
 
 // App-level requests to open the chat panel.
@@ -530,7 +492,7 @@ function handleKeydown(e: KeyboardEvent) {
             aria-label="Resize width"
             aria-orientation="vertical"
             class="resize-handle resize-handle-right"
-            onmousedown={(e) => startResize(e, "right")}
+            onmousedown={(e) => resize.startResize(e, "right", effectiveWidth, effectiveHeight)}
         ></div>
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
@@ -538,14 +500,14 @@ function handleKeydown(e: KeyboardEvent) {
             aria-label="Resize height"
             aria-orientation="horizontal"
             class="resize-handle resize-handle-bottom"
-            onmousedown={(e) => startResize(e, "bottom")}
+            onmousedown={(e) => resize.startResize(e, "bottom", effectiveWidth, effectiveHeight)}
         ></div>
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize panel"
             class="resize-handle resize-handle-corner"
-            onmousedown={(e) => startResize(e, "corner")}
+            onmousedown={(e) => resize.startResize(e, "corner", effectiveWidth, effectiveHeight)}
         ></div>
     {/if}
 </div>
