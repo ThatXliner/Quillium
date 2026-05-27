@@ -78,8 +78,16 @@ let shareLoading = $state(false);
 let shareBusy = $state(false);
 let readonlyShare = $state<ReadonlyShare | null>(null);
 
+function shouldShowForScreenshot(): boolean {
+    return (
+        import.meta.env.DEV &&
+        typeof window !== "undefined" &&
+        Boolean((window as unknown as Record<string, unknown>).__QUILLIUM_SCREENSHOT_AUTH_ONLINE__)
+    );
+}
+
 const authenticated = $derived(isAuthenticated());
-const canShowShare = $derived(relayConfigured || supabaseConfigured);
+const canShowShare = $derived(relayConfigured || supabaseConfigured || shouldShowForScreenshot());
 const currentId = $derived($currentDraftId ?? "");
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
 const shareComparisonPayload = $derived(

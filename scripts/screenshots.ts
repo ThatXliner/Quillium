@@ -210,6 +210,10 @@ async function installTauriMock(
             trashedDocs: typeof TRASHED_DOCUMENTS;
             mockSnapshots: typeof MOCK_SNAPSHOTS;
         }) => {
+            // Keep the top-right auth/share controls deterministic in screenshot
+            // runs, without reaching real Supabase services.
+            (window as unknown as Record<string, unknown>).__QUILLIUM_SCREENSHOT_AUTH_ONLINE__ =
+                true;
             if (payload.showTutorial) {
                 localStorage.removeItem("quillium_tutorial_seen");
             } else {
@@ -1341,6 +1345,8 @@ async function scenarioShareOmniWaitlist(ctx: BrowserContext): Promise<void> {
     await page.getByRole("button", { name: "Share" }).click({ timeout: 5_000 });
     await page.locator("dialog.share-modal").waitFor({ state: "visible", timeout: 5_000 });
     await page.getByRole("heading", { name: "Share your document" }).waitFor({ timeout: 5_000 });
+    await page.getByRole("tab", { name: "Omni" }).click({ timeout: 5_000 });
+    await page.getByText("Omni is currently waitlist only").waitFor({ timeout: 5_000 });
     await page.waitForTimeout(500);
     await shot(page, "31-share-omni-waitlist");
     await page.close();

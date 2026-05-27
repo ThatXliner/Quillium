@@ -20,6 +20,23 @@ let connectionState = $state<AuthConnectionState>("idle");
 let initialized = false;
 let initRun = 0;
 
+function shouldUseScreenshotAuthMock(): boolean {
+    return (
+        import.meta.env.DEV &&
+        typeof window !== "undefined" &&
+        Boolean((window as unknown as Record<string, unknown>).__QUILLIUM_SCREENSHOT_AUTH_ONLINE__)
+    );
+}
+
+function forceAnonymousOnlineState(): void {
+    initRun++;
+    session = null;
+    user = null;
+    connectionState = "online";
+    loading = false;
+    initialized = true;
+}
+
 async function canReachAuthServer(): Promise<boolean> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), AUTH_INIT_TIMEOUT_MS);
@@ -91,6 +108,11 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
  * Checks for existing session and subscribes to auth changes.
  */
 export async function initAuth(): Promise<void> {
+    if (shouldUseScreenshotAuthMock()) {
+        forceAnonymousOnlineState();
+        return;
+    }
+
     if (initialized) return;
     initialized = true;
 
@@ -115,6 +137,11 @@ export async function initAuth(): Promise<void> {
  * Retry the initial auth connection after the app has decided it is offline.
  */
 export async function reconnectAuth(): Promise<boolean> {
+    if (shouldUseScreenshotAuthMock()) {
+        forceAnonymousOnlineState();
+        return true;
+    }
+
     if (!supabase) {
         connectionState = "offline";
         loading = false;
