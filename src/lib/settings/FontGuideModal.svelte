@@ -91,7 +91,10 @@ function sortedFonts(fonts: typeof FONTS, pickKey: "docFeatured" | "uiFeatured")
     });
 }
 
-const docFonts = sortedFonts(FONTS, "docFeatured");
+const docFonts = sortedFonts(
+    FONTS.filter((f) => f.docFont),
+    "docFeatured",
+);
 const uiFonts = sortedFonts(
     FONTS.filter((f) => f.uiFont),
     "uiFeatured",
