@@ -1,0 +1,58 @@
+# Quillium Architecture Documentation
+
+Quillium is a modern writing application built with Tauri + SvelteKit + TypeScript. This documentation covers the internal architecture for contributors.
+
+## Quick Orientation
+
+- **Two routes**: `/` (editor) and `/library` (document grid)
+- **Two state worlds**: CodeMirror (immutable, transaction-based) and Svelte stores (reactive, manually synced)
+- **Always use `isAnnotationOfType(annotation, "revision")`** — never compare `_type` directly
+
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [Architecture Overview](./architecture-overview.md) | Core technologies, layers, data flow |
+| [File Structure](./file-structure.md) | Complete source tree with descriptions |
+| [State Management](./state-management.md) | CodeMirror ↔ Svelte sync, transactions vs effects |
+| [Annotations](./annotations.md) | Data model, annotationField, three-phase update, undo/redo |
+| [Nested Editors](./nested-editors.md) | Controller lifecycle, parent sync, infinite nesting |
+| [View Plugins](./view-plugins.md) | Decorations, atomic ranges, collapsed resolver, nudge |
+| [Persistence](./persistence.md) | Event log, snapshots, crash safety matrix |
+| [Collaboration](./collaboration.md) | Yjs sync, relay architecture, awareness, owner/joiner flows |
+| [AutoAI](./autoai.md) | Review engine, widget UI, face state machine |
+| [Reader Personas](./reader-personas.md) | Multi-persona parallel feedback system |
+| [AI Sidebar](./ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |
+| [Settings](./settings.md) | App preferences, fonts, localStorage vs SQLite |
+| [Library](./library.md) | Document management, trash, navigation |
+| [Version History](./version-history.md) | Snapshots, restore, storage management |
+| [Error Handling](./error-handling.md) | Error guard, crash recovery, banners |
+| [Native Integration](./native-integration.md) | Tauri menu, keychain, auto-updater, PDF export |
+| [Keybindings](./keybindings.md) | All keyboard shortcuts |
+| [PostHog Events](./posthog-events.md) | Analytics event catalog |
+| [Known Limitations](./known-limitations.md) | Current gaps and technical debt |
+
+## Core Technologies
+
+| Layer | Technology | Why |
+|-------|------------|-----|
+| Frontend framework | SvelteKit + TypeScript | Reactivity, SSG mode for Tauri |
+| Editor engine | CodeMirror 6 | Full state management, extensible plugins |
+| Desktop runtime | Tauri (Rust) | Cross-platform packaging, native file I/O |
+| Styling | Tailwind CSS v4 | Utility-first, co-located styles |
+| State management | CodeMirror StateFields + Svelte stores | Hybrid: editor state in CM, UI state in Svelte |
+| AI integration | Vercel AI SDK | Provider-agnostic, streaming |
+| Linting/formatting | Biome | 4-space indent, 100-char line width |
+
+## Development Commands
+
+```bash
+bun run dev          # Development server
+bun run build        # Production build
+bun run check        # Type checking
+bun run biome        # Lint and format
+bun run test:run     # Run tests
+bun run tauri dev    # Tauri development mode
+```
+
+See `CLAUDE.md` for the complete command reference.
