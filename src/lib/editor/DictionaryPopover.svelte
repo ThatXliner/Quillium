@@ -1,7 +1,7 @@
 <!--
     DictionaryPopover.svelte — Floating dictionary/thesaurus popover.
 
-    Triggered by Cmd-b (⌘B) when a single word is selected in the editor.
+    Triggered by Cmd-d (⌘D) when a single word is selected in the editor.
     Shows definition, synonyms/antonyms from the Free Dictionary API, and
     a "describe → find word" AI mode. Clicking a synonym replaces the word
     in the editor; "Open in Chat" sends the word to the Chat AI panel.

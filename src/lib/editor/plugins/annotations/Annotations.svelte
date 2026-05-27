@@ -650,7 +650,7 @@ $effect(() => {
             {/if}
             {#if isSingleWordSelection}
                 <div class="flex items-center gap-2 text-black/40">
-                    <Kbd variant="large" keys={[mod, "B"]} />
+                    <Kbd variant="large" keys={[mod, "D"]} />
                     <span class="text-sm font-medium text-black/35">dictionary</span>
                 </div>
             {/if}
