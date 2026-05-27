@@ -2,11 +2,36 @@
 
 Quillium is a modern writing application built with Tauri + SvelteKit + TypeScript. This documentation covers the internal architecture for contributors.
 
+**New here?** Start with the [Quickstart Guide](./quickstart.md).
+
 ## Quick Orientation
 
 - **Two routes**: `/` (editor) and `/library` (document grid)
 - **Two state worlds**: CodeMirror (immutable, transaction-based) and Svelte stores (reactive, manually synced)
 - **Always use `isAnnotationOfType(annotation, "revision")`** — never compare `_type` directly
+
+## Recommended Reading Order
+
+### Essential (read first)
+1. [Quickstart](./quickstart.md) — Setup, running, making your first change
+2. [Architecture Overview](./architecture-overview.md) — Mental model of the system
+3. [State Management](./state-management.md) — The dual-state system is the #1 source of confusion
+
+### Core Systems (read based on what you're touching)
+4. [Annotations](./annotations.md) — If touching comments, suggestions, or revisions
+5. [Nested Editors](./nested-editors.md) — If touching revision modals or inline editors
+6. [Persistence](./persistence.md) — If touching save/load or crash recovery
+
+### Feature Areas (reference as needed)
+- [Collaboration](./collaboration.md) — Yjs sync, real-time collab
+- [AutoAI](./autoai.md) — Background AI review system
+- [AI Sidebar](./ai-sidebar.md) — Chat, Feedback, Revise modes
+
+### Reference (look up when needed)
+- [File Structure](./file-structure.md) — "Where is X?"
+- [Keybindings](./keybindings.md) — All shortcuts
+- [PostHog Events](./posthog-events.md) — Analytics catalog
+- [Known Limitations](./known-limitations.md) — Current gaps
 
 ## Documentation Index
 
