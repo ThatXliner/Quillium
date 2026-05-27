@@ -50,6 +50,7 @@ import Kbd from "$lib/ui/Kbd.svelte";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import { toast } from "svelte-sonner";
 import posthog from "$lib/posthog";
+import { Minimize2 } from "lucide-svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -84,6 +85,7 @@ const isFloating = $derived(layout === "floating");
 const MIN_ANNOTATION_WIDTH = 150;
 const MIN_PANEL_WIDTH = 180;
 const MAX_PANEL_WIDTH = 420;
+const DEFAULT_PANEL_WIDTH = 280;
 let narrowMode = $state(false);
 
 $effect(() => {
@@ -508,6 +510,13 @@ function onPanelResizeEnd() {
     persistSettings();
 }
 
+const isCustomPanelWidth = $derived(appSettings.annotationPanelWidth !== DEFAULT_PANEL_WIDTH);
+
+function resetPanelWidth() {
+    appSettings.annotationPanelWidth = DEFAULT_PANEL_WIDTH;
+    persistSettings();
+}
+
 /**
  * Apply computed top/left positions to each card DOM element.
  */
@@ -675,7 +684,19 @@ $effect(() => {
                 class="annotation-resize-handle"
                 class:is-resizing={resizingPanel}
                 onmousedown={startPanelResize}
-            ></div>
+            >
+                {#if isCustomPanelWidth}
+                    <button
+                        onclick={resetPanelWidth}
+                        onmousedown={(e) => e.stopPropagation()}
+                        aria-label="Reset to default width"
+                        title="Reset width"
+                        class="annotation-reset-btn"
+                    >
+                        <Minimize2 size={12} />
+                    </button>
+                {/if}
+            </div>
             <div class="annotation-scroll-inner">
                 {#each visibleAnnotations as c (c.id)}
                     {@const i = c.id}
@@ -852,11 +873,15 @@ $effect(() => {
         position: absolute;
         top: 16px;
         bottom: 16px;
-        left: -7px;
+        right: -7px;
         width: 10px;
         cursor: ew-resize;
         pointer-events: auto;
         z-index: 160;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
     }
 
     .annotation-resize-handle::after {
@@ -864,7 +889,7 @@ $effect(() => {
         position: absolute;
         top: 25%;
         bottom: 25%;
-        left: 4px;
+        right: 4px;
         width: 2px;
         border-radius: 9999px;
         background-color: rgba(0, 0, 0, 0.1);
@@ -878,6 +903,36 @@ $effect(() => {
     .annotation-resize-handle.is-resizing::after {
         background-color: rgba(0, 0, 0, 0.2);
         opacity: 1;
+    }
+
+    .annotation-reset-btn {
+        position: absolute;
+        top: 50%;
+        right: -4px;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 9999px;
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        color: rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 180ms ease, color 180ms ease, background 180ms ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .annotation-resize-handle:hover .annotation-reset-btn,
+    .annotation-resize-handle.is-resizing .annotation-reset-btn {
+        opacity: 1;
+    }
+
+    .annotation-reset-btn:hover {
+        color: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.04);
     }
 
     .annotation-scroll-inner {
