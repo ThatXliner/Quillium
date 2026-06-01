@@ -117,7 +117,7 @@ function handleToolCall(toolCall: ToolCall, author?: string) {
     }
 }
 
-type StreamFn = (opts: StreamOpts) => ReadableStream<UIMessageChunk>;
+type StreamFn = (opts: StreamOpts) => Promise<ReadableStream<UIMessageChunk>>;
 
 /**
  * Run a stream function through multiple personas in parallel.
@@ -140,7 +140,7 @@ export async function runMultiPersonaStreams({
     const abortSignal = getAiAbortSignal();
 
     const tasks = personas.map(async (persona) => {
-        const stream = streamFn({
+        const stream = await streamFn({
             messages,
             documentContent: get(documentContent),
             selectedText: get(selectedText),
@@ -232,7 +232,7 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | 
         dictionary: streamDictionary,
     } as const;
 
-    const transportWithTracking: StreamFn = (opts) => {
+    const transportWithTracking: StreamFn = async (opts) => {
         posthog.capture("ai_message_sent", {
             mode,
             has_document_context: !!opts.documentContext?.freeform?.trim(),
