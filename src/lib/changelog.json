@@ -1,4 +1,8 @@
 {
+  "0.17": {
+    "date": "2026-06-01",
+    "content": "The **annotation sidebar** is easier to adjust while you write. The resize handle now sits on the side where you expect it, and a new reset button makes it simple to get back to the default layout.\n\nWe've also cleaned up a few **interface details**: the font guide no longer shows Inter where it does not belong, and the dictionary shortcut hint now points to the right keyboard command."
+  },
   "0.16": {
     "date": "May 2026",
     "content": "**Export from the editor status bar**, manage **document tags** from the library preview, and stack related **dictionary lookups** without losing context.\n\nAlso: resizable annotation sidebar, easier AI panel resize handles, and Markdown bold/italic shortcuts now toggle off when text is already formatted."
