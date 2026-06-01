@@ -39,7 +39,7 @@ export async function streamCommentAiResponse(
     setAiProcessing(true);
     await ensureApiKeyLoaded();
     const abortSignal = getAiAbortSignal();
-    const stream = streamChat({
+    const stream = await streamChat({
         messages: [{ id: "1", role: "user", parts: [{ type: "text", text: prompt }] }],
         documentContent: "",
         selectedText,
