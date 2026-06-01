@@ -139,10 +139,7 @@ export async function publishReadonlyShare(
 
 export async function disableReadonlyShare(documentId: string): Promise<ReadonlyShare | null> {
     const client = requireSupabase();
-    const { error } = await client
-        .from("shares")
-        .delete()
-        .eq("document_id", documentId);
+    const { error } = await client.from("shares").delete().eq("document_id", documentId);
 
     if (error) {
         throw new Error(`Failed to disable share: ${error.message}`);

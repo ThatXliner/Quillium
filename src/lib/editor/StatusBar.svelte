@@ -113,11 +113,7 @@ function toggleFollow(clientId: number) {
 
 function handleWindowClick(e: MouseEvent) {
     const target = e.target as Node;
-    if (
-        exportOpen &&
-        !exportWrapperEl?.contains(target) &&
-        !exportMenuEl?.contains(target)
-    ) {
+    if (exportOpen && !exportWrapperEl?.contains(target) && !exportMenuEl?.contains(target)) {
         exportOpen = false;
     }
 }

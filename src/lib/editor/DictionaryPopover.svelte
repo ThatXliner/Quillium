@@ -221,9 +221,7 @@ function openStackedLookup(w: string, event: MouseEvent) {
     const xFromRight = rect ? rect.right + 8 : centerX + 24;
     const xFromLeft = rect ? rect.left - popoverWidth - 8 : centerX - popoverWidth - 24;
     const posX =
-        xFromRight + popoverWidth <= window.innerWidth - 8
-            ? xFromRight
-            : Math.max(8, xFromLeft);
+        xFromRight + popoverWidth <= window.innerWidth - 8 ? xFromRight : Math.max(8, xFromLeft);
     const posY = Math.min(Math.max(rect?.top ?? centerY, 8), window.innerHeight - 360);
     const lookup: StackedLookup = {
         id: nextStackedLookupId++,
