@@ -448,8 +448,6 @@ async function saveApiKey() {
         {/if}
     </div>
 
-    <div class="w-full h-px bg-black/8"></div>
-
     <!-- API Key -->
     {#if !useCustomEndpoint}
         <div>
