@@ -29,44 +29,55 @@ Dependencies: settings.svelte.ts (aiSettings, loadApiKeyForProvider),
 provider.ts (Provider type), Tauri invoke API, posthog.
 -->
 <script lang="ts">
-import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { EyeIcon, EyeOffIcon, CheckIcon, KeyRoundIcon, ChevronDownIcon } from "lucide-svelte";
+import ModelGuideModal from "$lib/ai/ModelGuideModal.svelte";
+import type { Provider } from "$lib/ai/provider";
 import {
+    HAS_API_KEY_KEY,
     aiSettings,
     hasApiKey,
     loadApiKeyForProvider,
-    HAS_API_KEY_KEY,
-    resetApiKeyLoadPromise,
     persistBaseUrl,
+    resetApiKeyLoadPromise,
 } from "$lib/ai/settings.svelte";
-import type { Provider } from "$lib/ai/provider";
-import posthog from "$lib/posthog";
-import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
+import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
+import posthog from "$lib/posthog";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+    CheckIcon,
+    ChevronDownIcon,
+    EyeIcon,
+    EyeOffIcon,
+    InfoIcon,
+    KeyRoundIcon,
+} from "lucide-svelte";
 
-type TabProvider = "openai" | "anthropic" | "google";
+type TabProvider = "openai" | "anthropic" | "google" | "deepseek";
 
 const PROVIDERS: { id: TabProvider; label: string }[] = [
     { id: "openai", label: "OpenAI" },
     { id: "anthropic", label: "Anthropic" },
     { id: "google", label: "Google" },
+    { id: "deepseek", label: "DeepSeek" },
 ];
+
+let showModelGuide = $state(false);
 
 const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; description: string }[]> = {
     openai: [
-        { id: "gpt-5.4", label: "GPT-5.4", description: "Most capable" },
+        { id: "gpt-5.5", label: "GPT-5.5", description: "Most capable" },
         {
-            id: "gpt-5-mini",
-            label: "GPT-5 Mini",
+            id: "gpt-5.4-mini",
+            label: "GPT-5.4 Mini",
             description: "Fast and efficient",
         },
-        { id: "gpt-5-nano", label: "GPT-5 Nano", description: "Fastest, most cost-efficient" },
+        { id: "gpt-5.4-nano", label: "GPT-5.4 Nano", description: "Fastest, most cost-efficient" },
     ],
     anthropic: [
         {
-            id: "claude-opus-4-6",
-            label: "Claude Opus 4.6",
+            id: "claude-opus-4-8",
+            label: "Claude Opus 4.8",
             description: "Most capable",
         },
         {
@@ -82,6 +93,11 @@ const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; descriptio
     ],
     google: [
         {
+            id: "gemini-3.5-flash",
+            label: "Gemini 3.5 Flash",
+            description: "Most intelligent Flash",
+        },
+        {
             id: "gemini-3.1-pro-preview",
             label: "Gemini 3.1 Pro",
             description: "Most capable",
@@ -91,10 +107,17 @@ const MODEL_OPTIONS: Record<TabProvider, { id: string; label: string; descriptio
             label: "Gemini 3 Flash",
             description: "Fast and capable",
         },
+    ],
+    deepseek: [
         {
-            id: "gemini-3.1-flash-lite-preview",
-            label: "Gemini 3.1 Flash Lite",
-            description: "Fastest, most efficient",
+            id: "deepseek-v4-pro",
+            label: "DeepSeek V4 Pro",
+            description: "Most capable, strongest reasoning",
+        },
+        {
+            id: "deepseek-v4-flash",
+            label: "DeepSeek V4 Flash",
+            description: "Fast and cost-efficient",
         },
     ],
 };
@@ -108,7 +131,7 @@ function loadTabProvider(): TabProvider {
     // "openai-codex" and "openai-compatible" both show the OpenAI tab
     // with the custom endpoint toggle enabled.
     if (stored === "openai-codex" || stored === "openai-compatible") return "openai";
-    if (stored === "anthropic" || stored === "google") return stored;
+    if (stored === "anthropic" || stored === "google" || stored === "deepseek") return stored;
     return "openai";
 }
 
@@ -119,14 +142,14 @@ function loadUseCustomEndpoint(): boolean {
 }
 
 function loadModel(): string {
-    if (typeof localStorage === "undefined") return "gpt-4o-mini";
-    return localStorage.getItem(MODEL_KEY) ?? "gpt-4o-mini";
+    if (typeof localStorage === "undefined") return "gpt-5.5";
+    return localStorage.getItem(MODEL_KEY) ?? "gpt-5.5";
 }
 
 let selectedTab = $state<TabProvider>(loadTabProvider());
 let useCustomEndpoint = $state(loadUseCustomEndpoint());
 let selectedModel = $state(loadModel());
-    let baseUrl = $state(aiSettings.baseURL);
+let baseUrl = $state(aiSettings.baseURL);
 
 let apiKey = $state(aiSettings.apiKey);
 let keyLoading = $state(!aiSettings.apiKey);
@@ -175,11 +198,11 @@ $effect(() => {
     };
 });
 
-    function selectTab(id: TabProvider) {
-        selectedTab = id;
-        if (id !== "openai") {
-            useCustomEndpoint = false;
-        }
+function selectTab(id: TabProvider) {
+    selectedTab = id;
+    if (id !== "openai") {
+        useCustomEndpoint = false;
+    }
     const first = MODEL_OPTIONS[id][0];
     selectedModel = first.id;
     localStorage.setItem(MODEL_KEY, first.id);
@@ -187,8 +210,8 @@ $effect(() => {
     posthog.capture("ai_settings_provider_changed", { provider: effectiveProvider });
 }
 
-    function toggleCustomEndpoint(enabled: boolean) {
-        useCustomEndpoint = enabled;
+function toggleCustomEndpoint(enabled: boolean) {
+    useCustomEndpoint = enabled;
     if (enabled) {
         // Switch to freeform model — keep whatever the user types.
         posthog.capture("ai_settings_provider_changed", { provider: "openai-compatible" });
@@ -267,9 +290,19 @@ async function saveApiKey() {
 
     <!-- Provider -->
     <div>
-        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
-            Provider
-        </p>
+        <div class="flex items-center gap-1.5 mb-2">
+            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+                Provider
+            </p>
+            <button
+                onclick={() => (showModelGuide = true)}
+                aria-label="Which model should I use?"
+                title="Which model should I use?"
+                class="text-black/25 hover:text-black/55 transition-colors"
+            >
+                <InfoIcon size={12} />
+            </button>
+        </div>
         <div class="flex gap-1.5">
             {#each PROVIDERS as provider}
                 {@const active = selectedTab === provider.id}
@@ -296,6 +329,10 @@ async function saveApiKey() {
                                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                            </svg>
+                        {:else if provider.id === "deepseek"}
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" class="text-[#4D6BFE]">
+                                <path d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.546-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.227-.827zm1-6.466a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .016-.588c.07-.327-.008-.537-.239-.727-.187-.156-.426-.199-.688-.199a.559.559 0 0 1-.254-.078c-.114-.054-.21-.19-.121-.366.028-.057.165-.193.197-.218.36-.205.776-.138 1.16.015.357.144.626.41 1.012.787.395.46.466.589.692.93.18.268.343.544.456.858.07.196-.018.357-.494.453z"/>
                             </svg>
                         {/if}
                     </div>
@@ -529,6 +566,13 @@ async function saveApiKey() {
         {:else if selectedTab === "google"}
             Google. You agree to their
             <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://ai.google.dev/gemini-api/terms")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://policies.google.com/privacy")}>privacy policy</button>.
+        {:else if selectedTab === "deepseek"}
+            DeepSeek. You agree to their
+            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html")}>privacy policy</button>.
         {/if}
     </p>
 </div>
+
+{#if showModelGuide}
+    <ModelGuideModal onclose={() => (showModelGuide = false)} />
+{/if}
