@@ -51,6 +51,7 @@ import { appSettings, persistSettings } from "$lib/settings.svelte";
 import { toast } from "svelte-sonner";
 import posthog from "$lib/posthog";
 import { Minimize2 } from "lucide-svelte";
+import { createResizeController } from "$lib/ui/useResize.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -214,9 +215,15 @@ function getAnnotationLeft(): number {
 }
 
 let scrollContainer = $state<HTMLDivElement | undefined>(undefined);
-let resizingPanel = $state(false);
-let panelResizeStartX = 0;
-let panelResizeStartWidth = 0;
+
+const panelResize = createResizeController({
+    minWidth: MIN_PANEL_WIDTH,
+    maxWidth: MAX_PANEL_WIDTH,
+    onResize: (w) => {
+        if (w !== null) appSettings.annotationPanelWidth = w;
+    },
+    onResizeEnd: () => persistSettings(),
+});
 
 // Sort annotations by document position for stable rendering
 const sortedAnnotations = $derived(
@@ -479,37 +486,6 @@ function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     scrollContainer.style.width = `${availableWidth}px`;
 }
 
-function startPanelResize(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    resizingPanel = true;
-    panelResizeStartX = e.clientX;
-    panelResizeStartWidth = appSettings.annotationPanelWidth;
-    window.addEventListener("mousemove", onPanelResizeMove);
-    window.addEventListener("mouseup", onPanelResizeEnd);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "ew-resize";
-}
-
-function onPanelResizeMove(e: MouseEvent) {
-    if (!resizingPanel) return;
-    const dx = e.clientX - panelResizeStartX;
-    appSettings.annotationPanelWidth = Math.min(
-        MAX_PANEL_WIDTH,
-        Math.max(MIN_PANEL_WIDTH, Math.round(panelResizeStartWidth + dx)),
-    );
-}
-
-function onPanelResizeEnd() {
-    if (!resizingPanel) return;
-    resizingPanel = false;
-    window.removeEventListener("mousemove", onPanelResizeMove);
-    window.removeEventListener("mouseup", onPanelResizeEnd);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
-    persistSettings();
-}
-
 const isCustomPanelWidth = $derived(appSettings.annotationPanelWidth !== DEFAULT_PANEL_WIDTH);
 
 function resetPanelWidth() {
@@ -628,12 +604,7 @@ $effect(() => {
 });
 
 $effect(() => {
-    return () => {
-        window.removeEventListener("mousemove", onPanelResizeMove);
-        window.removeEventListener("mouseup", onPanelResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-    };
+    return () => panelResize.cleanup();
 });
 </script>
 
@@ -682,8 +653,8 @@ $effect(() => {
                 aria-label="Resize annotations panel"
                 aria-orientation="vertical"
                 class="annotation-resize-handle"
-                class:is-resizing={resizingPanel}
-                onmousedown={startPanelResize}
+                class:is-resizing={panelResize.isResizing}
+                onmousedown={(e) => panelResize.startResize(e, "right", appSettings.annotationPanelWidth, 0)}
             >
                 {#if isCustomPanelWidth}
                     <button

@@ -40,6 +40,8 @@ type AppSettings = {
     grammarCheckEnabled: boolean;
     grammarDialect: "american" | "british" | "australian";
     annotationPanelWidth: number;
+    revisionModalWidth: number | null;
+    revisionModalHeight: number | null;
 };
 
 const DEFAULTS: AppSettings = {
@@ -69,6 +71,8 @@ const DEFAULTS: AppSettings = {
     grammarCheckEnabled: true,
     grammarDialect: "american",
     annotationPanelWidth: 280,
+    revisionModalWidth: null,
+    revisionModalHeight: null,
 };
 
 function loadSettings(): AppSettings {
