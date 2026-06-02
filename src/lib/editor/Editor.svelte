@@ -465,9 +465,17 @@ onMount(() => {
     </div>
 
     {#await fromSave then}
+        <!--
+            Document width is fluid below 816px (shrinks to fit narrow
+            tablet/phone webviews) but capped at 816px on desktop, so the
+            desktop layout is byte-for-byte identical to the previous
+            `w-[816px]`. The mx-3 horizontal inset only has an effect once
+            the viewport is narrower than 816px + margins; on desktop the
+            max-w cap wins and mx-auto centers it unchanged.
+        -->
         <div
             id="editor-document"
-            class="mx-auto w-[816px] min-h-[calc(100vh-4rem)] mt-12 mb-12 bg-white rounded-lg shadow-xl py-3 px-1"
+            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mt-12 mb-12 bg-white rounded-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
             bind:this={element}
         ></div>
     {/await}

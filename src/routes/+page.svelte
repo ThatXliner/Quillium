@@ -61,6 +61,8 @@ import { autoAISettings } from "$lib/autoai/settings.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 import LicensesModal from "$lib/ui/LicensesModal.svelte";
+import MobileMenu from "$lib/ui/MobileMenu.svelte";
+import type { ExportFormat } from "$lib/export";
 import changelog from "$lib/changelog.json";
 import posthog from "$lib/posthog";
 import { appEventBus } from "$lib/events/appEventBus";
@@ -201,6 +203,12 @@ function handleKeydown(e: KeyboardEvent) {
             persistSettings();
         }
     }
+}
+
+// In-app menu (mobile) — reuse the SAME export path the native menu uses.
+function handleMobileExport(format: ExportFormat) {
+    const view = $editorView;
+    if (view) exportDocument(view, format);
 }
 
 async function installUpdate() {
@@ -459,6 +467,17 @@ if (import.meta.env.DEV) {
 {/if}
 <DictionaryPopover />
 <HarperTooltip />
+
+<!-- In-app overflow menu — only visible on small/touch viewports (<900px).
+     Reaches Settings / Library / History / Licenses / Export, the same
+     actions the desktop-only native menu bar triggers. -->
+<MobileMenu
+    onsettings={() => ($settingsOpen = !$settingsOpen)}
+    onlibrary={goToLibrary}
+    onhistory={goToHistory}
+    onlicenses={() => (licensesOpen = !licensesOpen)}
+    onexport={handleMobileExport}
+/>
 
 <div class="h-screen w-full">
     <Editor bind:this={editorComponent} />
