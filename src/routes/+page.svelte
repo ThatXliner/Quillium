@@ -50,6 +50,13 @@ import { APP_STORE_URL } from "$lib/constants";
 // On MAS builds the updater/process plugins are not registered, but we still
 // check for updates and show the banner — clicking it opens the App Store instead.
 const MAS_BUILD = import.meta.env.VITE_MAS === "true";
+
+// On mobile (iOS/Android) the updater + process plugins are gated out of the
+// Rust build entirely (see src-tauri/src/lib.rs), so any check()/relaunch()
+// invoke would reject. Updates ship via the App Store / Play Store. Detect the
+// mobile webview via user-agent and skip the desktop self-update flow.
+const IS_MOBILE =
+    typeof navigator !== "undefined" && /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
 import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
@@ -261,7 +268,8 @@ onMount(() => {
 
     // Check for updates silently in the background.
     // On MAS builds the banner redirects to the App Store instead of self-updating.
-    if (appSettings.checkForUpdates && canCheckForUpdatesNow()) {
+    // On mobile the updater plugin isn't registered, so skip entirely.
+    if (!IS_MOBILE && appSettings.checkForUpdates && canCheckForUpdatesNow()) {
         check()
             .then((update) => {
                 if (update) {

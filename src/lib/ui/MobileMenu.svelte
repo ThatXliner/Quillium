@@ -56,7 +56,7 @@ const itemClass =
 <DropdownMenu.Root>
     <DropdownMenu.Trigger
         aria-label="Menu"
-        class="fixed top-8 left-8 z-40 hidden max-[899px]:flex w-11 h-11 rounded-full
+        class="fixed top-4 left-4 z-50 hidden max-[899px]:flex w-11 h-11 rounded-full
             bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md
             items-center justify-center text-black/70 hover:bg-gray-50/30 transition-colors"
     >
