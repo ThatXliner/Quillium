@@ -1,12 +1,12 @@
 pub mod db;
 mod keychain;
+// PDF export pulls in printpdf → azul-layout, which does not compile for mobile
+// targets. Desktop only; mobile gets a stub command (see cmd_export_pdf).
+#[cfg(desktop)]
 mod pdf_export;
 
 use std::sync::Mutex;
-use tauri::{
-    menu::{Menu, MenuItemBuilder, SubmenuBuilder},
-    Emitter, Manager,
-};
+use tauri::Manager;
 
 use db::{
     documents::{
@@ -25,6 +25,7 @@ use db::{
     AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
+#[cfg(desktop)]
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
@@ -269,9 +270,18 @@ fn cmd_purge_expired_trash(state: tauri::State<DbState>) -> Result<u64, String> 
     }
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn cmd_export_pdf(path: String, payload: PdfExportPayload) -> Result<(), String> {
     export_pdf_to_path(&path, &payload)
+}
+
+// PDF export is unavailable on mobile (printpdf does not build for iOS/Android).
+// Keep the command registered so the frontend invoke path stays valid.
+#[cfg(mobile)]
+#[tauri::command]
+fn cmd_export_pdf(_path: String, _payload: serde_json::Value) -> Result<(), String> {
+    Err("PDF export is not supported on mobile".to_string())
 }
 
 // ── Debug reset command ───────────────────────────────────────────
@@ -315,16 +325,132 @@ fn scrap(state: tauri::State<DbState>) -> bool {
     true
 }
 
+// ── Native app menu (desktop only) ────────────────────────────────
+
+#[cfg(desktop)]
+fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::{
+        menu::{Menu, MenuItemBuilder, SubmenuBuilder},
+        Emitter,
+    };
+
+    let app_menu = SubmenuBuilder::new(app, "Quillium")
+        .about(None)
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id("settings", "Settings…")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?,
+        )
+        .item(&MenuItemBuilder::with_id("licenses", "Open Source Licenses…").build(app)?)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+
+    let export_submenu = SubmenuBuilder::new(app, "Export")
+        .item(&MenuItemBuilder::with_id("export-txt", "Plain Text (.txt)").build(app)?)
+        .item(&MenuItemBuilder::with_id("export-txt-json", "Text + Annotations (.txt)").build(app)?)
+        .item(&MenuItemBuilder::with_id("export-json", "JSON (.json)").build(app)?)
+        .item(&MenuItemBuilder::with_id("export-md", "Markdown (.md)").build(app)?)
+        .item(&MenuItemBuilder::with_id("export-pdf", "PDF (.pdf)").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("export-pdf-annotations", "PDF + Annotations (.pdf)")
+                .build(app)?,
+        )
+        .build()?;
+
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .item(
+            &MenuItemBuilder::with_id("library", "Library")
+                .accelerator("CmdOrCtrl+O")
+                .build(app)?,
+        )
+        .item(&export_submenu)
+        .build()?;
+
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .item(
+            &MenuItemBuilder::with_id("history", "Version History")
+                .accelerator("CmdOrCtrl+Shift+H")
+                .build(app)?,
+        )
+        .separator()
+        .fullscreen()
+        .build()?;
+
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .maximize()
+        .close_window()
+        .build()?;
+
+    let menu = Menu::with_items(
+        app,
+        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+    )?;
+    app.set_menu(menu)?;
+
+    // Handle custom menu events by emitting them to the frontend.
+    app.on_menu_event(move |app_handle, event| {
+        let id = event.id().as_ref();
+        match id {
+            "settings"
+            | "history"
+            | "library"
+            | "licenses"
+            | "export-txt"
+            | "export-txt-json"
+            | "export-json"
+            | "export-md"
+            | "export-pdf"
+            | "export-pdf-annotations" => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.emit(&format!("menu:{id}"), ());
+                }
+            }
+            _ => {}
+        }
+    });
+
+    Ok(())
+}
+
 // ── App entry point ───────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_fs::init());
+
+    // Self-update and relaunch only exist on desktop; mobile updates go through
+    // the App Store / Play Store.
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
         .setup(|app| {
             // Allow override for testing (e.g. running two instances with separate DBs)
             let db_path = match std::env::var("QUILLIUM_DATA_DIR") {
@@ -355,96 +481,10 @@ pub fn run() {
             }
             app.manage(DbState(Mutex::new(conn)));
 
-            // ── App menu ──────────────────────────────────────────────
-            let app_menu = SubmenuBuilder::new(app, "Quillium")
-                .about(None)
-                .separator()
-                .item(
-                    &MenuItemBuilder::with_id("settings", "Settings…")
-                        .accelerator("CmdOrCtrl+,")
-                        .build(app)?,
-                )
-                .item(&MenuItemBuilder::with_id("licenses", "Open Source Licenses…").build(app)?)
-                .separator()
-                .services()
-                .separator()
-                .hide()
-                .hide_others()
-                .show_all()
-                .separator()
-                .quit()
-                .build()?;
-
-            let export_submenu = SubmenuBuilder::new(app, "Export")
-                .item(&MenuItemBuilder::with_id("export-txt", "Plain Text (.txt)").build(app)?)
-                .item(
-                    &MenuItemBuilder::with_id("export-txt-json", "Text + Annotations (.txt)")
-                        .build(app)?,
-                )
-                .item(&MenuItemBuilder::with_id("export-json", "JSON (.json)").build(app)?)
-                .item(&MenuItemBuilder::with_id("export-md", "Markdown (.md)").build(app)?)
-                .item(&MenuItemBuilder::with_id("export-pdf", "PDF (.pdf)").build(app)?)
-                .item(
-                    &MenuItemBuilder::with_id("export-pdf-annotations", "PDF + Annotations (.pdf)")
-                        .build(app)?,
-                )
-                .build()?;
-
-            let file_menu = SubmenuBuilder::new(app, "File")
-                .item(
-                    &MenuItemBuilder::with_id("library", "Library")
-                        .accelerator("CmdOrCtrl+O")
-                        .build(app)?,
-                )
-                .item(&export_submenu)
-                .build()?;
-
-            let edit_menu = SubmenuBuilder::new(app, "Edit")
-                .undo()
-                .redo()
-                .separator()
-                .cut()
-                .copy()
-                .paste()
-                .select_all()
-                .build()?;
-
-            let view_menu = SubmenuBuilder::new(app, "View")
-                .item(
-                    &MenuItemBuilder::with_id("history", "Version History")
-                        .accelerator("CmdOrCtrl+Shift+H")
-                        .build(app)?,
-                )
-                .separator()
-                .fullscreen()
-                .build()?;
-
-            let window_menu = SubmenuBuilder::new(app, "Window")
-                .minimize()
-                .maximize()
-                .close_window()
-                .build()?;
-
-            let menu = Menu::with_items(
-                app,
-                &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
-            )?;
-            app.set_menu(menu)?;
-
-            // Handle custom menu events by emitting them to the frontend.
-            app.on_menu_event(move |app_handle, event| {
-                let id = event.id().as_ref();
-                match id {
-                    "settings" | "history" | "library" | "licenses" | "export-txt"
-                    | "export-txt-json" | "export-json" | "export-md" | "export-pdf"
-                    | "export-pdf-annotations" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.emit(&format!("menu:{id}"), ());
-                        }
-                    }
-                    _ => {}
-                }
-            });
+            // Native app menu is desktop-only; mobile has no menu bar, so the
+            // frontend exposes these actions through in-app UI instead.
+            #[cfg(desktop)]
+            setup_app_menu(app)?;
 
             Ok(())
         })
