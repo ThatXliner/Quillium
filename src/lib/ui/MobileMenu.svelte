@@ -11,6 +11,10 @@
     Desktop is left untouched: the trigger is hidden at >=900px via the
     `max-[899px]:flex` responsive class (it is `hidden` otherwise), so the
     native menu bar remains the only entry point on desktop.
+
+    Placement: a bottom-right floating action button — clear of the editor's
+    sticky top toolbar (which owns the top strip) and thumb-reachable. The
+    menu opens upward (side="top") so it doesn't run off the bottom edge.
 -->
 <script lang="ts">
 import { DropdownMenu } from "bits-ui";
@@ -56,16 +60,18 @@ const itemClass =
 <DropdownMenu.Root>
     <DropdownMenu.Trigger
         aria-label="Menu"
-        class="fixed top-4 left-4 z-50 hidden max-[899px]:flex w-11 h-11 rounded-full
-            bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md
-            items-center justify-center text-black/70 hover:bg-gray-50/30 transition-colors"
+        class="fixed bottom-6 right-6 z-50 hidden max-[899px]:flex w-12 h-12 rounded-full
+            bg-white/60 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-lg
+            items-center justify-center text-black/70 hover:bg-gray-50/40 transition-colors"
     >
-        <MenuIcon size={20} />
+        <MenuIcon size={22} />
     </DropdownMenu.Trigger>
 
     <DropdownMenu.Content
         class="z-50 w-56 bg-white/10 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 py-2"
         strategy="absolute"
+        side="top"
+        align="end"
         preventScroll={false}
         sideOffset={6}
     >
