@@ -210,7 +210,11 @@ pub fn prune_snapshots_keep_last_n(conn: &Connection, draft_id: &str, keep_n: i6
     Ok(deleted as u64)
 }
 
-pub fn prune_snapshots_older_than(conn: &Connection, draft_id: &str, older_than_days: i64) -> Result<u64> {
+pub fn prune_snapshots_older_than(
+    conn: &Connection,
+    draft_id: &str,
+    older_than_days: i64,
+) -> Result<u64> {
     // Overflow safety: if the multiplication or subtraction overflows,
     // clamp to now_ms() so we never get cutoff_ms = 0 and delete everything.
     let cutoff_ms = older_than_days
@@ -235,11 +239,7 @@ pub fn label_snapshot(conn: &Connection, snapshot_id: i64, label: &str) -> Resul
     Ok(())
 }
 
-pub fn restore_to_snapshot(
-    conn: &Connection,
-    draft_id: &str,
-    snapshot_id: i64,
-) -> Result<()> {
+pub fn restore_to_snapshot(conn: &Connection, draft_id: &str, snapshot_id: i64) -> Result<()> {
     let up_to_event_id: i64 = conn.query_row(
         "SELECT up_to_event_id FROM snapshots WHERE id = ?1 AND draft_id = ?2",
         params![snapshot_id, draft_id],

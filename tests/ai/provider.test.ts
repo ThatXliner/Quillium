@@ -56,6 +56,33 @@ describe("createModel", () => {
         expect(model).toMatchObject({ provider: "openai", modelId: "gpt-4o-mini" });
     });
 
+    it("routes openai-compatible provider through createOpenAI with custom baseURL", () => {
+        const model = createModel(
+            "openai-compatible",
+            "my-key",
+            "llama3",
+            "http://localhost:11434/v1",
+        );
+
+        expect(mocked.createOpenAI).toHaveBeenCalledWith({
+            apiKey: "my-key",
+            baseURL: "http://localhost:11434/v1",
+        });
+        expect(mocked.openaiModelBuilder).toHaveBeenCalledWith("llama3");
+        expect(mocked.createAnthropic).not.toHaveBeenCalled();
+        expect(mocked.createGoogleGenerativeAI).not.toHaveBeenCalled();
+        expect(model).toMatchObject({ provider: "openai", modelId: "llama3" });
+    });
+
+    it("uses fallback baseURL when none provided for openai-compatible", () => {
+        createModel("openai-compatible", "", "llama3");
+
+        expect(mocked.createOpenAI).toHaveBeenCalledWith({
+            apiKey: "unused",
+            baseURL: "http://localhost:11434/v1",
+        });
+    });
+
     it("routes anthropic provider through createAnthropic", () => {
         const model = createModel("anthropic", "anthropic-key", "claude-3-7-sonnet");
 

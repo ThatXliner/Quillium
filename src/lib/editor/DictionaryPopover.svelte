@@ -1,7 +1,7 @@
 <!--
     DictionaryPopover.svelte — Floating dictionary/thesaurus popover.
 
-    Triggered by Cmd-b (⌘B) when a single word is selected in the editor.
+    Triggered by Cmd-d (⌘D) when a single word is selected in the editor.
     Shows definition, synonyms/antonyms from the Free Dictionary API, and
     a "describe → find word" AI mode. Clicking a synonym replaces the word
     in the editor; "Open in Chat" sends the word to the Chat AI panel.
@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
 import { get } from "svelte/store";
-import { editorView, pendingChatMessage, dictionaryTrigger, selectedText } from "$lib/stores";
+import { editorView, selectedText } from "$lib/stores";
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { renderMarkdown } from "$lib/ai/utils";
 import { hasApiKey } from "$lib/ai/settings.svelte";
@@ -18,6 +18,7 @@ import { Transaction } from "@codemirror/state";
 import { ExternalLinkIcon, XIcon } from "lucide-svelte";
 import { capture } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import { getPhonetic, collectSynonyms, collectAntonyms, type DictEntry } from "./dictionaryUtils";
 
 // ── State ──────────────────────────────────────────────────────
@@ -38,6 +39,20 @@ let lookupResult = $state<DictEntry[] | null>(null);
 let lookupError = $state<string | null>(null);
 let lookupLoading = $state(false);
 
+type StackedLookup = {
+    id: number;
+    word: string;
+    posX: number;
+    posY: number;
+    lookupResult: DictEntry[] | null;
+    lookupError: string | null;
+    lookupLoading: boolean;
+    controller: AbortController | null;
+};
+
+let stackedLookups = $state<StackedLookup[]>([]);
+let nextStackedLookupId = 1;
+
 // Describe mode (AI)
 let describeInput = $state("");
 const { chat, clearChat } = createAiChat({ mode: "dictionary" });
@@ -45,23 +60,24 @@ const { chat, clearChat } = createAiChat({ mode: "dictionary" });
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat);
 
-// ── React to trigger store ─────────────────────────────────────
+// ── React to bus events ────────────────────────────────────────
 
 $effect(() => {
-    const trigger = $dictionaryTrigger;
-    if (!trigger) return;
-    word = trigger.word;
-    anchorWord = trigger.word;
-    selFrom = trigger.selectionFrom;
-    selTo = trigger.selectionTo;
-    centerX = trigger.x;
-    centerY = trigger.y;
-    visible = true;
-    describeInput = "";
-    clearChat();
-    lookupResult = null;
-    lookupError = null;
-    lookupWord(trigger.word);
+    return appEventBus.on("dictionary-open", (event) => {
+        word = event.word;
+        anchorWord = event.word;
+        selFrom = event.selectionFrom;
+        selTo = event.selectionTo;
+        centerX = event.x;
+        centerY = event.y;
+        visible = true;
+        stackedLookups = [];
+        describeInput = "";
+        clearChat();
+        lookupResult = null;
+        lookupError = null;
+        lookupWord(event.word);
+    });
 });
 
 // The word the editor selection was on when the popover opened.
@@ -99,7 +115,10 @@ $effect(() => {
 
 function dismiss() {
     visible = false;
-    dictionaryTrigger.set(null);
+    for (const lookup of stackedLookups) {
+        lookup.controller?.abort();
+    }
+    stackedLookups = [];
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -161,10 +180,68 @@ function replaceWith(synonym: string) {
     dismiss();
 }
 
-function lookupChip(w: string) {
-    word = w;
-    lookupWord(w);
+async function lookupStackedWord(lookup: StackedLookup) {
+    lookup.controller?.abort();
+    const controller = new AbortController();
+    lookup.controller = controller;
+    lookup.lookupLoading = true;
+    lookup.lookupError = null;
+    lookup.lookupResult = null;
+
+    try {
+        const res = await fetch(
+            `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lookup.word)}`,
+            { signal: controller.signal },
+        );
+        if (lookup.controller !== controller) return;
+        if (res.status === 404) {
+            lookup.lookupError = `No results for "${lookup.word}".`;
+            return;
+        }
+        if (!res.ok) {
+            lookup.lookupError = "Dictionary unavailable.";
+            return;
+        }
+        lookup.lookupResult = (await res.json()) as DictEntry[];
+    } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+            lookup.lookupError = "Could not reach dictionary.";
+        }
+    } finally {
+        if (lookup.controller === controller) {
+            lookup.lookupLoading = false;
+        }
+    }
+}
+
+function openStackedLookup(w: string, event: MouseEvent) {
+    const target = event.currentTarget as HTMLElement | null;
+    const rect = target?.getBoundingClientRect();
+    const popoverWidth = 320;
+    const xFromRight = rect ? rect.right + 8 : centerX + 24;
+    const xFromLeft = rect ? rect.left - popoverWidth - 8 : centerX - popoverWidth - 24;
+    const posX =
+        xFromRight + popoverWidth <= window.innerWidth - 8 ? xFromRight : Math.max(8, xFromLeft);
+    const posY = Math.min(Math.max(rect?.top ?? centerY, 8), window.innerHeight - 360);
+    const lookup: StackedLookup = {
+        id: nextStackedLookupId++,
+        word: w,
+        posX,
+        posY,
+        lookupResult: null,
+        lookupError: null,
+        lookupLoading: false,
+        controller: null,
+    };
+    stackedLookups = [...stackedLookups, lookup];
+    lookupStackedWord(lookup);
     capture("dictionary_chip_lookup", { word: w });
+}
+
+function closeStackedLookup(id: number) {
+    const lookup = stackedLookups.find((item) => item.id === id);
+    lookup?.controller?.abort();
+    stackedLookups = stackedLookups.filter((item) => item.id !== id);
 }
 
 function openInChat() {
@@ -185,8 +262,7 @@ function openInChat() {
             ? `Tell me more about the word "${word}": ${def}`
             : `Tell me more about the word "${word}"`;
     }
-    pendingChatMessage.set(msg);
-    window.dispatchEvent(new CustomEvent("quillium:open-chat"));
+    appEventBus.emit({ type: "ai-open-chat", message: msg });
     capture("dictionary_open_in_chat", {
         word,
         has_describe_history: chat.messages.length > 0,
@@ -208,8 +284,12 @@ async function handleDescribeSubmit(e: Event) {
 
 <!-- Backdrop: click outside to dismiss -->
 {#if visible}
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="dictionary-backdrop fixed inset-0 z-[99]" onclick={(e) => { e.stopPropagation(); dismiss(); }}></div>
+    <button
+        type="button"
+        aria-label="Close dictionary"
+        class="dictionary-backdrop fixed inset-0 z-[99] cursor-default border-0 bg-transparent p-0"
+        onclick={(e) => { e.stopPropagation(); dismiss(); }}
+    ></button>
 {/if}
 
 <!-- Popover -->
@@ -289,12 +369,12 @@ async function handleDescribeSubmit(e: Event) {
             {#if synonyms.length > 0}
                 <div>
                     <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
-                        Synonyms <span class="font-normal normal-case tracking-normal text-gray-300">· click to replace</span>
+                        Synonyms <span class="font-normal normal-case tracking-normal text-gray-300">· click to explore</span>
                     </p>
                     <div class="flex flex-wrap gap-1 w-full">
                         {#each synonyms as syn}
                             <button
-                                onclick={() => replaceWith(syn)}
+                                onclick={(e) => openStackedLookup(syn, e)}
                                 class="px-2 py-0.5 text-xs bg-teal-50 text-teal-700 rounded-full border border-teal-100 hover:bg-teal-500 hover:text-white hover:border-teal-500 transition-colors"
                             >{syn}</button>
                         {/each}
@@ -309,7 +389,7 @@ async function handleDescribeSubmit(e: Event) {
                     <div class="flex flex-wrap gap-1 w-full">
                         {#each antonyms as ant}
                             <button
-                                onclick={() => lookupChip(ant)}
+                                onclick={(e) => openStackedLookup(ant, e)}
                                 class="px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded-full border border-gray-200 hover:bg-gray-200 transition-colors"
                             >{ant}</button>
                         {/each}
@@ -369,3 +449,100 @@ async function handleDescribeSubmit(e: Event) {
         {/if}
     </div>
 </div>
+
+{#each stackedLookups as stacked, stackIndex (stacked.id)}
+    <div
+        class="dictionary-popover fixed z-[101] w-80 max-h-[420px] flex flex-col
+            backdrop-blur-md bg-white/95 border border-white/50 shadow-2xl rounded-2xl
+            overflow-hidden transition-all duration-150"
+        style="left: {stacked.posX}px; top: {stacked.posY + stackIndex * 10}px;"
+    >
+        <div class="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
+            <div class="flex items-baseline gap-2 min-w-0">
+                <span class="font-semibold text-gray-900 truncate">{stacked.word}</span>
+                {#if stacked.lookupResult}
+                    {@const phonetic = getPhonetic(stacked.lookupResult[0])}
+                    {#if phonetic}
+                        <span class="text-xs text-gray-400 font-mono shrink-0">{phonetic}</span>
+                    {/if}
+                {/if}
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+                <button
+                    onclick={() => replaceWith(stacked.word)}
+                    class="rounded-full bg-teal-50 px-2 py-1 text-[11px] font-medium text-teal-700 transition-colors hover:bg-teal-500 hover:text-white"
+                >
+                    Replace
+                </button>
+                <button
+                    onclick={() => closeStackedLookup(stacked.id)}
+                    class="p-1 rounded-full text-black/30 hover:text-black/60 hover:bg-black/10 transition-colors"
+                    aria-label="Close lookup"
+                >
+                    <XIcon size={13} />
+                </button>
+            </div>
+        </div>
+
+        <div class="w-full h-px bg-black/8 shrink-0"></div>
+
+        <div class="flex-1 overflow-y-auto px-3 py-2 space-y-3 min-h-0">
+            {#if stacked.lookupLoading}
+                <div class="flex items-center gap-2 text-gray-400 text-sm py-2">
+                    <span class="animate-pulse">●</span>
+                    <span>Looking up...</span>
+                </div>
+            {:else if stacked.lookupError}
+                <p class="text-sm text-gray-400">{stacked.lookupError}</p>
+            {:else if stacked.lookupResult}
+                {@const entry = stacked.lookupResult[0]}
+                {@const synonyms = collectSynonyms(stacked.lookupResult)}
+                {@const antonyms = collectAntonyms(stacked.lookupResult)}
+
+                {#each entry.meanings.slice(0, 2) as meaning}
+                    <div class="space-y-1">
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-600">
+                            {meaning.partOfSpeech}
+                        </p>
+                        {#each meaning.definitions.slice(0, 2) as def, i}
+                            <p class="text-xs text-gray-700 leading-snug">
+                                <span class="text-gray-400 mr-1">{i + 1}.</span>{def.definition}
+                            </p>
+                            {#if def.example}
+                                <p class="text-[11px] text-gray-400 italic pl-3">"{def.example}"</p>
+                            {/if}
+                        {/each}
+                    </div>
+                {/each}
+
+                {#if synonyms.length > 0}
+                    <div>
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Synonyms</p>
+                        <div class="flex flex-wrap gap-1 w-full">
+                            {#each synonyms as syn}
+                                <button
+                                    onclick={(e) => openStackedLookup(syn, e)}
+                                    class="px-2 py-0.5 text-xs bg-teal-50 text-teal-700 rounded-full border border-teal-100 hover:bg-teal-500 hover:text-white hover:border-teal-500 transition-colors"
+                                >{syn}</button>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
+                {#if antonyms.length > 0}
+                    <div>
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Antonyms</p>
+                        <div class="flex flex-wrap gap-1 w-full">
+                            {#each antonyms as ant}
+                                <button
+                                    onclick={(e) => openStackedLookup(ant, e)}
+                                    class="px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded-full border border-gray-200 hover:bg-gray-200 transition-colors"
+                                >{ant}</button>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+            {/if}
+        </div>
+    </div>
+{/each}

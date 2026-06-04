@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quillium",
-  "version": "0.13.14",
+  "version": "0.17.1",
   "identifier": "com.bryanhu.quillium",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -44,6 +44,9 @@
     "macOS": {
       "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB",
       "entitlements": "Entitlements.mac.plist"
+    },
+    "iOS": {
+      "developmentTeam": "6AGA46VW38"
     },
     "createUpdaterArtifacts": true
   }

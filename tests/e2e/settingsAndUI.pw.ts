@@ -19,8 +19,8 @@ test.describe("settings modal", () => {
 
         const modal = await q.openSettings();
         await expect(modal.getByText("Settings")).toBeVisible();
-        await expect(modal.getByText("Document", { exact: true })).toBeVisible();
-        await expect(modal.getByText("Interface", { exact: true })).toBeVisible();
+        await expect(modal.getByRole("button", { name: "Basic" })).toBeVisible();
+        await expect(modal.getByRole("button", { name: "Advanced" })).toBeVisible();
     });
 
     test("closes when clicking outside or pressing escape", async ({ page }) => {
@@ -32,6 +32,17 @@ test.describe("settings modal", () => {
         await expect(page.locator(".settings-modal-inner")).not.toBeVisible({
             timeout: 3_000,
         });
+    });
+
+    test("switches editor mode to plain text", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        const modal = await q.openSettings();
+        await modal.getByRole("button", { name: "Plain text" }).click();
+        await modal.getByRole("button", { name: "Save" }).click();
+
+        await expect(page.getByText("Markdown")).not.toBeVisible();
     });
 });
 
@@ -81,6 +92,18 @@ test.describe("AI sidebar", () => {
         await q.escape();
         // After escape, the expanded panel should collapse
         await expect(page.locator("#ai-sidebar .overflow-x-auto")).not.toBeVisible();
+    });
+
+    test("AutoAI widget opens AI settings through the external event path", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+
+        await page.getByRole("button", { name: "AutoAI — add an API key to enable" }).click();
+        await page.getByRole("button", { name: "Add an API key", exact: true }).click();
+
+        await expect(q.aiSidebar).toContainText("AI Settings");
     });
 });
 
@@ -201,6 +224,20 @@ test.describe("error resilience", () => {
         }
 
         q.expectNoPageErrors();
+    });
+});
+
+test.describe("markdown formatting", () => {
+    test("applies bold formatting from the keyboard shortcut", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        await q.typeInEditor("hello world");
+        await q.selectRange(0, 5);
+        await page.keyboard.press("ControlOrMeta+b");
+
+        await q.expectEditorText("**hello** world");
+        await expect(page.getByRole("button", { name: "Bold" })).toHaveCount(0);
     });
 });
 

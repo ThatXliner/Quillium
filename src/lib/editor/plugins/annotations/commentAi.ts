@@ -6,6 +6,7 @@
  */
 import { streamChat } from "$lib/ai/clientStreams";
 import { setAiProcessing, ensureApiKeyLoaded, getAiAbortSignal } from "$lib/ai/settings.svelte";
+import type { Provider } from "$lib/ai/provider";
 import type { Thread } from ".";
 
 /**
@@ -21,7 +22,7 @@ export function buildCommentAiPrompt(thread: Thread, selectedText: string): stri
             : thread.map((m) => `${m.author}: ${m.message}`).join("\n");
     prompt += "\n```\n";
     prompt += "For context, here is the selected text the comment is referring to:\n";
-    prompt += "```\n" + selectedText + "```\n";
+    prompt += `\`\`\`\n${selectedText}\`\`\`\n`;
     prompt += "Be concise.";
     return prompt;
 }
@@ -33,12 +34,12 @@ export function buildCommentAiPrompt(thread: Thread, selectedText: string): stri
 export async function streamCommentAiResponse(
     prompt: string,
     selectedText: string,
-    settings: { provider: string; model: string; apiKey: string },
+    settings: { provider: Provider; model: string; apiKey: string },
 ): Promise<string> {
     setAiProcessing(true);
     await ensureApiKeyLoaded();
     const abortSignal = getAiAbortSignal();
-    const stream = streamChat({
+    const stream = await streamChat({
         messages: [{ id: "1", role: "user", parts: [{ type: "text", text: prompt }] }],
         documentContent: "",
         selectedText,

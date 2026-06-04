@@ -101,7 +101,12 @@ test.describe("tutorial interactive revision detection", () => {
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true, aiEnabled: true }),
+                JSON.stringify({
+                    showNestedEditor: true,
+                    atomicRevisions: true,
+                    aiEnabled: true,
+                    autoVersionOnRevisionCreate: false,
+                }),
             );
         });
         await page.goto("/");
@@ -121,7 +126,7 @@ test.describe("tutorial interactive revision detection", () => {
 
         // Should be on the "Create Nested Revisions" step
         await expect(page.getByText("Create Nested Revisions")).toBeVisible({ timeout: 3_000 });
-        await expect(page.getByText("Action required: create a revision")).toBeVisible({
+        await expect(page.getByText("Action required: select some text")).toBeVisible({
             timeout: 3_000,
         });
 
@@ -132,7 +137,7 @@ test.describe("tutorial interactive revision detection", () => {
         await page.keyboard.type("hello world");
         await page.keyboard.press("End");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
 
         // The tutorial should detect the revision and show success
         const successBadge = page.getByText("Action complete. Continue when ready.");

@@ -30,49 +30,49 @@
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView } from "@codemirror/view";
-import { ChevronRight, ChevronDown, ChevronUp, Check, X, PlusIcon } from "lucide-svelte";
+import { Check, ChevronDown, ChevronRight, ChevronUp, PlusIcon, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import { scale, slide } from "svelte/transition";
 import {
-    addAnnotation,
-    annotationField,
-    revisionInternalEdit,
-    setActiveRevisionVersion,
-    createNewRevision,
-    updateRevisionVersionLabel,
-    updateRevisionVersionState,
-    updateThread,
     type Annotation,
     type Annotations as AnnotationsMap,
     type GenericAnnotation,
     type Thread as ThreadType,
+    addAnnotation,
+    annotationField,
+    createNewRevision,
+    revisionInternalEdit,
+    setActiveRevisionVersion,
+    updateRevisionVersionLabel,
+    updateRevisionVersionState,
+    updateThread,
 } from ".";
 
-import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./utils";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
 import {
+    type ModalEntry,
+    annotations as annotationsStore,
+    modalAnnotationStores,
+    modalStack,
+} from "$lib/stores";
+import Kbd from "$lib/ui/Kbd.svelte";
+import { EditorSelection, Transaction } from "@codemirror/state";
+import Annotations from "./Annotations.svelte";
+import { NestedEditorController } from "./NestedEditorController";
+import Thread from "./Thread.svelte";
+import TutorialGuide from "./TutorialGuide.svelte";
+import {
+    type VersionState,
     createNewAnnotation,
     getLastId,
     isAnnotationOfType,
     versionText,
-    type VersionState,
 } from "./models";
-import { EditorSelection, Transaction } from "@codemirror/state";
-import {
-    annotations as annotationsStore,
-    modalStack,
-    modalAnnotationStores,
-    type ModalEntry,
-} from "$lib/stores";
-import { annotationEventBus } from "./eventBus";
 import { previewVersionText } from "./nestedEditor";
-import { NestedEditorController } from "./NestedEditorController";
-import { appSettings } from "$lib/settings.svelte";
-import posthog from "$lib/posthog";
-import Annotations from "./Annotations.svelte";
-import Thread from "./Thread.svelte";
-import TutorialGuide from "./TutorialGuide.svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
 import { shouldHandleRevisionModalKeydown } from "./revisionModalKeyguard";
+import { canCreateNewComment, canCreateRevision, getActiveAnnotation } from "./utils";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -501,9 +501,20 @@ $effect(() => {
     }
     lastSyncedVersionIndex = rev.activeVersionIndex;
 
-    const externalDoc = versionText(rev.versions[rev.activeVersionIndex]);
+    const activeVersion = rev.versions[rev.activeVersionIndex];
+    if (controller.needsAnnotationRebuild(activeVersion)) {
+        if (isTop) {
+            send({ type: "REBUILD_REQUESTED" });
+        }
+        return;
+    }
+
+    const externalDoc = versionText(activeVersion);
     send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
 });
+
+// Phase 10: needsCollabModeRebuild $effect removed. Collab mode rebuild
+// is no longer needed - nested editors always use local-only mode.
 
 // Close the version dropdown when clicking outside of it.
 $effect(() => {
@@ -739,6 +750,14 @@ function onDialogKeydown(e: KeyboardEvent) {
     }
 }
 
+function onDialogKeydownCapture(e: KeyboardEvent) {
+    const target = e.target;
+    if (e.key !== "Escape" || !(target instanceof Element)) return;
+    if (!target.closest(".cm-editor")) return;
+    e.preventDefault();
+    close();
+}
+
 let revisionThread = $state(
     (view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined)?.thread ??
         [],
@@ -786,6 +805,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     e.preventDefault();
     close();
   }}
+  onkeydowncapture={onDialogKeydownCapture}
   onkeydown={onDialogKeydown}
 >
   <div class="revision-modal-inner">
@@ -1063,7 +1083,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                   <Annotations
                     view={controller.editor}
                     annotationsData={modalAnnotations}
-                    activeAnnotationData={modalActiveAnnotation}
+                    activeAnnotationData={modalActiveAnnotation ?? null}
                     layout="inline"
                   />
                 {:else}

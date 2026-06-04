@@ -1,11 +1,11 @@
 /**
- * E2E tests for the dictionary/thesaurus popover (⌘B).
+ * E2E tests for the dictionary/thesaurus popover (⌘D).
  *
  * The Free Dictionary API is mocked via Playwright's route interception
  * so tests are hermetic and don't depend on network availability.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 import { QuilliumPage } from "./QuilliumPage";
 
 // ── Mock data ────────────────────────────────────────────────────────────────
@@ -51,11 +51,11 @@ async function mockDictionaryApiNotFound(page: Page) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Type a word, select it, and open the dictionary popover via ⌘B. */
+/** Type a word, select it, and open the dictionary popover via ⌘D. */
 async function openDictionaryOn(q: QuilliumPage, word: string) {
     await q.typeInEditor(word);
     await q.selectAll();
-    await q.page.keyboard.press("ControlOrMeta+b");
+    await q.page.keyboard.press("Control+d");
 }
 
 /**
@@ -75,7 +75,7 @@ async function expectPopoverHidden(page: Page) {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe("dictionary popover", () => {
-    test("opens on ⌘B with a word selected and shows definition", async ({ page }) => {
+    test("opens on ⌘D with a word selected and shows definition", async ({ page }) => {
         await mockDictionaryApi(page);
         const q = new QuilliumPage(page);
         await q.init();
@@ -193,7 +193,7 @@ test.describe("dictionary popover", () => {
 
         await q.typeInEditor("two words");
         await q.selectAll();
-        await q.page.keyboard.press("ControlOrMeta+b");
+        await q.page.keyboard.press("Control+d");
 
         // Popover should not appear for multi-word selections
         await expectPopoverHidden(page);

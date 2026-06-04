@@ -37,9 +37,9 @@ export const DOCUMENT_CONTENT_SELECTOR = [
  * for dynamically injected stylesheets (e.g. from SvelteKit's HMR/code-split).
  */
 function patchStylesheetCORS() {
-    document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((link) => {
+    for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) {
         if (!link.crossOrigin) link.crossOrigin = "anonymous";
-    });
+    }
 
     new MutationObserver((mutations) => {
         for (const m of mutations) {
@@ -67,7 +67,6 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         session_recording: {
             // TODO(#191): conditionally clear maskTextSelector when shareDocumentAnalytics is re-enabled
             maskTextSelector: DOCUMENT_CONTENT_SELECTOR,
-            console_log_recording_enabled: true,
         },
     });
 

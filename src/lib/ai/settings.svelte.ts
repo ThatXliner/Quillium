@@ -25,9 +25,11 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider } from "./provider";
+import { appEventBus } from "$lib/events/appEventBus";
 
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
+const BASE_URL_KEY = "quillium-ai-base-url";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
 
@@ -79,19 +81,18 @@ export function useAiChatEffects(chat: { status: string; stop: () => void }) {
     });
 
     $effect(() => {
-        function handleStop() {
+        const unsub = appEventBus.on("stop-ai", () => {
             if (chat.status === "submitted" || chat.status === "streaming") {
                 chat.stop();
             }
-        }
-        window.addEventListener("quillium:stop-ai", handleStop);
-        return () => window.removeEventListener("quillium:stop-ai", handleStop);
+        });
+        return unsub;
     });
 }
 
 /**
  * Global abort controller for all AI requests. Calling `stopAllAi()`
- * aborts any in-flight streams and fires a window event so each panel
+ * aborts any in-flight streams and emits an app event so each panel
  * can call `chat.stop()` on its own Chat instance.
  */
 let _aiAbortController: AbortController | null = null;
@@ -106,7 +107,7 @@ export function stopAllAi() {
         _aiAbortController.abort();
         _aiAbortController = null;
     }
-    window.dispatchEvent(new CustomEvent("quillium:stop-ai"));
+    appEventBus.emit({ type: "stop-ai" });
     aiProcessing.active = false;
 }
 
@@ -115,14 +116,20 @@ function loadString(key: string, defaultValue: string): string {
     return localStorage.getItem(key) ?? defaultValue;
 }
 
+function loadBaseUrl(): string {
+    if (typeof localStorage === "undefined") return "";
+    return localStorage.getItem(BASE_URL_KEY) ?? "";
+}
+
 export const aiSettings = $state({
     provider: loadString(PROVIDER_KEY, "openai") as Provider,
-    model: loadString(MODEL_KEY, "gpt-4o-mini"),
+    model: loadString(MODEL_KEY, "gpt-5.5"),
     apiKey: "",
+    baseURL: loadBaseUrl(),
 });
 
 export function hasApiKey(): boolean {
-    if (aiSettings.provider === "openai-codex") return true;
+    if (aiSettings.provider === "openai-compatible") return true;
     if (aiSettings.apiKey.trim().length > 0) return true;
     // The key hasn't loaded from the keychain yet, but we know one
     // exists — avoid flashing "no API key" UI on startup.
@@ -163,4 +170,14 @@ export function ensureApiKeyLoaded(): Promise<void> {
  */
 export function resetApiKeyLoadPromise() {
     _apiKeyLoadPromise = null;
+}
+
+export function persistBaseUrl(url: string) {
+    if (typeof localStorage === "undefined") return;
+    if (url) {
+        localStorage.setItem(BASE_URL_KEY, url);
+    } else {
+        localStorage.removeItem(BASE_URL_KEY);
+    }
+    aiSettings.baseURL = url;
 }

@@ -24,6 +24,7 @@ import DocumentGrid from "$lib/library/DocumentGrid.svelte";
 import PreviewPanel from "$lib/library/PreviewPanel.svelte";
 import ContinuePill from "$lib/library/ContinuePill.svelte";
 import EmptyState from "$lib/library/EmptyState.svelte";
+import { parseTags } from "$lib/library/tags";
 
 let searchInputEl = $state<HTMLInputElement | null>(null);
 let previewPanel = $state<ReturnType<typeof PreviewPanel> | null>(null);
@@ -47,7 +48,8 @@ const filtered = $derived(
         ? activeDocuments.filter(
               (d) =>
                   d.title.toLowerCase().includes(query.toLowerCase()) ||
-                  d.previewText.toLowerCase().includes(query.toLowerCase()),
+                  d.previewText.toLowerCase().includes(query.toLowerCase()) ||
+                  parseTags(d.tags).some((tag) => tag.toLowerCase().includes(query.toLowerCase())),
           )
         : activeDocuments,
 );
@@ -130,6 +132,18 @@ async function handleRenameTitle(id: string, newTitle: string) {
     documents = await listDocuments();
     // Keep the store in sync if this is the currently open document
     if ($currentDocumentId === id) $currentDocumentTitle = newTitle;
+}
+
+async function handleUpdateTags(id: string, tags: string) {
+    const meta = await getDocumentMeta(id);
+    if (!meta) return;
+    await updateDocumentMeta(id, meta.title, meta.wordCount, meta.previewText, tags);
+    posthog.capture("document_tags_updated", { count: parseTags(tags).length });
+    documents = await listDocuments();
+}
+
+function handleTagClick(tag: string) {
+    query = tag;
 }
 
 async function handleTrash(id: string) {
@@ -429,6 +443,7 @@ onMount(() => {
                     onTrash={handleTrash}
                     onRestore={handleRestore}
                     onDeletePermanent={handleDeletePermanent}
+                    onTagClick={handleTagClick}
                 />
             {/if}
         </div>
@@ -455,6 +470,7 @@ onMount(() => {
                 else if (selectedIds.size > 1) handleDeletePermanentSelected();
             }}
             onRenameTitle={handleRenameTitle}
+            onUpdateTags={handleUpdateTags}
         />
     </div>
 

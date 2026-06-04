@@ -14,13 +14,17 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
 import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation, type VersionState } from "$lib/editor/plugins/annotations/models";
+import {
+    createNewAnnotation,
+    isAnnotationOfType,
+    type VersionState,
+} from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     makeParentUndoKeymap,
     makeParentRevisionNavKeymap,
 } from "$lib/editor/plugins/annotations/nestedEditor";
-import { annotationEventBus } from "$lib/editor/plugins/annotations/eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -233,6 +237,14 @@ function addMultiVersionRevision(view: EditorView, from: number, to: number) {
     return revision.id;
 }
 
+function getRevision(view: EditorView, id: number) {
+    const annotation = view.state.field(annotationField)[id];
+    if (!annotation || !isAnnotationOfType(annotation, "revision")) {
+        throw new Error(`Expected revision annotation ${id}`);
+    }
+    return annotation;
+}
+
 function runNavKey(
     nestedView: EditorView,
     parentView: EditorView,
@@ -259,7 +271,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
         const consumed = runNavKey(nestedView, parentView, revisionId, "Ctrl-]");
 
         expect(consumed).toBe(true);
-        expect(parentView.state.field(annotationField)[revisionId]?.activeVersionIndex).toBe(1);
+        expect(getRevision(parentView, revisionId).activeVersionIndex).toBe(1);
     });
 
     it("Ctrl-[ in nested editor goes back to the previous version on the parent", () => {
@@ -271,7 +283,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
         const consumed = runNavKey(nestedView, parentView, revisionId, "Ctrl-["); // → v1
 
         expect(consumed).toBe(true);
-        expect(parentView.state.field(annotationField)[revisionId]?.activeVersionIndex).toBe(0);
+        expect(getRevision(parentView, revisionId).activeVersionIndex).toBe(0);
     });
 
     it("Ctrl-] wraps around from last to first version", () => {
@@ -282,7 +294,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
         runNavKey(nestedView, parentView, revisionId, "Ctrl-]"); // → v2
         runNavKey(nestedView, parentView, revisionId, "Ctrl-]"); // → wraps to v1
 
-        expect(parentView.state.field(annotationField)[revisionId]?.activeVersionIndex).toBe(0);
+        expect(getRevision(parentView, revisionId).activeVersionIndex).toBe(0);
     });
 
     it("Ctrl-] consumes the event (returns true) even when only one version exists", () => {
@@ -304,6 +316,6 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
 
         // Should still consume (user intent was navigation, no-op is correct)
         expect(consumed).toBe(true);
-        expect(parentView.state.field(annotationField)[revision.id]?.activeVersionIndex).toBe(0);
+        expect(getRevision(parentView, revision.id).activeVersionIndex).toBe(0);
     });
 });

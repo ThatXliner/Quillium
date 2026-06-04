@@ -1,6 +1,6 @@
 [package]
 name = "quillium"
-version = "0.13.14"
+version = "0.17.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -20,8 +20,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
@@ -29,6 +27,14 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"
+
+# Desktop-only: self-updater/relaunch and PDF export (printpdf → azul-layout
+# does not compile for iOS/Android). textwrap is only used by pdf_export.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+printpdf = "0.8.2"
+textwrap = "0.16.2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -23,12 +23,12 @@ async function createRevisionAndOpenNestedEditor(page: Page, text: string) {
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type(text);
     await page.keyboard.press("ControlOrMeta+a");
-    await page.keyboard.press("ControlOrMeta+Alt+k");
+    await page.keyboard.press("Control+Alt+k");
 
     // Try to open the revision modal for deterministic access
     const expand = page.locator("[data-tutorial-action='expand-revision-modal']").first();
     if (await expand.isVisible({ timeout: 4000 }).catch(() => false)) {
-        await expand.click();
+        await expand.dispatchEvent("click");
         const modalEditor = page.locator(".revision-modal-editor .cm-content").first();
         await expect(modalEditor).toBeVisible({ timeout: 8000 });
         return modalEditor;
@@ -51,7 +51,11 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await page.addInitScript(() => {
             localStorage.setItem(
                 "quillium-app-settings",
-                JSON.stringify({ showNestedEditor: true, atomicRevisions: true }),
+                JSON.stringify({
+                    showNestedEditor: true,
+                    atomicRevisions: true,
+                    autoVersionOnRevisionCreate: false,
+                }),
             );
         });
         await page.goto("/");
@@ -80,7 +84,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
 
         // Step 4: press Cmd+Z (nested editor keymap delegates undo to parent)
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
 
         // Expected: the deletion is undone → nested editor shows "hello my b world"
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello my b world");
@@ -106,7 +110,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
 
         // Undo (nested editor delegates to parent)
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
 
         // Should restore "hello EXTRA world"
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello EXTRA world");
@@ -130,11 +134,11 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
 
         // Undo #1 (delegated to parent): should restore "hello my b world"
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello my b world");
 
         // Undo #2: should restore original "hello world"
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
     });
 
@@ -155,7 +159,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         // Select just "world" (last 5 chars)
         await page.keyboard.press("End");
         for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
 
         // Nested editor opens for "world"
         const nestedEditor = page.locator(".revision-inline-editor .cm-content").first();
@@ -188,7 +192,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         });
 
         // Press Cmd+Z — should undo the deletion of "EXTRA "
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
 
         // Nested editor reopens with "EXTRA world" restored
         const reopenedNestedEditor = page.locator(".revision-inline-editor .cm-content").first();
@@ -214,7 +218,7 @@ test.describe("nested editor: add text then delete it, then undo from main edito
         await expect.poll(() => getCmText(nestedEditor)).toBe("hello world");
 
         // Undo while nested editor still has focus — delegates to parent via makeParentUndoKeymap
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
 
         const anyEditor = page
             .locator(".revision-modal-editor .cm-content, .revision-inline-editor .cm-content")

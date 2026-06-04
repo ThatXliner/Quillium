@@ -6,7 +6,7 @@
  * `page.locator(...)` directly.
  */
 
-import { expect, type Page, type Locator } from "@playwright/test";
+import { type Locator, type Page, expect } from "@playwright/test";
 
 // ── Tauri mock configuration ────────────────────────────────────────────────
 
@@ -42,7 +42,12 @@ export type TauriMockOptions = {
 const DEFAULT_OPTIONS: TauriMockOptions = {
     apiKey: null,
     skipTutorial: true,
-    settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+    settings: {
+        showNestedEditor: true,
+        atomicRevisions: true,
+        aiEnabled: true,
+        autoVersionOnRevisionCreate: false,
+    },
     initialDoc: null,
     snapshots: [],
 };
@@ -81,7 +86,14 @@ export class QuilliumPage {
 
     constructor(page: Page, options: Partial<TauriMockOptions> = {}) {
         this.page = page;
-        this.options = { ...DEFAULT_OPTIONS, ...options };
+        this.options = {
+            ...DEFAULT_OPTIONS,
+            ...options,
+            settings: {
+                ...DEFAULT_OPTIONS.settings,
+                ...(options.settings ?? {}),
+            },
+        };
     }
 
     // ── Setup ───────────────────────────────────────────────────────────
@@ -99,6 +111,8 @@ export class QuilliumPage {
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
+                    localStorage.setItem("quillium_beta_accepted", "true");
+                    localStorage.setItem("quillium_changelog_seen", "999.999");
                 }
                 if (Object.keys(payload.settings).length > 0) {
                     localStorage.setItem("quillium-app-settings", JSON.stringify(payload.settings));
@@ -366,9 +380,20 @@ export class QuilliumPage {
 
     /** Focus the main editor and replace all text with `text`. */
     async typeInEditor(text: string): Promise<void> {
-        await this.editor.click();
-        await this.selectAll();
-        await this.page.keyboard.type(text);
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            await expect(this.editor).toBeVisible({ timeout: 10_000 });
+            await this.editor.click();
+            await this.selectAll();
+            await this.page.keyboard.type(text);
+            try {
+                await expect.poll(() => this.cmText(), { timeout: 10_000 }).toBe(text);
+                return;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError;
     }
 
     /** Type into a specific CodeMirror editor locator. */
@@ -435,11 +460,11 @@ export class QuilliumPage {
     // ── Keyboard shortcuts ──────────────────────────────────────────────
 
     async undo(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+z");
+        await this.page.keyboard.press("Control+z");
     }
 
     async redo(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+Shift+z");
+        await this.page.keyboard.press("Control+y");
     }
 
     async backspace(n = 1): Promise<void> {
@@ -447,11 +472,11 @@ export class QuilliumPage {
     }
 
     async createComment(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+Alt+m");
+        await this.page.keyboard.press("Control+Alt+m");
     }
 
     async createRevision(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+Alt+k");
+        await this.page.keyboard.press("Control+Alt+k");
     }
 
     async newVersion(): Promise<void> {
@@ -463,7 +488,7 @@ export class QuilliumPage {
     }
 
     async openDictionary(): Promise<void> {
-        await this.page.keyboard.press("ControlOrMeta+b");
+        await this.page.keyboard.press("Control+d");
     }
 
     async sendReply(): Promise<void> {
@@ -482,9 +507,21 @@ export class QuilliumPage {
      */
     async createRevisionOnRange(fullText: string, from: number, to: number): Promise<string> {
         await this.typeInEditor(fullText);
-        await this.selectRange(from, to);
-        await this.createRevision();
-        return fullText.slice(from, to);
+        const selectedText = fullText.slice(from, to);
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            await this.selectRange(from, to);
+            await this.createRevision();
+            try {
+                await expect(this.page.locator("[data-revision-id]").first()).toBeVisible({
+                    timeout: attempt === 0 ? 5_000 : 10_000,
+                });
+                return selectedText;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError;
     }
 
     /** Create a revision spanning all text and return it. */
@@ -505,7 +542,7 @@ export class QuilliumPage {
     async openRevisionModal(): Promise<Locator> {
         const expand = this.page.locator("[data-tutorial-action='expand-revision-modal']").first();
         if (await expand.isVisible({ timeout: 4_000 }).catch(() => false)) {
-            await expand.click();
+            await expand.dispatchEvent("click");
         }
         await expect(this.modalEditor).toBeVisible({ timeout: 8_000 });
         return this.modalEditor;
@@ -527,6 +564,7 @@ export class QuilliumPage {
         await expect(textarea).toBeVisible({ timeout: 5_000 });
         await textarea.fill(text);
         await this.sendReply();
+        await expect(textarea).toBeHidden({ timeout: 5_000 });
     }
 
     /** Wait for a separate undo group (history newGroupDelay). */

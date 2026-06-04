@@ -22,19 +22,19 @@
       - Fires PostHog events: "tutorial_completed" / "tutorial_skipped".
 -->
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
+import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotations";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
 import {
-    tutorialActive,
     annotations,
     modalStack,
+    tutorialActive,
     tutorialModalGuide,
     tutorialNavCommand,
 } from "$lib/stores";
-import type { Annotation, GenericAnnotation } from "$lib/editor/plugins/annotations";
-import { steps, type Step } from "./steps";
-import posthog from "$lib/posthog";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { appSettings } from "$lib/settings.svelte";
+import { onDestroy, onMount } from "svelte";
+import { type Step, steps } from "./steps";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -253,7 +253,11 @@ function computeTooltipPos(
 ): { top: number; left: number } {
     const pad = 16;
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    // Clamp to the VISUAL viewport, not the layout viewport: on mobile the
+    // software keyboard shrinks visualViewport but NOT window.innerHeight, so
+    // clamping to innerHeight lets the tooltip slide under the keyboard. Falls
+    // back to innerHeight on desktop / when the API is unavailable.
+    const vh = window.visualViewport?.height ?? window.innerHeight;
 
     if (!rect || position === "center") {
         return {
@@ -430,11 +434,18 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 // On mount, reveal the overlay.
+// Re-clamp the tooltip when the software keyboard opens/closes — visualViewport
+// resizes (window does not), and a step's tooltip can otherwise be left under
+// the keyboard. See computeTooltipPos for the matching clamp.
+const onViewportResize = () => positionTooltip();
+
 onMount(() => {
     visible = true;
+    window.visualViewport?.addEventListener("resize", onViewportResize);
 });
 
 onDestroy(() => {
+    window.visualViewport?.removeEventListener("resize", onViewportResize);
     tutorialModalGuide.set({
         visible: false,
         title: "",

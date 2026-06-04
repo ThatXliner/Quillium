@@ -28,6 +28,7 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import { appendEvent, createSnapshot, createNamedSnapshot, updateDocumentMeta } from "$lib/db";
+import { isCollabJoiner } from "$lib/collab/store";
 import {
     isSuspiciousDeletion,
     isSuspiciousAnnotationChange,
@@ -44,6 +45,7 @@ import {
 import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
 import type { Transaction } from "@codemirror/state";
 import posthog from "$lib/posthog";
+import { appEventBus } from "$lib/events/appEventBus";
 
 export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
@@ -52,7 +54,13 @@ export interface ListenerOptions {
 }
 
 // ── Debounce timers ───────────────────────────────────────────────
-const metaDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+type PendingMeta = {
+    timer: ReturnType<typeof setTimeout>;
+    docText: string;
+    wordCount: number;
+    previewText: string;
+};
+const metaDebounceTimers = new Map<string, PendingMeta>();
 // Only show "Saving…" if the write takes longer than this threshold.
 // This keeps the indicator on "Saved" during normal fast writes.
 let savingIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
@@ -213,11 +221,27 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
  * order rather than DB completion order.
  */
 function persistTransaction(update: ViewUpdate): void {
+    // D-100 / Live Room mode: joiners are ephemeral viewers of the owner's document.
+    // The joiner's collab session is a separate ephemeral view that never touches
+    // local docs. Skip all local persistence -- the owner's relay is source of truth.
+    // The joiner's currentDraftId is null during the session (set by GoLiveButton).
+    if (get(isCollabJoiner)) return;
+
     const enqueueDocId = get(currentDocumentId);
     const enqueueDraftId = get(currentDraftId);
     persistQueue = persistQueue
         .then(() => doAppend(update, enqueueDocId, enqueueDraftId))
         .catch(() => {});
+}
+
+/**
+ * Resolves once the current persist queue has drained. New writes
+ * enqueued after this call are not awaited. Call before navigation
+ * or destructive actions so the latest edits reach the DB before the
+ * library re-reads metadata.
+ */
+export function flushPersistQueue(): Promise<void> {
+    return persistQueue.catch(() => {});
 }
 
 async function doAppend(
@@ -389,38 +413,51 @@ async function doAppend(
     const docText = update.state.doc.toString();
     const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
     const previewText = docText.slice(0, 200);
-    const prevTimer = metaDebounceTimers.get(docId);
-    if (prevTimer !== undefined) clearTimeout(prevTimer);
-    metaDebounceTimers.set(
-        docId,
-        setTimeout(() => {
-            try {
-                // Guard: abort if the user has navigated to a different document.
-                if (get(currentDocumentId) !== docId) return;
-                // Auto-derive title once from the first line, but only while the
-                // title is still "Untitled" and the first line looks ready:
-                //   - user pressed Enter (first line ends / second line exists), OR
-                //   - first line has at least 4 words (enough to be a real title)
-                // After this fires once, the title is owned by the user/AI.
-                let title = get(currentDocumentTitle);
-                if (title === "Untitled") {
-                    const firstLine = docText.split("\n")[0].trim();
-                    const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
-                    const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
-                    if (firstLineComplete && firstLine) {
-                        title = firstLine.slice(0, 40);
-                        currentDocumentTitle.set(title);
-                    }
-                }
-                updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                });
-            } finally {
-                metaDebounceTimers.delete(docId);
-            }
-        }, 500),
-    );
+    const prev = metaDebounceTimers.get(docId);
+    if (prev !== undefined) clearTimeout(prev.timer);
+    const timer = setTimeout(() => {
+        metaDebounceTimers.delete(docId);
+        // Guard: abort if the user has navigated to a different document.
+        if (get(currentDocumentId) !== docId) return;
+        writeMeta(docId, docText, wordCount, previewText);
+    }, 500);
+    metaDebounceTimers.set(docId, { timer, docText, wordCount, previewText });
+}
+
+function writeMeta(docId: string, docText: string, wordCount: number, previewText: string): void {
+    // Auto-derive title once from the first line, but only while the
+    // title is still "Untitled" and the first line looks ready:
+    //   - user pressed Enter (first line ends / second line exists), OR
+    //   - first line has at least 4 words (enough to be a real title)
+    // After this fires once, the title is owned by the user/AI.
+    let title = get(currentDocumentTitle);
+    if (title === "Untitled") {
+        const firstLine = docText.split("\n")[0].trim();
+        const firstLineWords = firstLine ? firstLine.split(/\s+/).length : 0;
+        const firstLineComplete = docText.includes("\n") || firstLineWords >= 4;
+        if (firstLineComplete && firstLine) {
+            title = firstLine.slice(0, 40);
+            currentDocumentTitle.set(title);
+        }
+    }
+    updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch((e) => {
+        console.error(e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+    });
+}
+
+/**
+ * Immediately flush all pending metadata debounces.
+ * Called on route changes and destructive doc actions (trash, new)
+ * so the library view reflects the latest edits without waiting for
+ * the 500 ms debounce.
+ */
+export function flushMetaDebounces(): void {
+    for (const [docId, pending] of metaDebounceTimers) {
+        clearTimeout(pending.timer);
+        writeMeta(docId, pending.docText, pending.wordCount, pending.previewText);
+    }
+    metaDebounceTimers.clear();
 }
 
 // ── Caret broadcast for AutoAIFace eye tracking ───────────────────
@@ -449,11 +486,11 @@ const caretBroadcast = EditorView.updateListener.of((update: ViewUpdate) => {
             return;
         }
         if (coords) {
-            window.dispatchEvent(
-                new CustomEvent("quillium:caret-moved", {
-                    detail: { x: coords.left, y: (coords.top + coords.bottom) / 2 },
-                }),
-            );
+            appEventBus.emit({
+                type: "caret-moved",
+                x: coords.left,
+                y: (coords.top + coords.bottom) / 2,
+            });
         }
     });
 });

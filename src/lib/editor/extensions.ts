@@ -1,3 +1,6 @@
+import { dev } from "$app/environment";
+import { collabCompartment } from "$lib/collab";
+import { appEventBus } from "$lib/events/appEventBus";
 import { appSettings } from "$lib/settings.svelte";
 /**
  * extensions.ts — Assembles the full CodeMirror 6 extension stack.
@@ -31,7 +34,10 @@ import {
     historyField,
     historyKeymap,
     indentWithTab,
+    redo,
+    undo,
 } from "@codemirror/commands";
+import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
@@ -45,8 +51,10 @@ import {
 import { dictionaryExtension } from "./dictionaryPlugin";
 import { harperExtension } from "./harper/harperLinter";
 import { type ListenerOptions, listeners } from "./listeners";
+import { markdownFormattingKeymap } from "./markdownFormatting";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
+import { richMarkdownExtension } from "./richMarkdown";
 
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
@@ -60,13 +68,33 @@ const editorKeymap: KeyBinding[] = [
     ...closeBracketsKeymap,
     ...defaultKeymap,
     ...searchKeymap,
+    ...(dev
+        ? [
+              {
+                  key: "Ctrl-z",
+                  run: undo,
+              },
+              {
+                  key: "Meta-z",
+                  run: undo,
+              },
+              {
+                  key: "Ctrl-Shift-z",
+                  run: redo,
+              },
+              {
+                  key: "Meta-Shift-z",
+                  run: redo,
+              },
+          ]
+        : []),
     ...historyKeymap,
     ...completionKeymap,
     indentWithTab,
     {
         key: "Mod-Shift-r",
         run() {
-            window.dispatchEvent(new CustomEvent("quillium:manual-review"));
+            appEventBus.emit({ type: "manual-review" });
             return true;
         },
     },
@@ -81,6 +109,14 @@ const nestedEditorKeymap: KeyBinding[] = [
 ] as unknown as KeyBinding[];
 
 export const harperCompartment = new Compartment();
+export const languageCompartment = new Compartment();
+// Wraps history() so enableCollab(asOwner=false) can reconfigure it to []
+// (joiner peer has no CM history; undo via Y.UndoManager instead). See JOINER-01.
+export const historyCompartment = new Compartment();
+
+export function getEditorLanguageExtension(mode = appSettings.editorMode) {
+    return mode === "markdown" ? markdown() : [];
+}
 
 export const getExtensions = (options?: ListenerOptions) => {
     const withHistory = options?.history !== false;
@@ -88,7 +124,7 @@ export const getExtensions = (options?: ListenerOptions) => {
         highlightSpecialChars(),
         // Default is 500 milliseconds
         // but I find that too long
-        ...(withHistory ? [history({ newGroupDelay: 250 })] : []),
+        ...(withHistory ? [historyCompartment.of(history({ newGroupDelay: 250 }))] : []),
         // Will re-enable for multi-selection support
         // drawSelection(),
         dropCursor(),
@@ -106,11 +142,16 @@ export const getExtensions = (options?: ListenerOptions) => {
             autocorrect: "on",
             autocapitalize: "on",
         }),
+        languageCompartment.of(getEditorLanguageExtension()),
+        richMarkdownExtension(),
+        markdownFormattingKeymap,
         listeners(options),
         annotations(),
         dictionaryExtension,
         ...(withHistory
             ? [harperCompartment.of(appSettings.grammarCheckEnabled ? harperExtension() : [])]
             : []),
+        // Collab extension (initially disabled, reconfigured on "Go Live" per D-51)
+        collabCompartment.of([]),
     ];
 };

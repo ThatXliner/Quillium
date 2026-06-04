@@ -15,14 +15,19 @@
 <script lang="ts">
 import changelog from "$lib/changelog.json";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
-import { harperCompartment } from "$lib/editor/extensions";
 import {
-    harperExtension,
-    resetHarper,
-    loadUserDictionary,
+    getEditorLanguageExtension,
+    harperCompartment,
+    languageCompartment,
+} from "$lib/editor/extensions";
+import {
     HARPER_DICTIONARY_KEY,
+    harperExtension,
+    loadUserDictionary,
+    resetHarper,
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
+import { appEventBus } from "$lib/events/appEventBus";
 import { syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import { MAS_BUILD } from "$lib/platform";
 import posthog from "$lib/posthog";
@@ -31,7 +36,16 @@ import type { CustomQuickAction } from "$lib/settings.svelte";
 import { editorView } from "$lib/stores";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Dialect } from "harper.js";
-import { Check, ChevronDown, HelpCircle, MessageSquare, Plus, Trash2, X } from "lucide-svelte";
+import {
+    Check,
+    ChevronDown,
+    HelpCircle,
+    MessageSquare,
+    Plus,
+    Scale,
+    Trash2,
+    X,
+} from "lucide-svelte";
 import { get } from "svelte/store";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
@@ -81,7 +95,7 @@ const DOC_FONTS: FontOption[] = [
         group: f.group,
         featured: f.docFeatured,
     })),
-    { group: "Sans", label: sans.label, value: sansStack },
+    ...(sans.label === "Inter" ? [] : [{ group: "Sans", label: sans.label, value: sansStack }]),
     { group: "Typewriter", label: mono.label, value: monoStack },
 ];
 
@@ -277,9 +291,10 @@ function save() {
     const view = get(editorView);
     if (view) {
         view.dispatch({
-            effects: harperCompartment.reconfigure(
-                draft.grammarCheckEnabled ? harperExtension() : [],
-            ),
+            effects: [
+                harperCompartment.reconfigure(draft.grammarCheckEnabled ? harperExtension() : []),
+                languageCompartment.reconfigure(getEditorLanguageExtension(draft.editorMode)),
+            ],
         });
     }
 
@@ -295,6 +310,7 @@ function save() {
         select_text_in_nested_editor: draft.selectTextInNestedEditor,
         show_nested_editor: draft.showNestedEditor,
         atomic_revisions: draft.atomicRevisions,
+        editor_mode: draft.editorMode,
         doc_font_family: draft.docFontFamily,
         doc_font_size: draft.docFontSize,
         ui_font_family: draft.uiFontFamily,
@@ -387,7 +403,10 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="flex items-center gap-1.5">
                 {#if currentChangelog}
                     <button
-                        onclick={() => { window.dispatchEvent(new CustomEvent("quillium:show-changelog")); onclose(); }}
+                        onclick={() => {
+                            appEventBus.emit({ type: "show-changelog" });
+                            onclose();
+                        }}
                         class="text-[10px] font-medium px-2.5 py-1 rounded-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
                     >
                         What's New
@@ -722,6 +741,33 @@ function fontLabel(fonts: FontOption[], value: string) {
 
             <!-- WRITING section -->
             <div class="section-label">Writing</div>
+
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Editor mode</div>
+                    <div class="setting-desc">Write in plain text or with Markdown formatting for headings, emphasis, quotes, and lists</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.editorMode !== "markdown"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.editorMode = "markdown"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
+                    {#each ([["plain", "Plain text"], ["markdown", "Markdown"]] as const) as [val, label]}
+                        <button
+                            onclick={() => { draft.editorMode = val; handleChange(); }}
+                            class="px-3 py-1.5 text-[11px] font-medium transition-colors
+                                {draft.editorMode === val
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                        >{label}</button>
+                    {/each}
+                </div>
+                </div>
+            </div>
 
             <!-- Grammar check toggle -->
             <div class="setting-row">
@@ -1280,6 +1326,13 @@ function fontLabel(fonts: FontOption[], value: string) {
                 >
                     <MessageSquare size={12} />
                     Send Feedback
+                </button>
+                <button
+                    onclick={() => appEventBus.emit({ type: "show-licenses" })}
+                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-black/40 hover:text-black/60 transition-colors"
+                >
+                    <Scale size={12} />
+                    Licenses
                 </button>
                 <span class="text-[11px] text-rose-400/80 transition-opacity duration-200 {isDirty ? 'opacity-100' : 'opacity-0'}">
                     Unsaved

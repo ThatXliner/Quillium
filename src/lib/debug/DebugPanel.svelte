@@ -27,7 +27,7 @@ import {
     errorBanner,
 } from "$lib/stores";
 import { saveEmergencyBackup } from "$lib/errorGuard";
-import { debugPanelActive } from "$lib/debug/store.svelte";
+import { debugAuthWaitlistMode, debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -42,6 +42,31 @@ import {
 } from "$lib/db";
 import type { EventPayload } from "$lib/db/events";
 import { buildEventPayload } from "$lib/editor/listeners";
+import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
+import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
+
+// Face preview state
+const FACE_STATES: FaceState[] = [
+    "idle",
+    "tracking",
+    "thinking",
+    "reviewing",
+    "sleeping",
+    "waking",
+    "disabled",
+];
+const IDLE_VARIANTS: IdleVariant[] = [
+    "blink",
+    "double-blink",
+    "look-around",
+    "squint",
+    "wide-eyed",
+    "drowsy",
+];
+type IdlePreviewMode = IdleVariant | "auto";
+let previewFaceState = $state<FaceState>("idle");
+let previewIdleMode = $state<IdlePreviewMode>("auto");
 
 const {
     reloadEditor,
@@ -177,18 +202,14 @@ function clearUndoHistory() {
 function triggerChangelog() {
     startCountdown("changelog", () => {
         close();
-        window.dispatchEvent(new CustomEvent("quillium:show-changelog"));
+        appEventBus.emit({ type: "show-changelog" });
     });
 }
 
 function triggerUpdateBanner(mas: boolean) {
     startCountdown(mas ? "update-mas" : "update", () => {
         close();
-        window.dispatchEvent(
-            new CustomEvent("quillium:show-update-banner", {
-                detail: { version: "99.0.0", mas },
-            }),
-        );
+        appEventBus.emit({ type: "show-update-banner", version: "99.0.0", mas });
     });
 }
 
@@ -216,6 +237,16 @@ function triggerSuspiciousRemoval() {
             backupType: "auto",
         });
     });
+}
+
+function triggerAuthModal() {
+    close();
+    appEventBus.emit({ type: "show-auth-modal" });
+}
+
+function triggerAuthOffline() {
+    debugForceAuthOffline();
+    close();
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -357,6 +388,58 @@ function handleKeydown(e: KeyboardEvent) {
 
         </div>
 
+        <!-- AutoAI Face Preview -->
+        <div class="px-5 py-3 border-t border-black/10 flex items-center gap-3">
+            <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Face</span>
+            <div class="w-[67px] h-[67px] rounded-full bg-[#faf8f5] border-2 border-[#d6b87a] flex items-center justify-center shrink-0">
+                <AutoAIFace
+                    faceState={previewFaceState}
+                    eyeOffsetX={0}
+                    eyeOffsetY={0}
+                    forceIdleVariant={
+                        previewFaceState === "idle" && previewIdleMode !== "auto" ? previewIdleMode : undefined
+                    }
+                />
+            </div>
+            <div class="flex flex-col gap-1.5">
+                <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-black/40 w-10">State</span>
+                    <div class="flex flex-wrap gap-1">
+                        {#each FACE_STATES as fs}
+                            <button
+                                onclick={() => previewFaceState = fs}
+                                class="text-[10px] px-1.5 py-0.5 rounded transition-colors
+                                    {previewFaceState === fs
+                                        ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                                        : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                            >{fs}</button>
+                        {/each}
+                    </div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="text-[10px] text-black/40 w-10">Idle</span>
+                    <div class="flex flex-wrap gap-1">
+                        <button
+                            onclick={() => { previewFaceState = "idle"; previewIdleMode = "auto"; }}
+                            class="text-[10px] px-1.5 py-0.5 rounded transition-colors
+                                {previewFaceState === 'idle' && previewIdleMode === 'auto'
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                    : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                        >auto</button>
+                        {#each IDLE_VARIANTS as iv}
+                            <button
+                                onclick={() => { previewFaceState = "idle"; previewIdleMode = iv; }}
+                                class="text-[10px] px-1.5 py-0.5 rounded transition-colors
+                                    {previewFaceState === 'idle' && previewIdleMode === iv
+                                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                        : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                            >{iv}</button>
+                        {/each}
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Simulate section -->
         <div class="px-5 py-3 border-t border-black/10 flex items-center gap-2">
             <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest mr-1">Simulate</span>
@@ -385,6 +468,25 @@ function handleKeydown(e: KeyboardEvent) {
                 disabled={pendingSimulation !== null}
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "update-mas" ? `Firing in ${countdownSeconds}s…` : "Update banner (MAS)"}</button>
+            <label
+                class="ml-auto flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                title="Make the auth modal behave like production waitlist gating"
+            >
+                <input
+                    type="checkbox"
+                    bind:checked={$debugAuthWaitlistMode}
+                    class="h-3.5 w-3.5 accent-blue-500"
+                />
+                Auth waitlist
+            </label>
+            <button
+                onclick={triggerAuthModal}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
+            >Auth modal</button>
+            <button
+                onclick={triggerAuthOffline}
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
+            >Auth offline</button>
         </div>
 
         <!-- Footer -->

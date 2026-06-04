@@ -1,4 +1,20 @@
 {
+  "0.17": {
+    "date": "2026-06-01",
+    "content": "The **annotation sidebar** is easier to adjust while you write. The resize handle now sits on the side where you expect it, and a new reset button makes it simple to get back to the default layout.\n\nWe've also cleaned up a few **interface details**: the font guide no longer shows Inter where it does not belong, and the dictionary shortcut hint now points to the right keyboard command."
+  },
+  "0.16": {
+    "date": "May 2026",
+    "content": "**Export from the editor status bar**, manage **document tags** from the library preview, and stack related **dictionary lookups** without losing context.\n\nAlso: resizable annotation sidebar, easier AI panel resize handles, and Markdown bold/italic shortcuts now toggle off when text is already formatted."
+  },
+  "0.15": {
+    "date": "April 2026",
+    "content": "Quillium now has a **Markdown rich text mode** for writers who like Markdown shortcuts but still want a polished editing surface. The formatting controls are the same as Google Docs (e.g. Command+B for bolding on macOS), and you can make markdown headers. The keyboard shortcut for pulling up the dictionary has been changed.\n\nYou can also **export to PDF** directly from Quillium. When you need to share a finished draft, archive a copy, or send work somewhere that expects a fixed layout, PDF export is now built into the app.\n\nFinally, **web sharing** is now functional for those who have a Quillium/Omni account. *Join the waitlist at quillium.bryanhu.com/omni*"
+  },
+  "0.14": {
+    "date": "April 2026",
+    "content": "This update lays the groundwork for **Quillium Omni**, our upcoming [sync and real-time collaboration service](https://quillium.bryanhu.com/blog/introducing-omni).\n\nYou may see new Omni surfaces in the app while we keep access in waitlist mode and continue developing hosted pieces. Don't worry, Omni will always be explicitly opt-in (you have to pay for it, after all). This means that **local writing still works exactly as before** when Omni is not enabled.\n\nAs with our [commitment to privacy](https://quillium.bryanhu.com/blog/quillium-privacy), we will *never* send your documents to our servers unless you ask for it."
+  },
   "0.13": {
     "date": "April 2026",
     "content": "Quillium now includes a built-in **grammar and spelling checker** powered by Harper. Misspellings show red squiggles, grammar issues show blue — click any underlined word to see suggestions and apply fixes with one click. You can add words to your personal dictionary, ignore individual suggestions, or mute all suggestions when you want to write distraction-free.\n\nConfigure the checker in **Settings → Grammar** — choose your English dialect (American, British, Australian, or Canadian) or disable it entirely."

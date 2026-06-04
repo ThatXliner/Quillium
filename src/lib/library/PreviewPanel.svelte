@@ -5,6 +5,7 @@
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
 import { type ExportFormat, exportDocumentById } from "$lib/export";
+import DocumentPreview from "./DocumentPreview.svelte";
 import {
     FileText,
     ExternalLink,
@@ -13,8 +14,11 @@ import {
     Pencil,
     CheckSquare,
     Download,
+    Tag,
+    X,
 } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { normalizeTag, parseTags, serializeTags } from "./tags";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
@@ -28,6 +32,7 @@ interface Props {
     onRestore: () => void;
     onDeletePermanent: () => void;
     onRenameTitle: (id: string, newTitle: string) => void;
+    onUpdateTags: (id: string, tags: string) => void;
 }
 
 const {
@@ -39,6 +44,7 @@ const {
     onRestore,
     onDeletePermanent,
     onRenameTitle,
+    onUpdateTags,
 }: Props = $props();
 
 const multiSelect = $derived(selectedCount > 1);
@@ -96,6 +102,13 @@ let titleEditing = $derived.by(() => {
 });
 let titleDraft = $state("");
 let titleInputEl = $state<HTMLInputElement | undefined>();
+let tagInput = $state("");
+const tags = $derived(doc ? parseTags(doc.tags) : []);
+
+$effect(() => {
+    void doc;
+    tagInput = "";
+});
 
 export function startEditing() {
     if (!doc || trashMode) return;
@@ -109,6 +122,22 @@ function commitTitle() {
     titleEditing = false;
     const newTitle = titleDraft.trim() || "Untitled";
     if (newTitle !== doc.title) onRenameTitle(doc.id, newTitle);
+}
+
+function commitTagInput() {
+    if (!doc) return;
+    const next = normalizeTag(tagInput.replace(/,$/, ""));
+    if (!next) return;
+    tagInput = "";
+    onUpdateTags(doc.id, serializeTags([...tags, next]));
+}
+
+function removeTag(tag: string) {
+    if (!doc) return;
+    onUpdateTags(
+        doc.id,
+        serializeTags(tags.filter((existing) => existing.toLowerCase() !== tag.toLowerCase())),
+    );
 }
 
 function formatDate(ms: number): string {
@@ -225,12 +254,47 @@ function handleDeletePermanent() {
                 </div>
             </div>
 
-            <!-- Preview text -->
-            <div class="rounded-xl bg-gray-50 border border-gray-100 p-5">
-                <p class="text-sm text-black/60 leading-relaxed whitespace-pre-wrap">
-                    {doc.previewText || "No preview available."}
-                </p>
+            <!-- Full document preview -->
+            <div class="rounded-xl bg-gray-50 border border-gray-100 overflow-hidden h-64">
+                <DocumentPreview docId={doc.id} />
             </div>
+
+            {#if !trashMode}
+                <div class="mt-5">
+                    <div class="mb-2 flex items-center gap-1.5 text-xs font-medium text-black/45">
+                        <Tag size={13} />
+                        Tags
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        {#each tags as tag}
+                            <button
+                                type="button"
+                                onclick={() => removeTag(tag)}
+                                class="group inline-flex max-w-full items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 text-xs text-black/55 ring-1 ring-black/5 transition-colors hover:bg-red-50 hover:text-red-600"
+                                title="Remove tag"
+                            >
+                                <span class="truncate">{tag}</span>
+                                <X size={11} class="opacity-45 group-hover:opacity-80" />
+                            </button>
+                        {/each}
+                        <input
+                            bind:value={tagInput}
+                            onkeydown={(e) => {
+                                if (e.key === "Enter" || e.key === ",") {
+                                    e.preventDefault();
+                                    commitTagInput();
+                                }
+                                if (e.key === "Backspace" && !tagInput && tags.length > 0) {
+                                    removeTag(tags[tags.length - 1]);
+                                }
+                            }}
+                            onblur={commitTagInput}
+                            placeholder={tags.length === 0 ? "Add tag..." : "Add..."}
+                            class="min-w-[6rem] flex-1 bg-transparent px-1 py-1 text-xs text-black/60 outline-none placeholder:text-black/25"
+                        />
+                    </div>
+                </div>
+            {/if}
         </div>
 
         <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-black/5 flex flex-col gap-2">
@@ -288,6 +352,8 @@ function handleDeletePermanent() {
                                     { format: "txt+json" as ExportFormat, label: "Text + Annotations (.txt)" },
                                     { format: "json" as ExportFormat, label: "JSON (.json)" },
                                     { format: "md" as ExportFormat, label: "Markdown (.md)" },
+                                    { format: "pdf" as ExportFormat, label: "PDF (.pdf)" },
+                                    { format: "pdf+annotations" as ExportFormat, label: "PDF + Annotations (.pdf)" },
                                 ] as item, i}
                                     <button
                                         onclick={() => doExport(item.format)}

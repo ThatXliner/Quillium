@@ -19,6 +19,21 @@ let tooltipEl = $state<HTMLDivElement | undefined>();
 let suppressedFrom = $state(-1);
 let suppressedTo = $state(-1);
 
+type DiagnosticMatch = { diagnostic: Diagnostic; from: number; to: number };
+
+function findDiagnosticAtPosition(pos: number): DiagnosticMatch | null {
+    const view = $editorView;
+    if (!view) return null;
+
+    let found: DiagnosticMatch | null = null;
+    forEachDiagnostic(view.state, (d, from, to) => {
+        if (pos >= from && pos <= to && !found) {
+            found = { diagnostic: d, from, to };
+        }
+    });
+    return found;
+}
+
 function showForElement(target: HTMLElement) {
     const view = $editorView;
     if (!view) return;
@@ -26,25 +41,19 @@ function showForElement(target: HTMLElement) {
     const pos = view.posAtDOM(target);
     if (pos < 0) return;
 
-    let found: { diagnostic: Diagnostic; from: number; to: number } | null = null;
-    forEachDiagnostic(view.state, (d, from, to) => {
-        if (pos >= from && pos <= to && !found) {
-            found = { diagnostic: d, from, to };
-        }
-    });
-
-    if (!found) return;
+    const match = findDiagnosticAtPosition(pos);
+    if (!match) return;
 
     // If this is the same word that was X-dismissed, don't reopen
-    if (found.from === suppressedFrom && found.to === suppressedTo) return;
+    if (match.from === suppressedFrom && match.to === suppressedTo) return;
 
     // Clicking a different word clears the suppression
     suppressedFrom = -1;
     suppressedTo = -1;
 
-    diagnostic = found.diagnostic;
-    diagFrom = found.from;
-    diagTo = found.to;
+    diagnostic = match.diagnostic;
+    diagFrom = match.from;
+    diagTo = match.to;
 
     const rect = target.getBoundingClientRect();
 
@@ -92,6 +101,16 @@ function applySuggestion(action: Action) {
     if (!view || !diagnostic) return;
     action.apply(view, diagFrom, diagTo);
     dismiss();
+}
+
+function diagnosticMessageHtml(d: Diagnostic): string {
+    const view = $editorView;
+    if (!view || !d.renderMessage) return d.message;
+    const rendered = d.renderMessage(view);
+    if (rendered instanceof HTMLElement) return rendered.innerHTML;
+    const wrapper = document.createElement("span");
+    wrapper.append(rendered.cloneNode(true));
+    return wrapper.innerHTML;
 }
 
 function handleClick(e: MouseEvent) {
@@ -163,11 +182,7 @@ let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dic
 
             <!-- Message -->
             <span class="text-[13px] text-gray-700 leading-snug [&_code]:whitespace-nowrap [&_code]:font-semibold">
-                {#if diagnostic.renderMessage}
-                    {@html diagnostic.renderMessage().innerHTML}
-                {:else}
-                    {diagnostic.message}
-                {/if}
+                {@html diagnosticMessageHtml(diagnostic)}
             </span>
 
             <!-- Action buttons -->

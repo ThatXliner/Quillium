@@ -15,21 +15,25 @@ export default defineConfig(async () => ({
     resolve: {
         dedupe: ["@codemirror/state", "@codemirror/view"],
     },
+    // Separate cache dirs when running multiple instances to avoid chunk hash conflicts
+    cacheDir: process.env.QUILLIUM_DEV_PORT
+        ? `node_modules/.vite-${process.env.QUILLIUM_DEV_PORT}`
+        : "node_modules/.vite",
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
     //
     // 1. prevent vite from obscuring rust errors
     clearScreen: false,
-    // 2. tauri expects a fixed port, fail if that port is not available
+    // 2. tauri expects a fixed port — can be overridden via QUILLIUM_DEV_PORT for running multiple instances
     server: {
-        port: 1420,
+        port: Number(process.env.QUILLIUM_DEV_PORT) || 1420,
         strictPort: true,
         host: host || false,
         hmr: host
             ? {
                   protocol: "ws",
                   host,
-                  port: 1421,
+                  port: (Number(process.env.QUILLIUM_DEV_PORT) || 1420) + 1,
               }
             : undefined,
         watch: {

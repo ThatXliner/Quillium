@@ -38,6 +38,7 @@
  *   28-export-menu.png      — status bar with export dropdown expanded
  *   29-tutorial.png         — tutorial overlay welcome step
  *   30-error-banner.png     — crash recovery error banner
+ *   31-share-omni-waitlist.png — Share modal open on the Omni waitlist surface
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -51,7 +52,8 @@ import { PNG } from "pngjs";
 
 const noServer = process.argv.includes("--no-server");
 const force = process.argv.includes("--force");
-const BASE_URL = noServer ? "http://localhost:1420" : "http://localhost:4173";
+const SCREENSHOT_PORT = Number(process.env.SCREENSHOT_PORT) || 4173;
+const BASE_URL = noServer ? "http://localhost:1420" : `http://localhost:${SCREENSHOT_PORT}`;
 const OUT_DIR = "screenshots";
 const VIEWPORT = { width: 1440, height: 900 };
 const DEVICE_SCALE_FACTOR = 2;
@@ -208,6 +210,10 @@ async function installTauriMock(
             trashedDocs: typeof TRASHED_DOCUMENTS;
             mockSnapshots: typeof MOCK_SNAPSHOTS;
         }) => {
+            // Keep the top-right auth/share controls deterministic in screenshot
+            // runs, without reaching real Supabase services.
+            (window as unknown as Record<string, unknown>).__QUILLIUM_SCREENSHOT_AUTH_ONLINE__ =
+                true;
             if (payload.showTutorial) {
                 localStorage.removeItem("quillium_tutorial_seen");
             } else {
@@ -423,8 +429,26 @@ async function startServer(): Promise<ChildProcess> {
     console.log("Starting dev server…");
     const server = spawn(
         "bun",
-        ["run", "dev", "--", "--host", "localhost", "--port", "4173", "--strictPort"],
-        { stdio: ["ignore", "pipe", "pipe"], detached: false },
+        [
+            "run",
+            "dev",
+            "--",
+            "--host",
+            "localhost",
+            "--port",
+            String(SCREENSHOT_PORT),
+            "--strictPort",
+        ],
+        {
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: false,
+            env: {
+                ...process.env,
+                // The Share entry point is hidden when no relay URL is configured.
+                // Screenshots should capture the UI surface without needing a real relay.
+                PUBLIC_RELAY_URL: process.env.PUBLIC_RELAY_URL || "ws://localhost:1234",
+            },
+        },
     );
     server.stdout?.on("data", (chunk: Buffer) => process.stdout.write(`[server] ${chunk}`));
     server.stderr?.on("data", (chunk: Buffer) => process.stderr.write(`[server] ${chunk}`));
@@ -1304,6 +1328,30 @@ async function scenarioErrorBanner(ctx: BrowserContext): Promise<void> {
     await page.close();
 }
 
+/**
+ * 31. share-omni-waitlist — The Share modal open on the Omni tab,
+ *    showing the waitlist-era collaboration entry point.
+ */
+async function scenarioShareOmniWaitlist(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page);
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    await setEditorText(
+        page,
+        "Mara revised the first line three times, then left all three versions alive because none of them had lied yet.",
+    );
+    await page.getByRole("button", { name: "Share" }).click({ timeout: 5_000 });
+    await page.locator("dialog.share-modal").waitFor({ state: "visible", timeout: 5_000 });
+    await page.getByRole("heading", { name: "Share your document" }).waitFor({ timeout: 5_000 });
+    await page.getByRole("tab", { name: "Omni" }).click({ timeout: 5_000 });
+    await page.getByText("Omni is currently waitlist only").waitFor({ timeout: 5_000 });
+    await page.waitForTimeout(500);
+    await shot(page, "31-share-omni-waitlist");
+    await page.close();
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -1386,6 +1434,7 @@ async function main(): Promise<void> {
         await scenarioExportMenu(context);
         await scenarioTutorial(context);
         await scenarioErrorBanner(context);
+        await scenarioShareOmniWaitlist(context);
         if (significantChanges) {
             console.log(`\nDone. Screenshots saved to ./${OUT_DIR}/`);
         } else {

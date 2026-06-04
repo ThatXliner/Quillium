@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 import { hasApiKey } from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { onDestroy, onMount } from "svelte";
@@ -158,7 +159,7 @@ function handleNameKeydown(e: KeyboardEvent) {
 
 function openSettings() {
     open = false;
-    window.dispatchEvent(new CustomEvent("quillium:open-ai-settings"));
+    appEventBus.emit({ type: "ai-open-settings" });
 }
 
 function handleDocClick(e: MouseEvent) {
@@ -208,7 +209,7 @@ const annotationPills = [
                    bg-transparent border-none cursor-pointer"
         >
             <AutoAIFace
-                state={faceState}
+                faceState={faceState}
                 eyeOffsetX={face.eyeOffsetX}
                 eyeOffsetY={face.eyeOffsetY}
             />
@@ -223,7 +224,7 @@ const annotationPills = [
             <div class="flex items-center gap-[6px]">
                 <div class="bubble-icon {autoAIRunning && !locked ? 'bubble-icon-active' : ''}">
                     <div style="transform: scale(0.38); transform-origin: center; width: 42px; height: 30px; display: flex; align-items: center; justify-content: center;">
-                        <AutoAIFace state={faceState} eyeOffsetX={0} eyeOffsetY={0} />
+                        <AutoAIFace faceState={faceState} eyeOffsetX={0} eyeOffsetY={0} />
                     </div>
                 </div>
                 <div class="flex items-center gap-[3px] flex-1 min-w-0">

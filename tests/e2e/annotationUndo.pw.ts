@@ -20,12 +20,12 @@ test.describe("annotation undo state safety", () => {
         await editor.click();
         await page.keyboard.type("Hello world!");
         await page.keyboard.press("ControlOrMeta+a");
-        await page.keyboard.press("ControlOrMeta+Alt+k");
+        await page.keyboard.press("Control+Alt+k");
         await editor.click();
         await page.keyboard.press("ControlOrMeta+a");
         await page.keyboard.press("Backspace");
         await expect.poll(() => getCmText(editor)).toBe("");
-        await page.keyboard.press("ControlOrMeta+z");
+        await page.keyboard.press("Control+z");
         await expect.poll(() => getCmText(editor)).toBe("Hello world!");
         expect(errors).toHaveLength(0);
     });

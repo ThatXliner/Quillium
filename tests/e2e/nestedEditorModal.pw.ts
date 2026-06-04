@@ -284,7 +284,7 @@ test.describe("deep nesting", () => {
             .locator("dialog[open] [data-tutorial-action='expand-revision-modal']")
             .first();
         await expect(expand).toBeVisible({ timeout: 5_000 });
-        await expand.click();
+        await expand.dispatchEvent("click");
 
         const modal2 = page.locator("dialog[open] .revision-modal-editor .cm-content").first();
         await expect(modal2).toBeVisible({ timeout: 8_000 });

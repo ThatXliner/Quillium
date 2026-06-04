@@ -10,8 +10,9 @@
  *     the global editorView store)
  *   - annotationsData?: AnnotationMap — annotation map (falls
  *     back to the global annotations store)
- *   - activeAnnotationData?: GenericAnnotation — currently
- *     selected annotation (falls back to activeAnnotation store)
+ *   - activeAnnotationData?: GenericAnnotation | null — currently
+ *     selected annotation. `undefined` falls back to the global
+ *     activeAnnotation store; `null` means explicitly none.
  *   - layout?: "floating" | "inline" — positioning strategy
  *
  * Events emitted: none (dispatches CodeMirror effects directly)
@@ -39,7 +40,7 @@ import {
     type Thread,
 } from "$lib/editor/plugins/annotations";
 import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
-import { annotationEventBus } from "./eventBus";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import Revision from "./Revision.svelte";
 import PreComment from "./PreComment.svelte";
 import Suggestion from "./Suggestion.svelte";
@@ -49,6 +50,7 @@ import Kbd from "$lib/ui/Kbd.svelte";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import { toast } from "svelte-sonner";
 import posthog from "$lib/posthog";
+import { Minimize2 } from "lucide-svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -62,7 +64,7 @@ const {
 }: {
     view?: EditorView;
     annotationsData?: AnnotationMap;
-    activeAnnotationData?: GenericAnnotation;
+    activeAnnotationData?: GenericAnnotation | null;
     layout?: "floating" | "inline";
 } = $props();
 
@@ -70,7 +72,9 @@ const {
 // single consistent data source regardless of context.
 const resolvedView = $derived(view ?? $editorView);
 const resolvedAnnotations = $derived(annotationsData ?? $annotations);
-const resolvedActiveAnnotation = $derived(activeAnnotationData ?? $activeAnnotation);
+const resolvedActiveAnnotation = $derived(
+    activeAnnotationData === undefined ? $activeAnnotation : activeAnnotationData,
+);
 const isFloating = $derived(layout === "floating");
 
 /**
@@ -79,6 +83,9 @@ const isFloating = $derived(layout === "floating");
  * decoration opens a modal instead of the floating card.
  */
 const MIN_ANNOTATION_WIDTH = 150;
+const MIN_PANEL_WIDTH = 180;
+const MAX_PANEL_WIDTH = 420;
+const DEFAULT_PANEL_WIDTH = 280;
 let narrowMode = $state(false);
 
 $effect(() => {
@@ -206,7 +213,10 @@ function getAnnotationLeft(): number {
     return rect.left + rect.width / 2 + 408 + 16;
 }
 
-let scrollContainer: HTMLDivElement | undefined;
+let scrollContainer = $state<HTMLDivElement | undefined>(undefined);
+let resizingPanel = $state(false);
+let panelResizeStartX = 0;
+let panelResizeStartWidth = 0;
 
 // Sort annotations by document position for stable rendering
 const sortedAnnotations = $derived(
@@ -311,6 +321,12 @@ $effect(() => {
     if (resolvedActiveAnnotation !== undefined || sortedAnnotations.length) {
         tick().then(updateAnnotationPositions);
     }
+});
+
+$effect(() => {
+    if (!isFloating) return;
+    void appSettings.annotationPanelWidth;
+    tick().then(updateAnnotationPositions);
 });
 
 // Re-run positioning whenever any card changes height
@@ -448,16 +464,63 @@ function updateAnnotationPositions() {
  */
 function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     if (!scrollContainer) return;
-    const inner = scrollContainer.firstElementChild as HTMLElement | null;
+    const inner = scrollContainer.querySelector<HTMLElement>(".annotation-scroll-inner");
     if (inner) inner.style.height = `${lastBottom + 24}px`;
     scrollContainer.style.left = `${leftPx}px`;
     const RIGHT_MARGIN = 32;
-    const MAX_CARD_WIDTH = 280;
+    const desiredWidth = Math.min(
+        MAX_PANEL_WIDTH,
+        Math.max(MIN_PANEL_WIDTH, appSettings.annotationPanelWidth),
+    );
     const availableWidth = Math.min(
-        MAX_CARD_WIDTH,
+        desiredWidth,
         Math.max(0, window.innerWidth - leftPx - RIGHT_MARGIN),
     );
     scrollContainer.style.width = `${availableWidth}px`;
+}
+
+// Pointer events (instead of mouse events) so the annotation panel can be
+// resized with touch on tablets as well as a mouse on desktop. The pointer is
+// captured on the handle so move/up events keep flowing past its bounds.
+function startPanelResize(e: PointerEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingPanel = true;
+    panelResizeStartX = e.clientX;
+    panelResizeStartWidth = appSettings.annotationPanelWidth;
+    (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    window.addEventListener("pointermove", onPanelResizeMove);
+    window.addEventListener("pointerup", onPanelResizeEnd);
+    window.addEventListener("pointercancel", onPanelResizeEnd);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ew-resize";
+}
+
+function onPanelResizeMove(e: PointerEvent) {
+    if (!resizingPanel) return;
+    const dx = e.clientX - panelResizeStartX;
+    appSettings.annotationPanelWidth = Math.min(
+        MAX_PANEL_WIDTH,
+        Math.max(MIN_PANEL_WIDTH, Math.round(panelResizeStartWidth + dx)),
+    );
+}
+
+function onPanelResizeEnd() {
+    if (!resizingPanel) return;
+    resizingPanel = false;
+    window.removeEventListener("pointermove", onPanelResizeMove);
+    window.removeEventListener("pointerup", onPanelResizeEnd);
+    window.removeEventListener("pointercancel", onPanelResizeEnd);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+    persistSettings();
+}
+
+const isCustomPanelWidth = $derived(appSettings.annotationPanelWidth !== DEFAULT_PANEL_WIDTH);
+
+function resetPanelWidth() {
+    appSettings.annotationPanelWidth = DEFAULT_PANEL_WIDTH;
+    persistSettings();
 }
 
 /**
@@ -569,6 +632,16 @@ $effect(() => {
         window.removeEventListener("resize", update);
     };
 });
+
+$effect(() => {
+    return () => {
+        window.removeEventListener("pointermove", onPanelResizeMove);
+        window.removeEventListener("pointerup", onPanelResizeEnd);
+        window.removeEventListener("pointercancel", onPanelResizeEnd);
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+    };
+});
 </script>
 
 {#if sortedAnnotations && resolvedAnnotations !== undefined && resolvedView}
@@ -593,7 +666,7 @@ $effect(() => {
             {/if}
             {#if isSingleWordSelection}
                 <div class="flex items-center gap-2 text-black/40">
-                    <Kbd variant="large" keys={[mod, "B"]} />
+                    <Kbd variant="large" keys={[mod, "D"]} />
                     <span class="text-sm font-medium text-black/35">dictionary</span>
                 </div>
             {/if}
@@ -610,6 +683,27 @@ $effect(() => {
     {/if}
     {#if isFloating && !narrowMode}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <div
+                role="separator"
+                aria-label="Resize annotations panel"
+                aria-orientation="vertical"
+                class="annotation-resize-handle"
+                class:is-resizing={resizingPanel}
+                onpointerdown={startPanelResize}
+            >
+                {#if isCustomPanelWidth}
+                    <button
+                        onclick={resetPanelWidth}
+                        onpointerdown={(e) => e.stopPropagation()}
+                        aria-label="Reset to default width"
+                        title="Reset width"
+                        class="annotation-reset-btn"
+                    >
+                        <Minimize2 size={12} />
+                    </button>
+                {/if}
+            </div>
             <div class="annotation-scroll-inner">
                 {#each visibleAnnotations as c (c.id)}
                     {@const i = c.id}
@@ -780,6 +874,74 @@ $effect(() => {
 
     .annotation-scroll-container::-webkit-scrollbar {
         display: none;
+    }
+
+    .annotation-resize-handle {
+        position: absolute;
+        top: 16px;
+        bottom: 16px;
+        right: -7px;
+        width: 10px;
+        cursor: ew-resize;
+        pointer-events: auto;
+        /* Stop touch drags on the handle from scrolling the page. */
+        touch-action: none;
+        z-index: 160;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .annotation-resize-handle::after {
+        content: "";
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        right: 4px;
+        width: 2px;
+        border-radius: 9999px;
+        background-color: rgba(0, 0, 0, 0.1);
+        opacity: 0;
+        transition:
+            background-color 180ms ease,
+            opacity 180ms ease;
+    }
+
+    .annotation-resize-handle:hover::after,
+    .annotation-resize-handle.is-resizing::after {
+        background-color: rgba(0, 0, 0, 0.2);
+        opacity: 1;
+    }
+
+    .annotation-reset-btn {
+        position: absolute;
+        top: 50%;
+        right: -4px;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 9999px;
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        color: rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 180ms ease, color 180ms ease, background 180ms ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .annotation-resize-handle:hover .annotation-reset-btn,
+    .annotation-resize-handle.is-resizing .annotation-reset-btn {
+        opacity: 1;
+    }
+
+    .annotation-reset-btn:hover {
+        color: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.04);
     }
 
     .annotation-scroll-inner {

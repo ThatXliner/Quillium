@@ -19,46 +19,68 @@
         completed the tutorial (checked via localStorage).
 -->
 <script lang="ts">
-import { onMount } from "svelte";
-import Editor from "$lib/editor/Editor.svelte";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
+import { getConnectionState, initAuth, isLoading, isOffline, reconnectAuth } from "$lib/auth";
+import AuthButton from "$lib/auth/AuthButton.svelte";
+import AuthModal from "$lib/auth/AuthModal.svelte";
+import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
+import { APP_STORE_URL } from "$lib/constants";
+import type { EventPayload } from "$lib/db/events";
+import DebugPanel from "$lib/debug/DebugPanel.svelte";
+import { debugPanelActive } from "$lib/debug/store.svelte";
 import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
+import Editor from "$lib/editor/Editor.svelte";
 import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
-import Tutorial from "$lib/tutorial/Tutorial.svelte";
-import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
+import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
-import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
-import { debugPanelActive } from "$lib/debug/store.svelte";
-import DebugPanel from "$lib/debug/DebugPanel.svelte";
-import { goToHistory, goToLibrary } from "$lib/navigation";
-import type { EventPayload } from "$lib/db/events";
-import type { BackupEntry } from "$lib/errorGuard";
 import { restoreBackup } from "$lib/editor/restore";
+import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { APP_STORE_URL } from "$lib/constants";
+import { editorView, modalStack, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { MAS_BUILD, hasMasAnalyticsConsentChoice } from "$lib/platform";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check } from "@tauri-apps/plugin-updater";
+import { onMount } from "svelte";
 
-import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
+// On mobile (iOS/Android) the updater + process plugins are gated out of the
+// Rust build entirely (see src-tauri/src/lib.rs), so any check()/relaunch()
+// invoke would reject. Updates ship via the App Store / Play Store. Detect the
+// mobile webview via user-agent and skip the desktop self-update flow.
+// iPadOS 13+ reports a desktop ("Macintosh") user-agent in WKWebView, so the
+// UA regex alone misses iPad. A Macintosh UA WITH touch points is an iPad (real
+// Macs report maxTouchPoints === 0), so fold that case in.
+const IS_MOBILE =
+    typeof navigator !== "undefined" &&
+    (/android|iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
-import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
-import StatsModal from "$lib/stats/StatsModal.svelte";
-import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
-import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
+import changelog from "$lib/changelog.json";
+import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
+import type { ExportFormat } from "$lib/export";
+import posthog from "$lib/posthog";
+import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
-import MasAnalyticsConsent from "$lib/ui/MasAnalyticsConsent.svelte";
+import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
 import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 import LicensesModal from "$lib/ui/LicensesModal.svelte";
-import changelog from "$lib/changelog.json";
-import posthog from "$lib/posthog";
+import MasAnalyticsConsent from "$lib/ui/MasAnalyticsConsent.svelte";
+import MobileFormatBar from "$lib/ui/MobileFormatBar.svelte";
+import MobileMenu from "$lib/ui/MobileMenu.svelte";
+import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
+import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
+import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
+import { Toaster, toast } from "svelte-sonner";
 
+let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
 let showMasAnalyticsConsent = $state(false);
 let showChangelog = $state(false);
@@ -71,12 +93,17 @@ let updateReady = $state(false);
 // DEV only: allows the debug panel to simulate the banner in either mode.
 let debugMasMode = $state<boolean | null>(null);
 let effectiveMasMode = $derived(debugMasMode !== null ? debugMasMode : MAS_BUILD);
+let authReconnecting = $state(false);
+const authLoading = $derived(isLoading());
+const authOffline = $derived(isOffline());
+const authConnectionState = $derived(getConnectionState());
 
 let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: () => void }>();
 
 const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
 
-/** Show the tutorial on first visit if the user hasn't seen it. */
+// After the tutorial (or on a returning visit), gate on MAS analytics consent
+// first, then beta acceptance, before showing the changelog.
 function advancePostTutorialFlow() {
     if (MAS_BUILD && !hasMasAnalyticsConsentChoice()) {
         showMasAnalyticsConsent = true;
@@ -87,6 +114,7 @@ function advancePostTutorialFlow() {
     }
 }
 
+/** Show the tutorial on first visit if the user hasn't seen it. */
 function showTutorialOnFirstVisit() {
     if (!localStorage.getItem("quillium_tutorial_seen")) {
         $tutorialActive = true;
@@ -193,6 +221,12 @@ function handleKeydown(e: KeyboardEvent) {
     }
 }
 
+// In-app menu (mobile) — reuse the SAME export path the native menu uses.
+function handleMobileExport(format: ExportFormat) {
+    const view = $editorView;
+    if (view) exportDocument(view, format);
+}
+
 async function installUpdate() {
     if (effectiveMasMode) {
         posthog.capture("update_app_store_opened", { version: updateVersion });
@@ -221,11 +255,30 @@ async function installUpdate() {
     }
 }
 
+async function handleAuthReconnect() {
+    authReconnecting = true;
+    try {
+        const connected = await reconnectAuth();
+        if (!connected) {
+            toast.error("Still offline");
+        }
+    } catch {
+        toast.error("Still offline");
+    } finally {
+        authReconnecting = false;
+    }
+}
+
 onMount(() => {
+    // Initialize auth state
+    initAuth();
+
     showTutorialOnFirstVisit();
 
-    // Check for updates silently in the background for direct builds only.
-    if (!effectiveMasMode && appSettings.checkForUpdates) {
+    // Check for updates silently in the background.
+    // Direct builds only — MAS builds get updates via the App Store (checkForUpdates
+    // is forced off), and on mobile the updater plugin isn't registered.
+    if (!effectiveMasMode && !IS_MOBILE && appSettings.checkForUpdates && canCheckForUpdatesNow()) {
         check()
             .then((update) => {
                 if (update) {
@@ -236,7 +289,11 @@ onMount(() => {
                     posthog.capture("update_available", { version: update.version });
                 }
             })
-            .catch(() => {
+            .catch((error) => {
+                if (isGithubRateLimitUpdateError(error)) {
+                    deferUpdateChecksAfterRateLimit(error);
+                    return;
+                }
                 toast.error("Unable to check for updates", {
                     description:
                         "https://github.com/ThatXliner/quillium-releases could not be reached",
@@ -245,30 +302,40 @@ onMount(() => {
     }
 
     // Handle crash-restore events dispatched by ErrorBanner.svelte.
-    function handleRestoreBackup(e: Event) {
+    function handleRestoreBackup(backup: BackupEntry) {
         const view = $editorView;
         if (!view) return;
-        const { documentText } = (e as CustomEvent<BackupEntry>).detail;
-        restoreBackup(view, documentText);
+        restoreBackup(view, backup.documentText);
     }
 
     function handleManualReviewEvent() {
         if (appSettings.aiEnabled && autoAISettings.enabled) triggerManualReview();
     }
 
-    function handleShowUpdateBanner(e: Event) {
-        const { version: v, mas } = (e as CustomEvent<{ version: string; mas: boolean }>).detail;
-        updateVersion = v;
+    function handleShowUpdateBanner(version: string, mas: boolean) {
+        updateVersion = version;
         updateAvailable = true;
         updateReady = false;
         updateInstalling = false;
         debugMasMode = mas;
     }
 
-    window.addEventListener("quillium:restore-backup", handleRestoreBackup);
-    window.addEventListener("quillium:manual-review", handleManualReviewEvent);
-    window.addEventListener("quillium:show-changelog", forceShowChangelog);
-    window.addEventListener("quillium:show-update-banner", handleShowUpdateBanner);
+    function handleShowAuthModal() {
+        authModalOpen = true;
+    }
+
+    const unsubRestoreBackup = appEventBus.on("restore-backup", (event) => {
+        handleRestoreBackup(event.backup);
+    });
+    const unsubManualReview = appEventBus.on("manual-review", handleManualReviewEvent);
+    const unsubShowChangelog = appEventBus.on("show-changelog", forceShowChangelog);
+    const unsubShowUpdateBanner = appEventBus.on("show-update-banner", (event) => {
+        handleShowUpdateBanner(event.version, event.mas);
+    });
+    const unsubShowAuthModal = appEventBus.on("show-auth-modal", handleShowAuthModal);
+    const unsubShowLicenses = appEventBus.on("show-licenses", () => {
+        licensesOpen = true;
+    });
 
     // Listen for Tauri menu events
     let destroyed = false;
@@ -301,13 +368,23 @@ onMount(() => {
         const view = $editorView;
         if (!destroyed && view) exportDocument(view, "md");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-pdf", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "pdf");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:export-pdf-annotations", () => {
+        const view = $editorView;
+        if (!destroyed && view) exportDocument(view, "pdf+annotations");
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
 
     return () => {
         destroyed = true;
-        window.removeEventListener("quillium:restore-backup", handleRestoreBackup);
-        window.removeEventListener("quillium:manual-review", handleManualReviewEvent);
-        window.removeEventListener("quillium:show-changelog", forceShowChangelog);
-        window.removeEventListener("quillium:show-update-banner", handleShowUpdateBanner);
+        unsubRestoreBackup();
+        unsubManualReview();
+        unsubShowChangelog();
+        unsubShowUpdateBanner();
+        unsubShowAuthModal();
+        unsubShowLicenses();
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -412,6 +489,21 @@ if (import.meta.env.DEV) {
 <DictionaryPopover />
 <HarperTooltip />
 
+<!-- In-app overflow menu — only visible on small/touch viewports (<900px).
+     Reaches Settings / Library / History / Licenses / Export, the same
+     actions the desktop-only native menu bar triggers. -->
+<MobileMenu
+    onsettings={() => ($settingsOpen = !$settingsOpen)}
+    onlibrary={goToLibrary}
+    onhistory={goToHistory}
+    onexport={handleMobileExport}
+/>
+
+<!-- Keyboard accessory toolbar — floats on top of the on-screen keyboard so
+     formatting + annotation commands are reachable without a hardware keyboard.
+     Only active on mobile; hides itself when the keyboard is closed. -->
+<MobileFormatBar enabled={IS_MOBILE} />
+
 <div class="h-screen w-full">
     <Editor bind:this={editorComponent} />
 </div>
@@ -490,6 +582,40 @@ if (import.meta.env.DEV) {
     <WordCountOverlay />
 </BottomLeftStack>
 <Toaster position="bottom-right" />
+
+<!-- Top-right collab + account entry points -->
+<div class="fixed top-8 right-8 z-40 flex items-center gap-3">
+    {#if authLoading && authConnectionState === "connecting" && authReconnecting}
+        <button
+            disabled
+            class="px-4 py-2 text-xs font-semibold text-red-700/60 bg-red-50/70 backdrop-blur-md
+                rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                ring-1 ring-red-200/60 cursor-default"
+        >
+            Reconnecting
+        </button>
+    {:else if authLoading}
+        <div class="h-8 w-[74px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
+        <div class="h-8 w-[84px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
+    {:else if authOffline}
+        <button
+            onclick={handleAuthReconnect}
+            class="px-4 py-2 text-xs font-semibold text-red-700 bg-red-50/90 backdrop-blur-md
+                rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                ring-1 ring-red-200/80 hover:text-red-800 hover:bg-red-100/90 transition-colors"
+        >
+            Reconnect
+        </button>
+    {:else}
+        <AuthButton onauthclick={() => (authModalOpen = true)} />
+        <GoLiveButton onauthclick={() => (authModalOpen = true)} />
+    {/if}
+</div>
+
+<!-- Auth modal -->
+{#if authModalOpen}
+    <AuthModal onclose={() => (authModalOpen = false)} />
+{/if}
 
 <!-- Modal stack — render all entries so parent editors stay alive when a
      child modal is pushed on top. Each modal manages its own dialog

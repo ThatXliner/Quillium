@@ -128,6 +128,7 @@ test.describe("error banner — suspicious deletion type", () => {
         await page.evaluate(() => {
             // Access the errorBanner store through the app's module system.
             // Since SvelteKit has already loaded, we can dynamically import the stores module.
+            // @ts-expect-error Vite serves /src modules in the browser during this e2e run.
             return import("/src/lib/stores.ts").then((mod) => {
                 mod.errorBanner.set({
                     message:

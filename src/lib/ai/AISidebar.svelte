@@ -50,7 +50,8 @@
  *   visibility to avoid re-mount jank on tab switches.
  *
  * Resize system:
- *   - `startResize` attaches window-level mousemove/mouseup listeners.
+ *   - `startResize` attaches window-level pointermove/pointerup listeners
+ *     (pointer events so touch drags work on tablets too).
  *   - `onResizeMove` clamps deltas to [MIN, MAX] width/height.
  *   - `onResizeEnd` cleans up listeners and resets cursor overrides.
  *   - `isResizing` disables CSS transitions so the panel tracks the
@@ -75,6 +76,7 @@ import {
     SquareIcon,
 } from "lucide-svelte";
 import { aiProcessing, hasApiKey, ensureApiKeyLoaded, stopAllAi } from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
@@ -158,6 +160,18 @@ const MIN_WIDTH = 240;
 const MAX_WIDTH = 600;
 const MIN_HEIGHT = 400;
 const MAX_HEIGHT = 800;
+
+// On narrow viewports the fixed MAX_WIDTH/MAX_HEIGHT (600/800) overflow the
+// screen, so clamp to a viewport-relative cap. On desktop these caps are far
+// larger than MAX_WIDTH/MAX_HEIGHT, so behavior is unchanged there.
+function widthCap(): number {
+    if (typeof window === "undefined") return MAX_WIDTH;
+    return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - 32));
+}
+function heightCap(): number {
+    if (typeof window === "undefined") return MAX_HEIGHT;
+    return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, window.innerHeight - 64));
+}
 
 let customWidth = $state<number | null>(null);
 let customHeight = $state<number | null>(null);
@@ -261,7 +275,11 @@ function resetSize() {
     customHeight = null;
 }
 
-function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
+// Pointer events (instead of mouse events) so dragging the resize handles
+// works with touch on tablets as well as a mouse on desktop. The pointer is
+// captured on the handle element so move/up events keep flowing even when the
+// finger/cursor leaves the handle.
+function startResize(e: PointerEvent, handle: "right" | "bottom" | "corner") {
     e.preventDefault();
     e.stopPropagation();
     activeHandle = handle;
@@ -270,22 +288,24 @@ function startResize(e: MouseEvent, handle: "right" | "bottom" | "corner") {
     resizeStartWidth = effectiveWidth;
     resizeStartHeight = effectiveHeight;
     isResizing = true;
-    window.addEventListener("mousemove", onResizeMove);
-    window.addEventListener("mouseup", onResizeEnd);
+    (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    window.addEventListener("pointermove", onResizeMove);
+    window.addEventListener("pointerup", onResizeEnd);
+    window.addEventListener("pointercancel", onResizeEnd);
     document.body.style.userSelect = "none";
     document.body.style.cursor =
         handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
 }
 
-function onResizeMove(e: MouseEvent) {
+function onResizeMove(e: PointerEvent) {
     if (!activeHandle) return;
     const dx = e.clientX - resizeStartX;
     const dy = e.clientY - resizeStartY;
     if (activeHandle === "right" || activeHandle === "corner") {
-        customWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeStartWidth + dx));
+        customWidth = Math.min(widthCap(), Math.max(MIN_WIDTH, resizeStartWidth + dx));
     }
     if (activeHandle === "bottom" || activeHandle === "corner") {
-        customHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resizeStartHeight + dy));
+        customHeight = Math.min(heightCap(), Math.max(MIN_HEIGHT, resizeStartHeight + dy));
     }
 }
 
@@ -293,10 +313,19 @@ function onResizeEnd() {
     isResizing = false;
     activeHandle = null;
     justResized = true;
-    window.removeEventListener("mousemove", onResizeMove);
-    window.removeEventListener("mouseup", onResizeEnd);
+    window.removeEventListener("pointermove", onResizeMove);
+    window.removeEventListener("pointerup", onResizeEnd);
+    window.removeEventListener("pointercancel", onResizeEnd);
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
+}
+
+function openAiSettingsFromExternalRequest() {
+    action = "settings";
+}
+
+function openChatFromExternalRequest() {
+    action = hasApiKey() ? "chat" : "settings";
 }
 
 // Center the active icon whenever the panel opens
@@ -320,32 +349,25 @@ $effect(() => {
     };
 });
 
-// Allow external callers (e.g. AutoAIWidget) to open AI settings via event.
+// App-level event bus for cross-component AI navigation.
 $effect(() => {
-    function handleOpenAiSettings() {
-        action = "settings";
-    }
-    window.addEventListener("quillium:open-ai-settings", handleOpenAiSettings);
-    return () => window.removeEventListener("quillium:open-ai-settings", handleOpenAiSettings);
+    return appEventBus.on("ai-open-settings", openAiSettingsFromExternalRequest);
 });
 
 // Cleanup resize listeners on unmount
 $effect(() => {
     return () => {
-        window.removeEventListener("mousemove", onResizeMove);
-        window.removeEventListener("mouseup", onResizeEnd);
+        window.removeEventListener("pointermove", onResizeMove);
+        window.removeEventListener("pointerup", onResizeEnd);
+        window.removeEventListener("pointercancel", onResizeEnd);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
     };
 });
 
-// Open Chat (or Settings if no key) when DictionaryPopover triggers "Open in Chat"
+// App-level requests to open the chat panel.
 $effect(() => {
-    function handleOpenChat() {
-        action = hasApiKey() ? "chat" : "settings";
-    }
-    window.addEventListener("quillium:open-chat", handleOpenChat);
-    return () => window.removeEventListener("quillium:open-chat", handleOpenChat);
+    return appEventBus.on("ai-open-chat", openChatFromExternalRequest);
 });
 
 // Keyboard shortcuts for the sidebar
@@ -529,7 +551,7 @@ function handleKeydown(e: KeyboardEvent) {
             aria-label="Resize width"
             aria-orientation="vertical"
             class="resize-handle resize-handle-right"
-            onmousedown={(e) => startResize(e, "right")}
+            onpointerdown={(e) => startResize(e, "right")}
         ></div>
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
@@ -537,14 +559,14 @@ function handleKeydown(e: KeyboardEvent) {
             aria-label="Resize height"
             aria-orientation="horizontal"
             class="resize-handle resize-handle-bottom"
-            onmousedown={(e) => startResize(e, "bottom")}
+            onpointerdown={(e) => startResize(e, "bottom")}
         ></div>
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             role="separator"
             aria-label="Resize panel"
             class="resize-handle resize-handle-corner"
-            onmousedown={(e) => startResize(e, "corner")}
+            onpointerdown={(e) => startResize(e, "corner")}
         ></div>
     {/if}
 </div>
@@ -584,6 +606,9 @@ function handleKeydown(e: KeyboardEvent) {
     .resize-handle {
         position: absolute;
         z-index: 10;
+        /* Prevent the browser from treating a drag on the handle as a scroll
+           gesture on touch devices, so pointer drags resize the panel. */
+        touch-action: none;
         /*background: transparent;
         border: 0;
         padding: 0;*/
@@ -592,16 +617,16 @@ function handleKeydown(e: KeyboardEvent) {
     .resize-handle-right {
         top: 14px;
         bottom: 14px;
-        right: 0;
-        width: 6px;
+        right: -2px;
+        width: 10px;
         cursor: ew-resize;
     }
 
     .resize-handle-bottom {
         left: 14px;
         right: 14px;
-        bottom: 0;
-        height: 6px;
+        bottom: -2px;
+        height: 10px;
         cursor: ns-resize;
     }
 
@@ -618,15 +643,19 @@ function handleKeydown(e: KeyboardEvent) {
         position: absolute;
         top: 25%;
         bottom: 25%;
-        right: 2px;
+        right: 4px;
         width: 2px;
         border-radius: 9999px;
-        background-color: transparent;
-        transition: background-color 200ms ease;
+        background-color: rgba(0, 0, 0, 0.08);
+        opacity: 0;
+        transition:
+            background-color 200ms ease,
+            opacity 200ms ease;
     }
 
     .resize-handle-right:hover::after {
         background-color: rgba(0, 0, 0, 0.18);
+        opacity: 1;
     }
 
     .resize-handle-bottom::after {
@@ -634,15 +663,19 @@ function handleKeydown(e: KeyboardEvent) {
         position: absolute;
         left: 25%;
         right: 25%;
-        bottom: 2px;
+        bottom: 4px;
         height: 2px;
         border-radius: 9999px;
-        background-color: transparent;
-        transition: background-color 200ms ease;
+        background-color: rgba(0, 0, 0, 0.08);
+        opacity: 0;
+        transition:
+            background-color 200ms ease,
+            opacity 200ms ease;
     }
 
     .resize-handle-bottom:hover::after {
         background-color: rgba(0, 0, 0, 0.18);
+        opacity: 1;
     }
 
     .resize-handle-corner::after {

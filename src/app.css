@@ -22,8 +22,21 @@
     --ui-font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* Pin the document to the viewport so iOS WKWebView doesn't rubber-band /
+   scroll the whole app past its bounds (which drags the shell under the status
+   bar). Scrolling lives in inner containers, not on <html>/<body>. */
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
 body {
     font-family: var(--ui-font-family);
+    /* iOS-safe full height; falls back to 100% above on older webviews. */
+    height: 100dvh;
+    position: relative;
 }
 
 @keyframes shake {

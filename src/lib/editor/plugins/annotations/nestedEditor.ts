@@ -29,18 +29,23 @@
  * versions[selected].doc. Svelte $effect patches the nested editor.
  */
 
-import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
-import { undo, redo } from "@codemirror/commands";
-import { keymap, type EditorView, type ViewUpdate } from "@codemirror/view";
+import { dev } from "$app/environment";
+import { createAwarenessExtension } from "$lib/collab/awareness";
+import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
+import { redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
+import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
+import { get } from "svelte/store";
 import {
+    _nestedEditRevision,
     annotationField,
     nestedEditorEdit,
-    _nestedEditRevision,
     setActiveRevisionVersion,
+    updateRevisionVersionState,
 } from "./annotationField";
-import { annotationEventBus } from "./eventBus";
-import { versionText, type VersionState, isAnnotationOfType } from "./models";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { type VersionState, isAnnotationOfType, versionText } from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
 
@@ -61,30 +66,63 @@ export function createNestedEditorState(
     revisionId: number,
     historyView?: EditorView,
 ): EditorState {
+    // Phase 10: Collab subtree bindings removed. Nested editors always use
+    // local-only mode. Phase 11 will rebuild unified sync.
+    const session = get(collabSession);
+    const nestedAwareness =
+        session === null
+            ? []
+            : [
+                  createAwarenessExtension(
+                      session.awareness,
+                      session.ytext,
+                      session.displayName,
+                      session.cursorColor,
+                      {
+                          broadcastInitialCursor: false,
+                          clearCursorOnDestroy: false,
+                          toSharedPosition(position) {
+                              const annotation =
+                                  parentView.state.field(annotationField)[revisionId];
+                              if (!annotation || !isAnnotationOfType(annotation, "revision")) {
+                                  return null;
+                              }
+                              const range = annotation.selection.main;
+                              return range.from + position;
+                          },
+                          fromSharedPosition(position) {
+                              const annotation =
+                                  parentView.state.field(annotationField)[revisionId];
+                              if (!annotation || !isAnnotationOfType(annotation, "revision")) {
+                                  return null;
+                              }
+                              const range = annotation.selection.main;
+                              if (position < range.from || position > range.to) return null;
+                              return position - range.from;
+                          },
+                      },
+                  ),
+              ];
     const extensions = [
         ...getExtensions({ persist: false, history: false, updateListener }),
+        ...nestedAwareness,
         makeParentUndoKeymap(historyView ?? parentView, revisionId),
         makeParentRevisionNavKeymap(parentView, revisionId),
     ];
+
     if (hasSerializedNestedState(version)) {
         try {
             const docLen = version.doc.length;
             const raw = version as {
-                selection?: { ranges?: { anchor: number; head: number }[]; main?: number };
+                selection?: unknown;
                 annotationField?: unknown;
             };
 
             // EditorState.fromJSON unconditionally calls EditorSelection.fromJSON,
-            // so a missing/malformed/out-of-range selection throws. Substitute a
-            // safe cursor when needed.
-            const sel = raw.selection;
-            const selectionValid =
-                sel != null &&
-                Array.isArray(sel.ranges) &&
-                sel.ranges.length > 0 &&
-                typeof sel.main === "number" &&
-                sel.main < sel.ranges.length &&
-                sel.ranges.every((r) => r.anchor <= docLen && r.head <= docLen);
+            // so malformed/out-of-range selections throw. Older/partial nested
+            // blobs may omit selection entirely; that is fine and should quietly
+            // hydrate with a cursor at 0.
+            const normalizedSelection = normalizeSerializedSelection(raw.selection, docLen);
 
             // The annotationField blob contains nested annotation positions
             // relative to the doc at save time. If the doc was subsequently
@@ -94,10 +132,9 @@ export function createNestedEditorState(
             // a nice-to-have and the doc content is still restored correctly.
             const salvaged = salvageNestedAnnotations(raw.annotationField, docLen);
 
-            if (!selectionValid) {
+            if (normalizedSelection.shouldWarn) {
                 console.warn(
-                    "[nestedEditor] serialized selection is out of range or malformed" +
-                        ` (docLen=${docLen}, sel=${JSON.stringify(sel)}); resetting to cursor at 0`,
+                    `[nestedEditor] serialized selection is out of range or malformed (docLen=${docLen}, sel=${JSON.stringify(raw.selection)}); resetting to cursor at 0`,
                 );
             }
             if (salvaged.droppedCount > 0) {
@@ -108,7 +145,7 @@ export function createNestedEditorState(
             }
             const blob = {
                 ...version,
-                selection: selectionValid ? sel : { ranges: [{ anchor: 0, head: 0 }], main: 0 },
+                selection: normalizedSelection.selection,
                 annotationField: salvaged.result,
             };
             return EditorState.fromJSON(blob, { extensions }, nestedSavedFields);
@@ -120,6 +157,77 @@ export function createNestedEditorState(
         }
     }
     return EditorState.create({ doc: versionText(version), extensions });
+}
+
+type SerializedSelection = {
+    ranges: Array<{ anchor: number; head: number }>;
+    main: number;
+};
+
+function cursorAtStart(): SerializedSelection {
+    return { ranges: [{ anchor: 0, head: 0 }], main: 0 };
+}
+
+export function normalizeSerializedSelection(
+    selection: unknown,
+    docLen: number,
+): { selection: SerializedSelection; shouldWarn: boolean } {
+    if (selection == null) {
+        return { selection: cursorAtStart(), shouldWarn: false };
+    }
+    if (typeof selection !== "object") {
+        return { selection: cursorAtStart(), shouldWarn: true };
+    }
+
+    const sel = selection as { ranges?: unknown; main?: unknown };
+    if (!Array.isArray(sel.ranges) || sel.ranges.length === 0) {
+        return { selection: cursorAtStart(), shouldWarn: true };
+    }
+
+    const ranges = sel.ranges;
+    const rangesValid = ranges.every((range) => {
+        if (typeof range !== "object" || range == null) return false;
+        const { anchor, head } = range as { anchor?: unknown; head?: unknown };
+        return isValidDocPosition(anchor, docLen) && isValidDocPosition(head, docLen);
+    });
+    const main = sel.main === undefined ? 0 : sel.main;
+    const mainValid =
+        typeof main === "number" && Number.isInteger(main) && main >= 0 && main < ranges.length;
+
+    if (!rangesValid || !mainValid) {
+        return { selection: cursorAtStart(), shouldWarn: true };
+    }
+
+    return {
+        selection: {
+            ranges: ranges as SerializedSelection["ranges"],
+            main,
+        },
+        shouldWarn: false,
+    };
+}
+
+function isValidDocPosition(position: unknown, docLen: number): position is number {
+    return (
+        typeof position === "number" &&
+        Number.isInteger(position) &&
+        position >= 0 &&
+        position <= docLen
+    );
+}
+
+export function mergeNestedVersionState(
+    existing: VersionState,
+    nestedState: Record<string, unknown>,
+): VersionState {
+    const blob: Record<string, unknown> = {
+        ...existing,
+        annotationField: nestedState.annotationField,
+    };
+    if (nestedState.selection !== undefined) {
+        blob.selection = nestedState.selection;
+    }
+    return blob as VersionState;
 }
 
 /**
@@ -219,6 +327,24 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 },
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-z",
+                          run() {
+                              return undo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-z",
+                          run() {
+                              return undo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-y",
                 mac: "Mod-Shift-z",
@@ -227,6 +353,38 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 },
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-y",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Ctrl-Shift-z",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-y",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Shift-z",
+                          run() {
+                              return redo(parentView);
+                          },
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-Enter",
                 run() {
@@ -238,16 +396,70 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
                 },
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-Enter",
+                          run() {
+                              annotationEventBus.emit({
+                                  type: "annotation-add-version",
+                                  annotationId: revisionId,
+                              });
+                              return true;
+                          },
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Enter",
+                          run() {
+                              annotationEventBus.emit({
+                                  type: "annotation-add-version",
+                                  annotationId: revisionId,
+                              });
+                              return true;
+                          },
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-Alt-m",
                 run: openNestedAnnotation("comment"),
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-Alt-m",
+                          run: openNestedAnnotation("comment"),
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Alt-m",
+                          run: openNestedAnnotation("comment"),
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
             {
                 key: "Mod-Alt-k",
                 run: openNestedAnnotation("revision"),
                 preventDefault: true,
             },
+            ...(dev
+                ? [
+                      {
+                          key: "Ctrl-Alt-k",
+                          run: openNestedAnnotation("revision"),
+                          preventDefault: true,
+                      },
+                      {
+                          key: "Meta-Alt-k",
+                          run: openNestedAnnotation("revision"),
+                          preventDefault: true,
+                      },
+                  ]
+                : []),
         ]),
     );
 }
@@ -262,14 +474,33 @@ export function makeParentUndoKeymap(parentView: EditorView, revisionId: number)
  * modal-level handler.
  */
 export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: number) {
+    function flushNestedState(view: EditorView): void {
+        const annotation = parentView.state.field(annotationField)[revisionId];
+        if (!annotation || !isAnnotationOfType(annotation, "revision")) return;
+        const versionIndex = annotation.activeVersionIndex;
+        const existing = annotation.versions[versionIndex];
+        if (!existing) return;
+        const nestedState = view.state.toJSON(nestedSavedFields) as Record<string, unknown>;
+        parentView.dispatch(
+            updateRevisionVersionState(
+                parentView.state,
+                revisionId,
+                versionIndex,
+                mergeNestedVersionState(existing, nestedState),
+                { addToHistory: false },
+            ),
+        );
+    }
+
     function navigate(direction: "prev" | "next") {
-        const state = parentView.state;
+        let state = parentView.state;
         const annotation = state.field(annotationField)[revisionId];
         if (!annotation || !isAnnotationOfType(annotation, "revision")) return false;
         const count = annotation.versions.length;
         if (count <= 1) return true; // consume: user intent was "navigate", no-op is correct
         const current = annotation.activeVersionIndex;
         const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
+        state = parentView.state;
         parentView.dispatch(setActiveRevisionVersion(state, annotation.id, next));
         return true;
     }
@@ -277,14 +508,16 @@ export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: 
     return keymap.of([
         {
             key: "Ctrl-[",
-            run() {
+            run(view) {
+                flushNestedState(view);
                 return navigate("prev");
             },
             preventDefault: true,
         },
         {
             key: "Ctrl-]",
-            run() {
+            run(view) {
+                flushNestedState(view);
                 return navigate("next");
             },
             preventDefault: true,

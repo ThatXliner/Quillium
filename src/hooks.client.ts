@@ -37,6 +37,10 @@ if (typeof window !== "undefined") {
         // this can surface as an unhandled rejection in some Tauri webview
         // timing scenarios. Ignore it rather than showing a crash banner.
         if (err.message?.includes("effect_orphan")) return;
+        // Supabase auth uses the browser LockManager internally. If an auth
+        // request is superseded, WebKit can surface the lock abort as an
+        // unhandled rejection even though the app can safely keep running.
+        if (err.name === "AbortError" && err.message?.includes("Lock was stolen")) return;
         // WebKit surfaces failed fetch() calls as "Load failed" — typically from
         // PostHog analytics or session recording when offline. Non-fatal:
         // don't scare the user with a crash banner, but still report to PostHog.

@@ -23,6 +23,7 @@ import {
 } from "$lib/editor/plugins/annotations/index";
 import { autoAISettings, type AutoAIConservativeness } from "./settings.svelte";
 import { toast } from "svelte-sonner";
+import { appEventBus } from "$lib/events/appEventBus";
 
 export type AutoAIPhase = "idle" | "thinking" | "reviewing";
 
@@ -92,6 +93,7 @@ IMPORTANT RULES:
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastReviewedContent = "";
 let unsubscribe: (() => void) | null = null;
+let unsubStopAi: (() => void) | null = null;
 
 function applyAnnotations(result: ReviewResult, doc: string): number {
     const view = get(editorView);
@@ -187,7 +189,12 @@ async function runReview(content: string, manual = false) {
         // so the >_< face is visible during the ensureApiKeyLoaded wait.
         autoAIPhase.set("reviewing");
         setAiProcessing(true);
-        const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
+        const model = createModel(
+            aiSettings.provider,
+            aiSettings.apiKey,
+            aiSettings.model,
+            aiSettings.baseURL,
+        );
         const { object } = await generateObject({
             model,
             schema: AnnotationSchema,
@@ -235,13 +242,14 @@ export function startAutoAI() {
     });
 
     // Cancel pending reviews when the global stop event fires.
-    window.addEventListener("quillium:stop-ai", cancelPendingReview);
+    unsubStopAi = appEventBus.on("stop-ai", cancelPendingReview);
 }
 
 /** Stop the engine and cancel any pending review. */
 export function stopAutoAI() {
     cancelPendingReview();
-    window.removeEventListener("quillium:stop-ai", cancelPendingReview);
+    unsubStopAi?.();
+    unsubStopAi = null;
     if (unsubscribe) {
         unsubscribe();
         unsubscribe = null;

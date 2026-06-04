@@ -7,7 +7,7 @@
  * Props:
  *   - view: EditorView — the CodeMirror editor instance
  *   - annotationsData: Annotations — current annotation map
- *   - activeAnnotationData?: GenericAnnotation — the annotation
+ *   - activeAnnotationData?: GenericAnnotation | null — the annotation
  *     that is currently selected (should be the pending comment)
  *
  * Events emitted: none (dispatches CodeMirror effects directly)
@@ -21,6 +21,8 @@
  * on submit / cancel.
  */
 import type { EditorView } from "@codemirror/view";
+import { getCurrentUserName } from "$lib/auth";
+import { avatarColor, initials } from "$lib/auth/avatarUtils";
 import { tick } from "svelte";
 import { updateThread, removeAnnotation } from "./annotationField";
 import { canCreateNewComment } from "./utils";
@@ -36,12 +38,13 @@ const {
     view: EditorView;
     annotationsData: Annotations;
     pendingAnnotation?: GenericAnnotation;
-    activeAnnotationData?: GenericAnnotation;
+    activeAnnotationData?: GenericAnnotation | null;
 } = $props();
 
 let commentText = $state("");
 let textarea = $state<HTMLTextAreaElement | undefined>();
 let focusedPendingId = $state<number | undefined>(undefined);
+const currentUserName = $derived(getCurrentUserName());
 
 function resolvePendingComment() {
     if (
@@ -109,7 +112,7 @@ function addComment() {
                         ...pendingComment.thread,
                         {
                             message: commentText,
-                            author: "User",
+                            author: currentUserName,
                             time: Date.now(),
                         },
                     ],
@@ -148,8 +151,12 @@ function cancelComment() {
     {/if}
 
     <div class="flex gap-2.5 px-3 py-3">
-        <div class="shrink-0 w-7 h-7 rounded-full bg-white/50 inset-shadow-sm inset-shadow-white shadow-sm flex items-center justify-center text-black/60 text-xs font-semibold">
-            U
+        <div
+            class="shrink-0 w-7 h-7 rounded-full shadow-sm flex items-center justify-center text-white text-xs font-semibold"
+            style="background: {avatarColor(currentUserName)};"
+            title={currentUserName}
+        >
+            {initials(currentUserName)}
         </div>
         <textarea
             tabindex="0"

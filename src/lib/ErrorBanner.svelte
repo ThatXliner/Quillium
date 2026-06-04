@@ -19,6 +19,7 @@ import { FEEDBACK_FORM_URL } from "./constants";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { page } from "$app/stores";
 import posthog from "$lib/posthog";
+import { appEventBus } from "$lib/events/appEventBus";
 
 let showDetails = $state(false);
 let copied = $state(false);
@@ -90,7 +91,7 @@ function restoreFromBackup() {
     if (!backup) return;
 
     posthog.capture("crash_backup_restored");
-    window.dispatchEvent(new CustomEvent("quillium:restore-backup", { detail: backup }));
+    appEventBus.emit({ type: "restore-backup", backup });
     clearBackup("crash");
     $errorBanner = null;
 }

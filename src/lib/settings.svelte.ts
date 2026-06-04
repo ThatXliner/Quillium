@@ -1,11 +1,11 @@
-import { MAS_BUILD, readMasAnalyticsConsent } from "$lib/platform";
-
 /**
  * settings.svelte.ts — Global application settings store.
  *
  * Persists user preferences to localStorage. Read by any component
  * that needs to respect user-configured behavior.
  */
+
+import { MAS_BUILD, readMasAnalyticsConsent } from "$lib/platform";
 
 const STORAGE_KEY = "quillium-app-settings";
 
@@ -19,6 +19,7 @@ type AppSettings = {
     selectTextInNestedEditor: boolean;
     showNestedEditor: boolean;
     atomicRevisions: boolean;
+    editorMode: "plain" | "markdown";
     docFontFamily: string;
     docFontSize: number;
     uiFontFamily: string;
@@ -40,12 +41,14 @@ type AppSettings = {
     checkForUpdates: boolean;
     grammarCheckEnabled: boolean;
     grammarDialect: "american" | "british" | "australian";
+    annotationPanelWidth: number;
 };
 
 const DEFAULTS: AppSettings = {
     selectTextInNestedEditor: true,
     showNestedEditor: true,
     atomicRevisions: true,
+    editorMode: "markdown",
     docFontFamily: "Georgia, serif",
     docFontSize: 18,
     uiFontFamily: "system-ui, -apple-system, sans-serif",
@@ -67,25 +70,32 @@ const DEFAULTS: AppSettings = {
     checkForUpdates: !MAS_BUILD,
     grammarCheckEnabled: true,
     grammarDialect: "american",
+    annotationPanelWidth: 280,
 };
 
 function loadSettings(): AppSettings {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return { ...DEFAULTS };
-        const parsed = JSON.parse(raw);
+        let parsed = JSON.parse(raw);
         // Migrate legacy alwaysShowTitle boolean
         if ("alwaysShowTitle" in parsed && !("titleVisibility" in parsed)) {
-            parsed.titleVisibility = parsed.alwaysShowTitle ? "always" : "hover";
-            delete parsed.alwaysShowTitle;
+            const { alwaysShowTitle, ...rest } = parsed;
+            parsed = {
+                ...rest,
+                titleVisibility: alwaysShowTitle ? "always" : "hover",
+            };
         }
-        const settings = { ...DEFAULTS, ...parsed };
+        const merged = { ...DEFAULTS, ...parsed };
+        if (typeof merged.docFontFamily === "string" && merged.docFontFamily.includes("Inter")) {
+            merged.docFontFamily = DEFAULTS.docFontFamily;
+        }
         if (MAS_BUILD) {
-            settings.analyticsEnabled =
-                readMasAnalyticsConsent() === "granted" ? settings.analyticsEnabled : false;
-            settings.checkForUpdates = false;
+            merged.analyticsEnabled =
+                readMasAnalyticsConsent() === "granted" ? merged.analyticsEnabled : false;
+            merged.checkForUpdates = false;
         }
-        return settings;
+        return merged;
     } catch {
         return { ...DEFAULTS };
     }
