@@ -12,6 +12,10 @@ settingGroups:
     base:
       PRODUCT_NAME: Quillium
       PRODUCT_BUNDLE_IDENTIFIER: com.bryanhu.quillium
+      # Automatic signing with the personal Apple Development team so device
+      # builds (tauri ios dev --host) sign without manual Xcode fiddling.
+      CODE_SIGN_STYLE: Automatic
+      DEVELOPMENT_TEAM: 6AGA46VW38
 targetTemplates:
   app:
     type: application

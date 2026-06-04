@@ -45,6 +45,9 @@
       "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB",
       "entitlements": "Entitlements.mac.plist"
     },
+    "iOS": {
+      "developmentTeam": "6AGA46VW38"
+    },
     "createUpdaterArtifacts": true
   }
 }
