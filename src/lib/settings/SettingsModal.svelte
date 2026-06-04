@@ -29,6 +29,7 @@ import {
 import { forceLinting } from "$lib/editor/harper/lint";
 import { appEventBus } from "$lib/events/appEventBus";
 import { syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
+import { MAS_BUILD } from "$lib/platform";
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
@@ -480,39 +481,50 @@ function fontLabel(fonts: FontOption[], value: string) {
             {/if}
             -->
 
-            <!-- Auto-update toggle -->
-            <div class="setting-row">
-                <div class="setting-meta">
-                    <div class="setting-title">Check for updates</div>
-                    <div class="setting-desc">Automatically check for new versions on startup</div>
+            {#if MAS_BUILD}
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-title">Updates</div>
+                        <div class="setting-desc">
+                            App Store updates are managed by Apple for this build.
+                        </div>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
-                {#if !draft.checkForUpdates}
+            {:else}
+                <!-- Auto-update toggle -->
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-title">Check for updates</div>
+                        <div class="setting-desc">Automatically check for new versions on startup</div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                    {#if !draft.checkForUpdates}
+                        <button
+                            type="button"
+                            onclick={() => { draft.checkForUpdates = true; handleChange(); }}
+                            class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                        >Reset</button>
+                    {/if}
                     <button
-                        type="button"
-                        onclick={() => { draft.checkForUpdates = true; handleChange(); }}
-                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
-                    >Reset</button>
-                {/if}
-                <button
-                    role="switch"
-                    aria-checked={draft.checkForUpdates}
-                    aria-label="Toggle automatic update checks"
-                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.checkForUpdates ? 'bg-blue-500' : 'bg-black/[0.15]'}"
-                    onclick={() => {
-                        draft.checkForUpdates = !draft.checkForUpdates;
-                        handleChange();
-                    }}
-                >
-                    <span
-                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
-                            transition-transform duration-200
-                            {draft.checkForUpdates ? 'translate-x-4' : 'translate-x-0'}"
-                    ></span>
-                </button>
+                        role="switch"
+                        aria-checked={draft.checkForUpdates}
+                        aria-label="Toggle automatic update checks"
+                        class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                            {draft.checkForUpdates ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        onclick={() => {
+                            draft.checkForUpdates = !draft.checkForUpdates;
+                            handleChange();
+                        }}
+                    >
+                        <span
+                            class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                                transition-transform duration-200
+                                {draft.checkForUpdates ? 'translate-x-4' : 'translate-x-0'}"
+                        ></span>
+                    </button>
+                    </div>
                 </div>
-            </div>
+            {/if}
 
             <div class="section-divider"></div>
 

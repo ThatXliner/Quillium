@@ -42,14 +42,11 @@ import { appSettings, applySettings, persistSettings } from "$lib/settings.svelt
 import { editorView, modalStack, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
+import { MAS_BUILD, hasMasAnalyticsConsentChoice } from "$lib/platform";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import { onMount } from "svelte";
-
-// On MAS builds the updater/process plugins are not registered, but we still
-// check for updates and show the banner — clicking it opens the App Store instead.
-const MAS_BUILD = import.meta.env.VITE_MAS === "true";
 
 // On mobile (iOS/Android) the updater + process plugins are gated out of the
 // Rust build entirely (see src-tauri/src/lib.rs), so any check()/relaunch()
@@ -75,6 +72,7 @@ import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
 import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
 import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 import LicensesModal from "$lib/ui/LicensesModal.svelte";
+import MasAnalyticsConsent from "$lib/ui/MasAnalyticsConsent.svelte";
 import MobileFormatBar from "$lib/ui/MobileFormatBar.svelte";
 import MobileMenu from "$lib/ui/MobileMenu.svelte";
 import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
@@ -84,6 +82,7 @@ import { Toaster, toast } from "svelte-sonner";
 
 let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
+let showMasAnalyticsConsent = $state(false);
 let showChangelog = $state(false);
 let licensesOpen = $state(false);
 let changelogEntry = $state<{ date: string; content: string; version: string } | null>(null);
@@ -103,25 +102,29 @@ let editorComponent = $state<{ reload: () => Promise<void>; startEditingTitle: (
 
 const betaAccepted = () => !!localStorage.getItem("quillium_beta_accepted");
 
-/** Show the tutorial on first visit if the user hasn't seen it. */
-function showTutorialOnFirstVisit() {
-    if (!localStorage.getItem("quillium_tutorial_seen")) {
-        $tutorialActive = true;
-    } else if (!betaAccepted()) {
-        // Tutorial already seen (e.g. returning user from private beta),
-        // but beta terms not yet accepted — show disclaimer directly.
+// After the tutorial (or on a returning visit), gate on MAS analytics consent
+// first, then beta acceptance, before showing the changelog.
+function advancePostTutorialFlow() {
+    if (MAS_BUILD && !hasMasAnalyticsConsentChoice()) {
+        showMasAnalyticsConsent = true;
+    } else if (!MAS_BUILD && !betaAccepted()) {
         showBetaDisclaimer = true;
     } else {
         tryShowChangelog();
     }
 }
 
-function handleTutorialComplete() {
-    if (!betaAccepted()) {
-        showBetaDisclaimer = true;
+/** Show the tutorial on first visit if the user hasn't seen it. */
+function showTutorialOnFirstVisit() {
+    if (!localStorage.getItem("quillium_tutorial_seen")) {
+        $tutorialActive = true;
     } else {
-        tryShowChangelog();
+        advancePostTutorialFlow();
     }
+}
+
+function handleTutorialComplete() {
+    advancePostTutorialFlow();
 }
 
 const CHANGELOG_SEEN_KEY = "quillium_changelog_seen";
@@ -273,9 +276,9 @@ onMount(() => {
     showTutorialOnFirstVisit();
 
     // Check for updates silently in the background.
-    // On MAS builds the banner redirects to the App Store instead of self-updating.
-    // On mobile the updater plugin isn't registered, so skip entirely.
-    if (!IS_MOBILE && appSettings.checkForUpdates && canCheckForUpdatesNow()) {
+    // Direct builds only — MAS builds get updates via the App Store (checkForUpdates
+    // is forced off), and on mobile the updater plugin isn't registered.
+    if (!effectiveMasMode && !IS_MOBILE && appSettings.checkForUpdates && canCheckForUpdatesNow()) {
         check()
             .then((update) => {
                 if (update) {
@@ -532,8 +535,20 @@ if (import.meta.env.DEV) {
     <Tutorial onComplete={handleTutorialComplete} />
 {/if}
 
+<!-- MAS analytics consent — shown once after tutorial or on first visit for returning users -->
+{#if showMasAnalyticsConsent}
+    <MasAnalyticsConsent
+        onresolve={(enabled) => {
+            appSettings.analyticsEnabled = enabled;
+            persistSettings();
+            showMasAnalyticsConsent = false;
+            tryShowChangelog();
+        }}
+    />
+{/if}
+
 <!-- Beta disclaimer — shown once after tutorial or on first visit for returning users -->
-{#if showBetaDisclaimer}
+{#if !MAS_BUILD && showBetaDisclaimer}
     <BetaDisclaimer onaccept={() => { showBetaDisclaimer = false; tryShowChangelog(); }} />
 {/if}
 

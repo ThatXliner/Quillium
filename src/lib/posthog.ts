@@ -1,11 +1,14 @@
 import posthog from "posthog-js";
 import { dev } from "$app/environment";
 import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from "$env/static/public";
+import { MAS_BUILD, persistMasAnalyticsConsent, readMasAnalyticsConsent } from "$lib/platform";
 import { appSettings } from "$lib/settings.svelte";
 import { toast } from "svelte-sonner";
 import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
 
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
+const masConsent = MAS_BUILD ? readMasAnalyticsConsent() : null;
+const startOptedOut = MAS_BUILD && masConsent !== "granted";
 
 /**
  * CSS selector matching all elements that contain user document content.
@@ -59,6 +62,7 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         api_host: PUBLIC_POSTHOG_HOST,
         ui_host: "https://us.posthog.com",
         defaults: "2026-01-30",
+        opt_out_capturing_by_default: startOptedOut,
         capture_exceptions: true,
         session_recording: {
             // TODO(#191): conditionally clear maskTextSelector when shareDocumentAnalytics is re-enabled
@@ -69,12 +73,12 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
     posthog.register({ app_version: appVersion, app: "desktop" });
 
     // Respect the user's analytics preference
-    if (!appSettings.analyticsEnabled) {
+    if (startOptedOut || !appSettings.analyticsEnabled) {
         posthog.opt_out_capturing();
     }
 
     console.log(
-        `%c 🪶 Quillium (${appVersion}) %c PostHog analytics ${appSettings.analyticsEnabled ? "active" : "opted out"}`,
+        `%c 🪶 Quillium (${appVersion}) %c PostHog analytics ${!startOptedOut && appSettings.analyticsEnabled ? "active" : "opted out"}`,
         "background:#3b82f6;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
         "background:#1d4ed8;color:#fff;font-weight:400;padding:2px 8px;border-radius:0 4px 4px 0;",
     );
@@ -90,6 +94,9 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
  * Call after changing `appSettings.analyticsEnabled` to sync PostHog state.
  */
 export function syncAnalyticsOptOut(enabled: boolean) {
+    if (MAS_BUILD) {
+        persistMasAnalyticsConsent(enabled);
+    }
     if (enabled) {
         posthog.opt_in_capturing();
     } else {

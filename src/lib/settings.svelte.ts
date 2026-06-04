@@ -5,6 +5,8 @@
  * that needs to respect user-configured behavior.
  */
 
+import { MAS_BUILD, readMasAnalyticsConsent } from "$lib/platform";
+
 const STORAGE_KEY = "quillium-app-settings";
 
 export type CustomQuickAction = {
@@ -55,7 +57,7 @@ const DEFAULTS: AppSettings = {
     titleHoverDelay: 350,
     titleLingerDuration: 3000,
     uiZoom: 1,
-    analyticsEnabled: true,
+    analyticsEnabled: readMasAnalyticsConsent() === "granted" || !MAS_BUILD,
     // TODO(#191): re-enable once App Store is established
     // shareDocumentAnalytics: false,
     // shareDocumentKey: "",
@@ -65,7 +67,7 @@ const DEFAULTS: AppSettings = {
     wordCountDisplayMode: "both",
     autoVersionOnRevisionCreate: true,
     showAiSuggestions: true,
-    checkForUpdates: true,
+    checkForUpdates: !MAS_BUILD,
     grammarCheckEnabled: true,
     grammarDialect: "american",
     annotationPanelWidth: 280,
@@ -87,6 +89,11 @@ function loadSettings(): AppSettings {
         const merged = { ...DEFAULTS, ...parsed };
         if (typeof merged.docFontFamily === "string" && merged.docFontFamily.includes("Inter")) {
             merged.docFontFamily = DEFAULTS.docFontFamily;
+        }
+        if (MAS_BUILD) {
+            merged.analyticsEnabled =
+                readMasAnalyticsConsent() === "granted" ? merged.analyticsEnabled : false;
+            merged.checkForUpdates = false;
         }
         return merged;
     } catch {
