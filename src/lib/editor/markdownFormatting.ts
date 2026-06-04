@@ -12,10 +12,29 @@ export type MarkdownFormat =
     | "numberedList"
     | "blockquote";
 
+// A surgical edit: replace [from, to) with `insert`. Insertions have from === to.
+type Change = { from: number; to: number; insert: string };
+
 type FormatResult = {
-    text: string;
+    // The exact, minimal edits this format makes. We dispatch these directly
+    // instead of replacing the whole document, so untouched text keeps its
+    // positions and annotation ranges remap cleanly (see formatMarkdownSelection).
+    changes: Change[];
     selection: { from: number; to: number };
 };
+
+// Apply changes to a doc string. Used only by callers/tests that want the
+// resulting text; the editor dispatches `changes` directly. Changes must be
+// sorted ascending and non-overlapping (every builder below produces them so).
+function applyChanges(doc: string, changes: Change[]): string {
+    let out = "";
+    let cursor = 0;
+    for (const change of changes) {
+        out += doc.slice(cursor, change.from) + change.insert;
+        cursor = change.to;
+    }
+    return out + doc.slice(cursor);
+}
 
 function selectionText(doc: string, from: number, to: number) {
     return doc.slice(from, to);
@@ -23,40 +42,51 @@ function selectionText(doc: string, from: number, to: number) {
 
 function wrapSelection(doc: string, from: number, to: number, token: string): FormatResult {
     const selected = selectionText(doc, from, to);
+    const len = token.length;
+
     if (from === to) {
-        const insert = `${token}${token}`;
+        // Insert an empty pair and place the cursor between the tokens.
         return {
-            text: doc.slice(0, from) + insert + doc.slice(to),
-            selection: { from: from + token.length, to: from + token.length },
+            changes: [{ from, to, insert: `${token}${token}` }],
+            selection: { from: from + len, to: from + len },
         };
     }
 
-    const hasWrap =
-        selected.startsWith(token) &&
-        selected.endsWith(token) &&
-        selected.length >= token.length * 2;
+    const hasInnerWrap =
+        selected.startsWith(token) && selected.endsWith(token) && selected.length >= len * 2;
 
-    if (hasWrap) {
-        const unwrapped = selected.slice(token.length, selected.length - token.length);
+    if (hasInnerWrap) {
+        // Strip the tokens sitting just inside the selection: two small deletes.
         return {
-            text: doc.slice(0, from) + unwrapped + doc.slice(to),
-            selection: { from, to: from + unwrapped.length },
+            changes: [
+                { from, to: from + len, insert: "" },
+                { from: to - len, to, insert: "" },
+            ],
+            selection: { from, to: to - len * 2 },
         };
     }
 
-    const before = doc.slice(Math.max(0, from - token.length), from);
-    const after = doc.slice(to, to + token.length);
+    const before = doc.slice(Math.max(0, from - len), from);
+    const after = doc.slice(to, to + len);
     if (before === token && after === token) {
+        // Strip the tokens sitting just outside the selection: two small deletes.
         return {
-            text: doc.slice(0, from - token.length) + selected + doc.slice(to + token.length),
-            selection: { from: from - token.length, to: to - token.length },
+            changes: [
+                { from: from - len, to: from, insert: "" },
+                { from: to, to: to + len, insert: "" },
+            ],
+            selection: { from: from - len, to: to - len },
         };
     }
 
-    const wrapped = `${token}${selected}${token}`;
+    // Wrap: insert a token before and after the selection. The selected text
+    // itself is never part of any change, so annotations on it stay intact.
     return {
-        text: doc.slice(0, from) + wrapped + doc.slice(to),
-        selection: { from: from + token.length, to: from + token.length + selected.length },
+        changes: [
+            { from, to: from, insert: token },
+            { from: to, to: to, insert: token },
+        ],
+        selection: { from: from + len, to: to + len },
     };
 }
 
@@ -67,6 +97,10 @@ function getLineBlock(doc: string, from: number, to: number) {
     return { start, end, text: doc.slice(start, end) };
 }
 
+// Build per-line changes by comparing each old line to its transformed line.
+// Only the differing prefix/suffix of each line is replaced, so any annotation
+// in the unchanged middle of a line survives. Lines that don't change emit no
+// change at all.
 function transformLines(
     doc: string,
     from: number,
@@ -74,13 +108,48 @@ function transformLines(
     transform: (lines: string[]) => string[],
 ): FormatResult {
     const block = getLineBlock(doc, from, to);
-    const nextBlock = transform(block.text.split("\n")).join("\n");
+    const oldLines = block.text.split("\n");
+    const newLines = transform(oldLines);
+
+    const changes: Change[] = [];
+    let lineStart = block.start;
+    let newBlockLen = 0;
+    for (let i = 0; i < oldLines.length; i++) {
+        const oldLine = oldLines[i];
+        const newLine = newLines[i];
+        if (oldLine !== newLine) {
+            const change = diffLine(lineStart, oldLine, newLine);
+            if (change) changes.push(change);
+        }
+        newBlockLen += newLine.length + (i < oldLines.length - 1 ? 1 : 0);
+        lineStart += oldLine.length + 1; // +1 for the "\n" separator
+    }
+
     return {
-        text: doc.slice(0, block.start) + nextBlock + doc.slice(block.end),
-        selection: {
-            from: block.start,
-            to: block.start + nextBlock.length,
-        },
+        changes,
+        selection: { from: block.start, to: block.start + newBlockLen },
+    };
+}
+
+// Reduce a single line's edit to the smallest replaced span by stripping the
+// shared prefix and suffix. `lineStart` is the line's offset in the document.
+function diffLine(lineStart: number, oldLine: string, newLine: string): Change | null {
+    let start = 0;
+    const maxStart = Math.min(oldLine.length, newLine.length);
+    while (start < maxStart && oldLine[start] === newLine[start]) start++;
+
+    let oldEnd = oldLine.length;
+    let newEnd = newLine.length;
+    while (oldEnd > start && newEnd > start && oldLine[oldEnd - 1] === newLine[newEnd - 1]) {
+        oldEnd--;
+        newEnd--;
+    }
+
+    if (start === oldEnd && start === newEnd) return null;
+    return {
+        from: lineStart + start,
+        to: lineStart + oldEnd,
+        insert: newLine.slice(start, newEnd),
     };
 }
 
@@ -122,12 +191,7 @@ function togglePrefixedLines(
     });
 }
 
-export function applyMarkdownFormat(
-    doc: string,
-    from: number,
-    to: number,
-    format: MarkdownFormat,
-): FormatResult {
+function buildFormat(doc: string, from: number, to: number, format: MarkdownFormat): FormatResult {
     switch (format) {
         case "bold":
             return wrapSelection(doc, from, to, "**");
@@ -171,17 +235,25 @@ export function applyMarkdownFormat(
     }
 }
 
+// Returns the surgical changes plus the resulting document text. The editor
+// dispatches `changes`; callers/tests that want the final string use `text`.
+export function applyMarkdownFormat(
+    doc: string,
+    from: number,
+    to: number,
+    format: MarkdownFormat,
+): FormatResult & { text: string } {
+    const result = buildFormat(doc, from, to, format);
+    return { ...result, text: applyChanges(doc, result.changes) };
+}
+
 export function formatMarkdownSelection(view: EditorView, format: MarkdownFormat) {
     const doc = view.state.doc.toString();
     const { from, to } = view.state.selection.main;
-    const result = applyMarkdownFormat(doc, from, to, format);
+    const result = buildFormat(doc, from, to, format);
 
     view.dispatch({
-        changes: {
-            from: 0,
-            to: doc.length,
-            insert: result.text,
-        },
+        changes: result.changes,
         selection: EditorSelection.range(result.selection.from, result.selection.to),
         scrollIntoView: true,
         userEvent: "input",
