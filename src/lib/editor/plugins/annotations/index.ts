@@ -52,14 +52,14 @@ import { dev } from "$app/environment";
 import { SearchCursor } from "@codemirror/search";
 import {
     EditorSelection,
+    type EditorState,
     Prec,
     RangeSet,
     RangeSetBuilder,
     type SelectionRange,
     type StateCommand,
-    Transaction,
     type Text,
-    type EditorState,
+    Transaction,
 } from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
@@ -69,17 +69,35 @@ import {
     Decoration,
     type DecorationSet,
     EditorView,
-    keymap,
     type KeyBinding,
     ViewPlugin,
     type ViewUpdate,
     WidgetType,
+    keymap,
 } from "@codemirror/view";
-import { tokenize, diffTokens, SuggestionDiffWidget } from "./diff";
+import { clipboardAnnotationHandlers } from "./clipboardAnnotations";
+import { SuggestionDiffWidget, diffTokens, tokenize } from "./diff";
 export type { DiffOp } from "./diff";
 export { tokenize, diffTokens } from "./diff";
 
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";
+import { readersSettings } from "$lib/readers/settings.svelte";
+import { appSettings } from "$lib/settings.svelte";
+import type { NestedEditorCommand } from "$lib/stores";
+import { settingsOpen } from "$lib/stores";
 import { filter, flatMap, isEqual } from "lodash-es";
+import {
+    _revisionCleanup,
+    addAnnotation,
+    annotationField,
+    invertedAnnotationFieldEffects,
+    removeAnnotation,
+    revisionInternalEdit,
+    setActiveRevisionVersion,
+    suggestionPreviewField,
+} from "./annotationField";
+import { nestedEditorEdit } from "./annotationField";
 import {
     type Annotation,
     type AnnotationType,
@@ -93,23 +111,6 @@ import {
     canCreateSuggestion,
     getActiveAnnotation,
 } from "./utils";
-import {
-    annotationField,
-    addAnnotation,
-    revisionInternalEdit,
-    removeAnnotation,
-    invertedAnnotationFieldEffects,
-    suggestionPreviewField,
-    _revisionCleanup,
-    setActiveRevisionVersion,
-} from "./annotationField";
-import type { NestedEditorCommand } from "$lib/stores";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { appSettings } from "$lib/settings.svelte";
-import { nestedEditorEdit } from "./annotationField";
-import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";
-import { settingsOpen } from "$lib/stores";
-import { readersSettings } from "$lib/readers/settings.svelte";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -998,6 +999,7 @@ export const annotations = () => [
     annotationDecorations,
     revisionAtomicRanges,
     revisionClickHandler,
+    clipboardAnnotationHandlers,
     collapsedRevisionResolver,
     boundaryInsertNudge,
     invertedAnnotationFieldEffects,
