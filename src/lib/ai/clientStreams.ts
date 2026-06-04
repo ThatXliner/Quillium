@@ -289,7 +289,9 @@ After all tool calls, write 2-3 sentences summarizing the patterns you found. No
 // ---------------------------------------------------------------------------
 // Dictionary / Thesaurus
 // ---------------------------------------------------------------------------
-export function streamDictionary(opts: DictionaryStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
+export function streamDictionary(
+    opts: DictionaryStreamOpts,
+): Promise<ReadableStream<UIMessageChunk>> {
     // Dictionary lookups don't need full document context — only selectedText matters.
     return buildStream(
         { ...opts, documentContent: "" },
