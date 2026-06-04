@@ -57,6 +57,10 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.17.1
         CFBundleVersion: "0.17.1"
+        # Skip the App Store export-compliance prompt (no non-exempt crypto) and
+        # categorize the app. Kept here so xcodegen regen doesn't drop them.
+        ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.productivity
     entitlements:
       path: quillium_iOS/quillium_iOS.entitlements
     scheme:
