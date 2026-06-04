@@ -21,12 +21,13 @@ import {
     languageCompartment,
 } from "$lib/editor/extensions";
 import {
-    harperExtension,
-    resetHarper,
-    loadUserDictionary,
     HARPER_DICTIONARY_KEY,
+    harperExtension,
+    loadUserDictionary,
+    resetHarper,
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
+import { appEventBus } from "$lib/events/appEventBus";
 import { syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
@@ -34,11 +35,19 @@ import type { CustomQuickAction } from "$lib/settings.svelte";
 import { editorView } from "$lib/stores";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Dialect } from "harper.js";
-import { Check, ChevronDown, HelpCircle, MessageSquare, Plus, Trash2, X } from "lucide-svelte";
+import {
+    Check,
+    ChevronDown,
+    HelpCircle,
+    MessageSquare,
+    Plus,
+    Scale,
+    Trash2,
+    X,
+} from "lucide-svelte";
 import { get } from "svelte/store";
 import FontGuideModal from "./FontGuideModal.svelte";
 import { FONTS } from "./fonts";
-import { appEventBus } from "$lib/events/appEventBus";
 
 const { onclose, scrollTo }: { onclose: () => void; scrollTo?: string } = $props();
 
@@ -1305,6 +1314,13 @@ function fontLabel(fonts: FontOption[], value: string) {
                 >
                     <MessageSquare size={12} />
                     Send Feedback
+                </button>
+                <button
+                    onclick={() => appEventBus.emit({ type: "show-licenses" })}
+                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-black/40 hover:text-black/60 transition-colors"
+                >
+                    <Scale size={12} />
+                    Licenses
                 </button>
                 <span class="text-[11px] text-rose-400/80 transition-opacity duration-200 {isDirty ? 'opacity-100' : 'opacity-0'}">
                     Unsaved

@@ -330,6 +330,9 @@ onMount(() => {
         handleShowUpdateBanner(event.version, event.mas);
     });
     const unsubShowAuthModal = appEventBus.on("show-auth-modal", handleShowAuthModal);
+    const unsubShowLicenses = appEventBus.on("show-licenses", () => {
+        licensesOpen = true;
+    });
 
     // Listen for Tauri menu events
     let destroyed = false;
@@ -378,6 +381,7 @@ onMount(() => {
         unsubShowChangelog();
         unsubShowUpdateBanner();
         unsubShowAuthModal();
+        unsubShowLicenses();
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
@@ -489,7 +493,6 @@ if (import.meta.env.DEV) {
     onsettings={() => ($settingsOpen = !$settingsOpen)}
     onlibrary={goToLibrary}
     onhistory={goToHistory}
-    onlicenses={() => (licensesOpen = !licensesOpen)}
     onexport={handleMobileExport}
 />
 

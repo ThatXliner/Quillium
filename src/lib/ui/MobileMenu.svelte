@@ -1,7 +1,7 @@
 <!--
     MobileMenu.svelte — In-app overflow menu for touch / small viewports.
 
-    The native menu bar (Settings / Library / History / Licenses / Export)
+    The native menu bar (Settings / Library / History / Export)
     is not reachable in a mobile webview, so this component surfaces the
     SAME actions behind a hamburger button. It does not own any of the
     logic: every item just calls a callback prop that maps 1:1 to the
@@ -17,28 +17,19 @@
     menu opens upward (side="top") so it doesn't run off the bottom edge.
 -->
 <script lang="ts">
-import { DropdownMenu } from "bits-ui";
-import {
-    MenuIcon,
-    SettingsIcon,
-    LibraryIcon,
-    HistoryIcon,
-    ScaleIcon,
-    DownloadIcon,
-} from "lucide-svelte";
 import type { ExportFormat } from "$lib/export";
+import { DropdownMenu } from "bits-ui";
+import { DownloadIcon, HistoryIcon, LibraryIcon, MenuIcon, SettingsIcon } from "lucide-svelte";
 
 let {
     onsettings,
     onlibrary,
     onhistory,
-    onlicenses,
     onexport,
 }: {
     onsettings: () => void;
     onlibrary: () => void;
     onhistory: () => void;
-    onlicenses: () => void;
     onexport: (format: ExportFormat) => void;
 } = $props();
 
@@ -92,12 +83,6 @@ const itemClass =
                 <div class={itemClass}>
                     <HistoryIcon size={16} />
                     <span>Version History</span>
-                </div>
-            </DropdownMenu.Item>
-            <DropdownMenu.Item class="w-full" onSelect={onlicenses}>
-                <div class={itemClass}>
-                    <ScaleIcon size={16} />
-                    <span>Licenses</span>
                 </div>
             </DropdownMenu.Item>
         </DropdownMenu.Group>
