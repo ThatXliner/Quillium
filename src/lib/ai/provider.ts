@@ -6,7 +6,8 @@
  * factory (`chatFactory.ts`) call `createModel` to obtain a generic
  * `LanguageModel` — the only place where vendor SDKs are imported.
  *
- * Supported backends: OpenAI, OpenAI-compatible, Anthropic, Google (Gemini).
+ * Supported backends: OpenAI, OpenAI-compatible, Anthropic, Google (Gemini),
+ * DeepSeek.
  *
  * Data flow:
  * aiSettings.provider / .apiKey / .model / .baseURL --> createModel() --> LanguageModel
@@ -14,12 +15,13 @@
  * To add a new provider, install its @ai-sdk/* package, extend the
  * `Provider` union, and add a case to the switch in `createModel`.
  */
-import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 
-export type Provider = "openai" | "openai-compatible" | "anthropic" | "google";
+export type Provider = "openai" | "openai-compatible" | "anthropic" | "google" | "deepseek";
 
 /**
  * Instantiate a vendor-specific LanguageModel for the given provider.
@@ -50,5 +52,7 @@ export function createModel(
             return createAnthropic({ apiKey })(modelId) as unknown as LanguageModel;
         case "google":
             return createGoogleGenerativeAI({ apiKey })(modelId) as unknown as LanguageModel;
+        case "deepseek":
+            return createDeepSeek({ apiKey })(modelId) as unknown as LanguageModel;
     }
 }

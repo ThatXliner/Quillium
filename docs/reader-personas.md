@@ -1,0 +1,116 @@
+# Reader Personas
+
+Reader personas are configurable AI "readers" that provide feedback from distinct perspectives. When the user triggers feedback, all enabled personas run in parallel — each producing annotations attributed to that persona's name.
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `presets.ts` | `ReaderPersona` type, `DEFAULT_PERSONAS` |
+| `settings.svelte.ts` | Persona list store, localStorage persistence |
+| `prompt.ts` | `buildPersonaPrompt()` |
+| `colors.ts` | `lightTint()` / `mediumTint()` for avatars |
+| `Readers.svelte` | Configuration panel UI |
+
+## Data Model
+
+```typescript
+type ReaderPersona = {
+    id: string;          // UUID for custom, slug for builtin
+    name: string;        // Display name
+    emoji: string;       // Avatar emoji
+    color: string;       // Hex color for accent
+    description: string; // Short tagline
+    profile?: {          // Rich profile for builtins
+        about: string;
+        goodFor: string[];
+        example: string;
+    };
+    instruction: string; // AI prompt (not shown to users)
+    builtin: boolean;
+    enabled: boolean;
+    chattiness: "quiet" | "normal" | "verbose";
+};
+```
+
+## Builtin Personas
+
+| Persona | Focus | Default |
+|---------|-------|---------|
+| Skeptical Editor 🔍 | Logical gaps, weak claims | Enabled |
+| Clarity Coach 💡 | Jargon, ambiguity, readability | Enabled |
+| First-Time Reader 👶 | Missing context, assumed knowledge | Enabled |
+| Emotional Reader 💜 | Tone, voice, emotional resonance | Enabled |
+| Flow Reader 🌊 | Pacing, transitions, momentum | Disabled |
+| Devil's Advocate 😈 | Challenging assumptions | Disabled |
+| Expert Reader 🎓 | Depth, accuracy, rigor | Disabled |
+| Casual Skimmer ⚡ | Scannability, key points | Disabled |
+
+## Chattiness
+
+Each persona has a 3-level chattiness setting:
+
+| Level | Behavior |
+|-------|----------|
+| `quiet` | Only significant issues; nothing if solid |
+| `normal` | Issues worth writer's attention |
+| `verbose` | Thorough; flag everything |
+
+The directive is prepended to the persona's system prompt via `buildPersonaPrompt()`.
+
+## Settings Persistence
+
+Stored in localStorage under `"quillium-readers-settings"`. On load, saved state merges with `DEFAULT_PERSONAS`:
+- User toggles and chattiness preserved
+- New builtins added if preset list grows
+- Custom personas appended after builtins
+
+## Multi-Persona Execution
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Feedback as Feedback.svelte
+    participant Factory as chatFactory.ts
+    participant AI as AI Provider
+
+    User->>Feedback: Click feedback button
+    Feedback->>Factory: sendWithPersonas()
+    Factory->>Factory: getEnabledPersonas()
+    
+    par Parallel execution
+        Factory->>AI: Persona 1 stream
+        Factory->>AI: Persona 2 stream
+        Factory->>AI: Persona N stream
+    end
+    
+    AI-->>Factory: Results with tool calls
+    Factory->>Factory: Attribute annotations to persona name
+```
+
+When feedback is triggered:
+1. `sendWithPersonas()` checks for enabled personas
+2. If any exist, calls `runMultiPersonaStreams()`
+3. Each persona runs **in parallel** (`Promise.all`)
+4. Each stream uses `buildPersonaPrompt(persona)` prepended to system prompt
+5. Tool-call handlers attribute annotations to persona's name
+
+If no personas enabled, falls back to standard single-stream.
+
+## UI (Readers.svelte)
+
+Tab 5 in AI sidebar. Rose theme accent.
+
+Layout:
+- **Enabled personas** at top
+- **Disabled personas** below divider (dimmed 55%)
+- Each card: emoji avatar, name, description, chattiness dots (1–3), toggle
+- Clicking builtin card expands: about text, "Good for" tags, example quote
+- **Custom reader form** at bottom: name, emoji, color swatch, instruction textarea
+- Custom personas deletable; builtins are not
+
+## Integration Points
+
+- **Feedback.svelte**: Routes all sends through persona check
+- **chatFactory.ts**: `runMultiPersonaStreams()` handles parallel execution
+- **AI sidebar**: Tab index 5 in `AISidebar.svelte`

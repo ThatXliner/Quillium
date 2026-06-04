@@ -49,9 +49,7 @@ const filtered = $derived(
               (d) =>
                   d.title.toLowerCase().includes(query.toLowerCase()) ||
                   d.previewText.toLowerCase().includes(query.toLowerCase()) ||
-                  parseTags(d.tags).some((tag) =>
-                      tag.toLowerCase().includes(query.toLowerCase()),
-                  ),
+                  parseTags(d.tags).some((tag) => tag.toLowerCase().includes(query.toLowerCase())),
           )
         : activeDocuments,
 );

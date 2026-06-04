@@ -162,17 +162,17 @@ const createCommentTool = (description: string) =>
 // ---------------------------------------------------------------------------
 // Shared stream builder
 // ---------------------------------------------------------------------------
-function buildStream(
+async function buildStream(
     opts: StreamOpts,
     system: string,
     tools?: Parameters<typeof streamText>[0]["tools"],
-): ReadableStream<UIMessageChunk> {
+): Promise<ReadableStream<UIMessageChunk>> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
     const fullSystem = opts.persona ? buildPersonaPrompt(opts.persona) + system : system;
     const result = streamText({
         model: llm,
         messages: [
-            ...convertToModelMessages(opts.messages),
+            ...(await convertToModelMessages(opts.messages)),
             injectDocumentContext({
                 documentContent: opts.documentContent,
                 selectedText: opts.selectedText,
@@ -188,7 +188,7 @@ function buildStream(
 // ---------------------------------------------------------------------------
 // Chat
 // ---------------------------------------------------------------------------
-export function streamChat(opts: ChatStreamOpts): ReadableStream<UIMessageChunk> {
+export function streamChat(opts: ChatStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
     return buildStream(
         opts,
         `You are a helpful writing assistant. You have access to the user's current document and any selected text they have highlighted.
@@ -207,7 +207,7 @@ Keep responses concise but thorough.${buildDocumentContextPrompt(opts.documentCo
 // ---------------------------------------------------------------------------
 // Feedback
 // ---------------------------------------------------------------------------
-export function streamFeedback(opts: FeedbackStreamOpts): ReadableStream<UIMessageChunk> {
+export function streamFeedback(opts: FeedbackStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
     return buildStream(
         opts,
         `You are an editorial writing assistant. Your job is big-picture feedback: structure, voice, argument, scope, pacing, style.${buildDocumentContextPrompt(opts.documentContext)}
@@ -245,7 +245,7 @@ Current document length: ${opts.documentContent?.length || 0} characters`,
 // ---------------------------------------------------------------------------
 // Revise
 // ---------------------------------------------------------------------------
-export function streamRevise(opts: ReviseStreamOpts): ReadableStream<UIMessageChunk> {
+export function streamRevise(opts: ReviseStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
     return buildStream(
         opts,
         `You are a word-level line-editor. Suggested text goes ONLY in createSuggestion tool calls — never in your message.${buildDocumentContextPrompt(opts.documentContext)}
@@ -289,7 +289,7 @@ After all tool calls, write 2-3 sentences summarizing the patterns you found. No
 // ---------------------------------------------------------------------------
 // Dictionary / Thesaurus
 // ---------------------------------------------------------------------------
-export function streamDictionary(opts: DictionaryStreamOpts): ReadableStream<UIMessageChunk> {
+export function streamDictionary(opts: DictionaryStreamOpts): Promise<ReadableStream<UIMessageChunk>> {
     // Dictionary lookups don't need full document context — only selectedText matters.
     return buildStream(
         { ...opts, documentContent: "" },

@@ -126,7 +126,7 @@ bun run check:watch     # Watch mode
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed technical documentation.
+See [`docs/`](./docs/) for detailed technical documentation, or start with the [Quickstart Guide](./docs/quickstart.md).
 
 ## FAQ
 
