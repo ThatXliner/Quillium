@@ -106,6 +106,12 @@ function syncKeyboard() {
 }
 
 function syncFocus() {
+    // Derive the focused view from the DOM rather than tracking it in a store:
+    // document.activeElement is always correct (the browser maintains it), so
+    // there's nothing to wire up or keep in sync as nested editors mount/destroy
+    // — a store would need every EditorView (main + each nested + modal) to
+    // register focus/blur/destroy, which can drift and point at a dead view.
+    // This runs only on focus changes, not a hot path.
     const el = document.activeElement;
     const cmRoot = el?.closest<HTMLElement>(".cm-editor");
     activeView = cmRoot ? EditorView.findFromDOM(cmRoot) : null;
