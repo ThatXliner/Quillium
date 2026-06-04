@@ -479,19 +479,24 @@ function updateScrollContainerSize(lastBottom: number, leftPx: number) {
     scrollContainer.style.width = `${availableWidth}px`;
 }
 
-function startPanelResize(e: MouseEvent) {
+// Pointer events (instead of mouse events) so the annotation panel can be
+// resized with touch on tablets as well as a mouse on desktop. The pointer is
+// captured on the handle so move/up events keep flowing past its bounds.
+function startPanelResize(e: PointerEvent) {
     e.preventDefault();
     e.stopPropagation();
     resizingPanel = true;
     panelResizeStartX = e.clientX;
     panelResizeStartWidth = appSettings.annotationPanelWidth;
-    window.addEventListener("mousemove", onPanelResizeMove);
-    window.addEventListener("mouseup", onPanelResizeEnd);
+    (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    window.addEventListener("pointermove", onPanelResizeMove);
+    window.addEventListener("pointerup", onPanelResizeEnd);
+    window.addEventListener("pointercancel", onPanelResizeEnd);
     document.body.style.userSelect = "none";
     document.body.style.cursor = "ew-resize";
 }
 
-function onPanelResizeMove(e: MouseEvent) {
+function onPanelResizeMove(e: PointerEvent) {
     if (!resizingPanel) return;
     const dx = e.clientX - panelResizeStartX;
     appSettings.annotationPanelWidth = Math.min(
@@ -503,8 +508,9 @@ function onPanelResizeMove(e: MouseEvent) {
 function onPanelResizeEnd() {
     if (!resizingPanel) return;
     resizingPanel = false;
-    window.removeEventListener("mousemove", onPanelResizeMove);
-    window.removeEventListener("mouseup", onPanelResizeEnd);
+    window.removeEventListener("pointermove", onPanelResizeMove);
+    window.removeEventListener("pointerup", onPanelResizeEnd);
+    window.removeEventListener("pointercancel", onPanelResizeEnd);
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
     persistSettings();
@@ -629,8 +635,9 @@ $effect(() => {
 
 $effect(() => {
     return () => {
-        window.removeEventListener("mousemove", onPanelResizeMove);
-        window.removeEventListener("mouseup", onPanelResizeEnd);
+        window.removeEventListener("pointermove", onPanelResizeMove);
+        window.removeEventListener("pointerup", onPanelResizeEnd);
+        window.removeEventListener("pointercancel", onPanelResizeEnd);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
     };
@@ -683,12 +690,12 @@ $effect(() => {
                 aria-orientation="vertical"
                 class="annotation-resize-handle"
                 class:is-resizing={resizingPanel}
-                onmousedown={startPanelResize}
+                onpointerdown={startPanelResize}
             >
                 {#if isCustomPanelWidth}
                     <button
                         onclick={resetPanelWidth}
-                        onmousedown={(e) => e.stopPropagation()}
+                        onpointerdown={(e) => e.stopPropagation()}
                         aria-label="Reset to default width"
                         title="Reset width"
                         class="annotation-reset-btn"
@@ -877,6 +884,8 @@ $effect(() => {
         width: 10px;
         cursor: ew-resize;
         pointer-events: auto;
+        /* Stop touch drags on the handle from scrolling the page. */
+        touch-action: none;
         z-index: 160;
         display: flex;
         flex-direction: column;

@@ -33,17 +33,17 @@ const RECOMMENDATIONS: Recommendation[] = [
         desc: "The latest Opus model is, hands down, the best model for serious knowledge work. The only downside is that it's expensive.",
     },
     {
-        provider: "DeepSeek",
+        provider: "DeepSeek (V4 Flash)",
         tag: "Best value",
-        desc: "By far the cheapest model that's still genuinely competent. We suspect it's distilled from Anthropic's models, so it carries similar mannerisms to Claude at a fraction of the cost.",
+        desc: "By far the cheapest model that's still genuinely competent. We suspect it's distilled from Anthropic's models, so it carries similar mannerisms to Claude at a fraction of the cost. Flash is so competent that I wouldn't recommend Pro",
     },
     {
-        provider: "Google (Gemini)",
+        provider: "Google (3.5 Flash)",
         tag: "Free tier",
         desc: "Gemini has a free tier. If you know how to grab a Gemini API key, you can drop it in here and start writing without paying anything.",
     },
     {
-        provider: "OpenAI",
+        provider: "OpenAI (5.5)",
         tag: "Most flexible",
         desc: "Mainly here because so many local LLMs and other services expose an OpenAI-compatible API—point Quillium at those through the custom endpoint. You can also use plain OpenAI API key.",
     },

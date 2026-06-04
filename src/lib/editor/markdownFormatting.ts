@@ -4,6 +4,8 @@ import { type EditorView, keymap } from "@codemirror/view";
 export type MarkdownFormat =
     | "bold"
     | "italic"
+    | "strikethrough"
+    | "code"
     | "heading1"
     | "heading2"
     | "bulletList"
@@ -131,6 +133,10 @@ export function applyMarkdownFormat(
             return wrapSelection(doc, from, to, "**");
         case "italic":
             return wrapSelection(doc, from, to, "_");
+        case "strikethrough":
+            return wrapSelection(doc, from, to, "~~");
+        case "code":
+            return wrapSelection(doc, from, to, "`");
         case "heading1":
             return toggleHeading(doc, from, to, 1);
         case "heading2":
