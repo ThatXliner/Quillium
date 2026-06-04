@@ -21,8 +21,12 @@
     Buttons use `onpointerdown` + `preventDefault` so tapping them does NOT blur
     the editor (which would dismiss the keyboard and collapse the selection).
 
+    Two layouts: keyboard up → full-width strip flush on top of the keyboard;
+    keyboard down / floating / hardware → a compact corner pill (so iOS's
+    floating keyboard pill doesn't show through a full-width gap).
+
     Desktop is untouched: the bar only renders when `enabled` (a mobile flag from
-    +page.svelte) is true AND the editor is focused with the keyboard open.
+    +page.svelte) is true AND the editor is focused.
 -->
 <script lang="ts">
 import { type MarkdownFormat, formatMarkdownSelection } from "$lib/editor/markdownFormatting";
@@ -57,15 +61,26 @@ let formatOpen = $state(false);
 // visual viewport). Position handles the keyboard-up vs keyboard-down cases.
 const visible = $derived(enabled && editorFocused);
 
+// Two layouts:
+//   keyboard up   → full-width bar flush on top of the keyboard.
+//   keyboard down → a compact rounded pill in the bottom-left corner, so it
+//                   reads as one Quillium control instead of spanning the width
+//                   with iOS's floating keyboard pill wedged in the gap.
+const compact = $derived(keyboardBottom === 0);
+
 // When the keyboard is up we sit flush on top of it. When it's down/floating we
-// pin to the screen bottom but clear the home-indicator safe area.
+// pin to the screen bottom, clearing the home-indicator safe area AND iOS's
+// floating keyboard pill (~3.5rem tall) so we sit above it.
+const FLOATING_PILL_CLEARANCE = "4rem";
 const barBottom = $derived(
-    keyboardBottom > 0 ? `${keyboardBottom}px` : "env(safe-area-inset-bottom, 0px)",
+    keyboardBottom > 0
+        ? `${keyboardBottom}px`
+        : `calc(env(safe-area-inset-bottom, 0px) + ${FLOATING_PILL_CLEARANCE})`,
 );
 const popoverBottom = $derived(
     keyboardBottom > 0
         ? `${keyboardBottom + 48}px`
-        : "calc(env(safe-area-inset-bottom, 0px) + 48px)",
+        : `calc(env(safe-area-inset-bottom, 0px) + ${FLOATING_PILL_CLEARANCE} + 3rem)`,
 );
 
 function syncKeyboard() {
@@ -145,6 +160,7 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
     {#if formatOpen}
         <div
             class="format-popover"
+            class:compact
             style="bottom: {popoverBottom};"
             role="toolbar"
             aria-label="Formatting"
@@ -166,6 +182,7 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
 
     <div
         class="mobile-format-bar"
+        class:compact
         style="bottom: {barBottom};"
         role="toolbar"
         aria-label="Editor actions"
@@ -193,7 +210,11 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
             <span>Revision</span>
         </button>
 
-        <span class="spacer"></span>
+        {#if compact}
+            <span class="divider"></span>
+        {:else}
+            <span class="spacer"></span>
+        {/if}
 
         <button
             type="button"
@@ -240,8 +261,33 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         touch-action: none;
     }
 
+    /* Keyboard-down: a self-contained pill centered at the bottom (above iOS's
+       floating keyboard pill) instead of a full-width strip (which leaves that
+       pill showing through the middle gap). */
+    .mobile-format-bar.compact {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        width: fit-content;
+        max-width: calc(100vw - 1.5rem);
+        gap: 0.125rem;
+        padding: 0.25rem;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 0.875rem;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        background: rgba(255, 255, 255, 0.92);
+    }
+
     .spacer {
         flex: 1;
+    }
+
+    .divider {
+        flex: 0 0 auto;
+        width: 1px;
+        height: 1.25rem;
+        margin: 0 0.125rem;
+        background: rgba(0, 0, 0, 0.12);
     }
 
     button {
@@ -296,5 +342,19 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
     .format-popover button {
         width: 2.25rem;
         height: 2.25rem;
+    }
+
+    /* Match the centered compact pill so the popover reads as part of it. */
+    .format-popover.compact {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        width: fit-content;
+        max-width: calc(100vw - 1.5rem);
+        gap: 0.125rem;
+        padding: 0.25rem;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 0.875rem;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     }
 </style>
