@@ -161,7 +161,6 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - @sveltejs/vite-plugin-svelte 5.1.1 - Vite plugin for Svelte
 - @fontsource packages (8 fonts) - Self-hosted font families:
 - lodash-es 4.18.1 - Functional utility library
-- diff 7.0.0 - Unified diff generation and parsing
 - paneforge 1.0.2 - Resizable pane divider system
 - posthog-js 1.367.0 - Product analytics with session replay
 ## Configuration
