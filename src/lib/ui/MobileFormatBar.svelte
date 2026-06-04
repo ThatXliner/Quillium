@@ -21,20 +21,24 @@
     Buttons use `onpointerdown` + `preventDefault` so tapping them does NOT blur
     the editor (which would dismiss the keyboard and collapse the selection).
 
+    Actions target whichever CodeMirror view is focused — the main editor, an
+    inline revision editor, or a revision modal editor — resolved via
+    EditorView.findFromDOM on the focused node. This keeps the bar present (and
+    correct) inside nested editors instead of vanishing.
+
     Two layouts: keyboard up → full-width strip flush on top of the keyboard;
     keyboard down / floating / hardware → a compact corner pill (so iOS's
     floating keyboard pill doesn't show through a full-width gap).
 
     Desktop is untouched: the bar only renders when `enabled` (a mobile flag from
-    +page.svelte) is true AND the editor is focused.
+    +page.svelte) is true AND a CodeMirror editor is focused.
 -->
 <script lang="ts">
 import { type MarkdownFormat, formatMarkdownSelection } from "$lib/editor/markdownFormatting";
 import { createCommentCommand, createRevisionCommand } from "$lib/editor/plugins/annotations";
-import { editorView } from "$lib/stores";
+import { EditorView } from "@codemirror/view";
 import {
     BoldIcon,
-    ChevronDownIcon,
     CodeIcon,
     GitBranchPlusIcon,
     Heading1Icon,
@@ -45,6 +49,7 @@ import {
     QuoteIcon,
     StrikethroughIcon,
     TypeIcon,
+    XIcon,
 } from "lucide-svelte";
 
 let { enabled = false }: { enabled?: boolean } = $props();
@@ -53,13 +58,17 @@ let { enabled = false }: { enabled?: boolean } = $props();
 // 0 means no on-screen keyboard (hardware keyboard, floating/minimized
 // keyboard, or keyboard closed) — the bar then pins to the bottom of the screen.
 let keyboardBottom = $state(0);
-let editorFocused = $state(false);
+// The CodeMirror view that currently has focus — the MAIN editor, an inline
+// revision editor, or a revision modal editor (all separate EditorView
+// instances). Resolved from the focused DOM node so the bar follows focus into
+// nested editors instead of vanishing. null when no editor is focused.
+let activeView = $state<EditorView | null>(null);
 let formatOpen = $state(false);
 
-// Visible whenever the editor has focus — NOT gated on the on-screen keyboard,
+// Visible whenever any editor has focus — NOT gated on the on-screen keyboard,
 // so it still shows with a hardware/floating keyboard (which barely shrinks the
 // visual viewport). Position handles the keyboard-up vs keyboard-down cases.
-const visible = $derived(enabled && editorFocused);
+const visible = $derived(enabled && !!activeView);
 
 // Two layouts:
 //   keyboard up   → full-width bar flush on top of the keyboard.
@@ -98,8 +107,9 @@ function syncKeyboard() {
 
 function syncFocus() {
     const el = document.activeElement;
-    editorFocused = !!$editorView && !!el && $editorView.dom.contains(el);
-    if (!editorFocused) formatOpen = false;
+    const cmRoot = el?.closest<HTMLElement>(".cm-editor");
+    activeView = cmRoot ? EditorView.findFromDOM(cmRoot) : null;
+    if (!activeView) formatOpen = false;
     // Re-measure on focus changes too: switching to/from a floating or hardware
     // keyboard doesn't always emit a visualViewport resize.
     syncKeyboard();
@@ -123,18 +133,18 @@ $effect(() => {
 });
 
 function runFormat(format: MarkdownFormat) {
-    $editorView && formatMarkdownSelection($editorView, format);
+    activeView && formatMarkdownSelection(activeView, format);
 }
 
 function runComment() {
-    const view = $editorView;
+    const view = activeView;
     if (!view) return;
     createCommentCommand(view);
     view.focus();
 }
 
 function runRevision() {
-    const view = $editorView;
+    const view = activeView;
     if (!view) return;
     createRevisionCommand(view);
     view.focus();
@@ -232,13 +242,13 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         <button
             type="button"
             class="icon"
-            title="Hide keyboard"
+            title="Dismiss"
             onpointerdown={(e) => {
                 e.preventDefault();
                 dismissKeyboard();
             }}
         >
-            <ChevronDownIcon size={20} />
+            <XIcon size={20} />
         </button>
     </div>
 {/if}
