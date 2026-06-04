@@ -733,7 +733,7 @@ export function createRevision({
     return true;
 }
 
-const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
     // locks it so that we can't have multiple pending states
     if (!canCreateNewComment(state.field(annotationField))) {
         annotationEventBus.emit({
@@ -757,7 +757,7 @@ const createCommentCommand: StateCommand = ({ state, dispatch }) => {
     return true;
 };
 // QUESTION: Should we have some sort of global annotation mutex
-const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     if (state.selection.main.empty) return false;
     if (!canCreateRevision(state.field(annotationField), state.selection)) {
         annotationEventBus.emit({ type: "overlapping-revision-alert" });

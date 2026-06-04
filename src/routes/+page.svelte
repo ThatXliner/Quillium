@@ -19,33 +19,33 @@
         completed the tutorial (checked via localStorage).
 -->
 <script lang="ts">
-import { onMount } from "svelte";
-import Editor from "$lib/editor/Editor.svelte";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
-import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
-import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
-import Tutorial from "$lib/tutorial/Tutorial.svelte";
-import AuthModal from "$lib/auth/AuthModal.svelte";
-import AuthButton from "$lib/auth/AuthButton.svelte";
-import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
 import { getConnectionState, initAuth, isLoading, isOffline, reconnectAuth } from "$lib/auth";
-import { tutorialActive, modalStack, editorView, settingsOpen, statsOpen } from "$lib/stores";
+import AuthButton from "$lib/auth/AuthButton.svelte";
+import AuthModal from "$lib/auth/AuthModal.svelte";
+import GoLiveButton from "$lib/collab/GoLiveButton.svelte";
+import { APP_STORE_URL } from "$lib/constants";
+import type { EventPayload } from "$lib/db/events";
+import DebugPanel from "$lib/debug/DebugPanel.svelte";
+import { debugPanelActive } from "$lib/debug/store.svelte";
+import DictionaryPopover from "$lib/editor/DictionaryPopover.svelte";
+import Editor from "$lib/editor/Editor.svelte";
+import HarperTooltip from "$lib/editor/harper/HarperTooltip.svelte";
+import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
 import DiffModal from "$lib/editor/plugins/annotations/DiffModal.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
-import CommentModal from "$lib/editor/plugins/annotations/CommentModal.svelte";
-import { debugPanelActive } from "$lib/debug/store.svelte";
-import DebugPanel from "$lib/debug/DebugPanel.svelte";
-import { goToHistory, goToLibrary } from "$lib/navigation";
-import type { EventPayload } from "$lib/db/events";
-import type { BackupEntry } from "$lib/errorGuard";
 import { restoreBackup } from "$lib/editor/restore";
+import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { editorView, modalStack, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import Tutorial from "$lib/tutorial/Tutorial.svelte";
+import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { APP_STORE_URL } from "$lib/constants";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check } from "@tauri-apps/plugin-updater";
+import { onMount } from "svelte";
 
 // On MAS builds the updater/process plugins are not registered, but we still
 // check for updates and show the banner — clicking it opens the App Store instead.
@@ -55,26 +55,32 @@ const MAS_BUILD = import.meta.env.VITE_MAS === "true";
 // Rust build entirely (see src-tauri/src/lib.rs), so any check()/relaunch()
 // invoke would reject. Updates ship via the App Store / Play Store. Detect the
 // mobile webview via user-agent and skip the desktop self-update flow.
+// iPadOS 13+ reports a desktop ("Macintosh") user-agent in WKWebView, so the
+// UA regex alone misses iPad. A Macintosh UA WITH touch points is an iPad (real
+// Macs report maxTouchPoints === 0), so fold that case in.
 const IS_MOBILE =
-    typeof navigator !== "undefined" && /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
+    typeof navigator !== "undefined" &&
+    (/android|iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 import AutoAIWidget from "$lib/autoai/AutoAIWidget.svelte";
-import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
-import StatsModal from "$lib/stats/StatsModal.svelte";
-import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
-import { toast, Toaster } from "svelte-sonner";
 import { triggerManualReview } from "$lib/autoai/engine";
 import { autoAISettings } from "$lib/autoai/settings.svelte";
+import changelog from "$lib/changelog.json";
+import WordCountOverlay from "$lib/editor/WordCountOverlay.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
+import type { ExportFormat } from "$lib/export";
+import posthog from "$lib/posthog";
+import StatsModal from "$lib/stats/StatsModal.svelte";
 import BetaDisclaimer from "$lib/ui/BetaDisclaimer.svelte";
+import BottomLeftStack from "$lib/ui/BottomLeftStack.svelte";
 import ChangelogModal from "$lib/ui/ChangelogModal.svelte";
 import LicensesModal from "$lib/ui/LicensesModal.svelte";
+import MobileFormatBar from "$lib/ui/MobileFormatBar.svelte";
 import MobileMenu from "$lib/ui/MobileMenu.svelte";
-import type { ExportFormat } from "$lib/export";
-import changelog from "$lib/changelog.json";
-import posthog from "$lib/posthog";
-import { appEventBus } from "$lib/events/appEventBus";
+import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
+import { Toaster, toast } from "svelte-sonner";
 
 let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);
@@ -486,6 +492,11 @@ if (import.meta.env.DEV) {
     onlicenses={() => (licensesOpen = !licensesOpen)}
     onexport={handleMobileExport}
 />
+
+<!-- Keyboard accessory toolbar — floats on top of the on-screen keyboard so
+     formatting + annotation commands are reachable without a hardware keyboard.
+     Only active on mobile; hides itself when the keyboard is closed. -->
+<MobileFormatBar enabled={IS_MOBILE} />
 
 <div class="h-screen w-full">
     <Editor bind:this={editorComponent} />
