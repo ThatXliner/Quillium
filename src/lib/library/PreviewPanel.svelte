@@ -5,6 +5,7 @@
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
 import { type ExportFormat, exportDocumentById } from "$lib/export";
+import DocumentPreview from "./DocumentPreview.svelte";
 import {
     FileText,
     ExternalLink,
@@ -253,11 +254,9 @@ function handleDeletePermanent() {
                 </div>
             </div>
 
-            <!-- Preview text -->
-            <div class="rounded-xl bg-gray-50 border border-gray-100 p-5">
-                <p class="text-sm text-black/60 leading-relaxed whitespace-pre-wrap">
-                    {doc.previewText || "No preview available."}
-                </p>
+            <!-- Full document preview -->
+            <div class="rounded-xl bg-gray-50 border border-gray-100 overflow-hidden h-64">
+                <DocumentPreview docId={doc.id} />
             </div>
 
             {#if !trashMode}
