@@ -1329,7 +1329,11 @@ function fontLabel(fonts: FontOption[], value: string) {
                     Report a bug
                 </button>
                 <button
-                    onclick={() => appEventBus.emit({ type: "show-licenses" })}
+                    onclick={() => {
+                        // Close settings first so the licenses modal isn't stacked behind it.
+                        appEventBus.emit({ type: "show-licenses" });
+                        onclose();
+                    }}
                     class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-black/40 hover:text-black/60 transition-colors"
                 >
                     <Scale size={12} />
