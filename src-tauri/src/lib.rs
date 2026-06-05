@@ -391,9 +391,20 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .close_window()
         .build()?;
 
+    let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("feedback", "Send Feedback…").build(app)?)
+        .build()?;
+
     let menu = Menu::with_items(
         app,
-        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+        &[
+            &app_menu,
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &window_menu,
+            &help_menu,
+        ],
     )?;
     app.set_menu(menu)?;
 
@@ -405,6 +416,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             | "history"
             | "library"
             | "licenses"
+            | "feedback"
             | "export-txt"
             | "export-txt-json"
             | "export-json"
