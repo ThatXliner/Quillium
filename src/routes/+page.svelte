@@ -38,6 +38,7 @@ import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
 import { goToHistory, goToLibrary } from "$lib/navigation";
+import { showFeedbackSurvey } from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import { editorView, modalStack, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
@@ -348,6 +349,9 @@ onMount(() => {
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:licenses", () => {
         if (!destroyed) licensesOpen = !licensesOpen;
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:feedback", () => {
+        if (!destroyed) showFeedbackSurvey("menu");
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:export-txt", () => {
         const view = $editorView;

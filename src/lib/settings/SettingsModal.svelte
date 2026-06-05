@@ -28,7 +28,7 @@ import {
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
 import { appEventBus } from "$lib/events/appEventBus";
-import { syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
+import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
@@ -36,6 +36,7 @@ import { editorView } from "$lib/stores";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Dialect } from "harper.js";
 import {
+    Bug,
     Check,
     ChevronDown,
     HelpCircle,
@@ -1309,11 +1310,23 @@ function fontLabel(fonts: FontOption[], value: string) {
         <div class="flex items-center justify-between gap-2 px-5 py-3 border-t border-black/[0.06] shrink-0">
             <div class="flex items-center gap-3">
                 <button
-                    onclick={() => openUrl(FEEDBACK_FORM_URL)}
+                    onclick={() => {
+                        // General feedback → survey. Fall back to the bug form if
+                        // surveys are unavailable (opted out / no ID configured),
+                        // so the button is never a no-op.
+                        if (!showFeedbackSurvey("settings")) openUrl(FEEDBACK_FORM_URL);
+                    }}
                     class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-amber-400/20 text-amber-700 border border-amber-400/30 hover:bg-amber-400/30 transition-colors"
                 >
                     <MessageSquare size={12} />
                     Send Feedback
+                </button>
+                <button
+                    onclick={() => openUrl(FEEDBACK_FORM_URL)}
+                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-black/40 hover:text-black/60 transition-colors"
+                >
+                    <Bug size={12} />
+                    Report a bug
                 </button>
                 <button
                     onclick={() => appEventBus.emit({ type: "show-licenses" })}

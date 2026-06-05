@@ -1,9 +1,10 @@
-import posthog from "posthog-js";
 import { dev } from "$app/environment";
-import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from "$env/static/public";
+import { PUBLIC_POSTHOG_HOST, PUBLIC_POSTHOG_KEY } from "$env/static/public";
+import { FEEDBACK_SURVEY_ID } from "$lib/constants";
 import { appSettings } from "$lib/settings.svelte";
-import { toast } from "svelte-sonner";
 import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
+import posthog, { DisplaySurveyType } from "posthog-js";
+import { toast } from "svelte-sonner";
 
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
@@ -95,6 +96,39 @@ export function syncAnalyticsOptOut(enabled: boolean) {
     } else {
         posthog.opt_out_capturing();
     }
+}
+
+/**
+ * Open the general app-feedback survey (PostHog-hosted popover).
+ *
+ * The user invoked this explicitly (Help → Send Feedback, or the Settings
+ * footer), so we `ignoreConditions`/`ignoreDelay` to show it on demand rather
+ * than waiting on dashboard targeting. PostHog emits `survey shown`/`sent`/
+ * `dismissed` events automatically.
+ *
+ * Captures `feedback_menu_opened` on intent (not gated behind the survey
+ * showing) so opted-out users and not-yet-configured surveys are still counted;
+ * `source` distinguishes the entry point and `outcome` records what happened.
+ *
+ * No-ops the survey itself when PostHog is uninitialised (dev / missing env),
+ * the user has opted out of analytics, or no survey ID is configured. Returns
+ * whether it was shown so callers can fall back (e.g. to the bug-report form).
+ */
+export function showFeedbackSurvey(source: "menu" | "settings"): boolean {
+    if (dev || !PUBLIC_POSTHOG_KEY || !PUBLIC_POSTHOG_HOST) return false;
+    if (!appSettings.analyticsEnabled) return false;
+    if (!FEEDBACK_SURVEY_ID) {
+        console.warn("[Quillium] FEEDBACK_SURVEY_ID is not set — survey unavailable.");
+        capture("feedback_menu_opened", { source, outcome: "unavailable" });
+        return false;
+    }
+    capture("feedback_menu_opened", { source, outcome: "shown" });
+    posthog.displaySurvey(FEEDBACK_SURVEY_ID, {
+        displayType: DisplaySurveyType.Popover,
+        ignoreConditions: true,
+        ignoreDelay: true,
+    });
+    return true;
 }
 
 /**
