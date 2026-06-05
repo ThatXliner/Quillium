@@ -11,7 +11,7 @@ export const FEEDBACK_FORM_URL = "https://forms.gle/1BEa4XwXXtuEuTqo7";
 // The ID is the survey's stable identifier from the PostHog dashboard (Surveys →
 // the survey → copy ID). It is not a secret, so it lives alongside the form URL.
 // Empty string disables the survey (helper no-ops) until a survey is created.
-export const FEEDBACK_SURVEY_ID = "";
+export const FEEDBACK_SURVEY_ID = "019e955b-2c1a-0000-4793-edcac62b8133";
 
 export const OMNI_WAITLIST_URL = "https://quillium.bryanhu.com/omni";
 
