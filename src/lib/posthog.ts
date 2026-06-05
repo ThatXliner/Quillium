@@ -1,10 +1,12 @@
 import { dev } from "$app/environment";
 import { PUBLIC_POSTHOG_HOST, PUBLIC_POSTHOG_KEY } from "$env/static/public";
 import { FEEDBACK_SURVEY_ID } from "$lib/constants";
+import { debugForceSurvey } from "$lib/debug/store.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
 import posthog, { DisplaySurveyType } from "posthog-js";
 import { toast } from "svelte-sonner";
+import { get } from "svelte/store";
 
 const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
@@ -54,7 +56,12 @@ function patchStylesheetCORS() {
     }).observe(document.head, { childList: true });
 }
 
-if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
+let posthogInitialised = false;
+
+/** Initialise PostHog once. Idempotent — safe to call from startup or the dev override. */
+function initPostHog() {
+    if (posthogInitialised) return;
+    posthogInitialised = true;
     patchStylesheetCORS();
     posthog.init(PUBLIC_POSTHOG_KEY, {
         api_host: PUBLIC_POSTHOG_HOST,
@@ -79,12 +86,26 @@ if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
         "background:#3b82f6;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px;",
         "background:#1d4ed8;color:#fff;font-weight:400;padding:2px 8px;border-radius:0 4px 4px 0;",
     );
+}
+
+if (!dev && PUBLIC_POSTHOG_KEY && PUBLIC_POSTHOG_HOST) {
+    initPostHog();
 } else {
     if (dev) {
         console.warn("[Quillium] Dev mode — analytics disabled.");
     } else {
         console.warn("[Quillium] PostHog env vars missing — analytics disabled.");
     }
+}
+
+/**
+ * DEV only: initialise PostHog on demand so the feedback survey can be tested
+ * locally. Gated by the debug-panel "Force survey" switch; no-op in production
+ * (where PostHog is already initialised at startup) or without env vars.
+ */
+export function ensurePostHogForDebug() {
+    if (!dev || !PUBLIC_POSTHOG_KEY || !PUBLIC_POSTHOG_HOST) return;
+    initPostHog();
 }
 
 /**
@@ -113,9 +134,16 @@ export function syncAnalyticsOptOut(enabled: boolean) {
  * No-ops the survey itself when PostHog is uninitialised (dev / missing env),
  * the user has opted out of analytics, or no survey ID is configured. Returns
  * whether it was shown so callers can fall back (e.g. to the bug-report form).
+ *
+ * In dev the survey only runs when the debug-panel "Force survey" switch is on
+ * (which also initialises PostHog on demand); otherwise it stays disabled.
  */
 export function showFeedbackSurvey(source: "menu" | "settings"): boolean {
-    if (dev || !PUBLIC_POSTHOG_KEY || !PUBLIC_POSTHOG_HOST) return false;
+    if (!PUBLIC_POSTHOG_KEY || !PUBLIC_POSTHOG_HOST) return false;
+    if (dev) {
+        if (!get(debugForceSurvey)) return false;
+        ensurePostHogForDebug();
+    }
     if (!appSettings.analyticsEnabled) return false;
     if (!FEEDBACK_SURVEY_ID) {
         console.warn("[Quillium] FEEDBACK_SURVEY_ID is not set — survey unavailable.");

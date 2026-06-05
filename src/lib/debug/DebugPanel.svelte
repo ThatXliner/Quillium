@@ -27,7 +27,7 @@ import {
     errorBanner,
 } from "$lib/stores";
 import { saveEmergencyBackup } from "$lib/errorGuard";
-import { debugAuthWaitlistMode, debugPanelActive } from "$lib/debug/store.svelte";
+import { debugAuthWaitlistMode, debugForceSurvey, debugPanelActive } from "$lib/debug/store.svelte";
 import { scenarios, type Scenario } from "$lib/debug/scenarios";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -469,7 +469,18 @@ function handleKeydown(e: KeyboardEvent) {
                 class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "update-mas" ? `Firing in ${countdownSeconds}s…` : "Update banner (MAS)"}</button>
             <label
-                class="ml-auto flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                class="ml-auto flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-amber-50 hover:border-amber-200 transition-colors"
+                title="Initialise PostHog in dev so 'Send Feedback' shows the survey instead of falling back to the bug form"
+            >
+                <input
+                    type="checkbox"
+                    bind:checked={$debugForceSurvey}
+                    class="h-3.5 w-3.5 accent-amber-500"
+                />
+                Force survey
+            </label>
+            <label
+                class="flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 transition-colors"
                 title="Make the auth modal behave like production waitlist gating"
             >
                 <input
