@@ -4,7 +4,7 @@ import { FEEDBACK_SURVEY_ID } from "$lib/constants";
 import { debugForceSurvey } from "$lib/debug/store.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import PrivacyNudgeToast from "$lib/ui/PrivacyNudgeToast.svelte";
-import posthog, { DisplaySurveyType } from "posthog-js";
+import posthog, { DisplaySurveyType, SurveyPosition } from "posthog-js";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 
@@ -137,6 +137,11 @@ export function syncAnalyticsOptOut(enabled: boolean) {
  *
  * In dev the survey only runs when the debug-panel "Force survey" switch is on
  * (which also initialises PostHog on demand); otherwise it stays disabled.
+ *
+ * Always centered: the survey is launched on demand (not tied to a page corner),
+ * and the configured bottom-right position sits flush against the window edge
+ * with no margin, overlapping the editor's side panels. Centering reads as a
+ * deliberate modal instead.
  */
 export function showFeedbackSurvey(source: "menu" | "settings"): boolean {
     if (!PUBLIC_POSTHOG_KEY || !PUBLIC_POSTHOG_HOST) return false;
@@ -153,6 +158,7 @@ export function showFeedbackSurvey(source: "menu" | "settings"): boolean {
     capture("feedback_menu_opened", { source, outcome: "shown" });
     posthog.displaySurvey(FEEDBACK_SURVEY_ID, {
         displayType: DisplaySurveyType.Popover,
+        position: SurveyPosition.MiddleCenter,
         ignoreConditions: true,
         ignoreDelay: true,
     });

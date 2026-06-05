@@ -1311,9 +1311,11 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="flex items-center gap-3">
                 <button
                     onclick={() => {
+                        // Close settings first so the centered survey isn't behind it.
                         // General feedback → survey. Fall back to the bug form if
                         // surveys are unavailable (opted out / no ID configured),
                         // so the button is never a no-op.
+                        onclose();
                         if (!showFeedbackSurvey("settings")) openUrl(FEEDBACK_FORM_URL);
                     }}
                     class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md bg-amber-400/20 text-amber-700 border border-amber-400/30 hover:bg-amber-400/30 transition-colors"
