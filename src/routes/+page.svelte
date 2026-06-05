@@ -39,12 +39,20 @@ import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
 import {
     maybeShowAutoSurvey,
+    recordWordCount,
     registerSurveyLifecycleListeners,
 } from "$lib/feedback/autoSurvey";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
-import { editorView, modalStack, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
+import {
+    editorView,
+    modalStack,
+    settingsOpen,
+    statsOpen,
+    tutorialActive,
+    writingStats,
+} from "$lib/stores";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -339,9 +347,11 @@ onMount(() => {
         licensesOpen = true;
     });
 
-    // Feedback survey: keep dismiss/submit backoff timers in sync, then check
-    // whether enough time has passed to auto-prompt on this launch.
+    // Feedback survey: keep dismiss/submit backoff timers in sync, accrue the
+    // cumulative-words engagement signal, then check whether the user is
+    // eligible for an automatic prompt on this launch.
     const unsubSurveyLifecycle = registerSurveyLifecycleListeners();
+    const unsubWordCount = writingStats.subscribe((s) => recordWordCount(s.words));
     maybeShowAutoSurvey();
 
     // Listen for Tauri menu events
@@ -396,6 +406,7 @@ onMount(() => {
         unsubShowAuthModal();
         unsubShowLicenses();
         unsubSurveyLifecycle();
+        unsubWordCount();
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });
