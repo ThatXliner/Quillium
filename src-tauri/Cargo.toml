@@ -28,13 +28,17 @@ uuid = { version = "1", features = ["v4"] }
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"
 
-# Desktop-only: self-updater/relaunch and PDF export (printpdf → azul-layout
-# does not compile for iOS/Android). textwrap is only used by pdf_export.
+# PDF export. printpdf's default features pull in the azul-layout HTML engine
+# (→ kuchiki, html5ever, rand 0.7), which does NOT compile for iOS and drags in
+# a vulnerable rand. We only use low-level drawing ops + BuiltinFont, so
+# default-features=false drops that whole subtree and builds for desktop + iOS.
+printpdf = { version = "0.8.2", default-features = false }
+textwrap = "0.16.2"
+
+# Desktop-only: self-updater/relaunch are not available on mobile targets.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-printpdf = "0.8.2"
-textwrap = "0.16.2"
 
 [dev-dependencies]
 tempfile = "3"

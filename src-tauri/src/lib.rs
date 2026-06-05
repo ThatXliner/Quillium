@@ -1,8 +1,5 @@
 pub mod db;
 mod keychain;
-// PDF export pulls in printpdf → azul-layout, which does not compile for mobile
-// targets. Desktop only; mobile gets a stub command (see cmd_export_pdf).
-#[cfg(desktop)]
 mod pdf_export;
 
 use std::sync::Mutex;
@@ -25,7 +22,6 @@ use db::{
     AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
-#[cfg(desktop)]
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
@@ -270,18 +266,13 @@ fn cmd_purge_expired_trash(state: tauri::State<DbState>) -> Result<u64, String> 
     }
 }
 
-#[cfg(desktop)]
+// PDF rendering now builds on every target (printpdf with default features off).
+// On mobile the caller must pass a writable, app-sandboxed path — there is no
+// native file picker on iOS, so the share-sheet save flow is still TODO
+// (https://github.com/ThatXliner/Quillium/issues/243); generation itself works.
 #[tauri::command]
 fn cmd_export_pdf(path: String, payload: PdfExportPayload) -> Result<(), String> {
     export_pdf_to_path(&path, &payload)
-}
-
-// PDF export is unavailable on mobile (printpdf does not build for iOS/Android).
-// Keep the command registered so the frontend invoke path stays valid.
-#[cfg(mobile)]
-#[tauri::command]
-fn cmd_export_pdf(_path: String, _payload: serde_json::Value) -> Result<(), String> {
-    Err("PDF export is not supported on mobile".to_string())
 }
 
 // ── Debug reset command ───────────────────────────────────────────
