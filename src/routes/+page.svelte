@@ -37,6 +37,10 @@ import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte"
 import { restoreBackup } from "$lib/editor/restore";
 import type { BackupEntry } from "$lib/errorGuard";
 import { exportDocument } from "$lib/export";
+import {
+    maybeShowAutoSurvey,
+    registerSurveyLifecycleListeners,
+} from "$lib/feedback/autoSurvey";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
@@ -335,6 +339,11 @@ onMount(() => {
         licensesOpen = true;
     });
 
+    // Feedback survey: keep dismiss/submit backoff timers in sync, then check
+    // whether enough time has passed to auto-prompt on this launch.
+    const unsubSurveyLifecycle = registerSurveyLifecycleListeners();
+    maybeShowAutoSurvey();
+
     // Listen for Tauri menu events
     let destroyed = false;
     const menuUnlisteners: UnlistenFn[] = [];
@@ -386,6 +395,7 @@ onMount(() => {
         unsubShowUpdateBanner();
         unsubShowAuthModal();
         unsubShowLicenses();
+        unsubSurveyLifecycle();
         for (const unlisten of menuUnlisteners) unlisten();
     };
 });

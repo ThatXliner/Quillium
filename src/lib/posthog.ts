@@ -143,7 +143,7 @@ export function syncAnalyticsOptOut(enabled: boolean) {
  * with no margin, overlapping the editor's side panels. Centering reads as a
  * deliberate modal instead.
  */
-export function showFeedbackSurvey(source: "menu" | "settings"): boolean {
+export function showFeedbackSurvey(source: "menu" | "settings" | "auto"): boolean {
     if (!PUBLIC_POSTHOG_KEY || !PUBLIC_POSTHOG_HOST) return false;
     if (dev) {
         if (!get(debugForceSurvey)) return false;
