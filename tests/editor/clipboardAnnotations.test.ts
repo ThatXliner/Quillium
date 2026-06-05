@@ -79,6 +79,18 @@ function getComments(view: EditorView) {
     );
 }
 
+function getSuggestions(view: EditorView) {
+    return Object.values(view.state.field(annotationField)).filter((a) =>
+        isAnnotationOfType(a, "suggestion"),
+    );
+}
+
+function getRevisions(view: EditorView) {
+    return Object.values(view.state.field(annotationField)).filter((a) =>
+        isAnnotationOfType(a, "revision"),
+    );
+}
+
 /** Adds a comment over [from, to] with a one-message thread. */
 function addComment(view: EditorView, from: number, to: number, message = "note") {
     view.dispatch(
@@ -90,6 +102,63 @@ function addComment(view: EditorView, from: number, to: number, message = "note"
                     "comment",
                 ),
                 thread: [{ message, author: "Tester", time: 0 }],
+            }),
+        }),
+    );
+}
+
+/** Adds a suggestion over [from, to] with the given replacements. */
+function addSuggestionOver(
+    view: EditorView,
+    from: number,
+    to: number,
+    replacements: { text: string; rationale?: string }[],
+    author?: string,
+) {
+    view.dispatch(
+        view.state.update({
+            effects: addAnnotation.of({
+                ...createNewAnnotation(
+                    view.state.field(annotationField),
+                    EditorSelection.single(from, to),
+                    "suggestion",
+                ),
+                replacements,
+                author,
+            }),
+        }),
+    );
+}
+
+/**
+ * Adds a revision over [from, to] whose active version's doc is the text
+ * currently under that range. `versions` are the alternative texts; the active
+ * one is set to `activeVersionIndex`. We seed versions[active].doc with the
+ * current doc slice so the annotation is consistent (mirrors how a real
+ * revision's active version always matches the rendered range).
+ */
+function addRevisionOver(
+    view: EditorView,
+    from: number,
+    to: number,
+    altDocs: string[],
+    activeVersionIndex = 0,
+) {
+    const activeDoc = view.state.sliceDoc(from, to);
+    const versions = altDocs.map((doc, i) => ({
+        doc: i === activeVersionIndex ? activeDoc : doc,
+        label: `v${i}`,
+    }));
+    view.dispatch(
+        view.state.update({
+            effects: addAnnotation.of({
+                ...createNewAnnotation(
+                    view.state.field(annotationField),
+                    EditorSelection.single(from, to),
+                    "revision",
+                ),
+                activeVersionIndex,
+                versions,
             }),
         }),
     );
@@ -140,7 +209,7 @@ describe("serializeAnnotationsForCopy", () => {
         expect(out).toHaveLength(0);
     });
 
-    it("ignores non-comment annotations", () => {
+    it("serializes a fully-contained suggestion with its replacements", () => {
         const view = createView("Hello brave new world");
         view.dispatch(
             view.state.update({
@@ -154,7 +223,18 @@ describe("serializeAnnotationsForCopy", () => {
                 }),
             }),
         );
-        expect(serializeAnnotationsForCopy(view.state, 0, 21)).toHaveLength(0);
+        const out = serializeAnnotationsForCopy(view.state, 6, 21); // "brave new world"
+        expect(out).toEqual([
+            {
+                _type: "suggestion",
+                relAnchor: 0,
+                relHead: 5,
+                thread: [],
+                replacements: [{ text: "bold" }],
+                author: undefined,
+            },
+        ]);
+        expect(out[0]).not.toHaveProperty("id");
     });
 });
 
@@ -274,6 +354,153 @@ describe("copy → paste round trip", () => {
             target.state.sliceDoc(comments[0].selection.main.from, comments[0].selection.main.to),
         ).toBe("brave");
         expect(comments[0].thread[0].message).toBe("cross-doc");
+    });
+});
+
+// ── Suggestion round trip ─────────────────────────────────────────────────────
+
+describe("suggestion copy → paste round trip", () => {
+    it("recreates a suggestion on pasted text with its replacements and author", () => {
+        const view = createView("Hello brave new world");
+        addSuggestionOver(view, 6, 11, [{ text: "bold", rationale: "stronger" }], "AI");
+
+        const clip = copyRange(view, 6, 21); // copy "brave new world"
+        expect(clip.getData("text/html")).toContain("data-quillium=");
+
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " " } });
+        const at = view.state.doc.length;
+        pasteAt(view, at, clip);
+
+        const suggestions = getSuggestions(view);
+        expect(suggestions).toHaveLength(2); // source + pasted
+        const pasted = suggestions.find((s) => s.selection.main.from === at);
+        expect(pasted).toBeDefined();
+        expect(view.state.sliceDoc(pasted!.selection.main.from, pasted!.selection.main.to)).toBe(
+            "brave",
+        );
+        expect(pasted!.replacements).toEqual([{ text: "bold", rationale: "stronger" }]);
+        expect(pasted!.author).toBe("AI");
+        // Fresh id distinct from the source.
+        expect(pasted!.id).not.toBe(suggestions.find((s) => s.selection.main.from === 6)!.id);
+    });
+
+    it("restores a suggestion when pasting into a different document", () => {
+        const source = createView("Hello brave new world");
+        addSuggestionOver(source, 6, 11, [{ text: "courageous" }]);
+        const clip = copyRange(source, 6, 21);
+
+        const target = createView("Existing. ");
+        const at = target.state.doc.length;
+        pasteAt(target, at, clip);
+
+        expect(target.state.doc.toString()).toBe("Existing. brave new world");
+        const suggestions = getSuggestions(target);
+        expect(suggestions).toHaveLength(1);
+        expect(suggestions[0].replacements).toEqual([{ text: "courageous" }]);
+        expect(
+            target.state.sliceDoc(
+                suggestions[0].selection.main.from,
+                suggestions[0].selection.main.to,
+            ),
+        ).toBe("brave");
+    });
+});
+
+// ── Revision round trip ───────────────────────────────────────────────────────
+
+describe("revision copy → paste round trip", () => {
+    it("recreates a revision with its versions and active index on pasted text", () => {
+        const view = createView("Hello brave new world");
+        // Active version (index 1) renders "brave"; the alternative is "bold".
+        addRevisionOver(view, 6, 11, ["bold", "brave"], 1);
+
+        const clip = copyRange(view, 6, 21); // copy "brave new world"
+        expect(clip.getData("text/html")).toContain("data-quillium=");
+
+        view.dispatch({ changes: { from: view.state.doc.length, insert: " " } });
+        const at = view.state.doc.length;
+        pasteAt(view, at, clip);
+
+        const revisions = getRevisions(view);
+        expect(revisions).toHaveLength(2); // source + pasted
+        const pasted = revisions.find((r) => r.selection.main.from === at);
+        expect(pasted).toBeDefined();
+        // The pasted revision range renders the active version's text.
+        expect(view.state.sliceDoc(pasted!.selection.main.from, pasted!.selection.main.to)).toBe(
+            "brave",
+        );
+        expect(pasted!.activeVersionIndex).toBe(1);
+        expect(pasted!.versions.map((v) => v.doc)).toEqual(["bold", "brave"]);
+        // Version labels carried verbatim.
+        expect(pasted!.versions.map((v) => v.label)).toEqual(["v0", "v1"]);
+        // Fresh id distinct from the source.
+        const srcId = revisions.find((r) => r.selection.main.from === 6)!.id;
+        expect(pasted!.id).not.toBe(srcId);
+    });
+
+    it("restores a revision when pasting into a different document", () => {
+        const source = createView("Hello brave new world");
+        addRevisionOver(source, 6, 11, ["bold", "brave"], 1);
+        const clip = copyRange(source, 6, 21);
+
+        const target = createView("Existing. ");
+        const at = target.state.doc.length;
+        pasteAt(target, at, clip);
+
+        expect(target.state.doc.toString()).toBe("Existing. brave new world");
+        const revisions = getRevisions(target);
+        expect(revisions).toHaveLength(1);
+        expect(revisions[0].activeVersionIndex).toBe(1);
+        expect(revisions[0].versions.map((v) => v.doc)).toEqual(["bold", "brave"]);
+        expect(
+            target.state.sliceDoc(revisions[0].selection.main.from, revisions[0].selection.main.to),
+        ).toBe("brave");
+    });
+
+    it("clamps an out-of-range activeVersionIndex from a malformed payload", () => {
+        // Build a clip whose payload claims activeVersionIndex 9 (only 1 version).
+        const html = encodeHtml("brave", [
+            {
+                _type: "revision",
+                relAnchor: 0,
+                relHead: 5,
+                thread: [],
+                activeVersionIndex: 9,
+                versions: [{ doc: "brave", label: "only" }],
+            },
+        ]);
+        const clip = new MockDataTransfer();
+        clip.setData("text/plain", "brave");
+        clip.setData("text/html", html);
+
+        const view = createView("Existing. ");
+        const at = view.state.doc.length;
+        pasteAt(view, at, clip);
+
+        const revisions = getRevisions(view);
+        expect(revisions).toHaveLength(1);
+        // Clamped to the last valid index (0).
+        expect(revisions[0].activeVersionIndex).toBe(0);
+    });
+});
+
+// ── Mixed selection ───────────────────────────────────────────────────────────
+
+describe("mixed annotation types in one copied region", () => {
+    it("carries a comment, a suggestion, and a revision together", () => {
+        const view = createView("alpha beta gamma delta");
+        addComment(view, 0, 5, "on alpha"); // alpha
+        addSuggestionOver(view, 6, 10, [{ text: "BETA" }]); // beta
+        addRevisionOver(view, 11, 16, ["GAMMA", "gamma"], 1); // gamma
+
+        const clip = copyRange(view, 0, 22); // whole doc
+        view.dispatch({ changes: { from: 22, insert: "\n" } });
+        const base = view.state.doc.length;
+        pasteAt(view, base, clip);
+
+        expect(getComments(view).filter((c) => c.selection.main.from >= base)).toHaveLength(1);
+        expect(getSuggestions(view).filter((s) => s.selection.main.from >= base)).toHaveLength(1);
+        expect(getRevisions(view).filter((r) => r.selection.main.from >= base)).toHaveLength(1);
     });
 });
 

@@ -1,10 +1,10 @@
 /**
- * clipboardAnnotations.ts — Preserve comment annotations across cut/copy → paste
+ * clipboardAnnotations.ts — Preserve annotations across cut/copy → paste
  *
- * This file implements Google-Docs-style comment preservation: when a user
- * cuts/copies a region that contains comment annotations, then pastes it
- * elsewhere (same doc, another doc, or after restart), the comments are
- * recreated on the pasted text at the correct offsets.
+ * This file implements Google-Docs-style annotation preservation: when a user
+ * cuts/copies a region that contains annotations, then pastes it elsewhere
+ * (same doc, another doc, or after restart), the annotations are recreated on
+ * the pasted text at the correct offsets.
  *
  * Role in the annotation subsystem:
  *   - Installs copy/cut/paste DOM handlers (clipboardAnnotationHandlers)
@@ -22,15 +22,20 @@
  *   path and for HTML-stripping sources (e.g. pasting from a plaintext-only
  *   app that drops text/html).
  *
- * Scope: comments only (per #241). Suggestions/revisions are out of scope;
- *   the offset-rebasing approach generalizes to them later.
+ * Scope: comments, suggestions, and revisions. All three rebase the same way
+ *   (offsets relative to the copy origin, fresh id on paste). Revisions also
+ *   carry their full versions[] blobs and activeVersionIndex; the copied text
+ *   is by construction the active version's rendered text, so on paste the
+ *   revision range and its active version stay consistent. Only annotations
+ *   FULLY contained in the copied range are carried (matches Google Docs).
  *
  * Key dependencies:
  *   - @codemirror/state (EditorSelection, EditorState) for ranges.
  *   - @codemirror/view (EditorView.domEventHandlers) for clipboard events.
- *   - ./annotationField (addAnnotation effect) to recreate comments.
- *   - ./models (getNewId, isAnnotationOfType, ThreadMessageSchema) for ids,
- *     type guards, and validating the smuggled thread payload.
+ *   - ./annotationField (addAnnotation effect) to recreate annotations.
+ *   - ./models (getNewId, isAnnotationOfType, ThreadMessageSchema,
+ *     SuggestionReplacementSchema, VersionStateSchema) for ids, type guards,
+ *     and validating the smuggled payloads.
  */
 
 import { EditorSelection, type EditorState, Transaction } from "@codemirror/state";
@@ -38,20 +43,49 @@ import { EditorView } from "@codemirror/view";
 import { z } from "zod";
 import { addAnnotation } from "./annotationField";
 import { annotationField } from "./annotationField";
-import { ThreadMessageSchema, getNewId, isAnnotationOfType } from "./models";
+import {
+    type GenericAnnotation,
+    SuggestionReplacementSchema,
+    ThreadMessageSchema,
+    VersionStateSchema,
+    getNewId,
+    isAnnotationOfType,
+} from "./models";
 
 // ── Serialized shape ────────────────────────────────────────────────────────
-// A comment rebased into copy-relative coordinates, with its id stripped (the
-// id is regenerated on paste). Offsets are relative to the start of the copied
-// range. The thread is carried verbatim.
-const SerializedCommentSchema = z.object({
-    _type: z.literal("comment"),
+// An annotation rebased into copy-relative coordinates, with its id stripped
+// (the id is regenerated on paste). Offsets are relative to the start of the
+// copied range. Type-specific payloads (thread / replacements / versions) ride
+// along verbatim. The relAnchor/relHead and thread fields are shared by every
+// variant; the discriminated union adds the per-type extras.
+const SerializedBaseSchema = z.object({
     relAnchor: z.number(),
     relHead: z.number(),
     thread: z.array(ThreadMessageSchema),
 });
-const SerializedAnnotationsSchema = z.array(SerializedCommentSchema);
-export type SerializedAnnotation = z.infer<typeof SerializedCommentSchema>;
+const SerializedCommentSchema = SerializedBaseSchema.extend({
+    _type: z.literal("comment"),
+});
+const SerializedSuggestionSchema = SerializedBaseSchema.extend({
+    _type: z.literal("suggestion"),
+    replacements: z.array(SuggestionReplacementSchema),
+    author: z.string().optional(),
+});
+const SerializedRevisionSchema = SerializedBaseSchema.extend({
+    _type: z.literal("revision"),
+    // Carried verbatim — each version is an opaque EditorState.toJSON blob
+    // (doc + label + nested annotation state). The nested state lives in its
+    // own id space, so it never collides with the parent's annotation ids.
+    activeVersionIndex: z.number(),
+    versions: z.array(VersionStateSchema).min(1),
+});
+const SerializedAnnotationSchema = z.discriminatedUnion("_type", [
+    SerializedCommentSchema,
+    SerializedSuggestionSchema,
+    SerializedRevisionSchema,
+]);
+const SerializedAnnotationsSchema = z.array(SerializedAnnotationSchema);
+export type SerializedAnnotation = z.infer<typeof SerializedAnnotationSchema>;
 
 // ── Side-table ──────────────────────────────────────────────────────────────
 // Fallback for when text/html is stripped from the clipboard. Keyed by a hash
@@ -101,10 +135,12 @@ export function _clearClipboardSideTable(): void {
 // ── Serialization (copy) ─────────────────────────────────────────────────────
 
 /**
- * Collects the comment annotations fully contained in the doc range [from, to)
- * and rebases their offsets to be relative to `from`. Annotations only partially
+ * Collects the annotations fully contained in the doc range [from, to) and
+ * rebases their offsets to be relative to `from`. Annotations only partially
  * overlapping the range are excluded (matches Google Docs; clamp-and-carry is a
- * later enhancement). Ids are stripped — paste assigns fresh ones.
+ * later enhancement). Ids are stripped — paste assigns fresh ones. Comments,
+ * suggestions, and revisions are all carried; type-specific data (replacements,
+ * versions/activeVersionIndex) rides along verbatim.
  */
 export function serializeAnnotationsForCopy(
     state: EditorState,
@@ -113,20 +149,34 @@ export function serializeAnnotationsForCopy(
 ): SerializedAnnotation[] {
     const result: SerializedAnnotation[] = [];
     for (const annotation of Object.values(state.field(annotationField))) {
-        // Comments only for now. Suggestions/revisions are out of scope (#241).
-        if (!isAnnotationOfType(annotation, "comment")) continue;
         const { from: aFrom, to: aTo } = annotation.selection.main;
         // Fully contained in the copied range.
         if (aFrom < from || aTo > to) continue;
         // The selection stores anchor/head (direction matters for nothing here,
         // but we preserve it). Rebase both relative to the copy origin.
         const { anchor, head } = annotation.selection.main;
-        result.push({
-            _type: "comment",
+        const base = {
             relAnchor: anchor - from,
             relHead: head - from,
             thread: annotation.thread,
-        });
+        };
+        if (isAnnotationOfType(annotation, "comment")) {
+            result.push({ ...base, _type: "comment" });
+        } else if (isAnnotationOfType(annotation, "suggestion")) {
+            result.push({
+                ...base,
+                _type: "suggestion",
+                replacements: annotation.replacements,
+                author: annotation.author,
+            });
+        } else if (isAnnotationOfType(annotation, "revision")) {
+            result.push({
+                ...base,
+                _type: "revision",
+                activeVersionIndex: annotation.activeVersionIndex,
+                versions: annotation.versions,
+            });
+        }
     }
     return result;
 }
@@ -191,7 +241,49 @@ export function decodeHtml(html: string): SerializedAnnotation[] | null {
 // ── Restore (paste) ──────────────────────────────────────────────────────────
 
 /**
- * Inserts `text` at the current selection and recreates the carried comments
+ * Reconstructs a carried annotation into a live GenericAnnotation at the paste
+ * site. Shared base (id, selection, thread) plus the per-type payload. Returns
+ * null for an unrecognized variant (defensive — the schema already constrains
+ * _type, but keeps this total over GenericAnnotation's union).
+ */
+function rebuildAnnotation(
+    serialized: SerializedAnnotation,
+    id: number,
+    selection: EditorSelection,
+): GenericAnnotation | null {
+    const base = { id, selection, thread: serialized.thread };
+    switch (serialized._type) {
+        case "comment":
+            return { ...base, _type: "comment" };
+        case "suggestion":
+            return {
+                ...base,
+                _type: "suggestion",
+                replacements: serialized.replacements,
+                author: serialized.author,
+            };
+        case "revision":
+            // The active version's doc is, by construction, the text we just
+            // inserted — so addAnnotation (which skips Phase 3 for revisions)
+            // keeps the range and active version consistent. Clamp the active
+            // index defensively in case a malformed payload points past the
+            // versions array.
+            return {
+                ...base,
+                _type: "revision",
+                activeVersionIndex: Math.max(
+                    0,
+                    Math.min(serialized.activeVersionIndex, serialized.versions.length - 1),
+                ),
+                versions: serialized.versions,
+            };
+        default:
+            return null;
+    }
+}
+
+/**
+ * Inserts `text` at the current selection and recreates the carried annotations
  * on the pasted text in a single transaction. Each annotation gets a fresh id
  * and a selection rebased to the insertion point. Offsets are clamped to the
  * inserted span so a malformed payload can't produce out-of-range positions.
@@ -208,17 +300,16 @@ export function restoreAnnotations(
 
     // Assign fresh ids sequentially so they don't collide with each other.
     let nextId = getNewId(state.field(annotationField));
-    const effects = annotations.map((a) => {
-        const anchor = Math.max(pasteFrom, Math.min(pasteFrom + a.relAnchor, insertEnd));
-        const head = Math.max(pasteFrom, Math.min(pasteFrom + a.relHead, insertEnd));
-        const id = nextId++;
-        return addAnnotation.of({
-            _type: "comment" as const,
-            id,
-            selection: EditorSelection.single(anchor, head),
-            thread: a.thread,
-        });
-    });
+    const effects = annotations
+        .map((a) => {
+            const anchor = Math.max(pasteFrom, Math.min(pasteFrom + a.relAnchor, insertEnd));
+            const head = Math.max(pasteFrom, Math.min(pasteFrom + a.relHead, insertEnd));
+            const rebuilt = rebuildAnnotation(a, nextId, EditorSelection.single(anchor, head));
+            if (!rebuilt) return null;
+            nextId++;
+            return addAnnotation.of(rebuilt);
+        })
+        .filter((e): e is ReturnType<typeof addAnnotation.of> => e !== null);
 
     view.dispatch(
         state.update({
@@ -266,9 +357,9 @@ export function handleCopy(event: ClipboardEvent, view: EditorView): boolean {
     const selected = selectedText(view.state);
     if (!selected) return false; // nothing selected — let default run
     const annotations = serializeAnnotationsForCopy(view.state, selected.from, selected.to);
-    // With no comments in the selection, defer to CodeMirror's default copy
+    // With no annotations in the selection, defer to CodeMirror's default copy
     // rather than reimplementing it — keeps behavior identical for the common
-    // no-comment case.
+    // no-annotation case.
     if (annotations.length === 0) return false;
     event.preventDefault();
     writeClipboard(event, selected.text, annotations);
