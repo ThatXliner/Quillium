@@ -15,6 +15,10 @@ const emphasisMark = Decoration.mark({ class: "cm-rich-markdown-emphasis" });
 const headingLineMarks = {
     ATXHeading1: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-1" }),
     ATXHeading2: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-2" }),
+    ATXHeading3: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-3" }),
+    ATXHeading4: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-4" }),
+    ATXHeading5: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-5" }),
+    ATXHeading6: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-6" }),
 };
 
 type HeadingName = keyof typeof headingLineMarks;
@@ -153,6 +157,27 @@ const richMarkdownTheme = EditorView.baseTheme({
         fontSize: "1.3em",
         paddingBottom: "0.08em",
         paddingTop: "0.3em",
+    },
+    ".cm-line.cm-rich-markdown-heading-3": {
+        fontSize: "1.15em",
+        paddingBottom: "0.06em",
+        paddingTop: "0.25em",
+    },
+    ".cm-line.cm-rich-markdown-heading-4": {
+        fontSize: "1.05em",
+        paddingBottom: "0.04em",
+        paddingTop: "0.2em",
+    },
+    ".cm-line.cm-rich-markdown-heading-5": {
+        fontSize: "1em",
+        paddingBottom: "0.04em",
+        paddingTop: "0.18em",
+    },
+    ".cm-line.cm-rich-markdown-heading-6": {
+        color: "rgba(0, 0, 0, 0.6)",
+        fontSize: "0.9em",
+        paddingBottom: "0.04em",
+        paddingTop: "0.16em",
     },
 });
 

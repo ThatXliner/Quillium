@@ -43,6 +43,29 @@ describe("applyMarkdownFormat", () => {
         expect(removed.text).toBe("Title");
     });
 
+    it("toggles heading levels 1 through 6", () => {
+        const cases: [MarkdownFormat, string][] = [
+            ["heading1", "# Title"],
+            ["heading2", "## Title"],
+            ["heading3", "### Title"],
+            ["heading4", "#### Title"],
+            ["heading5", "##### Title"],
+            ["heading6", "###### Title"],
+        ];
+        for (const [format, expected] of cases) {
+            const applied = applyMarkdownFormat("Title", 0, 0, format);
+            expect(applied.text, `${format} prefix`).toBe(expected);
+
+            const removed = applyMarkdownFormat(applied.text, 0, applied.text.length, format);
+            expect(removed.text, `${format} removal`).toBe("Title");
+        }
+    });
+
+    it("switches between heading levels in place", () => {
+        const h2 = applyMarkdownFormat("### Title", 0, 9, "heading2");
+        expect(h2.text).toBe("## Title");
+    });
+
     it("adds bullet list prefixes to multiple lines", () => {
         const result = applyMarkdownFormat("alpha\nbeta", 0, 10, "bulletList");
         expect(result.text).toBe("- alpha\n- beta");
@@ -127,6 +150,10 @@ describe("formatMarkdownSelection annotation preservation", () => {
             "code",
             "heading1",
             "heading2",
+            "heading3",
+            "heading4",
+            "heading5",
+            "heading6",
             "bulletList",
             "numberedList",
             "blockquote",

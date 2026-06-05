@@ -43,6 +43,7 @@ import {
     GitBranchPlusIcon,
     Heading1Icon,
     Heading2Icon,
+    Heading3Icon,
     ItalicIcon,
     ListIcon,
     MessageSquarePlusIcon,
@@ -163,6 +164,7 @@ function dismissKeyboard() {
 const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[] = [
     { format: "heading1", title: "Heading 1", icon: Heading1Icon },
     { format: "heading2", title: "Heading 2", icon: Heading2Icon },
+    { format: "heading3", title: "Heading 3", icon: Heading3Icon },
     { format: "bold", title: "Bold", icon: BoldIcon },
     { format: "italic", title: "Italic", icon: ItalicIcon },
     { format: "strikethrough", title: "Strikethrough", icon: StrikethroughIcon },

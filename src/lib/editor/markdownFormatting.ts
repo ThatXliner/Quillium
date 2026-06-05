@@ -8,6 +8,10 @@ export type MarkdownFormat =
     | "code"
     | "heading1"
     | "heading2"
+    | "heading3"
+    | "heading4"
+    | "heading5"
+    | "heading6"
     | "bulletList"
     | "numberedList"
     | "blockquote";
@@ -153,7 +157,12 @@ function diffLine(lineStart: number, oldLine: string, newLine: string): Change |
     };
 }
 
-function toggleHeading(doc: string, from: number, to: number, level: 1 | 2): FormatResult {
+function toggleHeading(
+    doc: string,
+    from: number,
+    to: number,
+    level: 1 | 2 | 3 | 4 | 5 | 6,
+): FormatResult {
     const prefix = `${"#".repeat(level)} `;
     return transformLines(doc, from, to, (lines) => {
         const nonBlank = lines.filter((line) => line.trim().length > 0);
@@ -205,6 +214,14 @@ function buildFormat(doc: string, from: number, to: number, format: MarkdownForm
             return toggleHeading(doc, from, to, 1);
         case "heading2":
             return toggleHeading(doc, from, to, 2);
+        case "heading3":
+            return toggleHeading(doc, from, to, 3);
+        case "heading4":
+            return toggleHeading(doc, from, to, 4);
+        case "heading5":
+            return toggleHeading(doc, from, to, 5);
+        case "heading6":
+            return toggleHeading(doc, from, to, 6);
         case "bulletList":
             return togglePrefixedLines(
                 doc,
@@ -272,5 +289,9 @@ export const markdownFormattingKeymap = Prec.high(
         { key: "Mod-i", run: runFormat("italic"), preventDefault: true },
         { key: "Mod-Alt-1", run: runFormat("heading1"), preventDefault: true },
         { key: "Mod-Alt-2", run: runFormat("heading2"), preventDefault: true },
+        { key: "Mod-Alt-3", run: runFormat("heading3"), preventDefault: true },
+        { key: "Mod-Alt-4", run: runFormat("heading4"), preventDefault: true },
+        { key: "Mod-Alt-5", run: runFormat("heading5"), preventDefault: true },
+        { key: "Mod-Alt-6", run: runFormat("heading6"), preventDefault: true },
     ]),
 );

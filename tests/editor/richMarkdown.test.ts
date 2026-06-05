@@ -51,4 +51,16 @@ describe("richMarkdownExtension", () => {
         expect(heading?.textContent).toBe("Title");
         expect(editor.dom.textContent).toContain("Title");
     });
+
+    it("renders all six heading levels with their level-specific class", () => {
+        for (let level = 1; level <= 6; level++) {
+            const editor = createView(`${"#".repeat(level)} Title\n\nBody`);
+            const heading = editor.dom.querySelector(`.cm-rich-markdown-heading-${level}`);
+
+            expect(heading?.classList.contains("cm-rich-markdown-heading"), `h${level} class`).toBe(
+                true,
+            );
+            expect(heading?.textContent, `h${level} text`).toBe("Title");
+        }
+    });
 });
