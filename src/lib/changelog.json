@@ -1,4 +1,8 @@
 {
+  "0.18": {
+    "date": "2026-06-10",
+    "content": "You can now open **multiple windows** at once — keep two documents side by side, or reference one draft while you write another, without juggling tabs.\n\nThe **annotation sidebar** has a roomier **two-column layout** when you're writing without the assistant panel, so your comments and notes have more space to breathe.\n\nFormatting got richer too: **Markdown headings now go all the way down to the smallest sizes**, giving you finer control over how you structure longer documents.\n\nFinally, sending us a **bug report** is now separate from sharing general **feedback**, so it's clearer how to reach us depending on what's on your mind."
+  },
   "0.17": {
     "date": "2026-06-01",
     "content": "The **annotation sidebar** is easier to adjust while you write. The resize handle now sits on the side where you expect it, and a new reset button makes it simple to get back to the default layout.\n\nWe've also cleaned up a few **interface details**: the font guide no longer shows Inter where it does not belong, and the dictionary shortcut hint now points to the right keyboard command."
