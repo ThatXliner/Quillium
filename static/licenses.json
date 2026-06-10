@@ -7,6 +7,13 @@
     "ecosystem": "js"
   },
   {
+    "name": "@ai-sdk/deepseek",
+    "version": "2.0.35",
+    "license": "Apache-2.0",
+    "url": "https://github.com/vercel/ai",
+    "ecosystem": "js"
+  },
+  {
     "name": "@ai-sdk/google",
     "version": "3.0.65",
     "license": "Apache-2.0",
@@ -22,7 +29,7 @@
   },
   {
     "name": "@ai-sdk/svelte",
-    "version": "3.0.181",
+    "version": "4.0.194",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
@@ -183,7 +190,7 @@
   },
   {
     "name": "ai",
-    "version": "5.0.181",
+    "version": "6.0.194",
     "license": "Apache-2.0",
     "url": "https://github.com/vercel/ai",
     "ecosystem": "js"
@@ -200,13 +207,6 @@
     "version": "1.0.6",
     "license": "MIT",
     "url": "https://github.com/marijnh/crelt",
-    "ecosystem": "js"
-  },
-  {
-    "name": "diff",
-    "version": "7.0.0",
-    "license": "BSD-3-Clause",
-    "url": "https://github.com/kpdecker/jsdiff",
     "ecosystem": "js"
   },
   {
