@@ -59,9 +59,7 @@ MINOR_KEY=$(echo "$NEXT" | cut -d. -f1-2)
 if [[ "$PART" == "minor" || "$PART" == "major" ]]; then
     echo ""
     echo "Minor/major bump detected — checking if changelog needs updating..."
-    codex exec \
-        --sandbox workspace-write \
-        "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
+   claude --print  "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
 
 Check src/lib/changelog.json — if there is no entry for \"$MINOR_KEY\", add one.
 
