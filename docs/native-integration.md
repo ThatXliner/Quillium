@@ -9,7 +9,7 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 | Submenu | Custom Items | Accelerator |
 |---------|--------------|-------------|
 | Quillium | Settings…, Open Source Licenses… | `Cmd+,` / `Ctrl+,` |
-| File | Library, Export variants | `Cmd+O`, `Cmd+Shift+E` |
+| File | Library, Open in New Window, Export variants | `Cmd+O`, `Cmd+Shift+O`, `Cmd+Shift+E` |
 | Edit | Undo, Redo, Cut, Copy, Paste, Select All | Standard |
 | View | Version History | `Cmd+Shift+H` |
 | Window | Minimize, Maximize, Close | Standard |
@@ -26,13 +26,14 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 
 ### Event Bridge
 
-Custom menu items emit Tauri events to frontend. `+page.svelte` listens via `@tauri-apps/api/event`:
+Custom menu items emit Tauri events to frontend. `+page.svelte` listens via `@tauri-apps/api/event`. Events are emitted to the **focused** window (falling back to `"main"`), so menu actions affect whichever window the user is looking at:
 
 | Event | Action |
 |-------|--------|
 | `menu:settings` | Toggle settings modal |
 | `menu:library` | Navigate to library |
 | `menu:history` | Navigate to version history |
+| `menu:open-in-new-window` | Open selected document in a new window (library page) |
 | `menu:licenses` | Open licenses modal |
 | `menu:export-txt` | Export plain text |
 | `menu:export-txt-json` | Export text + annotations |
@@ -41,6 +42,44 @@ Custom menu items emit Tauri events to frontend. `+page.svelte` listens via `@ta
 | `menu:export-pdf` | Export PDF |
 
 `settingsOpen` store is shared between native menu and in-app UI.
+
+## Multi-Window
+
+Documents can open in separate OS windows. Each window is a Tauri `WebviewWindow` running its own SvelteKit instance, so all stores (`currentDocumentId`, `editorView`, `annotations`, …) are naturally isolated per window.
+
+### Open-window tracking
+
+`OpenWindows(Arc<Mutex<HashMap<String, String>>>)` in `lib.rs` maps `doc_id → window_label`, preventing the same document from being open in two windows at once. Four commands manage the map:
+
+| Command | Purpose |
+|---------|---------|
+| `cmd_open_in_new_window` | Creates a `WebviewWindow` at `/?doc={id}`, or focuses the existing window if the doc is already open |
+| `cmd_register_open_doc` | Registers a doc→window mapping (frontend calls on document load) |
+| `cmd_deregister_open_doc` | Removes all entries for a window label (on navigate-away or window close) |
+| `cmd_is_doc_open_elsewhere` | Returns whether a doc is open in a *different* window; focuses that window if so |
+
+Secondary windows use label format `editor-{short_uuid}`. A `WindowEvent::Destroyed` handler removes the entry on close.
+
+### Frontend integration
+
+- `+page.svelte` reads a `?doc=` query param and sets `$currentDocumentId` before `Editor.svelte` mounts — this is how secondary windows know which document to load.
+- `Editor.svelte` calls `registerOpenDoc` on load and `deregisterOpenDoc` on switch/cleanup.
+- `navigation.ts` calls `deregisterOpenDoc` in `goToLibrary()` before navigating away.
+- The library page checks `isDocOpenElsewhere` before opening in-window; if open elsewhere, it shows a toast and focuses the other window.
+
+### Entry points
+
+1. **Document card** — an `ExternalLink` button appears on hover next to the trash button (grid and list views).
+2. **File menu** — "Open in New Window" (`Cmd+Shift+O`).
+3. **Keyboard** — `Cmd+Shift+O` on the library page when a single non-trash document is selected.
+
+### Capabilities
+
+`default.json` and `desktop.json` grant `["main", "editor-*"]` so dynamically created windows inherit the main window's permissions.
+
+### DB concurrency
+
+All windows share one `DbState(Mutex<Connection>)`. Since a document is only open in one window, there are no conflicting writes to the same draft; concurrent saves for different documents serialize through the Mutex (each lock held for microseconds), so contention is negligible.
 
 ## Keychain (`keychain.rs`)
 

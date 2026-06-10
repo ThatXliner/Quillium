@@ -93,6 +93,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `library_viewed` | Library page opened | `library/+page.svelte` |
 | `document_created` | Document created | `library/+page.svelte` |
 | `document_opened` | Document opened | `library/+page.svelte` |
+| `document_opened_new_window` | Document opened in a new window | `library/+page.svelte` |
 | `document_renamed` | Document renamed | `library/+page.svelte` |
 | `document_trashed` | Document trashed | `library/+page.svelte` |
 | `document_restored` | Document restored | `library/+page.svelte` |
