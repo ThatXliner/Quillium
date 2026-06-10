@@ -54,12 +54,19 @@ sed -i '' "s/^version = \"${CURRENT}\"/version = \"${NEXT}\"/" src-tauri/Cargo.t
 
 echo "All manifests updated to $NEXT."
 
-# For minor/major bumps, ask Codex to update the changelog if needed.
+# For minor/major bumps, ask Claude to update the changelog if needed.
 MINOR_KEY=$(echo "$NEXT" | cut -d. -f1-2)
 if [[ "$PART" == "minor" || "$PART" == "major" ]]; then
     echo ""
     echo "Minor/major bump detected — checking if changelog needs updating..."
-   claude --print  "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
+
+    # Skip cleanly if claude isn't on PATH (e.g. CI) rather than failing the bump.
+    if ! command -v claude >/dev/null 2>&1; then
+        echo "WARNING: 'claude' not found on PATH — skipping changelog generation."
+        echo "         Add a \"$MINOR_KEY\" entry to src/lib/changelog.json manually."
+    else
+        # Don't let a claude failure abort the whole bump (manifests are already written).
+        claude --print "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
 
 Check src/lib/changelog.json — if there is no entry for \"$MINOR_KEY\", add one.
 
@@ -69,7 +76,19 @@ To decide what to write:
 3. Write the entry following those guidelines exactly: conversational prose, bold keywords, no bullets, no mentions of AI features, 2-5 short paragraphs.
 4. Set the date field to $(date -u +%Y-%m-%d).
 
-If an entry for \"$MINOR_KEY\" already exists, say so and do nothing."
+If an entry for \"$MINOR_KEY\" already exists, say so and do nothing." || echo "WARNING: claude exited non-zero — verifying changelog below."
+
+        # Verify the entry actually landed, regardless of how claude exited.
+        if node -e "process.exit(require('./src/lib/changelog.json')['$MINOR_KEY'] ? 0 : 1)" 2>/dev/null; then
+            echo "Changelog entry for \"$MINOR_KEY\" is present."
+        else
+            echo ""
+            echo "!!! ERROR: No \"$MINOR_KEY\" entry in src/lib/changelog.json after bump."
+            echo "!!! The 'What's New' button will be HIDDEN until you add one."
+            echo "!!! Add it manually, then re-run, or commit the entry alongside this bump."
+            exit 1
+        fi
+    fi
 fi
 
 echo ""
