@@ -15,6 +15,7 @@ interface Props {
     onTrash: (id: string) => void;
     onRestore: (id: string) => void;
     onDeletePermanent: (id: string) => void;
+    onOpenInNewWindow: (id: string) => void;
     onTagClick?: (tag: string) => void;
 }
 
@@ -28,6 +29,7 @@ const {
     onTrash,
     onRestore,
     onDeletePermanent,
+    onOpenInNewWindow,
     onTagClick,
 }: Props = $props();
 </script>
@@ -45,6 +47,7 @@ const {
                 onTrash={() => onTrash(doc.id)}
                 onRestore={() => onRestore(doc.id)}
                 onDeletePermanent={() => onDeletePermanent(doc.id)}
+                onOpenInNewWindow={() => onOpenInNewWindow(doc.id)}
                 {onTagClick}
             />
         {/each}
@@ -62,6 +65,7 @@ const {
                 onTrash={() => onTrash(doc.id)}
                 onRestore={() => onRestore(doc.id)}
                 onDeletePermanent={() => onDeletePermanent(doc.id)}
+                onOpenInNewWindow={() => onOpenInNewWindow(doc.id)}
                 {onTagClick}
             />
         {/each}

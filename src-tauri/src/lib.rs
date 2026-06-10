@@ -26,6 +26,8 @@ use pdf_export::{export_pdf_to_path, PdfExportPayload};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
+pub struct OpenWindows(pub std::sync::Arc<Mutex<std::collections::HashMap<String, String>>>);
+
 // ── Document commands ─────────────────────────────────────────────
 
 #[tauri::command]
@@ -293,6 +295,99 @@ fn cmd_reset_db(state: tauri::State<DbState>) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+// ── Multi-window commands ─────────────────────────────────────────
+
+#[tauri::command]
+fn cmd_open_in_new_window(
+    app: tauri::AppHandle,
+    open_windows: tauri::State<OpenWindows>,
+    doc_id: String,
+) -> Result<(), String> {
+    {
+        let mut map = open_windows.0.lock().map_err(|e| e.to_string())?;
+
+        // If the document is already open in another window, focus it.
+        if let Some(label) = map.get(&doc_id) {
+            if let Some(win) = app.get_webview_window(label) {
+                win.set_focus().map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+            // Window no longer exists — clean up stale entry.
+            map.remove(&doc_id);
+        }
+    }
+
+    let short_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+    let label = format!("editor-{short_id}");
+    let url = format!("/?doc={doc_id}");
+
+    let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
+        .title("Quillium")
+        .inner_size(1373.0, 1170.0)
+        .min_inner_size(900.0, 600.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    {
+        let mut map = open_windows.0.lock().map_err(|e| e.to_string())?;
+        map.insert(doc_id.clone(), label.clone());
+    }
+
+    // Clean up when the window is closed.
+    let arc_clone = open_windows.0.clone();
+    let doc_id_clone = doc_id.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::Destroyed = event {
+            if let Ok(mut m) = arc_clone.lock() {
+                m.remove(&doc_id_clone);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn cmd_register_open_doc(
+    open_windows: tauri::State<OpenWindows>,
+    doc_id: String,
+    window_label: String,
+) -> Result<(), String> {
+    let mut map = open_windows.0.lock().map_err(|e| e.to_string())?;
+    map.insert(doc_id, window_label);
+    Ok(())
+}
+
+#[tauri::command]
+fn cmd_deregister_open_doc(
+    open_windows: tauri::State<OpenWindows>,
+    window_label: String,
+) -> Result<(), String> {
+    let mut map = open_windows.0.lock().map_err(|e| e.to_string())?;
+    map.retain(|_, v| v != &window_label);
+    Ok(())
+}
+
+#[tauri::command]
+fn cmd_is_doc_open_elsewhere(
+    open_windows: tauri::State<OpenWindows>,
+    app: tauri::AppHandle,
+    doc_id: String,
+    window_label: String,
+) -> Result<bool, String> {
+    let map = open_windows.0.lock().map_err(|e| e.to_string())?;
+    match map.get(&doc_id) {
+        Some(label) if label != &window_label => {
+            // Focus the window that has it open.
+            if let Some(win) = app.get_webview_window(label) {
+                let _ = win.set_focus();
+            }
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 // ── Legacy scrap command ──────────────────────────────────────────
 // Kept for Save.svelte compatibility. In the new DB world, "scrapping"
 // a draft means deleting the document. The UI reloads after this call.
@@ -362,6 +457,11 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 .accelerator("CmdOrCtrl+O")
                 .build(app)?,
         )
+        .item(
+            &MenuItemBuilder::with_id("open-in-new-window", "Open in New Window")
+                .accelerator("CmdOrCtrl+Shift+O")
+                .build(app)?,
+        )
         .item(&export_submenu)
         .build()?;
 
@@ -415,6 +515,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "settings"
             | "history"
             | "library"
+            | "open-in-new-window"
             | "licenses"
             | "feedback"
             | "export-txt"
@@ -423,7 +524,14 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             | "export-md"
             | "export-pdf"
             | "export-pdf-annotations" => {
-                if let Some(window) = app_handle.get_webview_window("main") {
+                // Route to the focused window, falling back to main. This way
+                // menu actions affect whichever window the user is looking at.
+                let focused = app_handle
+                    .webview_windows()
+                    .into_values()
+                    .find(|w| w.is_focused().unwrap_or(false));
+                let target = focused.or_else(|| app_handle.get_webview_window("main"));
+                if let Some(window) = target {
                     let _ = window.emit(&format!("menu:{id}"), ());
                 }
             }
@@ -483,6 +591,9 @@ pub fn run() {
                 }
             }
             app.manage(DbState(Mutex::new(conn)));
+            app.manage(OpenWindows(std::sync::Arc::new(Mutex::new(
+                std::collections::HashMap::new(),
+            ))));
 
             // Native app menu is desktop-only; mobile has no menu bar, so the
             // frontend exposes these actions through in-app UI instead.
@@ -524,6 +635,10 @@ pub fn run() {
             set_api_key,
             get_api_key,
             delete_api_key,
+            cmd_open_in_new_window,
+            cmd_register_open_doc,
+            cmd_deregister_open_doc,
+            cmd_is_doc_open_elsewhere,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

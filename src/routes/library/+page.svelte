@@ -2,7 +2,7 @@
     /library — Document gallery page.
 -->
 <script lang="ts">
-import { onMount } from "svelte";
+import { onDestroy, onMount } from "svelte";
 import {
     listDocuments,
     listTrashedDocuments,
@@ -14,6 +14,8 @@ import {
     setTrashRetention,
     updateDocumentMeta,
     getDocumentMeta,
+    isDocOpenElsewhere,
+    openInNewWindow,
 } from "$lib/db";
 import type { DocumentMeta } from "$lib/db/types";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
@@ -25,6 +27,9 @@ import PreviewPanel from "$lib/library/PreviewPanel.svelte";
 import ContinuePill from "$lib/library/ContinuePill.svelte";
 import EmptyState from "$lib/library/EmptyState.svelte";
 import { parseTags } from "$lib/library/tags";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { type UnlistenFn, listen } from "@tauri-apps/api/event";
+import { Toaster, toast } from "svelte-sonner";
 
 let searchInputEl = $state<HTMLInputElement | null>(null);
 let previewPanel = $state<ReturnType<typeof PreviewPanel> | null>(null);
@@ -116,12 +121,24 @@ async function handleNew() {
     goToEditor();
 }
 
-function handleOpen(id: string) {
+async function handleOpen(id: string) {
+    // Don't open a document in-window if it's already open in another window;
+    // focus that window instead.
+    const elsewhere = await isDocOpenElsewhere(id, getCurrentWebviewWindow().label);
+    if (elsewhere) {
+        toast.info("This document is already open in another window.");
+        return;
+    }
     posthog.capture("document_opened");
     $currentDocumentId = id;
     const doc = documents.find((d) => d.id === id);
     if (doc) $currentDocumentTitle = doc.title;
     goToEditor();
+}
+
+function handleOpenInNewWindow(id: string) {
+    posthog.capture("document_opened_new_window");
+    openInNewWindow(id);
 }
 
 async function handleRenameTitle(id: string, newTitle: string) {
@@ -257,6 +274,19 @@ function handleKeydown(e: KeyboardEvent) {
     const inInput =
         target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 
+    // Cmd/Ctrl+Shift+O — open the selected document in a new window
+    if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "o" &&
+        selectedIds.size === 1 &&
+        !trashMode
+    ) {
+        e.preventDefault();
+        handleOpenInNewWindow([...selectedIds][0]);
+        return;
+    }
+
     // Esc — clear multi-select (or back to editor if single/no selection)
     if (e.key === "Escape" && !inInput) {
         if (selectedIds.size > 1) {
@@ -377,10 +407,21 @@ function handleKeydown(e: KeyboardEvent) {
     }
 }
 
-onMount(() => {
+let unlisten: UnlistenFn | undefined;
+
+onMount(async () => {
     posthog.capture("library_viewed");
     load();
+    // File → Open in New Window menu item targets the focused window; when that's
+    // the library, open whichever single document is currently selected.
+    unlisten = await listen("menu:open-in-new-window", () => {
+        if (selectedIds.size === 1 && !trashMode) {
+            handleOpenInNewWindow([...selectedIds][0]);
+        }
+    });
 });
+
+onDestroy(() => unlisten?.());
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -443,6 +484,7 @@ onMount(() => {
                     onTrash={handleTrash}
                     onRestore={handleRestore}
                     onDeletePermanent={handleDeletePermanent}
+                    onOpenInNewWindow={handleOpenInNewWindow}
                     onTagClick={handleTagClick}
                 />
             {/if}
@@ -477,3 +519,4 @@ onMount(() => {
 </div>
 
 <ContinuePill visible={hasContinue} />
+<Toaster position="bottom-center" />

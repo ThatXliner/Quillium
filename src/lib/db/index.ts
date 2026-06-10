@@ -180,3 +180,21 @@ export async function createNamedSnapshot(
         label,
     });
 }
+
+// ── Multi-window ─────────────────────────────────────────────────
+
+export async function openInNewWindow(docId: string): Promise<void> {
+    return invoke<void>("cmd_open_in_new_window", { docId });
+}
+
+export async function registerOpenDoc(docId: string, windowLabel: string): Promise<void> {
+    return invoke<void>("cmd_register_open_doc", { docId, windowLabel });
+}
+
+export async function deregisterOpenDoc(windowLabel: string): Promise<void> {
+    return invoke<void>("cmd_deregister_open_doc", { windowLabel });
+}
+
+export async function isDocOpenElsewhere(docId: string, windowLabel: string): Promise<boolean> {
+    return invoke<boolean>("cmd_is_doc_open_elsewhere", { docId, windowLabel });
+}
