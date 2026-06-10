@@ -333,13 +333,19 @@ fn cmd_open_in_new_window(
         map.insert(doc_id.clone(), label.clone());
     }
 
-    // Clean up when the window is closed.
+    // Clean up when the window is closed. We match by window LABEL, not by the
+    // doc_id the window opened with — the window may have navigated to a
+    // different document (or to the library) before closing, so the doc_id
+    // captured here can be stale. Removing by label drops whatever entry the
+    // window currently owns. This is the authoritative cleanup: the frontend's
+    // onMount-return deregister does NOT reliably run when an OS window is
+    // closed (the webview is torn down, not gracefully unmounted).
     let arc_clone = open_windows.0.clone();
-    let doc_id_clone = doc_id.clone();
+    let label_clone = label.clone();
     window.on_window_event(move |event| {
         if let tauri::WindowEvent::Destroyed = event {
             if let Ok(mut m) = arc_clone.lock() {
-                m.remove(&doc_id_clone);
+                m.retain(|_, v| v != &label_clone);
             }
         }
     });
