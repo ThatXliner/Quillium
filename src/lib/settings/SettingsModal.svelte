@@ -320,6 +320,7 @@ function save() {
         ui_zoom: draft.uiZoom,
         custom_quick_actions_count: draft.customQuickActions.length,
         auto_version_on_revision_create: draft.autoVersionOnRevisionCreate,
+        annotation_layout: draft.annotationLayout,
         show_shortcut_hints: draft.showShortcutHints,
         show_ai_suggestions: draft.showAiSuggestions,
         show_word_count: draft.showWordCount,
@@ -1149,6 +1150,34 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {draft.autoVersionOnRevisionCreate ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
+                </div>
+            </div>
+
+            <!-- Annotation layout (only takes effect when AI is off) -->
+            <div class="setting-row {draft.aiEnabled ? 'opacity-40 pointer-events-none' : ''}">
+                <div class="setting-meta">
+                    <div class="setting-title">Annotation layout</div>
+                    <div class="setting-desc">Where comment and revision cards sit beside your text. Balanced and By type use both sides of the page — only when AI features are off (the AI panel occupies the left).</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.annotationLayout !== "visual-split"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.annotationLayout = "visual-split"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
+                    {#each ([["visual-split", "Balanced"], ["by-type", "By type"], ["single", "One side"]] as const) as [val, label]}
+                        <button
+                            onclick={() => { draft.annotationLayout = val; handleChange(); }}
+                            class="px-3 py-1.5 text-[11px] font-medium transition-colors
+                                {draft.annotationLayout === val
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                        >{label}</button>
+                    {/each}
+                </div>
                 </div>
             </div>
 

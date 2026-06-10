@@ -1,4 +1,18 @@
 <script lang="ts">
+import {
+    type Annotations as AnnotationMap,
+    type GenericAnnotation,
+    type Thread,
+    annotationField,
+    isAnnotationOfType,
+    removeAnnotation,
+    updateThread,
+} from "$lib/editor/plugins/annotations";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import posthog from "$lib/posthog";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
+import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
+import Kbd from "$lib/ui/Kbd.svelte";
 /**
  * Annotations.svelte — Container that renders all annotation
  * cards (comments, revisions, suggestions) in either a
@@ -29,28 +43,14 @@
  * change (e.g. nested editor toggle).
  */
 import type { EditorView } from "@codemirror/view";
-import Comment from "./Comment.svelte";
-import {
-    annotationField,
-    isAnnotationOfType,
-    removeAnnotation,
-    updateThread,
-    type Annotations as AnnotationMap,
-    type GenericAnnotation,
-    type Thread,
-} from "$lib/editor/plugins/annotations";
-import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
-import Revision from "./Revision.svelte";
-import PreComment from "./PreComment.svelte";
-import Suggestion from "./Suggestion.svelte";
-import type { Action } from "svelte/action";
-import { tick } from "svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
-import { appSettings, persistSettings } from "$lib/settings.svelte";
-import { toast } from "svelte-sonner";
-import posthog from "$lib/posthog";
 import { Minimize2 } from "lucide-svelte";
+import { tick } from "svelte";
+import { toast } from "svelte-sonner";
+import type { Action } from "svelte/action";
+import Comment from "./Comment.svelte";
+import PreComment from "./PreComment.svelte";
+import Revision from "./Revision.svelte";
+import Suggestion from "./Suggestion.svelte";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? "⌘" : "Ctrl";
@@ -78,6 +78,15 @@ const resolvedActiveAnnotation = $derived(
 const isFloating = $derived(layout === "floating");
 
 /**
+ * The layout actually in effect. The two-column layouts (visual-split,
+ * by-type) only make sense when the left side of the page is free —
+ * which is exactly when AI is disabled, since the AI sidebar renders on
+ * the left whenever `aiEnabled` is true. With AI on, always fall back to
+ * the single right column so the left column never fights the sidebar.
+ */
+const effectiveLayout = $derived(appSettings.aiEnabled ? "single" : appSettings.annotationLayout);
+
+/**
  * True when the viewport is too narrow to show floating annotation
  * cards beside the document. In this mode, clicking an annotation
  * decoration opens a modal instead of the floating card.
@@ -86,18 +95,46 @@ const MIN_ANNOTATION_WIDTH = 150;
 const MIN_PANEL_WIDTH = 180;
 const MAX_PANEL_WIDTH = 420;
 const DEFAULT_PANEL_WIDTH = 280;
+// Minimum gap kept between the left annotation column and the window edge.
+const LEFT_MARGIN = 16;
 let narrowMode = $state(false);
+// True when a left column would fit on-screen (only checked for two-column
+// layouts). When false we fall back to the single right column.
+let leftColumnFits = $state(false);
 
 $effect(() => {
     void resolvedView; // re-run when the view becomes available
     function checkWidth() {
         if (!resolvedView) return;
         narrowMode = window.innerWidth - getAnnotationLeft() - 32 < MIN_ANNOTATION_WIDTH;
+        leftColumnFits = getAnnotationLeftColumnX() >= LEFT_MARGIN;
     }
     checkWidth();
     window.addEventListener("resize", checkWidth);
     return () => window.removeEventListener("resize", checkWidth);
 });
+
+/**
+ * The concrete render mode, resolving the requested layout against the
+ * available space:
+ *   "modal"      — too narrow even for the single right column; clicking
+ *                  an annotation opens a modal (handled elsewhere).
+ *   "single"     — one right column.
+ *   "two-column" — left + right columns.
+ * Precedence: narrowMode wins (modal); then a two-column request that
+ * can't fit its left column degrades to single; otherwise honor the
+ * effective layout.
+ */
+const renderMode = $derived(
+    !isFloating
+        ? "single"
+        : narrowMode
+          ? "modal"
+          : effectiveLayout !== "single" && leftColumnFits
+            ? "two-column"
+            : "single",
+);
+const isTwoColumn = $derived(renderMode === "two-column");
 
 /**
  * In narrow mode, when an annotation becomes active (cursor moved into
@@ -206,6 +243,9 @@ function getAnnotationViewportY(annotation: GenericAnnotation): number {
 /**
  * Compute the left pixel offset for the floating annotation
  * column, positioned to the right of the editor document.
+ *
+ * The editor content is centered with a max width of 816px, so its
+ * half-width is 408px; the column starts 16px past the content edge.
  */
 function getAnnotationLeft(): number {
     if (!resolvedView) return 0;
@@ -213,10 +253,38 @@ function getAnnotationLeft(): number {
     return rect.left + rect.width / 2 + 408 + 16;
 }
 
+/** Current annotation panel width, clamped to its allowed range. */
+function getPanelWidth(): number {
+    return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, appSettings.annotationPanelWidth));
+}
+
+/**
+ * Compute the left pixel offset for a LEFT annotation column, mirrored
+ * across the editor center from the right column. Returns the X of the
+ * column's left edge; its right edge sits 16px from the content's left
+ * edge. May be negative on narrow windows — callers gate on
+ * `leftColumnFits` (see checkWidth) before using a two-column layout.
+ */
+function getAnnotationLeftColumnX(): number {
+    if (!resolvedView) return 0;
+    const rect = resolvedView.scrollDOM.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    return center - 408 - 16 - getPanelWidth();
+}
+
+// The right column container (also the only container in single-column
+// mode) and the optional left column container used in two-column mode.
 let scrollContainer = $state<HTMLDivElement | undefined>(undefined);
+let scrollContainerLeft = $state<HTMLDivElement | undefined>(undefined);
 let resizingPanel = $state(false);
 let panelResizeStartX = 0;
 let panelResizeStartWidth = 0;
+
+// Per-card column assignment ("left" | "right") used in two-column mode.
+// Computed inside updateAnnotationPositions (NOT $derived — it calls
+// coordsAtPos, which can trigger a measure cycle that writes to stores).
+// The template reads this to decide which column renders each card.
+let cardSide = $state<{ [id: number]: "left" | "right" }>({});
 
 // Sort annotations by document position for stable rendering
 const sortedAnnotations = $derived(
@@ -277,12 +345,160 @@ const pendingComment = $derived(
 // coordsAtPos can trigger a CodeMirror measure cycle that fires
 // the updateListener, which writes to Svelte stores. Writing to
 // $state inside $derived throws state_unsafe_mutation.)
-function getPositionedAnnotations() {
+type Positioned = { annotation: GenericAnnotation; viewportY: number };
+
+function getPositionedAnnotations(): Positioned[] {
     if (!sortedAnnotations.length || !resolvedView || !isFloating) return [];
     return sortedAnnotations.map((annotation) => ({
         annotation,
         viewportY: getAnnotationViewportY(annotation),
     }));
+}
+
+/** Measured height of a card, with the same 80px fallback the layout uses. */
+function getCardHeight(id: number): number {
+    const el = annotationElements[id];
+    return el ? el.offsetHeight || 80 : 80;
+}
+
+// Last-known *collapsed* (inactive) height per card. Cards grow when active
+// (Comment/Revision/Suggestion expand their thread), and feeding that
+// expanded height into balanceColumns would shift the greedy packing and
+// flip later cards' columns on every click. We balance on the collapsed
+// height instead, so column assignment is activation-invariant: a card only
+// updates its cached height while it is NOT the active one.
+const collapsedCardHeight: { [id: number]: number } = {};
+
+/**
+ * Height to use when balancing columns. Uses the cached collapsed height so
+ * the active card's expansion never perturbs the assignment. Records the
+ * live height only for inactive cards (their current height IS collapsed).
+ */
+function getBalanceHeight(id: number): number {
+    const isActive = resolvedActiveAnnotation?.id === id;
+    if (!isActive) {
+        const h = getCardHeight(id);
+        collapsedCardHeight[id] = h;
+        return h;
+    }
+    return collapsedCardHeight[id] ?? 80;
+}
+
+/**
+ * Horizontal viewport X of an annotation's start, used as a tie-breaker
+ * when balancing columns. Falls back to the editor center on failure so
+ * the proximity bias is neutral rather than wrong.
+ */
+function getAnnotationViewportX(annotation: GenericAnnotation): number {
+    if (!resolvedView) return window.innerWidth / 2;
+    try {
+        const coords = resolvedView.coordsAtPos(annotation.selection.main.from);
+        if (!coords) return window.innerWidth / 2;
+        return coords.left;
+    } catch {
+        return window.innerWidth / 2;
+    }
+}
+
+/**
+ * Pure balancing core for the "visual-split" layout: assign each card to
+ * the column whose running bottom is higher up (more open vertical room
+ * near this card's Y), so the two columns stay roughly even and cards land
+ * near their text. Ties break toward the side the text sits on, then by id
+ * for stability. Deterministic — no randomness — so assignments are stable
+ * across re-renders given stable inputs.
+ *
+ * Exported-style pure function (kept module-local but DOM-free) so it can
+ * be unit-tested without a CodeMirror view.
+ */
+function balanceColumns(
+    items: { id: number; viewportY: number; height: number; viewportX: number }[],
+    viewportCenterX: number,
+): { [id: number]: "left" | "right" } {
+    const MIN_SPACING = 8;
+    const TOP_CLAMP = 64;
+    const sorted = [...items].sort((a, b) =>
+        a.viewportY !== b.viewportY ? a.viewportY - b.viewportY : a.id - b.id,
+    );
+    const side: { [id: number]: "left" | "right" } = {};
+    let leftBottom = TOP_CLAMP;
+    let rightBottom = TOP_CLAMP;
+    for (const item of sorted) {
+        let chosen: "left" | "right";
+        if (leftBottom < rightBottom) {
+            chosen = "left";
+        } else if (rightBottom < leftBottom) {
+            chosen = "right";
+        } else {
+            // Even columns: prefer the side the text leans toward.
+            chosen = item.viewportX <= viewportCenterX ? "left" : "right";
+        }
+        side[item.id] = chosen;
+        const top = Math.max(item.viewportY, chosen === "left" ? leftBottom : rightBottom);
+        const nextBottom = top + item.height + MIN_SPACING;
+        if (chosen === "left") leftBottom = nextBottom;
+        else rightBottom = nextBottom;
+    }
+    return side;
+}
+
+// Memoized visual-split assignment plus the id-set signature it was computed
+// for. The balance is recomputed ONLY when the set of annotations changes
+// (add/remove); clicking, activating, or resizing reuses the cached map so
+// cards never jump columns just because the active card expanded. Combined
+// with getBalanceHeight (collapsed heights), assignment is fully
+// activation-invariant.
+let balancedSides: { [id: number]: "left" | "right" } = {};
+let balancedSignature = "";
+
+/** Stable signature of the current annotation id set (order-independent). */
+function idSignature(positions: Positioned[]): string {
+    return positions
+        .map((p) => p.annotation.id)
+        .sort((a, b) => a - b)
+        .join(",");
+}
+
+/**
+ * Decide each card's column for the current render mode. Returns the new
+ * side map. Pure relative to the DOM read of card heights / coords.
+ */
+function computeCardSides(positions: Positioned[]): { [id: number]: "left" | "right" } {
+    if (renderMode !== "two-column") {
+        // Single / modal: everything nominally on the right.
+        const side: { [id: number]: "left" | "right" } = {};
+        for (const { annotation } of positions) side[annotation.id] = "right";
+        return side;
+    }
+    if (effectiveLayout === "by-type") {
+        const side: { [id: number]: "left" | "right" } = {};
+        for (const { annotation } of positions) {
+            side[annotation.id] = isAnnotationOfType(annotation, "comment") ? "left" : "right";
+        }
+        return side;
+    }
+    // visual-split: only rebalance when the annotation set changes, so an
+    // active card growing taller can't flip later cards between columns.
+    const signature = idSignature(positions);
+    if (signature === balancedSignature) return balancedSides;
+
+    const center = resolvedView
+        ? (() => {
+              const rect = resolvedView.scrollDOM.getBoundingClientRect();
+              return rect.left + rect.width / 2;
+          })()
+        : window.innerWidth / 2;
+    balancedSides = balanceColumns(
+        positions.map(({ annotation, viewportY }) => ({
+            id: annotation.id,
+            viewportY,
+            height: getBalanceHeight(annotation.id),
+            viewportX: getAnnotationViewportX(annotation),
+        })),
+        center,
+    );
+    balancedSignature = signature;
+    return balancedSides;
 }
 
 const annotationElements: { [id: number]: HTMLDivElement | undefined } = {};
@@ -326,6 +542,10 @@ $effect(() => {
 $effect(() => {
     if (!isFloating) return;
     void appSettings.annotationPanelWidth;
+    // Re-run when the layout mode flips (settings change, AI toggled, or a
+    // resize crossing the two-column fit threshold) so the new column set
+    // is laid out after the template mounts/unmounts containers.
+    void renderMode;
     tick().then(updateAnnotationPositions);
 });
 
@@ -352,28 +572,97 @@ function debouncedUpdatePositions() {
     updateTimeout = setTimeout(updateAnnotationPositions, 16);
 }
 
+// A single floating column to lay out. The right column (or the only
+// column in single mode) and, in two-column mode, the left column.
+type Column = {
+    side: "left" | "right";
+    leftPx: number;
+    cards: Positioned[];
+    el: HTMLDivElement | undefined;
+};
+
 /**
- * Core layout algorithm for floating mode: assigns each card
- * a top position aligned to its annotation's viewport Y.
- *
- * Google Docs-style: the active card anchors at its natural text
- * Y first. Cards above it are pushed upward to avoid overlap;
- * cards below it are pushed downward. This ensures the selected
- * card always sits next to its highlighted text rather than being
- * displaced by earlier cards.
+ * Top-level layout pass. Computes each card's column for the current
+ * render mode, then lays out each column independently. The card-side
+ * assignment is stored in `cardSide` ($state) so the template renders
+ * each card into the matching column; we only write it when it actually
+ * changes to avoid an effect loop (the write would re-trigger the
+ * positioning effect).
  */
 function updateAnnotationPositions() {
     if (!resolvedView || !isFloating) return;
 
     const positions = getPositionedAnnotations();
+
+    // Resolve each card's column and publish it for the template.
+    const sides = computeCardSides(positions);
+    if (!sidesEqual(sides, cardSide)) cardSide = sides;
+
+    if (renderMode === "two-column") {
+        const left: Positioned[] = [];
+        const right: Positioned[] = [];
+        for (const p of positions) {
+            (cardSide[p.annotation.id] === "left" ? left : right).push(p);
+        }
+        layoutColumn({
+            side: "left",
+            leftPx: getAnnotationLeftColumnX(),
+            cards: left,
+            el: scrollContainerLeft,
+        });
+        layoutColumn({
+            side: "right",
+            leftPx: getAnnotationLeft(),
+            cards: right,
+            el: scrollContainer,
+        });
+    } else {
+        // Single column: every card on the right (matches classic layout).
+        layoutColumn({
+            side: "right",
+            leftPx: getAnnotationLeft(),
+            cards: positions,
+            el: scrollContainer,
+        });
+    }
+}
+
+/** Shallow equality of two side maps. */
+function sidesEqual(
+    a: { [id: number]: "left" | "right" },
+    b: { [id: number]: "left" | "right" },
+): boolean {
+    const ak = Object.keys(a);
+    const bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) {
+        if (a[k as unknown as number] !== b[k as unknown as number]) return false;
+    }
+    return true;
+}
+
+/**
+ * Core layout algorithm for one floating column: assigns each card a top
+ * position aligned to its annotation's viewport Y.
+ *
+ * Google Docs-style: the active card anchors at its natural text Y first.
+ * Cards above it are pushed upward to avoid overlap; cards below it are
+ * pushed downward. This ensures the selected card always sits next to its
+ * highlighted text rather than being displaced by earlier cards.
+ *
+ * Operates purely on the column's own card list / container, so each
+ * column keeps its own scrollTop, overhead, and inner height.
+ */
+function layoutColumn(col: Column) {
+    if (!resolvedView || !isFloating) return;
+
     const MIN_SPACING = 8;
     const TOP_CLAMP = 64;
-    const leftPx = getAnnotationLeft();
 
-    const sortedByPos = [...positions].sort((a, b) => a.viewportY - b.viewportY);
+    const sortedByPos = [...col.cards].sort((a, b) => a.viewportY - b.viewportY);
     const adjustedY: { [id: number]: number } = {};
 
-    // Find the active card index in the sorted list
+    // Find the active card index in this column (if it lives here).
     const activeIdx = resolvedActiveAnnotation
         ? sortedByPos.findIndex((p) => p.annotation.id === resolvedActiveAnnotation?.id)
         : -1;
@@ -382,8 +671,7 @@ function updateAnnotationPositions() {
         // No active card: simple top-to-bottom pass (original behaviour)
         let lastBottom = TOP_CLAMP;
         for (const { annotation, viewportY } of sortedByPos) {
-            const el = annotationElements[annotation.id];
-            const height = el ? el.offsetHeight || 80 : 80;
+            const height = getCardHeight(annotation.id);
             const y = Math.max(viewportY, lastBottom, TOP_CLAMP);
             adjustedY[annotation.id] = y;
             lastBottom = y + height + MIN_SPACING;
@@ -391,8 +679,7 @@ function updateAnnotationPositions() {
     } else {
         // Active card anchors at its natural text Y
         const activeItem = sortedByPos[activeIdx];
-        const activeEl = annotationElements[activeItem.annotation.id];
-        const activeHeight = activeEl ? activeEl.offsetHeight || 80 : 80;
+        const activeHeight = getCardHeight(activeItem.annotation.id);
         const activeY = activeItem.viewportY;
         adjustedY[activeItem.annotation.id] = activeY;
 
@@ -403,8 +690,7 @@ function updateAnnotationPositions() {
             let ceiling = activeY - MIN_SPACING;
             for (let i = activeIdx - 1; i >= 0; i--) {
                 const { annotation, viewportY } = sortedByPos[i];
-                const el = annotationElements[annotation.id];
-                const height = el ? el.offsetHeight || 80 : 80;
+                const height = getCardHeight(annotation.id);
                 const y = Math.min(viewportY, ceiling - height);
                 adjustedY[annotation.id] = y;
                 ceiling = y - MIN_SPACING;
@@ -416,8 +702,7 @@ function updateAnnotationPositions() {
         let lastBottom = activeY + activeHeight + MIN_SPACING;
         for (let i = activeIdx + 1; i < sortedByPos.length; i++) {
             const { annotation, viewportY } = sortedByPos[i];
-            const el = annotationElements[annotation.id];
-            const height = el ? el.offsetHeight || 80 : 80;
+            const height = getCardHeight(annotation.id);
             const y = Math.max(viewportY, lastBottom);
             adjustedY[annotation.id] = y;
             lastBottom = y + height + MIN_SPACING;
@@ -429,7 +714,8 @@ function updateAnnotationPositions() {
     // scrolling. The scroll container is then scrolled by exactly
     // `overhead` so the active card (or the topmost card when nothing
     // is active) lands at its correct viewport position.
-    const minY = Math.min(...Object.values(adjustedY));
+    const yValues = Object.values(adjustedY);
+    const minY = yValues.length ? Math.min(...yValues) : 0;
     const overhead = minY < 0 ? -minY : 0;
     for (const id of Object.keys(adjustedY) as unknown as number[]) {
         adjustedY[id] += overhead;
@@ -438,45 +724,50 @@ function updateAnnotationPositions() {
     // Compute total inner height
     let maxBottom = 0;
     for (const { annotation } of sortedByPos) {
-        const el = annotationElements[annotation.id];
-        const height = el ? el.offsetHeight || 80 : 80;
+        const height = getCardHeight(annotation.id);
         maxBottom = Math.max(maxBottom, (adjustedY[annotation.id] ?? 0) + height + MIN_SPACING);
     }
 
-    updateScrollContainerSize(maxBottom, leftPx);
-    applyCardPositions(positions, adjustedY);
+    updateScrollContainerSize(col, maxBottom);
+    applyCardPositions(sortedByPos, adjustedY);
 
     // Scroll so the active card sits at its natural viewport Y.
     // When nothing is active, restore scroll to 0 (top of column).
-    if (scrollContainer) {
+    if (col.el) {
         const targetScroll = overhead;
-        if (Math.abs(scrollContainer.scrollTop - targetScroll) > 1) {
-            scrollContainer.scrollTo({ top: targetScroll, behavior: "smooth" });
+        if (Math.abs(col.el.scrollTop - targetScroll) > 1) {
+            col.el.scrollTo({ top: targetScroll, behavior: "smooth" });
         }
     }
 }
 
 /**
- * Resize the inner scroll container so it can hold all cards,
- * and position it at the correct horizontal offset. The
- * container width fills from leftPx to the viewport edge
- * (minus a small right margin) so cards are not cramped.
+ * Resize the column's inner scroll container so it can hold all cards,
+ * and position it at the correct horizontal offset. The container width
+ * is the panel width, clamped so it never spills off the near edge of
+ * the viewport (the right edge for the right column, the left edge for
+ * the left column).
  */
-function updateScrollContainerSize(lastBottom: number, leftPx: number) {
-    if (!scrollContainer) return;
-    const inner = scrollContainer.querySelector<HTMLElement>(".annotation-scroll-inner");
+function updateScrollContainerSize(col: Column, lastBottom: number) {
+    if (!col.el) return;
+    const inner = col.el.querySelector<HTMLElement>(".annotation-scroll-inner");
     if (inner) inner.style.height = `${lastBottom + 24}px`;
-    scrollContainer.style.left = `${leftPx}px`;
-    const RIGHT_MARGIN = 32;
-    const desiredWidth = Math.min(
-        MAX_PANEL_WIDTH,
-        Math.max(MIN_PANEL_WIDTH, appSettings.annotationPanelWidth),
-    );
-    const availableWidth = Math.min(
-        desiredWidth,
-        Math.max(0, window.innerWidth - leftPx - RIGHT_MARGIN),
-    );
-    scrollContainer.style.width = `${availableWidth}px`;
+    const desiredWidth = getPanelWidth();
+    let leftPx = col.leftPx;
+    let availableWidth: number;
+    if (col.side === "left") {
+        // Don't let the column run off the left edge; shrink it if needed.
+        leftPx = Math.max(LEFT_MARGIN, col.leftPx);
+        availableWidth = Math.min(desiredWidth, Math.max(0, col.leftPx + desiredWidth - leftPx));
+    } else {
+        const RIGHT_MARGIN = 32;
+        availableWidth = Math.min(
+            desiredWidth,
+            Math.max(0, window.innerWidth - leftPx - RIGHT_MARGIN),
+        );
+    }
+    col.el.style.left = `${leftPx}px`;
+    col.el.style.width = `${availableWidth}px`;
 }
 
 // Pointer events (instead of mouse events) so the annotation panel can be
@@ -524,12 +815,11 @@ function resetPanelWidth() {
 }
 
 /**
- * Apply computed top/left positions to each card DOM element.
+ * Apply computed top positions to each card DOM element. Cards are
+ * positioned relative to their (already placed) column container, so
+ * left stays 0 within the column.
  */
-function applyCardPositions(
-    positions: { annotation: GenericAnnotation; viewportY: number }[],
-    adjustedY: { [id: number]: number },
-) {
+function applyCardPositions(positions: Positioned[], adjustedY: { [id: number]: number }) {
     for (const { annotation } of positions) {
         const el = annotationElements[annotation.id];
         if (el) {
@@ -681,7 +971,100 @@ $effect(() => {
             >Hide hints</button>
         </div>
     {/if}
-    {#if isFloating && !narrowMode}
+    {#snippet cardContent(c: GenericAnnotation, i: number, isActive: boolean, isPendingComment: boolean)}
+        {#if isAnnotationOfType(c, "comment") && !isPendingComment}
+            <Comment
+                comment={c}
+                view={resolvedView}
+                {isActive}
+                removeComment={remove.bind(null, i)}
+                updateThread={dispatchUpdateThread.bind(null, i)}
+            />
+        {/if}
+        {#if isAnnotationOfType(c, "comment") && isPendingComment}
+            <PreComment
+                view={resolvedView}
+                annotationsData={resolvedAnnotations}
+                pendingAnnotation={c}
+                activeAnnotationData={resolvedActiveAnnotation}
+            />
+        {/if}
+        {#if isAnnotationOfType(c, "revision")}
+            <Revision
+                revision={c}
+                view={resolvedView}
+                {isActive}
+                remove={remove.bind(null, i)}
+                updateThread={dispatchUpdateThread.bind(null, i)}
+            />
+        {/if}
+        {#if isAnnotationOfType(c, "suggestion")}
+            <Suggestion
+                suggestion={c}
+                view={resolvedView}
+                {isActive}
+                remove={remove.bind(null, i)}
+                updateThread={dispatchUpdateThread.bind(null, i)}
+            />
+        {/if}
+    {/snippet}
+
+    {#snippet floatingCard(c: GenericAnnotation)}
+        {@const i = c.id}
+        {@const isActive = resolvedActiveAnnotation?.id === c.id}
+        {@const isPendingComment = pendingComment?.id === c.id}
+        <div
+            use:annotationElement={i}
+            class="annotation-card"
+            class:is-active={isActive}
+            style="z-index: {isActive ? 120 : isPendingComment ? 110 : 50};"
+            onclick={(e) => {
+                if (isInteractiveTarget(e.target)) return;
+                if (!isActive && resolvedView) {
+                    resolvedView.dispatch({
+                        selection: { anchor: c.selection.main.from },
+                        scrollIntoView: true,
+                    });
+                    resolvedView.focus();
+                }
+            }}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => {
+                if (isInteractiveTarget(e.target)) return;
+                if ((e.key === "Enter" || e.key === " ") && resolvedView) {
+                    resolvedView.dispatch({
+                        selection: { anchor: c.selection.main.from },
+                        scrollIntoView: true,
+                    });
+                    resolvedView.focus();
+                }
+            }}
+        >
+            {@render cardContent(c, i, isActive, isPendingComment)}
+            {#if alertingPendingId === c.id}
+                <div
+                    class="alert-ring rounded-[14px]"
+                    onanimationend={() => { alertingPendingId = undefined; }}
+                ></div>
+            {/if}
+        </div>
+    {/snippet}
+
+    {#if isFloating && renderMode === "two-column"}
+        <!-- Left column: no resize handle (the right handle resizes both
+             columns symmetrically via the shared panel width). -->
+        <div class="annotation-scroll-container" bind:this={scrollContainerLeft}>
+            <div class="annotation-scroll-inner">
+                {#each visibleAnnotations as c (c.id)}
+                    {#if cardSide[c.id] !== "right"}
+                        {@render floatingCard(c)}
+                    {/if}
+                {/each}
+            </div>
+        </div>
+    {/if}
+    {#if isFloating && (renderMode === "two-column" || renderMode === "single")}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <div
@@ -706,79 +1089,9 @@ $effect(() => {
             </div>
             <div class="annotation-scroll-inner">
                 {#each visibleAnnotations as c (c.id)}
-                    {@const i = c.id}
-                    {@const isActive = resolvedActiveAnnotation?.id === c.id}
-                    {@const isPendingComment = pendingComment?.id === c.id}
-                    <div
-                        use:annotationElement={i}
-                        class="annotation-card"
-                        class:is-active={isActive}
-                        style="z-index: {isActive ? 120 : isPendingComment ? 110 : 50};"
-                        onclick={(e) => {
-                            if (isInteractiveTarget(e.target)) return;
-                            if (!isActive && resolvedView) {
-                                resolvedView.dispatch({
-                                    selection: { anchor: c.selection.main.from },
-                                    scrollIntoView: true,
-                                });
-                                resolvedView.focus();
-                            }
-                        }}
-                        role="button"
-                        tabindex="0"
-                        onkeydown={(e) => {
-                            if (isInteractiveTarget(e.target)) return;
-                            if ((e.key === "Enter" || e.key === " ") && resolvedView) {
-                                resolvedView.dispatch({
-                                    selection: { anchor: c.selection.main.from },
-                                    scrollIntoView: true,
-                                });
-                                resolvedView.focus();
-                            }
-                        }}
-                    >
-                        {#if isAnnotationOfType(c, "comment") && !isPendingComment}
-                            <Comment
-                                comment={c}
-                                view={resolvedView}
-                                {isActive}
-                                removeComment={remove.bind(null, i)}
-                                updateThread={dispatchUpdateThread.bind(null, i)}
-                            />
-                        {/if}
-                        {#if isAnnotationOfType(c, "comment") && isPendingComment}
-                            <PreComment
-                                view={resolvedView}
-                                annotationsData={resolvedAnnotations}
-                                pendingAnnotation={c}
-                                activeAnnotationData={resolvedActiveAnnotation}
-                            />
-                        {/if}
-                        {#if isAnnotationOfType(c, "revision")}
-                            <Revision
-                                revision={c}
-                                view={resolvedView}
-                                {isActive}
-                                remove={remove.bind(null, i)}
-                                updateThread={dispatchUpdateThread.bind(null, i)}
-                            />
-                        {/if}
-                        {#if isAnnotationOfType(c, "suggestion")}
-                            <Suggestion
-                                suggestion={c}
-                                view={resolvedView}
-                                {isActive}
-                                remove={remove.bind(null, i)}
-                                updateThread={dispatchUpdateThread.bind(null, i)}
-                            />
-                        {/if}
-                        {#if alertingPendingId === c.id}
-                            <div
-                                class="alert-ring rounded-[14px]"
-                                onanimationend={() => { alertingPendingId = undefined; }}
-                            ></div>
-                        {/if}
-                    </div>
+                    {#if renderMode === "single" || cardSide[c.id] === "right"}
+                        {@render floatingCard(c)}
+                    {/if}
                 {/each}
             </div>
         </div>
@@ -815,41 +1128,7 @@ $effect(() => {
                         }
                     }}
                 >
-                    {#if isAnnotationOfType(c, "comment") && !isPendingComment}
-                        <Comment
-                            comment={c}
-                            view={resolvedView}
-                            {isActive}
-                            removeComment={remove.bind(null, i)}
-                            updateThread={dispatchUpdateThread.bind(null, i)}
-                        />
-                    {/if}
-                    {#if isAnnotationOfType(c, "comment") && isPendingComment}
-                        <PreComment
-                            view={resolvedView}
-                            annotationsData={resolvedAnnotations}
-                            pendingAnnotation={c}
-                            activeAnnotationData={resolvedActiveAnnotation}
-                        />
-                    {/if}
-                    {#if isAnnotationOfType(c, "revision")}
-                        <Revision
-                            revision={c}
-                            view={resolvedView}
-                            {isActive}
-                            remove={remove.bind(null, i)}
-                            updateThread={dispatchUpdateThread.bind(null, i)}
-                        />
-                    {/if}
-                    {#if isAnnotationOfType(c, "suggestion")}
-                        <Suggestion
-                            suggestion={c}
-                            view={resolvedView}
-                            {isActive}
-                            remove={remove.bind(null, i)}
-                            updateThread={dispatchUpdateThread.bind(null, i)}
-                        />
-                    {/if}
+                    {@render cardContent(c, i, isActive, isPendingComment)}
                 </div>
             {/each}
         </div>

@@ -40,6 +40,12 @@ type AppSettings = {
     grammarCheckEnabled: boolean;
     grammarDialect: "american" | "british" | "australian";
     annotationPanelWidth: number;
+    // Where annotation cards are placed when the AI sidebar is hidden (AI off):
+    //   "visual-split" — balance cards across a left and right column
+    //   "by-type"      — comments on the left, revisions/suggestions on the right
+    //   "single"       — one right column (the classic layout)
+    // Forced to "single" whenever aiEnabled is true (the sidebar owns the left).
+    annotationLayout: "visual-split" | "by-type" | "single";
 };
 
 const DEFAULTS: AppSettings = {
@@ -69,6 +75,7 @@ const DEFAULTS: AppSettings = {
     grammarCheckEnabled: true,
     grammarDialect: "american",
     annotationPanelWidth: 280,
+    annotationLayout: "visual-split",
 };
 
 function loadSettings(): AppSettings {
