@@ -46,6 +46,7 @@ import { goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import {
+    currentDocumentId,
     editorView,
     modalStack,
     settingsOpen,
@@ -53,6 +54,7 @@ import {
     tutorialActive,
     writingStats,
 } from "$lib/stores";
+import { page } from "$app/state";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -94,6 +96,13 @@ import UpdateBanner from "$lib/ui/UpdateBanner.svelte";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
 import { canCheckForUpdatesNow, deferUpdateChecksAfterRateLimit } from "$lib/updater/schedule";
 import { Toaster, toast } from "svelte-sonner";
+
+// If opened as a secondary window with a specific document (URL `/?doc=<id>`),
+// set it immediately so Editor.svelte's fromSave picks it up on mount.
+const initialDocId = page.url.searchParams.get("doc");
+if (initialDocId) {
+    currentDocumentId.set(initialDocId);
+}
 
 let authModalOpen = $state(false);
 let showBetaDisclaimer = $state(false);

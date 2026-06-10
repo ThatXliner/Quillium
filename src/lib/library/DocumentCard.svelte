@@ -3,7 +3,7 @@
 -->
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
-import { Trash2, RotateCcw, X } from "lucide-svelte";
+import { AppWindow, Trash2, RotateCcw, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import { parseTags } from "./tags";
 
@@ -17,6 +17,7 @@ interface Props {
     onTrash: () => void;
     onRestore: () => void;
     onDeletePermanent: () => void;
+    onOpenInNewWindow: () => void;
     onTagClick?: (tag: string) => void;
 }
 
@@ -30,6 +31,7 @@ const {
     onTrash,
     onRestore,
     onDeletePermanent,
+    onOpenInNewWindow,
     onTagClick,
 }: Props = $props();
 
@@ -148,13 +150,22 @@ function formatDate(ms: number): string {
                 </button>
             </div>
         {:else}
-            <button
-                onclick={(e) => { e.stopPropagation(); onTrash(); }}
-                title="Move to trash"
-                class="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-                <Trash2 size={12} />
-            </button>
+            <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                    onclick={(e) => { e.stopPropagation(); onOpenInNewWindow(); }}
+                    title="Open in new window"
+                    class="w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
+                >
+                    <AppWindow size={12} />
+                </button>
+                <button
+                    onclick={(e) => { e.stopPropagation(); onTrash(); }}
+                    title="Move to trash"
+                    class="w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm"
+                >
+                    <Trash2 size={12} />
+                </button>
+            </div>
         {/if}
     </div>
 {:else}
@@ -237,13 +248,22 @@ function formatDate(ms: number): string {
                     </button>
                 </div>
             {:else}
-                <button
-                    onclick={(e) => { e.stopPropagation(); onTrash(); }}
-                    title="Move to trash"
-                    class="w-7 h-7 rounded-full bg-white border border-gray-200 text-black/30 hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                    <Trash2 size={12} />
-                </button>
+                <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        onclick={(e) => { e.stopPropagation(); onOpenInNewWindow(); }}
+                        title="Open in new window"
+                        class="w-7 h-7 rounded-full bg-white border border-gray-200 text-black/30 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
+                    >
+                        <AppWindow size={12} />
+                    </button>
+                    <button
+                        onclick={(e) => { e.stopPropagation(); onTrash(); }}
+                        title="Move to trash"
+                        class="w-7 h-7 rounded-full bg-white border border-gray-200 text-black/30 hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm"
+                    >
+                        <Trash2 size={12} />
+                    </button>
+                </div>
             {/if}
         </div>
     </div>

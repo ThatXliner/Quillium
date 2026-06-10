@@ -31,6 +31,7 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 |-----|--------|
 | `Mod-,` | Toggle settings modal |
 | `Mod-O` | Navigate to library |
+| `Mod-Shift-O` | Open selected document in new window (library) |
 | `Mod-Shift-H` | Navigate to version history |
 | `Mod-Shift-E` | Export plain text |
 

@@ -3,10 +3,12 @@ import {
     createDocument,
     createDraft,
     createSnapshot,
+    deregisterOpenDoc,
     getDocumentMeta,
     listDocuments,
     listDrafts,
     loadDocumentState,
+    registerOpenDoc,
     updateDocumentMeta,
 } from "$lib/db";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
@@ -48,6 +50,7 @@ import {
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { onMount } from "svelte";
 import { get } from "svelte/store";
 import { getExtensions, savedFields } from "./extensions";
@@ -75,6 +78,9 @@ import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { replayEvents } from "./replay";
 import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
+
+// ── Multi-window ────────────────────────────────────────────────
+const windowLabel = getCurrentWebviewWindow().label;
 
 // ── Local UI state ──────────────────────────────────────────────
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -404,15 +410,21 @@ onMount(() => {
     const unsubscribe = currentDocumentId.subscribe((id) => {
         if (!initialised) {
             initialised = true;
-            return; // skip the initial value — fromSave already handles it
+            // Register the initial document so other windows know it's open here.
+            if (id) registerOpenDoc(id, windowLabel).catch(console.error);
+            return; // skip loadDocument — fromSave already handles the initial value
         }
+        // Deregister the previous document, register the new one.
+        deregisterOpenDoc(windowLabel).catch(console.error);
         if (id) {
+            registerOpenDoc(id, windowLabel).catch(console.error);
             fromSave.then(() => loadDocument(id));
         }
     });
 
     return () => {
         unsubscribe();
+        deregisterOpenDoc(windowLabel).catch(console.error);
     };
 });
 </script>

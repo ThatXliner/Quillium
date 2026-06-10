@@ -1,6 +1,8 @@
 import { goto } from "$app/navigation";
+import { deregisterOpenDoc } from "$lib/db";
 import { flushMetaDebounces, flushPersistQueue } from "$lib/editor/listeners";
 import posthog from "$lib/posthog";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 async function flushPending(): Promise<void> {
     flushMetaDebounces();
@@ -10,6 +12,7 @@ async function flushPending(): Promise<void> {
 export async function goToLibrary(): Promise<void> {
     document.documentElement.setAttribute("data-direction", "left");
     posthog.capture("navigated_to_library");
+    deregisterOpenDoc(getCurrentWebviewWindow().label).catch(console.error);
     await flushPending();
     return goto("/library");
 }
