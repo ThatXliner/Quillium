@@ -9,6 +9,7 @@ import DocumentPreview from "./DocumentPreview.svelte";
 import {
     FileText,
     ExternalLink,
+    AppWindow,
     Trash2,
     RotateCcw,
     Pencil,
@@ -28,6 +29,7 @@ interface Props {
     selectedCount: number;
     trashMode: boolean;
     onOpen: () => void;
+    onOpenInNewWindow: () => void;
     onTrash: () => void;
     onRestore: () => void;
     onDeletePermanent: () => void;
@@ -40,6 +42,7 @@ const {
     selectedCount,
     trashMode,
     onOpen,
+    onOpenInNewWindow,
     onTrash,
     onRestore,
     onDeletePermanent,
@@ -327,6 +330,17 @@ function handleDeletePermanent() {
                         Open
                         <Kbd variant="fullWhite" keys="↵" />
                     </button>
+                    {#if !multiSelect}
+                        <button
+                            onclick={onOpenInNewWindow}
+                            title="Open in new window"
+                            class="flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 text-sm font-medium shadow-sm transition-colors"
+                        >
+                            <AppWindow size={16} />
+                            New Window
+                            <Kbd variant="default" keys={[modKey, "⇧", "O"]} />
+                        </button>
+                    {/if}
                     <div class="relative" bind:this={exportWrapperEl}>
                         <button
                             onclick={() => (exportOpen = !exportOpen)}

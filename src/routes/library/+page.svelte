@@ -499,6 +499,7 @@ onDestroy(() => unlisten?.());
             {selectedCount}
             {trashMode}
             onOpen={() => selectedIds.size === 1 && handleOpen([...selectedIds][0])}
+            onOpenInNewWindow={() => selectedIds.size === 1 && handleOpenInNewWindow([...selectedIds][0])}
             onTrash={() => {
                 if (selectedIds.size === 1) handleTrash([...selectedIds][0]);
                 else if (selectedIds.size > 1) handleTrashSelected();
