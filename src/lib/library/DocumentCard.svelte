@@ -3,7 +3,7 @@
 -->
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
-import { ExternalLink, Trash2, RotateCcw, X } from "lucide-svelte";
+import { AppWindow, Trash2, RotateCcw, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import { parseTags } from "./tags";
 
@@ -156,7 +156,7 @@ function formatDate(ms: number): string {
                     title="Open in new window"
                     class="w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
                 >
-                    <ExternalLink size={12} />
+                    <AppWindow size={12} />
                 </button>
                 <button
                     onclick={(e) => { e.stopPropagation(); onTrash(); }}
@@ -254,7 +254,7 @@ function formatDate(ms: number): string {
                         title="Open in new window"
                         class="w-7 h-7 rounded-full bg-white border border-gray-200 text-black/30 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
                     >
-                        <ExternalLink size={12} />
+                        <AppWindow size={12} />
                     </button>
                     <button
                         onclick={(e) => { e.stopPropagation(); onTrash(); }}
