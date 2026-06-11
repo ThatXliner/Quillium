@@ -495,19 +495,41 @@ onDestroy(() => {
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-2">
         <h3 class="text-[10px] font-semibold text-purple-600/70 uppercase tracking-wider">Revision</h3>
-        <button
-            class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-            onclick={() => {
-                posthog.capture("annotation_deleted", {
-                    type: "revision",
-                    version_count: revision.versions.length,
-                });
-                remove();
-            }}
-            title="Delete entire revision"
-        >
-            <Trash2 size={16} />
-        </button>
+        <div class="flex items-center gap-0.5">
+            <button
+                data-tutorial-action="expand-revision-modal"
+                data-revision-id={revision.id}
+                class="p-1 rounded-md text-purple-400/50 hover:text-purple-600/70 hover:bg-white/40 transition-colors"
+                onclick={() => {
+                    posthog.capture("revision_modal_opened", {
+                        version_count: revision.versions.length,
+                    });
+                    modalStack.push({
+                        type: "revision",
+                        revisionId: revision.id,
+                        parentView: view,
+                        label: activeVersion ? previewVersionText(activeVersion) : "Revision",
+                    });
+                }}
+                title="Expand editor"
+                aria-label="Expand revision editor"
+            >
+                <Maximize2 size={14} />
+            </button>
+            <button
+                class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+                onclick={() => {
+                    posthog.capture("annotation_deleted", {
+                        type: "revision",
+                        version_count: revision.versions.length,
+                    });
+                    remove();
+                }}
+                title="Delete entire revision"
+            >
+                <Trash2 size={16} />
+            </button>
+        </div>
     </div>
 
     <!-- Version pills -->
@@ -629,16 +651,6 @@ onDestroy(() => {
             {/if}
         </button>
         {/if}
-        <button
-            data-tutorial-action="expand-revision-modal"
-            data-revision-id={revision.id}
-            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/60
-                bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors ml-auto"
-            onclick={() => { modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" }); }}
-            title="Expand editor"
-        >
-            <Maximize2 size={10} />
-        </button>
     </div>
 
     <!-- Boundary hint -->

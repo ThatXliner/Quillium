@@ -101,19 +101,39 @@ function getDiffOps(replacementIndex: number) {
         AI Suggestion
       </h3>
     </div>
-    <button
-      class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
-      onclick={() => {
-        posthog.capture("annotation_deleted", {
-          type: "suggestion",
-          replacement_count: suggestion.replacements.length,
-        });
-        remove();
-      }}
-      title="Delete suggestion"
-    >
-      <Trash2 size={16} />
-    </button>
+    <div class="flex items-center gap-0.5">
+      <button
+        class="p-1 rounded-md text-green-400/50 hover:text-green-600/70 hover:bg-white/40 transition-colors"
+        onclick={() => {
+          posthog.capture("suggestion_diff_modal_opened", {
+            replacement_count: suggestion.replacements.length,
+          });
+          modalStack.push({
+            type: "diff",
+            suggestionId: suggestion.id,
+            parentView: view,
+            label: "AI Suggestion",
+          });
+        }}
+        title="Expand diff"
+        aria-label="Expand suggestion diff"
+      >
+        <Maximize2 size={14} />
+      </button>
+      <button
+        class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+        onclick={() => {
+          posthog.capture("annotation_deleted", {
+            type: "suggestion",
+            replacement_count: suggestion.replacements.length,
+          });
+          remove();
+        }}
+        title="Delete suggestion"
+      >
+        <Trash2 size={16} />
+      </button>
+    </div>
   </div>
 
   <!-- Overall comment (thread[0] from AI) -->
@@ -157,44 +177,25 @@ function getDiffOps(replacementIndex: number) {
   <!-- View changes toggle -->
   {#if selectedIndex !== null}
     <div class="px-3 pb-2">
-      <div class="flex items-center justify-between">
-        <button
-          class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
-          onclick={() => {
-            diffExpanded = !diffExpanded;
-            if (!diffExpanded) return;
-            posthog.capture("suggestion_diff_viewed", {
-              replacement_index: selectedIndex,
-              replacement_count: suggestion.replacements.length,
-            });
-          }}
-        >
-          <ChevronDownIcon
-            size={12}
-            class="transition-transform duration-200 {diffExpanded
-              ? 'rotate-180'
-              : ''}"
-          />
-          <span>View changes</span>
-        </button>
-        <button
-          class="flex items-center gap-1 text-[10px] text-green-700/40 hover:text-green-700/70 transition-colors"
-          onclick={() => {
-            posthog.capture("suggestion_diff_modal_opened", {
-              replacement_count: suggestion.replacements.length,
-            });
-            modalStack.push({
-              type: "diff",
-              suggestionId: suggestion.id,
-              parentView: view,
-              label: "AI Suggestion",
-            });
-          }}
-          title="Expand to full view"
-        >
-          <Maximize2 size={10} />
-        </button>
-      </div>
+      <button
+        class="flex items-center gap-1 text-[10px] text-green-700/60 hover:text-green-700/80 transition-colors"
+        onclick={() => {
+          diffExpanded = !diffExpanded;
+          if (!diffExpanded) return;
+          posthog.capture("suggestion_diff_viewed", {
+            replacement_index: selectedIndex,
+            replacement_count: suggestion.replacements.length,
+          });
+        }}
+      >
+        <ChevronDownIcon
+          size={12}
+          class="transition-transform duration-200 {diffExpanded
+            ? 'rotate-180'
+            : ''}"
+        />
+        <span>View changes</span>
+      </button>
       {#if diffExpanded}
         <div
           class="mt-1.5 max-h-28 overflow-y-auto rounded-lg bg-white/60 border border-green-100/60 px-2.5 py-2 text-xs leading-relaxed font-mono"

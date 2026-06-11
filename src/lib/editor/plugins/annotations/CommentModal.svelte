@@ -24,13 +24,14 @@ import {
     ChevronUp,
     MessageSquare,
     SparklesIcon,
+    Trash2,
     X,
 } from "lucide-svelte";
 import { slide } from "svelte/transition";
 import { getCurrentUserName } from "$lib/auth";
 import type { EditorView } from "@codemirror/view";
 import { modalStack, annotations as annotationsStore, modalAnnotationStores } from "$lib/stores";
-import { updateThread, annotationField } from "./annotationField";
+import { updateThread, removeAnnotation, annotationField } from "./annotationField";
 import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
@@ -219,6 +220,14 @@ function handleUpdateThread(newThread: ThreadType) {
     });
 }
 
+/** Delete the comment (parity with the inline card's trash icon). */
+function deleteComment() {
+    if (!comment) return;
+    posthog.capture("annotation_deleted", { type: "comment", from_modal: true });
+    parentView.dispatch({ effects: removeAnnotation.of(comment) });
+    close();
+}
+
 async function aiSuggestion() {
     if (!comment) return;
     const currentThread = comment.thread;
@@ -279,13 +288,23 @@ async function aiSuggestion() {
                     {/each}
                 </nav>
             </div>
-            <button
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors shrink-0"
-                onclick={close}
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={16} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <button
+                    class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-blue-50/80 transition-colors"
+                    onclick={deleteComment}
+                    title="Delete comment"
+                    aria-label="Delete comment"
+                >
+                    <Trash2 size={16} />
+                </button>
+                <button
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                    onclick={close}
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={16} />
+                </button>
+            </div>
         </div>
 
         <!-- Body -->

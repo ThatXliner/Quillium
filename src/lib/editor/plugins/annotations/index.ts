@@ -293,7 +293,12 @@ const revisionAtomicRanges = EditorView.atomicRanges.of((view) => buildAtomicRan
 const collapsedRevisionResolver = ViewPlugin.fromClass(
     class {
         update(update: ViewUpdate) {
-            if (!appSettings.atomicRevisions) return;
+            // Runs regardless of appSettings.atomicRevisions: with atomic
+            // ranges off the user can collapse a revision through direct
+            // edits too, and skipping cleanup would leave a permanent
+            // zero-width "ghost" revision (its range can never regrow, but
+            // its card still renders). Undo restores via _restoreAnnotation
+            // in both modes.
             if (!update.docChanged) return;
             if (update.transactions.some((tr) => tr.annotation(revisionInternalEdit))) return;
             // Don't remove revisions whose text was cleared by the nested editor —
