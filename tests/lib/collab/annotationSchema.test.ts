@@ -19,7 +19,8 @@ import type {
     RawAnnotations,
     VersionState,
 } from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode, MessageObject } from "$lib/collab/types";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 
 describe("annotationSchema", () => {
     let ydoc: Y.Doc;
@@ -69,7 +70,7 @@ describe("annotationSchema", () => {
             expect(retrieved.get("startPos")).toBeInstanceOf(Uint8Array);
             expect(retrieved.get("endPos")).toBeInstanceOf(Uint8Array);
             expect((retrieved.get("id") as string).includes(CLIENT_ID)).toBe(true);
-            const threadArr = retrieved.get("thread") as Y.Array<MessageObject>;
+            const threadArr = retrieved.get("thread") as Y.Array<ThreadMessage>;
             expect(threadArr).toBeInstanceOf(Y.Array);
             expect(threadArr.length).toBe(1);
             expect(threadArr.get(0).message).toBe("test");

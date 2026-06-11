@@ -2,7 +2,7 @@
  * annotationSchema.ts — Yjs recursive-Y.Map annotation converters.
  *
  * Per D-90/D-92: YjsAnnotation is a Y.Map<unknown> with Y.Text/Y.Array/Y.Map children.
- * Per D-93: Comment threads are Y.Array<MessageObject> (append-only, sorted on read).
+ * Per D-93: Comment threads are Y.Array<ThreadMessage> (append-only, sorted on read).
  * Per D-94: No migration; Phase 8 wire format was never shipped.
  *
  * Converter invariants:
@@ -27,9 +27,10 @@ import {
     type RawAnnotation,
     type RawAnnotations,
     type SuggestionReplacement,
+    type ThreadMessage,
     type VersionState,
 } from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode, MessageObject } from "./types";
+import type { YjsAnnotationNode } from "./types";
 
 // ── ID generation ─────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export function codeMirrorToYjsAnnotation(
         node.set("startPos", startPos);
         node.set("endPos", endPos);
 
-        const thread = new Y.Array<MessageObject>();
+        const thread = new Y.Array<ThreadMessage>();
         if (annotation.thread.length > 0) {
             thread.push(annotation.thread.map((m) => ({ ...m })));
         }
@@ -143,8 +144,8 @@ export function yjsAnnotationToCodeMirror(
     }
 
     const threadArr = node.get("thread");
-    const thread: MessageObject[] =
-        threadArr instanceof Y.Array ? (threadArr.toArray() as MessageObject[]) : [];
+    const thread: ThreadMessage[] =
+        threadArr instanceof Y.Array ? (threadArr.toArray() as ThreadMessage[]) : [];
 
     const type = node.get("_type") as GenericAnnotation["_type"] | undefined;
     if (type !== "comment" && type !== "suggestion" && type !== "revision") {

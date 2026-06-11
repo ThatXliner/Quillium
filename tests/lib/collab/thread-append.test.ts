@@ -31,7 +31,8 @@ import {
     updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import { codeMirrorToYjsAnnotation } from "$lib/collab/annotationSchema";
-import type { YjsAnnotationNode, MessageObject } from "$lib/collab/types";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 describe("thread Y.Array sync", () => {
@@ -76,8 +77,8 @@ describe("thread Y.Array sync", () => {
         await Promise.resolve();
 
         // Each peer appends a distinct message concurrently
-        const msgA: MessageObject = { message: "from A", author: "A", time: 1000 };
-        const msgB: MessageObject = { message: "from B", author: "B", time: 1001 };
+        const msgA: ThreadMessage = { message: "from A", author: "A", time: 1000 };
+        const msgB: ThreadMessage = { message: "from B", author: "B", time: 1001 };
 
         // Peer A appends
         peerA.view.dispatch({
@@ -87,7 +88,7 @@ describe("thread Y.Array sync", () => {
         // Peer B appends (simulated via direct Y.Array manipulation since plugin
         // won't have the cmId mapping yet due to timing)
         const bNode = peerB.ymap.get(yjsKey) as YjsAnnotationNode;
-        const bThread = bNode.get("thread") as Y.Array<MessageObject>;
+        const bThread = bNode.get("thread") as Y.Array<ThreadMessage>;
         peerB.ydoc.transact(() => {
             bThread.push([msgB]);
         }, "local");
@@ -97,7 +98,7 @@ describe("thread Y.Array sync", () => {
 
         // Both peers should see both messages
         const aNode = peerA.ymap.get(yjsKey) as YjsAnnotationNode;
-        const aThread = aNode.get("thread") as Y.Array<MessageObject>;
+        const aThread = aNode.get("thread") as Y.Array<ThreadMessage>;
         const aMessages = aThread.toArray();
 
         expect(aMessages.length).toBe(2);
@@ -131,7 +132,7 @@ describe("thread Y.Array sync", () => {
         const yjsKey = keys[0];
 
         // Append a second message
-        const newMsg: MessageObject = { message: "appended", author: "A", time: 2 };
+        const newMsg: ThreadMessage = { message: "appended", author: "A", time: 2 };
         peerA.view.dispatch({
             effects: updateThread.of({
                 annotationId: 0,
@@ -144,7 +145,7 @@ describe("thread Y.Array sync", () => {
 
         // peerB should see the Y.Array with 2 messages
         const bNode = peerB.ymap.get(yjsKey) as YjsAnnotationNode;
-        const bThread = bNode.get("thread") as Y.Array<MessageObject>;
+        const bThread = bNode.get("thread") as Y.Array<ThreadMessage>;
         expect(bThread.length).toBe(2);
         expect(bThread.toArray().map((m) => m.message)).toEqual(["initial", "appended"]);
     });
@@ -187,7 +188,7 @@ describe("thread Y.Array sync", () => {
             expect(keys.length).toBe(1);
             const yjsKey = keys[0];
             const node = ymap.get(yjsKey) as YjsAnnotationNode;
-            const threadArr = node.get("thread") as Y.Array<MessageObject>;
+            const threadArr = node.get("thread") as Y.Array<ThreadMessage>;
             expect(threadArr.length).toBe(3);
 
             // Now dispatch an updateThread with only 1 message (shrink)
@@ -215,7 +216,7 @@ describe("thread ordering (D-93)", () => {
         // sorting at the UI layer if needed. The sync plugin does not sort.
         const ydoc = new Y.Doc();
         // Must attach Y.Array to doc before using it
-        const threadArr = ydoc.getArray<MessageObject>("test-thread");
+        const threadArr = ydoc.getArray<ThreadMessage>("test-thread");
 
         ydoc.transact(() => {
             threadArr.push([
