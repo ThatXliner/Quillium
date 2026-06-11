@@ -375,6 +375,11 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
             const annotations = update.startState.field(annotationField);
             for (const tr of update.transactions) {
                 if (!tr.docChanged) continue;
+                // The nudge gently warns when the user *types* right at a revision
+                // edge. A paste carries its own annotations and lands as a block;
+                // nudging about an unrelated destination revision it happens to
+                // abut is noise, so skip paste transactions.
+                if (tr.isUserEvent("input.paste")) continue;
                 tr.changes.iterChanges((fromA, _toA, _fromB, _toB, inserted) => {
                     if (inserted.length === 0) return; // deletion, not insertion
                     for (const annotation of Object.values(annotations)) {

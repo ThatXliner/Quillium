@@ -32,7 +32,9 @@
  * Key dependencies:
  *   - @codemirror/state (EditorSelection, EditorState) for ranges.
  *   - @codemirror/view (EditorView.domEventHandlers) for clipboard events.
- *   - ./annotationField (addAnnotation effect) to recreate annotations.
+ *   - ./annotationField (addAnnotation/removeAnnotation effects, _revisionCleanup)
+ *     to recreate annotations on paste and clean up cut revisions.
+ *   - ../../harper/harperLinter (hashText) for the side-table bucket key.
  *   - ./models (getNewId, isAnnotationOfType, ThreadMessageSchema,
  *     SuggestionReplacementSchema, VersionStateSchema) for ids, type guards,
  *     and validating the smuggled payloads.
@@ -41,8 +43,13 @@
 import { EditorSelection, type EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { z } from "zod";
-import { addAnnotation } from "./annotationField";
-import { annotationField } from "./annotationField";
+import { hashText } from "../../harper/harperLinter";
+import {
+    _revisionCleanup,
+    addAnnotation,
+    annotationField,
+    removeAnnotation,
+} from "./annotationField";
 import {
     type GenericAnnotation,
     SuggestionReplacementSchema,
@@ -89,32 +96,28 @@ export type SerializedAnnotation = z.infer<typeof SerializedAnnotationSchema>;
 
 // ── Side-table ──────────────────────────────────────────────────────────────
 // Fallback for when text/html is stripped from the clipboard. Keyed by a hash
-// of the copied text. Bounded so a long session of copies can't grow it without
-// limit; the most recent copy is the one almost always pasted.
-const sideTable = new Map<string, SerializedAnnotation[]>();
+// of the copied text but storing the FULL source text alongside the annotations
+// so lookup can re-verify an exact text match. Re-verification is what keeps a
+// stale or colliding entry from attaching the wrong annotations: a later copy of
+// identical-looking text with no annotations never overwrites the entry (the
+// copy handler returns early), so without the text check a clean paste could
+// resurrect old annotations. Bounded so a long session of copies can't grow it
+// without limit; the most recent copy is the one almost always pasted.
+const sideTable = new Map<string, { text: string; annotations: SerializedAnnotation[] }>();
 const SIDE_TABLE_MAX = 32;
 
-// Non-cryptographic string hash (FNV-1a). The side-table only needs a fast,
-// stable key; collisions are harmless (worst case: the wrong annotations are
-// considered, then rejected because the text differs at paste time — but we
-// don't re-verify text, so we keep the key space wide via a 32-bit hash plus
-// the text length to make accidental collisions vanishingly unlikely).
-function hashText(text: string): string {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < text.length; i++) {
-        h ^= text.charCodeAt(i);
-        h = Math.imul(h, 0x01000193);
-    }
-    // >>> 0 coerces to unsigned; length disambiguates same-hash different-length.
-    return `${(h >>> 0).toString(36)}:${text.length}`;
+// The hash is only the bucket key; text equality is the real match. length
+// disambiguates same-hash different-length without walking the string twice.
+function sideTableKey(text: string): string {
+    return `${hashText(text).toString(36)}:${text.length}`;
 }
 
 function rememberInSideTable(text: string, annotations: SerializedAnnotation[]): void {
     if (annotations.length === 0) return;
-    const key = hashText(text);
+    const key = sideTableKey(text);
     // Refresh recency: delete then re-set so the entry moves to the end.
     sideTable.delete(key);
-    sideTable.set(key, annotations);
+    sideTable.set(key, { text, annotations });
     // Evict the oldest (first-inserted) entries beyond the cap.
     while (sideTable.size > SIDE_TABLE_MAX) {
         const oldest = sideTable.keys().next().value;
@@ -123,8 +126,21 @@ function rememberInSideTable(text: string, annotations: SerializedAnnotation[]):
     }
 }
 
+// Drops any side-table entry for `text`. Called when a copy/cut of this exact
+// text carries NO annotations, so a later plaintext paste of it can't resurrect
+// annotations from an earlier copy of identical text (the copy handler returns
+// early without overwriting the entry, so it must be evicted explicitly).
+function forgetInSideTable(text: string): void {
+    const key = sideTableKey(text);
+    const entry = sideTable.get(key);
+    if (entry && entry.text === text) sideTable.delete(key);
+}
+
 function lookupSideTable(text: string): SerializedAnnotation[] | undefined {
-    return sideTable.get(hashText(text));
+    const entry = sideTable.get(sideTableKey(text));
+    // Re-verify the full text, not just the hash — a hash collision must not
+    // attach annotations the user did not actually copy.
+    return entry && entry.text === text ? entry.annotations : undefined;
 }
 
 // Exposed for tests only — clears the module-level side-table between cases.
@@ -135,10 +151,39 @@ export function _clearClipboardSideTable(): void {
 // ── Serialization (copy) ─────────────────────────────────────────────────────
 
 /**
- * Collects the annotations fully contained in the doc range [from, to) and
- * rebases their offsets to be relative to `from`. Annotations only partially
- * overlapping the range are excluded (matches Google Docs; clamp-and-carry is a
- * later enhancement). Ids are stripped — paste assigns fresh ones. Comments,
+ * Returns the live annotations eligible to ride along with a copy/cut of the doc
+ * range [from, to): those fully contained in the range, with a non-empty span,
+ * excluding unfinished single-instance state (pending comments). This is the
+ * single source of truth for "what gets carried" — serializeAnnotationsForCopy
+ * encodes these for the clipboard, and handleCut removes exactly these from the
+ * source so a cut never leaves a phantom behind. Annotations only partially
+ * overlapping the range are excluded (matches Google Docs).
+ */
+function copyableAnnotationsIn(state: EditorState, from: number, to: number): GenericAnnotation[] {
+    const result: GenericAnnotation[] = [];
+    for (const annotation of Object.values(state.field(annotationField))) {
+        const { from: aFrom, to: aTo } = annotation.selection.main;
+        // Fully contained in the copied range.
+        if (aFrom < from || aTo > to) continue;
+        // Skip zero-width annotations: a collapsed range carries no copyable span
+        // of text, and for revisions Phase 3 leaves versions[active].doc untouched
+        // while the range is empty (annotationField pushDocToVersionState), so the
+        // copied text would not match the version blob — pasting it produces a
+        // revision whose empty range disagrees with its rendered active version.
+        if (aFrom === aTo) continue;
+        // A pending comment (empty thread) is an unfinished, single-instance
+        // state guarded by canCreateNewComment; carrying it would let paste create
+        // a second pending highlight that bypasses that guard. Only resolved
+        // comments (with at least one message) are copyable.
+        if (isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0) continue;
+        result.push(annotation);
+    }
+    return result;
+}
+
+/**
+ * Encodes the copyable annotations for the clipboard, rebasing their offsets to
+ * be relative to `from`. Ids are stripped — paste assigns fresh ones. Comments,
  * suggestions, and revisions are all carried; type-specific data (replacements,
  * versions/activeVersionIndex) rides along verbatim.
  */
@@ -148,10 +193,7 @@ export function serializeAnnotationsForCopy(
     to: number,
 ): SerializedAnnotation[] {
     const result: SerializedAnnotation[] = [];
-    for (const annotation of Object.values(state.field(annotationField))) {
-        const { from: aFrom, to: aTo } = annotation.selection.main;
-        // Fully contained in the copied range.
-        if (aFrom < from || aTo > to) continue;
+    for (const annotation of copyableAnnotationsIn(state, from, to)) {
         // The selection stores anchor/head (direction matters for nothing here,
         // but we preserve it). Rebase both relative to the copy origin.
         const { anchor, head } = annotation.selection.main;
@@ -209,30 +251,47 @@ function decodeBase64(b64: string): string {
     );
 }
 
+// The smuggled envelope binds the annotations to the text they were copied with
+// (via the side-table key — a hash plus length). decodeHtml re-checks this key
+// against the pasted plain text so a foreign or round-tripped data-quillium
+// attribute whose text doesn't match ours can't attach annotations at bogus
+// offsets.
+const ClipboardEnvelopeSchema = z.object({
+    textKey: z.string(),
+    annotations: SerializedAnnotationsSchema,
+});
+
 /**
  * Builds the text/html payload: the copied text wrapped in a div carrying the
- * base64-encoded annotation JSON in a data-quillium attribute. WebKit preserves
- * text/html across windows and restarts, so the annotations ride along.
+ * base64-encoded annotation envelope in a data-quillium attribute. WebKit
+ * preserves text/html across windows and restarts, so the annotations ride
+ * along.
  */
 export function encodeHtml(text: string, annotations: SerializedAnnotation[]): string {
-    const payload = encodeBase64(JSON.stringify(annotations));
+    const envelope = { textKey: sideTableKey(text), annotations };
+    const payload = encodeBase64(JSON.stringify(envelope));
     return `<div data-quillium="${payload}">${escapeHtml(text)}</div>`;
 }
 
 /**
- * Extracts and validates the annotation JSON smuggled in a text/html payload.
- * Returns null when the payload has no data-quillium attribute or fails to
- * decode/validate.
+ * Extracts and validates the annotation envelope smuggled in a text/html payload,
+ * verifying it was copied with `pastedText`. Returns null when the payload has no
+ * data-quillium attribute, fails to decode/validate, or its bound text key does
+ * not match the text actually being pasted.
  */
-export function decodeHtml(html: string): SerializedAnnotation[] | null {
+export function decodeHtml(html: string, pastedText: string): SerializedAnnotation[] | null {
     // Pull the attribute value without parsing the whole HTML (paste handlers
     // run on a hot path and the markup is our own, single-attribute shape).
     const match = html.match(/data-quillium="([^"]*)"/);
     if (!match) return null;
     try {
         const json = decodeBase64(match[1]);
-        const parsed = SerializedAnnotationsSchema.safeParse(JSON.parse(json));
-        return parsed.success ? parsed.data : null;
+        const parsed = ClipboardEnvelopeSchema.safeParse(JSON.parse(json));
+        if (!parsed.success) return null;
+        // Reject a payload that wasn't copied with this exact text — guards
+        // against foreign clipboards that happen to carry a data-quillium attr.
+        if (parsed.data.textKey !== sideTableKey(pastedText)) return null;
+        return parsed.data.annotations;
     } catch {
         return null;
     }
@@ -359,8 +418,12 @@ export function handleCopy(event: ClipboardEvent, view: EditorView): boolean {
     const annotations = serializeAnnotationsForCopy(view.state, selected.from, selected.to);
     // With no annotations in the selection, defer to CodeMirror's default copy
     // rather than reimplementing it — keeps behavior identical for the common
-    // no-annotation case.
-    if (annotations.length === 0) return false;
+    // no-annotation case. Evict any stale side-table entry for this exact text
+    // first, so a later plaintext paste reflects this clean copy.
+    if (annotations.length === 0) {
+        forgetInSideTable(selected.text);
+        return false;
+    }
     event.preventDefault();
     writeClipboard(event, selected.text, annotations);
     return true;
@@ -369,12 +432,24 @@ export function handleCopy(event: ClipboardEvent, view: EditorView): boolean {
 export function handleCut(event: ClipboardEvent, view: EditorView): boolean {
     const selected = selectedText(view.state);
     if (!selected) return false;
+    // Revisions fully inside the cut collapse to a zero-width range rather than
+    // being dropped (mapRange keeps collapsed ranges for revisions). Capture them
+    // so we can clean up the phantoms the delete leaves behind.
+    const cutRevisions = copyableAnnotationsIn(view.state, selected.from, selected.to).filter((a) =>
+        isAnnotationOfType(a, "revision"),
+    );
     const annotations = serializeAnnotationsForCopy(view.state, selected.from, selected.to);
-    if (annotations.length === 0) return false;
+    if (annotations.length === 0) {
+        // Defer to CM's default cut, but evict any stale side-table entry for this
+        // exact text so a later plaintext paste reflects this clean cut.
+        forgetInSideTable(selected.text);
+        return false;
+    }
     event.preventDefault();
     writeClipboard(event, selected.text, annotations);
-    // Delete the source. Phase 1 remap collapses the source annotations
-    // naturally; paste recreates them.
+    // Delete the source. Phase 1 drops collapsed comments/suggestions naturally,
+    // and the delete transaction's inverted effects restore every carried
+    // annotation on undo; paste recreates them at the destination.
     view.dispatch(
         view.state.update({
             changes: { from: selected.from, to: selected.to, insert: "" },
@@ -383,6 +458,29 @@ export function handleCut(event: ClipboardEvent, view: EditorView): boolean {
             userEvent: "delete.cut",
         }),
     );
+    // Remove the phantom zero-width revisions the delete left behind. This
+    // mirrors collapsedRevisionResolver but runs unconditionally — that resolver
+    // is gated on atomicRevisions, so without this a cut in non-atomic mode would
+    // strand an empty revision at the cut site. addToHistory.of(false) +
+    // _revisionCleanup keep this out of the undo entry (the delete's inverted
+    // _restoreAnnotation effects already restore these revisions on undo).
+    if (cutRevisions.length > 0) {
+        const live = view.state.field(annotationField);
+        const phantoms = cutRevisions
+            .map((a) => live[a.id])
+            .filter(
+                (a): a is GenericAnnotation =>
+                    a !== undefined && isAnnotationOfType(a, "revision") && a.selection.main.empty,
+            );
+        if (phantoms.length > 0) {
+            view.dispatch(
+                view.state.update({
+                    effects: phantoms.map((a) => removeAnnotation.of(a)),
+                    annotations: [Transaction.addToHistory.of(false), _revisionCleanup.of(true)],
+                }),
+            );
+        }
+    }
     return true;
 }
 
@@ -392,9 +490,9 @@ export function handlePaste(event: ClipboardEvent, view: EditorView): boolean {
     const text = data.getData("text/plain");
     if (!text) return false; // non-text paste (image, etc.) — let default run
 
-    // 1. Try the smuggled JSON in text/html.
+    // 1. Try the smuggled JSON in text/html (bound to the copied text).
     const html = data.getData("text/html");
-    let annotations = html ? decodeHtml(html) : null;
+    let annotations = html ? decodeHtml(html, text) : null;
     // 2. Fall back to the side-table keyed by the copied text.
     if (!annotations) {
         annotations = lookupSideTable(text) ?? null;

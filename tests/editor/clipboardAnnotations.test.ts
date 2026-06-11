@@ -209,6 +209,24 @@ describe("serializeAnnotationsForCopy", () => {
         expect(out).toHaveLength(0);
     });
 
+    it("excludes a pending comment (empty thread) so paste can't bypass the single-pending guard", () => {
+        const view = createView("Hello brave new world");
+        // Pending comment: created with no thread message.
+        view.dispatch(
+            view.state.update({
+                effects: addAnnotation.of(
+                    createNewAnnotation(
+                        view.state.field(annotationField),
+                        EditorSelection.single(6, 11),
+                        "comment",
+                    ),
+                ),
+            }),
+        );
+        const out = serializeAnnotationsForCopy(view.state, 6, 21);
+        expect(out).toHaveLength(0);
+    });
+
     it("serializes a fully-contained suggestion with its replacements", () => {
         const view = createView("Hello brave new world");
         view.dispatch(
@@ -244,7 +262,7 @@ describe("encodeHtml / decodeHtml", () => {
         const html = encodeHtml("brave", ann);
         expect(html).toContain("data-quillium=");
         expect(html).toContain("brave");
-        expect(decodeHtml(html)).toEqual(ann);
+        expect(decodeHtml(html, "brave")).toEqual(ann);
     });
 
     it("survives non-ASCII text and thread content", () => {
@@ -257,7 +275,7 @@ describe("encodeHtml / decodeHtml", () => {
             },
         ];
         const html = encodeHtml("ünï", ann);
-        expect(decodeHtml(html)).toEqual(ann);
+        expect(decodeHtml(html, "ünï")).toEqual(ann);
     });
 
     it("escapes HTML-special characters in the copied text", () => {
@@ -268,8 +286,16 @@ describe("encodeHtml / decodeHtml", () => {
     });
 
     it("returns null for html without the data attribute or with junk", () => {
-        expect(decodeHtml("<div>plain</div>")).toBeNull();
-        expect(decodeHtml('<div data-quillium="not-base64!!!">x</div>')).toBeNull();
+        expect(decodeHtml("<div>plain</div>", "x")).toBeNull();
+        expect(decodeHtml('<div data-quillium="not-base64!!!">x</div>', "x")).toBeNull();
+    });
+
+    it("rejects a payload whose bound text differs from the pasted text", () => {
+        const ann = [{ _type: "comment" as const, relAnchor: 0, relHead: 5, thread: [] }];
+        const html = encodeHtml("brave", ann);
+        // Same valid envelope, but pasted text doesn't match what was copied —
+        // guards against foreign clipboards carrying a data-quillium attribute.
+        expect(decodeHtml(html, "different text")).toBeNull();
     });
 });
 
@@ -541,6 +567,28 @@ describe("side-table fallback (text/html stripped)", () => {
         expect(event.defaultPrevented).toBe(false);
         expect(getComments(view)).toHaveLength(0);
     });
+
+    it("does not resurrect stale annotations for identical text copied clean afterwards", () => {
+        const view = createView("brave new world. brave new world");
+        // First copy: a region WITH a comment populates the side-table.
+        addComment(view, 0, 5, "stale"); // "brave"
+        copyRange(view, 0, 15); // "brave new world"
+
+        // Second copy: the IDENTICAL text from a clean region with no annotations.
+        // handleCopy returns early without refreshing/clearing the side-table.
+        const event = makeEvent();
+        view.dispatch({ selection: EditorSelection.range(17, 32) }); // "brave new world"
+        expect(handleCopy(event, view)).toBe(false);
+
+        // Paste that clean copy via a plaintext-only source (html stripped).
+        const stripped = new MockDataTransfer();
+        stripped.setData("text/plain", "brave new world");
+        const at = view.state.doc.length;
+        pasteAt(view, at, stripped);
+
+        // No phantom comment from the stale side-table entry.
+        expect(getComments(view).filter((c) => c.selection.main.from >= at)).toHaveLength(0);
+    });
 });
 
 // ── Cut ──────────────────────────────────────────────────────────────────────
@@ -570,6 +618,19 @@ describe("cut → paste", () => {
         expect(
             view.state.sliceDoc(comments[0].selection.main.from, comments[0].selection.main.to),
         ).toBe("brave");
+    });
+
+    it("leaves no phantom zero-width revision behind after cutting a revision", () => {
+        const view = createView("Hello brave new world");
+        addRevisionOver(view, 6, 11, ["bold", "brave"], 1); // "brave"
+
+        view.dispatch({ selection: EditorSelection.range(6, 21) });
+        handleCut(makeEvent(), view);
+
+        // The cut must not strand a collapsed revision at the cut site — without
+        // explicit cleanup, mapRange keeps the zero-width revision range.
+        expect(getRevisions(view)).toHaveLength(0);
+        expect(view.state.doc.toString()).toBe("Hello ");
     });
 });
 
