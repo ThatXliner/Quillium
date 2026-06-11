@@ -299,6 +299,10 @@ export class NestedEditorController {
 
         // Translate doc changes and flush annotation state
         if (!isParentSync && translateAndDispatch(update, this.parentView, this.revisionId)) {
+            // The parent dispatch runs synchronously and its side effects
+            // (e.g. a version switch) may destroy this controller — re-check
+            // before touching the editor.
+            if (!this._editor) return;
             this._lastDispatchedDoc = this._editor.state.doc.toString();
         }
 

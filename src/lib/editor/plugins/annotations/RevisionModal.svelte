@@ -92,6 +92,28 @@ const initialPendingCommand = modalStack.consumePendingCommand(stackIndex);
 
 const crumbs = $derived($modalStack.slice(0, stackIndex + 1));
 
+// Breadcrumb revisions, read reactively. crumb.parentView.state is a plain
+// (non-reactive) read, so deriving from it directly would snapshot the
+// revision at mount time — the breadcrumb title would not update when the
+// active version's text changes (e.g. pasting into a freshly created
+// revision). Instead read each level from the synced annotation stores
+// (main editor → annotationsStore, nested levels → modalAnnotationStores),
+// falling back to a direct state read before the store has that level.
+const crumbRevisions = $derived.by((): (Annotation<"revision"> | undefined)[] => {
+    const parentLevels = $modalAnnotationStores;
+    const rootAnnotations = $annotationsStore;
+    return crumbs.map((crumb, ci) => {
+        if (crumb.type !== "revision") return undefined;
+        const synced = ci === 0 ? rootAnnotations : parentLevels[ci - 1];
+        const rev =
+            synced?.[crumb.revisionId] ??
+            crumb.parentView.state.field(annotationField)[crumb.revisionId];
+        return rev && isAnnotationOfType(rev, "revision")
+            ? (rev as Annotation<"revision">)
+            : undefined;
+    });
+});
+
 // Context snippet: lazy-loaded chunks around the outermost revision range
 const CHUNK = 300; // chars per load step
 let contextBefore = $state(CHUNK); // how many chars before to show
@@ -241,13 +263,7 @@ let openDropdown = $state(-1);
 // Sync the version-dropdown selections for each breadcrumb
 // whenever the crumbs array or underlying revision state changes.
 $effect(() => {
-    crumbSelectedVersions = crumbs.map((crumb) => {
-        if (crumb.type !== "revision") return 0;
-        const rev = crumb.parentView.state.field(annotationField)[crumb.revisionId] as
-            | Annotation<"revision">
-            | undefined;
-        return rev?.activeVersionIndex ?? 0;
-    });
+    crumbSelectedVersions = crumbRevisions.map((rev) => rev?.activeVersionIndex ?? 0);
 });
 
 /**
@@ -401,13 +417,10 @@ $effect(() => {
 });
 
 // NOTE: $derived on view.state.field(...) is NOT reactive to CodeMirror
-// transactions. view is a plain prop (not $state), so Svelte cannot observe
-// mutations to view.state. This only captures the value at the time the
-// expression first runs. Downstream code that needs to react to state
-// changes reads from modalAnnotations instead (see below).
-const revision = $derived(
-    view.state.field(annotationField)[revisionId] as Annotation<"revision"> | undefined,
-);
+// transactions (view is a plain prop, so Svelte cannot observe mutations to
+// view.state) — it would permanently capture the mount-time value. Event
+// handlers that need current revision state call readRevision() instead;
+// reactive code reads from modalAnnotations (see below).
 
 let editorHost = $state<HTMLDivElement>();
 let dialogEl = $state<HTMLDialogElement>();
@@ -683,6 +696,7 @@ let labelInputValue = $state("");
 let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
 
 function startLabelEdit() {
+    const revision = readRevision();
     if (!revision) return;
     labelInputValue = revision.versions[revision.activeVersionIndex]?.label ?? "";
     editingVersionLabel = true;
@@ -696,6 +710,7 @@ $effect(() => {
 });
 
 function commitLabelEdit() {
+    const revision = readRevision();
     if (!revision) {
         editingVersionLabel = false;
         return;
@@ -717,6 +732,7 @@ function cancelLabelEdit() {
 }
 
 function addVersion() {
+    const revision = readRevision();
     if (!revision) return;
     posthog.capture("revision_version_created", { version_count: revision.versions.length });
     view.dispatch(createNewRevision(view.state, revisionId));
@@ -725,6 +741,7 @@ function addVersion() {
 }
 
 function navigateVersion(direction: "prev" | "next") {
+    const revision = readRevision();
     if (!revision) return;
     const count = revision.versions.length;
     if (count <= 1) return;
@@ -817,12 +834,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
         {#each crumbs as crumb, ci}
           {@const isCurrent = ci === crumbs.length - 1}
-          {@const crumbRevision =
-            crumb.type === "revision"
-              ? (crumb.parentView.state.field(annotationField)[
-                  crumb.revisionId
-                ] as Annotation<"revision"> | undefined)
-              : undefined}
+          {@const crumbRevision = crumbRevisions[ci]}
           {@const selectedVi = crumbSelectedVersions[ci] ?? 0}
 
           {#if ci > 0}

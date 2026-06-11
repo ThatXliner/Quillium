@@ -58,6 +58,11 @@ export async function streamCommentAiResponse(
             if (value?.type === "text-delta") aiResponse += value.delta;
         }
         return aiResponse;
+    } catch (e) {
+        // A user-initiated Stop aborts the stream mid-read — return what
+        // streamed so far instead of surfacing it as an error in the thread.
+        if (abortSignal.aborted) return aiResponse;
+        throw e;
     } finally {
         setAiProcessing(false);
     }
