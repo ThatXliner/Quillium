@@ -439,10 +439,16 @@ export class NestedEditorController {
 
             // Compare against what the parent already has to detect
             // whether this flush actually contributes new state.
+            // Normalize missing/null to {}: fresh version blobs are created
+            // without an annotationField key, while a live editor with zero
+            // annotations serializes the field as {} — both mean "no
+            // annotations", and comparing them as different would fire a
+            // false "meaningful flush" on the first close of every
+            // never-annotated revision version (see #150).
             const parentAnns = JSON.stringify(
-                (existing as { annotationField?: unknown })?.annotationField ?? null,
+                (existing as { annotationField?: unknown })?.annotationField ?? {},
             );
-            const nestedAnns = JSON.stringify(nestedState.annotationField ?? null);
+            const nestedAnns = JSON.stringify(nestedState.annotationField ?? {});
             const annsDiffer = parentAnns !== nestedAnns;
 
             if (annsDiffer) {
