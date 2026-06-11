@@ -95,10 +95,14 @@ let lastReviewedContent = "";
 let unsubscribe: (() => void) | null = null;
 let unsubStopAi: (() => void) | null = null;
 
-function applyAnnotations(result: ReviewResult, doc: string): number {
+function applyAnnotations(result: ReviewResult): number {
     const view = get(editorView);
     if (!view) return 0;
 
+    // Validate against the live document, not the reviewed snapshot — the
+    // user may have edited while the AI call was in flight, and annotations
+    // are applied to the live view.
+    const doc = view.state.doc.toString();
     const allowed = new Set(autoAISettings.annotationTypes);
     let applied = 0;
 
@@ -203,7 +207,7 @@ async function runReview(content: string, manual = false) {
             abortSignal,
         });
         lastReviewedContent = content;
-        const applied = applyAnnotations(object, content);
+        const applied = applyAnnotations(object);
         if (manual && applied === 0) {
             toast("No issues found — your writing looks good.");
         }

@@ -32,8 +32,10 @@
 import { get } from "svelte/store";
 import { Chat } from "@ai-sdk/svelte";
 import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
+import type { EditorView } from "@codemirror/view";
+import { toast } from "svelte-sonner";
 import posthog from "$lib/posthog";
-import { documentContent, selectedText, editorView } from "$lib/stores";
+import { currentDocumentId, documentContent, selectedText, editorView } from "$lib/stores";
 import {
     aiSettings,
     documentContext,
@@ -70,6 +72,18 @@ function handleToolCall(toolCall: ToolCall, author?: string) {
     const view = get(editorView);
     if (!view) return;
 
+    try {
+        dispatchToolCall(toolCall, view, author);
+    } catch (e) {
+        // The model may reference text that no longer exists (the user edited
+        // mid-stream, or the text was hallucinated). Skip that annotation
+        // instead of failing the whole stream.
+        console.warn("[chatFactory] tool call failed, skipping annotation:", e);
+        toast.warning("The AI referenced text that couldn't be found — skipped one annotation.");
+    }
+}
+
+function dispatchToolCall(toolCall: ToolCall, view: EditorView, author?: string) {
     switch (toolCall.toolName) {
         case "createComment": {
             const { targetText, context, comment } = toolCall.input;
@@ -138,6 +152,10 @@ export async function runMultiPersonaStreams({
     await ensureApiKeyLoaded();
 
     const abortSignal = getAiAbortSignal();
+    // Annotations from these streams must land in the document the review
+    // was started on — if the user switches documents mid-stream, tool
+    // calls would otherwise be applied to the wrong document.
+    const docIdAtStart = get(currentDocumentId);
 
     const tasks = personas.map(async (persona) => {
         const stream = await streamFn({
@@ -162,7 +180,10 @@ export async function runMultiPersonaStreams({
                 }
                 const { value, done } = await reader.read();
                 if (done) break;
-                if (value?.type === "tool-input-available") {
+                if (
+                    value?.type === "tool-input-available" &&
+                    get(currentDocumentId) === docIdAtStart
+                ) {
                     handleToolCall(
                         { toolName: value.toolName, input: value.input } as ToolCall,
                         persona.name,

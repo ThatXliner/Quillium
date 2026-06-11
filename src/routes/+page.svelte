@@ -196,6 +196,8 @@ function handleChangelogDismiss() {
         localStorage.setItem(CHANGELOG_SEEN_KEY, changelogEntry.version);
     }
     showChangelog = false;
+    // Return focus to the editor so the user can keep typing (#122)
+    $editorView?.focus();
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -583,7 +585,13 @@ if (import.meta.env.DEV) {
 
 <!-- Open Source Licenses modal -->
 {#if licensesOpen}
-    <LicensesModal ondismiss={() => (licensesOpen = false)} />
+    <LicensesModal
+        ondismiss={() => {
+            licensesOpen = false;
+            // Return focus to the editor so the user can keep typing (#122)
+            $editorView?.focus();
+        }}
+    />
 {/if}
 
 <!-- Debug panel — DEV only, never rendered in production builds -->

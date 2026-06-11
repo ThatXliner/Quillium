@@ -176,7 +176,11 @@ $effect(() => {
 {#if $settingsOpen}
     <SettingsModal
         scrollTo={typeof $settingsOpen === "string" ? $settingsOpen : undefined}
-        onclose={() => ($settingsOpen = false)}
+        onclose={() => {
+            $settingsOpen = false;
+            // Return focus to the editor so the user can keep typing (#122)
+            $editorView?.focus();
+        }}
     />
 {/if}
 
