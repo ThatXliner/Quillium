@@ -30,7 +30,7 @@
  *     to auto-create a comment or sub-revision on open.
  */
 import { EditorView } from "@codemirror/view";
-import { Check, ChevronDown, ChevronRight, ChevronUp, PlusIcon, X } from "lucide-svelte";
+import { Check, ChevronDown, ChevronRight, ChevronUp, PlusIcon, Trash2, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
 import { scale, slide } from "svelte/transition";
 import {
@@ -41,6 +41,8 @@ import {
     addAnnotation,
     annotationField,
     createNewRevision,
+    deleteRevisionVersion,
+    removeAnnotation,
     revisionInternalEdit,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
@@ -740,6 +742,47 @@ function addVersion() {
     send({ type: "VERSION_SWITCHED" });
 }
 
+/**
+ * Delete the entire revision (parity with the inline card's trash icon).
+ * The removeAnnotation dispatch makes the revision disappear from the
+ * parent view; the modal then closes. destroyEditor's flush is safely
+ * skipped because flushAnnotationStateToParent no-ops when the revision
+ * no longer exists in the parent state.
+ */
+function deleteRevision() {
+    const revision = readRevision();
+    if (!revision) return;
+    posthog.capture("annotation_deleted", {
+        type: "revision",
+        version_count: revision.versions.length,
+        from_modal: true,
+    });
+    view.dispatch(view.state.update({ effects: [removeAnnotation.of(revision)] }));
+    close();
+}
+
+/**
+ * Delete a single version from this modal's revision (parity with the
+ * inline card's per-chip × button). Deleting the last remaining version
+ * deletes the whole revision (annotationField handles that), so the
+ * modal closes; otherwise the editor rebuilds on the new active version.
+ */
+function deleteVersion(vi: number) {
+    const revision = readRevision();
+    if (!revision) return;
+    openDropdown = -1;
+    // Preserve any pending nested edits in the mounted version before the
+    // index shift (mirrors the inline card's flush-before-delete).
+    controller.flushCurrentStateToParent(false);
+    const wasLastVersion = revision.versions.length === 1;
+    view.dispatch(deleteRevisionVersion(view.state, revisionId, vi));
+    if (wasLastVersion) {
+        close();
+        return;
+    }
+    send({ type: "VERSION_SWITCHED" });
+}
+
 function navigateVersion(direction: "prev" | "next") {
     const revision = readRevision();
     if (!revision) return;
@@ -932,22 +975,39 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                   >
                     {#each crumbRevision.versions as version, vi}
                       {@const isSelected = vi === selectedVi}
-                      <button
+                      <div
                         class="version-option {isSelected
                           ? 'version-option-active'
                           : ''}"
-                        onclick={() => selectVersion(ci, vi, crumb, isCurrent)}
                       >
-                        <span class="flex-1 text-left truncate"
-                          >{version.label ?? previewVersionText(version)}</span
+                        <button
+                          class="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                          onclick={() => selectVersion(ci, vi, crumb, isCurrent)}
                         >
-                        {#if isSelected}
-                          <Check
-                            size={10}
-                            class="text-purple-500/70 shrink-0"
-                          />
+                          <span class="flex-1 truncate"
+                            >{version.label ?? previewVersionText(version)}</span
+                          >
+                          {#if isSelected}
+                            <Check
+                              size={10}
+                              class="text-purple-500/70 shrink-0"
+                            />
+                          {/if}
+                        </button>
+                        {#if isCurrent}
+                          <button
+                            class="shrink-0 p-0.5 rounded text-black/25 hover:text-red-500/70 transition-colors"
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              deleteVersion(vi);
+                            }}
+                            title={`Delete version ${vi + 1}`}
+                            aria-label={`Delete version ${vi + 1}`}
+                          >
+                            <X size={9} />
+                          </button>
                         {/if}
-                      </button>
+                      </div>
                     {/each}
                   </div>
                 {/if}
@@ -974,6 +1034,14 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <PlusIcon size={10} />
           <span>New version</span>
           <Kbd keys={[modKey, "↵"]} />
+        </button>
+        <button
+          class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-purple-50/80 transition-colors"
+          onclick={deleteRevision}
+          title="Delete entire revision"
+          aria-label="Delete entire revision"
+        >
+          <Trash2 size={16} />
         </button>
         <button
           class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"

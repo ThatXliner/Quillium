@@ -21,10 +21,22 @@
  * Layout: left pane = diff view, right sidebar = replacement
  * list with optional rationale text.
  */
-import { ChevronRight, SparklesIcon, X } from "lucide-svelte";
+import { ChevronRight, GitBranchIcon, SparklesIcon, Trash2, X } from "lucide-svelte";
 import type { EditorView } from "@codemirror/view";
-import { modalStack } from "$lib/stores";
-import { annotationField, diffTokens, tokenize, type Annotation } from ".";
+import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
+import {
+    annotationField,
+    applySuggestion,
+    branchSuggestion,
+    diffTokens,
+    removeAnnotation,
+    tokenize,
+    updateThread,
+    type Annotation,
+    type Thread as ThreadType,
+} from ".";
+import Thread from "./Thread.svelte";
+import posthog from "$lib/posthog";
 
 const {
     suggestionId,
@@ -39,18 +51,73 @@ const isTop = $derived(stackIndex === $modalStack.length - 1);
 
 let dialogEl = $state<HTMLDialogElement>();
 
-// NOTE: $derived on parentView.state.field(...) is NOT reactive to CodeMirror
-// transactions — parentView is a plain prop, not $state, so Svelte cannot track
-// mutations to view.state. This expression only runs once at component init.
-// Reactivity for state changes would require either a manually-synced $state
-// mirror (like modalAnnotations in RevisionModal) or reading from the global
-// $annotations store. For DiffModal, the suggestion content is effectively
-// static once the modal opens, so the lack of reactivity is acceptable.
+// Read the suggestion from the correct reactive annotation source —
+// parentView.state.field(...) is a plain (non-reactive) read, so derive
+// from the synced stores instead (main editor → annotationsStore, nested
+// levels → modalAnnotationStores), falling back to a direct state read.
+// This keeps thread replies and other mutations visible while the modal
+// is open.
 const suggestion = $derived(
-    parentView.state.field(annotationField)[suggestionId] as Annotation<"suggestion"> | undefined,
+    ((stackIndex === 0 ? $annotationsStore : $modalAnnotationStores[stackIndex - 1])?.[
+        suggestionId
+    ] ?? parentView.state.field(annotationField)[suggestionId]) as
+        | Annotation<"suggestion">
+        | undefined,
 );
 
 let selectedIndex = $state(0);
+
+// User replies: skip the first message when it's the AI's overall comment
+// (mirrors the inline Suggestion card).
+const userThread = $derived(
+    suggestion
+        ? suggestion.thread[0]?.author === "AI"
+            ? suggestion.thread.slice(1)
+            : suggestion.thread
+        : [],
+);
+
+function handleUpdateThread(newThread: ThreadType) {
+    if (!suggestion) return;
+    parentView.dispatch({
+        effects: updateThread.of({ annotationId: suggestionId, newThread }),
+    });
+}
+
+/** Delete the suggestion (parity with the inline card's trash icon). */
+function deleteSuggestion() {
+    if (!suggestion) return;
+    posthog.capture("annotation_deleted", {
+        type: "suggestion",
+        replacement_count: suggestion.replacements.length,
+        from_modal: true,
+    });
+    parentView.dispatch({ effects: removeAnnotation.of(suggestion) });
+    close();
+}
+
+/** Apply the selected replacement (parity with the inline Apply button). */
+function applySelected() {
+    if (!suggestion) return;
+    posthog.capture("suggestion_applied", {
+        replacement_index: selectedIndex,
+        replacement_count: suggestion.replacements.length,
+        from_modal: true,
+    });
+    parentView.dispatch(applySuggestion(parentView.state, suggestionId, selectedIndex));
+    close();
+}
+
+/** Convert to a revision (parity with the inline Branch button). */
+function branch() {
+    if (!suggestion) return;
+    posthog.capture("suggestion_branched", {
+        replacement_count: suggestion.replacements.length,
+        from_modal: true,
+    });
+    parentView.dispatch(branchSuggestion(parentView.state, suggestionId));
+    close();
+}
 
 // Compute diff ops whenever the selected replacement changes
 const ops = $derived.by(() => {
@@ -103,13 +170,23 @@ $effect(() => {
                     {/each}
                 </nav>
             </div>
-            <button
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
-                onclick={close}
-            >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
-                <X size={16} />
-            </button>
+            <div class="flex items-center gap-1 shrink-0">
+                <button
+                    class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-green-50/80 transition-colors"
+                    onclick={deleteSuggestion}
+                    title="Delete suggestion"
+                    aria-label="Delete suggestion"
+                >
+                    <Trash2 size={16} />
+                </button>
+                <button
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                    onclick={close}
+                >
+                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <X size={16} />
+                </button>
+            </div>
         </div>
 
         <!-- Body: diff + sidebar -->
@@ -155,6 +232,39 @@ $effect(() => {
                                 {/if}
                             </button>
                         {/each}
+                    </div>
+
+                    <!-- User thread replies (parity with the inline card) -->
+                    {#if userThread.length > 0}
+                        <div class="border-t border-green-100/60 px-3 py-2.5 max-h-40 overflow-y-auto shrink-0">
+                            <Thread
+                                thread={suggestion.thread}
+                                updateThread={handleUpdateThread}
+                                annotationId={suggestionId}
+                                view={parentView}
+                            />
+                        </div>
+                    {/if}
+
+                    <!-- Apply / Branch (parity with the inline card) -->
+                    <div class="flex items-center gap-1.5 px-3 py-3 border-t border-green-100/60 shrink-0">
+                        <button
+                            aria-label="Branch instead"
+                            title="Convert to revision with original and suggestion as versions"
+                            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/70
+                                bg-white/40 hover:bg-white/60 rounded-md ring-1 ring-green-200/50 transition-colors"
+                            onclick={branch}
+                        >
+                            <GitBranchIcon size={11} />
+                            <span>Branch</span>
+                        </button>
+                        <button
+                            class="flex-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
+                                bg-green-500/80 text-white ring-green-400/40 hover:bg-green-600/80"
+                            onclick={applySelected}
+                        >
+                            Apply
+                        </button>
                     </div>
                 </div>
             {/if}
