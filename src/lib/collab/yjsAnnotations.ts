@@ -79,7 +79,7 @@ import {
     AnnotationIdMap,
 } from "./annotationSchema";
 import { absoluteToRelative } from "./relativePosition";
-import type { YjsAnnotationNode, MessageObject } from "./types";
+import type { YjsAnnotationNode } from "./types";
 import {
     addAnnotation,
     removeAnnotation,
@@ -97,6 +97,7 @@ import {
     isAnnotationOfType,
     type GenericAnnotation,
     type Annotation as AnnotationType,
+    type ThreadMessage,
 } from "$lib/editor/plugins/annotations/models";
 
 export const yjsAnnotationSync = Annotation.define<boolean>();
@@ -185,7 +186,7 @@ export function createAnnotationSyncPlugin(
                             const yjsKey = ev.path[0] as string;
                             const cmId = this.idMap.getCmId(yjsKey);
                             if (cmId === undefined) continue;
-                            const threadArr = ev.target as Y.Array<MessageObject>;
+                            const threadArr = ev.target as Y.Array<ThreadMessage>;
                             effects.push(
                                 updateThread.of({
                                     annotationId: cmId,
@@ -451,7 +452,7 @@ export function createAnnotationSyncPlugin(
                 this.syncAnnotationPositions(ann, node);
 
                 // Thread sync (all annotation types)
-                const threadArr = node.get("thread") as Y.Array<MessageObject> | undefined;
+                const threadArr = node.get("thread") as Y.Array<ThreadMessage> | undefined;
                 if (threadArr) {
                     const cmThread = ann.thread;
                     const yjsThread = threadArr.toArray();

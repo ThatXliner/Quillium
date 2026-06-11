@@ -6,7 +6,8 @@
  */
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import type { YjsAnnotationNode, CollabSession, MessageObject } from "$lib/collab/types";
+import type { YjsAnnotationNode, CollabSession } from "$lib/collab/types";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 
 describe("YjsAnnotationNode type", () => {
     it("can construct a comment YjsAnnotationNode", () => {
@@ -19,7 +20,7 @@ describe("YjsAnnotationNode type", () => {
             node.set("_type", "comment");
             node.set("startPos", new Uint8Array([1, 2, 3]));
             node.set("endPos", new Uint8Array([4, 5, 6]));
-            const thread = new Y.Array<MessageObject>();
+            const thread = new Y.Array<ThreadMessage>();
             thread.push([{ message: "hello", author: "user", time: 1000 }]);
             node.set("thread", thread);
             node.set("annotations", new Y.Map<YjsAnnotationNode>());
@@ -47,7 +48,7 @@ describe("YjsAnnotationNode type", () => {
             node.set("_type", "suggestion");
             node.set("startPos", new Uint8Array([1]));
             node.set("endPos", new Uint8Array([2]));
-            node.set("thread", new Y.Array<MessageObject>());
+            node.set("thread", new Y.Array<ThreadMessage>());
             node.set("annotations", new Y.Map<YjsAnnotationNode>());
             const replacements = new Y.Array<{ text: string; rationale?: string }>();
             replacements.push([{ text: "better word", rationale: "clarity" }]);
@@ -74,7 +75,7 @@ describe("YjsAnnotationNode type", () => {
             node.set("_type", "revision");
             node.set("startPos", new Uint8Array([1]));
             node.set("endPos", new Uint8Array([2]));
-            node.set("thread", new Y.Array<MessageObject>());
+            node.set("thread", new Y.Array<ThreadMessage>());
             node.set("annotations", new Y.Map<YjsAnnotationNode>());
 
             const versions = new Y.Map<Y.Map<unknown>>();
@@ -114,7 +115,7 @@ describe("YjsAnnotationNode type", () => {
             node.set("_type", "comment");
             node.set("startPos", new Uint8Array(0));
             node.set("endPos", new Uint8Array(0));
-            node.set("thread", new Y.Array<MessageObject>());
+            node.set("thread", new Y.Array<ThreadMessage>());
             node.set("annotations", new Y.Map<YjsAnnotationNode>());
             ymap.set("test", node as YjsAnnotationNode);
         });

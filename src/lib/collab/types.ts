@@ -18,7 +18,7 @@ import type { AnnotationIdMap } from "./annotationSchema";
  *   "_type":              "comment" | "suggestion" | "revision"
  *   "startPos":           Uint8Array (encoded RelativePosition)
  *   "endPos":             Uint8Array (encoded RelativePosition)
- *   "thread":             Y.Array<MessageObject>
+ *   "thread":             Y.Array<ThreadMessage>
  *   "annotations":        Y.Map<YjsAnnotationNode>
  *   "replacements"?:      Y.Array<SuggestionReplacement>  (suggestion only)
  *   "author"?:            string                           (suggestion only)
@@ -32,16 +32,6 @@ import type { AnnotationIdMap } from "./annotationSchema";
  * contract. See annotationSchema.ts for the converter invariants.
  */
 export type YjsAnnotationNode = Y.Map<unknown>;
-
-/** Append-only comment thread message (D-93). Identical shape to
- * ThreadMessage in $lib/editor/plugins/annotations/models but owned here
- * to prevent a collab -> editor circular import.
- */
-export interface MessageObject {
-    message: string;
-    author: string;
-    time: number;
-}
 
 /** Active collab session state (Yjs-based) */
 export type CollabSession = {

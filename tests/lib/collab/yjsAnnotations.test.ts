@@ -21,7 +21,8 @@ import {
     updateThread,
     annotationField,
 } from "$lib/editor/plugins/annotations/annotationField";
-import type { YjsAnnotationNode, MessageObject } from "$lib/collab/types";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 function requireYNode<T>(map: Y.Map<T>, key: string): T {
@@ -118,7 +119,7 @@ describe("yjsAnnotations", () => {
             });
 
             const yjsAnn = Array.from(ymap.values())[0];
-            const threadArr = yjsAnn.get("thread") as Y.Array<MessageObject>;
+            const threadArr = yjsAnn.get("thread") as Y.Array<ThreadMessage>;
             expect(threadArr instanceof Y.Array).toBe(true);
             expect(threadArr.length).toBe(1);
             expect(threadArr.get(0).message).toBe("test");
@@ -158,7 +159,7 @@ describe("yjsAnnotations", () => {
                 const endRel = Y.createRelativePositionFromTypeIndex(ytext2, 5);
                 node.set("startPos", Y.encodeRelativePosition(startRel));
                 node.set("endPos", Y.encodeRelativePosition(endRel));
-                node.set("thread", new Y.Array<MessageObject>());
+                node.set("thread", new Y.Array<ThreadMessage>());
                 node.set("annotations", new Y.Map<YjsAnnotationNode>());
                 ymap2.set("pre-existing-ann", node as YjsAnnotationNode);
             }, "init");
@@ -220,7 +221,7 @@ describe("yjsAnnotations", () => {
                 const endRel = Y.createRelativePositionFromTypeIndex(ytext, 5);
                 node.set("startPos", Y.encodeRelativePosition(startRel));
                 node.set("endPos", Y.encodeRelativePosition(endRel));
-                node.set("thread", new Y.Array<MessageObject>());
+                node.set("thread", new Y.Array<ThreadMessage>());
                 node.set("annotations", new Y.Map<YjsAnnotationNode>());
                 ymap.set("local-ann", node as YjsAnnotationNode);
             }, "local");
@@ -247,7 +248,7 @@ describe("yjsAnnotations", () => {
 
             const yjsAnn = Array.from(ymap.values())[0];
             expect(yjsAnn.get("_type")).toBe("comment");
-            const threadArr = yjsAnn.get("thread") as Y.Array<MessageObject>;
+            const threadArr = yjsAnn.get("thread") as Y.Array<ThreadMessage>;
             expect(threadArr.length).toBe(1);
         });
 
@@ -474,7 +475,7 @@ describe("thread sync", () => {
 
         const yjsId = Array.from(ymap.keys())[0];
         const existing = requireYNode(ymap, yjsId);
-        const threadArr = existing.get("thread") as Y.Array<MessageObject>;
+        const threadArr = existing.get("thread") as Y.Array<ThreadMessage>;
 
         // Simulate remote thread reply from a peer via Y.Array.push (D-93)
         ydoc.transact(() => {
@@ -511,7 +512,7 @@ describe("thread sync", () => {
         });
 
         const yjsAnn = requireYNode(ymap, yjsId);
-        const threadArr = yjsAnn.get("thread") as Y.Array<MessageObject>;
+        const threadArr = yjsAnn.get("thread") as Y.Array<ThreadMessage>;
         expect(threadArr.length).toBe(1);
         expect(threadArr.get(0).message).toBe("hello");
     });
