@@ -25,6 +25,7 @@ import { getCurrentUserName } from "$lib/auth";
 import { avatarColor, initials } from "$lib/auth/avatarUtils";
 import { tick } from "svelte";
 import { updateThread, removeAnnotation } from "./annotationField";
+import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 import { canCreateNewComment } from "./utils";
 import { isAnnotationOfType, type Annotations, type GenericAnnotation } from "./models";
 import posthog from "$lib/posthog";
@@ -41,7 +42,6 @@ const {
     activeAnnotationData?: GenericAnnotation | null;
 } = $props();
 
-let commentText = $state("");
 let textarea = $state<HTMLTextAreaElement | undefined>();
 let focusedPendingId = $state<number | undefined>(undefined);
 const currentUserName = $derived(getCurrentUserName());
@@ -65,6 +65,11 @@ function resolvePendingComment() {
 }
 
 const pendingComment = $derived(resolvePendingComment());
+
+// Draft text lives in the shared drafts store (keyed by annotation id) so
+// it survives this component unmounting — e.g. when a window resize swaps
+// the floating card layout for the comment modal (#247).
+const commentText = $derived(pendingComment ? getDraft(pendingComment.id) : "");
 
 // Auto-focus the textarea when a pending (unsaved) comment exists
 $effect(() => {
@@ -123,7 +128,7 @@ function addComment() {
             selection: { anchor: from, head: to },
         }),
     );
-    commentText = "";
+    clearDraft(pendingComment.id);
 }
 
 /**
@@ -137,7 +142,7 @@ function cancelComment() {
             effects: [removeAnnotation.of(pendingComment)],
         }),
     );
-    commentText = "";
+    clearDraft(pendingComment.id);
 }
 </script>
 
@@ -161,7 +166,10 @@ function cancelComment() {
         <textarea
             tabindex="0"
             bind:this={textarea}
-            bind:value={commentText}
+            bind:value={
+                () => commentText,
+                (v) => pendingComment && setDraft(pendingComment.id, v)
+            }
             onkeydown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && commentText) {
                     addComment();

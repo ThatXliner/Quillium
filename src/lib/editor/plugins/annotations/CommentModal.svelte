@@ -37,6 +37,7 @@ import Kbd from "$lib/ui/Kbd.svelte";
 import { aiSettings } from "$lib/ai/settings.svelte";
 import { appSettings } from "$lib/settings.svelte";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
+import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 import posthog from "$lib/posthog";
 
 const {
@@ -173,7 +174,10 @@ $effect(() => {
 });
 
 // ── Reply box state ──────────────────────────────────────────
-let newMessage = $state("");
+// Reply draft lives in the shared drafts store (keyed by annotation id) so
+// it hands off to/from the inline composers when the layout switches
+// between floating cards and this modal (#247).
+const newMessage = $derived(getDraft(commentId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
 const currentUserName = $derived(getCurrentUserName());
@@ -185,7 +189,7 @@ function send() {
         ...comment.thread,
         { message: newMessage.trim(), author: currentUserName, time: Date.now() },
     ]);
-    newMessage = "";
+    clearDraft(commentId);
 }
 
 function autoResize(el: HTMLTextAreaElement) {
@@ -312,7 +316,7 @@ async function aiSuggestion() {
                             ring-1 ring-black/5 focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
                             <textarea
                                 bind:this={textareaEl}
-                                bind:value={newMessage}
+                                bind:value={() => newMessage, (v) => setDraft(commentId, v)}
                                 placeholder="Reply…"
                                 rows="3"
                                 class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none

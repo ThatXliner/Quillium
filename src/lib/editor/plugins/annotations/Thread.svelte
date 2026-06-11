@@ -24,6 +24,7 @@ import { getCurrentUserName } from "$lib/auth";
 import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
 import ThreadMessage from "./ThreadMessage.svelte";
+import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
 import type { Thread as ThreadType } from ".";
 import { editorView } from "$lib/stores";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
@@ -61,7 +62,10 @@ let {
     hideReply?: boolean;
 } = $props();
 
-let newMessage = $state("");
+// Reply draft lives in the shared drafts store (keyed by annotation id) so
+// it survives this component unmounting — e.g. when a window resize swaps
+// the floating card layout for the comment modal (#247).
+const newMessage = $derived(getDraft(annotationId));
 let textareaEl = $state<HTMLTextAreaElement | undefined>();
 let isFocused = $state(false);
 const currentUserName = $derived(getCurrentUserName());
@@ -85,7 +89,7 @@ function send() {
         ...thread,
         { message: newMessage.trim(), author: currentUserName, time: Date.now() },
     ]);
-    newMessage = "";
+    clearDraft(annotationId);
 }
 </script>
 
@@ -129,7 +133,7 @@ function send() {
         ring-1 ring-black/5 focus-within:ring-2 {focusRingClass} transition-shadow">
         <textarea
             bind:this={textareaEl}
-            bind:value={newMessage}
+            bind:value={() => newMessage, (v) => setDraft(annotationId, v)}
             placeholder="Reply…"
             rows="2"
             class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
