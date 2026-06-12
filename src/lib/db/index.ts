@@ -132,6 +132,11 @@ export async function setSemanticSearchEnabled(enabled: boolean): Promise<void> 
     return invoke<void>("cmd_set_semantic_search_enabled", { enabled });
 }
 
+/** Drops the model from memory and deletes its on-disk cache (~30 MB). Also persists the opt-out. */
+export async function uninstallSemanticModel(): Promise<void> {
+    return invoke<void>("cmd_uninstall_semantic_model");
+}
+
 export async function deleteDocument(id: string): Promise<void> {
     return invoke<void>("cmd_delete_document", { id });
 }
