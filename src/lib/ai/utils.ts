@@ -29,6 +29,7 @@ import type { UserModelMessage } from "ai";
 import {
     buildAiContextPacket,
     contextPacketToUserMessage,
+    type AiTextRange,
     type AnnotationContextInput,
     type DocumentContextLike,
 } from "./context";
@@ -55,12 +56,14 @@ export function buildDocumentContextPrompt(ctx?: DocumentContext): string {
 export function injectDocumentContext({
     documentContent,
     selectedText,
+    selectedTextRange,
     documentContext,
     annotationContext,
     mode = "chat",
 }: {
     documentContent?: string;
     selectedText?: string;
+    selectedTextRange?: AiTextRange;
     documentContext?: DocumentContext;
     annotationContext?: AnnotationContextInput[];
     mode?: Parameters<typeof buildAiContextPacket>[0]["mode"];
@@ -69,6 +72,7 @@ export function injectDocumentContext({
         mode,
         documentContent,
         selectedText,
+        selectedTextRange,
         documentContext,
         annotationContext,
     });

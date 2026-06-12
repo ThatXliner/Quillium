@@ -4,12 +4,13 @@ import {
     type Annotations,
     type GenericAnnotation,
 } from "$lib/editor/plugins/annotations/models";
-import type { AnnotationContextInput } from "./context";
+import type { AiTextRange, AnnotationContextInput } from "./context";
 
 type BuildAnnotationContextOptions = {
     annotations?: Annotations;
     documentContent?: string;
     selectedText?: string;
+    selectedTextRange?: AiTextRange;
     activeAnnotation?: GenericAnnotation;
 };
 
@@ -31,7 +32,21 @@ function rangeDistance(
     return annotationFrom - selectionTo;
 }
 
-function selectedRange(documentContent: string, selectedText?: string): [number, number] | null {
+function normalizeTextRange(documentContent: string, range?: AiTextRange): [number, number] | null {
+    if (!documentContent || !range) return null;
+    const from = clamp(Math.min(range.from, range.to), 0, documentContent.length);
+    const to = clamp(Math.max(range.from, range.to), from, documentContent.length);
+    return to > from ? [from, to] : null;
+}
+
+function selectedRange(
+    documentContent: string,
+    selectedText?: string,
+    selectedTextRange?: AiTextRange,
+): [number, number] | null {
+    const exactRange = normalizeTextRange(documentContent, selectedTextRange);
+    if (exactRange) return exactRange;
+
     const selection = selectedText?.trim() ?? "";
     if (!documentContent || !selection) return null;
     const exact = documentContent.indexOf(selectedText ?? "");
@@ -103,11 +118,12 @@ export function buildAnnotationContextInputs({
     annotations,
     documentContent = "",
     selectedText,
+    selectedTextRange,
     activeAnnotation,
 }: BuildAnnotationContextOptions): AnnotationContextInput[] {
     if (!annotations) return [];
 
-    const selection = selectedRange(documentContent, selectedText);
+    const selection = selectedRange(documentContent, selectedText, selectedTextRange);
     return Object.values(annotations).map((annotation) =>
         toAnnotationContextInput({
             annotation,

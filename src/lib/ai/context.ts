@@ -2,6 +2,8 @@ import type { UserModelMessage } from "ai";
 
 export type AiContextMode = "chat" | "feedback" | "revise" | "dictionary" | "autoai";
 export type AiContextScope = "empty" | "selection" | "document";
+export type AiTextRange = { from: number; to: number };
+type SurroundingContextKind = "paragraphs" | "window" | "none";
 
 export type DocumentContextLike = {
     freeform?: string;
@@ -57,7 +59,10 @@ export type AiContextPacket = {
     maxDocumentChars: number;
     documentText: string;
     selectedText: string;
+    selectedTextRange?: AiTextRange;
     surroundingText: string;
+    surroundingTextAddsContext: boolean;
+    surroundingTextKind: SurroundingContextKind;
     annotationContext: AnnotationContextItem[];
     includedAnnotationCount: number;
     omittedAnnotationCount: number;
@@ -83,6 +88,8 @@ const MODE_DOCUMENT_BUDGETS: Record<AiContextMode, number> = {
 
 const SELECTION_DOCUMENT_BUDGET = 9000;
 const SURROUNDING_CHARS = 2400;
+const MAX_PARAGRAPH_SURROUNDING_CHARS = 6400;
+const HUGE_PARAGRAPH_CHARS = 4200;
 const MAX_ANNOTATION_ITEMS = 6;
 const MAX_ANNOTATION_CHARS = 4800;
 const MAX_ANNOTATION_MESSAGES = 2;
@@ -256,7 +263,17 @@ function buildAnnotationContext(annotations: AnnotationContextInput[] = []): {
     };
 }
 
-function selectedRange(documentContent: string, selectedText: string): [number, number] | null {
+function normalizeTextRange(documentContent: string, range?: AiTextRange): [number, number] | null {
+    if (!documentContent || !range) return null;
+    const from = Math.max(0, Math.min(range.from, range.to, documentContent.length));
+    const to = Math.max(from, Math.min(Math.max(range.from, range.to), documentContent.length));
+    return to > from ? [from, to] : null;
+}
+
+function inferSelectedRange(
+    documentContent: string,
+    selectedText: string,
+): [number, number] | null {
     if (!documentContent || !selectedText.trim()) return null;
     const exact = documentContent.indexOf(selectedText);
     if (exact >= 0) return [exact, exact + selectedText.length];
@@ -267,28 +284,113 @@ function selectedRange(documentContent: string, selectedText: string): [number, 
     return null;
 }
 
-function buildSurroundingText(documentContent: string, selectedText: string): string {
-    const range = selectedRange(documentContent, selectedText);
-    if (!range) return "";
+function selectedRange(
+    documentContent: string,
+    selectedText: string,
+    selectedTextRange?: AiTextRange,
+): [number, number] | null {
+    return (
+        normalizeTextRange(documentContent, selectedTextRange) ??
+        inferSelectedRange(documentContent, selectedText)
+    );
+}
 
+function withOmissionMarkers(documentContent: string, from: number, to: number): string {
+    const prefix = from > 0 ? "[... earlier document omitted ...]\n" : "";
+    const suffix = to < documentContent.length ? "\n[... later document omitted ...]" : "";
+    return `${prefix}${documentContent.slice(from, to)}${suffix}`;
+}
+
+function buildWindowSurroundingText(
+    documentContent: string,
+    range: [number, number],
+): { text: string; kind: SurroundingContextKind } {
     const [from, to] = range;
     const start = Math.max(0, from - SURROUNDING_CHARS);
     const end = Math.min(documentContent.length, to + SURROUNDING_CHARS);
-    const prefix = start > 0 ? "[... earlier document omitted ...]\n" : "";
-    const suffix = end < documentContent.length ? "\n[... later document omitted ...]" : "";
-    return `${prefix}${documentContent.slice(start, end)}${suffix}`;
+    return { text: withOmissionMarkers(documentContent, start, end), kind: "window" };
+}
+
+function paragraphBlocks(documentContent: string): AiTextRange[] {
+    const blocks: AiTextRange[] = [];
+    const pattern = /\S[\s\S]*?(?=\n\s*\n|$)/g;
+
+    while (true) {
+        const match = pattern.exec(documentContent);
+        if (!match) break;
+
+        const raw = match[0];
+        const trailingWhitespace = raw.match(/\s+$/)?.[0].length ?? 0;
+        const from = match.index;
+        const to = from + raw.length - trailingWhitespace;
+        if (to > from) blocks.push({ from, to });
+        if (pattern.lastIndex === match.index) pattern.lastIndex++;
+    }
+
+    return blocks;
+}
+
+function rangeOverlapsBlock(range: [number, number], block: AiTextRange): boolean {
+    const [from, to] = range;
+    return block.from < to && block.to > from;
+}
+
+function buildParagraphSurroundingText(
+    documentContent: string,
+    range: [number, number],
+): { text: string; kind: SurroundingContextKind } | null {
+    const blocks = paragraphBlocks(documentContent);
+    const selectedIndexes = blocks
+        .map((block, index) => (rangeOverlapsBlock(range, block) ? index : -1))
+        .filter((index) => index >= 0);
+
+    if (selectedIndexes.length === 0) return null;
+
+    const firstSelected = selectedIndexes[0];
+    const lastSelected = selectedIndexes[selectedIndexes.length - 1];
+    const startIndex = Math.max(0, firstSelected - 1);
+    const endIndex = Math.min(blocks.length - 1, lastSelected + 1);
+    const selectedBlocks = blocks.slice(firstSelected, lastSelected + 1);
+
+    if (
+        selectedBlocks.some((block) => block.to - block.from > HUGE_PARAGRAPH_CHARS) ||
+        blocks[endIndex].to - blocks[startIndex].from > MAX_PARAGRAPH_SURROUNDING_CHARS
+    ) {
+        return null;
+    }
+
+    return {
+        text: withOmissionMarkers(documentContent, blocks[startIndex].from, blocks[endIndex].to),
+        kind: "paragraphs",
+    };
+}
+
+function buildSurroundingText(
+    documentContent: string,
+    selectedText: string,
+    selectedTextRange?: AiTextRange,
+): { text: string; kind: SurroundingContextKind } {
+    const range = selectedRange(documentContent, selectedText, selectedTextRange);
+    if (!range) return { text: "", kind: "none" };
+
+    return (
+        buildParagraphSurroundingText(documentContent, range) ??
+        buildWindowSurroundingText(documentContent, range)
+    );
 }
 
 export function buildAiContextPacket({
     mode,
     documentContent = "",
     selectedText = "",
+    selectedTextRange,
     documentContext,
     annotationContext,
 }: {
     mode: AiContextMode;
     documentContent?: string;
     selectedText?: string;
+    selectedTextRange?: AiTextRange;
     documentContext?: DocumentContextLike;
     annotationContext?: AnnotationContextInput[];
 }): AiContextPacket {
@@ -302,7 +404,32 @@ export function buildAiContextPacket({
             ? Math.min(MODE_DOCUMENT_BUDGETS[mode], SELECTION_DOCUMENT_BUDGET)
             : MODE_DOCUMENT_BUDGETS[mode];
     const clipped = clipMiddle(documentContent, maxDocumentChars);
-    const surroundingText = hasSelection ? buildSurroundingText(documentContent, selectedText) : "";
+    const resolvedSelectedRange = hasSelection
+        ? selectedRange(documentContent, selectedText, selectedTextRange)
+        : null;
+    const surrounding = hasSelection
+        ? buildSurroundingText(documentContent, selectedText, selectedTextRange)
+        : { text: "", kind: "none" as const };
+    const surroundingAddsContext =
+        hasSelection && clipped.omitted > 0 && surrounding.text.length > 0;
+    const selectionFocusActive = hasSelection && hasDocument && clipped.omitted === 0;
+    const surroundingSourceLabel = surroundingAddsContext
+        ? surrounding.kind === "paragraphs"
+            ? "Nearby Paragraphs"
+            : "Nearby Passage"
+        : "Selection Focus";
+    const surroundingSourceDetail = surroundingAddsContext
+        ? surrounding.kind === "paragraphs"
+            ? `${surrounding.text.length.toLocaleString()} characters in nearby paragraphs`
+            : `${surrounding.text.length.toLocaleString()} characters around it`
+        : selectionFocusActive
+          ? "Draft already includes nearby text"
+          : "Included when text is selected";
+    const surroundingSourceChars = surroundingAddsContext
+        ? surrounding.text.length
+        : selectionFocusActive
+          ? selectedText.length
+          : 0;
 
     return {
         mode,
@@ -314,7 +441,12 @@ export function buildAiContextPacket({
         maxDocumentChars,
         documentText: clipped.text,
         selectedText: hasSelection ? selectedText : "",
-        surroundingText,
+        selectedTextRange: resolvedSelectedRange
+            ? { from: resolvedSelectedRange[0], to: resolvedSelectedRange[1] }
+            : undefined,
+        surroundingText: surrounding.text,
+        surroundingTextAddsContext: surroundingAddsContext,
+        surroundingTextKind: surrounding.kind,
         annotationContext: annotations.included,
         includedAnnotationCount: annotations.included.length,
         omittedAnnotationCount: annotations.omitted,
@@ -332,12 +464,10 @@ export function buildAiContextPacket({
             },
             {
                 id: "surrounding",
-                label: "Nearby Passage",
-                detail: surroundingText
-                    ? `${surroundingText.length.toLocaleString()} characters around it`
-                    : "Included when text is selected",
-                chars: surroundingText.length,
-                active: surroundingText.length > 0,
+                label: surroundingSourceLabel,
+                detail: surroundingSourceDetail,
+                chars: surroundingSourceChars,
+                active: surroundingAddsContext || selectionFocusActive,
             },
             {
                 id: "document",
@@ -379,7 +509,7 @@ export function contextPacketToPrompt(packet: AiContextPacket): string {
     if (
         !packet.documentText &&
         !packet.selectedText &&
-        !packet.surroundingText &&
+        !packet.surroundingTextAddsContext &&
         packet.annotationContext.length === 0
     ) {
         return "";
@@ -395,10 +525,12 @@ export function contextPacketToPrompt(packet: AiContextPacket): string {
         parts.push(`${label}:\n\`\`\`\n${packet.documentText}\n\`\`\``);
     }
 
-    if (packet.surroundingText && packet.surroundingText !== packet.documentText) {
-        parts.push(
-            `Nearby context around the selection:\n\`\`\`\n${packet.surroundingText}\n\`\`\``,
-        );
+    if (packet.surroundingTextAddsContext) {
+        const label =
+            packet.surroundingTextKind === "paragraphs"
+                ? "Nearby paragraphs around the selection"
+                : "Nearby context around the selection";
+        parts.push(`${label}:\n\`\`\`\n${packet.surroundingText}\n\`\`\``);
     }
 
     if (packet.selectedText) {
@@ -436,9 +568,15 @@ export function contextScopeDetail(packet: AiContextPacket): string {
     const annotationSuffix =
         packet.includedAnnotationCount > 0 ? " Open annotations are included too." : "";
     if (packet.scope === "selection") {
-        return packet.surroundingText
-            ? `Selection, nearby text, and a draft excerpt will be sent.${annotationSuffix}`
-            : `The active selection will be sent.${annotationSuffix}`;
+        if (packet.surroundingTextAddsContext) {
+            const nearby =
+                packet.surroundingTextKind === "paragraphs" ? "nearby paragraphs" : "nearby text";
+            return `Selection, ${nearby}, and a draft excerpt will be sent.${annotationSuffix}`;
+        }
+        if (packet.documentText) {
+            return `The current draft and selected text will be sent.${annotationSuffix}`;
+        }
+        return `The active selection will be sent.${annotationSuffix}`;
     }
     if (packet.scope === "document") {
         return packet.omittedDocumentChars > 0

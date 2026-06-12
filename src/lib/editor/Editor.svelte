@@ -24,6 +24,7 @@ import {
     lastPersistedEventId,
     lastSavedAt,
     selectedText,
+    selectedTextRange,
     writingStats,
 } from "$lib/stores";
 /**
@@ -196,12 +197,19 @@ function computeWritingStats(doc: string, selText: string) {
 // react normally. $effect is not used here; the hook is CodeMirror's own.
 function syncStoresToEditorState(state: EditorState) {
     const doc = state.doc.toString();
+    const selection = state.selection.main;
     const selText = extractSelectedText(state);
     writingStats.set(computeWritingStats(doc, selText));
     $annotations = state.field(annotationField);
     $activeAnnotation = getActiveAnnotation(state);
     $documentContent = doc;
     $selectedText = selText;
+    $selectedTextRange = selection.empty
+        ? undefined
+        : {
+              from: selection.from,
+              to: selection.to,
+          };
 }
 
 // ── Keyboard shortcut telemetry ─────────────────────────────────

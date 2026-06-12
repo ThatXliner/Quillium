@@ -8,7 +8,13 @@ import {
     MessageSquareTextIcon,
     ScanTextIcon,
 } from "lucide-svelte";
-import { activeAnnotation, annotations, documentContent, selectedText } from "$lib/stores";
+import {
+    activeAnnotation,
+    annotations,
+    documentContent,
+    selectedText,
+    selectedTextRange,
+} from "$lib/stores";
 import { documentContext } from "$lib/ai/settings.svelte";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
@@ -34,6 +40,7 @@ const annotationContext = $derived(
         annotations: $annotations,
         documentContent: $documentContent,
         selectedText: $selectedText,
+        selectedTextRange: $selectedTextRange,
         activeAnnotation: $activeAnnotation,
     }),
 );
@@ -43,6 +50,7 @@ const packet = $derived(
         mode,
         documentContent: $documentContent,
         selectedText: $selectedText,
+        selectedTextRange: $selectedTextRange,
         documentContext: { freeform: documentContext.freeform },
         annotationContext,
     }),

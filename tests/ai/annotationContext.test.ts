@@ -61,4 +61,25 @@ describe("buildAnnotationContextInputs", () => {
             { label: "Expanded", text: "thin because it lacks evidence" },
         ]);
     });
+
+    it("uses editor selection offsets when selected text appears more than once", () => {
+        const documentContent = "repeat this idea early. Later, repeat this idea with evidence.";
+        const selectedFrom = documentContent.lastIndexOf("repeat this idea");
+        const selectedTo = selectedFrom + "repeat this idea".length;
+        const annotation: GenericAnnotation = {
+            id: 5,
+            _type: "comment",
+            selection: EditorSelection.single(selectedFrom, selectedTo),
+            thread: [{ author: "AI", message: "This is the relevant repeat.", time: 1 }],
+        };
+
+        const inputs = buildAnnotationContextInputs({
+            annotations: { 5: annotation },
+            documentContent,
+            selectedText: "repeat this idea",
+            selectedTextRange: { from: selectedFrom, to: selectedTo },
+        });
+
+        expect(inputs[0]?.distance).toBe(0);
+    });
 });

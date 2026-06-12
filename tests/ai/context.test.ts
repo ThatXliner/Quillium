@@ -2,28 +2,101 @@ import { describe, expect, it } from "vitest";
 import {
     buildAiContextPacket,
     contextPacketToPrompt,
+    contextScopeDetail,
     contextScopeLabel,
     getContextAwareActions,
 } from "$lib/ai/context";
 
 describe("buildAiContextPacket", () => {
-    it("prioritizes selected text and nearby context", () => {
+    it("uses selection focus without duplicating nearby context when the full draft fits", () => {
         const documentContent = [
             "Opening paragraph sets the frame.",
             "The selected passage carries the turn in the argument.",
             "Closing paragraph resolves the thought.",
         ].join("\n\n");
+        const from = documentContent.indexOf("selected passage");
+        const to = from + "selected passage".length;
 
         const packet = buildAiContextPacket({
             mode: "feedback",
             documentContent,
             selectedText: "selected passage",
+            selectedTextRange: { from, to },
         });
+        const prompt = contextPacketToPrompt(packet);
+        const surroundingSource = packet.sources.find((source) => source.id === "surrounding");
 
         expect(packet.scope).toBe("selection");
         expect(packet.selectedText).toBe("selected passage");
         expect(packet.surroundingText).toContain("selected passage");
+        expect(packet.surroundingTextAddsContext).toBe(false);
+        expect(surroundingSource?.label).toBe("Selection Focus");
+        expect(surroundingSource?.detail).toBe("Draft already includes nearby text");
         expect(packet.sources.find((source) => source.id === "selection")?.active).toBe(true);
+        expect(prompt).not.toContain("Nearby context around the selection");
+        expect(prompt).not.toContain("Nearby paragraphs around the selection");
+        expect(contextScopeDetail(packet)).toBe(
+            "The current draft and selected text will be sent.",
+        );
+    });
+
+    it("uses editor offsets and paragraph boundaries for clipped selection context", () => {
+        const repeated = "shared phrase";
+        const documentContent = [
+            `Opening paragraph has the wrong ${repeated}.`,
+            "The paragraph before gives the reader a setup.",
+            `The selected paragraph contains the real ${repeated} for the turn.`,
+            "The paragraph after follows through on the choice.",
+            `A long tail forces clipping. ${"x".repeat(12000)}`,
+        ].join("\n\n");
+        const from = documentContent.indexOf(
+            repeated,
+            documentContent.indexOf("selected paragraph"),
+        );
+        const to = from + repeated.length;
+
+        const packet = buildAiContextPacket({
+            mode: "feedback",
+            documentContent,
+            selectedText: repeated,
+            selectedTextRange: { from, to },
+        });
+        const prompt = contextPacketToPrompt(packet);
+        const surroundingSource = packet.sources.find((source) => source.id === "surrounding");
+
+        expect(packet.omittedDocumentChars).toBeGreaterThan(0);
+        expect(packet.selectedTextRange).toEqual({ from, to });
+        expect(packet.surroundingTextKind).toBe("paragraphs");
+        expect(packet.surroundingTextAddsContext).toBe(true);
+        expect(packet.surroundingText).toContain("The paragraph before");
+        expect(packet.surroundingText).toContain("The selected paragraph");
+        expect(packet.surroundingText).toContain("The paragraph after");
+        expect(packet.surroundingText).not.toContain("wrong shared phrase");
+        expect(surroundingSource?.label).toBe("Nearby Paragraphs");
+        expect(prompt).toContain("Nearby paragraphs around the selection");
+    });
+
+    it("falls back to a bounded character window for huge paragraphs", () => {
+        const selectedText = "selected point";
+        const hugeParagraph = `This paragraph is intentionally large. ${"x".repeat(
+            5000,
+        )} ${selectedText} ${"y".repeat(5000)}`;
+        const documentContent = ["Short setup.", hugeParagraph, "Short follow-through."].join(
+            "\n\n",
+        );
+        const from = documentContent.indexOf(selectedText);
+        const to = from + selectedText.length;
+
+        const packet = buildAiContextPacket({
+            mode: "feedback",
+            documentContent,
+            selectedText,
+            selectedTextRange: { from, to },
+        });
+
+        expect(packet.surroundingTextKind).toBe("window");
+        expect(packet.surroundingText).toContain(selectedText);
+        expect(packet.surroundingText.length).toBeLessThan(documentContent.length);
     });
 
     it("clips long documents with an explicit omission marker", () => {

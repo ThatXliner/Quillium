@@ -41,6 +41,7 @@ import {
     currentDocumentId,
     documentContent,
     selectedText,
+    selectedTextRange,
     editorView,
 } from "$lib/stores";
 import {
@@ -166,10 +167,12 @@ export async function runMultiPersonaStreams({
     const docIdAtStart = get(currentDocumentId);
     const documentContentAtStart = get(documentContent);
     const selectedTextAtStart = get(selectedText);
+    const selectedTextRangeAtStart = get(selectedTextRange);
     const annotationContextAtStart = buildAnnotationContextInputs({
         annotations: get(annotations),
         documentContent: documentContentAtStart,
         selectedText: selectedTextAtStart,
+        selectedTextRange: selectedTextRangeAtStart,
         activeAnnotation: get(activeAnnotation),
     });
 
@@ -178,6 +181,7 @@ export async function runMultiPersonaStreams({
             messages,
             documentContent: documentContentAtStart,
             selectedText: selectedTextAtStart,
+            selectedTextRange: selectedTextRangeAtStart,
             provider: aiSettings.provider,
             model: aiSettings.model,
             apiKey: aiSettings.apiKey,
@@ -238,10 +242,12 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
             await ensureApiKeyLoaded();
             const documentContentAtSend = get(documentContent);
             const selectedTextAtSend = get(selectedText);
+            const selectedTextRangeAtSend = get(selectedTextRange);
             return streamFn({
                 messages,
                 documentContent: documentContentAtSend,
                 selectedText: selectedTextAtSend,
+                selectedTextRange: selectedTextRangeAtSend,
                 provider: aiSettings.provider,
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
@@ -251,6 +257,7 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
                     annotations: get(annotations),
                     documentContent: documentContentAtSend,
                     selectedText: selectedTextAtSend,
+                    selectedTextRange: selectedTextRangeAtSend,
                     activeAnnotation: get(activeAnnotation),
                 }),
                 abortSignal,

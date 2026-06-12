@@ -39,7 +39,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import { type Provider, createModel } from "./provider";
-import type { AiContextMode, AnnotationContextInput } from "./context";
+import type { AiContextMode, AiTextRange, AnnotationContextInput } from "./context";
 import { buildDocumentContextPrompt, injectDocumentContext } from "./utils";
 
 type DocumentContext = Record<string, string> | undefined;
@@ -56,6 +56,7 @@ interface StreamOpts extends BaseOpts {
     messages: UIMessage[];
     documentContent: string;
     selectedText: string;
+    selectedTextRange?: AiTextRange;
     documentContext?: DocumentContext;
     annotationContext?: AnnotationContextInput[];
     persona?: ReaderPersona;
@@ -175,6 +176,7 @@ async function buildStream(
     const contextMessage = injectDocumentContext({
         documentContent: opts.documentContent,
         selectedText: opts.selectedText,
+        selectedTextRange: opts.selectedTextRange,
         documentContext: opts.documentContext,
         annotationContext: opts.annotationContext,
         mode,
