@@ -86,6 +86,7 @@ export async function installTauriMock(page: Page) {
                     ];
                 if (cmd === "cmd_get_active_tab" || cmd === "cmd_get_active_draft") return null;
                 if (cmd === "cmd_set_active_tab" || cmd === "cmd_set_active_draft") return null;
+                if (cmd === "cmd_list_doc_events") return [];
                 if (cmd === "cmd_load_document_state")
                     return { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
                 if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };

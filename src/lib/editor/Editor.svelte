@@ -4,6 +4,7 @@ import {
     createDraft,
     createSnapshot,
     createTab,
+    createTabDraft,
     deleteDraft,
     deleteTab,
     deregisterOpenDoc,
@@ -18,6 +19,8 @@ import {
     registerOpenDoc,
     renameDraft,
     renameTab,
+    restoreDraft,
+    restoreTab,
     setActiveDraft,
     setActiveTab,
     setDraftLocked,
@@ -82,9 +85,9 @@ import type { DraftMeta, EventRecord, TabMeta } from "$lib/db/types";
 import { appSettings } from "$lib/settings.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { ViewUpdate } from "@codemirror/view";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { generateText } from "ai";
 import { GitBranchIcon, LockIcon, Pencil, SparklesIcon } from "lucide-svelte";
+import { toast } from "svelte-sonner";
 import DocumentTabs from "./DocumentTabs.svelte";
 import DraftTreePanel from "./DraftTreePanel.svelte";
 import StatusBar from "./StatusBar.svelte";
@@ -518,11 +521,6 @@ async function handleTabRename(tabId: string, label: string) {
 async function handleTabDelete(tabId: string) {
     if (tabs.length <= 1) return;
     const tab = tabs.find((t) => t.id === tabId);
-    const ok = await confirm(
-        `Delete tab "${tab?.label ?? "Tab"}" and all its drafts? This cannot be undone.`,
-        { title: "Delete tab", kind: "warning" },
-    );
-    if (!ok) return;
     await flushPendingPersist();
     try {
         await deleteTab(tabId);
@@ -538,6 +536,20 @@ async function handleTabDelete(tabId: string) {
         currentTabId.set(null); // force handleTabSelect to run for the neighbour
         if (next) await handleTabSelect(next.id);
     }
+    // Soft delete: the tab and all its drafts survive in the DB and can
+    // come back from here or from the document's version history.
+    toast(`Deleted tab “${tab?.label ?? "Tab"}”`, {
+        duration: 8000,
+        action: {
+            label: "Undo",
+            onClick: async () => {
+                await restoreTab(tabId).catch(console.error);
+                const docId = get(currentDocumentId);
+                if (docId) tabs = await listTabs(docId);
+                posthog.capture("tab_restored");
+            },
+        },
+    });
 }
 
 async function handleDraftSelect(draftId: string) {
@@ -588,13 +600,8 @@ async function handleDraftRename(draftId: string, label: string) {
 
 async function handleDraftDelete(draftId: string) {
     const draft = tabDrafts.find((d) => d.id === draftId);
-    const ok = await confirm(
-        `Delete draft "${draft?.label ?? "draft"}"? Its text and history are removed permanently.`,
-        { title: "Delete draft", kind: "warning" },
-    );
-    if (!ok) return;
     // If the open draft is being deleted, move to its parent (or any
-    // sibling) first so the editor never points at a missing draft.
+    // sibling) first so the editor never points at a hidden draft.
     if (draftId === get(currentDraftId)) {
         const fallback =
             draft?.parentDraftId ?? tabDrafts.find((d) => d.id !== draftId)?.id ?? null;
@@ -609,9 +616,67 @@ async function handleDraftDelete(draftId: string) {
         console.error("[Editor] delete draft failed", e);
         return;
     }
-    const tabId = get(currentTabId);
-    if (tabId) tabDrafts = await listTabDrafts(tabId);
+    await refreshDraftsAndCurrentLock();
     posthog.capture("draft_deleted");
+    // Soft delete: the draft's text and history survive in the DB.
+    toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
+        duration: 8000,
+        action: {
+            label: "Undo",
+            onClick: async () => {
+                await restoreDraft(draftId).catch(console.error);
+                await refreshDraftsAndCurrentLock();
+                posthog.capture("draft_restored");
+            },
+        },
+    });
+}
+
+/**
+ * Re-reads the active tab's drafts and rebuilds the editor state when the
+ * open draft's lock changed underneath it (locks derive from live
+ * children, so deleting/restoring a branch can lock or unlock its parent).
+ */
+async function refreshDraftsAndCurrentLock() {
+    const tabId = get(currentTabId);
+    if (!tabId) return;
+    const wasLocked = isLocked;
+    tabDrafts = await listTabDrafts(tabId);
+    const current = get(currentDraftId);
+    const nowLocked = tabDrafts.find((d) => d.id === current)?.locked ?? false;
+    if (current && nowLocked !== wasLocked) {
+        await switchToDraft(current);
+    }
+}
+
+/**
+ * "+ New draft": duplicates the open draft as a sibling at the same tree
+ * level — a parallel take. Root drafts get a root sibling.
+ */
+async function handleNewDraft() {
+    const docId = get(currentDocumentId);
+    const tabId = get(currentTabId);
+    const view = $editorView;
+    const current = get(currentDraftId);
+    if (!docId || !tabId || !view || !current || forking) return;
+    forking = true;
+    try {
+        await flushPendingPersist();
+        const stateJson = JSON.stringify(view.state.toJSON(savedFields));
+        const parentId = tabDrafts.find((d) => d.id === current)?.parentDraftId ?? null;
+        const label = `draft ${tabDrafts.length + 1}`;
+        const sibling = parentId
+            ? await forkDraft(parentId, label, stateJson)
+            : await createTabDraft(tabId, label, stateJson);
+        tabDrafts = await listTabDrafts(tabId);
+        posthog.capture("draft_sibling_created");
+        await switchToDraft(sibling.id);
+    } catch (e) {
+        console.error("[Editor] new draft failed", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+        forking = false;
+    }
 }
 
 /** Toggles the soft lock and rebuilds the editor state's read-only flag. */
@@ -718,11 +783,12 @@ onMount(() => {
             ontabdelete={handleTabDelete}
         />
 
-        <!-- Draft tree for the active tab — floats left of the document,
-             hidden on viewports too narrow to fit beside it. -->
+        <!-- Draft tree for the active tab — hugs the document's left edge
+             (50% − half document width − panel width), hidden on viewports
+             too narrow to fit beside it. -->
         {#if tabDrafts.length > 0}
-            <div class="sticky top-28 z-30 h-0 pointer-events-none max-[1240px]:hidden">
-                <div class="pointer-events-auto absolute left-4 top-0">
+            <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
+                <div class="pointer-events-auto absolute w-44" style="left: calc(50% - 408px - 12rem)">
                     <DraftTreePanel
                         drafts={tabDrafts}
                         activeDraftId={$currentDraftId}
@@ -731,29 +797,8 @@ onMount(() => {
                         ondraftrename={handleDraftRename}
                         ondraftdelete={handleDraftDelete}
                         ontogglelock={handleDraftToggleLock}
+                        onnewdraft={handleNewDraft}
                     />
-                </div>
-            </div>
-        {/if}
-
-        {#if isLocked}
-            <div class="sticky top-16 z-40 h-0 flex justify-center pointer-events-none">
-                <div class="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-md text-[11px] text-black/50">
-                    <LockIcon size={11} class="text-black/40 shrink-0" />
-                    <span>Locked — this draft has branches</span>
-                    <div class="w-px h-3 bg-black/15"></div>
-                    <button
-                        onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
-                        class="font-medium text-black/50 hover:text-black/80 transition-colors"
-                    >Edit anyway</button>
-                    <button
-                        onclick={() => currentDraft && handleDraftFork(currentDraft.id)}
-                        disabled={forking}
-                        class="flex items-center gap-1 font-medium text-amber-600/80 hover:text-amber-700 transition-colors disabled:opacity-40"
-                    >
-                        <GitBranchIcon size={11} />
-                        <span>New branch</span>
-                    </button>
                 </div>
             </div>
         {/if}
@@ -770,9 +815,32 @@ onMount(() => {
         <div
             id="editor-document"
             class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
-            bind:this={element}
-        ></div>
+        >
+            {#if isLocked}
+                <!-- Lock notice lives inside the page, like a suggestion-mode
+                     strip — locks derive from having branches. -->
+                <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900/70">
+                    <LockIcon size={11} class="shrink-0 text-amber-700/60" />
+                    <span class="flex-1 min-w-0 truncate">This draft is locked because it has branches.</span>
+                    <button
+                        onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
+                        class="shrink-0 font-medium hover:text-amber-950 transition-colors"
+                    >Edit anyway</button>
+                    <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
+                    <button
+                        onclick={() => currentDraft && handleDraftFork(currentDraft.id)}
+                        disabled={forking}
+                        class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
+                    >
+                        <GitBranchIcon size={11} />
+                        <span>New branch</span>
+                    </button>
+                </div>
+            {/if}
+            <div bind:this={element}></div>
+        </div>
     {/await}
+
 
     <Annotations />
 </div>

@@ -38,6 +38,7 @@ function defaultProps(
         ondraftrename: (id: string, label: string) => void;
         ondraftdelete: (id: string) => void;
         ontogglelock: (id: string, locked: boolean) => void;
+        onnewdraft: () => void;
     }> = {},
 ) {
     return {
@@ -48,6 +49,7 @@ function defaultProps(
         ondraftrename: vi.fn(),
         ondraftdelete: vi.fn(),
         ontogglelock: vi.fn(),
+        onnewdraft: vi.fn(),
         ...overrides,
     };
 }
@@ -105,6 +107,13 @@ describe("DraftTreePanel", () => {
         const { getByRole } = render(DraftTreePanel, { props: defaultProps({ ondraftdelete }) });
         await fireEvent.click(getByRole("button", { name: "Delete v1" }));
         expect(ondraftdelete).toHaveBeenCalledWith("v1");
+    });
+
+    it("calls onnewdraft from the New draft footer button", async () => {
+        const onnewdraft = vi.fn();
+        const { getByRole } = render(DraftTreePanel, { props: defaultProps({ onnewdraft }) });
+        await fireEvent.click(getByRole("button", { name: /New draft/ }));
+        expect(onnewdraft).toHaveBeenCalledOnce();
     });
 
     it("commits inline rename on Enter", async () => {

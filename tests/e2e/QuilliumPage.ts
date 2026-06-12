@@ -133,6 +133,7 @@ export class QuilliumPage {
                     label: string;
                     position: number;
                     createdAt: number;
+                    deletedAt: number | null;
                 };
                 type MockDraft = {
                     id: string;
@@ -143,10 +144,11 @@ export class QuilliumPage {
                     tabId: string | null;
                     parentDraftId: string | null;
                     locked: boolean;
+                    deletedAt: number | null;
                 };
                 let nextTabIndex = 2;
                 let nextDraftIndex = 2;
-                let tabs: MockTab[] = [
+                const tabs: MockTab[] = [
                     {
                         id: "tab-test-1",
                         documentId: "doc-test-1",
@@ -154,9 +156,10 @@ export class QuilliumPage {
                         label: "Main",
                         position: 0,
                         createdAt: 0,
+                        deletedAt: null,
                     },
                 ];
-                let drafts: MockDraft[] = [
+                const drafts: MockDraft[] = [
                     {
                         id: "draft-test-1",
                         documentId: "doc-test-1",
@@ -166,6 +169,7 @@ export class QuilliumPage {
                         tabId: "tab-test-1",
                         parentDraftId: null,
                         locked: false,
+                        deletedAt: null,
                     },
                 ];
                 const activeTabByDoc: Record<string, string> = {};
@@ -197,13 +201,13 @@ export class QuilliumPage {
                         if (cmd === "cmd_create_draft") return "draft-test-1";
                         if (cmd === "cmd_list_drafts") {
                             const a = args as { docId: string };
-                            return drafts.filter((d) => d.documentId === a.docId);
+                            return drafts.filter((d) => d.documentId === a.docId && !d.deletedAt);
                         }
 
                         // ── Tabs & draft tree (#160) ────────────────────
                         if (cmd === "cmd_list_tabs") {
                             const a = args as { docId: string };
-                            return tabs.filter((t) => t.documentId === a.docId);
+                            return tabs.filter((t) => t.documentId === a.docId && !t.deletedAt);
                         }
                         if (cmd === "cmd_create_tab") {
                             const a = args as { docId: string; label: string };
@@ -214,6 +218,7 @@ export class QuilliumPage {
                                 label: a.label,
                                 position: tabs.length,
                                 createdAt: Date.now(),
+                                deletedAt: null,
                             };
                             tabs.push(tab);
                             drafts.push({
@@ -225,6 +230,7 @@ export class QuilliumPage {
                                 tabId: tab.id,
                                 parentDraftId: null,
                                 locked: false,
+                                deletedAt: null,
                             });
                             return tab;
                         }
@@ -236,10 +242,17 @@ export class QuilliumPage {
                         }
                         if (cmd === "cmd_delete_tab") {
                             const a = args as { tabId: string };
-                            tabs = tabs.filter((t) => t.id !== a.tabId);
-                            drafts = drafts.filter((d) => d.tabId !== a.tabId);
+                            const tab = tabs.find((t) => t.id === a.tabId);
+                            if (tab) tab.deletedAt = Date.now();
                             return null;
                         }
+                        if (cmd === "cmd_restore_tab") {
+                            const a = args as { tabId: string };
+                            const tab = tabs.find((t) => t.id === a.tabId);
+                            if (tab) tab.deletedAt = null;
+                            return null;
+                        }
+                        if (cmd === "cmd_list_doc_events") return [];
                         if (cmd === "cmd_get_active_tab") {
                             const a = args as { docId: string };
                             return activeTabByDoc[a.docId] ?? null;
@@ -251,7 +264,7 @@ export class QuilliumPage {
                         }
                         if (cmd === "cmd_list_tab_drafts") {
                             const a = args as { tabId: string };
-                            return drafts.filter((d) => d.tabId === a.tabId);
+                            return drafts.filter((d) => d.tabId === a.tabId && !d.deletedAt);
                         }
                         if (cmd === "cmd_get_active_draft") {
                             const a = args as { tabId: string };
@@ -275,9 +288,27 @@ export class QuilliumPage {
                                 tabId: parent?.tabId ?? null,
                                 parentDraftId: a.parentDraftId,
                                 locked: false,
+                                deletedAt: null,
                             };
                             drafts.push(child);
                             return child;
+                        }
+                        if (cmd === "cmd_create_tab_draft") {
+                            const a = args as { tabId: string; label: string };
+                            const tab = tabs.find((t) => t.id === a.tabId);
+                            const sibling: MockDraft = {
+                                id: `draft-test-${nextDraftIndex++}`,
+                                documentId: tab?.documentId ?? "doc-test-1",
+                                label: a.label,
+                                createdAt: Date.now(),
+                                isActive: true,
+                                tabId: a.tabId,
+                                parentDraftId: null,
+                                locked: false,
+                                deletedAt: null,
+                            };
+                            drafts.push(sibling);
+                            return sibling;
                         }
                         if (cmd === "cmd_rename_draft") {
                             const a = args as { draftId: string; label: string };
@@ -293,13 +324,31 @@ export class QuilliumPage {
                         }
                         if (cmd === "cmd_delete_draft") {
                             const a = args as { draftId: string };
-                            drafts = drafts.filter((d) => d.id !== a.draftId);
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (!draft) return null;
+                            draft.deletedAt = Date.now();
+                            // Locks derive from live children: unlock a
+                            // parent that just lost its last branch.
+                            if (draft.parentDraftId) {
+                                const parent = drafts.find((d) => d.id === draft.parentDraftId);
+                                const liveChildren = drafts.filter(
+                                    (d) => d.parentDraftId === draft.parentDraftId && !d.deletedAt,
+                                );
+                                if (parent && liveChildren.length === 0) parent.locked = false;
+                            }
                             return null;
                         }
-                        // Native confirm dialogs (tab/draft deletion) — accept.
-                        // confirm() routes through plugin:dialog|message and
-                        // treats the "Ok" button label as acceptance.
-                        if (cmd === "plugin:dialog|message") return "Ok";
+                        if (cmd === "cmd_restore_draft") {
+                            const a = args as { draftId: string };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (!draft) return null;
+                            draft.deletedAt = null;
+                            if (draft.parentDraftId) {
+                                const parent = drafts.find((d) => d.id === draft.parentDraftId);
+                                if (parent && !parent.deletedAt) parent.locked = true;
+                            }
+                            return null;
+                        }
 
                         if (cmd === "cmd_load_document_state") {
                             if (payload.initialDoc) {

@@ -11,12 +11,13 @@
       ondraftselect  — (draftId) switch the editor to this draft
       ondraftfork    — (draftId) branch a child off this draft
       ondraftrename  — (draftId, label) after inline rename
-      ondraftdelete  — (draftId) delete a leaf draft
+      ondraftdelete  — (draftId) delete a leaf draft (soft, undoable)
       ontogglelock   — (draftId, locked) set the soft lock
+      onnewdraft     — duplicate the current draft as a sibling
 -->
 <script lang="ts">
 import type { DraftMeta } from "$lib/db/types";
-import { GitBranchIcon, LockIcon, LockOpenIcon, Trash2Icon } from "lucide-svelte";
+import { GitBranchIcon, LockIcon, LockOpenIcon, PlusIcon, Trash2Icon } from "lucide-svelte";
 import { buildDraftTree, flattenDraftTree, isDeletableDraft } from "./draftTree";
 
 const {
@@ -27,6 +28,7 @@ const {
     ondraftrename,
     ondraftdelete,
     ontogglelock,
+    onnewdraft,
 }: {
     drafts: DraftMeta[];
     activeDraftId: string | null;
@@ -35,6 +37,7 @@ const {
     ondraftrename: (draftId: string, label: string) => void;
     ondraftdelete: (draftId: string) => void;
     ontogglelock: (draftId: string, locked: boolean) => void;
+    onnewdraft: () => void;
 } = $props();
 
 const rows = $derived(flattenDraftTree(buildDraftTree(drafts)));
@@ -124,7 +127,7 @@ function commitRename(draftId: string) {
                 {#if isDeletableDraft(row.draft.id, drafts)}
                     <button
                         onclick={() => ondraftdelete(row.draft.id)}
-                        title="Delete draft"
+                        title="Delete draft (undoable)"
                         aria-label="Delete {row.draft.label}"
                         class="p-0.5 rounded text-black/30 hover:text-red-500 hover:bg-black/5"
                     >
@@ -134,4 +137,15 @@ function commitRename(draftId: string) {
             </div>
         </div>
     {/each}
+
+    <button
+        onclick={onnewdraft}
+        title="Duplicate the current draft as a sibling (same level)"
+        class="mt-1.5 mx-0.5 w-[calc(100%-4px)] flex items-center justify-center gap-1.5 rounded-md
+            border border-dashed border-black/15 px-2 py-1 text-[11px] text-black/40
+            hover:text-black/65 hover:border-black/30 transition-colors"
+    >
+        <PlusIcon size={11} />
+        <span>New draft</span>
+    </button>
 </div>
