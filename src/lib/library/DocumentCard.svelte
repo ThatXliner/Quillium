@@ -87,7 +87,7 @@ function formatDate(ms: number): string {
 {#snippet similarBadge(positionClass: string)}
     <span
         title="Matched by meaning, not keywords"
-        class="{positionClass} items-center gap-1 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-medium text-purple-600/80"
+        class="{positionClass} items-center gap-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700"
     >
         <Sparkles size={9} /> similar
     </span>
