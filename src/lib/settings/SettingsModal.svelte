@@ -568,9 +568,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                 <div class="setting-meta">
                     <div class="setting-title">Search by meaning</div>
                     <div class="setting-desc">
-                        Find documents by concept, not just keywords. Downloads a small
-                        language model (~30 MB, one time) that runs entirely on your
-                        device — your writing never leaves your computer.
+                        Match documents by concept, not just keywords. Uses a ~30 MB on-device model — nothing leaves your computer.
                         {#if semanticEnabled}
                             {#if semanticStatus === "starting" || semanticStatus === "loading-model"}
                                 <span class="text-blue-500/80">Downloading model…</span>
