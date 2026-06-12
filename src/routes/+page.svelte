@@ -495,6 +495,7 @@ if (import.meta.env.DEV) {
                     wordCount,
                     docText.slice(0, 200),
                     "[]",
+                    docText,
                 );
 
                 // Set stores after snapshot is written to avoid a race

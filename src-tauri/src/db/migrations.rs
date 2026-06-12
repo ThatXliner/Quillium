@@ -152,7 +152,10 @@ fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
 
 fn snapshots_label(conn: &Connection) -> Result<()> {
     if !column_exists(conn, "snapshots", "label")? {
-        conn.execute("ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL", [])?;
+        conn.execute(
+            "ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL",
+            [],
+        )?;
     }
     Ok(())
 }
@@ -325,8 +328,11 @@ mod tests {
             if let MigrationKind::Sql(sql) = &MIGRATIONS[0].kind {
                 conn.execute_batch(sql).unwrap();
             }
-            conn.execute("ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL", [])
-                .unwrap();
+            conn.execute(
+                "ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL",
+                [],
+            )
+            .unwrap();
             conn.execute(
                 "INSERT INTO documents (id, title, created_at, updated_at, preview_text)
                  VALUES ('doc1', 'Old doc', 0, 0, 'preview')",
@@ -376,9 +382,11 @@ mod tests {
         backfill_body_text(&conn).unwrap();
 
         let body: String = conn
-            .query_row("SELECT body_text FROM documents WHERE id = 'd1'", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT body_text FROM documents WHERE id = 'd1'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(body, "the quetzal hides in the canopy");
         // And the UPDATE trigger pushed it into FTS.

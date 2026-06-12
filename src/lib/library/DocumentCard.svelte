@@ -5,7 +5,7 @@
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
 import { AppWindow, Sparkles, Trash2, RotateCcw, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
-import { snippetSegments } from "./snippet";
+import { snippetSegments, type SnippetSegment } from "./snippet";
 import { parseTags } from "./tags";
 
 interface Props {
@@ -76,6 +76,23 @@ function formatDate(ms: number): string {
 }
 </script>
 
+<!-- Shared between grid and list views: matched-snippet text with
+     highlights, and the "matched by meaning" badge (position varies). -->
+{#snippet snippetText(segs: SnippetSegment[])}
+    {#each segs as seg}
+        {#if seg.highlighted}<mark class="rounded-[2px] bg-amber-200/80 px-px text-black/70">{seg.text}</mark>{:else}{seg.text}{/if}
+    {/each}
+{/snippet}
+
+{#snippet similarBadge(positionClass: string)}
+    <span
+        title="Matched by meaning, not keywords"
+        class="{positionClass} items-center gap-1 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-medium text-purple-600/80"
+    >
+        <Sparkles size={9} /> similar
+    </span>
+{/snippet}
+
 {#if viewMode === "grid"}
     <!-- Having "on select" animations/transitions feel instant generally feels better -->
     <div
@@ -102,17 +119,10 @@ function formatDate(ms: number): string {
         <div class="relative w-full h-28 rounded-lg bg-gray-50/80 border border-gray-100 overflow-hidden p-3 flex-shrink-0">
             {#if snippetSegs}
                 <p class="text-xs text-black/50 leading-relaxed line-clamp-5">
-                    {#each snippetSegs as seg}
-                        {#if seg.highlighted}<mark class="rounded-[2px] bg-amber-200/80 px-px text-black/70">{seg.text}</mark>{:else}{seg.text}{/if}
-                    {/each}
+                    {@render snippetText(snippetSegs)}
                 </p>
                 {#if semanticMatch}
-                    <span
-                        title="Matched by meaning, not keywords"
-                        class="absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-medium text-purple-600/80"
-                    >
-                        <Sparkles size={9} /> similar
-                    </span>
+                    {@render similarBadge("absolute bottom-1.5 right-1.5 flex")}
                 {/if}
             {:else}
                 <p class="text-xs text-black/50 leading-relaxed line-clamp-5">
@@ -222,19 +232,12 @@ function formatDate(ms: number): string {
             <p class="text-sm font-medium text-black/80 truncate flex items-center gap-1.5">
                 {doc.title}
                 {#if semanticMatch}
-                    <span
-                        title="Matched by meaning, not keywords"
-                        class="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-medium text-purple-600/80"
-                    >
-                        <Sparkles size={9} /> similar
-                    </span>
+                    {@render similarBadge("inline-flex flex-shrink-0")}
                 {/if}
             </p>
             {#if snippetSegs}
                 <p class="text-xs text-black/40 mt-0.5 truncate">
-                    {#each snippetSegs as seg}
-                        {#if seg.highlighted}<mark class="rounded-[2px] bg-amber-200/80 px-px text-black/70">{seg.text}</mark>{:else}{seg.text}{/if}
-                    {/each}
+                    {@render snippetText(snippetSegs)}
                 </p>
             {:else}
                 <p class="text-xs text-black/40 mt-0.5 truncate">{doc.previewText || "Empty document"}</p>

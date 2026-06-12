@@ -27,7 +27,7 @@ import {
     resetHarper,
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
-import { getSearchStatus, getSemanticSearchEnabled, setSemanticSearchEnabled } from "$lib/db";
+import { getSemanticSearchEnabled, pollSearchStatus, setSemanticSearchEnabled } from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
@@ -238,29 +238,13 @@ getSemanticSearchEnabled()
     .catch(() => {});
 
 // Poll the index status while enabled so the row can show download/index
-// progress; stops once the index settles (ready/error).
+// progress; stops once the index settles (ready/error). A null reading
+// (status command failed) keeps the last shown status.
 $effect(() => {
     if (!semanticEnabled) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async () => {
-        let status: string;
-        try {
-            status = await getSearchStatus();
-        } catch {
-            return;
-        }
-        if (cancelled) return;
-        semanticStatus = status;
-        if (status === "starting" || status === "loading-model" || status === "indexing") {
-            timer = setTimeout(poll, 2000);
-        }
-    };
-    poll();
-    return () => {
-        cancelled = true;
-        clearTimeout(timer);
-    };
+    return pollSearchStatus((status) => {
+        if (status !== null) semanticStatus = status;
+    });
 });
 
 async function toggleSemanticSearch() {

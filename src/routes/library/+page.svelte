@@ -17,7 +17,8 @@ import {
     isDocOpenElsewhere,
     openInNewWindow,
     searchDocuments,
-    getSearchStatus,
+    isSearchStatusPreparing,
+    pollSearchStatus,
 } from "$lib/db";
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
@@ -55,20 +56,36 @@ const activeDocuments = $derived(trashMode ? trashedDocuments : documents);
 // is non-trivial, a debounced backend search adds matches on full document
 // *content* (beyond the 200-char preview) plus semantic matches.
 let serverHits = $state<SearchHit[] | null>(null);
+// Query the displayed hits belong to, so a query change can drop stale
+// snippets/highlights instead of rendering them against the new text.
+let serverHitsQuery = $state<string | null>(null);
 let searchSeq = 0;
 const contentSearchActive = $derived(!trashMode && query.trim().length >= 2);
 
 $effect(() => {
+    const q = query.trim();
     if (!contentSearchActive) {
+        // Bump the sequence too, so an in-flight request that resolves after
+        // the box is cleared can't write its results back.
+        searchSeq++;
         serverHits = null;
+        serverHitsQuery = null;
         return;
     }
-    const q = query.trim();
+    // New query → discard the prior query's hits up front; keeping them would
+    // briefly rank/highlight documents for terms the user already replaced.
+    if (q !== serverHitsQuery) {
+        serverHits = null;
+        serverHitsQuery = null;
+    }
     const seq = ++searchSeq;
     const timer = setTimeout(async () => {
         try {
             const hits = await searchDocuments(q);
-            if (seq === searchSeq) serverHits = hits;
+            if (seq === searchSeq) {
+                serverHits = hits;
+                serverHitsQuery = q;
+            }
         } catch (e) {
             console.error("[library] content search failed:", e);
         }
@@ -107,23 +124,8 @@ const filtered = $derived.by(() => {
 // Semantic index status — only used to explain why "search by meaning"
 // results may be missing while the model downloads/indexes on first run.
 let semanticStatus = $state("ready");
-let statusTimer: ReturnType<typeof setTimeout> | undefined;
-const semanticPreparing = $derived(
-    semanticStatus === "starting" ||
-        semanticStatus === "loading-model" ||
-        semanticStatus === "indexing",
-);
-
-async function pollSemanticStatus() {
-    try {
-        semanticStatus = await getSearchStatus();
-    } catch {
-        semanticStatus = "unavailable";
-    }
-    if (semanticPreparing) {
-        statusTimer = setTimeout(pollSemanticStatus, 4000);
-    }
-}
+let cancelStatusPoll: (() => void) | undefined;
+const semanticPreparing = $derived(isSearchStatusPreparing(semanticStatus));
 
 /** When exactly one document is selected, show its preview. */
 const selectedDoc = $derived(
@@ -478,7 +480,9 @@ let unlisten: UnlistenFn | undefined;
 onMount(async () => {
     posthog.capture("library_viewed");
     load();
-    pollSemanticStatus();
+    cancelStatusPoll = pollSearchStatus((status) => {
+        semanticStatus = status ?? "unavailable";
+    }, 4000);
     // File → Open in New Window menu item targets the focused window; when that's
     // the library, open whichever single document is currently selected.
     unlisten = await listen("menu:open-in-new-window", () => {
@@ -490,7 +494,7 @@ onMount(async () => {
 
 onDestroy(() => {
     unlisten?.();
-    clearTimeout(statusTimer);
+    cancelStatusPoll?.();
 });
 </script>
 

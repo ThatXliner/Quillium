@@ -81,6 +81,44 @@ export async function getSearchStatus(): Promise<string> {
     return invoke<string>("cmd_search_status");
 }
 
+/** Whether the semantic index is still coming up (model download / initial indexing). */
+export function isSearchStatusPreparing(status: string): boolean {
+    return status === "starting" || status === "loading-model" || status === "indexing";
+}
+
+/**
+ * Polls the semantic index status until it settles (any non-preparing
+ * status), reporting each reading via `onStatus`. If the status command
+ * fails, reports `null` once and stops. Returns a cancel function — call it
+ * on component teardown.
+ */
+export function pollSearchStatus(
+    onStatus: (status: string | null) => void,
+    intervalMs = 2000,
+): () => void {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+        let status: string;
+        try {
+            status = await getSearchStatus();
+        } catch {
+            if (!cancelled) onStatus(null);
+            return;
+        }
+        if (cancelled) return;
+        onStatus(status);
+        if (isSearchStatusPreparing(status)) {
+            timer = setTimeout(poll, intervalMs);
+        }
+    };
+    poll();
+    return () => {
+        cancelled = true;
+        clearTimeout(timer);
+    };
+}
+
 /** Whether the user opted in to semantic search (Settings toggle). */
 export async function getSemanticSearchEnabled(): Promise<boolean> {
     return invoke<boolean>("cmd_get_semantic_search_enabled");

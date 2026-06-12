@@ -27,7 +27,13 @@ pub const HIGHLIGHT_END: char = '\u{E001}';
 const RRF_K: f64 = 60.0;
 const FTS_LIMIT: i64 = 20;
 /// Chunk-level KNN limit; after doc aggregation this yields ~top-20 docs.
-const KNN_CHUNK_LIMIT: i64 = 40;
+/// NOTE: sqlite-vec applies `k` *inside* the vec0 scan, before the
+/// `d.deleted_at IS NULL` join filter (semantic_doc_hits) — trashed chunks
+/// still keep their vectors, so they consume part of this budget and are
+/// only dropped afterward. The limit is set well above the ~20 docs we
+/// surface to leave headroom for trashed chunks ranking near a query; a
+/// hard guarantee would require pruning vectors on trash.
+const KNN_CHUNK_LIMIT: i64 = 80;
 /// Cosine-distance cutoff for semantic hits. bge-small relevant matches land
 /// around 0.2–0.35; unrelated text rarely dips below ~0.5. Without a cutoff,
 /// KNN always returns *something*, flooding short queries with noise.
@@ -74,16 +80,19 @@ pub fn build_match_query(raw: &str) -> Option<String> {
 /// Trashed documents are filtered in the join — external-content FTS5 can't
 /// index a WHERE clause.
 fn fts_search(conn: &Connection, match_query: &str) -> Result<Vec<(DocumentMeta, String)>> {
-    let mut stmt = conn.prepare(
+    // snippet() markers come from the HIGHLIGHT_* consts so the sentinels
+    // have a single source of truth (snippet.ts mirrors them on the JS side).
+    let sql = format!(
         "SELECT d.id, d.title, d.created_at, d.updated_at, d.word_count,
                 d.preview_text, d.tags, d.deleted_at,
-                snippet(documents_fts, 1, '\u{E000}', '\u{E001}', '…', 12)
+                snippet(documents_fts, 1, '{HIGHLIGHT_START}', '{HIGHLIGHT_END}', '…', 12)
          FROM documents_fts
          JOIN documents d ON d.rowid = documents_fts.rowid
          WHERE documents_fts MATCH ?1 AND d.deleted_at IS NULL
          ORDER BY bm25(documents_fts, 5.0, 1.0, 2.0)
-         LIMIT ?2",
-    )?;
+         LIMIT ?2"
+    );
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![match_query, FTS_LIMIT], |row| {
         Ok((
             DocumentMeta {
@@ -265,10 +274,16 @@ mod tests {
 
     #[test]
     fn match_query_quotes_terms_and_prefixes_last() {
-        assert_eq!(build_match_query("hello world"), Some("\"hello\" \"world\"*".into()));
+        assert_eq!(
+            build_match_query("hello world"),
+            Some("\"hello\" \"world\"*".into())
+        );
         assert_eq!(build_match_query("  "), None);
         // FTS5 operators and quotes are neutralized.
-        assert_eq!(build_match_query("NOT a\"b"), Some("\"NOT\" \"a\"\"b\"*".into()));
+        assert_eq!(
+            build_match_query("NOT a\"b"),
+            Some("\"NOT\" \"a\"\"b\"*".into())
+        );
     }
 
     #[test]
@@ -294,8 +309,16 @@ mod tests {
     fn last_term_matches_as_prefix() {
         let (_dir, conn) = test_db();
         let id = create_document(&conn, "Doc").unwrap();
-        update_document_meta(&conn, &id, "Doc", 3, "", "[]", Some("an extraordinary revelation"))
-            .unwrap();
+        update_document_meta(
+            &conn,
+            &id,
+            "Doc",
+            3,
+            "",
+            "[]",
+            Some("an extraordinary revelation"),
+        )
+        .unwrap();
         let hits = search_documents(&conn, "extraord", None).unwrap();
         assert_eq!(hits.len(), 1);
     }
@@ -304,8 +327,16 @@ mod tests {
     fn trashed_documents_are_excluded() {
         let (_dir, conn) = test_db();
         let id = create_document(&conn, "Doomed").unwrap();
-        update_document_meta(&conn, &id, "Doomed", 2, "", "[]", Some("unique zanzibar text"))
-            .unwrap();
+        update_document_meta(
+            &conn,
+            &id,
+            "Doomed",
+            2,
+            "",
+            "[]",
+            Some("unique zanzibar text"),
+        )
+        .unwrap();
         assert_eq!(search_documents(&conn, "zanzibar", None).unwrap().len(), 1);
         trash_document(&conn, &id).unwrap();
         assert_eq!(search_documents(&conn, "zanzibar", None).unwrap().len(), 0);
@@ -315,8 +346,16 @@ mod tests {
     fn meta_update_without_body_preserves_index() {
         let (_dir, conn) = test_db();
         let id = create_document(&conn, "Doc").unwrap();
-        update_document_meta(&conn, &id, "Doc", 2, "", "[]", Some("persistent kraken sighting"))
-            .unwrap();
+        update_document_meta(
+            &conn,
+            &id,
+            "Doc",
+            2,
+            "",
+            "[]",
+            Some("persistent kraken sighting"),
+        )
+        .unwrap();
         // Rename-style update (no body) must not wipe body_text from FTS.
         update_document_meta(&conn, &id, "Renamed", 2, "", "[]", None).unwrap();
         let hits = search_documents(&conn, "kraken", None).unwrap();
@@ -337,9 +376,10 @@ mod tests {
         vec_a[0] = 1.0;
         let mut vec_b = vec![0.0f32; 384];
         vec_b[1] = 1.0;
-        for (doc_id, chunk_text, emb) in
-            [(&id_a, "about grief", &vec_a), (&id_b, "about carpentry", &vec_b)]
-        {
+        for (doc_id, chunk_text, emb) in [
+            (&id_a, "about grief", &vec_a),
+            (&id_b, "about carpentry", &vec_b),
+        ] {
             conn.execute(
                 "INSERT INTO chunks (document_id, chunk_index, content_hash, text)
                  VALUES (?1, 0, 'h', ?2)",

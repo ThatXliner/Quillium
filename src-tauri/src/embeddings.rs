@@ -349,6 +349,23 @@ impl SemanticIndex {
             let model = guard.as_mut().ok_or("model not loaded")?;
             embeddings.extend(model.embed(texts, None).map_err(|e| e.to_string())?);
         }
+        // Pair-by-position below (zip) silently truncates on a mismatch,
+        // which would store a chunk's text against the wrong vector. Reject
+        // any count/dimension surprise from the model instead of committing
+        // a corrupt index — the next reconcile retries from a clean state.
+        if embeddings.len() != to_embed.len() {
+            return Err(format!(
+                "embedding count {} != chunk count {}",
+                embeddings.len(),
+                to_embed.len()
+            ));
+        }
+        if let Some(bad) = embeddings.iter().find(|e| e.len() != EMBEDDING_DIM) {
+            return Err(format!(
+                "embedding dim {} != expected {EMBEDDING_DIM}",
+                bad.len()
+            ));
+        }
 
         let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
         for id in &stale_ids {
@@ -533,7 +550,10 @@ mod tests {
         for chunk in &chunks {
             assert!(chunk.len() <= CHUNK_MAX_CHARS + 2);
             // never mid-sentence: every chunk ends at a terminator
-            assert!(chunk.trim_end().ends_with('.'), "chunk ends mid-sentence: {chunk:?}");
+            assert!(
+                chunk.trim_end().ends_with('.'),
+                "chunk ends mid-sentence: {chunk:?}"
+            );
         }
     }
 

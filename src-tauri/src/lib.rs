@@ -8,10 +8,10 @@ use tauri::Manager;
 
 use db::{
     documents::{
-        create_document, create_draft, delete_document, get_document,
-        get_semantic_search_enabled, get_trash_retention, list_documents, list_drafts,
-        list_trashed_documents, purge_expired_trash, restore_document,
-        set_semantic_search_enabled, set_trash_retention, trash_document, update_document_meta,
+        create_document, create_draft, delete_document, get_document, get_semantic_search_enabled,
+        get_trash_retention, list_documents, list_drafts, list_trashed_documents,
+        purge_expired_trash, restore_document, set_semantic_search_enabled, set_trash_retention,
+        trash_document, update_document_meta,
     },
     events::{
         append_event, create_named_snapshot, create_snapshot, get_snapshot_retention,
@@ -103,8 +103,16 @@ async fn cmd_search_documents(
     if query.trim().is_empty() {
         return Ok(vec![]);
     }
-    // Embed before taking the DB lock — embedding is the slow part.
-    let query_embedding = semantic.0.embed_query(&query);
+    // Embed off the async runtime: ONNX inference is synchronous CPU work
+    // (tens of ms) and contends on the model mutex with the index worker, so
+    // running it inline would block a Tokio worker thread. The DB lock + query
+    // afterward are fast and stay on the async thread.
+    let index = semantic.0.clone();
+    let query_for_embed = query.clone();
+    let query_embedding =
+        tauri::async_runtime::spawn_blocking(move || index.embed_query(&query_for_embed))
+            .await
+            .map_err(|e| e.to_string())?;
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     search_documents(&conn, &query, query_embedding.as_deref()).map_err(|e| e.to_string())
 }
