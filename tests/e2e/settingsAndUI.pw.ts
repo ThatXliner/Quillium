@@ -73,6 +73,9 @@ test.describe("AI sidebar", () => {
         // Open chat
         await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar).toContainText("Start a conversation");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(640);
 
         // Switch to feedback
         const feedbackBtn = page.locator(
@@ -80,6 +83,17 @@ test.describe("AI sidebar", () => {
         );
         await feedbackBtn.click();
         await expect(q.aiSidebar).toContainText("Feedback");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(640);
+
+        // Switch to revise
+        const reviseBtn = page.locator("#ai-sidebar .overflow-x-auto button[aria-label*='Revise']");
+        await reviseBtn.click();
+        await expect(q.aiSidebar).toContainText("Revise");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(640);
     });
 
     test("hides starter suggestions after first chat action", async ({ page }) => {
