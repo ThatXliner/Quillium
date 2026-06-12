@@ -21,7 +21,7 @@ import {
 } from "$lib/editor/plugins/annotations/clipboardAnnotations";
 import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { history } from "@codemirror/commands";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -61,16 +61,29 @@ function makeEvent(data?: MockDataTransfer) {
 
 let views: EditorView[] = [];
 
-function createView(doc: string) {
+function createView(doc: string, extra: Extension[] = []) {
     const state = EditorState.create({
         doc,
-        extensions: [history({ newGroupDelay: 0 }), annotationExtensions()],
+        extensions: [
+            history({ newGroupDelay: 0 }),
+            // The production editor enables multi-range selections (extensions.ts);
+            // the clipboard handlers mirror CM's multi-range copy/cut, so the test
+            // harness must enable it too or dispatched multi-ranges collapse.
+            EditorState.allowMultipleSelections.of(true),
+            annotationExtensions(),
+            ...extra,
+        ],
     });
     const parent = document.createElement("div");
     document.body.appendChild(parent);
     const view = new EditorView({ state, parent });
     views.push(view);
     return view;
+}
+
+/** A readOnly editor, mirroring the Version History snapshot preview. */
+function createReadOnlyView(doc: string) {
+    return createView(doc, [EditorState.readOnly.of(true)]);
 }
 
 function getComments(view: EditorView) {
@@ -193,7 +206,7 @@ describe("serializeAnnotationsForCopy", () => {
     it("rebases fully-contained comments and strips ids", () => {
         const view = createView("Hello brave new world");
         addComment(view, 6, 11, "on brave"); // "brave"
-        const out = serializeAnnotationsForCopy(view.state, 6, 21); // "brave new world"
+        const out = serializeAnnotationsForCopy(view.state, [{ from: 6, to: 21 }]); // "brave new world"
         expect(out).toEqual([
             { _type: "comment", relAnchor: 0, relHead: 5, thread: [expect.any(Object)] },
         ]);
@@ -205,7 +218,7 @@ describe("serializeAnnotationsForCopy", () => {
         const view = createView("Hello brave new world");
         addComment(view, 0, 11, "spans the boundary"); // "Hello brave"
         // Copy "brave new world" — the comment starts before `from`, so excluded.
-        const out = serializeAnnotationsForCopy(view.state, 6, 21);
+        const out = serializeAnnotationsForCopy(view.state, [{ from: 6, to: 21 }]);
         expect(out).toHaveLength(0);
     });
 
@@ -223,7 +236,7 @@ describe("serializeAnnotationsForCopy", () => {
                 ),
             }),
         );
-        const out = serializeAnnotationsForCopy(view.state, 6, 21);
+        const out = serializeAnnotationsForCopy(view.state, [{ from: 6, to: 21 }]);
         expect(out).toHaveLength(0);
     });
 
@@ -241,7 +254,7 @@ describe("serializeAnnotationsForCopy", () => {
                 }),
             }),
         );
-        const out = serializeAnnotationsForCopy(view.state, 6, 21); // "brave new world"
+        const out = serializeAnnotationsForCopy(view.state, [{ from: 6, to: 21 }]); // "brave new world"
         expect(out).toEqual([
             {
                 _type: "suggestion",
@@ -650,5 +663,187 @@ describe("deferral to CodeMirror default", () => {
         view.dispatch({ selection: EditorSelection.cursor(3) });
         expect(handleCopy(makeEvent(), view)).toBe(false);
         expect(handleCut(makeEvent(), view)).toBe(false);
+    });
+});
+
+// ── readOnly guard ────────────────────────────────────────────────────────────
+
+describe("readOnly editors are never mutated", () => {
+    it("cut on a readOnly view defers to default and deletes nothing", () => {
+        const view = createReadOnlyView("Hello brave new world");
+        addComment(view, 6, 11, "cut me");
+        view.dispatch({ selection: EditorSelection.range(6, 21) });
+        const event = makeEvent();
+        expect(handleCut(event, view)).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+        // Text and annotation untouched.
+        expect(view.state.doc.toString()).toBe("Hello brave new world");
+        expect(getComments(view)).toHaveLength(1);
+    });
+
+    it("paste on a readOnly view defers to default and inserts nothing", () => {
+        const source = createView("Hello brave new world");
+        addComment(source, 6, 11, "x");
+        const clip = copyRange(source, 6, 21);
+
+        const target = createReadOnlyView("read only ");
+        const event = makeEvent(clip);
+        target.dispatch({ selection: EditorSelection.cursor(target.state.doc.length) });
+        expect(handlePaste(event, target)).toBe(false);
+        expect(event.defaultPrevented).toBe(false);
+        expect(target.state.doc.toString()).toBe("read only ");
+        expect(getComments(target)).toHaveLength(0);
+    });
+});
+
+// ── Multi-range selections ────────────────────────────────────────────────────
+
+describe("multi-range copy → paste", () => {
+    it("carries annotations from every selected range with correct joined offsets", () => {
+        const view = createView("alpha beta gamma delta");
+        addComment(view, 0, 5, "A"); // alpha
+        addComment(view, 11, 16, "G"); // gamma
+
+        // Two disjoint ranges: "alpha" and "gamma". Joined text is "alpha\ngamma".
+        view.dispatch({
+            selection: EditorSelection.create([
+                EditorSelection.range(0, 5),
+                EditorSelection.range(11, 16),
+            ]),
+        });
+        const event = makeEvent();
+        expect(handleCopy(event, view)).toBe(true);
+        expect(event.clipboardData.getData("text/plain")).toBe("alpha\ngamma");
+
+        // Paste at the end.
+        view.dispatch({ changes: { from: view.state.doc.length, insert: "\n" } });
+        const base = view.state.doc.length;
+        pasteAt(view, base, event.clipboardData);
+
+        const pasted = getComments(view)
+            .filter((c) => c.selection.main.from >= base)
+            .sort((a, b) => a.selection.main.from - b.selection.main.from);
+        expect(pasted).toHaveLength(2);
+        expect(
+            pasted.map((c) => view.state.sliceDoc(c.selection.main.from, c.selection.main.to)),
+        ).toEqual(["alpha", "gamma"]);
+    });
+
+    it("cut deletes every selected range, not just the main one", () => {
+        const view = createView("alpha beta gamma delta");
+        addComment(view, 0, 5, "A"); // alpha — gives the cut something to carry
+        view.dispatch({
+            selection: EditorSelection.create([
+                EditorSelection.range(0, 5), // alpha
+                EditorSelection.range(11, 16), // gamma
+            ]),
+        });
+        expect(handleCut(makeEvent(), view)).toBe(true);
+        // Both ranges removed: "alpha"→"" and "gamma"→"".
+        expect(view.state.doc.toString()).toBe(" beta  delta");
+    });
+});
+
+// ── CRLF / line-ending normalization ──────────────────────────────────────────
+
+describe("CRLF clipboard round trip", () => {
+    it("matches the side-table entry after a CRLF round trip of the plain text", () => {
+        const view = createView("line one\nline two\nend");
+        addComment(view, 0, 17, "spans newlines"); // "line one\nline two"
+        copyRange(view, 0, 17); // populates side-table with LF text
+
+        // Simulate Windows: the OS clipboard hands back CRLF plain text, html stripped.
+        const stripped = new MockDataTransfer();
+        stripped.setData("text/plain", "line one\r\nline two");
+
+        view.dispatch({ changes: { from: view.state.doc.length, insert: "\n" } });
+        const at = view.state.doc.length;
+        pasteAt(view, at, stripped);
+
+        const pasted = getComments(view).find((c) => c.selection.main.from >= at);
+        expect(pasted).toBeDefined();
+        // Inserted text was normalized to LF, so the doc has no stray \r.
+        expect(view.state.doc.toString()).not.toContain("\r");
+    });
+
+    it("decodeHtml matches when the pasted text is the CRLF form of the copied text", () => {
+        const ann = [{ _type: "comment" as const, relAnchor: 0, relHead: 8, thread: [] }];
+        const html = encodeHtml("line one\nline two", ann);
+        // Same content, CRLF on paste (Windows clipboard) — still matches.
+        expect(decodeHtml(html, "line one\r\nline two")).toEqual(ann);
+    });
+
+    it("does not throw when restoring a CRLF payload (insertEnd stays in bounds)", () => {
+        const html = encodeHtml("a\nb\nc", [
+            { _type: "comment", relAnchor: 0, relHead: 5, thread: [] },
+        ]);
+        const clip = new MockDataTransfer();
+        clip.setData("text/plain", "a\r\nb\r\nc"); // longer than the normalized form
+        clip.setData("text/html", html);
+
+        const view = createView("X");
+        const at = view.state.doc.length;
+        expect(() => pasteAt(view, at, clip)).not.toThrow();
+        expect(view.state.doc.toString()).toBe("Xa\nb\nc");
+    });
+});
+
+// ── Malformed payload hardening ───────────────────────────────────────────────
+
+describe("malformed payload hardening", () => {
+    it("rejects a fractional activeVersionIndex at the schema boundary", () => {
+        const html = encodeHtml("brave", [
+            {
+                // biome-ignore lint/suspicious/noExplicitAny: deliberately malformed
+                _type: "revision" as any,
+                relAnchor: 0,
+                relHead: 5,
+                thread: [],
+                activeVersionIndex: 0.5,
+                versions: [
+                    { doc: "brave", label: "a" },
+                    { doc: "bold", label: "b" },
+                ],
+            },
+        ]);
+        // Schema rejects the non-integer index → decode returns null → plain paste.
+        expect(decodeHtml(html, "brave")).toBeNull();
+    });
+
+    it("drops a zero-width comment payload instead of inserting an invisible annotation", () => {
+        const html = encodeHtml("brave", [
+            // relAnchor === relHead → collapsed range, which copy never produces.
+            { _type: "comment", relAnchor: 2, relHead: 2, thread: [] },
+        ]);
+        const clip = new MockDataTransfer();
+        clip.setData("text/plain", "brave");
+        clip.setData("text/html", html);
+
+        const view = createView("X");
+        const at = view.state.doc.length;
+        pasteAt(view, at, clip);
+        // Text pasted, but no collapsed comment slipped into state.
+        expect(view.state.doc.toString()).toBe("Xbrave");
+        expect(getComments(view)).toHaveLength(0);
+    });
+});
+
+// ── Foreign clipboard side-table guard ────────────────────────────────────────
+
+describe("foreign clipboard does not resurrect annotations", () => {
+    it("ignores the side-table when text/html is present but foreign (non-Quillium)", () => {
+        const view = createView("brave new world here");
+        addComment(view, 0, 5, "internal"); // "brave"
+        copyRange(view, 0, 15); // side-table now holds "brave new world"
+
+        // A foreign app's clipboard: identical text, but its own (non-quillium) html.
+        const foreign = new MockDataTransfer();
+        foreign.setData("text/plain", "brave new world");
+        foreign.setData("text/html", "<p>brave new world</p>");
+
+        const at = view.state.doc.length;
+        pasteAt(view, at, foreign);
+        // No phantom comment from the stale side-table entry.
+        expect(getComments(view).filter((c) => c.selection.main.from >= at)).toHaveLength(0);
     });
 });
