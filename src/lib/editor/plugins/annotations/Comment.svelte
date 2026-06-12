@@ -62,7 +62,7 @@ async function aiSuggestion() {
     const annotationId = comment.id;
     const prompt = buildCommentAiPrompt(thread, selectedText);
     try {
-        const aiResponse = await streamCommentAiResponse(prompt, selectedText, aiSettings);
+        const aiResponse = await streamCommentAiResponse(prompt, aiSettings);
         // Empty response means the stream was stopped before any text arrived.
         if (!aiResponse.trim()) return;
         if (!view.state.field(annotationField)[annotationId]) return;

@@ -60,10 +60,11 @@ import "./harper/harper.css";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
+    beginAiTask,
+    endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
     hasApiKey,
-    setAiProcessing,
 } from "$lib/ai/settings.svelte";
 import type { EventRecord } from "$lib/db/types";
 import { appSettings } from "$lib/settings.svelte";
@@ -103,11 +104,16 @@ async function suggestTitle() {
     const text = $editorView?.state.doc.toString() ?? "";
     if (!text.trim() || titleSuggesting) return;
     titleSuggesting = true;
-    setAiProcessing(true);
+    const task = beginAiTask("title-suggestion");
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
-        const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
+        const model = createModel(
+            aiSettings.provider,
+            aiSettings.apiKey,
+            aiSettings.model,
+            aiSettings.baseURL,
+        );
         const { text: suggested } = await generateText({
             model,
             abortSignal,
@@ -134,7 +140,7 @@ async function suggestTitle() {
         }
     } finally {
         titleSuggesting = false;
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }
 
