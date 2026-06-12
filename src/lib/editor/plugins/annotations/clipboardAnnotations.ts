@@ -34,16 +34,16 @@
  *   - @codemirror/view (EditorView.domEventHandlers) for clipboard events.
  *   - ./annotationField (addAnnotation/removeAnnotation effects, _revisionCleanup)
  *     to recreate annotations on paste and clean up cut revisions.
- *   - ../../harper/harperLinter (hashText) for the side-table bucket key.
- *   - ./models (getNewId, isAnnotationOfType, ThreadMessageSchema,
- *     SuggestionReplacementSchema, VersionStateSchema) for ids, type guards,
- *     and validating the smuggled payloads.
+ *   - ../../hash (hashText) for the side-table bucket key.
+ *   - ./models (getNewId, isAnnotationOfType, SerializedAnnotationsSchema) for
+ *     ids, type guards, and validating the smuggled payloads. The serialized
+ *     clipboard shape is derived from the canonical RawAnnotationSchema there.
  */
 
 import { EditorSelection, type EditorState, StateEffect, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { z } from "zod";
-import { hashText } from "../../harper/harperLinter";
+import { hashText } from "../../hash";
 import {
     _revisionCleanup,
     addAnnotation,
@@ -52,50 +52,17 @@ import {
 } from "./annotationField";
 import {
     type GenericAnnotation,
-    SuggestionReplacementSchema,
-    ThreadMessageSchema,
-    VersionStateSchema,
+    type SerializedAnnotation,
+    SerializedAnnotationsSchema,
     getNewId,
     isAnnotationOfType,
 } from "./models";
 import { cleanRangesOf } from "./utils";
 
-// ── Serialized shape ────────────────────────────────────────────────────────
-// An annotation rebased into copy-relative coordinates, with its id stripped
-// (the id is regenerated on paste). Offsets are relative to the start of the
-// copied range. Type-specific payloads (thread / replacements / versions) ride
-// along verbatim. The relAnchor/relHead and thread fields are shared by every
-// variant; the discriminated union adds the per-type extras.
-const SerializedBaseSchema = z.object({
-    // Integer offsets — a fractional position would yield a non-integer doc
-    // coordinate that CodeMirror rejects, so reject it at the boundary.
-    relAnchor: z.number().int(),
-    relHead: z.number().int(),
-    thread: z.array(ThreadMessageSchema),
-});
-const SerializedCommentSchema = SerializedBaseSchema.extend({
-    _type: z.literal("comment"),
-});
-const SerializedSuggestionSchema = SerializedBaseSchema.extend({
-    _type: z.literal("suggestion"),
-    replacements: z.array(SuggestionReplacementSchema),
-    author: z.string().optional(),
-});
-const SerializedRevisionSchema = SerializedBaseSchema.extend({
-    _type: z.literal("revision"),
-    // Carried verbatim — each version is an opaque EditorState.toJSON blob
-    // (doc + label + nested annotation state). The nested state lives in its
-    // own id space, so it never collides with the parent's annotation ids.
-    activeVersionIndex: z.number().int(),
-    versions: z.array(VersionStateSchema).min(1),
-});
-const SerializedAnnotationSchema = z.discriminatedUnion("_type", [
-    SerializedCommentSchema,
-    SerializedSuggestionSchema,
-    SerializedRevisionSchema,
-]);
-const SerializedAnnotationsSchema = z.array(SerializedAnnotationSchema);
-export type SerializedAnnotation = z.infer<typeof SerializedAnnotationSchema>;
+// The clipboard-serialized annotation shape (SerializedAnnotation) is derived
+// from the canonical RawAnnotationSchema in models.ts — see the "Clipboard-
+// serialized shape" section there — so a new field on any annotation type rides
+// across copy/paste automatically with no change in this file.
 
 // ── Side-table ──────────────────────────────────────────────────────────────
 // Fallback for when text/html is stripped from the clipboard. Keyed by a hash
@@ -263,39 +230,18 @@ export function serializeAnnotationsForCopy(
             // The selection stores anchor/head (direction matters for nothing
             // here, but we preserve it). Rebase relative to the joined-text start.
             const { anchor, head } = annotation.selection.main;
-            const base = {
+            // Carry every field except id/selection verbatim — type-specific data
+            // (replacements, versions, …) rides along without enumerating it, so a
+            // new annotation field needs no change here.
+            const { id: _id, selection: _selection, ...rest } = annotation;
+            result.push({
+                ...rest,
                 relAnchor: rangeStart + (anchor - from),
                 relHead: rangeStart + (head - from),
-                thread: annotation.thread,
-            };
-            pushSerialized(result, annotation, base);
+            } as SerializedAnnotation);
         }
     }
     return result;
-}
-
-function pushSerialized(
-    result: SerializedAnnotation[],
-    annotation: GenericAnnotation,
-    base: { relAnchor: number; relHead: number; thread: GenericAnnotation["thread"] },
-): void {
-    if (isAnnotationOfType(annotation, "comment")) {
-        result.push({ ...base, _type: "comment" });
-    } else if (isAnnotationOfType(annotation, "suggestion")) {
-        result.push({
-            ...base,
-            _type: "suggestion",
-            replacements: annotation.replacements,
-            author: annotation.author,
-        });
-    } else if (isAnnotationOfType(annotation, "revision")) {
-        result.push({
-            ...base,
-            _type: "revision",
-            activeVersionIndex: annotation.activeVersionIndex,
-            versions: annotation.versions,
-        });
-    }
 }
 
 // ── HTML encode/decode ───────────────────────────────────────────────────────
@@ -386,36 +332,22 @@ function rebuildAnnotation(
     serialized: SerializedAnnotation,
     id: number,
     selection: EditorSelection,
-): GenericAnnotation | null {
-    const base = { id, selection, thread: serialized.thread };
-    switch (serialized._type) {
-        case "comment":
-            return { ...base, _type: "comment" };
-        case "suggestion":
-            return {
-                ...base,
-                _type: "suggestion",
-                replacements: serialized.replacements,
-                author: serialized.author,
-            };
-        case "revision":
-            // The active version's doc is, by construction, the text we just
-            // inserted — so addAnnotation (which skips Phase 3 for revisions)
-            // keeps the range and active version consistent. Clamp the active
-            // index defensively in case a malformed payload points past the
-            // versions array.
-            return {
-                ...base,
-                _type: "revision",
-                activeVersionIndex: Math.max(
-                    0,
-                    Math.min(serialized.activeVersionIndex, serialized.versions.length - 1),
-                ),
-                versions: serialized.versions,
-            };
-        default:
-            return null;
+): GenericAnnotation {
+    // Inverse of serialization: drop the rebased offsets, restore id/selection,
+    // and carry every other field (thread, replacements, versions, …) verbatim.
+    const { relAnchor: _relAnchor, relHead: _relHead, ...rest } = serialized;
+    const rebuilt = { ...rest, id, selection } as GenericAnnotation;
+    if (isAnnotationOfType(rebuilt, "revision")) {
+        // The active version's doc is, by construction, the text we just inserted,
+        // so addAnnotation (which skips Phase 3 for revisions) keeps the range and
+        // active version consistent. Clamp the active index defensively in case a
+        // malformed payload points past the versions array.
+        rebuilt.activeVersionIndex = Math.max(
+            0,
+            Math.min(rebuilt.activeVersionIndex, rebuilt.versions.length - 1),
+        );
     }
+    return rebuilt;
 }
 
 /**
@@ -468,7 +400,6 @@ export function restoreAnnotations(
             );
             if (!cleaned) return null;
             const rebuilt = rebuildAnnotation(a, nextId, cleaned);
-            if (!rebuilt) return null;
             nextId++;
             return addAnnotation.of(rebuilt);
         })

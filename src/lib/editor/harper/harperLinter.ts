@@ -12,12 +12,16 @@
  *   cross-paragraph rules (e.g. RepeatedWords) and warm off-screen cache.
  * - Cache is LRU-bounded to CACHE_MAX_SIZE entries to prevent unbounded growth.
  */
-import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
-import { type Dialect, WorkerLinter, SuggestionKind, type Suggestion, type Lint } from "harper.js";
+import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { type Dialect, type Lint, type Suggestion, SuggestionKind, WorkerLinter } from "harper.js";
 import { slimBinaryInlined } from "harper.js/slimBinaryInlined";
-import { linter, forceLinting, type Diagnostic, type Action } from "./lint";
+import { hashText } from "../hash";
+import { type Action, type Diagnostic, forceLinting, linter } from "./lint";
 import { lintKindClass } from "./lintKindColor";
+
+// Re-exported for backwards compatibility with existing importers.
+export { hashText };
 
 export const HARPER_DICTIONARY_KEY = "harper-dictionary";
 const DEFAULT_DELAY = 300;
@@ -26,20 +30,6 @@ const FULL_LINT_INTERVAL = 30_000;
 const CACHE_MAX_SIZE = 200;
 
 type OrganizedLints = Awaited<ReturnType<InstanceType<typeof WorkerLinter>["organizedLints"]>>;
-
-/**
- * FNV-1a 32-bit hash — sync, zero deps, good enough distribution for a cache key.
- * 2^32 output space; collision probability ≈ entries/4B (negligible at CACHE_MAX_SIZE).
- * https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
- */
-export function hashText(text: string): number {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < text.length; i++) {
-        hash ^= text.charCodeAt(i);
-        hash = (hash * 0x01000193) >>> 0;
-    }
-    return hash;
-}
 
 // LRU cache keyed by FNV-1a hash of paragraph text.
 // Insertion order = access order (Map preserves insertion order;

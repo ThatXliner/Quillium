@@ -170,3 +170,37 @@ export const RawAnnotationsSchema = z.record(z.string(), RawAnnotationSchema);
 export type RawAnnotation = z.infer<typeof RawAnnotationSchema>;
 export type RawAnnotations = z.infer<typeof RawAnnotationsSchema>;
 export type Annotations = { [id: number]: GenericAnnotation };
+
+// ── Clipboard-serialized shape ──────────────────────────────────
+// An annotation rebased into copy-relative coordinates: its id and selection are
+// stripped (id is regenerated on paste; the selection is replaced by integer
+// relAnchor/relHead offsets relative to the start of the copied text). Every
+// other field rides along verbatim, reusing the canonical per-type extras from
+// RawAnnotationSchema's members so this stays a single source of truth — a new
+// field on any annotation type flows through copy and paste with no change here.
+//
+// Clipboard payloads come from an untrusted source (a foreign or hand-crafted
+// clipboard), so the position offsets and active index are tightened to integers
+// even though the persisted schema allows bare numbers: a fractional doc
+// coordinate would crash CodeMirror on paste.
+const [RawComment, RawSuggestion, RawRevision] = RawAnnotationSchema.options;
+const SerializedBase = z.object({
+    relAnchor: z.number().int(),
+    relHead: z.number().int(),
+    thread: z.array(ThreadMessageSchema),
+});
+export const SerializedAnnotationSchema = z.discriminatedUnion("_type", [
+    SerializedBase.extend({ _type: RawComment.shape._type }),
+    SerializedBase.extend({
+        _type: RawSuggestion.shape._type,
+        replacements: RawSuggestion.shape.replacements,
+        author: RawSuggestion.shape.author,
+    }),
+    SerializedBase.extend({
+        _type: RawRevision.shape._type,
+        activeVersionIndex: z.number().int(),
+        versions: RawRevision.shape.versions,
+    }),
+]);
+export const SerializedAnnotationsSchema = z.array(SerializedAnnotationSchema);
+export type SerializedAnnotation = z.infer<typeof SerializedAnnotationSchema>;
