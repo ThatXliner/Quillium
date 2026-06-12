@@ -36,6 +36,35 @@ type Annotations = { [id: number]: GenericAnnotation };
 
 **Important:** Always use `isAnnotationOfType(annotation, "revision")` — never compare `_type` directly.
 
+### Adding a new annotation type
+
+A new variant of `GenericAnnotation` is **not** picked up automatically — several
+places enumerate the union by hand. Work through this checklist; the build will
+stop you at most of these, but not all:
+
+1. **`models.ts` — the type and its raw schema.** Add the new `…Annotation` type
+   to the `GenericAnnotation` union, then add a matching member to
+   `RawAnnotationSchema` (the discriminated union persisted to disk). These are
+   the source of truth everything else derives from.
+2. **`models.ts` — the clipboard-serialized shape.** Add a member to
+   `SerializedAnnotationSchema`, carrying the type's extra fields the same way
+   the revision/suggestion members do. This is the part most likely to be missed:
+   without it, copy/cut **deletes** an annotation of the new type but never writes
+   it to the clipboard, so paste silently loses it. Two compile-time tripwires
+   guard this — the `RawAnnotationSchema.options satisfies […]` length check and
+   the `_AssertSerializedCoversAllTypes` equality — so forgetting step 2 fails the
+   build. (The serialize/rebuild functions in `clipboardAnnotations.ts` spread all
+   fields generically, so they need no change once the schema covers the type.)
+3. **`annotationField.ts` — Phase 3 / `pushDocToVersionState`** if the new type
+   mirrors document text the way revisions do. Most types won't.
+4. **Decorations and UI** — `annotationDecorations` in `index.ts`, plus whatever
+   sidebar/card component renders the type.
+5. **Factory + commands** — a `createNew…` path and any keybinding, if the type
+   is user-creatable.
+
+Steps 1–2 are enforced by the compiler; 3–5 are not, so add tests for the new
+type's create → edit → undo and (if it should be copyable) copy → paste flows.
+
 ### VersionState
 
 `VersionState` is `{ doc: string; label?: string } & object`. Each entry reflects the most recent text under a revision range. Phase 3 pushes the parent document slice into `versions[activeVersionIndex].doc` on each edit. `VersionStateSchema` uses `.passthrough()` so extra keys survive serialization.

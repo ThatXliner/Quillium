@@ -75,6 +75,7 @@ import {
     WidgetType,
     keymap,
 } from "@codemirror/view";
+import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
 import { SuggestionDiffWidget, diffTokens, tokenize } from "./diff";
 export type { DiffOp } from "./diff";
 export { tokenize, diffTokens } from "./diff";
@@ -379,6 +380,12 @@ const boundaryInsertNudge = ViewPlugin.fromClass(
             const annotations = update.startState.field(annotationField);
             for (const tr of update.transactions) {
                 if (!tr.docChanged) continue;
+                // The nudge gently warns when the user *types* right at a revision
+                // edge. An annotation-carrying paste lands as a block with its own
+                // annotations, so nudging about a destination revision it happens
+                // to abut is noise — skip only those (marked with clipboardPaste).
+                // Plain pastes still get the nudge, exactly like typed insertions.
+                if (tr.effects.some((e) => e.is(clipboardPaste))) continue;
                 tr.changes.iterChanges((fromA, _toA, _fromB, _toB, inserted) => {
                     if (inserted.length === 0) return; // deletion, not insertion
                     for (const annotation of Object.values(annotations)) {
@@ -1014,6 +1021,7 @@ export const annotations = () => [
     annotationDecorations,
     revisionAtomicRanges,
     revisionClickHandler,
+    clipboardAnnotationHandlers,
     collapsedRevisionResolver,
     boundaryInsertNudge,
     invertedAnnotationFieldEffects,
