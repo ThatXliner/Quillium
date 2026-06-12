@@ -1,29 +1,29 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
-import { ArrowLeft, BookmarkPlus, Clock, Pencil, ChevronRight, RotateCcw } from "lucide-svelte";
-import { get } from "svelte/store";
-import { EditorView } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
-import { currentDraftId, editorView, lastPersistedEventId, lastSavedAt } from "$lib/stores";
-import posthog from "$lib/posthog";
 import {
-    listDocuments,
-    listDrafts,
-    listSnapshots,
-    labelSnapshot,
-    restoreToSnapshot,
     createNamedSnapshot,
-    loadSnapshotState,
-    getSnapshotStorageSize,
     getSnapshotRetention,
-    setSnapshotRetention,
+    getSnapshotStorageSize,
+    labelSnapshot,
+    listDocuments,
+    listSnapshots,
+    loadSnapshotState,
     pruneSnapshotsKeepLastN,
     pruneSnapshotsOlderThan,
+    resolveActiveDraftId,
+    restoreToSnapshot,
+    setSnapshotRetention,
 } from "$lib/db";
-import { savedFields, getExtensions } from "$lib/editor/extensions";
-import { goToEditor } from "$lib/navigation";
-import Kbd from "$lib/ui/Kbd.svelte";
 import type { SnapshotMeta } from "$lib/db/types";
+import { getExtensions, savedFields } from "$lib/editor/extensions";
+import { goToEditor } from "$lib/navigation";
+import posthog from "$lib/posthog";
+import { currentDraftId, editorView, lastPersistedEventId, lastSavedAt } from "$lib/stores";
+import Kbd from "$lib/ui/Kbd.svelte";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { ArrowLeft, BookmarkPlus, ChevronRight, Clock, Pencil, RotateCcw } from "lucide-svelte";
+import { onDestroy, onMount } from "svelte";
+import { get } from "svelte/store";
 
 // ── State ───────────────────────────────────────────────────────
 let snapshots = $state<SnapshotMeta[]>([]);
@@ -94,9 +94,8 @@ async function bootstrapDraftId() {
     if (get(currentDraftId)) return;
     const docs = await listDocuments();
     if (docs.length === 0) return; // No document yet — show empty state.
-    const drafts = await listDrafts(docs[0].id);
-    const active = drafts.find((d) => d.isActive) ?? drafts[0];
-    if (active) currentDraftId.set(active.id);
+    const active = await resolveActiveDraftId(docs[0].id);
+    if (active) currentDraftId.set(active);
 }
 
 onMount(async () => {

@@ -2,6 +2,7 @@ pub mod documents;
 pub mod events;
 pub mod load;
 pub mod schema;
+pub mod tabs;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,12 +21,31 @@ pub struct DocumentMeta {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TabMeta {
+    pub id: String,
+    pub document_id: String,
+    pub tab_type: String,
+    pub label: String,
+    pub position: i64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftMeta {
     pub id: String,
     pub document_id: String,
     pub label: String,
     pub created_at: i64,
     pub is_active: bool,
+    /// Tab this draft belongs to. Nullable only for rows created before
+    /// the tabs migration ran (backfill assigns them on next startup).
+    pub tab_id: Option<String>,
+    /// Parent in the draft tree; None for root drafts.
+    pub parent_draft_id: Option<String>,
+    /// Soft lock — set when the draft has been branched from. The editor
+    /// shows a lock banner but the DB does not reject writes.
+    pub locked: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

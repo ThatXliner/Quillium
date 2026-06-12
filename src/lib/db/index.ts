@@ -7,7 +7,14 @@
  * @tauri-apps/plugin-sql directly.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta } from "./types";
+import type {
+    AppendEventResult,
+    DocumentMeta,
+    DraftMeta,
+    LoadResult,
+    SnapshotMeta,
+    TabMeta,
+} from "./types";
 
 // ── Reset ─────────────────────────────────────────────────────────
 
@@ -91,6 +98,93 @@ export async function listDrafts(docId: string): Promise<DraftMeta[]> {
 
 export async function createDraft(docId: string, label: string): Promise<string> {
     return invoke<string>("cmd_create_draft", { docId, label });
+}
+
+// ── Tabs (#160: document tabs) ────────────────────────────────────
+
+export async function listTabs(docId: string): Promise<TabMeta[]> {
+    return invoke<TabMeta[]>("cmd_list_tabs", { docId });
+}
+
+/** Creates a tab plus its root "main" draft atomically. */
+export async function createTab(docId: string, label: string): Promise<TabMeta> {
+    return invoke<TabMeta>("cmd_create_tab", { docId, label });
+}
+
+export async function renameTab(tabId: string, label: string): Promise<void> {
+    return invoke<void>("cmd_rename_tab", { tabId, label });
+}
+
+/** Deletes a tab and all its drafts. Rejects on the document's last tab. */
+export async function deleteTab(tabId: string): Promise<void> {
+    return invoke<void>("cmd_delete_tab", { tabId });
+}
+
+export async function getActiveTab(docId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_active_tab", { docId });
+}
+
+export async function setActiveTab(docId: string, tabId: string): Promise<void> {
+    return invoke<void>("cmd_set_active_tab", { docId, tabId });
+}
+
+// ── Draft tree (#160: draft branching) ────────────────────────────
+
+export async function listTabDrafts(tabId: string): Promise<DraftMeta[]> {
+    return invoke<DraftMeta[]>("cmd_list_tab_drafts", { tabId });
+}
+
+/**
+ * Forks a draft into a child seeded with `stateJson` (serialized
+ * EditorState) as a "Branch point" snapshot. Locks the parent.
+ */
+export async function forkDraft(
+    parentDraftId: string,
+    label: string,
+    stateJson: string | null,
+): Promise<DraftMeta> {
+    return invoke<DraftMeta>("cmd_fork_draft", { parentDraftId, label, stateJson });
+}
+
+export async function renameDraft(draftId: string, label: string): Promise<void> {
+    return invoke<void>("cmd_rename_draft", { draftId, label });
+}
+
+export async function setDraftLocked(draftId: string, locked: boolean): Promise<void> {
+    return invoke<void>("cmd_set_draft_locked", { draftId, locked });
+}
+
+/** Deletes a leaf draft. Rejects if it has branches or is the tab's last draft. */
+export async function deleteDraft(draftId: string): Promise<void> {
+    return invoke<void>("cmd_delete_draft", { draftId });
+}
+
+export async function getActiveDraft(tabId: string): Promise<string | null> {
+    return invoke<string | null>("cmd_get_active_draft", { tabId });
+}
+
+/**
+ * Resolves the draft a bare document open should show: the active tab's
+ * active draft (mirrors the Rust-side resolution in load.rs). Falls back
+ * to the legacy first-active-draft lookup for pre-migration documents.
+ */
+export async function resolveActiveDraftId(docId: string): Promise<string | null> {
+    const tabList = await listTabs(docId);
+    if (tabList.length > 0) {
+        const persistedTab = await getActiveTab(docId);
+        const tab = tabList.find((t) => t.id === persistedTab) ?? tabList[0];
+        const drafts = await listTabDrafts(tab.id);
+        if (drafts.length > 0) {
+            const persistedDraft = await getActiveDraft(tab.id);
+            return (drafts.find((d) => d.id === persistedDraft) ?? drafts[0]).id;
+        }
+    }
+    const drafts = await listDrafts(docId);
+    return (drafts.find((d) => d.isActive) ?? drafts[0])?.id ?? null;
+}
+
+export async function setActiveDraft(tabId: string, draftId: string): Promise<void> {
+    return invoke<void>("cmd_set_active_draft", { tabId, draftId });
 }
 
 // ── Events & snapshots ────────────────────────────────────────────

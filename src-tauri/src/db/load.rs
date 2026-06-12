@@ -1,39 +1,62 @@
 use rusqlite::{params, Connection, Result};
 
+use super::tabs::{get_active_draft, get_active_tab};
 use super::{EventRecord, LoadResult};
+
+/// Resolves the draft a bare document load should show: the active tab's
+/// active draft. Falls back through first-tab/first-draft and finally the
+/// pre-tabs `_meta` key so old databases keep loading correctly.
+fn resolve_default_draft(conn: &Connection, doc_id: &str) -> Option<String> {
+    let tab_id = match get_active_tab(conn, doc_id).ok().flatten() {
+        Some(id) => Some(id),
+        None => conn
+            .query_row(
+                "SELECT id FROM tabs WHERE document_id = ?1 ORDER BY position ASC LIMIT 1",
+                params![doc_id],
+                |row| row.get(0),
+            )
+            .ok(),
+    };
+    if let Some(tab_id) = tab_id {
+        if let Some(draft) = get_active_draft(conn, &tab_id).ok().flatten() {
+            return Some(draft);
+        }
+        if let Ok(draft) = conn.query_row(
+            "SELECT id FROM drafts WHERE tab_id = ?1 ORDER BY created_at ASC LIMIT 1",
+            params![tab_id],
+            |row| row.get(0),
+        ) {
+            return Some(draft);
+        }
+    }
+    // Legacy fallbacks for documents predating the tabs migration.
+    let meta_key = format!("active_draft:{}", doc_id);
+    if let Ok(draft) = conn.query_row(
+        "SELECT value FROM _meta WHERE key = ?1",
+        params![meta_key],
+        |row| row.get(0),
+    ) {
+        return Some(draft);
+    }
+    conn.query_row(
+        "SELECT id FROM drafts WHERE document_id = ?1 AND is_active = 1
+         ORDER BY created_at ASC LIMIT 1",
+        params![doc_id],
+        |row| row.get(0),
+    )
+    .ok()
+}
 
 pub fn load_document_state(
     conn: &Connection,
     doc_id: &str,
     draft_id: Option<&str>,
 ) -> Result<LoadResult> {
-    // Resolve draft_id: use provided, or find active draft for doc
+    // Resolve draft_id: use provided, else active tab → that tab's active
+    // draft, else legacy fallbacks (pre-tabs _meta key, first active draft).
     let resolved_draft_id = match draft_id {
         Some(id) => id.to_string(),
-        None => {
-            // Try _meta for active_draft:{doc_id}
-            let meta_key = format!("active_draft:{}", doc_id);
-            let from_meta: Option<String> = conn
-                .query_row(
-                    "SELECT value FROM _meta WHERE key = ?1",
-                    params![meta_key],
-                    |row| row.get(0),
-                )
-                .ok();
-
-            if let Some(id) = from_meta {
-                id
-            } else {
-                // Fall back to first active draft
-                conn.query_row(
-                    "SELECT id FROM drafts WHERE document_id = ?1 AND is_active = 1
-                     ORDER BY created_at ASC LIMIT 1",
-                    params![doc_id],
-                    |row| row.get(0),
-                )
-                .unwrap_or_default()
-            }
-        }
+        None => resolve_default_draft(conn, doc_id).unwrap_or_default(),
     };
 
     if resolved_draft_id.is_empty() {

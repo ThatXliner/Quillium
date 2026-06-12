@@ -1,11 +1,11 @@
-import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
-import { EditorHarness } from "../helpers/EditorHarness";
 import type { DraftMeta, LoadResult } from "$lib/db/types";
 import type { VersionState } from "$lib/editor/plugins/annotations/models";
 import { exportDocument, exportDocumentById } from "$lib/export";
 import { currentDocumentTitle } from "$lib/stores";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EditorHarness } from "../helpers/EditorHarness";
 
 let h: EditorHarness;
 let savedContent: string;
@@ -17,6 +17,9 @@ let mockedLoadResult: LoadResult;
 
 vi.mock("$lib/db", () => ({
     listDrafts: vi.fn(async () => mockedDrafts),
+    resolveActiveDraftId: vi.fn(
+        async () => (mockedDrafts.find((d) => d.isActive) ?? mockedDrafts[0])?.id ?? null,
+    ),
     loadDocumentState: vi.fn(async () => mockedLoadResult),
 }));
 
@@ -63,6 +66,9 @@ beforeEach(() => {
             label: "Draft 1",
             createdAt: 0,
             isActive: true,
+            tabId: "tab-1",
+            parentDraftId: null,
+            locked: false,
         },
     ];
     mockedLoadResult = {

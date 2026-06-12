@@ -123,6 +123,13 @@ export const saveStatus = writable<"saved" | "saving" | "error">("saved");
 export const currentDraftId = writable<string | null>(null);
 
 /**
+ * The ID of the active document tab (#160).
+ * Written by: Editor.svelte on load and when switching tabs.
+ * Read by: Editor.svelte draft-tree handlers.
+ */
+export const currentTabId = writable<string | null>(null);
+
+/**
  * Controls tutorial overlay visibility.
  * Written by: +page.svelte (on first visit), StatusBar.svelte
  *             (the "?" button), Tutorial.svelte (on complete).

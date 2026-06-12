@@ -18,12 +18,28 @@ export type DocumentMeta = {
     deletedAt: number | null;
 };
 
+export type TabMeta = {
+    id: string;
+    documentId: string;
+    /** "draft" for prose tabs; future types (e.g. "canvas") share the bar. */
+    tabType: string;
+    label: string;
+    position: number;
+    createdAt: number;
+};
+
 export type DraftMeta = {
     id: string;
     documentId: string;
     label: string;
     createdAt: number;
     isActive: boolean;
+    /** Tab this draft belongs to; null only for pre-migration rows. */
+    tabId: string | null;
+    /** Parent in the draft tree; null for root drafts. */
+    parentDraftId: string | null;
+    /** Soft lock — set when this draft has been branched from. */
+    locked: boolean;
 };
 
 export type AppendEventResult = {

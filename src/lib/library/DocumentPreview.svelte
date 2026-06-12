@@ -3,11 +3,11 @@
     Loads and displays full document content with formatting.
 -->
 <script lang="ts">
+import { loadDocumentState, resolveActiveDraftId } from "$lib/db";
+import { getExtensions, savedFields } from "$lib/editor/extensions";
+import { replayEvents } from "$lib/editor/replay";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { getExtensions, savedFields } from "$lib/editor/extensions";
-import { listDrafts, loadDocumentState } from "$lib/db";
-import { replayEvents } from "$lib/editor/replay";
 import "$lib/editor/plugins/annotations/default.css";
 
 interface Props {
@@ -32,15 +32,17 @@ $effect(() => {
     loading = true;
     error = null;
 
-    loadPreview(id, previewEl).then((view) => {
-        previewView?.destroy();
-        previewView = view;
-        loading = false;
-    }).catch((e) => {
-        console.error("[DocumentPreview] Failed to load:", e);
-        error = "Failed to load preview";
-        loading = false;
-    });
+    loadPreview(id, previewEl)
+        .then((view) => {
+            previewView?.destroy();
+            previewView = view;
+            loading = false;
+        })
+        .catch((e) => {
+            console.error("[DocumentPreview] Failed to load:", e);
+            error = "Failed to load preview";
+            loading = false;
+        });
 
     return () => {
         previewView?.destroy();
@@ -49,13 +51,12 @@ $effect(() => {
 });
 
 async function loadPreview(id: string, parent: HTMLDivElement): Promise<EditorView> {
-    const drafts = await listDrafts(id);
-    const activeDraft = drafts.find((d) => d.isActive) ?? drafts[0];
-    if (!activeDraft) {
+    const activeDraftId = await resolveActiveDraftId(id);
+    if (!activeDraftId) {
         throw new Error("No draft found");
     }
 
-    const loaded = await loadDocumentState(id, activeDraft.id);
+    const loaded = await loadDocumentState(id, activeDraftId);
     const extensions = [
         ...getExtensions({ persist: false, history: false }),
         EditorState.readOnly.of(true),
@@ -65,7 +66,11 @@ async function loadPreview(id: string, parent: HTMLDivElement): Promise<EditorVi
     let state: EditorState;
     if (loaded.snapshotStateJson && loaded.snapshotStateJson !== "{}") {
         try {
-            state = EditorState.fromJSON(JSON.parse(loaded.snapshotStateJson), { extensions }, savedFields);
+            state = EditorState.fromJSON(
+                JSON.parse(loaded.snapshotStateJson),
+                { extensions },
+                savedFields,
+            );
         } catch {
             state = EditorState.create({ extensions });
         }

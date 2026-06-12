@@ -20,14 +20,14 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { get } from "svelte/store";
 import { annotationField } from "./editor/plugins/annotations";
 import {
+    type GenericAnnotation,
+    RawAnnotationsSchema,
+    type VersionState,
     isAnnotationOfType,
     versionText,
-    RawAnnotationsSchema,
-    type GenericAnnotation,
-    type VersionState,
 } from "./editor/plugins/annotations/models";
-import { currentDocumentTitle } from "./stores";
 import posthog from "./posthog";
+import { currentDocumentTitle } from "./stores";
 
 export type ExportFormat = "txt" | "json" | "md" | "txt+json" | "pdf" | "pdf+annotations";
 type TextExportFormat = Exclude<ExportFormat, "pdf" | "pdf+annotations">;
@@ -370,17 +370,16 @@ export async function exportDocument(view: EditorView, format: ExportFormat) {
 
 /** Export a document by loading its state from the database. */
 export async function exportDocumentById(docId: string, docTitle: string, format: ExportFormat) {
-    const { listDrafts, loadDocumentState } = await import("./db");
+    const { loadDocumentState, resolveActiveDraftId } = await import("./db");
     const { replayEvents } = await import("./editor/replay");
     const { history, historyField } = await import("@codemirror/commands");
     const { EditorState } = await import("@codemirror/state");
     const { annotationField } = await import("./editor/plugins/annotations");
 
-    const drafts = await listDrafts(docId);
-    const active = drafts.find((d) => d.isActive) ?? drafts[0];
-    if (!active) return;
+    const activeDraftId = await resolveActiveDraftId(docId);
+    if (!activeDraftId) return;
 
-    const loaded = await loadDocumentState(docId, active.id);
+    const loaded = await loadDocumentState(docId, activeDraftId);
 
     const extensions = [history(), annotationField];
     let state: EditorState;
