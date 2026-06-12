@@ -13,6 +13,7 @@ import type {
     DocumentMeta,
     DraftMeta,
     LoadResult,
+    SearchHit,
     SnapshotMeta,
     TabMeta,
 } from "./types";
@@ -41,12 +42,18 @@ export async function createDocument(title = "Untitled"): Promise<string> {
     return invoke<string>("cmd_create_document", { title });
 }
 
+/**
+ * `bodyText` is the full plain document text, used to keep the search index
+ * current. Omit it for metadata-only updates (rename, tags) — the previously
+ * indexed body is preserved.
+ */
 export async function updateDocumentMeta(
     id: string,
     title: string,
     wordCount: number,
     previewText: string,
     tags: string,
+    bodyText?: string,
 ): Promise<void> {
     return invoke<void>("cmd_update_document_meta", {
         id,
@@ -54,7 +61,82 @@ export async function updateDocumentMeta(
         wordCount,
         previewText,
         tags,
+        bodyText,
     });
+}
+
+/**
+ * Hybrid search across all non-trashed documents: FTS5 keyword matching
+ * fused with on-device semantic (embedding) matching. Results are ranked
+ * best-first and include a match snippet.
+ */
+export async function searchDocuments(query: string): Promise<SearchHit[]> {
+    return invoke<SearchHit[]>("cmd_search_documents", { query });
+}
+
+/**
+ * Semantic index status: "disabled" | "starting" | "loading-model" |
+ * "indexing" | "ready" | "unavailable" | "error: …". Keyword search works
+ * regardless.
+ */
+export async function getSearchStatus(): Promise<string> {
+    return invoke<string>("cmd_search_status");
+}
+
+/** Whether the semantic index is still coming up (model download / initial indexing). */
+export function isSearchStatusPreparing(status: string): boolean {
+    return status === "starting" || status === "loading-model" || status === "indexing";
+}
+
+/**
+ * Polls the semantic index status until it settles (any non-preparing
+ * status), reporting each reading via `onStatus`. If the status command
+ * fails, reports `null` once and stops. Returns a cancel function — call it
+ * on component teardown.
+ */
+export function pollSearchStatus(
+    onStatus: (status: string | null) => void,
+    intervalMs = 2000,
+): () => void {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+        let status: string;
+        try {
+            status = await getSearchStatus();
+        } catch {
+            if (!cancelled) onStatus(null);
+            return;
+        }
+        if (cancelled) return;
+        onStatus(status);
+        if (isSearchStatusPreparing(status)) {
+            timer = setTimeout(poll, intervalMs);
+        }
+    };
+    poll();
+    return () => {
+        cancelled = true;
+        clearTimeout(timer);
+    };
+}
+
+/** Whether the user opted in to semantic search (Settings toggle). */
+export async function getSemanticSearchEnabled(): Promise<boolean> {
+    return invoke<boolean>("cmd_get_semantic_search_enabled");
+}
+
+/**
+ * Persists the semantic-search opt-in and starts/stops the index worker.
+ * First enable downloads the embedding model (~30 MB) in the background.
+ */
+export async function setSemanticSearchEnabled(enabled: boolean): Promise<void> {
+    return invoke<void>("cmd_set_semantic_search_enabled", { enabled });
+}
+
+/** Drops the model from memory and deletes its on-disk cache (~30 MB). Also persists the opt-out. */
+export async function uninstallSemanticModel(): Promise<void> {
+    return invoke<void>("cmd_uninstall_semantic_model");
 }
 
 export async function deleteDocument(id: string): Promise<void> {

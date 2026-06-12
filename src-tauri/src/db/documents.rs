@@ -85,6 +85,8 @@ pub fn create_document(conn: &Connection, title: &str) -> Result<String> {
     Ok(id)
 }
 
+/// `body_text` is the full plain text used by full-text search. Pass `None`
+/// for metadata-only updates (rename, tags) to leave the indexed body intact.
 pub fn update_document_meta(
     conn: &Connection,
     id: &str,
@@ -92,13 +94,21 @@ pub fn update_document_meta(
     word_count: i64,
     preview_text: &str,
     tags: &str,
+    body_text: Option<&str>,
 ) -> Result<()> {
     let now = now_ms();
-    conn.execute(
-        "UPDATE documents SET title = ?1, updated_at = ?2, word_count = ?3,
-         preview_text = ?4, tags = ?5 WHERE id = ?6",
-        params![title, now, word_count, preview_text, tags, id],
-    )?;
+    match body_text {
+        Some(body) => conn.execute(
+            "UPDATE documents SET title = ?1, updated_at = ?2, word_count = ?3,
+             preview_text = ?4, tags = ?5, body_text = ?6 WHERE id = ?7",
+            params![title, now, word_count, preview_text, tags, body, id],
+        )?,
+        None => conn.execute(
+            "UPDATE documents SET title = ?1, updated_at = ?2, word_count = ?3,
+             preview_text = ?4, tags = ?5 WHERE id = ?6",
+            params![title, now, word_count, preview_text, tags, id],
+        )?,
+    };
     Ok(())
 }
 
@@ -120,6 +130,12 @@ pub fn restore_document(conn: &Connection, id: &str) -> Result<()> {
 }
 
 pub fn delete_document(conn: &Connection, id: &str) -> Result<()> {
+    // vec_chunks is a virtual table — FK cascades don't reach it, so clear
+    // the document's vectors before the chunks rows cascade away.
+    conn.execute(
+        "DELETE FROM vec_chunks WHERE rowid IN (SELECT id FROM chunks WHERE document_id = ?1)",
+        params![id],
+    )?;
     conn.execute("DELETE FROM documents WHERE id = ?1", params![id])?;
     Ok(())
 }
@@ -158,9 +174,43 @@ pub fn set_trash_retention(conn: &Connection, days: Option<i64>) -> Result<()> {
     Ok(())
 }
 
+/// Whether the user has opted in to semantic search (which downloads an
+/// embedding model on first enable). Defaults to false — keyword search
+/// (FTS5) works regardless.
+pub fn get_semantic_search_enabled(conn: &Connection) -> Result<bool> {
+    let result: rusqlite::Result<String> = conn.query_row(
+        "SELECT value FROM _meta WHERE key = 'semantic_search_enabled'",
+        [],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(val) => Ok(val == "1"),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn set_semantic_search_enabled(conn: &Connection, enabled: bool) -> Result<()> {
+    conn.execute(
+        "INSERT INTO _meta (key, value) VALUES ('semantic_search_enabled', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![if enabled { "1" } else { "0" }],
+    )?;
+    Ok(())
+}
+
 /// Permanently deletes trashed documents older than `days` days.
 pub fn purge_expired_trash(conn: &Connection, days: i64) -> Result<u64> {
     let cutoff = now_ms() - days * 24 * 60 * 60 * 1000;
+    // See delete_document: vectors must be cleared manually (virtual table).
+    conn.execute(
+        "DELETE FROM vec_chunks WHERE rowid IN (
+             SELECT c.id FROM chunks c
+             JOIN documents d ON d.id = c.document_id
+             WHERE d.deleted_at IS NOT NULL AND d.deleted_at < ?1
+         )",
+        params![cutoff],
+    )?;
     let count = conn.execute(
         "DELETE FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < ?1",
         params![cutoff],

@@ -40,6 +40,7 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 | [AI Sidebar](./docs/ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |
 | [Settings](./docs/settings.md) | App preferences, fonts |
 | [Library](./docs/library.md) | Document management, trash |
+| [Search](./docs/search.md) | FTS5 + semantic search, schema migrations |
 | [Version History](./docs/version-history.md) | Snapshots, restore |
 | [Error Handling](./docs/error-handling.md) | Crash recovery, banners |
 | [Native Integration](./docs/native-integration.md) | Tauri menu, keychain, updater, PDF |

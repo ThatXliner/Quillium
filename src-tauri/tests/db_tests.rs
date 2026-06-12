@@ -1,5 +1,5 @@
 use quillium_lib::db::{
-    documents::{create_document, create_draft, list_documents},
+    documents::{create_document, create_draft},
     events::{append_event, create_snapshot},
     load::load_document_state,
     schema::open_db,
@@ -14,6 +14,8 @@ use rusqlite::Connection;
 // open_db (rather than bare init_schema) so the tabs/draft-tree migration
 // runs — production code assumes its ALTER-added columns exist.
 fn in_memory_db() -> Connection {
+    // open_db handles pragmas, extension registration, and migrations;
+    // SQLite treats the ":memory:" path specially.
     open_db(std::path::Path::new(":memory:")).expect("in-memory DB")
 }
 
@@ -386,8 +388,10 @@ fn test_migration_backfills_pre_tabs_drafts() {
         rusqlite::params![doc_id],
     )
     .expect("legacy draft");
+    conn.pragma_update(None, "user_version", 5)
+        .expect("rewind version");
 
-    quillium_lib::db::schema::migrate_tabs_and_draft_tree(&conn).expect("re-run migration");
+    quillium_lib::db::migrations::migrate(&conn).expect("re-run migration");
 
     let tabs = list_tabs(&conn, &doc_id).expect("tabs");
     assert_eq!(tabs.len(), 1);

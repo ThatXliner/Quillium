@@ -139,12 +139,17 @@ async function suggestTitle() {
             const docId = get(currentDocumentId);
             if (docId) {
                 const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-                updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]").catch(
-                    (e) => {
-                        console.error(e);
-                        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                    },
-                );
+                updateDocumentMeta(
+                    docId,
+                    newTitle,
+                    wordCount,
+                    text.slice(0, 200),
+                    "[]",
+                    text,
+                ).catch((e) => {
+                    console.error(e);
+                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                });
             }
         }
     } catch (e) {
@@ -168,10 +173,12 @@ async function commitTitle() {
     if (docId) {
         const text = $editorView?.state.doc.toString() ?? "";
         const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-        updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]").catch((e) => {
-            console.error(e);
-            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-        });
+        updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]", text).catch(
+            (e) => {
+                console.error(e);
+                posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+            },
+        );
     }
 }
 
@@ -371,7 +378,14 @@ const fromSave = (async () => {
         // before the user makes any edits.
         const stateJson = JSON.stringify(state.toJSON(savedFields));
         await createSnapshot(newDraftId, stateJson, -1);
-        await updateDocumentMeta(newDocId, title, getWordCount(content), content.slice(0, 200), "");
+        await updateDocumentMeta(
+            newDocId,
+            title,
+            getWordCount(content),
+            content.slice(0, 200),
+            "",
+            content,
+        );
     }
     // Set stores after snapshot is written to avoid a race where the
     // currentDocumentId subscription triggers loadDocument before the

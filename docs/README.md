@@ -50,6 +50,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 | [AI Sidebar](./ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |
 | [Settings](./settings.md) | App preferences, fonts, localStorage vs SQLite |
 | [Library](./library.md) | Document management, trash, navigation |
+| [Search](./search.md) | FTS5 + semantic search, schema migrations |
 | [Version History](./version-history.md) | Snapshots, restore, storage management |
 | [Error Handling](./error-handling.md) | Error guard, crash recovery, banners |
 | [Native Integration](./native-integration.md) | Tauri menu, keychain, auto-updater, PDF export |
