@@ -79,6 +79,8 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 
 Two routes: `/` (editor) and `/library` (document grid). Page transitions via `src/lib/navigation.ts`.
 
+Documents contain tabs (top bar); each draft-type tab holds a tree of drafts (left panel). Events and snapshots are draft-scoped. See `docs/tabs-and-drafts.md`.
+
 All systems are documented in ARCHITECTURE.md.
 
 ## Code Style

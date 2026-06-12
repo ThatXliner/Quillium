@@ -100,10 +100,18 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `document_deleted_permanently` | Permanent delete | `library/+page.svelte` |
 | `document_exported` | Document exported | `export.ts` |
 
-## Drafts
+## Tabs & Drafts
 
 | Event | When | File |
 |-------|------|------|
+| `tab_created` | New tab via + button | `Editor.svelte` |
+| `tab_switched` | Tab clicked | `Editor.svelte` |
+| `tab_renamed` | Tab renamed inline | `Editor.svelte` |
+| `tab_deleted` | Tab deleted (after confirm) | `Editor.svelte` |
+| `draft_forked` | Draft branched | `Editor.svelte` |
+| `draft_switched` | Draft tree row clicked | `Editor.svelte` |
+| `draft_deleted` | Leaf draft deleted (after confirm) | `Editor.svelte` |
+| `draft_locked` / `draft_unlocked` | Soft lock toggled | `Editor.svelte` |
 | `draft_scrapped` | Draft scrapped | `Save.svelte` |
 
 ## Error & Recovery

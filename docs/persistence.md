@@ -7,10 +7,11 @@ Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodi
 | Table | Purpose |
 |-------|---------|
 | `documents` | Document metadata (title, word count, preview, tags) |
-| `drafts` | Named drafts per document (default one per document) |
-| `events` | Append-only log of CM transactions |
-| `snapshots` | Full `EditorState.toJSON()` blobs |
-| `_meta` | Key/value flags (active draft pointers) |
+| `tabs` | Document tabs (label, position, type) — see [Tabs & Drafts](./tabs-and-drafts.md) |
+| `drafts` | Draft tree per tab (`tab_id`, `parent_draft_id`, `locked`) |
+| `events` | Append-only log of CM transactions (draft-scoped) |
+| `snapshots` | Full `EditorState.toJSON()` blobs (draft-scoped) |
+| `_meta` | Key/value flags (`active_tab:{doc}`, `active_draft:{tab}`) |
 
 The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
 
