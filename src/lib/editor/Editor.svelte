@@ -172,9 +172,9 @@ function getWordCount(doc: string): number {
     return doc.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function extractSelectedText(update: ViewUpdate): string {
-    const selection = update.state.selection.main;
-    return selection.empty ? "" : update.state.sliceDoc(selection.from, selection.to);
+function extractSelectedText(state: EditorState): string {
+    const selection = state.selection.main;
+    return selection.empty ? "" : state.sliceDoc(selection.from, selection.to);
 }
 
 function computeWritingStats(doc: string, selText: string) {
@@ -194,9 +194,12 @@ function computeWritingStats(doc: string, selText: string) {
 // from CodeMirror's updateListener on every transaction, manually pushing
 // the new state into Svelte-reactive stores so the rest of the UI can
 // react normally. $effect is not used here; the hook is CodeMirror's own.
-function syncStoresToEditorState(update: ViewUpdate, doc: string, selText: string) {
-    $annotations = update.state.field(annotationField);
-    $activeAnnotation = getActiveAnnotation(update.state);
+function syncStoresToEditorState(state: EditorState) {
+    const doc = state.doc.toString();
+    const selText = extractSelectedText(state);
+    writingStats.set(computeWritingStats(doc, selText));
+    $annotations = state.field(annotationField);
+    $activeAnnotation = getActiveAnnotation(state);
     $documentContent = doc;
     $selectedText = selText;
 }
@@ -219,11 +222,7 @@ function trackKeyboardActions(update: ViewUpdate) {
 // ── Update listener ─────────────────────────────────────────────
 const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
-        const doc = update.state.doc.toString();
-        const selText = extractSelectedText(update);
-
-        writingStats.set(computeWritingStats(doc, selText));
-        syncStoresToEditorState(update, doc, selText);
+        syncStoresToEditorState(update.state);
         trackKeyboardActions(update);
     },
 };
@@ -408,8 +407,7 @@ export async function loadDocument(id: string) {
 
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
     $editorView.setState(state);
-    const text = state.doc.toString();
-    writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
+    syncStoresToEditorState(state);
 }
 
 onMount(() => {
@@ -418,6 +416,7 @@ onMount(() => {
             state,
             parent: element,
         });
+        syncStoresToEditorState(state);
         loadUserDictionary();
         posthog.capture("app_session_started", {
             word_count: getWordCount(state.doc.toString()),

@@ -165,6 +165,7 @@ export class QuilliumPage {
                                 return {
                                     snapshotStateJson: JSON.stringify({
                                         doc: payload.initialDoc,
+                                        selection: { ranges: [{ anchor: 0, head: 0 }], main: 0 },
                                         annotations: {},
                                     }),
                                     snapshotEventId: 0,
