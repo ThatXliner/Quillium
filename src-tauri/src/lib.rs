@@ -150,6 +150,21 @@ fn cmd_set_semantic_search_enabled(
     Ok(())
 }
 
+/// Drops the model from memory and deletes its on-disk cache (~30 MB).
+/// Also persists the opt-out so the model isn't re-downloaded on restart.
+#[tauri::command]
+fn cmd_uninstall_semantic_model(
+    state: tauri::State<DbState>,
+    semantic: tauri::State<SemanticState>,
+) -> Result<(), String> {
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        set_semantic_search_enabled(&conn, false).map_err(|e| e.to_string())?;
+    }
+    semantic.0.uninstall_model();
+    Ok(())
+}
+
 #[tauri::command]
 fn cmd_delete_document(state: tauri::State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
@@ -722,6 +737,7 @@ pub fn run() {
             cmd_search_status,
             cmd_get_semantic_search_enabled,
             cmd_set_semantic_search_enabled,
+            cmd_uninstall_semantic_model,
             cmd_delete_document,
             cmd_trash_document,
             cmd_restore_document,

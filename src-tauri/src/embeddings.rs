@@ -48,6 +48,7 @@ enum Job {
     Index(String),
     Enable,
     Disable,
+    Uninstall,
 }
 
 pub struct SemanticIndex {
@@ -115,6 +116,19 @@ impl SemanticIndex {
                 self.set_status("disabled");
                 self.send(Job::Disable);
             }
+        }
+    }
+
+    /// Drops the model from memory and deletes the on-disk model cache.
+    /// The SQLite chunks/vectors are kept so that if the user re-enables,
+    /// only documents edited in the interim need re-embedding.
+    #[allow(unused_variables)]
+    pub fn uninstall_model(&self) {
+        #[cfg(desktop)]
+        {
+            self.enabled.store(false, Ordering::Relaxed);
+            self.set_status("disabled");
+            self.send(Job::Uninstall);
         }
     }
 
@@ -211,6 +225,16 @@ impl SemanticIndex {
                         *guard = None;
                     }
                     pending.clear();
+                    self.set_status("disabled");
+                }
+                Ok(Job::Uninstall) => {
+                    if let Ok(mut guard) = self.model.lock() {
+                        *guard = None;
+                    }
+                    pending.clear();
+                    if let Err(e) = std::fs::remove_dir_all(&model_cache_dir) {
+                        eprintln!("[embeddings] uninstall: failed to delete model cache: {e}");
+                    }
                     self.set_status("disabled");
                 }
                 Ok(Job::Index(doc_id)) => {
