@@ -2,9 +2,10 @@
     DocumentCard.svelte — A single document card in grid or list view.
 -->
 <script lang="ts">
-import type { DocumentMeta } from "$lib/db/types";
-import { AppWindow, Trash2, RotateCcw, X } from "lucide-svelte";
+import type { DocumentMeta, SearchHit } from "$lib/db/types";
+import { AppWindow, Sparkles, Trash2, RotateCcw, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
+import { snippetSegments } from "./snippet";
 import { parseTags } from "./tags";
 
 interface Props {
@@ -12,6 +13,8 @@ interface Props {
     selected: boolean;
     viewMode: "grid" | "list";
     trashMode: boolean;
+    /** Search hit for this doc (when a content search is active): shows the matched snippet. */
+    hit?: SearchHit | null;
     onSelect: (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
     onOpen: () => void;
     onTrash: () => void;
@@ -26,6 +29,7 @@ const {
     selected,
     viewMode,
     trashMode,
+    hit = null,
     onSelect,
     onOpen,
     onTrash,
@@ -38,6 +42,8 @@ const {
 let confirmingDelete = $state(false);
 let confirmTimeout: ReturnType<typeof setTimeout> | undefined;
 const tags = $derived(parseTags(doc.tags));
+const snippetSegs = $derived(hit?.snippet ? snippetSegments(hit.snippet) : null);
+const semanticMatch = $derived(hit?.matchType === "semantic");
 
 onDestroy(() => clearTimeout(confirmTimeout));
 
@@ -92,11 +98,27 @@ function formatDate(ms: number): string {
         role="button"
         tabindex="0"
     >
-        <!-- Document preview area -->
-        <div class="w-full h-28 rounded-lg bg-gray-50/80 border border-gray-100 overflow-hidden p-3 flex-shrink-0">
-            <p class="text-xs text-black/50 leading-relaxed line-clamp-5">
-                {doc.previewText || "Empty document"}
-            </p>
+        <!-- Document preview area (matched snippet when searching) -->
+        <div class="relative w-full h-28 rounded-lg bg-gray-50/80 border border-gray-100 overflow-hidden p-3 flex-shrink-0">
+            {#if snippetSegs}
+                <p class="text-xs text-black/50 leading-relaxed line-clamp-5">
+                    {#each snippetSegs as seg}
+                        {#if seg.highlighted}<mark class="rounded-[2px] bg-amber-200/80 px-px text-black/70">{seg.text}</mark>{:else}{seg.text}{/if}
+                    {/each}
+                </p>
+                {#if semanticMatch}
+                    <span
+                        title="Matched by meaning, not keywords"
+                        class="absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-medium text-purple-600/80"
+                    >
+                        <Sparkles size={9} /> similar
+                    </span>
+                {/if}
+            {:else}
+                <p class="text-xs text-black/50 leading-relaxed line-clamp-5">
+                    {doc.previewText || "Empty document"}
+                </p>
+            {/if}
         </div>
 
         <div class="flex flex-col gap-0.5 w-full overflow-hidden">
@@ -197,8 +219,26 @@ function formatDate(ms: number): string {
             </div>
         </div>
         <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-black/80 truncate">{doc.title}</p>
-            <p class="text-xs text-black/40 mt-0.5 truncate">{doc.previewText || "Empty document"}</p>
+            <p class="text-sm font-medium text-black/80 truncate flex items-center gap-1.5">
+                {doc.title}
+                {#if semanticMatch}
+                    <span
+                        title="Matched by meaning, not keywords"
+                        class="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-medium text-purple-600/80"
+                    >
+                        <Sparkles size={9} /> similar
+                    </span>
+                {/if}
+            </p>
+            {#if snippetSegs}
+                <p class="text-xs text-black/40 mt-0.5 truncate">
+                    {#each snippetSegs as seg}
+                        {#if seg.highlighted}<mark class="rounded-[2px] bg-amber-200/80 px-px text-black/70">{seg.text}</mark>{:else}{seg.text}{/if}
+                    {/each}
+                </p>
+            {:else}
+                <p class="text-xs text-black/40 mt-0.5 truncate">{doc.previewText || "Empty document"}</p>
+            {/if}
             {#if tags.length > 0}
                 <div class="mt-1.5 flex flex-wrap gap-1">
                     {#each tags.slice(0, 4) as tag}

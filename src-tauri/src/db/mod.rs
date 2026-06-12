@@ -1,7 +1,9 @@
 pub mod documents;
 pub mod events;
 pub mod load;
+pub mod migrations;
 pub mod schema;
+pub mod search;
 
 use serde::{Deserialize, Serialize};
 

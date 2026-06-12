@@ -1,4 +1,5 @@
 pub mod db;
+pub mod embeddings;
 mod keychain;
 mod pdf_export;
 
@@ -19,12 +20,16 @@ use db::{
     },
     load::load_document_state,
     schema::open_db,
+    search::{search_documents, SearchHit},
     AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
+
+/// Handle to the on-device semantic search index (see src/embeddings.rs).
+pub struct SemanticState(pub std::sync::Arc<embeddings::SemanticIndex>);
 
 pub struct OpenWindows(pub std::sync::Arc<Mutex<std::collections::HashMap<String, String>>>);
 
@@ -51,18 +56,63 @@ fn cmd_create_document(state: tauri::State<DbState>, title: String) -> Result<St
     create_document(&conn, &title).map_err(|e| e.to_string())
 }
 
+/// `body_text` (the full plain text) is optional: rename/tag updates omit it
+/// so the search index keeps the last indexed body. When present it also
+/// queues the document for semantic (re-)indexing.
 #[tauri::command]
 fn cmd_update_document_meta(
     state: tauri::State<DbState>,
+    semantic: tauri::State<SemanticState>,
     id: String,
     title: String,
     word_count: i64,
     preview_text: String,
     tags: String,
+    body_text: Option<String>,
 ) -> Result<(), String> {
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        update_document_meta(
+            &conn,
+            &id,
+            &title,
+            word_count,
+            &preview_text,
+            &tags,
+            body_text.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if body_text.is_some() {
+        semantic.0.request_index(&id);
+    }
+    Ok(())
+}
+
+// ── Search commands ───────────────────────────────────────────────
+
+/// Hybrid full-text + semantic search across all (non-trashed) documents.
+/// Async so query embedding (~tens of ms) stays off the main thread.
+#[tauri::command]
+async fn cmd_search_documents(
+    state: tauri::State<'_, DbState>,
+    semantic: tauri::State<'_, SemanticState>,
+    query: String,
+) -> Result<Vec<SearchHit>, String> {
+    if query.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    // Embed before taking the DB lock — embedding is the slow part.
+    let query_embedding = semantic.0.embed_query(&query);
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    update_document_meta(&conn, &id, &title, word_count, &preview_text, &tags)
-        .map_err(|e| e.to_string())
+    search_documents(&conn, &query, query_embedding.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Semantic index status: "starting" | "loading-model" | "indexing" |
+/// "ready" | "unavailable" | "error: …". Keyword search works regardless.
+#[tauri::command]
+fn cmd_search_status(semantic: tauri::State<SemanticState>) -> String {
+    semantic.0.status()
 }
 
 #[tauri::command]
@@ -286,7 +336,9 @@ fn cmd_export_pdf(path: String, payload: PdfExportPayload) -> Result<(), String>
 fn cmd_reset_db(state: tauri::State<DbState>) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute_batch(
-        "DELETE FROM snapshots;
+        "DELETE FROM vec_chunks;
+         DELETE FROM chunks;
+         DELETE FROM snapshots;
          DELETE FROM events;
          DELETE FROM drafts;
          DELETE FROM documents;
@@ -601,6 +653,13 @@ pub fn run() {
                 std::collections::HashMap::new(),
             ))));
 
+            // Semantic search index: background worker with its own DB
+            // connection; downloads the embedding model into app data on
+            // first run, then keeps chunk embeddings in sync with edits.
+            let semantic = embeddings::SemanticIndex::new();
+            semantic.start(db_file.clone(), db_path.join("models"));
+            app.manage(SemanticState(semantic));
+
             // Native app menu is desktop-only; mobile has no menu bar, so the
             // frontend exposes these actions through in-app UI instead.
             #[cfg(desktop)]
@@ -619,6 +678,8 @@ pub fn run() {
             cmd_get_document,
             cmd_create_document,
             cmd_update_document_meta,
+            cmd_search_documents,
+            cmd_search_status,
             cmd_delete_document,
             cmd_trash_document,
             cmd_restore_document,

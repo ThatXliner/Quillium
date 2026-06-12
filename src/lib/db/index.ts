@@ -7,7 +7,14 @@
  * @tauri-apps/plugin-sql directly.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta } from "./types";
+import type {
+    AppendEventResult,
+    DocumentMeta,
+    DraftMeta,
+    LoadResult,
+    SearchHit,
+    SnapshotMeta,
+} from "./types";
 
 // ── Reset ─────────────────────────────────────────────────────────
 
@@ -33,12 +40,18 @@ export async function createDocument(title = "Untitled"): Promise<string> {
     return invoke<string>("cmd_create_document", { title });
 }
 
+/**
+ * `bodyText` is the full plain document text, used to keep the search index
+ * current. Omit it for metadata-only updates (rename, tags) — the previously
+ * indexed body is preserved.
+ */
 export async function updateDocumentMeta(
     id: string,
     title: string,
     wordCount: number,
     previewText: string,
     tags: string,
+    bodyText?: string,
 ): Promise<void> {
     return invoke<void>("cmd_update_document_meta", {
         id,
@@ -46,7 +59,25 @@ export async function updateDocumentMeta(
         wordCount,
         previewText,
         tags,
+        bodyText,
     });
+}
+
+/**
+ * Hybrid search across all non-trashed documents: FTS5 keyword matching
+ * fused with on-device semantic (embedding) matching. Results are ranked
+ * best-first and include a match snippet.
+ */
+export async function searchDocuments(query: string): Promise<SearchHit[]> {
+    return invoke<SearchHit[]>("cmd_search_documents", { query });
+}
+
+/**
+ * Semantic index status: "starting" | "loading-model" | "indexing" |
+ * "ready" | "unavailable" | "error: …". Keyword search works regardless.
+ */
+export async function getSearchStatus(): Promise<string> {
+    return invoke<string>("cmd_search_status");
 }
 
 export async function deleteDocument(id: string): Promise<void> {
