@@ -30,15 +30,14 @@
  * Renders:
  *   A context lens with action cards, scrollable message list with
  *   user/assistant bubbles, streaming indicator, and a bottom input
- *   form with selection-context chip.
+ *   form for follow-up requests.
  *
  * Props: none.
  * Events: none dispatched.
  *
  * Stores read:
- *   - $selectedText — toggles quick-action label between
- *     "Get feedback on selection" / "Get general feedback"; shown
- *     as a context chip above the input.
+ *   - $selectedText — scopes context-aware prompts to the active
+ *     selection when present.
  *   - $documentContent — gates the quick-action button (disabled
  *     when empty) and displayed as character count.
  *
@@ -264,18 +263,6 @@ function useContextAction(action: ContextAction) {
                 theme="green"
                 onPrompt={useQuickPrompt}
             />
-        {/if}
-        {#if $selectedText}
-            <div
-                class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"
-            >
-                <span class="text-yellow-700">
-                    Context: "{$selectedText.slice(
-                        0,
-                        60,
-                    )}{$selectedText.length > 60 ? "..." : ""}"
-                </span>
-            </div>
         {/if}
 
         <form onsubmit={handleSubmit} class="flex flex-col gap-2">

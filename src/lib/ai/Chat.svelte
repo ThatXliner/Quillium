@@ -26,14 +26,14 @@
  * Renders:
  *   A scrollable message list with user/assistant bubbles, a
  *   streaming indicator, error display, and a bottom input form
- *   with selection-context chip.
+ *   with selection-aware placeholder text.
  *
  * Props: none.
  * Events: none dispatched.
  *
  * Stores read:
- *   - $selectedText — shown as a context chip above the input;
- *     included in the chat's system prompt by chatFactory.
+ *   - $selectedText — scopes placeholders and is included in the
+ *     chat's context packet by chatFactory.
  *   - $documentContent — used by chatFactory for document context.
  *
  * Stores written:
@@ -222,18 +222,6 @@ async function handleSubmit(event: Event) {
             theme="blue"
             onPrompt={useQuickPrompt}
         />
-        {#if $selectedText}
-            <div
-                class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"
-            >
-                <span class="text-yellow-700">
-                    Context: "{$selectedText.slice(
-                        0,
-                        60,
-                    )}{$selectedText.length > 60 ? "..." : ""}"
-                </span>
-            </div>
-        {/if}
 
         <form onsubmit={handleSubmit} class="flex flex-col gap-2">
             <input

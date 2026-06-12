@@ -107,6 +107,21 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar.getByRole("button", { name: "New chat" })).toBeVisible();
     });
 
+    test("uses context lens instead of selection banner", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            initialDoc: "This draft has a selected passage for the AI sidebar.",
+        });
+        await q.init();
+        await q.selectRange(17, 33);
+
+        await page.locator("#ai-tab-chat").click();
+
+        await expect(q.aiSidebar).toContainText("AI can see your selection");
+        await expect(q.aiSidebar).not.toContainText("Context:");
+    });
+
     test("escape closes sidebar", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",
