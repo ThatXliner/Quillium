@@ -93,6 +93,7 @@ const actions: {
     hoverClass: string;
     requiresApiKey: boolean;
     preferredWidth?: number;
+    preferredHeight?: number;
 }[] = [
     {
         id: "chat",
@@ -102,6 +103,7 @@ const actions: {
         activeClass: "text-blue-600 bg-white/60",
         hoverClass: "hover:text-blue-600",
         requiresApiKey: true,
+        preferredHeight: 680,
     },
     {
         id: "feedback",
@@ -153,7 +155,6 @@ const panelTitles: Record<NonNullable<Action>, string> = {
 };
 
 const expanded = $derived(action !== null);
-// Remember to also update the CSS style on line 212
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 520;
 const MIN_WIDTH = 240;
@@ -188,16 +189,17 @@ let justResized = false;
 const defaultWidthForTab = $derived(
     actions.find((a) => a.id === action)?.preferredWidth ?? DEFAULT_WIDTH,
 );
+const defaultHeightForTab = $derived(
+    actions.find((a) => a.id === action)?.preferredHeight ?? DEFAULT_HEIGHT,
+);
 const effectiveWidth = $derived(customWidth ?? defaultWidthForTab);
-const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
+const effectiveHeight = $derived(customHeight ?? defaultHeightForTab);
 const isCustomSize = $derived(customWidth !== null || customHeight !== null);
 
-// Inline style when expanded: always set width (so tab-based default transitions
-// animate smoothly) and height if user has resized.
+// Inline style when expanded: always set width/height so tab-specific defaults
+// and reset-to-default transitions animate smoothly.
 const containerSizeStyle = $derived(
-    expanded
-        ? `width: ${effectiveWidth}px;${customHeight !== null ? ` height: ${effectiveHeight}px;` : ""}`
-        : "",
+    expanded ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;` : "",
 );
 
 // Disable transition during active drag; keep it for expand/collapse
@@ -583,7 +585,7 @@ function handleKeydown(e: KeyboardEvent) {
             text-white text-xs font-medium rounded-full
             shadow-lg transition-all duration-200
             animate-fade-in"
-        style="top: calc(50% + {expanded ? (customHeight ?? DEFAULT_HEIGHT) / 2 : 280 / 2}px + 8px);"
+        style="top: calc(50% + {expanded ? effectiveHeight / 2 : 280 / 2}px + 8px);"
     >
         <SquareIcon size={12} fill="currentColor" />
         Stop

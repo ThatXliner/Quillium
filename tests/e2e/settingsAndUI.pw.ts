@@ -58,6 +58,9 @@ test.describe("AI sidebar", () => {
 
         await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar).toContainText("Start a conversation");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(640);
     });
 
     test("switches between AI tabs", async ({ page }) => {
