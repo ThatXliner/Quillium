@@ -2,7 +2,7 @@
     DocumentGrid.svelte — Grid/list view switcher for document cards.
 -->
 <script lang="ts">
-import type { DocumentMeta } from "$lib/db/types";
+import type { DocumentMeta, SearchHit } from "$lib/db/types";
 import DocumentCard from "./DocumentCard.svelte";
 
 interface Props {
@@ -10,6 +10,8 @@ interface Props {
     selectedIds: Set<string>;
     viewMode: "grid" | "list";
     trashMode: boolean;
+    /** Active content-search hits keyed by document id (snippets/highlights). */
+    hits?: Map<string, SearchHit>;
     onSelect: (id: string, e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
     onOpen: (id: string) => void;
     onTrash: (id: string) => void;
@@ -24,6 +26,7 @@ const {
     selectedIds,
     viewMode,
     trashMode,
+    hits,
     onSelect,
     onOpen,
     onTrash,
@@ -41,6 +44,7 @@ const {
                 {doc}
                 {viewMode}
                 {trashMode}
+                hit={hits?.get(doc.id) ?? null}
                 selected={selectedIds.has(doc.id)}
                 onSelect={(e) => onSelect(doc.id, e)}
                 onOpen={() => onOpen(doc.id)}
@@ -59,6 +63,7 @@ const {
                 {doc}
                 {viewMode}
                 {trashMode}
+                hit={hits?.get(doc.id) ?? null}
                 selected={selectedIds.has(doc.id)}
                 onSelect={(e) => onSelect(doc.id, e)}
                 onOpen={() => onOpen(doc.id)}

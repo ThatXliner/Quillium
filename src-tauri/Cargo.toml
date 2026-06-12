@@ -24,6 +24,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
+# Vector search (vec0 virtual table). Compiles its C source via `cc` and
+# statically links into the binary — no dylib to ship or sign. Pre-v1: pin
+# the minor version and read release notes before bumping.
+sqlite-vec = "0.1.9"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"
@@ -36,9 +40,19 @@ printpdf = { version = "0.8.2", default-features = false }
 textwrap = "0.16.2"
 
 # Desktop-only: self-updater/relaunch are not available on mobile targets.
+# fastembed (ONNX Runtime via ort) is desktop-only too — ort's prebuilt
+# binaries don't target iOS/Android, so mobile builds fall back to
+# keyword-only search (see src/embeddings.rs). default-features off drops
+# the unused image-embedding models; we keep the ort binary download and
+# the hf-hub model download (bge-small-en-v1.5, fetched lazily at runtime
+# into the app data dir).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+fastembed = { version = "5.16", default-features = false, features = [
+    "ort-download-binaries-native-tls",
+    "hf-hub-native-tls",
+] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,19 +1,15 @@
 use quillium_lib::db::{
-    documents::{create_document, create_draft, list_documents},
+    documents::{create_document, create_draft},
     events::{append_event, create_snapshot},
     load::load_document_state,
-    schema::init_schema,
+    schema::open_db,
 };
 use rusqlite::Connection;
 
 fn in_memory_db() -> Connection {
-    let conn = Connection::open_in_memory().expect("in-memory DB");
-    conn.execute_batch(
-        "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;",
-    )
-    .expect("pragmas");
-    init_schema(&conn).expect("schema init");
-    conn
+    // open_db handles pragmas, extension registration, and migrations;
+    // SQLite treats the ":memory:" path specially.
+    open_db(std::path::Path::new(":memory:")).expect("in-memory DB")
 }
 
 #[test]

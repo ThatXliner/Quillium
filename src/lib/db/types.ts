@@ -18,6 +18,20 @@ export type DocumentMeta = {
     deletedAt: number | null;
 };
 
+export type SearchMatchType = "keyword" | "semantic" | "both";
+
+export type SearchHit = DocumentMeta & {
+    /**
+     * Matched context. Keyword matches are wrapped in U+E000/U+E001
+     * sentinels (see $lib/library/snippet.ts); semantic matches return the
+     * best-matching chunk with no markers.
+     */
+    snippet: string;
+    matchType: SearchMatchType;
+    /** Reciprocal Rank Fusion score — only comparable within one response. */
+    score: number;
+};
+
 export type DraftMeta = {
     id: string;
     documentId: string;

@@ -440,7 +440,8 @@ function writeMeta(docId: string, docText: string, wordCount: number, previewTex
             currentDocumentTitle.set(title);
         }
     }
-    updateDocumentMeta(docId, title, wordCount, previewText, "[]").catch((e) => {
+    // docText doubles as the search-index body (FTS + semantic chunks).
+    updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText).catch((e) => {
         console.error(e);
         posthog.captureException(e instanceof Error ? e : new Error(String(e)));
     });

@@ -27,6 +27,12 @@ import {
     resetHarper,
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
+import {
+    getSemanticSearchEnabled,
+    pollSearchStatus,
+    setSemanticSearchEnabled,
+    uninstallSemanticModel,
+} from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
@@ -196,17 +202,31 @@ let innerEl = $state<HTMLDivElement | undefined>(undefined);
 let alertKey = $state(0);
 let alerting = $state(false);
 
-function getChangelogEntry(): { date: string; content: string; version: string } | null {
-    const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
-    if (appVersion === "dev") return null;
-    const parts = appVersion.split(".");
-    const currentMinor = `${parts[0]}.${parts[1]}`;
-    const entry = (changelog as Record<string, { date: string; content: string }>)[currentMinor];
-    if (!entry) return null;
-    return { ...entry, version: currentMinor };
+// All changelog versions, newest-first (matches changelog.json ordering),
+// for the "What's New" dropdown.
+const changelogVersions: { version: string; date: string }[] = Object.entries(
+    changelog as Record<string, { date: string; content: string }>,
+).map(([version, entry]) => ({ version, date: entry.date }));
+
+let whatsNewOpen = $state(false);
+
+function openChangelog(version?: string) {
+    appEventBus.emit({ type: "show-changelog", version });
+    whatsNewOpen = false;
+    onclose();
 }
 
-const currentChangelog = getChangelogEntry();
+// Close the What's New dropdown on outside click.
+$effect(() => {
+    if (!whatsNewOpen) return;
+    const handler = (e: MouseEvent) => {
+        if (!(e.target as HTMLElement).closest(".whats-new-dropdown")) {
+            whatsNewOpen = false;
+        }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+});
 
 // Tab state
 let activeTab = $state<"basic" | "advanced">("basic");
@@ -221,6 +241,68 @@ $effect(() => {
     if (!btn) return;
     tabPillStyle = `--tab-pill-width: ${btn.offsetWidth}px; --tab-pill-x: ${btn.offsetLeft - 3}px;`;
 });
+
+// ── Semantic search opt-in ──────────────────────────────────────
+// Backend-persisted (the Rust index worker reads it at startup), so it
+// lives outside the draft/save flow and applies immediately on toggle.
+let semanticEnabled = $state(false);
+let semanticStatus = $state("disabled");
+let semanticBusy = $state(false);
+let semanticModelInstalled = $state(false);
+getSemanticSearchEnabled()
+    .then((enabled) => {
+        // `=== true` guards against the e2e Tauri mock, which answers
+        // unknown commands with null.
+        semanticEnabled = enabled === true;
+        // If ever enabled, the model was (or is being) downloaded.
+        semanticModelInstalled = enabled === true;
+    })
+    .catch(() => {});
+
+// Poll the index status while enabled so the row can show download/index
+// progress; stops once the index settles (ready/error). A null reading
+// (status command failed) keeps the last shown status.
+$effect(() => {
+    if (!semanticEnabled) return;
+    return pollSearchStatus((status) => {
+        if (status !== null) semanticStatus = status;
+    });
+});
+
+async function toggleSemanticSearch() {
+    if (semanticBusy) return;
+    semanticBusy = true;
+    const next = !semanticEnabled;
+    try {
+        await setSemanticSearchEnabled(next);
+        semanticEnabled = next;
+        semanticStatus = next ? "starting" : "disabled";
+        if (next) semanticModelInstalled = true;
+        posthog.capture("semantic_search_toggled", { enabled: next });
+    } catch (e) {
+        console.error("[settings] failed to toggle semantic search:", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+        semanticBusy = false;
+    }
+}
+
+async function uninstallModel() {
+    if (semanticBusy) return;
+    semanticBusy = true;
+    try {
+        await uninstallSemanticModel();
+        semanticEnabled = false;
+        semanticStatus = "disabled";
+        semanticModelInstalled = false;
+        posthog.capture("semantic_search_model_uninstalled");
+    } catch (e) {
+        console.error("[settings] failed to uninstall semantic model:", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+        semanticBusy = false;
+    }
+}
 
 // Which custom dropdown is open: "doc" | "ui" | null
 let openDropdown = $state<"doc" | "ui" | null>(null);
@@ -402,16 +484,38 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
             <div class="flex items-center gap-1.5">
-                {#if currentChangelog}
-                    <button
-                        onclick={() => {
-                            appEventBus.emit({ type: "show-changelog" });
-                            onclose();
-                        }}
-                        class="text-[10px] font-medium px-2.5 py-1 rounded-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
-                    >
-                        What's New
-                    </button>
+                {#if changelogVersions.length > 0}
+                    <div class="whats-new-dropdown relative flex items-stretch">
+                        <button
+                            onclick={() => openChangelog()}
+                            class="text-[10px] font-medium pl-2.5 pr-2 py-1 rounded-l-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
+                        >
+                            What's New
+                        </button>
+                        <button
+                            onclick={() => (whatsNewOpen = !whatsNewOpen)}
+                            aria-label="Browse previous changelogs"
+                            aria-expanded={whatsNewOpen}
+                            class="flex items-center px-1 rounded-r-md bg-blue-500/[0.08] text-blue-700 border border-l-0 border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
+                        >
+                            <ChevronDown size={12} class="transition-transform {whatsNewOpen ? 'rotate-180' : ''}" />
+                        </button>
+                        {#if whatsNewOpen}
+                            <div
+                                class="absolute top-full right-0 mt-1 w-44 max-h-64 overflow-y-auto rounded-lg bg-white shadow-lg border border-black/[0.08] py-1 z-10"
+                            >
+                                {#each changelogVersions as { version, date } (version)}
+                                    <button
+                                        onclick={() => openChangelog(version)}
+                                        class="w-full flex items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-blue-500/[0.06] transition-colors"
+                                    >
+                                        <span class="text-[11px] font-medium text-black/70">v{version}</span>
+                                        <span class="text-[10px] text-black/35">{date}</span>
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
                 {/if}
                 <button
                     onclick={tryClose}
@@ -511,6 +615,63 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
                             transition-transform duration-200
                             {draft.checkForUpdates ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <!-- SEARCH section -->
+            <div class="section-label">Search</div>
+
+            <!-- Semantic search opt-in -->
+            <div class="setting-row" data-setting-id="semantic-search">
+                <div class="setting-meta">
+                    <div class="setting-title">Search by meaning</div>
+                    <div class="setting-desc">
+                        Match documents by concept, not just keywords. Uses a ~30 MB on-device model — nothing leaves your computer.
+                        {#if semanticEnabled}
+                            {#if semanticStatus === "starting" || semanticStatus === "loading-model"}
+                                <span class="text-blue-500/80">Downloading model…</span>
+                            {:else if semanticStatus === "indexing"}
+                                <span class="text-blue-500/80">Indexing your documents…</span>
+                            {:else if semanticStatus === "ready"}
+                                <span class="text-green-600/80">Ready</span>
+                            {:else if semanticStatus === "unavailable"}
+                                <span class="text-black/40">Not available on this device</span>
+                            {:else if semanticStatus.startsWith("error")}
+                                <span class="text-red-500/80">
+                                    Couldn't download the model — check your connection
+                                    and toggle again to retry
+                                </span>
+                            {/if}
+                        {/if}
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if !semanticEnabled && semanticModelInstalled}
+                    <button
+                        title="Uninstall model (~30 MB)"
+                        aria-label="Uninstall semantic search model"
+                        disabled={semanticBusy}
+                        class="text-black/30 hover:text-red-500 disabled:opacity-40 transition-colors"
+                        onclick={uninstallModel}
+                    ><Trash2 size={14} /></button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={semanticEnabled}
+                    aria-label="Toggle search by meaning"
+                    disabled={semanticBusy}
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {semanticEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={toggleSemanticSearch}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {semanticEnabled ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
                 </div>
