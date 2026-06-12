@@ -95,7 +95,10 @@ test.describe("AI sidebar", () => {
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
-        await expect(q.aiSidebar).toContainText("AI can see this draft");
+        await expect(q.aiSidebar).not.toContainText("AI can see this draft");
+        await expect(
+            q.aiSidebar.getByRole("button", { name: /Context: AI can see this draft/ }),
+        ).toBeVisible();
         await expect(q.aiSidebar).toContainText("Make punchy");
 
         await q.aiSidebar.getByRole("button", { name: /Name the center/ }).click();

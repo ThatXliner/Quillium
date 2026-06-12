@@ -3,6 +3,7 @@ import {
     ArrowRightIcon,
     BookOpenIcon,
     FileTextIcon,
+    InfoIcon,
     MousePointer2Icon,
     NotebookTabsIcon,
     MessageSquareTextIcon,
@@ -57,6 +58,13 @@ const packet = $derived(
 );
 const actions = $derived(getContextAwareActions(mode, packet));
 const activeSources = $derived(packet.sources.filter((source) => source.active));
+const showContextSummary = $derived(
+    packet.scope !== "document" ||
+        packet.omittedDocumentChars > 0 ||
+        packet.includedAnnotationCount > 0 ||
+        packet.writerContext.length > 0,
+);
+const contextInfoLabel = $derived(`${contextScopeLabel(packet)}. ${contextScopeDetail(packet)}`);
 
 const theme = $derived(
     mode === "feedback"
@@ -102,35 +110,48 @@ function sourceIcon(id: string) {
 </script>
 
 <div class="p-3 border-b border-black/10 space-y-2.5">
-    <div class="rounded-lg border {theme.border} {theme.bg} p-2.5">
-        <div class="flex items-start gap-2">
-            <div class="mt-0.5 shrink-0 rounded-md p-1.5 {theme.icon}">
-                <ScopeIcon size={14} />
-            </div>
-            <div class="min-w-0 flex-1">
-                <div class="text-xs font-semibold {theme.text}">{contextScopeLabel(packet)}</div>
-                <div class="text-[10px] leading-snug {theme.subtext}">
-                    {contextScopeDetail(packet)}
+    {#if showContextSummary}
+        <div class="rounded-lg border {theme.border} {theme.bg} p-2.5">
+            <div class="flex items-start gap-2">
+                <div class="mt-0.5 shrink-0 rounded-md p-1.5 {theme.icon}">
+                    <ScopeIcon size={14} />
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs font-semibold {theme.text}">{contextScopeLabel(packet)}</div>
+                    <div class="text-[10px] leading-snug {theme.subtext}">
+                        {contextScopeDetail(packet)}
+                    </div>
                 </div>
             </div>
-        </div>
 
-        {#if activeSources.length > 0}
-            <div class="mt-2 grid grid-cols-2 gap-1">
-                {#each activeSources as source (source.id)}
-                    {@const SourceIcon = sourceIcon(source.id)}
-                    <div
-                        class="min-w-0 flex items-center gap-1 rounded-md bg-white/55 px-1.5 py-1 text-[10px] text-black/45"
-                        title="{source.label}: {source.detail}"
-                    >
-                        <SourceIcon size={11} class="shrink-0 text-black/30" />
-                        <span class="truncate">{source.label}</span>
-                        <span class="ml-auto shrink-0 tabular-nums">{source.chars.toLocaleString()}</span>
-                    </div>
-                {/each}
-            </div>
-        {/if}
-    </div>
+            {#if activeSources.length > 0}
+                <div class="mt-2 grid grid-cols-2 gap-1">
+                    {#each activeSources as source (source.id)}
+                        {@const SourceIcon = sourceIcon(source.id)}
+                        <div
+                            class="min-w-0 flex items-center gap-1 rounded-md bg-white/55 px-1.5 py-1 text-[10px] text-black/45"
+                            title="{source.label}: {source.detail}"
+                        >
+                            <SourceIcon size={11} class="shrink-0 text-black/30" />
+                            <span class="truncate">{source.label}</span>
+                            <span class="ml-auto shrink-0 tabular-nums">{source.chars.toLocaleString()}</span>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+        </div>
+    {:else}
+        <div class="flex justify-end">
+            <button
+                type="button"
+                aria-label="Context: {contextInfoLabel}"
+                title={contextInfoLabel}
+                class="inline-flex h-6 w-6 items-center justify-center rounded-md text-black/25 transition-colors hover:bg-white/60 hover:text-black/45 focus:outline-none focus:ring-2 {theme.ring}"
+            >
+                <InfoIcon size={13} />
+            </button>
+        </div>
+    {/if}
 
     <div class="grid gap-1.5">
         {#each actions as action (action.id)}
