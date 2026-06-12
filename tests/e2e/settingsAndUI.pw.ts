@@ -79,6 +79,24 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Feedback");
     });
 
+    test("hides starter suggestions after first chat action", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            initialDoc: "A short draft with enough context for the AI sidebar.",
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-chat").click();
+        await expect(q.aiSidebar).toContainText("Draft context");
+
+        await q.aiSidebar.getByRole("button", { name: /Name the center/ }).click();
+
+        await expect(q.aiSidebar).not.toContainText("Name the center");
+        await expect(q.aiSidebar).not.toContainText("Find missing context");
+        await expect(q.aiSidebar.getByRole("button", { name: "New chat" })).toBeVisible();
+    });
+
     test("escape closes sidebar", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",

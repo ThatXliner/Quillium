@@ -427,8 +427,8 @@ export function contextPacketToUserMessage(packet: AiContextPacket): UserModelMe
 }
 
 export function contextScopeLabel(packet: AiContextPacket): string {
-    if (packet.scope === "selection") return "Selection lens";
-    if (packet.scope === "document") return "Document lens";
+    if (packet.scope === "selection") return "Selection context";
+    if (packet.scope === "document") return "Draft context";
     return "Blank draft";
 }
 

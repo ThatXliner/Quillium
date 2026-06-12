@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildAiContextPacket,
     contextPacketToPrompt,
+    contextScopeLabel,
     getContextAwareActions,
 } from "$lib/ai/context";
 
@@ -51,6 +52,15 @@ describe("buildAiContextPacket", () => {
         const writerSource = packet.sources.find((source) => source.id === "writer-context");
         expect(writerSource?.active).toBe(true);
         expect(writerSource?.chars).toBeGreaterThan(0);
+    });
+
+    it("labels full-document context as draft context", () => {
+        const packet = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "Draft",
+        });
+
+        expect(contextScopeLabel(packet)).toBe("Draft context");
     });
 
     it("includes open annotations as budgeted context", () => {

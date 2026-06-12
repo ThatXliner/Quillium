@@ -60,14 +60,23 @@ import ContextLens from "./ContextLens.svelte";
 import type { ContextAction } from "./context";
 
 let input = $state("");
+let hasStarted = $state(false);
 const { chat, clearChat } = createAiChat({ mode: "chat" });
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
+let showStarterSuggestions = $derived(!hasStarted && chat.messages.length === 0);
+let showConversationControls = $derived(hasStarted || chat.messages.length > 0);
+
+function clearConversation() {
+    clearChat();
+    hasStarted = false;
+}
 
 function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
         has_selection: !!$selectedText,
     });
+    hasStarted = true;
     chat.sendMessage({ text: prompt });
 }
 
@@ -77,6 +86,7 @@ function useContextAction(action: ContextAction) {
         action: action.id,
         has_selection: !!$selectedText,
     });
+    hasStarted = true;
     chat.sendMessage({ text: action.prompt });
 }
 
@@ -104,28 +114,31 @@ async function handleSubmit(event: Event) {
         has_selection: !!$selectedText,
         message_length: userMessage.length,
     });
-    await chat.sendMessage({ text: userMessage });
+    hasStarted = true;
     input = "";
+    await chat.sendMessage({ text: userMessage });
 }
 </script>
 
 <div class="flex flex-col h-full">
     <!-- Clear chat row -->
-    {#if chat.messages.length > 0}
+    {#if showConversationControls}
         <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
-                onclick={clearChat}
+                onclick={clearConversation}
                 title="Start a fresh conversation (clears all messages)"
                 class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
             >New chat</button>
         </div>
     {/if}
 
-    <ContextLens
-        mode="chat"
-        disabled={chat.status !== "ready" || !$documentContent}
-        onAction={useContextAction}
-    />
+    {#if showStarterSuggestions}
+        <ContextLens
+            mode="chat"
+            disabled={chat.status !== "ready" || !$documentContent}
+            onAction={useContextAction}
+        />
+    {/if}
 
     <!-- Chat messages -->
     <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
@@ -190,7 +203,7 @@ async function handleSubmit(event: Event) {
             </div>
         {/if}
 
-        {#if chat.messages.length === 0 && !chat.error}
+        {#if showStarterSuggestions && !chat.error}
             <div
                 class="flex-1 flex items-center justify-center text-gray-400 text-sm"
             >
@@ -201,7 +214,7 @@ async function handleSubmit(event: Event) {
 
     <!-- Input form -->
     <div class="border-t border-black/10 p-3 bg-white/30">
-        {#if customChatPrompts.length > 0}
+        {#if showStarterSuggestions && customChatPrompts.length > 0}
             <div class="mb-2 flex flex-wrap gap-1.5">
                 {#each customChatPrompts as { label, prompt }}
                     <button

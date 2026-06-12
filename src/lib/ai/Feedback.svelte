@@ -75,8 +75,16 @@ import type { ContextAction } from "./context";
 
 let input = $state("");
 let personaInFlight = $state(false);
+let hasStarted = $state(false);
 
 const { chat, clearChat } = createAiChat({ mode: "feedback" });
+let showStarterSuggestions = $derived(!hasStarted && chat.messages.length === 0);
+let showConversationControls = $derived(hasStarted || chat.messages.length > 0);
+
+function clearConversation() {
+    clearChat();
+    hasStarted = false;
+}
 
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat);
@@ -94,6 +102,7 @@ $effect(() => {
  * are enabled, otherwise falls back to the single-stream chat.
  */
 async function sendFeedback(text: string, trigger: string) {
+    hasStarted = true;
     const personas = getEnabledPersonas();
     if (personas.length === 0) {
         posthog.capture("ai_feedback_requested", {
@@ -146,7 +155,7 @@ function useQuickPrompt(prompt: string) {
         prompt,
         has_selection: !!$selectedText,
     });
-    input = message;
+    input = "";
     sendFeedback(message, "quick_prompt");
 }
 
@@ -156,19 +165,21 @@ function useContextAction(action: ContextAction) {
         action: action.id,
         has_selection: !!$selectedText,
     });
-    input = action.prompt;
+    input = "";
     sendFeedback(action.prompt, `context_${action.id}`);
 }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
-    <ContextLens
-        mode="feedback"
-        disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
-        onAction={useContextAction}
-    />
+    {#if showStarterSuggestions}
+        <ContextLens
+            mode="feedback"
+            disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+            onAction={useContextAction}
+        />
+    {/if}
 
-    {#if customFeedbackPrompts.length > 0}
+    {#if showStarterSuggestions && customFeedbackPrompts.length > 0}
         <div class="px-3 pb-3 border-b border-black/10">
             <div class="grid grid-cols-2 gap-1.5">
                 {#each customFeedbackPrompts as { label, prompt }}
@@ -185,10 +196,10 @@ function useContextAction(action: ContextAction) {
     {/if}
 
     <!-- Clear chat row -->
-    {#if chat.messages.length > 0}
+    {#if showConversationControls}
         <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
-                onclick={clearChat}
+                onclick={clearConversation}
                 title="Start a fresh conversation (clears all messages)"
                 class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
             >New chat</button>
@@ -238,7 +249,7 @@ function useContextAction(action: ContextAction) {
             </div>
         {/if}
 
-        {#if chat.messages.length === 0 && !personaInFlight}
+        {#if showStarterSuggestions && !personaInFlight}
             <div
                 class="flex-1 flex items-center justify-center text-gray-400 text-sm"
             >
