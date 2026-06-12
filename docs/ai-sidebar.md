@@ -16,26 +16,29 @@ The AI sidebar provides multiple modes for AI-assisted writing. Each mode has it
 ## Chat Mode
 
 General-purpose AI chat for writing assistance:
-- Supports document context injection
-- Quick prompts for common tasks
+- Uses the shared AI context packet before the user's prompt
+- Shows a context lens with the active scope and included sources
+- Offers context-aware action cards based on selection/document state
 - "Open in Chat" from dictionary popover
 - Message history within session
 
 ## Feedback Mode
 
 AI feedback on the document or selected text:
+- Uses the context lens instead of generic built-in prompt pills
 - Routes through enabled reader personas (parallel execution)
 - Creates comments, suggestions, revisions
-- Quick prompts for specific feedback types
+- Keeps user-defined custom actions from settings
 - Falls back to single-stream if no personas enabled
 
 ## Revise Mode
 
 AI-powered text revision:
+- Uses context-aware action cards for selection-level vs document-wide revision
 - Takes selection or full document
 - Generates alternative versions
 - Creates revision annotations with AI-suggested text
-- Quick prompts for common revision tasks
+- Keeps user-defined custom actions from settings
 
 ## Context Mode
 
@@ -95,17 +98,35 @@ Features:
 | File | Purpose |
 |------|---------|
 | `provider.ts` | Provider-agnostic client setup |
+| `context.ts` | Context packet assembly, budgeting, UI action suggestions |
 | `chatFactory.ts` | Request builders, streaming helpers |
 | `clientStreams.ts` | Mode-specific stream handlers |
 | `settings.svelte.ts` | AI settings store |
+
+### Context Packets
+
+AI calls use a shared context packet instead of sending an unbounded raw
+document blob. The packet:
+
+- prioritizes selected text when present
+- includes nearby passage context around selections
+- clips long drafts with an explicit omission marker
+- keeps writer-provided document context labeled separately from document text
+- is inserted before the user's actual prompt, so the prompt remains the latest
+  user instruction
+
+The sidebar mirrors this same packet through the context lens, which displays
+the active scope (`Selection lens`, `Document lens`, or `Blank draft`) and the
+sources currently in play.
 
 ### Supported Providers
 
 | Provider | Models |
 |----------|--------|
-| OpenAI | gpt-4o, gpt-4o-mini, gpt-4-turbo |
-| Anthropic | claude-3-5-sonnet, claude-3-opus, claude-3-haiku |
-| Google | gemini-1.5-pro, gemini-1.5-flash |
+| OpenAI | gpt-5.5, gpt-5.4-mini, gpt-5.4-nano |
+| Anthropic | claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5 |
+| Google | gemini-3.5-flash, gemini-3.1-pro-preview, gemini-3-flash-preview |
+| DeepSeek | deepseek-v4-pro, deepseek-v4-flash |
 
 ### API Key Storage
 

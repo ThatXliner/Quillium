@@ -56,6 +56,8 @@ import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
+import ContextLens from "./ContextLens.svelte";
+import type { ContextAction } from "./context";
 
 let input = $state("");
 const { chat, clearChat } = createAiChat({ mode: "chat" });
@@ -67,6 +69,15 @@ function useQuickPrompt(prompt: string) {
         has_selection: !!$selectedText,
     });
     chat.sendMessage({ text: prompt });
+}
+
+function useContextAction(action: ContextAction) {
+    posthog.capture("ai_context_action_used", {
+        mode: "chat",
+        action: action.id,
+        has_selection: !!$selectedText,
+    });
+    chat.sendMessage({ text: action.prompt });
 }
 
 // Pre-fill input from app-level "open chat" requests.
@@ -109,6 +120,12 @@ async function handleSubmit(event: Event) {
             >New chat</button>
         </div>
     {/if}
+
+    <ContextLens
+        mode="chat"
+        disabled={chat.status !== "ready" || !$documentContent}
+        onAction={useContextAction}
+    />
 
     <!-- Chat messages -->
     <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">

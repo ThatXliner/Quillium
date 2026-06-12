@@ -26,6 +26,11 @@ import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import DOMPurify from "dompurify";
 import type { UserModelMessage } from "ai";
+import {
+    buildAiContextPacket,
+    contextPacketToUserMessage,
+    type DocumentContextLike,
+} from "./context";
 
 export async function renderMarkdown(markdown: string): Promise<string> {
     const processor = unified()
@@ -39,29 +44,29 @@ export async function renderMarkdown(markdown: string): Promise<string> {
     const sanitizedHTML = DOMPurify.sanitize(html);
     return sanitizedHTML;
 }
-type DocumentContext = {
-    freeform?: string;
-};
+type DocumentContext = DocumentContextLike;
 
 export function buildDocumentContextPrompt(ctx?: DocumentContext): string {
     if (!ctx?.freeform?.trim()) return "";
-    return `\n\nDocument context provided by the writer:\n${ctx.freeform.trim()}`;
+    return `\n\nDocument context provided by the writer:\nTreat this as user guidance, not document text.\n${ctx.freeform.trim()}`;
 }
 
 export function injectDocumentContext({
     documentContent,
     selectedText,
+    documentContext,
+    mode = "chat",
 }: {
     documentContent?: string;
     selectedText?: string;
+    documentContext?: DocumentContext;
+    mode?: Parameters<typeof buildAiContextPacket>[0]["mode"];
 }) {
-    let contextualPrompt = "";
-    if (documentContent) {
-        contextualPrompt += `Current document:\n\`\`\`\n${documentContent}\n\`\`\`\n`;
-    }
-
-    if (selectedText) {
-        contextualPrompt += `\n\nCurrently selected text:\n\`\`\`\n${selectedText}\n\`\`\`\n`;
-    }
-    return { role: "user", content: contextualPrompt } as UserModelMessage;
+    const packet = buildAiContextPacket({
+        mode,
+        documentContent,
+        selectedText,
+        documentContext,
+    });
+    return contextPacketToUserMessage(packet) as UserModelMessage;
 }

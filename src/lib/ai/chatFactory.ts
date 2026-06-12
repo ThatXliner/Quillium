@@ -276,4 +276,4 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | 
 }
 
 // Re-export so components only need one import for all chat concerns
-export { setAiProcessing, useAiChatEffects } from "./settings.svelte";
+export { beginAiTask, endAiTask, setAiProcessing, useAiChatEffects } from "./settings.svelte";
