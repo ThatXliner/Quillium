@@ -54,13 +54,13 @@ describe("buildAiContextPacket", () => {
         expect(writerSource?.chars).toBeGreaterThan(0);
     });
 
-    it("labels full-document context as draft context", () => {
+    it("labels full-document context as visible draft state", () => {
         const packet = buildAiContextPacket({
             mode: "chat",
             documentContent: "Draft",
         });
 
-        expect(contextScopeLabel(packet)).toBe("Draft context");
+        expect(contextScopeLabel(packet)).toBe("AI can see this draft");
     });
 
     it("includes open annotations as budgeted context", () => {

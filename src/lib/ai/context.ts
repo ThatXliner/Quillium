@@ -427,26 +427,27 @@ export function contextPacketToUserMessage(packet: AiContextPacket): UserModelMe
 }
 
 export function contextScopeLabel(packet: AiContextPacket): string {
-    if (packet.scope === "selection") return "Selection context";
-    if (packet.scope === "document") return "Draft context";
-    return "Blank draft";
+    if (packet.scope === "selection") return "AI can see your selection";
+    if (packet.scope === "document") return "AI can see this draft";
+    return "No draft attached";
 }
 
 export function contextScopeDetail(packet: AiContextPacket): string {
-    const annotationSuffix = packet.includedAnnotationCount > 0 ? " plus open annotations." : ".";
+    const annotationSuffix =
+        packet.includedAnnotationCount > 0 ? " Open annotations are included too." : "";
     if (packet.scope === "selection") {
         return packet.surroundingText
-            ? `Using the selection, nearby passage, and draft excerpt${annotationSuffix}`
-            : `Using the active selection${annotationSuffix}`;
+            ? `Selection, nearby text, and a draft excerpt will be sent.${annotationSuffix}`
+            : `The active selection will be sent.${annotationSuffix}`;
     }
     if (packet.scope === "document") {
         return packet.omittedDocumentChars > 0
-            ? `Using a budgeted draft excerpt${annotationSuffix}`
-            : `Using the current draft${annotationSuffix}`;
+            ? `A budgeted excerpt of the draft will be sent.${annotationSuffix}`
+            : `The current draft will be sent with your message.${annotationSuffix}`;
     }
     return packet.includedAnnotationCount > 0
-        ? "Ready with open annotations as context."
-        : "Ready for a brief, outline, or starting point.";
+        ? "Open annotations can still guide the response."
+        : "Type, paste, or open a draft to give the AI writing context.";
 }
 
 export function getContextAwareActions(
