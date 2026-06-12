@@ -174,6 +174,31 @@ pub fn set_trash_retention(conn: &Connection, days: Option<i64>) -> Result<()> {
     Ok(())
 }
 
+/// Whether the user has opted in to semantic search (which downloads an
+/// embedding model on first enable). Defaults to false — keyword search
+/// (FTS5) works regardless.
+pub fn get_semantic_search_enabled(conn: &Connection) -> Result<bool> {
+    let result: rusqlite::Result<String> = conn.query_row(
+        "SELECT value FROM _meta WHERE key = 'semantic_search_enabled'",
+        [],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(val) => Ok(val == "1"),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn set_semantic_search_enabled(conn: &Connection, enabled: bool) -> Result<()> {
+    conn.execute(
+        "INSERT INTO _meta (key, value) VALUES ('semantic_search_enabled', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![if enabled { "1" } else { "0" }],
+    )?;
+    Ok(())
+}
+
 /// Permanently deletes trashed documents older than `days` days.
 pub fn purge_expired_trash(conn: &Connection, days: i64) -> Result<u64> {
     let cutoff = now_ms() - days * 24 * 60 * 60 * 1000;

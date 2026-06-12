@@ -5,11 +5,18 @@
 //! `vec_chunks` in sync with document bodies. Everything runs locally; the
 //! only network access is the one-time model download into the app data dir.
 //!
+//! **Opt-in.** The model is ~30 MB, so nothing is downloaded until the user
+//! enables "Search by meaning" in Settings (persisted in `_meta`, read at
+//! startup). The worker thread is spawned once and driven by control
+//! messages: Enable loads the model (downloading if needed) and reconciles
+//! every document; Disable drops the model from memory and idles. Index
+//! data (chunks + vectors) is kept across disable so re-enabling is cheap.
+//!
 //! Indexing is incremental: documents are split into paragraph/sentence-aware
 //! chunks, each chunk is content-hashed (FNV-1a), and only chunks whose hash
 //! changed get re-embedded. The worker debounces index requests (~3 s after
-//! the last edit) and reconciles every live document once at startup, which
-//! doubles as the backfill for documents that predate this feature.
+//! the last edit); the reconcile pass on enable doubles as the backfill for
+//! documents that predate this feature (or were edited while disabled).
 //!
 //! Desktop-only: ort has no prebuilt iOS/Android binaries, so on mobile the
 //! index reports "unavailable" and search stays keyword-only (FTS5).
@@ -20,6 +27,7 @@ use std::sync::{Arc, Mutex};
 use std::{
     collections::HashMap,
     path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
     sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender},
     time::{Duration, Instant},
 };
@@ -35,11 +43,21 @@ const EMBED_BATCH: usize = 16;
 #[cfg(desktop)]
 const BGE_QUERY_PREFIX: &str = "Represent this sentence for searching relevant passages: ";
 
+#[cfg(desktop)]
+enum Job {
+    Index(String),
+    Enable,
+    Disable,
+}
+
 pub struct SemanticIndex {
-    /// "starting" | "loading-model" | "indexing" | "ready" | "unavailable" | "error: …"
+    /// "disabled" | "starting" | "loading-model" | "indexing" | "ready"
+    /// | "unavailable" | "error: …"
     status: Mutex<String>,
     #[cfg(desktop)]
-    queue: Mutex<Option<Sender<String>>>,
+    enabled: AtomicBool,
+    #[cfg(desktop)]
+    queue: Mutex<Option<Sender<Job>>>,
     #[cfg(desktop)]
     model: Mutex<Option<fastembed::TextEmbedding>>,
 }
@@ -47,7 +65,9 @@ pub struct SemanticIndex {
 impl SemanticIndex {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            status: Mutex::new("starting".to_string()),
+            status: Mutex::new("disabled".to_string()),
+            #[cfg(desktop)]
+            enabled: AtomicBool::new(false),
             #[cfg(desktop)]
             queue: Mutex::new(None),
             #[cfg(desktop)]
@@ -65,19 +85,51 @@ impl SemanticIndex {
         }
     }
 
-    /// Queues a document for (re-)indexing. Cheap; safe to call on every save.
+    /// Queues a document for (re-)indexing. Cheap; safe to call on every
+    /// save. No-op while semantic search is disabled — the enable-time
+    /// reconcile catches up on anything edited in the meantime.
     #[allow(unused_variables)]
     pub fn request_index(&self, doc_id: &str) {
         #[cfg(desktop)]
-        if let Ok(queue) = self.queue.lock() {
-            if let Some(tx) = queue.as_ref() {
-                let _ = tx.send(doc_id.to_string());
+        {
+            if !self.enabled.load(Ordering::Relaxed) {
+                return;
+            }
+            self.send(Job::Index(doc_id.to_string()));
+        }
+    }
+
+    /// Turns the semantic index on/off at runtime (Settings toggle). The
+    /// caller persists the flag; this only drives the worker.
+    #[allow(unused_variables)]
+    pub fn set_enabled(&self, enabled: bool) {
+        #[cfg(desktop)]
+        {
+            self.enabled.store(enabled, Ordering::Relaxed);
+            if enabled {
+                self.set_status("starting");
+                self.send(Job::Enable);
+            } else {
+                // Worker also sets this when it drops the model; do it here
+                // too so the UI flips immediately.
+                self.set_status("disabled");
+                self.send(Job::Disable);
             }
         }
     }
 
-    /// Embeds a search query. Returns None until the model is ready (and
-    /// always on mobile) — callers fall back to keyword-only search.
+    #[cfg(desktop)]
+    fn send(&self, job: Job) {
+        if let Ok(queue) = self.queue.lock() {
+            if let Some(tx) = queue.as_ref() {
+                let _ = tx.send(job);
+            }
+        }
+    }
+
+    /// Embeds a search query. Returns None unless the model is loaded
+    /// (disabled / still downloading / mobile) — callers fall back to
+    /// keyword-only search.
     #[allow(unused_variables)]
     pub fn embed_query(&self, query: &str) -> Option<Vec<f32>> {
         #[cfg(desktop)]
@@ -91,19 +143,36 @@ impl SemanticIndex {
         None
     }
 
-    /// Spawns the background worker. `db_path` is the SQLite file (the worker
-    /// opens its own WAL connection); `model_cache_dir` is where fastembed
-    /// downloads/caches the ONNX model.
+    /// Spawns the (single, long-lived) worker thread. `db_path` is the SQLite
+    /// file (the worker opens its own WAL connection); `model_cache_dir` is
+    /// where fastembed downloads/caches the ONNX model. `initially_enabled`
+    /// is the persisted user preference — when false, the worker idles and
+    /// nothing is downloaded.
     #[cfg(not(desktop))]
-    pub fn start(self: &Arc<Self>, _db_path: std::path::PathBuf, _model_cache_dir: std::path::PathBuf) {
+    pub fn start(
+        self: &Arc<Self>,
+        _db_path: std::path::PathBuf,
+        _model_cache_dir: std::path::PathBuf,
+        _initially_enabled: bool,
+    ) {
         self.set_status("unavailable");
     }
 
     #[cfg(desktop)]
-    pub fn start(self: &Arc<Self>, db_path: PathBuf, model_cache_dir: PathBuf) {
-        let (tx, rx) = channel::<String>();
+    pub fn start(
+        self: &Arc<Self>,
+        db_path: PathBuf,
+        model_cache_dir: PathBuf,
+        initially_enabled: bool,
+    ) {
+        let (tx, rx) = channel::<Job>();
         if let Ok(mut queue) = self.queue.lock() {
             *queue = Some(tx);
+        }
+        self.enabled.store(initially_enabled, Ordering::Relaxed);
+        if initially_enabled {
+            self.set_status("starting");
+            self.send(Job::Enable);
         }
         let this = Arc::clone(self);
         std::thread::Builder::new()
@@ -113,26 +182,7 @@ impl SemanticIndex {
     }
 
     #[cfg(desktop)]
-    fn run_worker(&self, db_path: PathBuf, model_cache_dir: PathBuf, rx: Receiver<String>) {
-        use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
-
-        self.set_status("loading-model");
-        let model = match TextEmbedding::try_new(
-            TextInitOptions::new(EmbeddingModel::BGESmallENV15Q).with_cache_dir(model_cache_dir),
-        ) {
-            Ok(model) => model,
-            Err(e) => {
-                // Most likely offline on first launch. Search degrades to
-                // keyword-only; we retry on next app start.
-                eprintln!("[embeddings] model load failed: {e}");
-                self.set_status(&format!("error: {e}"));
-                return;
-            }
-        };
-        if let Ok(mut guard) = self.model.lock() {
-            *guard = Some(model);
-        }
-
+    fn run_worker(&self, db_path: PathBuf, model_cache_dir: PathBuf, rx: Receiver<Job>) {
         let conn = match crate::db::schema::open_db(&db_path) {
             Ok(conn) => conn,
             Err(e) => {
@@ -142,25 +192,7 @@ impl SemanticIndex {
             }
         };
 
-        // Startup reconcile: hash-diffing makes this a fast no-op when nothing
-        // changed; on first run it backfills embeddings for every document.
-        self.set_status("indexing");
-        let live_ids: Vec<String> = conn
-            .prepare("SELECT id FROM documents WHERE deleted_at IS NULL")
-            .and_then(|mut stmt| {
-                stmt.query_map([], |row| row.get(0))
-                    .map(|rows| rows.filter_map(|r| r.ok()).collect())
-            })
-            .unwrap_or_default();
-        for doc_id in live_ids {
-            if let Err(e) = self.index_document(&conn, &doc_id) {
-                eprintln!("[embeddings] reconcile failed for {doc_id}: {e}");
-            }
-        }
-        self.set_status("ready");
-
-        // Debounced indexing loop: collect doc ids, index each once it has
-        // been quiet for DEBOUNCE.
+        // Debounced indexing loop, also handling enable/disable transitions.
         let mut pending: HashMap<String, Instant> = HashMap::new();
         loop {
             let now = Instant::now();
@@ -171,7 +203,17 @@ impl SemanticIndex {
                 .unwrap_or(Duration::from_secs(3600))
                 .max(Duration::from_millis(25));
             match rx.recv_timeout(timeout) {
-                Ok(doc_id) => {
+                Ok(Job::Enable) => self.bring_up(&conn, &model_cache_dir),
+                Ok(Job::Disable) => {
+                    // Free the model's memory; keep chunks/vectors on disk so
+                    // re-enabling only embeds what changed since.
+                    if let Ok(mut guard) = self.model.lock() {
+                        *guard = None;
+                    }
+                    pending.clear();
+                    self.set_status("disabled");
+                }
+                Ok(Job::Index(doc_id)) => {
                     pending.insert(doc_id, Instant::now() + DEBOUNCE);
                 }
                 Err(RecvTimeoutError::Timeout) => {}
@@ -190,6 +232,51 @@ impl SemanticIndex {
                 }
             }
         }
+    }
+
+    /// Enable transition: load the model (first time downloads it), then
+    /// reconcile every live document. Hash-diffing makes the reconcile a fast
+    /// no-op when nothing changed; on first enable it backfills everything.
+    #[cfg(desktop)]
+    fn bring_up(&self, conn: &rusqlite::Connection, model_cache_dir: &PathBuf) {
+        use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
+
+        let model_missing = self.model.lock().map(|g| g.is_none()).unwrap_or(true);
+        if model_missing {
+            self.set_status("loading-model");
+            match TextEmbedding::try_new(
+                TextInitOptions::new(EmbeddingModel::BGESmallENV15Q)
+                    .with_cache_dir(model_cache_dir.clone()),
+            ) {
+                Ok(model) => {
+                    if let Ok(mut guard) = self.model.lock() {
+                        *guard = Some(model);
+                    }
+                }
+                Err(e) => {
+                    // Most likely offline. The user can toggle the setting
+                    // again (or relaunch) to retry; search stays keyword-only.
+                    eprintln!("[embeddings] model load failed: {e}");
+                    self.set_status(&format!("error: {e}"));
+                    return;
+                }
+            }
+        }
+
+        self.set_status("indexing");
+        let live_ids: Vec<String> = conn
+            .prepare("SELECT id FROM documents WHERE deleted_at IS NULL")
+            .and_then(|mut stmt| {
+                stmt.query_map([], |row| row.get(0))
+                    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            })
+            .unwrap_or_default();
+        for doc_id in live_ids {
+            if let Err(e) = self.index_document(&conn, &doc_id) {
+                eprintln!("[embeddings] reconcile failed for {doc_id}: {e}");
+            }
+        }
+        self.set_status("ready");
     }
 
     /// Re-chunks a document, hash-diffs against stored chunks, and embeds
@@ -245,6 +332,11 @@ impl SemanticIndex {
             stale_ids.push(*id);
         }
         if to_embed.is_empty() && stale_ids.is_empty() {
+            return Ok(());
+        }
+        // Model gone (disabled mid-flight or load failed): skip quietly. The
+        // next enable's reconcile re-runs this diff and catches up.
+        if !to_embed.is_empty() && self.model.lock().map(|g| g.is_none()).unwrap_or(true) {
             return Ok(());
         }
 
@@ -485,5 +577,14 @@ mod tests {
             fnv1a(original.last().unwrap()),
             fnv1a(edited.last().unwrap()),
         );
+    }
+
+    #[test]
+    fn disabled_index_reports_disabled_and_skips_queue() {
+        let index = SemanticIndex::new();
+        assert_eq!(index.status(), "disabled");
+        // No worker started: request_index and embed_query are safe no-ops.
+        index.request_index("doc-1");
+        assert!(index.embed_query("anything").is_none());
     }
 }

@@ -8,9 +8,10 @@ use tauri::Manager;
 
 use db::{
     documents::{
-        create_document, create_draft, delete_document, get_document, get_trash_retention,
-        list_documents, list_drafts, list_trashed_documents, purge_expired_trash, restore_document,
-        set_trash_retention, trash_document, update_document_meta,
+        create_document, create_draft, delete_document, get_document,
+        get_semantic_search_enabled, get_trash_retention, list_documents, list_drafts,
+        list_trashed_documents, purge_expired_trash, restore_document,
+        set_semantic_search_enabled, set_trash_retention, trash_document, update_document_meta,
     },
     events::{
         append_event, create_named_snapshot, create_snapshot, get_snapshot_retention,
@@ -108,11 +109,37 @@ async fn cmd_search_documents(
     search_documents(&conn, &query, query_embedding.as_deref()).map_err(|e| e.to_string())
 }
 
-/// Semantic index status: "starting" | "loading-model" | "indexing" |
-/// "ready" | "unavailable" | "error: …". Keyword search works regardless.
+/// Semantic index status: "disabled" | "starting" | "loading-model" |
+/// "indexing" | "ready" | "unavailable" | "error: …". Keyword search works
+/// regardless.
 #[tauri::command]
 fn cmd_search_status(semantic: tauri::State<SemanticState>) -> String {
     semantic.0.status()
+}
+
+/// Whether the user opted in to semantic search (Settings toggle).
+#[tauri::command]
+fn cmd_get_semantic_search_enabled(state: tauri::State<DbState>) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_semantic_search_enabled(&conn).map_err(|e| e.to_string())
+}
+
+/// Persists the semantic-search opt-in and starts/stops the index worker.
+/// Enabling for the first time downloads the embedding model (~30 MB) in
+/// the background; disabling frees the model but keeps the on-disk index
+/// so re-enabling is cheap.
+#[tauri::command]
+fn cmd_set_semantic_search_enabled(
+    state: tauri::State<DbState>,
+    semantic: tauri::State<SemanticState>,
+    enabled: bool,
+) -> Result<(), String> {
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        set_semantic_search_enabled(&conn, enabled).map_err(|e| e.to_string())?;
+    }
+    semantic.0.set_enabled(enabled);
+    Ok(())
 }
 
 #[tauri::command]
@@ -654,10 +681,15 @@ pub fn run() {
             ))));
 
             // Semantic search index: background worker with its own DB
-            // connection; downloads the embedding model into app data on
-            // first run, then keeps chunk embeddings in sync with edits.
+            // connection. Opt-in — the embedding model (~30 MB) is only
+            // downloaded once the user enables "Search by meaning" in
+            // Settings; until then the worker idles and search is FTS-only.
+            let semantic_enabled = {
+                let conn = app.state::<DbState>().inner().0.lock().unwrap();
+                get_semantic_search_enabled(&conn).unwrap_or(false)
+            };
             let semantic = embeddings::SemanticIndex::new();
-            semantic.start(db_file.clone(), db_path.join("models"));
+            semantic.start(db_file.clone(), db_path.join("models"), semantic_enabled);
             app.manage(SemanticState(semantic));
 
             // Native app menu is desktop-only; mobile has no menu bar, so the
@@ -680,6 +712,8 @@ pub fn run() {
             cmd_update_document_meta,
             cmd_search_documents,
             cmd_search_status,
+            cmd_get_semantic_search_enabled,
+            cmd_set_semantic_search_enabled,
             cmd_delete_document,
             cmd_trash_document,
             cmd_restore_document,
