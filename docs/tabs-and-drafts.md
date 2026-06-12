@@ -70,12 +70,23 @@ fork from).
 
 ## Locking
 
-Locks derive from branching: forking locks the parent; deleting a parent's
-last live branch auto-unlocks it (leaves are never locked); restoring a
-branch re-locks it. While locked, the editor state is built with
-`EditorState.readOnly.of(true)` and an amber strip inside the page offers
-"Edit anyway" (persistently unlocks) and "New branch". The DB never rejects
-writes — replay, collab, and AI tools are unaffected.
+Locks come from two places sharing one flag:
+
+- **Branching**: forking locks the parent; deleting a parent's last live
+  branch auto-unlocks it; restoring a branch re-locks it.
+- **Manual**: any draft can be locked/unlocked from its row in the panel.
+  (Edge: the auto-unlock on losing the last branch also clears a manual
+  lock — re-lock from the panel if needed.)
+
+While locked, the editor state is built with `EditorState.readOnly.of(true)`
+and an amber strip inside the page offers "Edit anyway" (persistently
+unlocks) and "New branch". **Annotation creation is refused on locked
+drafts**: the comment/revision keyboard commands and the programmatic
+`createComment`/`createSuggestion`/`createRevision` entry points (used by
+the AI sidebar and AutoAI) all bail on `state.readOnly`, and the AutoAI
+engine skips reviewing read-only drafts entirely. Event replay dispatches
+raw effects, so loading locked drafts is unaffected. The DB never rejects
+writes — replay and collab are unaffected.
 
 ## Resolution order
 
