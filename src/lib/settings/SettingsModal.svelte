@@ -196,17 +196,31 @@ let innerEl = $state<HTMLDivElement | undefined>(undefined);
 let alertKey = $state(0);
 let alerting = $state(false);
 
-function getChangelogEntry(): { date: string; content: string; version: string } | null {
-    const appVersion = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
-    if (appVersion === "dev") return null;
-    const parts = appVersion.split(".");
-    const currentMinor = `${parts[0]}.${parts[1]}`;
-    const entry = (changelog as Record<string, { date: string; content: string }>)[currentMinor];
-    if (!entry) return null;
-    return { ...entry, version: currentMinor };
+// All changelog versions, newest-first (matches changelog.json ordering),
+// for the "What's New" dropdown.
+const changelogVersions: { version: string; date: string }[] = Object.entries(
+    changelog as Record<string, { date: string; content: string }>,
+).map(([version, entry]) => ({ version, date: entry.date }));
+
+let whatsNewOpen = $state(false);
+
+function openChangelog(version?: string) {
+    appEventBus.emit({ type: "show-changelog", version });
+    whatsNewOpen = false;
+    onclose();
 }
 
-const currentChangelog = getChangelogEntry();
+// Close the What's New dropdown on outside click.
+$effect(() => {
+    if (!whatsNewOpen) return;
+    const handler = (e: MouseEvent) => {
+        if (!(e.target as HTMLElement).closest(".whats-new-dropdown")) {
+            whatsNewOpen = false;
+        }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+});
 
 // Tab state
 let activeTab = $state<"basic" | "advanced">("basic");
@@ -402,16 +416,38 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
             </div>
             <div class="flex items-center gap-1.5">
-                {#if currentChangelog}
-                    <button
-                        onclick={() => {
-                            appEventBus.emit({ type: "show-changelog" });
-                            onclose();
-                        }}
-                        class="text-[10px] font-medium px-2.5 py-1 rounded-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
-                    >
-                        What's New
-                    </button>
+                {#if changelogVersions.length > 0}
+                    <div class="whats-new-dropdown relative flex items-stretch">
+                        <button
+                            onclick={() => openChangelog()}
+                            class="text-[10px] font-medium pl-2.5 pr-2 py-1 rounded-l-md bg-blue-500/[0.08] text-blue-700 border border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
+                        >
+                            What's New
+                        </button>
+                        <button
+                            onclick={() => (whatsNewOpen = !whatsNewOpen)}
+                            aria-label="Browse previous changelogs"
+                            aria-expanded={whatsNewOpen}
+                            class="flex items-center px-1 rounded-r-md bg-blue-500/[0.08] text-blue-700 border border-l-0 border-blue-500/[0.12] hover:bg-blue-500/[0.15] transition-colors"
+                        >
+                            <ChevronDown size={12} class="transition-transform {whatsNewOpen ? 'rotate-180' : ''}" />
+                        </button>
+                        {#if whatsNewOpen}
+                            <div
+                                class="absolute top-full right-0 mt-1 w-44 max-h-64 overflow-y-auto rounded-lg bg-white shadow-lg border border-black/[0.08] py-1 z-10"
+                            >
+                                {#each changelogVersions as { version, date } (version)}
+                                    <button
+                                        onclick={() => openChangelog(version)}
+                                        class="w-full flex items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-blue-500/[0.06] transition-colors"
+                                    >
+                                        <span class="text-[11px] font-medium text-black/70">v{version}</span>
+                                        <span class="text-[10px] text-black/35">{date}</span>
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
                 {/if}
                 <button
                     onclick={tryClose}

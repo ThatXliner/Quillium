@@ -182,18 +182,26 @@ function tryShowChangelog() {
     showChangelog = true;
 }
 
-function forceShowChangelog() {
-    // Find the latest changelog entry regardless of version checks.
-    const entries = Object.entries(changelog as Record<string, { date: string; content: string }>);
+function forceShowChangelog(event?: { version?: string }) {
+    const log = changelog as Record<string, { date: string; content: string }>;
+    const entries = Object.entries(log);
     if (entries.length === 0) return;
-    const [version, entry] = entries[entries.length - 1];
+    // Show the requested version, or the latest (entries are newest-first).
+    const version = event?.version ?? entries[0][0];
+    const entry = log[version];
+    if (!entry) return;
     changelogEntry = { ...entry, version };
     showChangelog = true;
 }
 
 function handleChangelogDismiss() {
+    // Only advance the seen-version marker — browsing an older changelog from
+    // the dropdown must not regress (or re-trigger) the auto-show tracking.
     if (changelogEntry) {
-        localStorage.setItem(CHANGELOG_SEEN_KEY, changelogEntry.version);
+        const lastSeen = localStorage.getItem(CHANGELOG_SEEN_KEY) ?? "0.0";
+        if (isNewerMinor(changelogEntry.version, lastSeen)) {
+            localStorage.setItem(CHANGELOG_SEEN_KEY, changelogEntry.version);
+        }
     }
     showChangelog = false;
     // Return focus to the editor so the user can keep typing (#122)
