@@ -183,12 +183,24 @@ export type Annotations = { [id: number]: GenericAnnotation };
 // clipboard), so the position offsets and active index are tightened to integers
 // even though the persisted schema allows bare numbers: a fractional doc
 // coordinate would crash CodeMirror on paste.
+//
+// ⚠️ ADDING A NEW ANNOTATION TYPE: this derivation is NOT automatic — zod's
+// types don't allow mapping the union generically — so a new member of
+// GenericAnnotation must be added to the SerializedAnnotationSchema union below,
+// carrying that type's extra fields the same way revision/suggestion do. The two
+// assertions that bracket the union (the .options length check and the
+// _AssertSerializedCoversAllTypes type below) fail to compile if you forget, so
+// you can't ship a type that silently drops on copy/paste.
 const [RawComment, RawSuggestion, RawRevision] = RawAnnotationSchema.options;
 const SerializedBase = z.object({
     relAnchor: z.number().int(),
     relHead: z.number().int(),
     thread: z.array(ThreadMessageSchema),
 });
+// Tripwire: if a fourth annotation type is added to RawAnnotationSchema, this
+// `satisfies` fails to compile (4 options no longer assignable to a 3-tuple),
+// forcing whoever adds the type to revisit the serialized union below.
+RawAnnotationSchema.options satisfies [z.ZodObject, z.ZodObject, z.ZodObject];
 export const SerializedAnnotationSchema = z.discriminatedUnion("_type", [
     SerializedBase.extend({ _type: RawComment.shape._type }),
     SerializedBase.extend({
@@ -204,3 +216,17 @@ export const SerializedAnnotationSchema = z.discriminatedUnion("_type", [
 ]);
 export const SerializedAnnotationsSchema = z.array(SerializedAnnotationSchema);
 export type SerializedAnnotation = z.infer<typeof SerializedAnnotationSchema>;
+
+// Compile-time exhaustiveness: the serialized union must cover EVERY _type in
+// GenericAnnotation. If a new type is added to GenericAnnotation but not to
+// SerializedAnnotationSchema above, the two `_type` sets diverge and one of these
+// helper types resolves to `never`, breaking the build. `AssertEqual` produces a
+// type error (not just a `never` value) so it can't be silently ignored.
+type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+type _AssertSerializedCoversAllTypes = AssertEqual<
+    SerializedAnnotation["_type"],
+    GenericAnnotation["_type"]
+>;
+// Force evaluation: this const is `true` only when the sets match exactly.
+const _serializedCoversAllTypes: _AssertSerializedCoversAllTypes = true;
+void _serializedCoversAllTypes;

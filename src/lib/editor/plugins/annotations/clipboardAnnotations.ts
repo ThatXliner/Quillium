@@ -207,8 +207,10 @@ function copyableAnnotationsIn(state: EditorState, from: number, to: number): Ge
  * selection the copied text is the ranges' slices joined by "\n" (mirroring
  * CodeMirror's default copy), so an annotation inside range `i` is rebased by the
  * cumulative length of the earlier ranges plus one separator char per join. Ids
- * are stripped — paste assigns fresh ones. Comments, suggestions, and revisions
- * are all carried; type-specific data rides along verbatim.
+ * are stripped — paste assigns fresh ones. All annotation types are carried;
+ * type-specific data rides along verbatim via the generic spread below, so a new
+ * type needs no change here — only a member added to SerializedAnnotationSchema
+ * in models.ts (see "Adding a new annotation type" in docs/annotations.md).
  */
 export function serializeAnnotationsForCopy(
     state: EditorState,
