@@ -3,12 +3,24 @@ import {
     createDocument,
     createDraft,
     createSnapshot,
+    createTab,
+    deleteDraft,
+    deleteTab,
     deregisterOpenDoc,
+    forkDraft,
+    getActiveDraft,
+    getActiveTab,
     getDocumentMeta,
     listDocuments,
-    listDrafts,
+    listTabDrafts,
+    listTabs,
     loadDocumentState,
     registerOpenDoc,
+    renameDraft,
+    renameTab,
+    setActiveDraft,
+    setActiveTab,
+    setDraftLocked,
     updateDocumentMeta,
 } from "$lib/db";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
@@ -19,6 +31,7 @@ import {
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
+    currentTabId,
     documentContent,
     editorView,
     lastPersistedEventId,
@@ -65,14 +78,18 @@ import {
     hasApiKey,
     setAiProcessing,
 } from "$lib/ai/settings.svelte";
-import type { EventRecord } from "$lib/db/types";
+import type { DraftMeta, EventRecord, TabMeta } from "$lib/db/types";
 import { appSettings } from "$lib/settings.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { ViewUpdate } from "@codemirror/view";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { generateText } from "ai";
-import { Pencil, SparklesIcon } from "lucide-svelte";
+import { GitBranchIcon, LockIcon, Pencil, SparklesIcon } from "lucide-svelte";
+import DocumentTabs from "./DocumentTabs.svelte";
+import DraftTreePanel from "./DraftTreePanel.svelte";
 import StatusBar from "./StatusBar.svelte";
 import type { ListenerOptions } from "./listeners";
+import { flushMetaDebounces, flushPersistQueue } from "./listeners";
 import { annotationField } from "./plugins/annotations";
 import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
@@ -215,40 +232,75 @@ const getExtensionOptions: ListenerOptions = {
     },
 };
 
+// ── Tabs & draft tree state (#160) ──────────────────────────────
+let tabs = $state<TabMeta[]>([]);
+let tabDrafts = $state<DraftMeta[]>([]);
+let forking = $state(false);
+
+const currentDraft = $derived(tabDrafts.find((d) => d.id === $currentDraftId));
+const isLocked = $derived(currentDraft?.locked ?? false);
+
+/** Flushes queued events + debounced meta writes before switching context. */
+async function flushPendingPersist(): Promise<void> {
+    flushMetaDebounces();
+    await flushPersistQueue();
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 /**
- * Resolves the active draft for a document. If no drafts exist,
- * creates one. Returns the draft ID.
+ * Resolves the active tab + draft for a document, creating a default
+ * "Main" tab (with its root draft) for documents that have none yet.
+ * Refreshes the local tab/draft-tree state and the currentTabId store.
  */
-async function resolveActiveDraft(docId: string): Promise<string | null> {
-    const drafts = await listDrafts(docId);
-    if (drafts.length > 0) {
-        const active = drafts.find((d) => d.isActive) ?? drafts[0];
-        return active.id;
+async function refreshTabState(docId: string): Promise<{ tabId: string; draftId: string } | null> {
+    let tabList = await listTabs(docId);
+    if (tabList.length === 0) {
+        tabList = [await createTab(docId, "Main")];
     }
-    // Create a default draft for new documents
-    return createDraft(docId, "Draft");
+    const persistedTab = await getActiveTab(docId);
+    const activeTab = tabList.find((t) => t.id === persistedTab) ?? tabList[0];
+
+    let drafts = await listTabDrafts(activeTab.id);
+    if (drafts.length === 0) {
+        // Should not happen (createTab seeds a root draft; deleting the
+        // last draft of a tab is rejected) — heal with a fresh tab.
+        const fresh = await createTab(docId, "Main");
+        tabList = [...tabList, fresh];
+        drafts = await listTabDrafts(fresh.id);
+        await setActiveTab(docId, fresh.id);
+    }
+    const persistedDraft = await getActiveDraft(activeTab.id);
+    const activeDraft = drafts.find((d) => d.id === persistedDraft) ?? drafts[0];
+
+    tabs = tabList;
+    tabDrafts = drafts;
+    currentTabId.set(activeTab.id);
+    return activeDraft ? { tabId: activeTab.id, draftId: activeDraft.id } : null;
 }
 
 /**
  * Builds an EditorState from a LoadResult, restoring from the
  * latest snapshot and replaying any events that occurred after it.
+ * Locked drafts get a read-only state; unlocking rebuilds it.
  */
-function buildStateFromLoad(snapshotJson: string | null, eventsSince: EventRecord[]): EditorState {
+function buildStateFromLoad(
+    snapshotJson: string | null,
+    eventsSince: EventRecord[],
+    readOnly = false,
+): EditorState {
+    const extensions = readOnly
+        ? [getExtensions(getExtensionOptions), EditorState.readOnly.of(true)]
+        : getExtensions(getExtensionOptions);
     let base: EditorState;
     if (snapshotJson && snapshotJson !== "{}") {
         try {
-            base = EditorState.fromJSON(
-                JSON.parse(snapshotJson),
-                { extensions: getExtensions(getExtensionOptions) },
-                savedFields,
-            );
+            base = EditorState.fromJSON(JSON.parse(snapshotJson), { extensions }, savedFields);
         } catch {
-            base = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
+            base = EditorState.create({ extensions });
         }
     } else {
-        base = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
+        base = EditorState.create({ extensions });
     }
 
     if (eventsSince.length === 0) return base;
@@ -267,11 +319,12 @@ const fromSave = (async () => {
         if (doc) {
             currentDocumentTitle.set(doc.title);
         }
-        const draftId = await resolveActiveDraft(docId);
-        currentDraftId.set(draftId);
-        if (draftId) {
-            const loaded = await loadDocumentState(docId, draftId);
-            return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
+        const resolved = await refreshTabState(docId);
+        currentDraftId.set(resolved?.draftId ?? null);
+        if (resolved) {
+            const loaded = await loadDocumentState(docId, resolved.draftId);
+            const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
+            return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
         }
     } else {
         // No document set — load the most-recently-updated document
@@ -281,11 +334,12 @@ const fromSave = (async () => {
             currentDocumentId.set(doc.id);
             currentDocumentTitle.set(doc.title);
 
-            const draftId = await resolveActiveDraft(doc.id);
-            currentDraftId.set(draftId);
-            if (draftId) {
-                const loaded = await loadDocumentState(doc.id, draftId);
-                return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
+            const resolved = await refreshTabState(doc.id);
+            currentDraftId.set(resolved?.draftId ?? null);
+            if (resolved) {
+                const loaded = await loadDocumentState(doc.id, resolved.draftId);
+                const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
+                return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
             }
         }
     }
@@ -299,7 +353,9 @@ const fromSave = (async () => {
     const title = isFirstTime ? SAMPLE_DOCUMENT_TITLE : "Untitled";
     const content = isFirstTime ? SAMPLE_DOCUMENT_CONTENT : "";
     const newDocId = await createDocument(title);
-    const newDraftId = await createDraft(newDocId, "Draft");
+    // createDraft also creates the document's "Main" tab when none exists.
+    const newDraftId = await createDraft(newDocId, "main");
+    await refreshTabState(newDocId);
     const state = EditorState.create({
         doc: content,
         extensions: getExtensions(getExtensionOptions),
@@ -356,13 +412,13 @@ export async function loadDocument(id: string) {
     // can't be consumed by a new document whose annotations share the same IDs.
     annotationEventBus.clearPendingSelections();
 
-    const draftId = await resolveActiveDraft(id);
+    const resolved = await refreshTabState(id);
     if (gen !== loadGeneration) return;
-    currentDraftId.set(draftId);
+    currentDraftId.set(resolved?.draftId ?? null);
     lastPersistedEventId.set(-1);
     lastSavedAt.set(null);
 
-    if (!draftId) {
+    if (!resolved) {
         currentDocumentTitle.set("Untitled");
         const state = EditorState.create({ extensions: getExtensions(getExtensionOptions) });
         $editorView.setState(state);
@@ -370,7 +426,7 @@ export async function loadDocument(id: string) {
     }
 
     const [loaded, docMeta] = await Promise.all([
-        loadDocumentState(id, draftId),
+        loadDocumentState(id, resolved.draftId),
         getDocumentMeta(id),
     ]);
     if (gen !== loadGeneration) return;
@@ -386,10 +442,186 @@ export async function loadDocument(id: string) {
               : -1;
     lastPersistedEventId.set(latestEventId);
 
-    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
+    const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
+    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
     $editorView.setState(state);
     const text = state.doc.toString();
     writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
+}
+
+// ── Tab & draft-tree actions (#160) ─────────────────────────────
+
+/**
+ * Loads a draft of the current document into the editor view.
+ * Shared by tab switching, draft switching, fork, and lock toggling.
+ */
+async function switchToDraft(draftId: string): Promise<void> {
+    const docId = get(currentDocumentId);
+    const tabId = get(currentTabId);
+    if (!docId || !$editorView) return;
+
+    const gen = ++loadGeneration;
+    await flushPendingPersist();
+    annotationEventBus.clearPendingSelections();
+    if (tabId) await setActiveDraft(tabId, draftId);
+    currentDraftId.set(draftId);
+    lastPersistedEventId.set(-1);
+    lastSavedAt.set(null);
+
+    const loaded = await loadDocumentState(docId, draftId);
+    if (gen !== loadGeneration) return;
+    const latestEventId =
+        loaded.eventsSince.length > 0
+            ? loaded.eventsSince[loaded.eventsSince.length - 1].id
+            : loaded.snapshotEventId >= 0
+              ? loaded.snapshotEventId
+              : -1;
+    lastPersistedEventId.set(latestEventId);
+
+    const locked = tabDrafts.find((d) => d.id === draftId)?.locked ?? false;
+    const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
+    $editorView.setState(state);
+    const text = state.doc.toString();
+    writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
+}
+
+async function handleTabSelect(tabId: string) {
+    const docId = get(currentDocumentId);
+    if (!docId || tabId === get(currentTabId)) return;
+    await flushPendingPersist();
+    await setActiveTab(docId, tabId);
+    currentTabId.set(tabId);
+
+    const drafts = await listTabDrafts(tabId);
+    tabDrafts = drafts;
+    const persisted = await getActiveDraft(tabId);
+    const draft = drafts.find((d) => d.id === persisted) ?? drafts[0];
+    if (draft) await switchToDraft(draft.id);
+    posthog.capture("tab_switched");
+}
+
+async function handleTabCreate() {
+    const docId = get(currentDocumentId);
+    if (!docId) return;
+    const tab = await createTab(docId, `Tab ${tabs.length + 1}`);
+    tabs = [...tabs, tab];
+    posthog.capture("tab_created");
+    await handleTabSelect(tab.id);
+}
+
+async function handleTabRename(tabId: string, label: string) {
+    await renameTab(tabId, label).catch(console.error);
+    tabs = tabs.map((t) => (t.id === tabId ? { ...t, label } : t));
+    posthog.capture("tab_renamed");
+}
+
+async function handleTabDelete(tabId: string) {
+    if (tabs.length <= 1) return;
+    const tab = tabs.find((t) => t.id === tabId);
+    const ok = await confirm(
+        `Delete tab "${tab?.label ?? "Tab"}" and all its drafts? This cannot be undone.`,
+        { title: "Delete tab", kind: "warning" },
+    );
+    if (!ok) return;
+    await flushPendingPersist();
+    try {
+        await deleteTab(tabId);
+    } catch (e) {
+        console.error("[Editor] delete tab failed", e);
+        return;
+    }
+    const idx = tabs.findIndex((t) => t.id === tabId);
+    tabs = tabs.filter((t) => t.id !== tabId);
+    posthog.capture("tab_deleted");
+    if (get(currentTabId) === tabId) {
+        const next = tabs[Math.min(Math.max(idx, 0), tabs.length - 1)];
+        currentTabId.set(null); // force handleTabSelect to run for the neighbour
+        if (next) await handleTabSelect(next.id);
+    }
+}
+
+async function handleDraftSelect(draftId: string) {
+    if (draftId === get(currentDraftId)) return;
+    await switchToDraft(draftId);
+    posthog.capture("draft_switched");
+}
+
+/**
+ * Branches a child draft off `parentDraftId`, seeded with that draft's
+ * current state. The parent gets soft-locked so the branched-from text
+ * stays stable underneath its children.
+ */
+async function handleDraftFork(parentDraftId: string) {
+    const docId = get(currentDocumentId);
+    const view = $editorView;
+    if (!docId || !view || forking) return;
+    forking = true;
+    try {
+        await flushPendingPersist();
+        // Serialize the parent's state: the live view if it's the open
+        // draft, otherwise rebuild it from its snapshot + events.
+        let stateJson: string;
+        if (parentDraftId === get(currentDraftId)) {
+            stateJson = JSON.stringify(view.state.toJSON(savedFields));
+        } else {
+            const loaded = await loadDocumentState(docId, parentDraftId);
+            const parentState = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
+            stateJson = JSON.stringify(parentState.toJSON(savedFields));
+        }
+        const child = await forkDraft(parentDraftId, `v${tabDrafts.length}`, stateJson);
+        const tabId = get(currentTabId);
+        if (tabId) tabDrafts = await listTabDrafts(tabId);
+        posthog.capture("draft_forked");
+        await switchToDraft(child.id);
+    } catch (e) {
+        console.error("[Editor] fork draft failed", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+        forking = false;
+    }
+}
+
+async function handleDraftRename(draftId: string, label: string) {
+    await renameDraft(draftId, label).catch(console.error);
+    tabDrafts = tabDrafts.map((d) => (d.id === draftId ? { ...d, label } : d));
+}
+
+async function handleDraftDelete(draftId: string) {
+    const draft = tabDrafts.find((d) => d.id === draftId);
+    const ok = await confirm(
+        `Delete draft "${draft?.label ?? "draft"}"? Its text and history are removed permanently.`,
+        { title: "Delete draft", kind: "warning" },
+    );
+    if (!ok) return;
+    // If the open draft is being deleted, move to its parent (or any
+    // sibling) first so the editor never points at a missing draft.
+    if (draftId === get(currentDraftId)) {
+        const fallback =
+            draft?.parentDraftId ?? tabDrafts.find((d) => d.id !== draftId)?.id ?? null;
+        if (!fallback) return;
+        await switchToDraft(fallback);
+    } else {
+        await flushPendingPersist();
+    }
+    try {
+        await deleteDraft(draftId);
+    } catch (e) {
+        console.error("[Editor] delete draft failed", e);
+        return;
+    }
+    const tabId = get(currentTabId);
+    if (tabId) tabDrafts = await listTabDrafts(tabId);
+    posthog.capture("draft_deleted");
+}
+
+/** Toggles the soft lock and rebuilds the editor state's read-only flag. */
+async function handleDraftToggleLock(draftId: string, locked: boolean) {
+    await setDraftLocked(draftId, locked).catch(console.error);
+    tabDrafts = tabDrafts.map((d) => (d.id === draftId ? { ...d, locked } : d));
+    posthog.capture(locked ? "draft_locked" : "draft_unlocked");
+    if (draftId === get(currentDraftId)) {
+        await switchToDraft(draftId);
+    }
 }
 
 onMount(() => {
@@ -477,6 +709,55 @@ onMount(() => {
     </div>
 
     {#await fromSave then}
+        <DocumentTabs
+            {tabs}
+            activeTabId={$currentTabId}
+            ontabselect={handleTabSelect}
+            ontabcreate={handleTabCreate}
+            ontabrename={handleTabRename}
+            ontabdelete={handleTabDelete}
+        />
+
+        <!-- Draft tree for the active tab — floats left of the document,
+             hidden on viewports too narrow to fit beside it. -->
+        {#if tabDrafts.length > 0}
+            <div class="sticky top-28 z-30 h-0 pointer-events-none max-[1240px]:hidden">
+                <div class="pointer-events-auto absolute left-4 top-0">
+                    <DraftTreePanel
+                        drafts={tabDrafts}
+                        activeDraftId={$currentDraftId}
+                        ondraftselect={handleDraftSelect}
+                        ondraftfork={handleDraftFork}
+                        ondraftrename={handleDraftRename}
+                        ondraftdelete={handleDraftDelete}
+                        ontogglelock={handleDraftToggleLock}
+                    />
+                </div>
+            </div>
+        {/if}
+
+        {#if isLocked}
+            <div class="sticky top-16 z-40 h-0 flex justify-center pointer-events-none">
+                <div class="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur shadow-md text-[11px] text-black/50">
+                    <LockIcon size={11} class="text-black/40 shrink-0" />
+                    <span>Locked — this draft has branches</span>
+                    <div class="w-px h-3 bg-black/15"></div>
+                    <button
+                        onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
+                        class="font-medium text-black/50 hover:text-black/80 transition-colors"
+                    >Edit anyway</button>
+                    <button
+                        onclick={() => currentDraft && handleDraftFork(currentDraft.id)}
+                        disabled={forking}
+                        class="flex items-center gap-1 font-medium text-amber-600/80 hover:text-amber-700 transition-colors disabled:opacity-40"
+                    >
+                        <GitBranchIcon size={11} />
+                        <span>New branch</span>
+                    </button>
+                </div>
+            </div>
+        {/if}
+
         <!--
             Document width is fluid below 816px (shrinks to fit narrow
             tablet/phone webviews) but capped at 816px on desktop, so the
@@ -484,10 +765,11 @@ onMount(() => {
             `w-[816px]`. The mx-3 horizontal inset only has an effect once
             the viewport is narrower than 816px + margins; on desktop the
             max-w cap wins and mx-auto centers it unchanged.
+            Top-left corner is square so the tab strip sits flush (#160).
         -->
         <div
             id="editor-document"
-            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mt-12 mb-12 bg-white rounded-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
+            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
             bind:this={element}
         ></div>
     {/await}

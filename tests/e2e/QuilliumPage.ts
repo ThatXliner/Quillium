@@ -125,6 +125,52 @@ export class QuilliumPage {
                 const callbacks = new Map<number, (...args: unknown[]) => unknown>();
                 const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
 
+                // ── Stateful tabs & draft-tree mock (#160) ──────────────
+                type MockTab = {
+                    id: string;
+                    documentId: string;
+                    tabType: string;
+                    label: string;
+                    position: number;
+                    createdAt: number;
+                };
+                type MockDraft = {
+                    id: string;
+                    documentId: string;
+                    label: string;
+                    createdAt: number;
+                    isActive: boolean;
+                    tabId: string | null;
+                    parentDraftId: string | null;
+                    locked: boolean;
+                };
+                let nextTabIndex = 2;
+                let nextDraftIndex = 2;
+                let tabs: MockTab[] = [
+                    {
+                        id: "tab-test-1",
+                        documentId: "doc-test-1",
+                        tabType: "draft",
+                        label: "Main",
+                        position: 0,
+                        createdAt: 0,
+                    },
+                ];
+                let drafts: MockDraft[] = [
+                    {
+                        id: "draft-test-1",
+                        documentId: "doc-test-1",
+                        label: "main",
+                        createdAt: 0,
+                        isActive: true,
+                        tabId: "tab-test-1",
+                        parentDraftId: null,
+                        locked: false,
+                    },
+                ];
+                const activeTabByDoc: Record<string, string> = {};
+                const activeDraftByTab: Record<string, string> = {};
+
                 (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
 
                 (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
@@ -149,16 +195,111 @@ export class QuilliumPage {
                             ];
                         if (cmd === "cmd_create_document") return "doc-test-1";
                         if (cmd === "cmd_create_draft") return "draft-test-1";
-                        if (cmd === "cmd_list_drafts")
-                            return [
-                                {
-                                    id: "draft-test-1",
-                                    documentId: "doc-test-1",
-                                    label: "Draft",
-                                    createdAt: 0,
-                                    isActive: true,
-                                },
-                            ];
+                        if (cmd === "cmd_list_drafts") {
+                            const a = args as { docId: string };
+                            return drafts.filter((d) => d.documentId === a.docId);
+                        }
+
+                        // ── Tabs & draft tree (#160) ────────────────────
+                        if (cmd === "cmd_list_tabs") {
+                            const a = args as { docId: string };
+                            return tabs.filter((t) => t.documentId === a.docId);
+                        }
+                        if (cmd === "cmd_create_tab") {
+                            const a = args as { docId: string; label: string };
+                            const tab: MockTab = {
+                                id: `tab-test-${nextTabIndex++}`,
+                                documentId: a.docId,
+                                tabType: "draft",
+                                label: a.label,
+                                position: tabs.length,
+                                createdAt: Date.now(),
+                            };
+                            tabs.push(tab);
+                            drafts.push({
+                                id: `draft-test-${nextDraftIndex++}`,
+                                documentId: a.docId,
+                                label: "main",
+                                createdAt: Date.now(),
+                                isActive: true,
+                                tabId: tab.id,
+                                parentDraftId: null,
+                                locked: false,
+                            });
+                            return tab;
+                        }
+                        if (cmd === "cmd_rename_tab") {
+                            const a = args as { tabId: string; label: string };
+                            const tab = tabs.find((t) => t.id === a.tabId);
+                            if (tab) tab.label = a.label;
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_tab") {
+                            const a = args as { tabId: string };
+                            tabs = tabs.filter((t) => t.id !== a.tabId);
+                            drafts = drafts.filter((d) => d.tabId !== a.tabId);
+                            return null;
+                        }
+                        if (cmd === "cmd_get_active_tab") {
+                            const a = args as { docId: string };
+                            return activeTabByDoc[a.docId] ?? null;
+                        }
+                        if (cmd === "cmd_set_active_tab") {
+                            const a = args as { docId: string; tabId: string };
+                            activeTabByDoc[a.docId] = a.tabId;
+                            return null;
+                        }
+                        if (cmd === "cmd_list_tab_drafts") {
+                            const a = args as { tabId: string };
+                            return drafts.filter((d) => d.tabId === a.tabId);
+                        }
+                        if (cmd === "cmd_get_active_draft") {
+                            const a = args as { tabId: string };
+                            return activeDraftByTab[a.tabId] ?? null;
+                        }
+                        if (cmd === "cmd_set_active_draft") {
+                            const a = args as { tabId: string; draftId: string };
+                            activeDraftByTab[a.tabId] = a.draftId;
+                            return null;
+                        }
+                        if (cmd === "cmd_fork_draft") {
+                            const a = args as { parentDraftId: string; label: string };
+                            const parent = drafts.find((d) => d.id === a.parentDraftId);
+                            if (parent) parent.locked = true;
+                            const child: MockDraft = {
+                                id: `draft-test-${nextDraftIndex++}`,
+                                documentId: parent?.documentId ?? "doc-test-1",
+                                label: a.label,
+                                createdAt: Date.now(),
+                                isActive: true,
+                                tabId: parent?.tabId ?? null,
+                                parentDraftId: a.parentDraftId,
+                                locked: false,
+                            };
+                            drafts.push(child);
+                            return child;
+                        }
+                        if (cmd === "cmd_rename_draft") {
+                            const a = args as { draftId: string; label: string };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (draft) draft.label = a.label;
+                            return null;
+                        }
+                        if (cmd === "cmd_set_draft_locked") {
+                            const a = args as { draftId: string; locked: boolean };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (draft) draft.locked = a.locked;
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_draft") {
+                            const a = args as { draftId: string };
+                            drafts = drafts.filter((d) => d.id !== a.draftId);
+                            return null;
+                        }
+                        // Native confirm dialogs (tab/draft deletion) — accept.
+                        // confirm() routes through plugin:dialog|message and
+                        // treats the "Ok" button label as acceptance.
+                        if (cmd === "plugin:dialog|message") return "Ok";
 
                         if (cmd === "cmd_load_document_state") {
                             if (payload.initialDoc) {
