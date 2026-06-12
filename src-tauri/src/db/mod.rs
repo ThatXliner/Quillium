@@ -48,6 +48,18 @@ pub struct DraftMeta {
     pub locked: bool,
 }
 
+/// One entry in the document-level structural audit log (#160):
+/// tab CRUD, draft branching, locks, checkpoints. Payload is JSON.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocEventRecord {
+    pub id: i64,
+    pub document_id: String,
+    pub event_type: String,
+    pub payload: String,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppendEventResult {

@@ -42,6 +42,18 @@ export type DraftMeta = {
     locked: boolean;
 };
 
+/**
+ * One entry in the document-level structural audit log (#160):
+ * tab CRUD, draft branching, locks, checkpoints. Payload is JSON.
+ */
+export type DocEventRecord = {
+    id: number;
+    documentId: string;
+    eventType: string;
+    payload: string;
+    createdAt: number;
+};
+
 export type AppendEventResult = {
     eventId: number;
     needsSnapshot: boolean;

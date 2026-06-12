@@ -171,7 +171,7 @@ pub fn purge_expired_trash(conn: &Connection, days: i64) -> Result<u64> {
 pub fn list_drafts(conn: &Connection, doc_id: &str) -> Result<Vec<DraftMeta>> {
     let mut stmt = conn.prepare(
         "SELECT id, document_id, label, created_at, is_active, tab_id, parent_draft_id, locked
-         FROM drafts WHERE document_id = ?1 ORDER BY created_at ASC",
+         FROM drafts WHERE document_id = ?1 AND deleted_at IS NULL ORDER BY created_at ASC",
     )?;
     let rows = stmt.query_map(params![doc_id], |row| {
         Ok(DraftMeta {
@@ -194,7 +194,8 @@ pub fn list_drafts(conn: &Connection, doc_id: &str) -> Result<Vec<DraftMeta>> {
 pub fn create_draft(conn: &Connection, doc_id: &str, label: &str) -> Result<String> {
     let tab_id: Option<String> = conn
         .query_row(
-            "SELECT id FROM tabs WHERE document_id = ?1 ORDER BY position ASC LIMIT 1",
+            "SELECT id FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL
+             ORDER BY position ASC LIMIT 1",
             params![doc_id],
             |row| row.get(0),
         )

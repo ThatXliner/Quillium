@@ -49,6 +49,20 @@ pub fn migrate_tabs_and_draft_tree(conn: &Connection) -> Result<()> {
             [],
         )?;
     }
+    // Soft-delete markers: tab/draft deletion must be reversible from the
+    // document-level version history (#160), so rows are never destroyed.
+    if !column_exists(conn, "tabs", "deleted_at")? {
+        conn.execute(
+            "ALTER TABLE tabs ADD COLUMN deleted_at INTEGER DEFAULT NULL",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "drafts", "deleted_at")? {
+        conn.execute(
+            "ALTER TABLE drafts ADD COLUMN deleted_at INTEGER DEFAULT NULL",
+            [],
+        )?;
+    }
     // Index lives here (not init_schema) because tab_id is ALTER-added above.
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_drafts_tab ON drafts(tab_id)",
@@ -66,7 +80,8 @@ pub fn migrate_tabs_and_draft_tree(conn: &Connection) -> Result<()> {
     for doc_id in doc_ids {
         let existing_tab: Option<String> = conn
             .query_row(
-                "SELECT id FROM tabs WHERE document_id = ?1 ORDER BY position ASC LIMIT 1",
+                "SELECT id FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL
+                 ORDER BY position ASC LIMIT 1",
                 rusqlite::params![doc_id],
                 |row| row.get(0),
             )
@@ -148,9 +163,18 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             value TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS doc_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            event_type  TEXT NOT NULL,
+            payload     TEXT NOT NULL,
+            created_at  INTEGER NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_events_draft ON events(draft_id, id);
         CREATE INDEX IF NOT EXISTS idx_snapshots_draft ON snapshots(draft_id, up_to_event_id DESC);
         CREATE INDEX IF NOT EXISTS idx_tabs_document ON tabs(document_id, position ASC);
+        CREATE INDEX IF NOT EXISTS idx_doc_events_document ON doc_events(document_id, id DESC);
         ",
     )?;
     Ok(())

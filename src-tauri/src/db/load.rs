@@ -11,7 +11,8 @@ fn resolve_default_draft(conn: &Connection, doc_id: &str) -> Option<String> {
         Some(id) => Some(id),
         None => conn
             .query_row(
-                "SELECT id FROM tabs WHERE document_id = ?1 ORDER BY position ASC LIMIT 1",
+                "SELECT id FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL
+                 ORDER BY position ASC LIMIT 1",
                 params![doc_id],
                 |row| row.get(0),
             )
@@ -22,7 +23,8 @@ fn resolve_default_draft(conn: &Connection, doc_id: &str) -> Option<String> {
             return Some(draft);
         }
         if let Ok(draft) = conn.query_row(
-            "SELECT id FROM drafts WHERE tab_id = ?1 ORDER BY created_at ASC LIMIT 1",
+            "SELECT id FROM drafts WHERE tab_id = ?1 AND deleted_at IS NULL
+             ORDER BY created_at ASC LIMIT 1",
             params![tab_id],
             |row| row.get(0),
         ) {
@@ -39,7 +41,7 @@ fn resolve_default_draft(conn: &Connection, doc_id: &str) -> Option<String> {
         return Some(draft);
     }
     conn.query_row(
-        "SELECT id FROM drafts WHERE document_id = ?1 AND is_active = 1
+        "SELECT id FROM drafts WHERE document_id = ?1 AND is_active = 1 AND deleted_at IS NULL
          ORDER BY created_at ASC LIMIT 1",
         params![doc_id],
         |row| row.get(0),

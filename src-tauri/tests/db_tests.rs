@@ -4,8 +4,9 @@ use quillium_lib::db::{
     load::load_document_state,
     schema::open_db,
     tabs::{
-        create_tab, delete_draft, delete_tab, fork_draft, get_active_draft, list_tab_drafts,
-        list_tabs, set_active_draft, set_active_tab, set_draft_locked,
+        create_tab, create_tab_draft, delete_draft, delete_tab, fork_draft, get_active_draft,
+        list_doc_events, list_tab_drafts, list_tabs, rename_tab, restore_draft, restore_tab,
+        set_active_draft, set_active_tab, set_draft_locked,
     },
 };
 use rusqlite::Connection;
@@ -212,7 +213,7 @@ fn test_delete_draft_refusals() {
 }
 
 #[test]
-fn test_delete_tab_refuses_last_and_cascades() {
+fn test_delete_tab_is_soft_and_restorable() {
     let conn = in_memory_db();
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab1 = create_tab(&conn, &doc_id, "Main").expect("tab1");
@@ -227,14 +228,121 @@ fn test_delete_tab_refuses_last_and_cascades() {
 
     delete_tab(&conn, &tab2.id).expect("delete tab2");
     assert_eq!(list_tabs(&conn, &doc_id).expect("tabs").len(), 1);
-    let orphans: i64 = conn
+    // Soft delete: the drafts' events survive for restore.
+    let surviving: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM events WHERE draft_id = ?1",
             rusqlite::params![tab2_draft],
             |row| row.get(0),
         )
         .expect("count");
-    assert_eq!(orphans, 0, "tab deletion removes its drafts' events");
+    assert_eq!(surviving, 1, "tab deletion keeps its drafts' events");
+
+    restore_tab(&conn, &tab2.id).expect("restore tab2");
+    assert_eq!(list_tabs(&conn, &doc_id).expect("tabs").len(), 2);
+    let drafts = list_tab_drafts(&conn, &tab2.id).expect("drafts");
+    assert_eq!(drafts.len(), 1, "restored tab still has its draft");
+}
+
+#[test]
+fn test_delete_draft_is_soft_and_restorable() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
+    let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
+    let child = fork_draft(&conn, &root, "v1", Some(r#"{"doc":"hi"}"#)).expect("fork");
+
+    delete_draft(&conn, &child.id).expect("delete child");
+    assert_eq!(list_tab_drafts(&conn, &tab.id).expect("drafts").len(), 1);
+
+    restore_draft(&conn, &child.id).expect("restore child");
+    let drafts = list_tab_drafts(&conn, &tab.id).expect("drafts");
+    assert_eq!(drafts.len(), 2);
+    // The branch-point snapshot survived the delete/restore round-trip.
+    let loaded = load_document_state(&conn, &doc_id, Some(&child.id)).expect("load");
+    assert_eq!(
+        loaded.snapshot_state_json.as_deref(),
+        Some(r#"{"doc":"hi"}"#)
+    );
+}
+
+#[test]
+fn test_lock_derives_from_live_children() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
+    let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
+    let child = fork_draft(&conn, &root, "v1", None).expect("fork");
+
+    let locked = |id: &str| -> bool {
+        list_tab_drafts(&conn, &tab.id)
+            .expect("drafts")
+            .iter()
+            .find(|d| d.id == id)
+            .map(|d| d.locked)
+            .unwrap_or(false)
+    };
+    assert!(locked(&root), "forking locks the parent");
+
+    // Deleting the only branch unlocks the parent — leaves are never locked.
+    delete_draft(&conn, &child.id).expect("delete child");
+    assert!(!locked(&root), "childless drafts unlock");
+
+    // Restoring the branch re-locks the parent.
+    restore_draft(&conn, &child.id).expect("restore child");
+    assert!(locked(&root), "restored branch re-locks the parent");
+}
+
+#[test]
+fn test_doc_events_record_structural_ops() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
+    let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
+    let child = fork_draft(&conn, &root, "v1", None).expect("fork");
+    rename_tab(&conn, &tab.id, "Chapter 1").expect("rename tab");
+    delete_draft(&conn, &child.id).expect("delete draft");
+    restore_draft(&conn, &child.id).expect("restore draft");
+
+    let events = list_doc_events(&conn, &doc_id).expect("doc events");
+    let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
+    // Newest first.
+    assert_eq!(
+        types,
+        vec![
+            "draft_restored",
+            "draft_deleted",
+            "tab_renamed",
+            "draft_forked",
+            "tab_created",
+        ]
+    );
+    // Payloads carry enough to render and restore from the timeline.
+    assert!(events[1].payload.contains(&child.id));
+    assert!(events[2].payload.contains("Chapter 1"));
+}
+
+#[test]
+fn test_create_tab_draft_makes_root_sibling() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
+
+    let sibling =
+        create_tab_draft(&conn, &tab.id, "take 2", Some(r#"{"doc":"alt"}"#)).expect("sibling");
+    assert_eq!(sibling.parent_draft_id, None);
+
+    let drafts = list_tab_drafts(&conn, &tab.id).expect("drafts");
+    assert_eq!(drafts.len(), 2);
+    assert!(
+        drafts.iter().all(|d| d.parent_draft_id.is_none()),
+        "both drafts are roots"
+    );
+    let loaded = load_document_state(&conn, &doc_id, Some(&sibling.id)).expect("load");
+    assert_eq!(
+        loaded.snapshot_state_json.as_deref(),
+        Some(r#"{"doc":"alt"}"#)
+    );
 }
 
 #[test]

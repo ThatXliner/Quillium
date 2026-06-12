@@ -9,6 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
     AppendEventResult,
+    DocEventRecord,
     DocumentMeta,
     DraftMeta,
     LoadResult,
@@ -115,9 +116,19 @@ export async function renameTab(tabId: string, label: string): Promise<void> {
     return invoke<void>("cmd_rename_tab", { tabId, label });
 }
 
-/** Deletes a tab and all its drafts. Rejects on the document's last tab. */
+/** Soft-deletes a tab (restorable). Rejects on the document's last tab. */
 export async function deleteTab(tabId: string): Promise<void> {
     return invoke<void>("cmd_delete_tab", { tabId });
+}
+
+/** Restores a soft-deleted tab with all its drafts intact. */
+export async function restoreTab(tabId: string): Promise<void> {
+    return invoke<void>("cmd_restore_tab", { tabId });
+}
+
+/** Document-level structural audit log, newest first. */
+export async function listDocEvents(docId: string): Promise<DocEventRecord[]> {
+    return invoke<DocEventRecord[]>("cmd_list_doc_events", { docId });
 }
 
 export async function getActiveTab(docId: string): Promise<string | null> {
@@ -154,9 +165,26 @@ export async function setDraftLocked(draftId: string, locked: boolean): Promise<
     return invoke<void>("cmd_set_draft_locked", { draftId, locked });
 }
 
-/** Deletes a leaf draft. Rejects if it has branches or is the tab's last draft. */
+/**
+ * Creates a root-level draft in a tab (a sibling of "main"), optionally
+ * seeded with serialized state.
+ */
+export async function createTabDraft(
+    tabId: string,
+    label: string,
+    stateJson: string | null,
+): Promise<DraftMeta> {
+    return invoke<DraftMeta>("cmd_create_tab_draft", { tabId, label, stateJson });
+}
+
+/** Soft-deletes a leaf draft (restorable). Rejects if it has branches or is the tab's last draft. */
 export async function deleteDraft(draftId: string): Promise<void> {
     return invoke<void>("cmd_delete_draft", { draftId });
+}
+
+/** Restores a soft-deleted draft; its parent re-locks. */
+export async function restoreDraft(draftId: string): Promise<void> {
+    return invoke<void>("cmd_restore_draft", { draftId });
 }
 
 export async function getActiveDraft(tabId: string): Promise<string | null> {
