@@ -4,20 +4,29 @@ import {
     getSnapshotRetention,
     getSnapshotStorageSize,
     labelSnapshot,
+    listDocEvents,
     listDocuments,
     listSnapshots,
     loadSnapshotState,
     pruneSnapshotsKeepLastN,
     pruneSnapshotsOlderThan,
     resolveActiveDraftId,
+    restoreDraft,
+    restoreTab,
     restoreToSnapshot,
     setSnapshotRetention,
 } from "$lib/db";
-import type { SnapshotMeta } from "$lib/db/types";
+import type { DocEventRecord, SnapshotMeta } from "$lib/db/types";
 import { getExtensions, savedFields } from "$lib/editor/extensions";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
-import { currentDraftId, editorView, lastPersistedEventId, lastSavedAt } from "$lib/stores";
+import {
+    currentDocumentId,
+    currentDraftId,
+    editorView,
+    lastPersistedEventId,
+    lastSavedAt,
+} from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -94,17 +103,124 @@ async function bootstrapDraftId() {
     if (get(currentDraftId)) return;
     const docs = await listDocuments();
     if (docs.length === 0) return; // No document yet — show empty state.
+    if (!get(currentDocumentId)) currentDocumentId.set(docs[0].id);
     const active = await resolveActiveDraftId(docs[0].id);
     if (active) currentDraftId.set(active);
 }
 
 onMount(async () => {
     await bootstrapDraftId();
-    await Promise.all([loadSnapshots(), loadRetention()]);
+    await Promise.all([loadSnapshots(), loadRetention(), loadDocEventsList()]);
     if (snapshots.length > 0) {
         await selectSnapshot(snapshots[0]);
     }
 });
+
+// ── Document activity (structural audit log, #160) ──────────────
+let docEvents = $state<DocEventRecord[]>([]);
+
+async function loadDocEventsList() {
+    const docId = get(currentDocumentId);
+    if (!docId) return;
+    docEvents = await listDocEvents(docId);
+}
+
+type DocEventInfo = { text: string; restore: { kind: "tab" | "draft"; id: string } | null };
+
+function describeDocEvent(ev: DocEventRecord): DocEventInfo {
+    let p: Record<string, unknown> = {};
+    try {
+        p = JSON.parse(ev.payload) as Record<string, unknown>;
+    } catch {
+        // Malformed payload — fall through to the raw event type.
+    }
+    const label = typeof p.label === "string" ? p.label : "";
+    const prev = typeof p.previousLabel === "string" ? p.previousLabel : "";
+    const tabId = typeof p.tabId === "string" ? p.tabId : null;
+    const draftId = typeof p.draftId === "string" ? p.draftId : null;
+    switch (ev.eventType) {
+        case "tab_created":
+            return { text: `Created tab “${label}”`, restore: null };
+        case "tab_renamed":
+            return { text: `Renamed tab “${prev}” to “${label}”`, restore: null };
+        case "tab_deleted":
+            return {
+                text: `Deleted tab “${label}”`,
+                restore: tabId ? { kind: "tab", id: tabId } : null,
+            };
+        case "tab_restored":
+            return { text: `Restored tab “${label}”`, restore: null };
+        case "draft_forked":
+            return { text: `Branched draft “${label}”`, restore: null };
+        case "draft_created":
+            return { text: `Created draft “${label}”`, restore: null };
+        case "draft_renamed":
+            return { text: `Renamed draft “${prev}” to “${label}”`, restore: null };
+        case "draft_deleted":
+            return {
+                text: `Deleted draft “${label}”`,
+                restore: draftId ? { kind: "draft", id: draftId } : null,
+            };
+        case "draft_restored":
+            return { text: `Restored draft “${label}”`, restore: null };
+        case "draft_locked":
+            return { text: `Locked draft “${label}”`, restore: null };
+        case "draft_unlocked":
+            return { text: `Unlocked draft “${label}”`, restore: null };
+        case "checkpoint_created": {
+            const draftLabel = typeof p.draftLabel === "string" ? p.draftLabel : "";
+            return {
+                text: `Saved checkpoint “${label}” on draft “${draftLabel}”`,
+                restore: null,
+            };
+        }
+        default:
+            return { text: ev.eventType, restore: null };
+    }
+}
+
+// Which tabs/drafts are deleted right now: for each target, the newest
+// delete/restore event wins (docEvents arrive newest-first).
+const deletionState = $derived.by(() => {
+    const state = new Map<string, boolean>();
+    for (const ev of docEvents) {
+        const deleted =
+            ev.eventType === "tab_deleted" || ev.eventType === "draft_deleted"
+                ? true
+                : ev.eventType === "tab_restored" || ev.eventType === "draft_restored"
+                  ? false
+                  : null;
+        if (deleted === null) continue;
+        let p: Record<string, unknown> = {};
+        try {
+            p = JSON.parse(ev.payload) as Record<string, unknown>;
+        } catch {
+            continue;
+        }
+        const id = ev.eventType.startsWith("tab_") ? p.tabId : p.draftId;
+        if (typeof id !== "string") continue;
+        const key = `${ev.eventType.startsWith("tab_") ? "tab" : "draft"}:${id}`;
+        if (!state.has(key)) state.set(key, deleted);
+    }
+    return state;
+});
+
+async function handleStructuralRestore(restore: { kind: "tab" | "draft"; id: string }) {
+    try {
+        if (restore.kind === "tab") {
+            await restoreTab(restore.id);
+        } else {
+            await restoreDraft(restore.id);
+        }
+        posthog.capture(restore.kind === "tab" ? "tab_restored" : "draft_restored", {
+            source: "version_history",
+        });
+    } catch (e) {
+        console.error("[VersionHistory] restore failed:", e);
+        return;
+    }
+    await loadDocEventsList();
+}
 
 onDestroy(() => {
     previewView?.destroy();
@@ -636,6 +752,44 @@ function handleKeydown(e: KeyboardEvent) {
                     {/each}
                     </div>
                 {/if}
+            </div>
+
+            <!-- Document activity — the structural audit log (#160):
+                 tab CRUD, draft branching, locks, checkpoints. Deletions
+                 can be restored from here. -->
+            <div class="border-t border-black/[0.08] flex-shrink-0">
+                <div class="px-4 pt-2.5 pb-1">
+                    <h3 class="text-xs font-semibold text-black/55">Document activity</h3>
+                </div>
+                <div class="max-h-56 overflow-y-auto pb-2" aria-label="Document activity">
+                    {#if docEvents.length === 0}
+                        <p class="px-4 py-2 text-xs text-black/30 leading-relaxed">
+                            Tab and draft changes will appear here.
+                        </p>
+                    {:else}
+                        {#each docEvents as ev (ev.id)}
+                            {@const info = describeDocEvent(ev)}
+                            {@const restore = info.restore}
+                            <div class="px-4 py-1.5 flex items-start gap-2">
+                                <div class="mt-1.5 w-1.5 h-1.5 rounded-full bg-black/15 flex-shrink-0"></div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs text-black/55 leading-snug">{info.text}</p>
+                                    <p class="text-[10px] text-black/30 mt-0.5">{formatTime(ev.createdAt)}</p>
+                                </div>
+                                {#if restore && deletionState.get(`${restore.kind}:${restore.id}`)}
+                                    <button
+                                        onclick={() => handleStructuralRestore(restore)}
+                                        class="shrink-0 flex items-center gap-1 text-[11px] font-medium
+                                               text-blue-600 hover:text-blue-700 transition-colors"
+                                    >
+                                        <RotateCcw size={10} />
+                                        Restore
+                                    </button>
+                                {/if}
+                            </div>
+                        {/each}
+                    {/if}
+                </div>
             </div>
         </div>
     </div>
