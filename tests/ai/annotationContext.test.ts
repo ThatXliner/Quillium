@@ -3,6 +3,24 @@ import { describe, expect, it } from "vitest";
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import type { Annotations, GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
+function commentAnnotation({
+    id,
+    documentContent,
+    targetText,
+}: {
+    id: number;
+    documentContent: string;
+    targetText: string;
+}): GenericAnnotation {
+    const from = documentContent.indexOf(targetText);
+    return {
+        id,
+        _type: "comment",
+        selection: EditorSelection.single(from, from + targetText.length),
+        thread: [{ author: "AI", message: `Note on ${targetText}.`, time: id }],
+    };
+}
+
 describe("buildAnnotationContextInputs", () => {
     it("extracts target text, thread messages, and selection distance", () => {
         const documentContent = "Opening claim. This sentence needs evidence. Closing line.";
@@ -81,5 +99,66 @@ describe("buildAnnotationContextInputs", () => {
         });
 
         expect(inputs[0]?.distance).toBe(0);
+    });
+
+    it("keeps only selection-near annotations when text is selected", () => {
+        const documentContent = [
+            "Opening paragraph has an old concern.",
+            "Setup paragraph has nearby context.",
+            "Selected paragraph has the sentence that matters.",
+            "Follow-up paragraph has another local note.",
+            "Distant paragraph has unrelated feedback.",
+        ].join("\n\n");
+        const selectedText = "sentence that matters";
+        const selectedFrom = documentContent.indexOf(selectedText);
+        const selectedTo = selectedFrom + selectedText.length;
+        const annotations: Annotations = {
+            1: commentAnnotation({
+                id: 1,
+                documentContent,
+                targetText: "old concern",
+            }),
+            2: commentAnnotation({
+                id: 2,
+                documentContent,
+                targetText: "nearby context",
+            }),
+            3: commentAnnotation({
+                id: 3,
+                documentContent,
+                targetText: "sentence that matters",
+            }),
+            4: commentAnnotation({
+                id: 4,
+                documentContent,
+                targetText: "another local note",
+            }),
+            5: commentAnnotation({
+                id: 5,
+                documentContent,
+                targetText: "unrelated feedback",
+            }),
+        };
+
+        const inputs = buildAnnotationContextInputs({
+            annotations,
+            documentContent,
+            selectedText,
+            selectedTextRange: { from: selectedFrom, to: selectedTo },
+        });
+
+        expect(inputs.map((input) => input.id)).toEqual([2, 3, 4]);
+    });
+
+    it("keeps all annotations when there is no active selection", () => {
+        const documentContent = "First note here.\n\nSecond note there.";
+        const annotations: Annotations = {
+            1: commentAnnotation({ id: 1, documentContent, targetText: "First note" }),
+            2: commentAnnotation({ id: 2, documentContent, targetText: "Second note" }),
+        };
+
+        const inputs = buildAnnotationContextInputs({ annotations, documentContent });
+
+        expect(inputs.map((input) => input.id)).toEqual([1, 2]);
     });
 });
