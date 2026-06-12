@@ -73,11 +73,25 @@ export async function searchDocuments(query: string): Promise<SearchHit[]> {
 }
 
 /**
- * Semantic index status: "starting" | "loading-model" | "indexing" |
- * "ready" | "unavailable" | "error: …". Keyword search works regardless.
+ * Semantic index status: "disabled" | "starting" | "loading-model" |
+ * "indexing" | "ready" | "unavailable" | "error: …". Keyword search works
+ * regardless.
  */
 export async function getSearchStatus(): Promise<string> {
     return invoke<string>("cmd_search_status");
+}
+
+/** Whether the user opted in to semantic search (Settings toggle). */
+export async function getSemanticSearchEnabled(): Promise<boolean> {
+    return invoke<boolean>("cmd_get_semantic_search_enabled");
+}
+
+/**
+ * Persists the semantic-search opt-in and starts/stops the index worker.
+ * First enable downloads the embedding model (~30 MB) in the background.
+ */
+export async function setSemanticSearchEnabled(enabled: boolean): Promise<void> {
+    return invoke<void>("cmd_set_semantic_search_enabled", { enabled });
 }
 
 export async function deleteDocument(id: string): Promise<void> {

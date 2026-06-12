@@ -60,10 +60,16 @@ Key files:
 
 ## Semantic side (Phase 2)
 
+- **Opt-in**: gated behind "Search by meaning" in Settings (persisted in
+  `_meta` as `semantic_search_enabled`, default **off** — read by Rust at
+  startup, toggled via `cmd_set_semantic_search_enabled`). Nothing is
+  downloaded until the user enables it. Disabling drops the model from
+  memory but keeps chunks/vectors on disk, so re-enabling only embeds what
+  changed in between (the enable-time reconcile catches up).
 - **Model**: bge-small-en-v1.5 quantized (384-dim, MIT) via the `fastembed`
-  crate (ONNX Runtime). Downloaded lazily on first launch into
-  `{app-data}/models/`; until then (and offline) search is keyword-only.
-  Desktop-only — on mobile the index reports `unavailable`.
+  crate (ONNX Runtime). Downloaded on first enable into `{app-data}/models/`;
+  until then (and offline) search is keyword-only. Desktop-only — on mobile
+  the index reports `unavailable`.
 - **Storage**: `sqlite-vec` (`vec0` virtual table), statically linked into the
   binary and registered via `sqlite3_auto_extension` in `schema.rs`. Brute-force
   KNN — no ANN index needed at this scale. `vec_chunks.rowid = chunks.id`.
@@ -83,6 +89,7 @@ Key files:
 ## Status
 
 `cmd_search_status` reports the semantic index lifecycle
-(`starting → loading-model → indexing → ready`, or `unavailable` / `error: …`).
-The library shows a hint while a content search runs before the index is ready.
-Keyword search works the whole time.
+(`disabled`, or `starting → loading-model → indexing → ready`, or
+`unavailable` / `error: …`). The Settings row shows download/index progress;
+the library shows a hint while a content search runs before the index is
+ready. Keyword search works the whole time.
