@@ -19,20 +19,30 @@ Document (one card in Library)
 |---------|-----------|----|
 | Document | Container of tabs; one Library card | Library grid |
 | Tab | A piece of content within a document (`tab_type: "draft"`; future types e.g. canvas share the bar) | `DocumentTabs.svelte` above the document card |
-| Draft | One editable text + its own event log/snapshots | `DraftTreePanel.svelte`, floating left of the document |
+| Draft | One editable text + its own event log/snapshots | `DraftTreePanel.svelte`, hugging the document's left edge |
 | Draft tree | Parent/child links between a tab's drafts (`parent_draft_id`) | Indented rows in the panel |
-| Lock | Soft lock set on a draft when it is branched from | Lock banner over the editor; read-only state |
+| Lock | Derived from branching: a draft locks while it has live children | Amber strip inside the page; read-only state |
+| Document activity | Audit log of all structural ops (tab CRUD, branching, locks, checkpoints) | Timeline in version history, with Restore actions |
 
 ## Schema
 
 ```sql
-tabs   (id, document_id, tab_type, label, position, created_at)
-drafts (id, document_id, tab_id, parent_draft_id, label, created_at, is_active, locked)
+tabs       (id, document_id, tab_type, label, position, created_at, deleted_at)
+drafts     (id, document_id, tab_id, parent_draft_id, label, created_at,
+            is_active, locked, deleted_at)
+doc_events (id, document_id, event_type, payload, created_at)
 ```
 
 Events and snapshots stay **draft-scoped** (unchanged) — every draft has an
 independent event log and version history. `_meta` keys `active_tab:{doc_id}`
 and `active_draft:{tab_id}` persist the user's position.
+
+**Nothing structural is ever destroyed.** Tab and draft deletion is a soft
+delete (`deleted_at`); the rows, their events, and their snapshots all
+survive. Deletion offers an Undo toast, and the version history's
+"Document activity" timeline can restore any deleted tab or draft later.
+Every structural operation appends a `doc_events` row (#160: "version
+history is document-wide — one linear audit log tracks everything").
 
 Migration (`schema.rs → migrate_tabs_and_draft_tree`) is idempotent: it
 ALTER-adds the draft columns and attaches pre-existing drafts to a per-document
@@ -53,12 +63,19 @@ ALTER-adds the draft columns and attaches pre-existing drafts to a per-document
 The child's event log starts empty; restore-to-"Branch point" in version
 history returns it exactly to the fork state.
 
+"+ New draft" in the panel creates a **sibling** of the open draft instead —
+a parallel take at the same tree level, seeded with the open draft's state.
+Root drafts get a root sibling via `cmd_create_tab_draft` (no parent to
+fork from).
+
 ## Locking
 
-Locking is a **soft** signal: the editor state is built with
-`EditorState.readOnly.of(true)` while locked (commands are rejected), plus a
-banner with "Edit anyway" (persistently unlocks) and "New branch". The DB
-never rejects writes — replay, collab, and AI tools are unaffected.
+Locks derive from branching: forking locks the parent; deleting a parent's
+last live branch auto-unlocks it (leaves are never locked); restoring a
+branch re-locks it. While locked, the editor state is built with
+`EditorState.readOnly.of(true)` and an amber strip inside the page offers
+"Edit anyway" (persistently unlocks) and "New branch". The DB never rejects
+writes — replay, collab, and AI tools are unaffected.
 
 ## Resolution order
 
@@ -71,12 +88,13 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 
 ## Invariants
 
-- Every tab has ≥ 1 draft (`create_tab` seeds a root "main" draft; deleting a
-  tab's last draft is rejected).
-- Every document has ≥ 1 tab (deleting the last tab is rejected;
+- Every tab has ≥ 1 live draft (`create_tab` seeds a root "main" draft;
+  deleting a tab's last live draft is rejected).
+- Every document has ≥ 1 live tab (deleting the last live tab is rejected;
   `create_draft` legacy path creates a "Main" tab when none exists).
-- Only leaf drafts can be deleted; deleting a tab deletes all its drafts,
-  events, and snapshots after a native confirm dialog.
+- Only leaf drafts can be deleted; all deletions are soft and reversible
+  (Undo toast immediately, version-history timeline later).
+- A draft is locked iff it has live children, unless explicitly unlocked.
 
 ## Key files
 
@@ -94,6 +112,7 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 
 - Canvas tabs (#197) — `tab_type` column is ready, no implementation yet
 - Merge workflow between draft branches (UX undecided in #160)
-- Document-wide audit log of tab CRUD in version history (events remain
-  draft-scoped, matching #160's data model)
+- Document-wide *content* checkpoints (one snapshot of all tabs/drafts at
+  once); content snapshots remain per-draft, structural history is
+  document-wide via `doc_events`
 - Tab drag-reordering

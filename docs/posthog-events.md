@@ -107,11 +107,14 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `tab_created` | New tab via + button | `Editor.svelte` |
 | `tab_switched` | Tab clicked | `Editor.svelte` |
 | `tab_renamed` | Tab renamed inline | `Editor.svelte` |
-| `tab_deleted` | Tab deleted (after confirm) | `Editor.svelte` |
+| `tab_deleted` | Tab soft-deleted | `Editor.svelte` |
+| `tab_restored` | Tab restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
 | `draft_forked` | Draft branched | `Editor.svelte` |
+| `draft_sibling_created` | "+ New draft" sibling created | `Editor.svelte` |
 | `draft_switched` | Draft tree row clicked | `Editor.svelte` |
-| `draft_deleted` | Leaf draft deleted (after confirm) | `Editor.svelte` |
-| `draft_locked` / `draft_unlocked` | Soft lock toggled | `Editor.svelte` |
+| `draft_deleted` | Leaf draft soft-deleted | `Editor.svelte` |
+| `draft_restored` | Draft restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
+| `draft_locked` / `draft_unlocked` | Lock toggled | `Editor.svelte` |
 | `draft_scrapped` | Draft scrapped | `Save.svelte` |
 
 ## Error & Recovery
