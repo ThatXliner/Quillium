@@ -27,7 +27,12 @@ import {
     resetHarper,
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
-import { getSemanticSearchEnabled, pollSearchStatus, setSemanticSearchEnabled } from "$lib/db";
+import {
+    getSemanticSearchEnabled,
+    pollSearchStatus,
+    setSemanticSearchEnabled,
+    uninstallSemanticModel,
+} from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
@@ -229,11 +234,14 @@ $effect(() => {
 let semanticEnabled = $state(false);
 let semanticStatus = $state("disabled");
 let semanticBusy = $state(false);
+let semanticModelInstalled = $state(false);
 getSemanticSearchEnabled()
     .then((enabled) => {
         // `=== true` guards against the e2e Tauri mock, which answers
         // unknown commands with null.
         semanticEnabled = enabled === true;
+        // If ever enabled, the model was (or is being) downloaded.
+        semanticModelInstalled = enabled === true;
     })
     .catch(() => {});
 
@@ -255,9 +263,27 @@ async function toggleSemanticSearch() {
         await setSemanticSearchEnabled(next);
         semanticEnabled = next;
         semanticStatus = next ? "starting" : "disabled";
+        if (next) semanticModelInstalled = true;
         posthog.capture("semantic_search_toggled", { enabled: next });
     } catch (e) {
         console.error("[settings] failed to toggle semantic search:", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+        semanticBusy = false;
+    }
+}
+
+async function uninstallModel() {
+    if (semanticBusy) return;
+    semanticBusy = true;
+    try {
+        await uninstallSemanticModel();
+        semanticEnabled = false;
+        semanticStatus = "disabled";
+        semanticModelInstalled = false;
+        posthog.capture("semantic_search_model_uninstalled");
+    } catch (e) {
+        console.error("[settings] failed to uninstall semantic model:", e);
         posthog.captureException(e instanceof Error ? e : new Error(String(e)));
     } finally {
         semanticBusy = false;
@@ -588,6 +614,15 @@ function fontLabel(fonts: FontOption[], value: string) {
                     </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
+                {#if !semanticEnabled && semanticModelInstalled}
+                    <button
+                        title="Uninstall model (~30 MB)"
+                        aria-label="Uninstall semantic search model"
+                        disabled={semanticBusy}
+                        class="text-black/30 hover:text-red-500 disabled:opacity-40 transition-colors"
+                        onclick={uninstallModel}
+                    ><Trash2 size={14} /></button>
+                {/if}
                 <button
                     role="switch"
                     aria-checked={semanticEnabled}
