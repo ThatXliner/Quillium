@@ -1,77 +1,36 @@
+//! schema.rs — Connection setup. The schema itself lives in migrations.rs.
+
 use rusqlite::{Connection, Result};
 use std::path::Path;
+use std::time::Duration;
+
+use super::migrations;
+
+/// Registers sqlite-vec (the `vec0` virtual table module, statically linked)
+/// for every connection opened in this process. Must run before the first
+/// `Connection::open`; `Once` makes repeat calls free.
+fn register_vec_extension() {
+    use rusqlite::ffi::sqlite3_auto_extension;
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| unsafe {
+        // Transmute is the documented registration pattern for sqlite-vec with
+        // rusqlite 0.31 (the C init fn signature matches sqlite3_auto_extension's
+        // expected callback type).
+        sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
+    });
+}
 
 pub fn open_db(path: &Path) -> Result<Connection> {
+    register_vec_extension();
     let conn = Connection::open(path)?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;",
     )?;
-    init_schema(&conn)?;
-    // Migration: add label column to snapshots if it doesn't exist yet.
-    let label_exists = {
-        let mut stmt = conn.prepare("PRAGMA table_info(snapshots)")?;
-        let result = stmt
-            .query_map([], |row| row.get::<_, String>(1))?
-            .filter_map(|res| res.ok())
-            .any(|name| name == "label");
-        result
-    };
-    if !label_exists {
-        conn.execute(
-            "ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL",
-            [],
-        )?;
-    }
+    // The semantic-index worker holds a second connection to the same file;
+    // WAL allows the concurrency, busy_timeout absorbs write collisions.
+    conn.busy_timeout(Duration::from_secs(5))?;
+    migrations::migrate(&conn)?;
     Ok(conn)
-}
-
-pub fn init_schema(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS documents (
-            id           TEXT PRIMARY KEY,
-            title        TEXT NOT NULL DEFAULT 'Untitled',
-            created_at   INTEGER NOT NULL,
-            updated_at   INTEGER NOT NULL,
-            word_count   INTEGER NOT NULL DEFAULT 0,
-            preview_text TEXT NOT NULL DEFAULT '',
-            tags         TEXT NOT NULL DEFAULT '[]',
-            deleted_at   INTEGER DEFAULT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS drafts (
-            id          TEXT PRIMARY KEY,
-            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-            label       TEXT NOT NULL DEFAULT 'Draft',
-            created_at  INTEGER NOT NULL,
-            is_active   INTEGER NOT NULL DEFAULT 1
-        );
-
-        CREATE TABLE IF NOT EXISTS events (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            draft_id   TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
-            event_type TEXT NOT NULL,
-            payload    TEXT NOT NULL,
-            created_at INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS snapshots (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            draft_id         TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
-            up_to_event_id   INTEGER NOT NULL,
-            state_json       TEXT NOT NULL,
-            created_at       INTEGER NOT NULL,
-            label            TEXT DEFAULT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS _meta (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_events_draft ON events(draft_id, id);
-        CREATE INDEX IF NOT EXISTS idx_snapshots_draft ON snapshots(draft_id, up_to_event_id DESC);
-        ",
-    )?;
-    Ok(())
 }

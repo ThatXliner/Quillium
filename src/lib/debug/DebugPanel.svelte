@@ -160,7 +160,7 @@ async function runScenario(scenario: Scenario) {
         const title = scenario.label;
         const wordCount = docText.trim().split(/\s+/).filter(Boolean).length;
         const previewText = docText.slice(0, 200);
-        await updateDocumentMeta(docId, title, wordCount, previewText, "[]");
+        await updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText);
 
         // 6. Set stores AFTER snapshot is written. Setting currentDocumentId
         //    triggers Editor.svelte's subscription which calls loadDocument —

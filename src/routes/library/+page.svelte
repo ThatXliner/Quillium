@@ -16,8 +16,11 @@ import {
     getDocumentMeta,
     isDocOpenElsewhere,
     openInNewWindow,
+    searchDocuments,
+    isSearchStatusPreparing,
+    pollSearchStatus,
 } from "$lib/db";
-import type { DocumentMeta } from "$lib/db/types";
+import type { DocumentMeta, SearchHit } from "$lib/db/types";
 import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
@@ -48,7 +51,53 @@ const trashMode = $derived(tab === "trash");
 
 const activeDocuments = $derived(trashMode ? trashedDocuments : documents);
 
-const filtered = $derived(
+// ── Content search (FTS5 + semantic, see src-tauri/src/db/search.rs) ──
+// The instant substring filter below stays for snappiness; once the query
+// is non-trivial, a debounced backend search adds matches on full document
+// *content* (beyond the 200-char preview) plus semantic matches.
+let serverHits = $state<SearchHit[] | null>(null);
+// Query the displayed hits belong to, so a query change can drop stale
+// snippets/highlights instead of rendering them against the new text.
+let serverHitsQuery = $state<string | null>(null);
+let searchSeq = 0;
+const contentSearchActive = $derived(!trashMode && query.trim().length >= 2);
+
+$effect(() => {
+    const q = query.trim();
+    if (!contentSearchActive) {
+        // Bump the sequence too, so an in-flight request that resolves after
+        // the box is cleared can't write its results back.
+        searchSeq++;
+        serverHits = null;
+        serverHitsQuery = null;
+        return;
+    }
+    // New query → discard the prior query's hits up front; keeping them would
+    // briefly rank/highlight documents for terms the user already replaced.
+    if (q !== serverHitsQuery) {
+        serverHits = null;
+        serverHitsQuery = null;
+    }
+    const seq = ++searchSeq;
+    const timer = setTimeout(async () => {
+        try {
+            const hits = await searchDocuments(q);
+            if (seq === searchSeq) {
+                serverHits = hits;
+                serverHitsQuery = q;
+            }
+        } catch (e) {
+            console.error("[library] content search failed:", e);
+        }
+    }, 200);
+    return () => clearTimeout(timer);
+});
+
+const hitById = $derived(
+    new Map((contentSearchActive ? (serverHits ?? []) : []).map((h) => [h.id, h])),
+);
+
+const clientFiltered = $derived(
     query.trim()
         ? activeDocuments.filter(
               (d) =>
@@ -58,6 +107,25 @@ const filtered = $derived(
           )
         : activeDocuments,
 );
+
+// Backend hits first (already ranked best-first), then any remaining
+// client-side substring matches. Metadata comes from the live `documents`
+// list so renames/trashes reflect instantly even while hits are stale.
+const filtered = $derived.by(() => {
+    if (!contentSearchActive || serverHits === null) return clientFiltered;
+    const liveById = new Map(documents.map((d) => [d.id, d]));
+    const ranked = serverHits
+        .map((h) => liveById.get(h.id))
+        .filter((d): d is DocumentMeta => d !== undefined);
+    const seen = new Set(ranked.map((d) => d.id));
+    return [...ranked, ...clientFiltered.filter((d) => !seen.has(d.id))];
+});
+
+// Semantic index status — only used to explain why "search by meaning"
+// results may be missing while the model downloads/indexes on first run.
+let semanticStatus = $state("ready");
+let cancelStatusPoll: (() => void) | undefined;
+const semanticPreparing = $derived(isSearchStatusPreparing(semanticStatus));
 
 /** When exactly one document is selected, show its preview. */
 const selectedDoc = $derived(
@@ -412,6 +480,9 @@ let unlisten: UnlistenFn | undefined;
 onMount(async () => {
     posthog.capture("library_viewed");
     load();
+    cancelStatusPoll = pollSearchStatus((status) => {
+        semanticStatus = status ?? "unavailable";
+    }, 4000);
     // File → Open in New Window menu item targets the focused window; when that's
     // the library, open whichever single document is currently selected.
     unlisten = await listen("menu:open-in-new-window", () => {
@@ -421,7 +492,10 @@ onMount(async () => {
     });
 });
 
-onDestroy(() => unlisten?.());
+onDestroy(() => {
+    unlisten?.();
+    cancelStatusPoll?.();
+});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -456,6 +530,11 @@ onDestroy(() => unlisten?.());
                 onTrashRetentionChange={handleTrashRetentionChange}
                 bind:searchInputEl
             />
+            {#if contentSearchActive && semanticPreparing}
+                <p class="mt-2 text-xs text-black/35">
+                    Searching titles and full text — search by meaning is still preparing…
+                </p>
+            {/if}
         </header>
 
         <div class="flex-1 overflow-y-auto px-8 pb-8 pt-1">
@@ -479,6 +558,7 @@ onDestroy(() => unlisten?.());
                     {selectedIds}
                     {viewMode}
                     {trashMode}
+                    hits={hitById}
                     onSelect={handleSelect}
                     onOpen={handleOpen}
                     onTrash={handleTrash}
