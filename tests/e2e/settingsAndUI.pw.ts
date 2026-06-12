@@ -128,6 +128,28 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).not.toContainText("Context:");
     });
 
+    test("keeps draft notes context collapsed by default", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+        await q.createCommentOnRange("This draft has a note for the AI sidebar.", 17, 21);
+        await q.submitComment("Remember this note.");
+        await q.editor.click();
+        await q.end();
+
+        await page.locator("#ai-tab-chat").click();
+
+        await expect(q.aiSidebar).not.toContainText("AI can see this draft");
+        await expect(q.aiSidebar).toContainText("Prioritize notes");
+        await expect(
+            q.aiSidebar.getByRole("button", {
+                name: /Context: AI can see this draft.*Open annotations are included too/,
+            }),
+        ).toBeVisible();
+    });
+
     test("escape closes sidebar", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",

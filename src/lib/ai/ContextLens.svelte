@@ -61,7 +61,6 @@ const activeSources = $derived(packet.sources.filter((source) => source.active))
 const showContextSummary = $derived(
     packet.scope !== "document" ||
         packet.omittedDocumentChars > 0 ||
-        packet.includedAnnotationCount > 0 ||
         packet.writerContext.length > 0,
 );
 const contextInfoLabel = $derived(`${contextScopeLabel(packet)}. ${contextScopeDetail(packet)}`);
