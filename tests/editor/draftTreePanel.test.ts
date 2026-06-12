@@ -95,6 +95,20 @@ describe("DraftTreePanel", () => {
         expect(ontogglelock).toHaveBeenCalledWith("main", false);
     });
 
+    it("shows a manual lock action on unlocked drafts", () => {
+        const { getByRole, queryByRole } = render(DraftTreePanel, { props: defaultProps() });
+        expect(getByRole("button", { name: "Lock v1" })).toBeInTheDocument();
+        // "main" is already locked, so it only offers unlock.
+        expect(queryByRole("button", { name: "Lock main" })).not.toBeInTheDocument();
+    });
+
+    it("calls ontogglelock(id, true) when locking manually", async () => {
+        const ontogglelock = vi.fn();
+        const { getByRole } = render(DraftTreePanel, { props: defaultProps({ ontogglelock }) });
+        await fireEvent.click(getByRole("button", { name: "Lock v1" }));
+        expect(ontogglelock).toHaveBeenCalledWith("v1", true);
+    });
+
     it("only offers delete on deletable leaves", () => {
         const { getByRole, queryByRole } = render(DraftTreePanel, { props: defaultProps() });
         expect(getByRole("button", { name: "Delete v1" })).toBeInTheDocument();

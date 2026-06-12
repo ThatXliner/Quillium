@@ -123,6 +123,15 @@ function commitRename(draftId: string) {
                     >
                         <LockOpenIcon size={11} />
                     </button>
+                {:else}
+                    <button
+                        onclick={() => ontogglelock(row.draft.id, true)}
+                        title="Lock against edits"
+                        aria-label="Lock {row.draft.label}"
+                        class="p-0.5 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
+                    >
+                        <LockIcon size={11} />
+                    </button>
                 {/if}
                 {#if isDeletableDraft(row.draft.id, drafts)}
                     <button

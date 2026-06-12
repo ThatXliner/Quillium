@@ -84,6 +84,28 @@ test.describe("Draft tree", () => {
         expect(await q.countInvocations("cmd_restore_draft")).toBe(1);
     });
 
+    test("manually locking the open draft shows the plain lock banner", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        const panel = page.locator('[aria-label="Draft tree"]');
+        await panel.getByText("main").hover();
+        await panel.locator('button[aria-label="Lock main"]').click();
+
+        // No branches involved — the banner uses the plain copy.
+        await expect(page.getByText("This draft is locked.", { exact: true })).toBeVisible({
+            timeout: 5_000,
+        });
+        expect(await q.countInvocations("cmd_set_draft_locked")).toBe(1);
+
+        // Unlock again from the panel.
+        await panel.getByText("main").hover();
+        await panel.locator('button[aria-label="Unlock main"]').click();
+        await expect(page.getByText("This draft is locked.", { exact: true })).toBeHidden({
+            timeout: 5_000,
+        });
+    });
+
     test("opening a locked parent shows the lock banner; Edit anyway unlocks", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();

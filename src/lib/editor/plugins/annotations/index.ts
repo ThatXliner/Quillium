@@ -52,14 +52,14 @@ import { dev } from "$app/environment";
 import { SearchCursor } from "@codemirror/search";
 import {
     EditorSelection,
+    type EditorState,
     Prec,
     RangeSet,
     RangeSetBuilder,
     type SelectionRange,
     type StateCommand,
-    Transaction,
     type Text,
-    type EditorState,
+    Transaction,
 } from "@codemirror/state";
 // All this plugin does is
 // Highlight text and store which selections (including sub-selections)
@@ -69,17 +69,34 @@ import {
     Decoration,
     type DecorationSet,
     EditorView,
-    keymap,
     type KeyBinding,
     ViewPlugin,
     type ViewUpdate,
     WidgetType,
+    keymap,
 } from "@codemirror/view";
-import { tokenize, diffTokens, SuggestionDiffWidget } from "./diff";
+import { SuggestionDiffWidget, diffTokens, tokenize } from "./diff";
 export type { DiffOp } from "./diff";
 export { tokenize, diffTokens } from "./diff";
 
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";
+import { readersSettings } from "$lib/readers/settings.svelte";
+import { appSettings } from "$lib/settings.svelte";
+import type { NestedEditorCommand } from "$lib/stores";
+import { settingsOpen } from "$lib/stores";
 import { filter, flatMap, isEqual } from "lodash-es";
+import {
+    _revisionCleanup,
+    addAnnotation,
+    annotationField,
+    invertedAnnotationFieldEffects,
+    removeAnnotation,
+    revisionInternalEdit,
+    setActiveRevisionVersion,
+    suggestionPreviewField,
+} from "./annotationField";
+import { nestedEditorEdit } from "./annotationField";
 import {
     type Annotation,
     type AnnotationType,
@@ -93,23 +110,6 @@ import {
     canCreateSuggestion,
     getActiveAnnotation,
 } from "./utils";
-import {
-    annotationField,
-    addAnnotation,
-    revisionInternalEdit,
-    removeAnnotation,
-    invertedAnnotationFieldEffects,
-    suggestionPreviewField,
-    _revisionCleanup,
-    setActiveRevisionVersion,
-} from "./annotationField";
-import type { NestedEditorCommand } from "$lib/stores";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { appSettings } from "$lib/settings.svelte";
-import { nestedEditorEdit } from "./annotationField";
-import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";
-import { settingsOpen } from "$lib/stores";
-import { readersSettings } from "$lib/readers/settings.svelte";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the
@@ -620,8 +620,10 @@ export function createComment({
     comment: string;
     author?: string;
     view: EditorView;
-}) {
+}): boolean {
     const state = view.state;
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
 
     const selection = getSelection({
         editorSelection,
@@ -640,6 +642,7 @@ export function createComment({
             annotations: Transaction.addToHistory.of(true),
         }),
     );
+    return true;
 }
 export function createSuggestion({
     targetText,
@@ -660,6 +663,8 @@ export function createSuggestion({
     author?: string;
     comment?: string;
 }): boolean {
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     // Normalize string shorthand to full shape
     const normalizedReplacements = replacements.map((r) =>
         typeof r === "string" ? { text: r } : r,
@@ -705,6 +710,8 @@ export function createRevision({
     view: EditorView;
 }) {
     const state = view.state;
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     const selection = getSelection({
         editorSelection,
         targetText,
@@ -739,6 +746,8 @@ export function createRevision({
 }
 
 export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     // locks it so that we can't have multiple pending states
     if (!canCreateNewComment(state.field(annotationField))) {
         annotationEventBus.emit({
@@ -763,6 +772,8 @@ export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 };
 // QUESTION: Should we have some sort of global annotation mutex
 export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     if (state.selection.main.empty) return false;
     if (!canCreateRevision(state.field(annotationField), state.selection)) {
         annotationEventBus.emit({ type: "overlapping-revision-alert" });

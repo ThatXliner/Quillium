@@ -242,6 +242,9 @@ let forking = $state(false);
 
 const currentDraft = $derived(tabDrafts.find((d) => d.id === $currentDraftId));
 const isLocked = $derived(currentDraft?.locked ?? false);
+// Locks come from branching or from the panel's manual lock — the banner
+// copy explains whichever applies.
+const currentHasBranches = $derived(tabDrafts.some((d) => d.parentDraftId === $currentDraftId));
 
 /** Flushes queued events + debounced meta writes before switching context. */
 async function flushPendingPersist(): Promise<void> {
@@ -821,7 +824,7 @@ onMount(() => {
                      strip — locks derive from having branches. -->
                 <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900/70">
                     <LockIcon size={11} class="shrink-0 text-amber-700/60" />
-                    <span class="flex-1 min-w-0 truncate">This draft is locked because it has branches.</span>
+                    <span class="flex-1 min-w-0 truncate">{currentHasBranches ? "This draft is locked because it has branches." : "This draft is locked."}</span>
                     <button
                         onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
                         class="shrink-0 font-medium hover:text-amber-950 transition-colors"
