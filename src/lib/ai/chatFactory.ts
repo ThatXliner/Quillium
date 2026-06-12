@@ -35,7 +35,14 @@ import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
 import type { EditorView } from "@codemirror/view";
 import { toast } from "svelte-sonner";
 import posthog from "$lib/posthog";
-import { currentDocumentId, documentContent, selectedText, editorView } from "$lib/stores";
+import {
+    activeAnnotation,
+    annotations,
+    currentDocumentId,
+    documentContent,
+    selectedText,
+    editorView,
+} from "$lib/stores";
 import {
     aiSettings,
     documentContext,
@@ -55,6 +62,7 @@ import {
     type StreamOpts,
 } from "./clientStreams";
 import type { ReaderPersona } from "$lib/readers/presets";
+import { buildAnnotationContextInputs } from "./annotationContext";
 
 type ToolCall =
     | { toolName: "createComment"; input: CommentInput }
@@ -156,17 +164,26 @@ export async function runMultiPersonaStreams({
     // was started on — if the user switches documents mid-stream, tool
     // calls would otherwise be applied to the wrong document.
     const docIdAtStart = get(currentDocumentId);
+    const documentContentAtStart = get(documentContent);
+    const selectedTextAtStart = get(selectedText);
+    const annotationContextAtStart = buildAnnotationContextInputs({
+        annotations: get(annotations),
+        documentContent: documentContentAtStart,
+        selectedText: selectedTextAtStart,
+        activeAnnotation: get(activeAnnotation),
+    });
 
     const tasks = personas.map(async (persona) => {
         const stream = await streamFn({
             messages,
-            documentContent: get(documentContent),
-            selectedText: get(selectedText),
+            documentContent: documentContentAtStart,
+            selectedText: selectedTextAtStart,
             provider: aiSettings.provider,
             model: aiSettings.model,
             apiKey: aiSettings.apiKey,
             baseURL: aiSettings.baseURL,
             documentContext: { ...documentContext },
+            annotationContext: annotationContextAtStart,
             persona,
             abortSignal,
         });
@@ -219,15 +236,23 @@ function makeTransport(streamFn: StreamFn): ChatTransport<UIMessage> {
             abortSignal,
         }: { messages: UIMessage[]; abortSignal?: AbortSignal } & Record<string, unknown>) {
             await ensureApiKeyLoaded();
+            const documentContentAtSend = get(documentContent);
+            const selectedTextAtSend = get(selectedText);
             return streamFn({
                 messages,
-                documentContent: get(documentContent),
-                selectedText: get(selectedText),
+                documentContent: documentContentAtSend,
+                selectedText: selectedTextAtSend,
                 provider: aiSettings.provider,
                 model: aiSettings.model,
                 apiKey: aiSettings.apiKey,
                 baseURL: aiSettings.baseURL,
                 documentContext: { ...documentContext },
+                annotationContext: buildAnnotationContextInputs({
+                    annotations: get(annotations),
+                    documentContent: documentContentAtSend,
+                    selectedText: selectedTextAtSend,
+                    activeAnnotation: get(activeAnnotation),
+                }),
                 abortSignal,
             });
         },
@@ -258,6 +283,7 @@ export function createAiChat({ mode }: { mode: "chat" | "feedback" | "revise" | 
             mode,
             has_document_context: !!opts.documentContext?.freeform?.trim(),
             has_selected_text: !!opts.selectedText,
+            annotation_context_count: opts.annotationContext?.length ?? 0,
             document_length: opts.documentContent?.length ?? 0,
         });
         return streamFns[mode](opts);

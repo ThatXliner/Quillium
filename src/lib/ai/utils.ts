@@ -29,6 +29,7 @@ import type { UserModelMessage } from "ai";
 import {
     buildAiContextPacket,
     contextPacketToUserMessage,
+    type AnnotationContextInput,
     type DocumentContextLike,
 } from "./context";
 
@@ -55,11 +56,13 @@ export function injectDocumentContext({
     documentContent,
     selectedText,
     documentContext,
+    annotationContext,
     mode = "chat",
 }: {
     documentContent?: string;
     selectedText?: string;
     documentContext?: DocumentContext;
+    annotationContext?: AnnotationContextInput[];
     mode?: Parameters<typeof buildAiContextPacket>[0]["mode"];
 }) {
     const packet = buildAiContextPacket({
@@ -67,6 +70,7 @@ export function injectDocumentContext({
         documentContent,
         selectedText,
         documentContext,
+        annotationContext,
     });
     return contextPacketToUserMessage(packet) as UserModelMessage;
 }

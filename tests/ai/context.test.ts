@@ -52,6 +52,49 @@ describe("buildAiContextPacket", () => {
         expect(writerSource?.active).toBe(true);
         expect(writerSource?.chars).toBeGreaterThan(0);
     });
+
+    it("includes open annotations as budgeted context", () => {
+        const packet = buildAiContextPacket({
+            mode: "feedback",
+            documentContent: "The second paragraph repeats the claim.",
+            annotationContext: [
+                {
+                    id: 7,
+                    type: "comment",
+                    targetText: "second paragraph",
+                    messages: [{ author: "Bryan", message: "This may repeat the intro." }],
+                    active: true,
+                },
+            ],
+        });
+        const prompt = contextPacketToPrompt(packet);
+
+        expect(packet.includedAnnotationCount).toBe(1);
+        expect(packet.sources.find((source) => source.id === "annotations")?.active).toBe(true);
+        expect(prompt).toContain("Existing annotations");
+        expect(prompt).toContain("avoid duplicating");
+        expect(prompt).toContain("[comment #7, active]");
+        expect(prompt).toContain("Bryan: This may repeat the intro.");
+    });
+
+    it("caps annotation context by relevance budget", () => {
+        const packet = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "Draft",
+            annotationContext: Array.from({ length: 8 }, (_, index) => ({
+                id: index,
+                type: "comment" as const,
+                targetText: `target ${index}`,
+                messages: [{ author: "Editor", message: `note ${index}` }],
+            })),
+        });
+
+        expect(packet.includedAnnotationCount).toBe(6);
+        expect(packet.omittedAnnotationCount).toBe(2);
+        expect(packet.sources.find((source) => source.id === "annotations")?.detail).toBe(
+            "6 of 8 included",
+        );
+    });
 });
 
 describe("getContextAwareActions", () => {
@@ -78,5 +121,23 @@ describe("getContextAwareActions", () => {
         expect(actions.find((action) => action.id === "feedback-brief")?.label).toBe(
             "Against the brief",
         );
+    });
+
+    it("offers annotation-aware actions when notes are open", () => {
+        const packet = buildAiContextPacket({
+            mode: "chat",
+            documentContent: "A full draft.",
+            annotationContext: [
+                {
+                    id: 1,
+                    type: "comment",
+                    targetText: "A full draft.",
+                    messages: [{ message: "Clarify the main claim." }],
+                },
+            ],
+        });
+
+        const actions = getContextAwareActions("chat", packet);
+        expect(actions[0].id).toBe("chat-annotations");
     });
 });

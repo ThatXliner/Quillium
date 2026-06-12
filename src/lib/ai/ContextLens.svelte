@@ -5,10 +5,12 @@ import {
     FileTextIcon,
     MousePointer2Icon,
     NotebookTabsIcon,
+    MessageSquareTextIcon,
     ScanTextIcon,
 } from "lucide-svelte";
-import { documentContent, selectedText } from "$lib/stores";
+import { activeAnnotation, annotations, documentContent, selectedText } from "$lib/stores";
 import { documentContext } from "$lib/ai/settings.svelte";
+import { buildAnnotationContextInputs } from "./annotationContext";
 import {
     buildAiContextPacket,
     contextScopeDetail,
@@ -27,12 +29,22 @@ const {
     onAction: (action: ContextAction) => void | Promise<void>;
 } = $props();
 
+const annotationContext = $derived(
+    buildAnnotationContextInputs({
+        annotations: $annotations,
+        documentContent: $documentContent,
+        selectedText: $selectedText,
+        activeAnnotation: $activeAnnotation,
+    }),
+);
+
 const packet = $derived(
     buildAiContextPacket({
         mode,
         documentContent: $documentContent,
         selectedText: $selectedText,
         documentContext: { freeform: documentContext.freeform },
+        annotationContext,
     }),
 );
 const actions = $derived(getContextAwareActions(mode, packet));
@@ -75,6 +87,7 @@ const ScopeIcon = $derived(packet.scope === "selection" ? ScanTextIcon : BookOpe
 function sourceIcon(id: string) {
     if (id === "selection") return MousePointer2Icon;
     if (id === "surrounding") return ScanTextIcon;
+    if (id === "annotations") return MessageSquareTextIcon;
     if (id === "writer-context") return NotebookTabsIcon;
     return FileTextIcon;
 }
