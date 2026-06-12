@@ -82,18 +82,28 @@ test.describe("AI sidebar", () => {
     test("hides starter suggestions after first chat action", async ({ page }) => {
         const q = new QuilliumPage(page, {
             apiKey: "test-key",
-            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            settings: {
+                showNestedEditor: true,
+                atomicRevisions: true,
+                aiEnabled: true,
+                customQuickActions: [
+                    { panel: "chat", label: "Make punchy", prompt: "Make this punchier" },
+                ],
+            },
             initialDoc: "A short draft with enough context for the AI sidebar.",
         });
         await q.init();
 
         await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar).toContainText("Draft context");
+        await expect(q.aiSidebar).toContainText("Make punchy");
 
         await q.aiSidebar.getByRole("button", { name: /Name the center/ }).click();
 
         await expect(q.aiSidebar).not.toContainText("Name the center");
         await expect(q.aiSidebar).not.toContainText("Find missing context");
+        await expect(q.aiSidebar).not.toContainText("Make punchy");
+        await expect(q.aiSidebar.getByRole("button", { name: "Actions" })).toBeVisible();
         await expect(q.aiSidebar.getByRole("button", { name: "New chat" })).toBeVisible();
     });
 

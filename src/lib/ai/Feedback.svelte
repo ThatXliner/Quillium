@@ -71,6 +71,7 @@ import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { streamFeedback } from "$lib/ai/clientStreams";
 import { appEventBus } from "$lib/events/appEventBus";
 import ContextLens from "./ContextLens.svelte";
+import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
 
 let input = $state("");
@@ -181,17 +182,12 @@ function useContextAction(action: ContextAction) {
 
     {#if showStarterSuggestions && customFeedbackPrompts.length > 0}
         <div class="px-3 pb-3 border-b border-black/10">
-            <div class="grid grid-cols-2 gap-1.5">
-                {#each customFeedbackPrompts as { label, prompt }}
-                    <button
-                        onclick={() => useQuickPrompt(prompt)}
-                        disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
-                        class="px-2 py-1.5 text-xs bg-white hover:bg-green-50 rounded border border-green-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                    >
-                        {label}
-                    </button>
-                {/each}
-            </div>
+            <CustomQuickActions
+                prompts={customFeedbackPrompts}
+                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                theme="green"
+                onPrompt={useQuickPrompt}
+            />
         </div>
     {/if}
 
@@ -260,6 +256,15 @@ function useContextAction(action: ContextAction) {
 
     <!-- Input -->
     <div class="border-t border-black/10 p-3 bg-white/30">
+        {#if !showStarterSuggestions}
+            <CustomQuickActions
+                prompts={customFeedbackPrompts}
+                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                compact
+                theme="green"
+                onPrompt={useQuickPrompt}
+            />
+        {/if}
         {#if $selectedText}
             <div
                 class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"

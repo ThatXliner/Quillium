@@ -57,6 +57,7 @@ import { appSettings } from "$lib/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
 import ContextLens from "./ContextLens.svelte";
+import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
 
 let input = $state("");
@@ -214,19 +215,13 @@ async function handleSubmit(event: Event) {
 
     <!-- Input form -->
     <div class="border-t border-black/10 p-3 bg-white/30">
-        {#if showStarterSuggestions && customChatPrompts.length > 0}
-            <div class="mb-2 flex flex-wrap gap-1.5">
-                {#each customChatPrompts as { label, prompt }}
-                    <button
-                        onclick={() => useQuickPrompt(prompt)}
-                        disabled={chat.status !== "ready" || !$documentContent}
-                        class="px-2 py-1 text-xs bg-white hover:bg-blue-50 rounded border border-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {label}
-                    </button>
-                {/each}
-            </div>
-        {/if}
+        <CustomQuickActions
+            prompts={customChatPrompts}
+            disabled={chat.status !== "ready" || !$documentContent}
+            compact={!showStarterSuggestions}
+            theme="blue"
+            onPrompt={useQuickPrompt}
+        />
         {#if $selectedText}
             <div
                 class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"
