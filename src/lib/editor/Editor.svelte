@@ -1,17 +1,17 @@
 <script lang="ts">
 import {
+    branchDraft,
     createDocument,
     createDraft,
     createSnapshot,
     createTab,
-    createTabDraft,
     deleteDraft,
     deleteTab,
     deregisterOpenDoc,
-    forkDraft,
     getActiveDraft,
     getActiveTab,
     getDocumentMeta,
+    iterateDraft,
     listDocuments,
     listTabDrafts,
     listTabs,
@@ -249,6 +249,13 @@ let forking = $state(false);
 
 const currentDraft = $derived(tabDrafts.find((d) => d.id === $currentDraftId));
 const isLocked = $derived(currentDraft?.locked ?? false);
+// A draft locks automatically when a newer iteration supersedes it (it has a
+// live iteration after it in its run); otherwise the lock was manual.
+const currentIsSuperseded = $derived(
+    !!currentDraft && tabDrafts.some((d) => d.parentDraftId === currentDraft.id),
+);
+// Branch is offered only off a non-run-head (a top-level take is a new tab).
+const currentCanBranch = $derived(!!currentDraft?.parentDraftId);
 
 /** Flushes queued events + debounced meta writes before switching context. */
 async function flushPendingPersist(): Promise<void> {
@@ -573,34 +580,62 @@ async function handleDraftSelect(draftId: string) {
 }
 
 /**
- * Branches a child draft off `parentDraftId`, seeded with that draft's
- * current state. Branches stay editable by default; sibling drafts are the
- * path that locks the draft they were duplicated from.
+ * Serializes a draft's current state to seed a new draft: the live view if
+ * it's the open draft, otherwise rebuilt from its snapshot + events.
  */
-async function handleDraftFork(parentDraftId: string) {
-    const docId = get(currentDocumentId);
+async function seedStateJson(sourceDraftId: string): Promise<string> {
     const view = $editorView;
-    if (!docId || !view || forking) return;
+    if (view && sourceDraftId === get(currentDraftId)) {
+        return JSON.stringify(view.state.toJSON(savedFields));
+    }
+    const docId = get(currentDocumentId);
+    const loaded = await loadDocumentState(docId ?? "", sourceDraftId);
+    const sourceState = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
+    return JSON.stringify(sourceState.toJSON(savedFields));
+}
+
+/**
+ * Iterate (the common verb): the next version in `sourceId`'s run, seeded
+ * from its state. Renders flat; the source locks (superseded), the new tip
+ * stays editable.
+ */
+async function handleDraftIterate(sourceId: string) {
+    const tabId = get(currentTabId);
+    if (!tabId || forking) return;
     forking = true;
     try {
         await flushPendingPersist();
-        // Serialize the parent's state: the live view if it's the open
-        // draft, otherwise rebuild it from its snapshot + events.
-        let stateJson: string;
-        if (parentDraftId === get(currentDraftId)) {
-            stateJson = JSON.stringify(view.state.toJSON(savedFields));
-        } else {
-            const loaded = await loadDocumentState(docId, parentDraftId);
-            const parentState = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
-            stateJson = JSON.stringify(parentState.toJSON(savedFields));
-        }
-        const child = await forkDraft(parentDraftId, `v${tabDrafts.length}`, stateJson);
-        const tabId = get(currentTabId);
-        if (tabId) tabDrafts = await listTabDrafts(tabId);
-        posthog.capture("draft_forked");
-        await switchToDraft(child.id);
+        const stateJson = await seedStateJson(sourceId);
+        const next = await iterateDraft(sourceId, `v${tabDrafts.length}`, stateJson);
+        tabDrafts = await listTabDrafts(tabId);
+        posthog.capture("draft_iterated");
+        await switchToDraft(next.id);
     } catch (e) {
-        console.error("[Editor] fork draft failed", e);
+        console.error("[Editor] iterate draft failed", e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+        forking = false;
+    }
+}
+
+/**
+ * Branch (the rare verb): a different take off `sourceId`, seeded from its
+ * state. Renders indented; nothing locks — source and branch are parallel
+ * live explorations.
+ */
+async function handleDraftBranch(sourceId: string) {
+    const tabId = get(currentTabId);
+    if (!tabId || forking) return;
+    forking = true;
+    try {
+        await flushPendingPersist();
+        const stateJson = await seedStateJson(sourceId);
+        const branch = await branchDraft(sourceId, "new take", stateJson);
+        tabDrafts = await listTabDrafts(tabId);
+        posthog.capture("draft_branched");
+        await switchToDraft(branch.id);
+    } catch (e) {
+        console.error("[Editor] branch draft failed", e);
         posthog.captureException(e instanceof Error ? e : new Error(String(e)));
     } finally {
         forking = false;
@@ -659,39 +694,6 @@ async function refreshDraftsAndCurrentLock() {
     const nowLocked = tabDrafts.find((d) => d.id === current)?.locked ?? false;
     if (current && nowLocked !== wasLocked) {
         await switchToDraft(current);
-    }
-}
-
-/**
- * "+ New draft": duplicates the open draft as a sibling at the same tree
- * level — a parallel take. The draft duplicated from is locked so the new
- * sibling has a stable previous take to compare against.
- */
-async function handleNewDraft() {
-    const docId = get(currentDocumentId);
-    const tabId = get(currentTabId);
-    const view = $editorView;
-    const current = get(currentDraftId);
-    if (!docId || !tabId || !view || !current || forking) return;
-    forking = true;
-    try {
-        await flushPendingPersist();
-        const stateJson = JSON.stringify(view.state.toJSON(savedFields));
-        const parentId = tabDrafts.find((d) => d.id === current)?.parentDraftId ?? null;
-        const label = `draft ${tabDrafts.length + 1}`;
-        const sibling = parentId
-            ? await forkDraft(parentId, label, stateJson)
-            : await createTabDraft(tabId, label, stateJson);
-        await setDraftLocked(current, true);
-        tabDrafts = await listTabDrafts(tabId);
-        posthog.capture("draft_sibling_created");
-        posthog.capture("draft_locked", { source: "sibling_draft" });
-        await switchToDraft(sibling.id);
-    } catch (e) {
-        console.error("[Editor] new draft failed", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-        forking = false;
     }
 }
 
@@ -809,11 +811,11 @@ onMount(() => {
                         drafts={tabDrafts}
                         activeDraftId={$currentDraftId}
                         ondraftselect={handleDraftSelect}
-                        ondraftfork={handleDraftFork}
+                        ondraftiterate={handleDraftIterate}
+                        ondraftbranch={handleDraftBranch}
                         ondraftrename={handleDraftRename}
                         ondraftdelete={handleDraftDelete}
                         ontogglelock={handleDraftToggleLock}
-                        onnewdraft={handleNewDraft}
                     />
                 </div>
             </div>
@@ -836,20 +838,22 @@ onMount(() => {
                 <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
                 <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900/70">
                     <LockIcon size={11} class="shrink-0 text-amber-700/60" />
-                    <span class="flex-1 min-w-0 truncate">This draft is locked.</span>
+                    <span class="flex-1 min-w-0 truncate">{currentIsSuperseded ? "This is an older version." : "This draft is locked."}</span>
                     <button
                         onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
                         class="shrink-0 font-medium hover:text-amber-950 transition-colors"
                     >Edit anyway</button>
-                    <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
-                    <button
-                        onclick={() => currentDraft && handleDraftFork(currentDraft.id)}
-                        disabled={forking}
-                        class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
-                    >
-                        <GitBranchIcon size={11} />
-                        <span>New branch</span>
-                    </button>
+                    {#if currentCanBranch}
+                        <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
+                        <button
+                            onclick={() => currentDraft && handleDraftBranch(currentDraft.id)}
+                            disabled={forking}
+                            class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
+                        >
+                            <GitBranchIcon size={11} />
+                            <span>New take</span>
+                        </button>
+                    {/if}
                 </div>
             {/if}
             <div bind:this={element}></div>

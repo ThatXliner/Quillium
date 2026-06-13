@@ -7,49 +7,46 @@ import DraftTreePanel from "$lib/editor/DraftTreePanel.svelte";
 // vitest globals are disabled, so testing-library can't self-register cleanup.
 afterEach(cleanup);
 
-function makeDraft(
-    id: string,
-    label: string,
-    parentDraftId: string | null = null,
-    createdAt = 0,
-    locked = false,
-): DraftMeta {
+function makeDraft(id: string, label: string, over: Partial<DraftMeta> = {}): DraftMeta {
     return {
         id,
         documentId: "doc-1",
         label,
-        createdAt,
+        createdAt: 0,
         isActive: true,
         tabId: "tab-1",
-        parentDraftId,
-        locked,
+        parentDraftId: null,
+        branchedFrom: null,
+        locked: false,
+        ...over,
     };
 }
 
-const MAIN = makeDraft("main", "main", null, 0, true);
-const V1 = makeDraft("v1", "v1", "main", 1);
+// main (run head, locked because superseded) → v1 (run tip).
+const MAIN = makeDraft("main", "main", { createdAt: 0, locked: true });
+const V1 = makeDraft("v1", "v1", { parentDraftId: "main", createdAt: 1 });
 
 function defaultProps(
     overrides: Partial<{
         drafts: DraftMeta[];
         activeDraftId: string | null;
         ondraftselect: (id: string) => void;
-        ondraftfork: (id: string) => void;
+        ondraftiterate: (id: string) => void;
+        ondraftbranch: (id: string) => void;
         ondraftrename: (id: string, label: string) => void;
         ondraftdelete: (id: string) => void;
         ontogglelock: (id: string, locked: boolean) => void;
-        onnewdraft: () => void;
     }> = {},
 ) {
     return {
         drafts: [MAIN, V1],
         activeDraftId: "v1",
         ondraftselect: vi.fn(),
-        ondraftfork: vi.fn(),
+        ondraftiterate: vi.fn(),
+        ondraftbranch: vi.fn(),
         ondraftrename: vi.fn(),
         ondraftdelete: vi.fn(),
         ontogglelock: vi.fn(),
-        onnewdraft: vi.fn(),
         ...overrides,
     };
 }
@@ -75,11 +72,32 @@ describe("DraftTreePanel", () => {
         expect(ondraftselect).not.toHaveBeenCalled();
     });
 
-    it("calls ondraftfork with the row's draft id", async () => {
-        const ondraftfork = vi.fn();
-        const { getByRole } = render(DraftTreePanel, { props: defaultProps({ ondraftfork }) });
+    it("offers Iterate only on the run tip", () => {
+        const { getByRole, queryByRole } = render(DraftTreePanel, { props: defaultProps() });
+        expect(getByRole("button", { name: "Iterate v1" })).toBeInTheDocument();
+        // main is superseded (not the tip) — no iterate action.
+        expect(queryByRole("button", { name: "Iterate main" })).not.toBeInTheDocument();
+    });
+
+    it("calls ondraftiterate with the tip's id", async () => {
+        const ondraftiterate = vi.fn();
+        const { getByRole } = render(DraftTreePanel, { props: defaultProps({ ondraftiterate }) });
+        await fireEvent.click(getByRole("button", { name: "Iterate v1" }));
+        expect(ondraftiterate).toHaveBeenCalledWith("v1");
+    });
+
+    it("offers Branch on non-run-heads but not on main", () => {
+        const { getByRole, queryByRole } = render(DraftTreePanel, { props: defaultProps() });
+        expect(getByRole("button", { name: "Branch from v1" })).toBeInTheDocument();
+        // main is a run head — a top-level take is a new tab, not a branch.
+        expect(queryByRole("button", { name: "Branch from main" })).not.toBeInTheDocument();
+    });
+
+    it("calls ondraftbranch with the row's draft id", async () => {
+        const ondraftbranch = vi.fn();
+        const { getByRole } = render(DraftTreePanel, { props: defaultProps({ ondraftbranch }) });
         await fireEvent.click(getByRole("button", { name: "Branch from v1" }));
-        expect(ondraftfork).toHaveBeenCalledWith("v1");
+        expect(ondraftbranch).toHaveBeenCalledWith("v1");
     });
 
     it("shows an unlock action only for locked drafts", () => {
@@ -112,7 +130,7 @@ describe("DraftTreePanel", () => {
     it("only offers delete on deletable leaves", () => {
         const { getByRole, queryByRole } = render(DraftTreePanel, { props: defaultProps() });
         expect(getByRole("button", { name: "Delete v1" })).toBeInTheDocument();
-        // "main" has a child, so it can't be deleted.
+        // "main" has a live iteration after it, so it can't be deleted.
         expect(queryByRole("button", { name: "Delete main" })).not.toBeInTheDocument();
     });
 
@@ -121,13 +139,6 @@ describe("DraftTreePanel", () => {
         const { getByRole } = render(DraftTreePanel, { props: defaultProps({ ondraftdelete }) });
         await fireEvent.click(getByRole("button", { name: "Delete v1" }));
         expect(ondraftdelete).toHaveBeenCalledWith("v1");
-    });
-
-    it("calls onnewdraft from the New draft footer button", async () => {
-        const onnewdraft = vi.fn();
-        const { getByRole } = render(DraftTreePanel, { props: defaultProps({ onnewdraft }) });
-        await fireEvent.click(getByRole("button", { name: /New draft/ }));
-        expect(onnewdraft).toHaveBeenCalledOnce();
     });
 
     it("commits inline rename on Enter", async () => {

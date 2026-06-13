@@ -1,19 +1,19 @@
 /**
- * E2E tests for the per-tab draft tree (#160):
+ * E2E tests for the per-tab draft panel (#160):
  *   - Panel renders the root draft
- *   - Branching creates an unlocked child draft
- *   - "New draft" creates a sibling at the same level and locks the previous sibling
+ *   - Iterate makes the next version and locks the superseded source
+ *   - Branch makes a different take and locks nothing (and not off main)
  *   - Deleting a draft is soft and undoable from the toast
- *   - "Edit anyway" unlocks the draft
+ *   - The locked banner's "Edit anyway" unlocks
  */
 
 import { expect, test } from "@playwright/test";
 import { QuilliumPage } from "./QuilliumPage";
 
-// The draft tree panel hides below 1240px viewport width.
+// The draft panel hides below 1280px viewport width.
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test.describe("Draft tree", () => {
+test.describe("Draft panel", () => {
     test("panel renders the root draft on load", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
@@ -23,46 +23,65 @@ test.describe("Draft tree", () => {
         await expect(panel.getByText("main")).toBeVisible();
     });
 
-    test("branching creates a child draft and leaves the parent unlocked", async ({ page }) => {
+    test("main offers Iterate but not Branch (a top-level take is a new tab)", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
 
         const panel = page.locator('[aria-label="Draft tree"]');
-        // Hover the root row so its actions appear, then branch.
         await panel.getByText("main").hover();
-        await panel.locator('button[aria-label="Branch from main"]').click();
+        await expect(panel.locator('button[aria-label="Iterate main"]')).toBeVisible();
+        await expect(panel.locator('button[aria-label="Branch from main"]')).toHaveCount(0);
+    });
 
-        // A second row appears and is selected (amber dot lives on active row).
+    test("iterating makes the next version and locks the superseded source", async ({ page }) => {
+        const q = new QuilliumPage(page);
+        await q.init();
+
+        const panel = page.locator('[aria-label="Draft tree"]');
+        await panel.getByText("main").hover();
+        await panel.locator('button[aria-label="Iterate main"]').click();
+
+        // A second row appears and becomes the active tip.
         await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
             timeout: 5_000,
         });
-        expect(await q.countInvocations("cmd_fork_draft")).toBe(1);
+        expect(await q.countInvocations("cmd_iterate_draft")).toBe(1);
 
-        // Branching does not lock the parent.
+        // The source (main) is now locked/superseded.
         await panel.getByText("main").hover();
-        await expect(panel.locator('button[aria-label="Lock main"]')).toBeVisible();
-
+        await expect(panel.locator('button[aria-label="Unlock main"]')).toBeVisible();
         await panel.getByText("main").click();
-        await expect(page.getByText("This draft is locked.", { exact: true })).toBeHidden({
+        await expect(page.getByText("This is an older version.", { exact: true })).toBeVisible({
             timeout: 5_000,
         });
     });
 
-    test("New draft creates a sibling and locks the previous sibling", async ({ page }) => {
+    test("branching makes a different take and locks nothing", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
 
         const panel = page.locator('[aria-label="Draft tree"]');
-        await panel.getByRole("button", { name: /New draft/ }).click();
-
-        // Sibling appears and becomes active; the source draft is now locked.
+        // Iterate once so we have a non-root draft to branch from.
+        await panel.getByText("main").hover();
+        await panel.locator('button[aria-label="Iterate main"]').click();
         await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
             timeout: 5_000,
         });
-        expect(await q.countInvocations("cmd_create_tab_draft")).toBe(1);
-        expect(await q.countInvocations("cmd_set_draft_locked")).toBe(1);
-        await panel.getByText("main").hover();
-        await expect(panel.locator('button[aria-label="Unlock main"]')).toBeVisible();
+        const tip = page.locator('[aria-label="Draft tree"] button[aria-current="true"]');
+        const tipLabel = (await tip.innerText()).trim();
+
+        await tip.hover();
+        await panel.locator(`button[aria-label="Branch from ${tipLabel}"]`).click();
+        await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
+            timeout: 5_000,
+        });
+        expect(await q.countInvocations("cmd_branch_draft")).toBe(1);
+
+        // The branch source stays editable (no lock banner on it).
+        await panel.getByText(tipLabel).first().click();
+        await expect(page.getByText("This draft is locked.", { exact: true })).toBeHidden({
+            timeout: 5_000,
+        });
     });
 
     test("deleting a draft shows an undo toast that restores it", async ({ page }) => {
@@ -71,20 +90,23 @@ test.describe("Draft tree", () => {
 
         const panel = page.locator('[aria-label="Draft tree"]');
         await panel.getByText("main").hover();
-        await panel.locator('button[aria-label="Branch from main"]').click();
+        await panel.locator('button[aria-label="Iterate main"]').click();
         await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
             timeout: 5_000,
         });
+        const tipLabel = (
+            await page.locator('[aria-label="Draft tree"] button[aria-current="true"]').innerText()
+        ).trim();
 
-        // Delete the branch we are on — the editor falls back to "main".
-        await panel.getByText("v1").hover();
-        await panel.locator('button[aria-label="Delete v1"]').click();
-        await expect(panel.getByText("v1")).toBeHidden({ timeout: 5_000 });
+        // Delete the iteration we are on — the editor falls back to main.
+        await panel.getByText(tipLabel).first().hover();
+        await panel.locator(`button[aria-label="Delete ${tipLabel}"]`).click();
+        await expect(panel.getByText(tipLabel)).toBeHidden({ timeout: 5_000 });
         expect(await q.countInvocations("cmd_delete_draft")).toBe(1);
 
         // Undo from the toast brings it back.
         await page.getByRole("button", { name: "Undo" }).click();
-        await expect(panel.getByText("v1")).toBeVisible({ timeout: 5_000 });
+        await expect(panel.getByText(tipLabel)).toBeVisible({ timeout: 5_000 });
         expect(await q.countInvocations("cmd_restore_draft")).toBe(1);
     });
 
@@ -96,43 +118,16 @@ test.describe("Draft tree", () => {
         await panel.getByText("main").hover();
         await panel.locator('button[aria-label="Lock main"]').click();
 
-        // No branches involved — the banner uses the plain copy.
+        // main has no newer iteration, so the lock is manual: plain copy.
         await expect(page.getByText("This draft is locked.", { exact: true })).toBeVisible({
             timeout: 5_000,
         });
         expect(await q.countInvocations("cmd_set_draft_locked")).toBe(1);
 
-        // Unlock again from the panel.
-        await panel.getByText("main").hover();
-        await panel.locator('button[aria-label="Unlock main"]').click();
-        await expect(page.getByText("This draft is locked.", { exact: true })).toBeHidden({
-            timeout: 5_000,
-        });
-    });
-
-    test("opening a locked previous sibling shows the lock banner; Edit anyway unlocks", async ({
-        page,
-    }) => {
-        const q = new QuilliumPage(page);
-        await q.init();
-
-        const panel = page.locator('[aria-label="Draft tree"]');
-        await panel.getByRole("button", { name: /New draft/ }).click();
-        await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
-            timeout: 5_000,
-        });
-
-        // Switch back to the locked previous sibling.
-        await panel.getByText("main").click();
-        await expect(page.getByText("This draft is locked.", { exact: true })).toBeVisible({
-            timeout: 5_000,
-        });
-
-        // Unlock from the banner.
+        // Unlock again from the banner.
         await page.getByRole("button", { name: "Edit anyway" }).click();
         await expect(page.getByText("This draft is locked.", { exact: true })).toBeHidden({
             timeout: 5_000,
         });
-        expect(await q.countInvocations("cmd_set_draft_locked")).toBeGreaterThanOrEqual(1);
     });
 });

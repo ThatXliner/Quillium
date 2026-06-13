@@ -228,15 +228,29 @@ export async function listTabDrafts(tabId: string): Promise<DraftMeta[]> {
 }
 
 /**
- * Forks a draft into a child seeded with `stateJson` (serialized
- * EditorState) as a "Branch point" snapshot. The branch stays unlocked.
+ * Iterate: the next version of `sourceDraftId` in its flat run, seeded with
+ * `stateJson`. The run relocks so only the new tip is editable; superseded
+ * iterations lock automatically.
  */
-export async function forkDraft(
-    parentDraftId: string,
+export async function iterateDraft(
+    sourceDraftId: string,
     label: string,
     stateJson: string | null,
 ): Promise<DraftMeta> {
-    return invoke<DraftMeta>("cmd_fork_draft", { parentDraftId, label, stateJson });
+    return invoke<DraftMeta>("cmd_iterate_draft", { sourceDraftId, label, stateJson });
+}
+
+/**
+ * Branch: a different take off `sourceDraftId`, seeded with `stateJson`,
+ * starting its own run (rendered indented). Nothing locks. Rejected on a
+ * run head (main / branch root) — a top-level take is a new tab.
+ */
+export async function branchDraft(
+    sourceDraftId: string,
+    label: string,
+    stateJson: string | null,
+): Promise<DraftMeta> {
+    return invoke<DraftMeta>("cmd_branch_draft", { sourceDraftId, label, stateJson });
 }
 
 export async function renameDraft(draftId: string, label: string): Promise<void> {
@@ -247,25 +261,12 @@ export async function setDraftLocked(draftId: string, locked: boolean): Promise<
     return invoke<void>("cmd_set_draft_locked", { draftId, locked });
 }
 
-/**
- * Creates a root-level draft in a tab (a sibling of "main"), optionally
- * seeded with serialized state. Callers decide whether to lock the draft
- * this sibling was duplicated from.
- */
-export async function createTabDraft(
-    tabId: string,
-    label: string,
-    stateJson: string | null,
-): Promise<DraftMeta> {
-    return invoke<DraftMeta>("cmd_create_tab_draft", { tabId, label, stateJson });
-}
-
-/** Soft-deletes a leaf draft (restorable). Rejects if it has branches or is the tab's last draft. */
+/** Soft-deletes a leaf draft (restorable). Rejects if it has iterations/branches or is the tab's last draft. */
 export async function deleteDraft(draftId: string): Promise<void> {
     return invoke<void>("cmd_delete_draft", { draftId });
 }
 
-/** Restores a soft-deleted draft; its parent re-locks. */
+/** Restores a soft-deleted draft; its run relocks. */
 export async function restoreDraft(draftId: string): Promise<void> {
     return invoke<void>("cmd_restore_draft", { draftId });
 }

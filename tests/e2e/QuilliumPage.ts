@@ -155,6 +155,7 @@ export class QuilliumPage {
                     isActive: boolean;
                     tabId: string | null;
                     parentDraftId: string | null;
+                    branchedFrom: string | null;
                     locked: boolean;
                     deletedAt: number | null;
                 };
@@ -180,6 +181,7 @@ export class QuilliumPage {
                         isActive: true,
                         tabId: "tab-test-1",
                         parentDraftId: null,
+                        branchedFrom: null,
                         locked: false,
                         deletedAt: null,
                     },
@@ -241,6 +243,7 @@ export class QuilliumPage {
                                 isActive: true,
                                 tabId: tab.id,
                                 parentDraftId: null,
+                                branchedFrom: null,
                                 locked: false,
                                 deletedAt: null,
                             });
@@ -287,39 +290,51 @@ export class QuilliumPage {
                             activeDraftByTab[a.tabId] = a.draftId;
                             return null;
                         }
-                        if (cmd === "cmd_fork_draft") {
-                            const a = args as { parentDraftId: string; label: string };
-                            const parent = drafts.find((d) => d.id === a.parentDraftId);
-                            const child: MockDraft = {
+                        if (cmd === "cmd_iterate_draft") {
+                            const a = args as { sourceDraftId: string; label: string };
+                            const source = drafts.find((d) => d.id === a.sourceDraftId);
+                            // Iterating locks the source (superseded); the new
+                            // draft becomes the run's editable tip.
+                            if (source) source.locked = true;
+                            const next: MockDraft = {
                                 id: `draft-test-${nextDraftIndex++}`,
-                                documentId: parent?.documentId ?? "doc-test-1",
+                                documentId: source?.documentId ?? "doc-test-1",
                                 label: a.label,
                                 createdAt: Date.now(),
                                 isActive: true,
-                                tabId: parent?.tabId ?? null,
-                                parentDraftId: a.parentDraftId,
+                                tabId: source?.tabId ?? null,
+                                parentDraftId: a.sourceDraftId,
+                                branchedFrom: null,
                                 locked: false,
                                 deletedAt: null,
                             };
-                            drafts.push(child);
-                            return child;
+                            drafts.push(next);
+                            return next;
                         }
-                        if (cmd === "cmd_create_tab_draft") {
-                            const a = args as { tabId: string; label: string };
-                            const tab = tabs.find((t) => t.id === a.tabId);
-                            const sibling: MockDraft = {
+                        if (cmd === "cmd_branch_draft") {
+                            const a = args as { sourceDraftId: string; label: string };
+                            const source = drafts.find((d) => d.id === a.sourceDraftId);
+                            // Branching off a run head is refused (a new tab is
+                            // the right move); nothing locks otherwise.
+                            if (source && source.parentDraftId == null) {
+                                throw new Error(
+                                    "Can't branch from a top-level draft — create a new tab instead",
+                                );
+                            }
+                            const branch: MockDraft = {
                                 id: `draft-test-${nextDraftIndex++}`,
-                                documentId: tab?.documentId ?? "doc-test-1",
+                                documentId: source?.documentId ?? "doc-test-1",
                                 label: a.label,
                                 createdAt: Date.now(),
                                 isActive: true,
-                                tabId: a.tabId,
+                                tabId: source?.tabId ?? null,
                                 parentDraftId: null,
+                                branchedFrom: a.sourceDraftId,
                                 locked: false,
                                 deletedAt: null,
                             };
-                            drafts.push(sibling);
-                            return sibling;
+                            drafts.push(branch);
+                            return branch;
                         }
                         if (cmd === "cmd_rename_draft") {
                             const a = args as { draftId: string; label: string };
@@ -333,18 +348,35 @@ export class QuilliumPage {
                             if (draft) draft.locked = a.locked;
                             return null;
                         }
-                        if (cmd === "cmd_delete_draft") {
+                        if (cmd === "cmd_delete_draft" || cmd === "cmd_restore_draft") {
                             const a = args as { draftId: string };
                             const draft = drafts.find((d) => d.id === a.draftId);
                             if (!draft) return null;
-                            draft.deletedAt = Date.now();
-                            return null;
-                        }
-                        if (cmd === "cmd_restore_draft") {
-                            const a = args as { draftId: string };
-                            const draft = drafts.find((d) => d.id === a.draftId);
-                            if (!draft) return null;
-                            draft.deletedAt = null;
+                            draft.deletedAt = cmd === "cmd_delete_draft" ? Date.now() : null;
+                            // Relock the affected run: lock all live members
+                            // except the newest (the editable tip).
+                            const headOf = (d: MockDraft): MockDraft => {
+                                let cur = d;
+                                while (cur.parentDraftId) {
+                                    const p = drafts.find((x) => x.id === cur.parentDraftId);
+                                    if (!p) break;
+                                    cur = p;
+                                }
+                                return cur;
+                            };
+                            const head = headOf(draft);
+                            const run: MockDraft[] = [];
+                            let cur: MockDraft | undefined = head;
+                            while (cur) {
+                                if (!cur.deletedAt) run.push(cur);
+                                const c: MockDraft | undefined = cur;
+                                cur = drafts.find((x) => x.parentDraftId === c.id && !x.deletedAt);
+                            }
+                            const tip = run.reduce(
+                                (a2, b) => (b.createdAt >= a2.createdAt ? b : a2),
+                                run[0],
+                            );
+                            for (const m of run) m.locked = m.id !== tip?.id;
                             return null;
                         }
 

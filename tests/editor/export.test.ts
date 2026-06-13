@@ -68,6 +68,7 @@ beforeEach(() => {
             isActive: true,
             tabId: "tab-1",
             parentDraftId: null,
+            branchedFrom: null,
             locked: false,
         },
     ];

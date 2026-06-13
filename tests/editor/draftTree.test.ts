@@ -1,108 +1,113 @@
 import type { DraftMeta } from "$lib/db/types";
-import { buildDraftTree, flattenDraftTree, isDeletableDraft } from "$lib/editor/draftTree";
+import { isDeletableDraft, isRunHead, layoutDraftRows } from "$lib/editor/draftTree";
 import { describe, expect, it } from "vitest";
 
-function makeDraft(
-    id: string,
-    parentDraftId: string | null = null,
-    createdAt = 0,
-    locked = false,
-): DraftMeta {
+/** main → v1 → v2 is an iteration run; branches use branchedFrom. */
+function iter(id: string, parent: string | null, createdAt: number, locked = false): DraftMeta {
+    return mk(id, { parentDraftId: parent, createdAt, locked });
+}
+function branch(id: string, from: string, createdAt: number): DraftMeta {
+    return mk(id, { branchedFrom: from, createdAt });
+}
+function mk(id: string, over: Partial<DraftMeta>): DraftMeta {
     return {
         id,
         documentId: "doc-1",
         label: id,
-        createdAt,
+        createdAt: 0,
         isActive: true,
         tabId: "tab-1",
-        parentDraftId,
-        locked,
+        parentDraftId: null,
+        branchedFrom: null,
+        locked: false,
+        ...over,
     };
 }
 
-describe("buildDraftTree", () => {
-    it("returns an empty list for no drafts", () => {
-        expect(buildDraftTree([])).toEqual([]);
+describe("layoutDraftRows", () => {
+    it("returns nothing for no drafts", () => {
+        expect(layoutDraftRows([])).toEqual([]);
     });
 
-    it("builds a single root for one draft", () => {
-        const roots = buildDraftTree([makeDraft("main")]);
-        expect(roots).toHaveLength(1);
-        expect(roots[0].draft.id).toBe("main");
-        expect(roots[0].depth).toBe(0);
-        expect(roots[0].children).toHaveLength(0);
-    });
-
-    it("links children to parents with increasing depth", () => {
-        const roots = buildDraftTree([
-            makeDraft("main", null, 0),
-            makeDraft("v1", "main", 1),
-            makeDraft("v1.5", "v1", 2),
+    it("renders an iteration run flat (depth 0) in order", () => {
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            iter("v2", "v1", 2),
         ]);
-        expect(roots).toHaveLength(1);
-        const main = roots[0];
-        expect(main.children).toHaveLength(1);
-        expect(main.children[0].draft.id).toBe("v1");
-        expect(main.children[0].depth).toBe(1);
-        expect(main.children[0].children[0].draft.id).toBe("v1.5");
-        expect(main.children[0].children[0].depth).toBe(2);
-    });
-
-    it("orders siblings by creation time", () => {
-        const roots = buildDraftTree([
-            makeDraft("main", null, 0),
-            makeDraft("later", "main", 10),
-            makeDraft("earlier", "main", 5),
+        expect(rows.map((r) => [r.draft.id, r.depth])).toEqual([
+            ["main", 0],
+            ["v1", 1 - 1], // iterations never deepen — depth stays 0
+            ["v2", 0],
         ]);
-        expect(roots[0].children.map((c) => c.draft.id)).toEqual(["earlier", "later"]);
+        expect(rows.every((r) => r.depth === 0)).toBe(true);
     });
 
-    it("treats drafts with missing parents as roots", () => {
-        const roots = buildDraftTree([makeDraft("main", null, 0), makeDraft("orphan", "gone", 1)]);
-        expect(roots.map((r) => r.draft.id)).toEqual(["main", "orphan"]);
-        expect(roots[1].depth).toBe(0);
-    });
-
-    it("supports multiple branches from one parent", () => {
-        const roots = buildDraftTree([
-            makeDraft("main", null, 0),
-            makeDraft("a", "main", 1),
-            makeDraft("b", "main", 2),
+    it("marks only the run tip (newest live) as editable", () => {
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            iter("v2", "v1", 2),
         ]);
-        expect(roots[0].children.map((c) => c.draft.id)).toEqual(["a", "b"]);
+        expect(rows.find((r) => r.draft.id === "v2")?.isRunTip).toBe(true);
+        expect(rows.find((r) => r.draft.id === "v1")?.isRunTip).toBe(false);
+        expect(rows.find((r) => r.draft.id === "main")?.isRunTip).toBe(false);
+    });
+
+    it("indents a branch one level under its source and starts a new run", () => {
+        // main → v1 ; branch b1 off v1 ; b1 → b2
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            branch("b1", "v1", 2),
+            iter("b2", "b1", 3),
+        ]);
+        const byId = Object.fromEntries(rows.map((r) => [r.draft.id, r]));
+        expect(byId.main.depth).toBe(0);
+        expect(byId.v1.depth).toBe(0);
+        expect(byId.b1.depth).toBe(1);
+        expect(byId.b2.depth).toBe(1);
+        // Each run has its own tip.
+        expect(byId.v1.isRunTip).toBe(true); // main-run tip
+        expect(byId.b2.isRunTip).toBe(true); // branch-run tip
+        expect(byId.b1.isRunTip).toBe(false);
+    });
+
+    it("emits a branch immediately after its source draft", () => {
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            branch("b1", "main", 2),
+        ]);
+        // b1 (branched off main) appears right after main, before v1.
+        expect(rows.map((r) => r.draft.id)).toEqual(["main", "b1", "v1"]);
     });
 });
 
-describe("flattenDraftTree", () => {
-    it("flattens in DFS order, parents before children", () => {
-        const roots = buildDraftTree([
-            makeDraft("main", null, 0),
-            makeDraft("v1", "main", 1),
-            makeDraft("v2", "main", 3),
-            makeDraft("v1.5", "v1", 2),
-        ]);
-        const flat = flattenDraftTree(roots).map((n) => n.draft.id);
-        expect(flat).toEqual(["main", "v1", "v1.5", "v2"]);
+describe("isRunHead", () => {
+    it("is true for a draft with no parent iteration", () => {
+        expect(isRunHead(iter("main", null, 0))).toBe(true);
+        expect(isRunHead(branch("b1", "v1", 0))).toBe(true); // branch root
     });
-
-    it("returns empty for empty input", () => {
-        expect(flattenDraftTree([])).toEqual([]);
+    it("is false for an iteration", () => {
+        expect(isRunHead(iter("v1", "main", 1))).toBe(false);
     });
 });
 
 describe("isDeletableDraft", () => {
-    it("rejects the only draft in a tab", () => {
-        const drafts = [makeDraft("main")];
+    it("rejects the only draft", () => {
+        expect(isDeletableDraft("main", [iter("main", null, 0)])).toBe(false);
+    });
+    it("rejects a draft with a live iteration after it", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
         expect(isDeletableDraft("main", drafts)).toBe(false);
     });
-
-    it("rejects drafts that have children", () => {
-        const drafts = [makeDraft("main"), makeDraft("v1", "main", 1)];
-        expect(isDeletableDraft("main", drafts)).toBe(false);
+    it("rejects a draft with a branch off it", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1), branch("b1", "v1", 2)];
+        expect(isDeletableDraft("v1", drafts)).toBe(false);
     });
-
-    it("allows leaf drafts when siblings exist", () => {
-        const drafts = [makeDraft("main"), makeDraft("v1", "main", 1)];
+    it("allows a leaf when siblings exist", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
         expect(isDeletableDraft("v1", drafts)).toBe(true);
     });
 });

@@ -50,9 +50,18 @@ export type DraftMeta = {
     isActive: boolean;
     /** Tab this draft belongs to; null only for pre-migration rows. */
     tabId: string | null;
-    /** Parent in the draft tree; null for root drafts. */
+    /**
+     * Previous iteration of this draft (the flat run). null for a run head
+     * (main or a branch root). At most one of parentDraftId / branchedFrom
+     * is set.
+     */
     parentDraftId: string | null;
-    /** Soft lock — used for previous sibling drafts and manual locks. */
+    /** The draft this one was branched off (a different take); null otherwise. */
+    branchedFrom: string | null;
+    /**
+     * Soft lock. Superseded iterations (all but the newest in a run) lock
+     * automatically; any draft can also be locked manually.
+     */
     locked: boolean;
 };
 

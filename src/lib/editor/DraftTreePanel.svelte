@@ -1,46 +1,46 @@
 <!--
-    DraftTreePanel.svelte — Draft tree sidebar for the active tab (#160).
+    DraftTreePanel.svelte — Draft panel for the active tab (#160).
 
-    Renders the tab's drafts as an indented tree (parentDraftId links).
-    Each row supports: click to switch, double-click to rename, hover
-    actions to branch / toggle lock / delete (leaves only).
+    Iterations of a draft render FLAT (a run); branches render INDENTED.
+    Each row: click to switch, double-click to rename, hover actions to
+    iterate / branch / lock / delete.
 
     Props:
       drafts         — flat DraftMeta list for the active tab
       activeDraftId  — id of the draft currently in the editor
       ondraftselect  — (draftId) switch the editor to this draft
-      ondraftfork    — (draftId) branch a child off this draft
+      ondraftiterate — (draftId) make the next version in this draft's run
+      ondraftbranch  — (draftId) start a different take off this draft
       ondraftrename  — (draftId, label) after inline rename
       ondraftdelete  — (draftId) delete a leaf draft (soft, undoable)
-      ontogglelock   — (draftId, locked) set the soft lock
-      onnewdraft     — duplicate the current draft as a locked-previous sibling
+      ontogglelock   — (draftId, locked) set the soft lock manually
 -->
 <script lang="ts">
 import type { DraftMeta } from "$lib/db/types";
-import { GitBranchIcon, LockIcon, LockOpenIcon, PlusIcon, Trash2Icon } from "lucide-svelte";
-import { buildDraftTree, flattenDraftTree, isDeletableDraft } from "./draftTree";
+import { ChevronsDownIcon, GitBranchIcon, LockIcon, LockOpenIcon, Trash2Icon } from "lucide-svelte";
+import { isDeletableDraft, isRunHead, layoutDraftRows } from "./draftTree";
 
 const {
     drafts,
     activeDraftId,
     ondraftselect,
-    ondraftfork,
+    ondraftiterate,
+    ondraftbranch,
     ondraftrename,
     ondraftdelete,
     ontogglelock,
-    onnewdraft,
 }: {
     drafts: DraftMeta[];
     activeDraftId: string | null;
     ondraftselect: (draftId: string) => void;
-    ondraftfork: (draftId: string) => void;
+    ondraftiterate: (draftId: string) => void;
+    ondraftbranch: (draftId: string) => void;
     ondraftrename: (draftId: string, label: string) => void;
     ondraftdelete: (draftId: string) => void;
     ontogglelock: (draftId: string, locked: boolean) => void;
-    onnewdraft: () => void;
 } = $props();
 
-const rows = $derived(flattenDraftTree(buildDraftTree(drafts)));
+const rows = $derived(layoutDraftRows(drafts));
 
 let renamingDraftId = $state<string | null>(null);
 let renameValue = $state("");
@@ -74,7 +74,7 @@ function commitRename(draftId: string) {
         <div
             class="group relative flex items-center gap-1 rounded-md pr-1 transition-colors
                 {isActive ? 'bg-white shadow-sm' : 'hover:bg-white/50'}"
-            style="margin-left: {row.depth * 10}px"
+            style="margin-left: {row.depth * 12}px"
         >
             <button
                 onclick={() => { if (!isActive) ondraftselect(row.draft.id); }}
@@ -106,14 +106,30 @@ function commitRename(draftId: string) {
             </button>
 
             <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                <button
-                    onclick={() => ondraftfork(row.draft.id)}
-                    title="Branch from this draft"
-                    aria-label="Branch from {row.draft.label}"
-                    class="p-0.5 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
-                >
-                    <GitBranchIcon size={11} />
-                </button>
+                <!-- Iterate: next version, only offered on a run's live tip
+                     (iterating a superseded draft would fork the chain). -->
+                {#if row.isRunTip}
+                    <button
+                        onclick={() => ondraftiterate(row.draft.id)}
+                        title="New version (continue from this draft)"
+                        aria-label="Iterate {row.draft.label}"
+                        class="p-0.5 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                    >
+                        <ChevronsDownIcon size={11} />
+                    </button>
+                {/if}
+                <!-- Branch: a different take. Not on a run head (main / branch
+                     root) — a top-level take is a new tab. -->
+                {#if !isRunHead(row.draft)}
+                    <button
+                        onclick={() => ondraftbranch(row.draft.id)}
+                        title="Branch a different take from this draft"
+                        aria-label="Branch from {row.draft.label}"
+                        class="p-0.5 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                    >
+                        <GitBranchIcon size={11} />
+                    </button>
+                {/if}
                 {#if row.draft.locked}
                     <button
                         onclick={() => ontogglelock(row.draft.id, false)}
@@ -146,15 +162,4 @@ function commitRename(draftId: string) {
             </div>
         </div>
     {/each}
-
-    <button
-        onclick={onnewdraft}
-        title="Duplicate the current draft as a sibling (same level)"
-        class="mt-1.5 mx-0.5 w-[calc(100%-4px)] flex items-center justify-center gap-1.5 rounded-md
-            border border-dashed border-black/15 px-2 py-1 text-[11px] text-black/40
-            hover:text-black/65 hover:border-black/30 transition-colors"
-    >
-        <PlusIcon size={11} />
-        <span>New draft</span>
-    </button>
 </div>
