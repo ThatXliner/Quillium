@@ -140,6 +140,13 @@
     "ecosystem": "js"
   },
   {
+    "name": "@supabase/auth-js",
+    "version": "2.105.1",
+    "license": "MIT",
+    "url": "https://github.com/supabase/supabase-js",
+    "ecosystem": "js"
+  },
+  {
     "name": "@supabase/supabase-js",
     "version": "2.105.1",
     "license": "MIT",
