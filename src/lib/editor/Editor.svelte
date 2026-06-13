@@ -819,7 +819,7 @@ onMount(() => {
              too narrow to fit beside it. -->
         {#if tabDrafts.length > 0}
             <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
-                <div class="pointer-events-auto absolute w-44" style="left: calc(50% - 408px - 12rem)">
+                <div class="pointer-events-auto absolute w-52" style="left: calc(50% - 408px - 14rem)">
                     <DraftTreePanel
                         drafts={tabDrafts}
                         activeDraftId={$currentDraftId}

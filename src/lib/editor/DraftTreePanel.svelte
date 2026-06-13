@@ -60,11 +60,11 @@ function commitRename(draftId: string) {
 </script>
 
 <div
-    class="w-44 rounded-lg bg-white/45 backdrop-blur-sm shadow-md py-2 px-1.5 select-none"
+    class="w-52 rounded-lg bg-white/45 backdrop-blur-sm shadow-md py-2 px-1.5 select-none"
     aria-label="Draft tree"
 >
-    <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-black/35">
-        <GitBranchIcon size={11} />
+    <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-black/35">
+        <GitBranchIcon size={12} />
         <span>Drafts</span>
     </div>
 
@@ -74,12 +74,12 @@ function commitRename(draftId: string) {
         <div
             class="group relative flex items-center gap-1 rounded-md pr-1 transition-colors
                 {isActive ? 'bg-white shadow-sm' : 'hover:bg-white/50'}"
-            style="margin-left: {row.depth * 12}px"
+            style="margin-left: {row.depth * 14}px"
         >
             <button
                 onclick={() => { if (!isActive) ondraftselect(row.draft.id); }}
                 ondblclick={() => startRename(row.draft)}
-                class="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 text-left
+                class="flex-1 min-w-0 flex items-center gap-2 px-2.5 py-1.5 text-left
                     {isActive ? 'text-black/80 font-medium cursor-default' : 'text-black/50 hover:text-black/70'}"
                 aria-current={isActive ? "true" : undefined}
             >
@@ -94,18 +94,18 @@ function commitRename(draftId: string) {
                             if (e.key === "Escape") { e.preventDefault(); renamingDraftId = null; }
                         }}
                         onclick={(e) => e.stopPropagation()}
-                        class="w-full bg-transparent border-none outline-none text-xs text-black/80"
+                        class="w-full bg-transparent border-none outline-none text-sm text-black/80"
                         aria-label="Rename draft"
                     />
                 {:else}
-                    <span class="text-xs truncate">{row.draft.label}</span>
+                    <span class="text-sm truncate">{row.draft.label}</span>
                 {/if}
                 {#if row.draft.locked}
-                    <LockIcon size={10} class="shrink-0 text-black/30" />
+                    <LockIcon size={12} class="shrink-0 text-black/30" />
                 {/if}
             </button>
 
-            <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                 <!-- Iterate: next version, only offered on a run's live tip
                      (iterating a superseded draft would fork the chain). -->
                 {#if row.isRunTip}
@@ -113,9 +113,9 @@ function commitRename(draftId: string) {
                         onclick={() => ondraftiterate(row.draft.id)}
                         title="New version (continue from this draft)"
                         aria-label="Iterate {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                        class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
                     >
-                        <ChevronsDownIcon size={11} />
+                        <ChevronsDownIcon size={13} />
                     </button>
                 {/if}
                 <!-- Branch: a different take. Not on a run head (main / branch
@@ -125,9 +125,9 @@ function commitRename(draftId: string) {
                         onclick={() => ondraftbranch(row.draft.id)}
                         title="Branch a different take from this draft"
                         aria-label="Branch from {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                        class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
                     >
-                        <GitBranchIcon size={11} />
+                        <GitBranchIcon size={13} />
                     </button>
                 {/if}
                 {#if row.draft.locked}
@@ -135,18 +135,18 @@ function commitRename(draftId: string) {
                         onclick={() => ontogglelock(row.draft.id, false)}
                         title="Unlock for editing"
                         aria-label="Unlock {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
+                        class="p-1 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
                     >
-                        <LockOpenIcon size={11} />
+                        <LockOpenIcon size={13} />
                     </button>
                 {:else}
                     <button
                         onclick={() => ontogglelock(row.draft.id, true)}
                         title="Lock against edits"
                         aria-label="Lock {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
+                        class="p-1 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
                     >
-                        <LockIcon size={11} />
+                        <LockIcon size={13} />
                     </button>
                 {/if}
                 {#if isDeletableDraft(row.draft.id, drafts)}
@@ -154,9 +154,9 @@ function commitRename(draftId: string) {
                         onclick={() => ondraftdelete(row.draft.id)}
                         title="Delete draft (undoable)"
                         aria-label="Delete {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-red-500 hover:bg-black/5"
+                        class="p-1 rounded text-black/30 hover:text-red-500 hover:bg-black/5"
                     >
-                        <Trash2Icon size={11} />
+                        <Trash2Icon size={13} />
                     </button>
                 {/if}
             </div>
