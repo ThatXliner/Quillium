@@ -7,7 +7,7 @@
  * fires, so `isFocused` was already false by the time onclick ran.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 import { installTauriMock } from "./utils";
 
 /**
