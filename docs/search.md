@@ -32,6 +32,8 @@ change the schema, **append a new numbered migration**; never edit shipped ones.
 | 3 | fts5_documents | `documents.body_text` + external-content FTS5 table + sync triggers |
 | 4 | backfill_body_text | one-time: latest snapshot `state_json` → `body_text` per document |
 | 5 | semantic_chunks | `chunks` table + `vec_chunks` vec0 virtual table (384-dim, cosine) |
+| 6 | tabs_and_draft_tree | tabs table + draft-tree columns; attaches pre-existing drafts to a per-doc "Main" tab (see [tabs-and-drafts.md](./tabs-and-drafts.md)) |
+| 7 | draft_branch_relation | `drafts.branched_from`; reinterprets old fork-as-child links as branches |
 
 Key files:
 

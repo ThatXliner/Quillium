@@ -16,6 +16,25 @@ Quillium uses a crash-safe, append-only SQLite event log (WAL mode) with periodi
 
 The `documents` table has **no `state_json` column**. Document state lives entirely in `snapshots`.
 
+## Schema migrations
+
+The schema is built and evolved by a versioned migration runner in
+`src-tauri/src/db/migrations.rs`, keyed on `PRAGMA user_version`. `open_db()`
+(`schema.rs`) opens the connection, sets WAL/foreign-key pragmas, then calls
+`migrate()`, which applies every migration newer than the DB's recorded
+version — each in its own transaction, so a failed migration leaves the DB at
+the previous version. A migration is either plain SQL or a Rust function (for
+backfills and conditional DDL).
+
+**To change the schema, append a new numbered `Migration` — never edit a
+shipped one**, since deployed DBs have already recorded its version as applied.
+Migration #1 is the baseline; pre-framework databases report `user_version = 0`
+but already have the baseline tables, so early migrations are written to be
+safe to re-apply (`IF NOT EXISTS` / column-existence guards).
+
+The full numbered list of migrations lives in
+[search.md § Schema & migrations](./search.md#schema--migrations).
+
 ## Event Log Flow
 
 ```mermaid

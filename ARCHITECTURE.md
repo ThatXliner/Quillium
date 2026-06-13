@@ -32,7 +32,7 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 | [Annotations](./docs/annotations.md) | Data model, annotationField, undo/redo |
 | [Nested Editors](./docs/nested-editors.md) | Controller lifecycle, parent sync |
 | [View Plugins](./docs/view-plugins.md) | Decorations, atomic ranges, resolver |
-| [Persistence](./docs/persistence.md) | Event log, snapshots, crash safety |
+| [Persistence](./docs/persistence.md) | Event log, snapshots, crash safety, schema migrations |
 | [Tabs & Drafts](./docs/tabs-and-drafts.md) | Document tabs, draft trees, forking, locks |
 | [Collaboration](./docs/collaboration.md) | Yjs sync, relay, awareness |
 | [AutoAI](./docs/autoai.md) | Review engine, widget, face FSM |
