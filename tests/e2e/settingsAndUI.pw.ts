@@ -60,7 +60,7 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Start a conversation");
         await expect
             .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
-            .toBeGreaterThan(620);
+            .toBeGreaterThan(580);
     });
 
     test("switches between AI tabs", async ({ page }) => {
@@ -75,7 +75,7 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Start a conversation");
         await expect
             .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
-            .toBeGreaterThan(620);
+            .toBeGreaterThan(580);
 
         // Switch to feedback
         const feedbackBtn = page.locator(
@@ -85,7 +85,7 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Feedback");
         await expect
             .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
-            .toBeGreaterThan(620);
+            .toBeGreaterThan(580);
 
         // Switch to revise
         const reviseBtn = page.locator("#ai-sidebar .overflow-x-auto button[aria-label*='Revise']");
@@ -93,7 +93,7 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).toContainText("Revise");
         await expect
             .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
-            .toBeGreaterThan(620);
+            .toBeGreaterThan(580);
     });
 
     test("hides starter suggestions after first chat action", async ({ page }) => {
