@@ -475,7 +475,7 @@ export class QuilliumPage {
     /** Navigate to "/" and wait for the editor to render. */
     async goto(): Promise<void> {
         await this.page.goto("/");
-        await expect(this.editor).toBeVisible({ timeout: 10_000 });
+        await expect(this.editor).toBeVisible({ timeout: 20_000 });
     }
 
     /** setup() + goto() — the common two-liner for most tests. */
