@@ -35,6 +35,25 @@ describe("applyMarkdownFormat", () => {
         expect(result.selection).toEqual({ from: 6, to: 6 });
     });
 
+    it("keeps the closing bold token on the same line when the selection includes a trailing newline", () => {
+        // Issue #246: selecting a whole line includes its trailing "\n", which
+        // pushed the closing "**" onto the next line. The wrap must cover only
+        // the line's content.
+        const result = applyMarkdownFormat("hello world\nnext", 0, 12, "bold");
+        expect(result.text).toBe("**hello world**\nnext");
+        expect(result.selection).toEqual({ from: 2, to: 13 });
+    });
+
+    it("trims trailing whitespace before wrapping", () => {
+        const result = applyMarkdownFormat("hello   ", 0, 8, "bold");
+        expect(result.text).toBe("**hello**   ");
+    });
+
+    it("trims leading whitespace before wrapping", () => {
+        const result = applyMarkdownFormat("   hello", 0, 8, "bold");
+        expect(result.text).toBe("   **hello**");
+    });
+
     it("toggles heading prefixes on the active line", () => {
         const applied = applyMarkdownFormat("Title", 0, 0, "heading1");
         expect(applied.text).toBe("# Title");
