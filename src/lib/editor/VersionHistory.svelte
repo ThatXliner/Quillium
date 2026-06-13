@@ -379,19 +379,23 @@ function formatBytes(bytes: number): string {
     return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
 }
 
-// ── Date grouping ───────────────────────────────────────────────
-type Group = { heading: string; items: SnapshotMeta[] };
+// ── Unified timeline grouping ───────────────────────────────────
+type TimelineItem =
+    | { id: string; kind: "snapshot"; createdAt: number; snapshot: SnapshotMeta }
+    | { id: string; kind: "activity"; createdAt: number; event: DocEventRecord };
 
-function groupByDate(snaps: SnapshotMeta[]): Group[] {
-    const groups: Group[] = [];
+type TimelineGroup = { heading: string; items: TimelineItem[] };
+
+function groupByDate(items: TimelineItem[]): TimelineGroup[] {
+    const groups: TimelineGroup[] = [];
     let lastHeading = "";
-    for (const snap of snaps) {
-        const heading = headingForDate(snap.createdAt);
+    for (const item of items) {
+        const heading = headingForDate(item.createdAt);
         if (heading !== lastHeading) {
             groups.push({ heading, items: [] });
             lastHeading = heading;
         }
-        groups[groups.length - 1].items.push(snap);
+        groups[groups.length - 1].items.push(item);
     }
     return groups;
 }
@@ -421,7 +425,25 @@ function formatTimeShort(ms: number): string {
     return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-const groups = $derived(groupByDate(snapshots));
+const timelineItems = $derived.by(() => {
+    const items: TimelineItem[] = [
+        ...snapshots.map((snapshot) => ({
+            id: `snapshot:${snapshot.id}`,
+            kind: "snapshot" as const,
+            createdAt: snapshot.createdAt,
+            snapshot,
+        })),
+        ...docEvents.map((event) => ({
+            id: `activity:${event.id}`,
+            kind: "activity" as const,
+            createdAt: event.createdAt,
+            event,
+        })),
+    ];
+    return items.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+});
+
+const groups = $derived(groupByDate(timelineItems));
 
 // Use the most recent snapshot's createdAt as a fallback when lastSavedAt
 // is null (direct nav to /history before any save in this session).
@@ -544,7 +566,7 @@ function handleKeydown(e: KeyboardEvent) {
                     shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.06)]">
             <div class="px-4 pt-3 pb-2 border-b border-black/[0.06] space-y-1.5">
                 <div class="flex items-center justify-between">
-                    <h2 class="text-sm font-semibold text-black/70">Versions</h2>
+                    <h2 class="text-sm font-semibold text-black/70">History</h2>
                     {#if storageBytes !== null}
                         <button
                             title="Manage storage"
@@ -653,143 +675,129 @@ function handleKeydown(e: KeyboardEvent) {
                     <div class="flex items-center justify-center py-16 text-black/30 text-sm">
                         Loading…
                     </div>
-                {:else if snapshots.length === 0}
+                {:else if timelineItems.length === 0}
                     <div class="flex flex-col items-center justify-center py-16 gap-2 px-6 text-center">
                         <Clock size={28} class="text-black/15" />
-                        <p class="text-sm text-black/45">No versions yet.</p>
+                        <p class="text-sm text-black/45">No history yet.</p>
                         <p class="text-xs text-black/30 leading-relaxed">
                             Versions are saved automatically every 50 edits or 2 minutes.
                         </p>
                     </div>
                 {:else}
-                    <div role="listbox" aria-label="Version snapshots">
+                    <div role="list" aria-label="History timeline">
                     {#each groups as group}
                         <div class="px-4 pt-4 pb-1">
                             <span class="text-[11px] font-semibold text-black/35 uppercase tracking-wide">
                                 {group.heading}
                             </span>
                         </div>
-                        {#each group.items as snapshot (snapshot.id)}
-                            {@const isSelected = selectedSnapshot?.id === snapshot.id}
-                            <div
-                                role="option"
-                                tabindex="0"
-                                aria-selected={isSelected}
-                                onclick={() => selectSnapshot(snapshot)}
-                                onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectSnapshot(snapshot); } }}
-                                class="w-full text-left px-4 py-2.5 flex items-start gap-3
-                                       cursor-pointer transition-colors
-                                       {isSelected
-                                           ? 'bg-blue-50 border-r-2 border-blue-500'
-                                           : 'hover:bg-black/[0.025] border-r-2 border-transparent'}"
-                            >
-                                <div class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0
-                                            {snapshot.label ? 'bg-blue-500' : 'bg-black/20'}">
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    {#if editingLabelId === snapshot.id}
-                                        <input
-                                            type="text"
-                                            bind:value={editingLabelText}
-                                            autofocus
-                                            onclick={(e) => e.stopPropagation()}
-                                            onblur={() => commitLabelEdit(snapshot)}
-                                            onkeydown={(e) => {
-                                                e.stopPropagation();
-                                                if (e.key === "Enter") commitLabelEdit(snapshot);
-                                                if (e.key === "Escape") editingLabelId = null;
-                                            }}
-                                            class="text-sm font-medium text-blue-600 bg-blue-50
-                                                   border border-blue-300 rounded px-1.5 py-0.5
-                                                   focus:outline-none w-full"
-                                        />
-                                    {:else if snapshot.label}
-                                        <div class="flex items-center gap-1">
-                                            <span class="text-sm font-medium text-blue-600 truncate">
-                                                {snapshot.label}
-                                            </span>
-                                            <button
-                                                aria-label="Edit label"
-                                                onclick={(e) => {
+                        {#each group.items as item (item.id)}
+                            {#if item.kind === "snapshot"}
+                                {@const snapshot = item.snapshot}
+                                {@const isSelected = selectedSnapshot?.id === snapshot.id}
+                                <div
+                                    role="option"
+                                    tabindex="0"
+                                    aria-selected={isSelected}
+                                    onclick={() => selectSnapshot(snapshot)}
+                                    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectSnapshot(snapshot); } }}
+                                    class="w-full text-left px-4 py-2.5 flex items-start gap-3
+                                           cursor-pointer transition-colors
+                                           {isSelected
+                                               ? 'bg-blue-50 border-r-2 border-blue-500'
+                                               : 'hover:bg-black/[0.025] border-r-2 border-transparent'}"
+                                >
+                                    <div class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0
+                                                {snapshot.label ? 'bg-blue-500' : 'bg-black/20'}">
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        {#if editingLabelId === snapshot.id}
+                                            <input
+                                                type="text"
+                                                bind:value={editingLabelText}
+                                                autofocus
+                                                onclick={(e) => e.stopPropagation()}
+                                                onblur={() => commitLabelEdit(snapshot)}
+                                                onkeydown={(e) => {
                                                     e.stopPropagation();
-                                                    editingLabelId = snapshot.id;
-                                                    editingLabelText = snapshot.label ?? "";
+                                                    if (e.key === "Enter") commitLabelEdit(snapshot);
+                                                    if (e.key === "Escape") editingLabelId = null;
                                                 }}
-                                                class="text-black/20 hover:text-black/50
-                                                       transition-colors flex-shrink-0"
-                                            >
-                                                <Pencil size={10} />
-                                            </button>
-                                        </div>
-                                    {:else}
-                                        <div class="flex items-center gap-1">
-                                            <span class="text-xs text-black/50">
-                                                {formatTimeShort(snapshot.createdAt)}
-                                            </span>
-                                            <button
-                                                onclick={(e) => {
-                                                    e.stopPropagation();
-                                                    editingLabelId = snapshot.id;
-                                                    editingLabelText = "";
-                                                }}
-                                                title="Add label"
-                                                aria-label="Add label"
-                                                class="text-black/20 hover:text-black/50
-                                                       transition-colors flex-shrink-0"
-                                            >
-                                                <Pencil size={10} />
-                                            </button>
-                                        </div>
-                                    {/if}
-                                    {#if snapshot.label}
-                                        <p class="text-[11px] text-black/35 mt-0.5">Named checkpoint</p>
-                                    {:else}
-                                        <p class="text-[11px] text-black/35 mt-0.5">Auto-saved</p>
+                                                class="text-sm font-medium text-blue-600 bg-blue-50
+                                                       border border-blue-300 rounded px-1.5 py-0.5
+                                                       focus:outline-none w-full"
+                                            />
+                                        {:else if snapshot.label}
+                                            <div class="flex items-center gap-1">
+                                                <span class="text-sm font-medium text-blue-600 truncate">
+                                                    {snapshot.label}
+                                                </span>
+                                                <button
+                                                    aria-label="Edit label"
+                                                    onclick={(e) => {
+                                                        e.stopPropagation();
+                                                        editingLabelId = snapshot.id;
+                                                        editingLabelText = snapshot.label ?? "";
+                                                    }}
+                                                    class="text-black/20 hover:text-black/50
+                                                           transition-colors flex-shrink-0"
+                                                >
+                                                    <Pencil size={10} />
+                                                </button>
+                                            </div>
+                                        {:else}
+                                            <div class="flex items-center gap-1">
+                                                <span class="text-xs text-black/50">
+                                                    {formatTimeShort(snapshot.createdAt)}
+                                                </span>
+                                                <button
+                                                    onclick={(e) => {
+                                                        e.stopPropagation();
+                                                        editingLabelId = snapshot.id;
+                                                        editingLabelText = "";
+                                                    }}
+                                                    title="Add label"
+                                                    aria-label="Add label"
+                                                    class="text-black/20 hover:text-black/50
+                                                           transition-colors flex-shrink-0"
+                                                >
+                                                    <Pencil size={10} />
+                                                </button>
+                                            </div>
+                                        {/if}
+                                        {#if snapshot.label}
+                                            <p class="text-[11px] text-black/35 mt-0.5">Named checkpoint</p>
+                                        {:else}
+                                            <p class="text-[11px] text-black/35 mt-0.5">Auto-saved</p>
+                                        {/if}
+                                    </div>
+                                </div>
+                            {:else}
+                                {@const ev = item.event}
+                                {@const info = describeDocEvent(ev)}
+                                {@const restore = info.restore}
+                                <div class="w-full text-left px-4 py-2.5 flex items-start gap-3 border-r-2 border-transparent">
+                                    <div class="mt-1.5 w-2 h-2 rounded-full bg-black/15 flex-shrink-0"></div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs text-black/55 leading-snug">{info.text}</p>
+                                        <p class="text-[10px] text-black/30 mt-0.5">{formatTime(ev.createdAt)}</p>
+                                    </div>
+                                    {#if restore && deletionState.get(`${restore.kind}:${restore.id}`)}
+                                        <button
+                                            onclick={() => handleStructuralRestore(restore)}
+                                            class="shrink-0 flex items-center gap-1 text-[11px] font-medium
+                                                   text-blue-600 hover:text-blue-700 transition-colors"
+                                        >
+                                            <RotateCcw size={10} />
+                                            Restore
+                                        </button>
                                     {/if}
                                 </div>
-                            </div>
+                            {/if}
                         {/each}
                     {/each}
                     </div>
                 {/if}
-            </div>
-
-            <!-- Document activity — the structural audit log (#160):
-                 tab CRUD, draft branching, locks, checkpoints. Deletions
-                 can be restored from here. -->
-            <div class="border-t border-black/[0.08] flex-shrink-0">
-                <div class="px-4 pt-2.5 pb-1">
-                    <h3 class="text-xs font-semibold text-black/55">Document activity</h3>
-                </div>
-                <div class="max-h-56 overflow-y-auto pb-2" aria-label="Document activity">
-                    {#if docEvents.length === 0}
-                        <p class="px-4 py-2 text-xs text-black/30 leading-relaxed">
-                            Tab and draft changes will appear here.
-                        </p>
-                    {:else}
-                        {#each docEvents as ev (ev.id)}
-                            {@const info = describeDocEvent(ev)}
-                            {@const restore = info.restore}
-                            <div class="px-4 py-1.5 flex items-start gap-2">
-                                <div class="mt-1.5 w-1.5 h-1.5 rounded-full bg-black/15 flex-shrink-0"></div>
-                                <div class="flex-1 min-w-0">
-                                    <p class="text-xs text-black/55 leading-snug">{info.text}</p>
-                                    <p class="text-[10px] text-black/30 mt-0.5">{formatTime(ev.createdAt)}</p>
-                                </div>
-                                {#if restore && deletionState.get(`${restore.kind}:${restore.id}`)}
-                                    <button
-                                        onclick={() => handleStructuralRestore(restore)}
-                                        class="shrink-0 flex items-center gap-1 text-[11px] font-medium
-                                               text-blue-600 hover:text-blue-700 transition-colors"
-                                    >
-                                        <RotateCcw size={10} />
-                                        Restore
-                                    </button>
-                                {/if}
-                            </div>
-                        {/each}
-                    {/if}
-                </div>
             </div>
         </div>
     </div>

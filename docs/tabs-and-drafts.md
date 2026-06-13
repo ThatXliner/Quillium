@@ -40,7 +40,7 @@ and `active_draft:{tab_id}` persist the user's position.
 **Nothing structural is ever destroyed.** Tab and draft deletion is a soft
 delete (`deleted_at`); the rows, their events, and their snapshots all
 survive. Deletion offers an Undo toast, and the version history's
-"Document activity" timeline can restore any deleted tab or draft later.
+unified timeline can restore any deleted tab or draft later.
 Every structural operation appends a `doc_events` row (#160: "version
 history is document-wide — one linear audit log tracks everything").
 

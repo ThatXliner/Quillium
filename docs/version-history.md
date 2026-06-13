@@ -6,7 +6,7 @@
 
 Two-panel layout:
 - **Left**: Read-only CodeMirror preview
-- **Right**: Timeline sidebar with snapshots grouped by date (Today / Yesterday / day-of-week / This month / month + year)
+- **Right**: Unified history timeline with snapshots and document activity grouped by date (Today / Yesterday / day-of-week / This month / month + year)
 
 ## Snapshot Types
 
@@ -14,6 +14,12 @@ Two-panel layout:
 |------|-------------|-----------|
 | Auto-saved | Created every 50 events or 120 seconds | Configurable policy |
 | Named checkpoints | Created by user via "Name this version…" | Until explicitly deleted |
+
+## Document Activity
+
+Tab and draft operations (`doc_events`) appear inline with snapshots in the
+same timeline. Deleted tabs and drafts expose a Restore action on their
+activity row while they are still deleted.
 
 ## Snapshot Preview
 

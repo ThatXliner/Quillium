@@ -20,6 +20,14 @@ export type MockSnapshot = {
     doc: string;
 };
 
+export type MockDocEvent = {
+    id: number;
+    documentId: string;
+    eventType: string;
+    payload: string;
+    createdAt: number;
+};
+
 export type TauriMockOptions = {
     /** Return value for `get_api_key`. null = no key configured. */
     apiKey: string | null;
@@ -37,6 +45,8 @@ export type TauriMockOptions = {
      * cmd_load_snapshot_state returns a minimal state blob from each snapshot's doc.
      */
     snapshots: MockSnapshot[];
+    /** Pre-seeded document activity records returned by cmd_list_doc_events. */
+    docEvents: MockDocEvent[];
 };
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
@@ -50,6 +60,7 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
     },
     initialDoc: null,
     snapshots: [],
+    docEvents: [],
 };
 
 // ── Page object ─────────────────────────────────────────────────────────────
@@ -108,6 +119,7 @@ export class QuilliumPage {
                 settings: Record<string, unknown>;
                 initialDoc: string | null;
                 snapshots: MockSnapshot[];
+                docEvents: MockDocEvent[];
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
@@ -252,7 +264,7 @@ export class QuilliumPage {
                             if (tab) tab.deletedAt = null;
                             return null;
                         }
-                        if (cmd === "cmd_list_doc_events") return [];
+                        if (cmd === "cmd_list_doc_events") return payload.docEvents;
                         if (cmd === "cmd_get_active_tab") {
                             const a = args as { docId: string };
                             return activeTabByDoc[a.docId] ?? null;
@@ -469,6 +481,7 @@ export class QuilliumPage {
                 settings: opts.settings,
                 initialDoc: opts.initialDoc,
                 snapshots: opts.snapshots,
+                docEvents: opts.docEvents,
             },
         );
     }
@@ -485,7 +498,7 @@ export class QuilliumPage {
         await this.goto();
     }
 
-    /** Navigate to "/history" and wait for the Versions panel to render. */
+    /** Navigate to "/history" and wait for the history page to render. */
     async gotoHistory(): Promise<void> {
         await this.page.goto("/history");
         await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });

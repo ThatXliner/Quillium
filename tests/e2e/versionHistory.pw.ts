@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { QuilliumPage, type MockSnapshot } from "./QuilliumPage";
+import { QuilliumPage, type MockDocEvent, type MockSnapshot } from "./QuilliumPage";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -41,6 +41,18 @@ function makeSnapshots(): MockSnapshot[] {
     ];
 }
 
+function makeDocEvents(): MockDocEvent[] {
+    return [
+        {
+            id: 1,
+            documentId: "doc-test-1",
+            eventType: "draft_created",
+            payload: JSON.stringify({ draftId: "draft-test-2", label: "take 2" }),
+            createdAt: BASE_TIME - 1000 * 60 * 10,
+        },
+    ];
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test("history page renders version list with date groups", async ({ page }) => {
@@ -55,6 +67,21 @@ test("history page renders version list with date groups", async ({ page }) => {
     const list = page.locator("#versions-panel");
     await expect(list.getByText("Before refactor")).toBeVisible();
     await expect(list.getByText("Initial draft")).toBeVisible();
+});
+
+test("history page renders document activity inside the same timeline", async ({ page }) => {
+    const qp = new QuilliumPage(page, {
+        snapshots: makeSnapshots(),
+        docEvents: makeDocEvents(),
+    });
+    await qp.initHistory();
+
+    const timeline = page.locator("#versions-panel").getByRole("list", {
+        name: "History timeline",
+    });
+    await expect(timeline.getByText("Before refactor")).toBeVisible();
+    await expect(timeline.getByText("Created draft “take 2”")).toBeVisible();
+    await expect(page.locator('#versions-panel [aria-label="Document activity"]')).toHaveCount(0);
 });
 
 test("history page navigates here from status bar History button", async ({ page }) => {
@@ -99,11 +126,11 @@ test("most recent snapshot is selected by default", async ({ page }) => {
     await expect(selected).toContainText("Before refactor");
 });
 
-test("empty state renders when there are no snapshots", async ({ page }) => {
+test("empty state renders when there is no history", async ({ page }) => {
     const qp = new QuilliumPage(page, { snapshots: [] });
     await qp.initHistory();
 
-    await expect(page.getByText("No versions yet.")).toBeVisible();
+    await expect(page.getByText("No history yet.")).toBeVisible();
     await expect(page.getByText("Versions are saved automatically")).toBeVisible();
 });
 
