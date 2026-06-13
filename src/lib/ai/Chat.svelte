@@ -61,23 +61,23 @@ import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
 
 let input = $state("");
-let hasStarted = $state(false);
 const { chat, clearChat } = createAiChat({ mode: "chat" });
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
-let showStarterSuggestions = $derived(!hasStarted && chat.messages.length === 0);
-let showConversationControls = $derived(hasStarted || chat.messages.length > 0);
+let hasConversationActivity = $derived(
+    chat.messages.length > 0 || chat.status !== "ready" || !!chat.error,
+);
+let showStarterSuggestions = $derived(!hasConversationActivity);
+let showConversationControls = $derived(hasConversationActivity);
 
 function clearConversation() {
     clearChat();
-    hasStarted = false;
 }
 
 function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
         has_selection: !!$selectedText,
     });
-    hasStarted = true;
     chat.sendMessage({ text: prompt });
 }
 
@@ -87,7 +87,6 @@ function useContextAction(action: ContextAction) {
         action: action.id,
         has_selection: !!$selectedText,
     });
-    hasStarted = true;
     chat.sendMessage({ text: action.prompt });
 }
 
@@ -115,7 +114,6 @@ async function handleSubmit(event: Event) {
         has_selection: !!$selectedText,
         message_length: userMessage.length,
     });
-    hasStarted = true;
     input = "";
     await chat.sendMessage({ text: userMessage });
 }

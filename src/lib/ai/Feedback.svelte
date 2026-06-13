@@ -75,15 +75,17 @@ import type { ContextAction } from "./context";
 
 let input = $state("");
 let personaInFlight = $state(false);
-let hasStarted = $state(false);
 
 const { chat, clearChat } = createAiChat({ mode: "feedback" });
-let showStarterSuggestions = $derived(!hasStarted && chat.messages.length === 0);
-let showConversationControls = $derived(hasStarted || chat.messages.length > 0);
+let hasConversationActivity = $derived(
+    chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
+);
+let showStarterSuggestions = $derived(!hasConversationActivity);
+let showConversationControls = $derived(hasConversationActivity);
 
 function clearConversation() {
     clearChat();
-    hasStarted = false;
+    personaInFlight = false;
 }
 
 // Wire up processing indicator + global stop listener.
@@ -102,7 +104,6 @@ $effect(() => {
  * are enabled, otherwise falls back to the single-stream chat.
  */
 async function sendFeedback(text: string, trigger: string) {
-    hasStarted = true;
     const personas = getEnabledPersonas();
     if (personas.length === 0) {
         posthog.capture("ai_feedback_requested", {
