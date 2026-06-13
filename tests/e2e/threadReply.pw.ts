@@ -31,8 +31,10 @@ async function setupCommentWithReply(page: Page) {
     await preComment.fill("This needs work");
     await page.keyboard.press("ControlOrMeta+Enter");
 
-    // The comment card with Thread should now be visible
-    const commentCard = page.locator("text=Comment").first();
+    // The comment card with Thread should now be visible. Scope to the
+    // annotation card so a bare text=Comment doesn't match the AI context
+    // sidebar's hidden "…comments and suggestions" hint.
+    const commentCard = page.locator(".annotation-card", { hasText: "Comment" }).first();
     await expect(commentCard).toBeVisible({ timeout: 5000 });
     return commentCard;
 }
@@ -41,7 +43,11 @@ test.describe("thread reply send button", () => {
     test.beforeEach(async ({ page }) => {
         await installTauriMock(page);
         await page.goto("/");
-        await expect(page.locator("#editor-document .cm-content")).toBeVisible();
+        // Match the editor-mount budget the QuilliumPage harness uses; the
+        // default 5s is too tight for the initial load under parallel runs.
+        await expect(page.locator("#editor-document .cm-content")).toBeVisible({
+            timeout: 20_000,
+        });
     });
 
     test("clicking Send button submits reply text", async ({ page }) => {

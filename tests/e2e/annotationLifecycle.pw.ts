@@ -25,8 +25,11 @@ test.describe("comment lifecycle", () => {
         await q.createComment();
         await q.submitComment("This needs work");
 
-        // Comment card should be visible in sidebar
-        const card = page.locator("text=Comment").first();
+        // Comment card should be visible in sidebar. Scope to the
+        // annotation card; a bare text=Comment matches the AI context
+        // sidebar's "…comments and suggestions" hint (substring "comment"),
+        // which is hidden, and .first() would grab that instead.
+        const card = page.locator(".annotation-card", { hasText: "Comment" }).first();
         await expect(card).toBeVisible({ timeout: 5_000 });
     });
 
