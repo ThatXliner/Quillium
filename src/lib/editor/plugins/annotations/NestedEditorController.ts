@@ -28,6 +28,7 @@ import {
     _updateRevisionVersionDoc,
     _updateRevisionVersionLabel,
     _updateRevisionVersionState,
+    _applySuggestion,
 } from "./annotationField";
 import {
     createNestedEditorState,
@@ -51,6 +52,10 @@ export type NestedEditorCallbacks = {
 
 export type FlushBehavior = "flush" | "flush-on-destroy" | "no-flush";
 
+function hasAnnotations(annotations: Annotations): boolean {
+    return Object.keys(annotations).length > 0;
+}
+
 export function transactionsHaveAnnotationMutationEffect(
     transactions: readonly Transaction[],
 ): boolean {
@@ -61,6 +66,7 @@ export function transactionsHaveAnnotationMutationEffect(
                 e.is(removeAnnotation) ||
                 e.is(updateThread) ||
                 e.is(addSuggestion) ||
+                e.is(_applySuggestion) ||
                 e.is(_addVersionToRevision) ||
                 e.is(_deleteVersionFromRevision) ||
                 e.is(_updateActiveRevisionVersion) ||
@@ -291,6 +297,8 @@ export class NestedEditorController {
     private onNestedUpdate(update: ViewUpdate): void {
         if (!this._editor) return;
 
+        const hadNestedAnnotations = hasAnnotations(update.startState.field(annotationField));
+
         // Check for parent sync annotation on the transactions —
         // if present, this is our own sync, don't bounce back.
         const isParentSync = update.transactions.some(
@@ -306,13 +314,13 @@ export class NestedEditorController {
             this._lastDispatchedDoc = this._editor.state.doc.toString();
         }
 
-        // Detect annotation-only mutations (add/remove/update effects) and
-        // propagate them to the parent's version blob so they enter the
-        // parent's undo history.
-        if (this.flushBehavior !== "no-flush" && !isParentSync) {
-            if (this.hasAnnotationMutationEffect(update)) {
+        // Detect annotation mutations and propagate them to the parent's
+        // version blob so they enter the parent's undo history. Doc-only
+        // remaps are bookkeeping flushes, including parent-sync updates.
+        if (this.flushBehavior !== "no-flush") {
+            if (!isParentSync && this.hasAnnotationMutationEffect(update)) {
                 this.flushAnnotationStateToParent(true);
-            } else if (update.docChanged && this.hasNestedAnnotations()) {
+            } else if (update.docChanged && (hadNestedAnnotations || this.hasNestedAnnotations())) {
                 // Bookkeeping flush: keep blob positions in sync with doc.
                 this.flushAnnotationStateToParent(false);
             }
@@ -345,7 +353,7 @@ export class NestedEditorController {
      */
     private hasNestedAnnotations(): boolean {
         if (!this._editor) return false;
-        return Object.keys(this._editor.state.field(annotationField)).length > 0;
+        return hasAnnotations(this._editor.state.field(annotationField));
     }
 
     /**

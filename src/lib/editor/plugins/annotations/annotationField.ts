@@ -452,7 +452,7 @@ export const suggestionPreviewField = StateField.define<{
         return value;
     },
 });
-const _applySuggestion = StateEffect.define<{
+export const _applySuggestion = StateEffect.define<{
     annotationId: number;
     replacementIndex: number;
 }>();
@@ -544,7 +544,8 @@ function applyRevisionVersionEffect(
         const newVersions = annotation.versions.slice();
         newVersions.splice(insertionIndex, 0, e.value.newVersion);
         return { ...annotation, versions: newVersions, activeVersionIndex: insertionIndex };
-    } else if (e.is(_deleteVersionFromRevision)) {
+    }
+    if (e.is(_deleteVersionFromRevision)) {
         const newVersions = annotation.versions.slice();
         newVersions.splice(e.value.versionId, 1);
         let newIndex = annotation.activeVersionIndex;
@@ -554,7 +555,8 @@ function applyRevisionVersionEffect(
             newIndex = Math.max(0, newVersions.length - 1);
         }
         return { ...annotation, versions: newVersions, activeVersionIndex: newIndex };
-    } else if (e.is(_updateActiveRevisionVersion)) {
+    }
+    if (e.is(_updateActiveRevisionVersion)) {
         // When switching versions, reconstruct the selection
         // to cover the inserted text. This is critical for
         // collapsed ranges (all text was deleted) where
