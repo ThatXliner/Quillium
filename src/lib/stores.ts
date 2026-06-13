@@ -27,13 +27,14 @@
  *
  *   1. Editor.svelte updateListener — fires on every transaction in the
  *      main editor. Writes: annotations, activeAnnotation, documentContent,
- *      selectedText.
+ *      selectedText, selectedTextRange.
  *   2. RevisionModal.svelte createEditor updateListener — fires on every
  *      transaction in a nested revision editor. Writes: modalAnnotations,
  *      modalActiveAnnotation (local $state in that component).
  *
  * Stores defined here are consumed across all three panels:
- *   - Left panel  (AI sidebar)  reads documentContent, selectedText
+ *   - Left panel  (AI sidebar)  reads documentContent, selectedText,
+ *      selectedTextRange
  *   - Center panel (editor)     writes most stores via updateListener
  *   - Right panel  (annotations) reads annotations, activeAnnotation
  *
@@ -92,6 +93,14 @@ export const documentContent = writable<string>("");
  * Read by: AI sidebar to scope AI operations to the selection.
  */
 export const selectedText = writable<string>("");
+
+/**
+ * CodeMirror offsets for the active editor selection.
+ * Written alongside selectedText so AI context builders can use the
+ * actual editor range instead of searching for repeated selected text.
+ */
+export type EditorTextRange = { from: number; to: number };
+export const selectedTextRange = writable<EditorTextRange | undefined>(undefined);
 
 /**
  * The ID of the document currently open in the editor.

@@ -12,9 +12,8 @@
     to the CodeMirror editor.
 
     Features:
-      - "Revise" quick-action button (selection-aware).
-      - Quick-prompt grid for common revision tasks (conciseness, flow,
-        grammar, etc.).
+      - Context lens with selection/document-aware revision actions.
+      - User-defined custom quick actions from settings.
 
     State machine (driven by `chat.status`):
       ready     — user can submit or click a quick action.
@@ -31,10 +30,9 @@
  * Text revision AI panel (purple theme).
  *
  * Renders:
- *   A "Revise" quick-action button, a grid of quick-prompt chips
- *   for common revision tasks, scrollable message list with
- *   user/assistant bubbles, streaming indicator, and a bottom
- *   input form with selection-context chip.
+ *   A context lens with action cards, user-defined custom actions,
+ *   scrollable message list with user/assistant bubbles, streaming
+ *   indicator, and a bottom input form for revision requests.
  *
  * Props: none.
  * Events: none dispatched.
@@ -65,7 +63,8 @@ import { renderMarkdown } from "$lib/ai/utils";
 import {
     createAiChat,
     useAiChatEffects,
-    setAiProcessing,
+    beginAiTask,
+    endAiTask,
     runMultiPersonaStreams,
 } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
@@ -73,11 +72,24 @@ import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { streamRevise } from "$lib/ai/clientStreams";
 import { appEventBus } from "$lib/events/appEventBus";
+import ContextLens from "./ContextLens.svelte";
+import CustomQuickActions from "./CustomQuickActions.svelte";
+import type { ContextAction } from "./context";
 
 let input = $state("");
 let personaInFlight = $state(false);
 
 const { chat, clearChat } = createAiChat({ mode: "revise" });
+let hasConversationActivity = $derived(
+    chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
+);
+let showStarterSuggestions = $derived(!hasConversationActivity);
+let showConversationControls = $derived(hasConversationActivity);
+
+function clearConversation() {
+    clearChat();
+    personaInFlight = false;
+}
 
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat);
@@ -112,7 +124,7 @@ async function sendRevise(text: string, trigger: string) {
     });
 
     personaInFlight = true;
-    setAiProcessing(true);
+    const task = beginAiTask("revise-personas");
     try {
         await runMultiPersonaStreams({
             personas,
@@ -122,7 +134,7 @@ async function sendRevise(text: string, trigger: string) {
         });
     } finally {
         personaInFlight = false;
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }
 
@@ -134,28 +146,11 @@ function handleSubmit(event: SubmitEvent) {
     sendRevise(text, "manual");
 }
 
-function revise() {
-    const context = $selectedText
-        ? `Please revise and rewrite this selected text to improve flow and conciseness: "${$selectedText}"`
-        : "Please revise my document to improve flow and conciseness.";
-    input = context;
-    sendRevise(context, "quick_action");
-}
-
-const defaultQuickPrompts = [
-    { label: "Make this more concise", prompt: "Make this more concise" },
-    { label: "Improve the flow and transitions", prompt: "Improve the flow and transitions" },
-    { label: "Make this more engaging", prompt: "Make this more engaging" },
-    { label: "Fix grammar and style issues", prompt: "Fix grammar and style issues" },
-    { label: "Simplify complex sentences", prompt: "Simplify complex sentences" },
-];
-
-let allRevisePrompts = $derived([
-    ...defaultQuickPrompts,
-    ...appSettings.customQuickActions
+let customRevisePrompts = $derived(
+    appSettings.customQuickActions
         .filter((a) => a.panel === "revise")
         .map((a) => ({ label: a.label, prompt: a.prompt })),
-]);
+);
 
 /**
  * Compose a revision message from a quick-prompt chip, scoped to
@@ -168,48 +163,47 @@ function useQuickPrompt(prompt: string) {
         prompt,
         has_selection: !!$selectedText,
     });
-    input = message;
+    input = "";
     sendRevise(message, "quick_prompt");
+}
+
+function useContextAction(action: ContextAction) {
+    posthog.capture("ai_context_action_used", {
+        mode: "revise",
+        action: action.id,
+        has_selection: !!$selectedText,
+    });
+    input = "";
+    sendRevise(action.prompt, `context_${action.id}`);
 }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
-    <!-- Quick actions -->
-    <div class="p-3 border-b border-black/10">
-        <button
-            onclick={revise}
+    {#if showStarterSuggestions}
+        <ContextLens
+            mode="revise"
             disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
-            class="w-full p-2.5 bg-white hover:bg-purple-50 rounded-lg border border-purple-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
-        >
-            <div class="text-sm font-medium text-purple-800">
-                {$selectedText ? "Revise selection" : "Revise document"}
-            </div>
-            <div class="text-xs text-purple-600 mt-0.5">
-                {$documentContent
-                    ? `Document: ${$documentContent.length.toLocaleString()} characters`
-                    : "Add content to revise"}
-            </div>
-        </button>
+            onAction={useContextAction}
+        />
+    {/if}
 
-        <!-- Quick prompts -->
-        <div class="mt-2 grid grid-cols-2 gap-1.5">
-            {#each allRevisePrompts as { label, prompt }}
-                <button
-                    onclick={() => useQuickPrompt(prompt)}
-                    disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
-                    class="px-2 py-1.5 text-xs bg-white hover:bg-purple-50 rounded border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                >
-                    {label}
-                </button>
-            {/each}
+    {#if showStarterSuggestions && customRevisePrompts.length > 0}
+        <div class="px-3 pb-3 border-b border-black/10">
+            <CustomQuickActions
+                prompts={customRevisePrompts}
+                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                panel="revise"
+                theme="purple"
+                onPrompt={useQuickPrompt}
+            />
         </div>
-    </div>
+    {/if}
 
     <!-- Clear chat row -->
-    {#if chat.messages.length > 0}
+    {#if showConversationControls}
         <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
-                onclick={clearChat}
+                onclick={clearConversation}
                 title="Start a fresh conversation (clears all messages)"
                 class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
             >New chat</button>
@@ -259,28 +253,26 @@ function useQuickPrompt(prompt: string) {
             </div>
         {/if}
 
-        {#if chat.messages.length === 0 && !personaInFlight}
+        {#if showStarterSuggestions && !personaInFlight}
             <div
                 class="flex-1 flex items-center justify-center text-gray-400 text-sm"
             >
-                Click "Revise" or choose a quick action to start
+                Choose a revision action to start
             </div>
         {/if}
     </div>
 
     <!-- Input -->
     <div class="border-t border-black/10 p-3 bg-white/30">
-        {#if $selectedText}
-            <div
-                class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"
-            >
-                <span class="text-yellow-700">
-                    Context: "{$selectedText.slice(
-                        0,
-                        60,
-                    )}{$selectedText.length > 60 ? "..." : ""}"
-                </span>
-            </div>
+        {#if !showStarterSuggestions}
+            <CustomQuickActions
+                prompts={customRevisePrompts}
+                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                compact
+                panel="revise"
+                theme="purple"
+                onPrompt={useQuickPrompt}
+            />
         {/if}
 
         <form onsubmit={handleSubmit} class="flex flex-col gap-2">

@@ -26,14 +26,14 @@
  * Renders:
  *   A scrollable message list with user/assistant bubbles, a
  *   streaming indicator, error display, and a bottom input form
- *   with selection-context chip.
+ *   with selection-aware placeholder text.
  *
  * Props: none.
  * Events: none dispatched.
  *
  * Stores read:
- *   - $selectedText — shown as a context chip above the input;
- *     included in the chat's system prompt by chatFactory.
+ *   - $selectedText — scopes placeholders and is included in the
+ *     chat's context packet by chatFactory.
  *   - $documentContent — used by chatFactory for document context.
  *
  * Stores written:
@@ -56,17 +56,38 @@ import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
+import ContextLens from "./ContextLens.svelte";
+import CustomQuickActions from "./CustomQuickActions.svelte";
+import type { ContextAction } from "./context";
 
 let input = $state("");
 const { chat, clearChat } = createAiChat({ mode: "chat" });
 
 let customChatPrompts = $derived(appSettings.customQuickActions.filter((a) => a.panel === "chat"));
+let hasConversationActivity = $derived(
+    chat.messages.length > 0 || chat.status !== "ready" || !!chat.error,
+);
+let showStarterSuggestions = $derived(!hasConversationActivity);
+let showConversationControls = $derived(hasConversationActivity);
+
+function clearConversation() {
+    clearChat();
+}
 
 function useQuickPrompt(prompt: string) {
     posthog.capture("ai_chat_quick_prompt_used", {
         has_selection: !!$selectedText,
     });
     chat.sendMessage({ text: prompt });
+}
+
+function useContextAction(action: ContextAction) {
+    posthog.capture("ai_context_action_used", {
+        mode: "chat",
+        action: action.id,
+        has_selection: !!$selectedText,
+    });
+    chat.sendMessage({ text: action.prompt });
 }
 
 // Pre-fill input from app-level "open chat" requests.
@@ -93,21 +114,29 @@ async function handleSubmit(event: Event) {
         has_selection: !!$selectedText,
         message_length: userMessage.length,
     });
-    await chat.sendMessage({ text: userMessage });
     input = "";
+    await chat.sendMessage({ text: userMessage });
 }
 </script>
 
 <div class="flex flex-col h-full">
     <!-- Clear chat row -->
-    {#if chat.messages.length > 0}
+    {#if showConversationControls}
         <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
-                onclick={clearChat}
+                onclick={clearConversation}
                 title="Start a fresh conversation (clears all messages)"
                 class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
             >New chat</button>
         </div>
+    {/if}
+
+    {#if showStarterSuggestions}
+        <ContextLens
+            mode="chat"
+            disabled={chat.status !== "ready" || !$documentContent}
+            onAction={useContextAction}
+        />
     {/if}
 
     <!-- Chat messages -->
@@ -173,7 +202,7 @@ async function handleSubmit(event: Event) {
             </div>
         {/if}
 
-        {#if chat.messages.length === 0 && !chat.error}
+        {#if showStarterSuggestions && !chat.error}
             <div
                 class="flex-1 flex items-center justify-center text-gray-400 text-sm"
             >
@@ -184,31 +213,14 @@ async function handleSubmit(event: Event) {
 
     <!-- Input form -->
     <div class="border-t border-black/10 p-3 bg-white/30">
-        {#if customChatPrompts.length > 0}
-            <div class="mb-2 flex flex-wrap gap-1.5">
-                {#each customChatPrompts as { label, prompt }}
-                    <button
-                        onclick={() => useQuickPrompt(prompt)}
-                        disabled={chat.status !== "ready" || !$documentContent}
-                        class="px-2 py-1 text-xs bg-white hover:bg-blue-50 rounded border border-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {label}
-                    </button>
-                {/each}
-            </div>
-        {/if}
-        {#if $selectedText}
-            <div
-                class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"
-            >
-                <span class="text-yellow-700">
-                    Context: "{$selectedText.slice(
-                        0,
-                        60,
-                    )}{$selectedText.length > 60 ? "..." : ""}"
-                </span>
-            </div>
-        {/if}
+        <CustomQuickActions
+            prompts={customChatPrompts}
+            disabled={chat.status !== "ready" || !$documentContent}
+            compact={!showStarterSuggestions}
+            panel="chat"
+            theme="blue"
+            onPrompt={useQuickPrompt}
+        />
 
         <form onsubmit={handleSubmit} class="flex flex-col gap-2">
             <input

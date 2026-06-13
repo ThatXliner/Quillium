@@ -58,6 +58,9 @@ test.describe("AI sidebar", () => {
 
         await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar).toContainText("Start a conversation");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(580);
     });
 
     test("switches between AI tabs", async ({ page }) => {
@@ -70,6 +73,9 @@ test.describe("AI sidebar", () => {
         // Open chat
         await page.locator("#ai-tab-chat").click();
         await expect(q.aiSidebar).toContainText("Start a conversation");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(580);
 
         // Switch to feedback
         const feedbackBtn = page.locator(
@@ -77,6 +83,110 @@ test.describe("AI sidebar", () => {
         );
         await feedbackBtn.click();
         await expect(q.aiSidebar).toContainText("Feedback");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(580);
+
+        // Switch to revise
+        const reviseBtn = page.locator("#ai-sidebar .overflow-x-auto button[aria-label*='Revise']");
+        await reviseBtn.click();
+        await expect(q.aiSidebar).toContainText("Revise");
+        await expect
+            .poll(async () => (await q.aiSidebar.boundingBox())?.height ?? 0)
+            .toBeGreaterThan(580);
+    });
+
+    test("hides starter suggestions after first chat action", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: {
+                showNestedEditor: true,
+                atomicRevisions: true,
+                aiEnabled: true,
+                customQuickActions: [
+                    { panel: "chat", label: "Make punchy", prompt: "Make this punchier" },
+                ],
+            },
+            initialDoc: "A short draft with enough context for the AI sidebar.",
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-chat").click();
+        await expect(q.aiSidebar).not.toContainText("AI can see this draft");
+        await expect(
+            q.aiSidebar.getByRole("button", { name: /Context: AI can see this draft/ }),
+        ).toBeVisible();
+        await expect(q.aiSidebar).toContainText("Your custom chips");
+        await expect(q.aiSidebar).toContainText("Make punchy");
+
+        await q.aiSidebar.getByRole("button", { name: /Name the center/ }).click();
+
+        await expect(q.aiSidebar).not.toContainText("Name the center");
+        await expect(q.aiSidebar).not.toContainText("Find missing context");
+        await expect(q.aiSidebar).not.toContainText("Make punchy");
+        await expect(q.aiSidebar.getByRole("button", { name: "Actions" })).toBeVisible();
+        await expect(q.aiSidebar.getByRole("button", { name: "New chat" })).toBeVisible();
+    });
+
+    test("custom chip settings link opens quick actions", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: {
+                showNestedEditor: true,
+                atomicRevisions: true,
+                aiEnabled: true,
+                customQuickActions: [
+                    { panel: "chat", label: "Make punchy", prompt: "Make this punchier" },
+                ],
+            },
+            initialDoc: "A short draft with enough context for the AI sidebar.",
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-chat").click();
+        await q.aiSidebar.getByRole("button", { name: "Edit in settings" }).click();
+
+        const settingsModal = page.locator(".settings-modal-inner");
+        await expect(settingsModal).toBeVisible();
+        await expect(settingsModal).toContainText("Quick Actions");
+        await expect(settingsModal).toContainText("Make punchy");
+    });
+
+    test("uses context lens instead of selection banner", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+            initialDoc: "This draft has a selected passage for the AI sidebar.",
+        });
+        await q.init();
+        await q.selectRange(17, 33);
+
+        await page.locator("#ai-tab-chat").click();
+
+        await expect(q.aiSidebar).toContainText("AI can see your selection");
+        await expect(q.aiSidebar).not.toContainText("Context:");
+    });
+
+    test("keeps draft notes context collapsed by default", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: { showNestedEditor: true, atomicRevisions: true, aiEnabled: true },
+        });
+        await q.init();
+        await q.createCommentOnRange("This draft has a note for the AI sidebar.", 17, 21);
+        await q.submitComment("Remember this note.");
+        await q.editor.click();
+        await q.end();
+
+        await page.locator("#ai-tab-chat").click();
+
+        await expect(q.aiSidebar).not.toContainText("AI can see this draft");
+        await expect(q.aiSidebar).toContainText("Prioritize notes");
+        await expect(
+            q.aiSidebar.getByRole("button", {
+                name: /Context: AI can see this draft.*Open annotations are included too/,
+            }),
+        ).toBeVisible();
     });
 
     test("escape closes sidebar", async ({ page }) => {

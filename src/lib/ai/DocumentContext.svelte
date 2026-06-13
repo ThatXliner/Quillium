@@ -18,7 +18,8 @@ import {
     documentContext,
     saveDocumentContext,
     aiSettings,
-    setAiProcessing,
+    beginAiTask,
+    endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
@@ -32,7 +33,7 @@ async function generate() {
     if (!promptInput.trim() || generating) return;
     generating = true;
     generateError = "";
-    setAiProcessing(true);
+    const task = beginAiTask("document-context");
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
@@ -48,7 +49,7 @@ async function generate() {
         if (!abortSignal.aborted) generateError = String(e);
     } finally {
         generating = false;
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }
 

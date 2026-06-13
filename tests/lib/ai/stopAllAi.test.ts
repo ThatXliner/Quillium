@@ -5,6 +5,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import {
     aiProcessing,
+    beginAiTask,
+    endAiTask,
     setAiProcessing,
     getAiAbortSignal,
     stopAllAi,
@@ -13,7 +15,7 @@ import { appEventBus } from "$lib/events/appEventBus";
 
 describe("stopAllAi", () => {
     beforeEach(() => {
-        aiProcessing.active = false;
+        stopAllAi();
     });
 
     it("sets aiProcessing.active to false", () => {
@@ -65,6 +67,26 @@ describe("stopAllAi", () => {
         stopAllAi();
 
         expect(signal.aborted).toBe(true);
+        expect(aiProcessing.active).toBe(false);
+    });
+
+    it("stays active until all task handles end", () => {
+        const task1 = beginAiTask("one");
+        const task2 = beginAiTask("two");
+
+        expect(aiProcessing.active).toBe(true);
+        endAiTask(task1);
+        expect(aiProcessing.active).toBe(true);
+        endAiTask(task2);
+        expect(aiProcessing.active).toBe(false);
+    });
+
+    it("clears active task handles on stop", () => {
+        beginAiTask("one");
+        beginAiTask("two");
+        expect(aiProcessing.active).toBe(true);
+
+        stopAllAi();
         expect(aiProcessing.active).toBe(false);
     });
 });

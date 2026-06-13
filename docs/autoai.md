@@ -23,7 +23,7 @@ Stored in localStorage under `"quillium-autoai-settings"`:
 | `debounceMs` | number | 10000 | Delay before review after change |
 | `persona` | string | `"AutoAI"` | Name in annotation author fields |
 | `annotationTypes` | set | all three | Which types to create |
-| `conservativeness` | enum | `"balanced"` | Review depth |
+| `conservativeness` | enum | `"conservative"` | Review depth |
 
 ## Review Engine
 
@@ -34,11 +34,12 @@ flowchart TD
     Thinking["autoAIThinking = true<br/>Face shows >_<"]
     LoadKey["ensureApiKeyLoaded()"]
     Reviewing["autoAIReviewing = true<br/>Face shows scanning squint"]
+    Context["Build shared context packet<br/>(writer context + budgeted draft)"]
     Generate["generateObject()<br/>Single non-streaming call"]
     Apply["applyAnnotations()<br/>For each result"]
     Done["autoAIReviewing = false"]
 
-    Change --> Debounce --> Thinking --> LoadKey --> Reviewing --> Generate --> Apply --> Done
+    Change --> Debounce --> Thinking --> LoadKey --> Reviewing --> Context --> Generate --> Apply --> Done
 ```
 
 ### Engine API
@@ -50,6 +51,16 @@ flowchart TD
 | `triggerManualReview()` | Cancel debounce, run immediately |
 
 ### Annotation Application
+
+Before review, AutoAI builds the same context packet used by the sidebar:
+
+1. Writer-provided document context is included as guidance.
+2. Long drafts are clipped with an explicit omission marker.
+3. The model is instructed to annotate only exact substrings present in the
+   included document text.
+
+This keeps background review aligned with the visible sidebar context model and
+prevents unbounded prompt growth on long drafts.
 
 For each AI result:
 1. Find `targetText` in current document

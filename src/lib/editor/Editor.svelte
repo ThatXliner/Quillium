@@ -40,6 +40,7 @@ import {
     lastPersistedEventId,
     lastSavedAt,
     selectedText,
+    selectedTextRange,
     writingStats,
 } from "$lib/stores";
 /**
@@ -76,10 +77,11 @@ import "./harper/harper.css";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
+    beginAiTask,
+    endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
     hasApiKey,
-    setAiProcessing,
 } from "$lib/ai/settings.svelte";
 import type { DraftMeta, EventRecord, TabMeta } from "$lib/db/types";
 import { appSettings } from "$lib/settings.svelte";
@@ -123,11 +125,16 @@ async function suggestTitle() {
     const text = $editorView?.state.doc.toString() ?? "";
     if (!text.trim() || titleSuggesting) return;
     titleSuggesting = true;
-    setAiProcessing(true);
+    const task = beginAiTask("title-suggestion");
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
-        const model = createModel(aiSettings.provider, aiSettings.apiKey, aiSettings.model);
+        const model = createModel(
+            aiSettings.provider,
+            aiSettings.apiKey,
+            aiSettings.model,
+            aiSettings.baseURL,
+        );
         const { text: suggested } = await generateText({
             model,
             abortSignal,
@@ -159,7 +166,7 @@ async function suggestTitle() {
         }
     } finally {
         titleSuggesting = false;
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }
 
@@ -186,9 +193,9 @@ function getWordCount(doc: string): number {
     return doc.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function extractSelectedText(update: ViewUpdate): string {
-    const selection = update.state.selection.main;
-    return selection.empty ? "" : update.state.sliceDoc(selection.from, selection.to);
+function extractSelectedText(state: EditorState): string {
+    const selection = state.selection.main;
+    return selection.empty ? "" : state.sliceDoc(selection.from, selection.to);
 }
 
 function computeWritingStats(doc: string, selText: string) {
@@ -208,11 +215,21 @@ function computeWritingStats(doc: string, selText: string) {
 // from CodeMirror's updateListener on every transaction, manually pushing
 // the new state into Svelte-reactive stores so the rest of the UI can
 // react normally. $effect is not used here; the hook is CodeMirror's own.
-function syncStoresToEditorState(update: ViewUpdate, doc: string, selText: string) {
-    $annotations = update.state.field(annotationField);
-    $activeAnnotation = getActiveAnnotation(update.state);
+function syncStoresToEditorState(state: EditorState) {
+    const doc = state.doc.toString();
+    const selection = state.selection.main;
+    const selText = extractSelectedText(state);
+    writingStats.set(computeWritingStats(doc, selText));
+    $annotations = state.field(annotationField);
+    $activeAnnotation = getActiveAnnotation(state);
     $documentContent = doc;
     $selectedText = selText;
+    $selectedTextRange = selection.empty
+        ? undefined
+        : {
+              from: selection.from,
+              to: selection.to,
+          };
 }
 
 // ── Keyboard shortcut telemetry ─────────────────────────────────
@@ -233,11 +250,7 @@ function trackKeyboardActions(update: ViewUpdate) {
 // ── Update listener ─────────────────────────────────────────────
 const getExtensionOptions: ListenerOptions = {
     updateListener(update: ViewUpdate) {
-        const doc = update.state.doc.toString();
-        const selText = extractSelectedText(update);
-
-        writingStats.set(computeWritingStats(doc, selText));
-        syncStoresToEditorState(update, doc, selText);
+        syncStoresToEditorState(update.state);
         trackKeyboardActions(update);
     },
 };
@@ -469,8 +482,7 @@ export async function loadDocument(id: string) {
     const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
     $editorView.setState(state);
-    const text = state.doc.toString();
-    writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
+    syncStoresToEditorState(state);
 }
 
 // ── Tab & draft-tree actions (#160) ─────────────────────────────
@@ -713,6 +725,7 @@ onMount(() => {
             state,
             parent: element,
         });
+        syncStoresToEditorState(state);
         loadUserDictionary();
         posthog.capture("app_session_started", {
             word_count: getWordCount(state.doc.toString()),
