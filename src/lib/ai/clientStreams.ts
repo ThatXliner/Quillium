@@ -39,6 +39,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import { type Provider, createModel } from "./provider";
+import type { AiContextMode, AiTextRange, AnnotationContextInput } from "./context";
 import { buildDocumentContextPrompt, injectDocumentContext } from "./utils";
 
 type DocumentContext = Record<string, string> | undefined;
@@ -55,7 +56,9 @@ interface StreamOpts extends BaseOpts {
     messages: UIMessage[];
     documentContent: string;
     selectedText: string;
+    selectedTextRange?: AiTextRange;
     documentContext?: DocumentContext;
+    annotationContext?: AnnotationContextInput[];
     persona?: ReaderPersona;
 }
 
@@ -165,19 +168,23 @@ const createCommentTool = (description: string) =>
 async function buildStream(
     opts: StreamOpts,
     system: string,
+    mode: AiContextMode,
     tools?: Parameters<typeof streamText>[0]["tools"],
 ): Promise<ReadableStream<UIMessageChunk>> {
     const llm = createModel(opts.provider, opts.apiKey, opts.model, opts.baseURL);
     const fullSystem = opts.persona ? buildPersonaPrompt(opts.persona) + system : system;
+    const contextMessage = injectDocumentContext({
+        documentContent: opts.documentContent,
+        selectedText: opts.selectedText,
+        selectedTextRange: opts.selectedTextRange,
+        documentContext: opts.documentContext,
+        annotationContext: opts.annotationContext,
+        mode,
+    });
+    const modelMessages = await convertToModelMessages(opts.messages);
     const result = streamText({
         model: llm,
-        messages: [
-            ...(await convertToModelMessages(opts.messages)),
-            injectDocumentContext({
-                documentContent: opts.documentContent,
-                selectedText: opts.selectedText,
-            }),
-        ],
+        messages: contextMessage.content ? [contextMessage, ...modelMessages] : modelMessages,
         system: fullSystem,
         tools,
         abortSignal: opts.abortSignal,
@@ -201,6 +208,7 @@ When providing feedback:
 - If text is selected, focus primarily on that selection unless asked otherwise
 
 Keep responses concise but thorough.${buildDocumentContextPrompt(opts.documentContext)}`,
+        "chat",
     );
 }
 
@@ -222,6 +230,7 @@ How to work:
 - ${opts.selectedText ? "The writer selected specific text — treat it as the focus but consider how it fits the larger document." : "Work through the whole document."}
 
 Current document length: ${opts.documentContent?.length || 0} characters`,
+        "feedback",
         {
             createComment: createCommentTool(
                 "REQUIRED for any passage-level observation. Call this instead of describing the issue in your message. Put the diagnosis and what to consider in the comment field.",
@@ -266,6 +275,7 @@ How to work:
 - ${opts.selectedText ? "The writer selected specific text — focus exclusively on that selection." : "Work through the whole document systematically."}
 
 After all tool calls, write 2-3 sentences summarizing the patterns you found. No suggested text in that summary.`,
+        "revise",
         {
             createSuggestion: tool({
                 description:
@@ -311,6 +321,7 @@ When the user describes a concept or feeling and wants a word for it:
 When the user has text selected, treat the selected word or phrase as the lookup target unless they specify otherwise.
 
 Keep responses focused and scannable — use short lines. Writers care about nuance, connotation, and tone.`,
+        "dictionary",
     );
 }
 

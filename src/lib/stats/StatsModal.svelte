@@ -15,7 +15,8 @@ import { appSettings } from "$lib/settings.svelte";
 import {
     aiSettings,
     ensureApiKeyLoaded,
-    setAiProcessing,
+    beginAiTask,
+    endAiTask,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
 import { generateCharacterization, type CharacterizerResult } from "$lib/ai/clientStreams";
@@ -81,7 +82,7 @@ function handleKeydown(e: KeyboardEvent) {
 async function analyze() {
     analyzing = true;
     error = null;
-    setAiProcessing(true);
+    const task = beginAiTask("style-analysis");
     const abortSignal = getAiAbortSignal();
     try {
         await ensureApiKeyLoaded();
@@ -89,6 +90,7 @@ async function analyze() {
             provider: aiSettings.provider,
             model: aiSettings.model,
             apiKey: aiSettings.apiKey,
+            baseURL: aiSettings.baseURL,
             documentContent: text,
             abortSignal,
         });
@@ -96,7 +98,7 @@ async function analyze() {
         if (!abortSignal.aborted) error = e?.message ?? "Analysis failed";
     } finally {
         analyzing = false;
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }
 

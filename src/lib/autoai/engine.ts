@@ -11,11 +11,14 @@
 import { get, writable } from "svelte/store";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { documentContent, editorView } from "$lib/stores";
+import { annotations, documentContent, editorView } from "$lib/stores";
 import posthog from "$lib/posthog";
 import { createModel } from "$lib/ai/provider";
-import { aiSettings, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
-import { setAiProcessing, getAiAbortSignal } from "$lib/ai/settings.svelte";
+import { aiSettings, documentContext, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
+import { beginAiTask, endAiTask, getAiAbortSignal } from "$lib/ai/settings.svelte";
+import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
+import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
+import { buildDocumentContextPrompt } from "$lib/ai/utils";
 import {
     createComment,
     createSuggestion,
@@ -80,10 +83,12 @@ Annotation types you may use: ${allowed}.
 - revision: Multiple named versions of a passage for the writer to compare.
 
 ${conservativenessPrompts[conservativeness]}
+${buildDocumentContextPrompt(documentContext)}
 
 IMPORTANT RULES:
 - targetText must be an EXACT substring of the document. Copy it verbatim.
 - Keep targetText as short as possible while still being specific (a sentence or phrase, not paragraphs).
+- Treat existing annotations in the context packet as open editorial state. Do not create duplicate annotations for the same concern or target.
 - Only annotate issues that fall within the allowed annotation types.
 - Return valid JSON matching the schema. No prose outside JSON.`;
 }
@@ -184,6 +189,7 @@ async function runReview(content: string, manual = false) {
     }
 
     const abortSignal = getAiAbortSignal();
+    let task: symbol | null = null;
     try {
         await ensureApiKeyLoaded();
         // Guard: if the review was cancelled during ensureApiKeyLoaded, bail
@@ -192,18 +198,27 @@ async function runReview(content: string, manual = false) {
         // Transition thinking → reviewing only after the async key load,
         // so the >_< face is visible during the ensureApiKeyLoaded wait.
         autoAIPhase.set("reviewing");
-        setAiProcessing(true);
+        task = beginAiTask("autoai-review");
         const model = createModel(
             aiSettings.provider,
             aiSettings.apiKey,
             aiSettings.model,
             aiSettings.baseURL,
         );
+        const contextPacket = buildAiContextPacket({
+            mode: "autoai",
+            documentContent: content,
+            documentContext,
+            annotationContext: buildAnnotationContextInputs({
+                annotations: get(annotations),
+                documentContent: content,
+            }),
+        });
         const { object } = await generateObject({
             model,
             schema: AnnotationSchema,
             system: buildSystemPrompt(),
-            prompt: `Review this document:\n\n${content}`,
+            prompt: `Review this context packet. Only create annotations for exact targetText substrings that appear in the included document text.\n\n${contextPacketToPrompt(contextPacket)}`,
             abortSignal,
         });
         lastReviewedContent = content;
@@ -217,7 +232,7 @@ async function runReview(content: string, manual = false) {
         posthog.captureException(e instanceof Error ? e : new Error(String(e)));
     } finally {
         autoAIPhase.set("idle");
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }
 

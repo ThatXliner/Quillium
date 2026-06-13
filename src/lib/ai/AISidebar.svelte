@@ -74,12 +74,34 @@ import {
     Minimize2Icon,
     UsersIcon,
     SquareIcon,
+    InfoIcon,
 } from "lucide-svelte";
-import { aiProcessing, hasApiKey, ensureApiKeyLoaded, stopAllAi } from "$lib/ai/settings.svelte";
+import {
+    aiProcessing,
+    hasApiKey,
+    ensureApiKeyLoaded,
+    stopAllAi,
+    documentContext,
+} from "$lib/ai/settings.svelte";
+import {
+    activeAnnotation,
+    annotations,
+    documentContent,
+    selectedText,
+    selectedTextRange,
+} from "$lib/stores";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
+import { buildAnnotationContextInputs } from "./annotationContext";
+import {
+    buildAiContextPacket,
+    contextScopeDetail,
+    contextScopeLabel,
+    shouldShowContextSummary,
+} from "./context";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
+type ContextPanelAction = "chat" | "feedback" | "revise";
 let action = $state<Action>(null);
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -93,6 +115,7 @@ const actions: {
     hoverClass: string;
     requiresApiKey: boolean;
     preferredWidth?: number;
+    preferredHeight?: number;
 }[] = [
     {
         id: "chat",
@@ -102,6 +125,7 @@ const actions: {
         activeClass: "text-blue-600 bg-white/60",
         hoverClass: "hover:text-blue-600",
         requiresApiKey: true,
+        preferredHeight: 600,
     },
     {
         id: "feedback",
@@ -111,6 +135,7 @@ const actions: {
         activeClass: "text-green-600 bg-white/60",
         hoverClass: "hover:text-green-600",
         requiresApiKey: true,
+        preferredHeight: 600,
     },
     {
         id: "revise",
@@ -120,6 +145,7 @@ const actions: {
         activeClass: "text-purple-600 bg-white/60",
         hoverClass: "hover:text-purple-600",
         requiresApiKey: true,
+        preferredHeight: 600,
     },
     {
         id: "context",
@@ -153,7 +179,6 @@ const panelTitles: Record<NonNullable<Action>, string> = {
 };
 
 const expanded = $derived(action !== null);
-// Remember to also update the CSS style on line 212
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 520;
 const MIN_WIDTH = 240;
@@ -188,16 +213,54 @@ let justResized = false;
 const defaultWidthForTab = $derived(
     actions.find((a) => a.id === action)?.preferredWidth ?? DEFAULT_WIDTH,
 );
+const defaultHeightForTab = $derived(
+    actions.find((a) => a.id === action)?.preferredHeight ?? DEFAULT_HEIGHT,
+);
 const effectiveWidth = $derived(customWidth ?? defaultWidthForTab);
-const effectiveHeight = $derived(customHeight ?? DEFAULT_HEIGHT);
+const effectiveHeight = $derived(customHeight ?? defaultHeightForTab);
 const isCustomSize = $derived(customWidth !== null || customHeight !== null);
-
-// Inline style when expanded: always set width (so tab-based default transitions
-// animate smoothly) and height if user has resized.
-const containerSizeStyle = $derived(
-    expanded
-        ? `width: ${effectiveWidth}px;${customHeight !== null ? ` height: ${effectiveHeight}px;` : ""}`
+const contextPanelMode = $derived(isContextPanelAction(action) ? action : null);
+const headerAnnotationContext = $derived(
+    buildAnnotationContextInputs({
+        annotations: $annotations,
+        documentContent: $documentContent,
+        selectedText: $selectedText,
+        selectedTextRange: $selectedTextRange,
+        activeAnnotation: $activeAnnotation,
+    }),
+);
+const headerContextPacket = $derived(
+    contextPanelMode
+        ? buildAiContextPacket({
+              mode: contextPanelMode,
+              documentContent: $documentContent,
+              selectedText: $selectedText,
+              selectedTextRange: $selectedTextRange,
+              documentContext: { freeform: documentContext.freeform },
+              annotationContext: headerAnnotationContext,
+          })
+        : null,
+);
+const showHeaderContextInfo = $derived(
+    headerContextPacket !== null && !shouldShowContextSummary(headerContextPacket),
+);
+const headerContextInfoLabel = $derived(
+    headerContextPacket
+        ? `${contextScopeLabel(headerContextPacket)}. ${contextScopeDetail(headerContextPacket)}`
         : "",
+);
+const headerContextRing = $derived(
+    action === "feedback"
+        ? "focus:ring-green-500"
+        : action === "revise"
+          ? "focus:ring-purple-500"
+          : "focus:ring-blue-500",
+);
+
+// Inline style when expanded: always set width/height so tab-specific defaults
+// and reset-to-default transitions animate smoothly.
+const containerSizeStyle = $derived(
+    expanded ? `width: ${effectiveWidth}px; height: ${effectiveHeight}px;` : "",
 );
 
 // Disable transition during active drag; keep it for expand/collapse
@@ -220,6 +283,10 @@ function updateScrollState() {
     stripOverflows = el.scrollWidth > el.clientWidth + 1;
     canScrollLeft = el.scrollLeft > 2;
     canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+}
+
+function isContextPanelAction(value: Action): value is ContextPanelAction {
+    return value === "chat" || value === "feedback" || value === "revise";
 }
 
 function handleClickOutside(e: MouseEvent) {
@@ -511,6 +578,16 @@ function handleKeydown(e: KeyboardEvent) {
                     <Minimize2Icon size={14} />
                 </button>
             {/if}
+            {#if showHeaderContextInfo}
+                <button
+                    type="button"
+                    aria-label="Context: {headerContextInfoLabel}"
+                    title={headerContextInfoLabel}
+                    class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0 focus:outline-none focus:ring-2 {headerContextRing}"
+                >
+                    <InfoIcon size={14} />
+                </button>
+            {/if}
             <button
                 onclick={() => (action = action === "settings" ? null : "settings")}
                 aria-label="AI Settings"
@@ -583,7 +660,7 @@ function handleKeydown(e: KeyboardEvent) {
             text-white text-xs font-medium rounded-full
             shadow-lg transition-all duration-200
             animate-fade-in"
-        style="top: calc(50% + {expanded ? (customHeight ?? DEFAULT_HEIGHT) / 2 : 280 / 2}px + 8px);"
+        style="top: calc(50% + {expanded ? effectiveHeight / 2 : 280 / 2}px + 8px);"
     >
         <SquareIcon size={12} fill="currentColor" />
         Stop

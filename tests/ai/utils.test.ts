@@ -71,4 +71,22 @@ describe("injectDocumentContext", () => {
         expect(msg.content).toContain("Currently selected text:");
         expect(msg.content).not.toContain("Current document:");
     });
+
+    it("includes annotation context when provided", () => {
+        const msg = injectDocumentContext({
+            documentContent: "Draft",
+            annotationContext: [
+                {
+                    id: 3,
+                    type: "suggestion",
+                    targetText: "Draft",
+                    replacements: [{ text: "Opening draft", rationale: "More specific" }],
+                },
+            ],
+        });
+
+        expect(msg.content).toContain("Existing annotations");
+        expect(msg.content).toContain("[suggestion #3]");
+        expect(msg.content).toContain("Opening draft");
+    });
 });

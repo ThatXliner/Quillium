@@ -5,7 +5,13 @@
  * to build prompts and stream AI responses, ensuring both flows stay in sync.
  */
 import { streamChat } from "$lib/ai/clientStreams";
-import { setAiProcessing, ensureApiKeyLoaded, getAiAbortSignal } from "$lib/ai/settings.svelte";
+import {
+    documentContext,
+    beginAiTask,
+    endAiTask,
+    ensureApiKeyLoaded,
+    getAiAbortSignal,
+} from "$lib/ai/settings.svelte";
 import type { Provider } from "$lib/ai/provider";
 import type { Thread } from ".";
 
@@ -33,25 +39,26 @@ export function buildCommentAiPrompt(thread: Thread, selectedText: string): stri
  */
 export async function streamCommentAiResponse(
     prompt: string,
-    selectedText: string,
-    settings: { provider: Provider; model: string; apiKey: string },
+    settings: { provider: Provider; model: string; apiKey: string; baseURL?: string },
 ): Promise<string> {
-    setAiProcessing(true);
-    await ensureApiKeyLoaded();
+    const task = beginAiTask("comment-thread");
     const abortSignal = getAiAbortSignal();
-    const stream = await streamChat({
-        messages: [{ id: "1", role: "user", parts: [{ type: "text", text: prompt }] }],
-        documentContent: "",
-        selectedText,
-        provider: settings.provider,
-        model: settings.model,
-        apiKey: settings.apiKey,
-        abortSignal,
-    });
-
-    const reader = stream.getReader();
     let aiResponse = "";
     try {
+        await ensureApiKeyLoaded();
+        const stream = await streamChat({
+            messages: [{ id: "1", role: "user", parts: [{ type: "text", text: prompt }] }],
+            documentContent: "",
+            selectedText: "",
+            documentContext,
+            provider: settings.provider,
+            model: settings.model,
+            apiKey: settings.apiKey,
+            baseURL: settings.baseURL,
+            abortSignal,
+        });
+
+        const reader = stream.getReader();
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
@@ -64,6 +71,6 @@ export async function streamCommentAiResponse(
         if (abortSignal.aborted) return aiResponse;
         throw e;
     } finally {
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }

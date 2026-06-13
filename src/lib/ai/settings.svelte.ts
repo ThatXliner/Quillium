@@ -59,14 +59,35 @@ export function hasDocumentContext(): boolean {
 
 // ---------------------------------------------------------------------------
 // AI processing indicator — purely for UI feedback (e.g. sidebar glow).
-// All AI chat components should call setAiProcessing(true/false) when their
-// request starts/ends. To remove the glow effect, just stop reading this
-// state in the UI — no need to touch individual components.
+// Long-running requests should use beginAiTask/endAiTask so overlapping
+// requests keep the indicator active until the last one finishes. The older
+// setAiProcessing API remains as a compatibility wrapper.
 // ---------------------------------------------------------------------------
 export const aiProcessing = $state({ active: false });
 
+const aiTasks = new Set<symbol>();
+let legacyProcessing = false;
+
+function syncAiProcessing() {
+    aiProcessing.active = legacyProcessing || aiTasks.size > 0;
+}
+
+export function beginAiTask(label = "ai"): symbol {
+    const task = Symbol(label);
+    aiTasks.add(task);
+    syncAiProcessing();
+    return task;
+}
+
+export function endAiTask(task: symbol | null | undefined) {
+    if (!task) return;
+    aiTasks.delete(task);
+    syncAiProcessing();
+}
+
 export function setAiProcessing(value: boolean) {
-    aiProcessing.active = value;
+    legacyProcessing = value;
+    syncAiProcessing();
 }
 
 /**
@@ -76,8 +97,15 @@ export function setAiProcessing(value: boolean) {
  * `$effect` has a valid owner.
  */
 export function useAiChatEffects(chat: { status: string; stop: () => void }) {
+    let processingTask: symbol | null = null;
+
     $effect(() => {
-        setAiProcessing(chat.status === "submitted" || chat.status === "streaming");
+        const active = chat.status === "submitted" || chat.status === "streaming";
+        if (active && !processingTask) processingTask = beginAiTask("chat");
+        if (!active && processingTask) {
+            endAiTask(processingTask);
+            processingTask = null;
+        }
     });
 
     $effect(() => {
@@ -108,6 +136,8 @@ export function stopAllAi() {
         _aiAbortController = null;
     }
     appEventBus.emit({ type: "stop-ai" });
+    aiTasks.clear();
+    legacyProcessing = false;
     aiProcessing.active = false;
 }
 

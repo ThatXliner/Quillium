@@ -10,8 +10,8 @@
     the annotation system, which attaches comments/revisions directly
     to the CodeMirror editor.
 
-    Features a "Get feedback" quick-action button that auto-generates
-    a prompt based on whether text is selected or not.
+    Features a context lens that shows what context will be used and
+    offers selection/document-aware feedback actions.
 
     State machine (driven by `chat.status`):
       ready     — user can submit or click quick action.
@@ -28,17 +28,16 @@
  * Editorial feedback AI panel (green theme).
  *
  * Renders:
- *   A "Get feedback" quick-action button, scrollable message list
- *   with user/assistant bubbles, streaming indicator, and a bottom
- *   input form with selection-context chip.
+ *   A context lens with action cards, scrollable message list with
+ *   user/assistant bubbles, streaming indicator, and a bottom input
+ *   form for follow-up requests.
  *
  * Props: none.
  * Events: none dispatched.
  *
  * Stores read:
- *   - $selectedText — toggles quick-action label between
- *     "Get feedback on selection" / "Get general feedback"; shown
- *     as a context chip above the input.
+ *   - $selectedText — scopes context-aware prompts to the active
+ *     selection when present.
  *   - $documentContent — gates the quick-action button (disabled
  *     when empty) and displayed as character count.
  *
@@ -61,7 +60,8 @@ import { renderMarkdown } from "$lib/ai/utils";
 import {
     createAiChat,
     useAiChatEffects,
-    setAiProcessing,
+    beginAiTask,
+    endAiTask,
     runMultiPersonaStreams,
 } from "$lib/ai/chatFactory";
 import { appSettings } from "$lib/settings.svelte";
@@ -69,11 +69,24 @@ import posthog from "$lib/posthog";
 import { getEnabledPersonas } from "$lib/readers/settings.svelte";
 import { streamFeedback } from "$lib/ai/clientStreams";
 import { appEventBus } from "$lib/events/appEventBus";
+import ContextLens from "./ContextLens.svelte";
+import CustomQuickActions from "./CustomQuickActions.svelte";
+import type { ContextAction } from "./context";
 
 let input = $state("");
 let personaInFlight = $state(false);
 
 const { chat, clearChat } = createAiChat({ mode: "feedback" });
+let hasConversationActivity = $derived(
+    chat.messages.length > 0 || chat.status !== "ready" || personaInFlight || !!chat.error,
+);
+let showStarterSuggestions = $derived(!hasConversationActivity);
+let showConversationControls = $derived(hasConversationActivity);
+
+function clearConversation() {
+    clearChat();
+    personaInFlight = false;
+}
 
 // Wire up processing indicator + global stop listener.
 useAiChatEffects(chat);
@@ -108,7 +121,7 @@ async function sendFeedback(text: string, trigger: string) {
     });
 
     personaInFlight = true;
-    setAiProcessing(true);
+    const task = beginAiTask("feedback-personas");
     try {
         await runMultiPersonaStreams({
             personas,
@@ -118,7 +131,7 @@ async function sendFeedback(text: string, trigger: string) {
         });
     } finally {
         personaInFlight = false;
-        setAiProcessing(false);
+        endAiTask(task);
     }
 }
 
@@ -130,34 +143,11 @@ function handleSubmit(event: SubmitEvent) {
     sendFeedback(text, "manual");
 }
 
-function askForFeedback() {
-    const context = $selectedText
-        ? `Please provide feedback on this selected text: "${$selectedText}"`
-        : "Please provide feedback on my document.";
-    input = context;
-    sendFeedback(context, "quick_action");
-}
-
-const feedbackQuickPrompts = [
-    {
-        label: "Pacing",
-        prompt: "Focus on pacing — does the story/argument move at the right speed?",
-    },
-    { label: "Voice & tone", prompt: "Focus on voice and tone — is the writing voice consistent?" },
-    { label: "Clarity", prompt: "Focus on clarity — are there confusing or unclear passages?" },
-    { label: "Structure", prompt: "Focus on structure — is the piece well-organized?" },
-    {
-        label: "Opening / closing",
-        prompt: "Focus on the opening and closing — is the hook effective? Does it land?",
-    },
-];
-
-let allFeedbackPrompts = $derived([
-    ...feedbackQuickPrompts,
-    ...appSettings.customQuickActions
+let customFeedbackPrompts = $derived(
+    appSettings.customQuickActions
         .filter((a) => a.panel === "feedback")
         .map((a) => ({ label: a.label, prompt: a.prompt })),
-]);
+);
 
 function useQuickPrompt(prompt: string) {
     const target = $selectedText ? "this selected text" : "my document";
@@ -166,50 +156,47 @@ function useQuickPrompt(prompt: string) {
         prompt,
         has_selection: !!$selectedText,
     });
-    input = message;
+    input = "";
     sendFeedback(message, "quick_prompt");
+}
+
+function useContextAction(action: ContextAction) {
+    posthog.capture("ai_context_action_used", {
+        mode: "feedback",
+        action: action.id,
+        has_selection: !!$selectedText,
+    });
+    input = "";
+    sendFeedback(action.prompt, `context_${action.id}`);
 }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
-    <!-- Quick actions -->
-    <div class="p-3 border-b border-black/10">
-        <button
-            onclick={askForFeedback}
+    {#if showStarterSuggestions}
+        <ContextLens
+            mode="feedback"
             disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
-            class="w-full p-2.5 bg-white hover:bg-green-50 rounded-lg border border-green-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow"
-        >
-            <div class="text-sm font-medium text-green-800">
-                {$selectedText
-                    ? "Get feedback on selection"
-                    : "Get general feedback"}
-            </div>
-            <div class="text-xs text-green-600 mt-0.5">
-                {$documentContent
-                    ? `Document: ${$documentContent.length.toLocaleString()} characters`
-                    : "Add content to get feedback"}
-            </div>
-        </button>
+            onAction={useContextAction}
+        />
+    {/if}
 
-        <!-- Quick prompts -->
-        <div class="mt-2 grid grid-cols-2 gap-1.5">
-            {#each allFeedbackPrompts as { label, prompt }}
-                <button
-                    onclick={() => useQuickPrompt(prompt)}
-                    disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
-                    class="px-2 py-1.5 text-xs bg-white hover:bg-green-50 rounded border border-green-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                >
-                    {label}
-                </button>
-            {/each}
+    {#if showStarterSuggestions && customFeedbackPrompts.length > 0}
+        <div class="px-3 pb-3 border-b border-black/10">
+            <CustomQuickActions
+                prompts={customFeedbackPrompts}
+                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                panel="feedback"
+                theme="green"
+                onPrompt={useQuickPrompt}
+            />
         </div>
-    </div>
+    {/if}
 
     <!-- Clear chat row -->
-    {#if chat.messages.length > 0}
+    {#if showConversationControls}
         <div class="flex justify-end px-3 pt-2 shrink-0">
             <button
-                onclick={clearChat}
+                onclick={clearConversation}
                 title="Start a fresh conversation (clears all messages)"
                 class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
             >New chat</button>
@@ -259,28 +246,26 @@ function useQuickPrompt(prompt: string) {
             </div>
         {/if}
 
-        {#if chat.messages.length === 0 && !personaInFlight}
+        {#if showStarterSuggestions && !personaInFlight}
             <div
                 class="flex-1 flex items-center justify-center text-gray-400 text-sm"
             >
-                Click "Get feedback" to start
+                Choose a feedback action to start
             </div>
         {/if}
     </div>
 
     <!-- Input -->
     <div class="border-t border-black/10 p-3 bg-white/30">
-        {#if $selectedText}
-            <div
-                class="mb-2 text-xs bg-yellow-50 px-2 py-1.5 rounded border border-yellow-200"
-            >
-                <span class="text-yellow-700">
-                    Context: "{$selectedText.slice(
-                        0,
-                        60,
-                    )}{$selectedText.length > 60 ? "..." : ""}"
-                </span>
-            </div>
+        {#if !showStarterSuggestions}
+            <CustomQuickActions
+                prompts={customFeedbackPrompts}
+                disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                compact
+                panel="feedback"
+                theme="green"
+                onPrompt={useQuickPrompt}
+            />
         {/if}
 
         <form onsubmit={handleSubmit} class="flex flex-col gap-2">
