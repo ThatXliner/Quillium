@@ -12,6 +12,7 @@ import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
 import {
     annotations,
+    currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
     documentContent,
@@ -88,7 +89,14 @@ function shouldShowForScreenshot(): boolean {
 
 const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured || shouldShowForScreenshot());
+// Live-collab room key: still per-draft (the live room mirrors one editor view).
 const currentId = $derived($currentDraftId ?? "");
+// Web-preview / read-only share key: one share per *document*. Omni renders a
+// single view today, so the preview always reflects the last active tab+draft
+// the user published from — not a separate link per draft. Re-keying on the
+// document id (rather than adding a multi-tab payload) keeps the door open for
+// Omni rendering multiple tabs later without changing the share identity.
+const shareId = $derived($currentDocumentId ?? "");
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
 const shareComparisonPayload = $derived(
     readonlyShare?.enabled
@@ -128,7 +136,7 @@ const draftAnnotationCount = $derived(
 );
 
 async function refreshReadonlyShare() {
-    if (!authenticated || !currentId) {
+    if (!authenticated || !shareId) {
         readonlyShare = null;
         readonlyShareState.set(null);
         return;
@@ -136,7 +144,7 @@ async function refreshReadonlyShare() {
 
     shareLoading = true;
     try {
-        readonlyShare = await getReadonlyShare(currentId);
+        readonlyShare = await getReadonlyShare(shareId);
         readonlyShareState.set(readonlyShare);
     } catch (err) {
         console.error("[share] Failed to load readonly share:", err);
@@ -162,7 +170,7 @@ $effect(() => {
 });
 
 $effect(() => {
-    if (!authenticated || !currentId) {
+    if (!authenticated || !shareId) {
         readonlyShare = null;
         readonlyShareState.set(null);
         return;
@@ -250,11 +258,14 @@ function formatShareTimestamp(value: string | null): string {
 
 function buildPublishPayload() {
     const view = get(editorView);
+    // Content + annotations come from the live editor view — i.e. the last
+    // active tab+draft. The share row is keyed by the *document* (shareId), so
+    // updating from a different draft replaces what the single Omni view shows.
     const content = view?.state.doc.toString() ?? $documentContent;
     const liveAnnotations = view?.state.field(annotationField, false) ?? $annotations;
 
     return {
-        documentId: currentId,
+        documentId: shareId,
         ownerId: getUser()?.id ?? "",
         title: $currentDocumentTitle,
         content,
@@ -271,7 +282,7 @@ async function copyReadonlyLink() {
 
 async function publishCurrentSnapshot() {
     const user = getUser();
-    if (!user || !currentId) {
+    if (!user || !shareId) {
         toast.error("Open a document and sign in to publish it");
         return;
     }
@@ -313,7 +324,7 @@ async function toggleReadonlyShare() {
 
     shareBusy = true;
     try {
-        readonlyShare = await disableReadonlyShare(currentId);
+        readonlyShare = await disableReadonlyShare(shareId);
         readonlyShareState.set(readonlyShare);
         posthog.capture("readonly_share_disabled");
         toast.success("Public link turned off");
@@ -484,7 +495,7 @@ async function handleToggle() {
                 type="button"
                 class="pointer-events-none inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-blue-500/15 bg-blue-500/10 px-3 text-xs font-[650] text-blue-700 shadow-[0_10px_28px_rgba(59,130,246,0.12),inset_0_1px_0_rgba(255,255,255,0.7)] opacity-0 transition-[background,color,transform,opacity,visibility] duration-150 invisible -translate-y-2 scale-95 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:scale-100 group-focus-within:opacity-100 hover:bg-blue-500/20 hover:text-blue-800 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:pointer-events-auto max-[520px]:visible max-[520px]:translate-y-0 max-[520px]:scale-100 max-[520px]:opacity-100"
                 onclick={updateWebPreviewQuickAction}
-                disabled={shareBusy || shareLoading || !currentId}
+                disabled={shareBusy || shareLoading || !shareId}
             >
                 {#if shareBusy}
                     <span class="animate-spin" aria-hidden="true">
@@ -592,7 +603,7 @@ async function handleToggle() {
                                         aria-checked={readonlyShare?.enabled ?? false}
                                         aria-label="Toggle public read-only link"
                                         onclick={toggleReadonlyShare}
-                                        disabled={shareBusy || shareLoading || !currentId}
+                                        disabled={shareBusy || shareLoading || !shareId}
                                     >
                                         <span class={`block size-[25px] rounded-full bg-white shadow-[0_3px_10px_rgba(0,0,0,0.18)] transition-transform duration-200 ease-out ${readonlyShare?.enabled ? "translate-x-[21px]" : "translate-x-0"}`}></span>
                                     </button>
@@ -621,7 +632,7 @@ async function handleToggle() {
                                     <button
                                         class={`inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 max-[520px]:w-full ${shareUpToDate ? "bg-black/20 text-white/90" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-45`}
                                         onclick={publishCurrentSnapshot}
-                                        disabled={shareBusy || shareLoading || !currentId || shareUpToDate}
+                                        disabled={shareBusy || shareLoading || !shareId || shareUpToDate}
                                     >
                                         {#if shareBusy}
                                             <span class="animate-spin" aria-hidden="true">
