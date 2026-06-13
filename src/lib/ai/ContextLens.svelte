@@ -3,7 +3,6 @@ import {
     ArrowRightIcon,
     BookOpenIcon,
     FileTextIcon,
-    InfoIcon,
     MousePointer2Icon,
     NotebookTabsIcon,
     MessageSquareTextIcon,
@@ -23,6 +22,7 @@ import {
     contextScopeDetail,
     contextScopeLabel,
     getContextAwareActions,
+    shouldShowContextSummary,
     type ContextAction,
 } from "./context";
 
@@ -58,12 +58,7 @@ const packet = $derived(
 );
 const actions = $derived(getContextAwareActions(mode, packet));
 const activeSources = $derived(packet.sources.filter((source) => source.active));
-const showContextSummary = $derived(
-    packet.scope !== "document" ||
-        packet.omittedDocumentChars > 0 ||
-        packet.writerContext.length > 0,
-);
-const contextInfoLabel = $derived(`${contextScopeLabel(packet)}. ${contextScopeDetail(packet)}`);
+const showContextSummary = $derived(shouldShowContextSummary(packet));
 
 const theme = $derived(
     mode === "feedback"
@@ -138,17 +133,6 @@ function sourceIcon(id: string) {
                     {/each}
                 </div>
             {/if}
-        </div>
-    {:else}
-        <div class="flex justify-end">
-            <button
-                type="button"
-                aria-label="Context: {contextInfoLabel}"
-                title={contextInfoLabel}
-                class="inline-flex h-6 w-6 items-center justify-center rounded-md text-black/25 transition-colors hover:bg-white/60 hover:text-black/45 focus:outline-none focus:ring-2 {theme.ring}"
-            >
-                <InfoIcon size={13} />
-            </button>
         </div>
     {/if}
 

@@ -588,6 +588,14 @@ export function contextScopeDetail(packet: AiContextPacket): string {
         : "Type, paste, or open a draft to give the AI writing context.";
 }
 
+export function shouldShowContextSummary(packet: AiContextPacket): boolean {
+    return (
+        packet.scope !== "document" ||
+        packet.omittedDocumentChars > 0 ||
+        packet.writerContext.length > 0
+    );
+}
+
 export function getContextAwareActions(
     mode: "chat" | "feedback" | "revise",
     packet: AiContextPacket,
