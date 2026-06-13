@@ -15,7 +15,8 @@ jobs:
         include:
           - platform: "macos-latest" # ARM (M1 and above)
             args: "--target aarch64-apple-darwin"
-          # Intel Mac build disabled until TAURI_SIGNING_PRIVATE_KEY is verified
+          # No Intel/x86_64 macOS build: ort (ONNX Runtime via fastembed) ships
+          # no prebuilt x86_64-apple-darwin binary, so the build fails. arm64 only.
           # - platform: "macos-latest"
           #   args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-latest"
@@ -51,7 +52,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          # arm64 only — Intel/x86_64 macOS is unsupported (ort ships no
+          # prebuilt x86_64-apple-darwin binary; see build-mas job).
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -138,7 +141,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          # arm64 only — Apple Silicon. ort (ONNX Runtime via fastembed) ships no
+          # prebuilt x86_64-apple-darwin binary, so a universal/Intel build fails.
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -182,7 +187,7 @@ jobs:
         run: |
           echo "$APPLE_MAS_PROVISIONING_PROFILE" | base64 --decode > src-tauri/embedded.provisionprofile
 
-      - name: Build universal MAS app
+      - name: Build MAS app (arm64)
         env:
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -198,7 +203,7 @@ jobs:
           bun run tauri build \
             --config src-tauri/tauri.mas.conf.json \
             --bundles app \
-            --target universal-apple-darwin
+            --target aarch64-apple-darwin
 
       - name: Package as .pkg
         env:
@@ -206,7 +211,7 @@ jobs:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" mas.keychain
-          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/Quillium.app"
+          APP_PATH="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Quillium.app"
           xcrun productbuild \
             --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
             --keychain mas.keychain \
