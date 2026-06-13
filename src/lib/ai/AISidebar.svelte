@@ -26,6 +26,34 @@
     components; aiProcessing from settings.svelte.ts; posthog analytics.
 -->
 <script lang="ts">
+import {
+    aiProcessing,
+    documentContext,
+    ensureApiKeyLoaded,
+    hasApiKey,
+    stopAllAi,
+} from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import {
+    activeAnnotation,
+    annotations,
+    documentContent,
+    selectedText,
+    selectedTextRange,
+} from "$lib/stores";
+import {
+    CompassIcon,
+    InfoIcon,
+    MessageCircleIcon,
+    Minimize2Icon,
+    PenLineIcon,
+    SettingsIcon,
+    SquareIcon,
+    UsersIcon,
+    XIcon,
+    ZapIcon,
+} from "lucide-svelte";
 /*
  * AISidebar.svelte
  *
@@ -58,40 +86,12 @@
  *     cursor without animation lag.
  */
 import { tick } from "svelte";
-import Chat from "./Chat.svelte";
-import Feedback from "./Feedback.svelte";
-import Revise from "./Revise.svelte";
 import AISettings from "./AISettings.svelte";
+import Chat from "./Chat.svelte";
 import DocumentContext from "./DocumentContext.svelte";
+import Feedback from "./Feedback.svelte";
 import Readers from "./Readers.svelte";
-import {
-    MessageCircleIcon,
-    ZapIcon,
-    PenLineIcon,
-    XIcon,
-    SettingsIcon,
-    CompassIcon,
-    Minimize2Icon,
-    UsersIcon,
-    SquareIcon,
-    InfoIcon,
-} from "lucide-svelte";
-import {
-    aiProcessing,
-    hasApiKey,
-    ensureApiKeyLoaded,
-    stopAllAi,
-    documentContext,
-} from "$lib/ai/settings.svelte";
-import {
-    activeAnnotation,
-    annotations,
-    documentContent,
-    selectedText,
-    selectedTextRange,
-} from "$lib/stores";
-import { appEventBus } from "$lib/events/appEventBus";
-import posthog from "$lib/posthog";
+import Revise from "./Revise.svelte";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
     buildAiContextPacket,
@@ -256,6 +256,22 @@ const headerContextRing = $derived(
           ? "focus:ring-purple-500"
           : "focus:ring-blue-500",
 );
+
+// Context detail popover (opened by the header info button). Lists each
+// context source from the packet so the writer can see exactly what the AI
+// will be shown. Closed on click-outside, Escape, panel switch, or when the
+// info button itself stops rendering.
+let showContextPopover = $state(false);
+const contextPopoverSources = $derived(headerContextPacket?.sources ?? []);
+
+// Auto-close the popover when the info button is no longer relevant (e.g. the
+// user switched to a panel without context, or selection/draft state changed
+// so the button stops rendering).
+$effect(() => {
+    if (!showHeaderContextInfo && showContextPopover) {
+        showContextPopover = false;
+    }
+});
 
 // Inline style when expanded: always set width/height so tab-specific defaults
 // and reset-to-default transitions animate smoothly.
@@ -446,7 +462,27 @@ const actionKeys: Record<string, NonNullable<Action>> = {
     "5": "readers",
 };
 
+// Dismiss the context popover when clicking anywhere inside the sidebar that
+// isn't the info button or the popover itself. The sidebar container stops
+// click propagation to the window, so handleClickOutside never fires for
+// in-sidebar clicks — this handler covers that gap.
+function handleSidebarClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (!showContextPopover) return;
+    const target = e.target as Element;
+    if (target.closest?.(".context-popover") || target.closest?.("[data-context-info-button]")) {
+        return;
+    }
+    showContextPopover = false;
+}
+
 function handleKeydown(e: KeyboardEvent) {
+    // Escape closes the context popover first, before the sidebar itself.
+    if (e.key === "Escape" && showContextPopover) {
+        showContextPopover = false;
+        e.stopPropagation();
+        return;
+    }
     // Escape closes the sidebar
     if (e.key === "Escape" && expanded) {
         // Only close if focus is not inside an input/textarea in the sidebar
@@ -476,7 +512,7 @@ function handleKeydown(e: KeyboardEvent) {
 <div
     id="ai-sidebar"
     bind:this={container}
-    onclick={(e) => e.stopPropagation()}
+    onclick={handleSidebarClick}
     style={containerSizeStyle}
     class="
         fixed left-4 top-1/2 -translate-y-1/2 z-50
@@ -578,15 +614,61 @@ function handleKeydown(e: KeyboardEvent) {
                     <Minimize2Icon size={14} />
                 </button>
             {/if}
-            {#if showHeaderContextInfo}
-                <button
-                    type="button"
-                    aria-label="Context: {headerContextInfoLabel}"
-                    title={headerContextInfoLabel}
-                    class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0 focus:outline-none focus:ring-2 {headerContextRing}"
-                >
-                    <InfoIcon size={14} />
-                </button>
+            {#if showHeaderContextInfo && headerContextPacket}
+                <div class="relative shrink-0">
+                    <button
+                        type="button"
+                        data-context-info-button
+                        onclick={() => (showContextPopover = !showContextPopover)}
+                        aria-label="Context: {headerContextInfoLabel}"
+                        aria-haspopup="dialog"
+                        aria-expanded={showContextPopover}
+                        title={headerContextInfoLabel}
+                        class="p-1.5 rounded-full transition-colors focus:outline-none focus:ring-2 {headerContextRing}
+                            {showContextPopover
+                                ? 'text-black/60 bg-white/60'
+                                : 'text-black/30 hover:text-black/60 hover:bg-white/40'}"
+                    >
+                        <InfoIcon size={14} />
+                    </button>
+                    {#if showContextPopover}
+                        <div
+                            class="context-popover absolute right-0 top-full mt-1.5 z-10 w-64
+                                rounded-xl border border-black/10 bg-white/95 backdrop-blur-md
+                                shadow-lg p-3 text-left"
+                            role="dialog"
+                            aria-label="AI context details"
+                        >
+                            <p class="text-[11px] font-semibold text-black/70 leading-snug">
+                                {contextScopeLabel(headerContextPacket)}
+                            </p>
+                            <p class="mt-0.5 text-[10px] text-black/45 leading-relaxed">
+                                {contextScopeDetail(headerContextPacket)}
+                            </p>
+                            <div class="mt-2.5 flex flex-col gap-1.5">
+                                {#each contextPopoverSources as source (source.id)}
+                                    <div class="flex items-start gap-2">
+                                        <span
+                                            class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full
+                                                {source.active ? 'bg-emerald-500' : 'bg-black/15'}"
+                                        ></span>
+                                        <div class="min-w-0 flex-1">
+                                            <p
+                                                class="text-[10px] font-medium leading-tight
+                                                    {source.active ? 'text-black/70' : 'text-black/35'}"
+                                            >
+                                                {source.label}
+                                            </p>
+                                            <p class="text-[10px] text-black/40 leading-snug truncate">
+                                                {source.detail}
+                                            </p>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+                </div>
             {/if}
             <button
                 onclick={() => (action = action === "settings" ? null : "settings")}
