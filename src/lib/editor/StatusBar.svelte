@@ -33,7 +33,7 @@ import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, Download, History, LayoutGrid, Settings } from "lucide-svelte";
+import { BarChart3, Download, History, LayoutGrid, Settings, X } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -52,20 +52,30 @@ let stripOverflows = $state(false);
 let canScrollLeft = $state(false);
 let canScrollRight = $state(false);
 let exportOpen = $state(false);
-let exportWrapperEl = $state<HTMLDivElement>();
-let exportButtonEl = $state<HTMLButtonElement>();
-let exportMenuEl = $state<HTMLDivElement>();
-let exportMenuStyle = $state("");
 let exporting = $state(false);
 
-const exportItems: { format: ExportFormat; label: string }[] = [
-    { format: "txt", label: "Plain Text" },
-    { format: "txt+json", label: "Text + Annotations" },
-    { format: "json", label: "JSON" },
-    { format: "md", label: "Markdown" },
-    { format: "pdf", label: "PDF" },
-    { format: "pdf+annotations", label: "PDF + Annotations" },
+const exportItems: { format: ExportFormat; label: string; hint: string }[] = [
+    { format: "txt", label: "Plain Text", hint: "Document text only (.txt)" },
+    { format: "txt+json", label: "Text + Annotations", hint: "Text with annotations appended (.txt)" },
+    { format: "json", label: "JSON", hint: "Structured text + annotations (.json)" },
+    { format: "md", label: "Markdown", hint: "Text with annotations as footnotes (.md)" },
+    { format: "pdf", label: "PDF", hint: "Formatted document (.pdf)" },
+    { format: "pdf+annotations", label: "PDF + Annotations", hint: "Document plus annotation cards (.pdf)" },
 ];
+
+// Portal the export modal to <body>. The status bar uses backdrop-blur, which
+// establishes a containing block AND a clip region for position:fixed
+// descendants — so a modal rendered inline would be clipped to the bar instead
+// of covering the viewport (#258). Re-parenting to <body> lets `fixed inset-0`
+// resolve against the viewport, matching how the app's other modals mount.
+function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return {
+        destroy() {
+            node.remove();
+        },
+    };
+}
 
 function updateScrollState() {
     if (!secondaryStrip) return;
@@ -111,32 +121,12 @@ function toggleFollow(clientId: number) {
     followedClientId.set($followedClientId === clientId ? null : clientId);
 }
 
-function handleWindowClick(e: MouseEvent) {
-    const target = e.target as Node;
-    if (exportOpen && !exportWrapperEl?.contains(target) && !exportMenuEl?.contains(target)) {
-        exportOpen = false;
-    }
+function closeExport() {
+    exportOpen = false;
 }
 
-function positionExportMenu() {
-    if (!exportButtonEl || typeof window === "undefined") return;
-
-    const rect = exportButtonEl.getBoundingClientRect();
-    const menuWidth = 192;
-    const edgePadding = 12;
-    const center = Math.min(
-        window.innerWidth - edgePadding - menuWidth / 2,
-        Math.max(edgePadding + menuWidth / 2, rect.left + rect.width / 2),
-    );
-    const top = Math.max(edgePadding, rect.top - 8);
-    exportMenuStyle = `left: ${center}px; top: ${top}px;`;
-}
-
-function toggleExportMenu() {
-    exportOpen = !exportOpen;
-    if (exportOpen) {
-        positionExportMenu();
-    }
+function handleExportKeydown(e: KeyboardEvent) {
+    if (exportOpen && e.key === "Escape") closeExport();
 }
 
 async function doExport(format: ExportFormat) {
@@ -167,11 +157,7 @@ $effect(() => {
 });
 </script>
 
-<svelte:window
-    onclick={handleWindowClick}
-    onresize={positionExportMenu}
-    onscroll={positionExportMenu}
-/>
+<svelte:window onkeydown={handleExportKeydown} />
 
 {#if $settingsOpen}
     <SettingsModal
@@ -182,6 +168,63 @@ $effect(() => {
             $editorView?.focus();
         }}
     />
+{/if}
+
+{#if exportOpen}
+    <!-- Export modal — replaces the old upward-opening popup (#258): a centered
+         dialog can't clip or spill off-screen and matches the app's other modals. -->
+    <div
+        use:portal
+        class="fixed inset-0 z-[9999]"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Export document"
+    >
+        <button
+            type="button"
+            class="absolute inset-0 bg-black/55 border-0 p-0 cursor-default"
+            aria-label="Close"
+            tabindex="-1"
+            onclick={closeExport}
+        ></button>
+
+        <div
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] max-w-[calc(100vw-2rem)] bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-black/[0.06]"
+            role="document"
+        >
+            <div class="flex items-start justify-between px-7 pt-7 pb-0 shrink-0">
+                <div>
+                    <h3 class="text-xl font-bold text-black/85 leading-tight">Export document</h3>
+                    <p class="text-xs text-black/35 mt-1">Choose a format to save your document</p>
+                </div>
+                <button
+                    type="button"
+                    onclick={closeExport}
+                    aria-label="Close"
+                    class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                >
+                    <X size={16} />
+                </button>
+            </div>
+
+            <div class="px-7 pt-5 pb-7 grid grid-cols-1 gap-2">
+                {#each exportItems as item}
+                    <button
+                        type="button"
+                        onclick={() => doExport(item.format)}
+                        disabled={exporting || !$editorView}
+                        class="flex items-center gap-3 w-full px-4 py-3 text-left rounded-xl border border-black/[0.06] bg-black/[0.02] transition-colors hover:bg-purple-50 hover:border-purple-200 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                        <Download size={18} class="text-purple-400 shrink-0" />
+                        <span class="min-w-0">
+                            <span class="block text-sm font-medium text-black/80">{item.label}</span>
+                            <span class="block text-xs text-black/40 truncate">{item.hint}</span>
+                        </span>
+                    </button>
+                {/each}
+            </div>
+        </div>
+    </div>
 {/if}
 
 <div
@@ -298,39 +341,15 @@ $effect(() => {
             >
                 <BarChart3 size={20} />
             </button>
-            <div
-                class="relative shrink-0"
-                bind:this={exportWrapperEl}
+            <button
+                onclick={() => (exportOpen = true)}
+                aria-label="Export document"
+                title="Export ({modKey}Shift+E)"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                    {exportOpen ? 'text-purple-600' : 'text-purple-400 hover:text-purple-600'}"
             >
-                <button
-                    bind:this={exportButtonEl}
-                    onclick={toggleExportMenu}
-                    aria-label="Export document"
-                    title="Export ({modKey}Shift+E)"
-                    class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
-                        {exportOpen ? 'text-purple-600' : 'text-purple-400 hover:text-purple-600'}"
-                >
-                    <Download size={20} />
-                </button>
-                {#if exportOpen}
-                    <div
-                        bind:this={exportMenuEl}
-                        class="fixed z-[80] w-48 -translate-x-1/2 -translate-y-full overflow-hidden rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-md"
-                        style={exportMenuStyle}
-                    >
-                        {#each exportItems as item}
-                            <button
-                                type="button"
-                                onclick={() => doExport(item.format)}
-                                disabled={exporting || !$editorView}
-                                class="w-full px-3 py-2 text-left text-xs text-black/65 transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-45"
-                            >
-                                {item.label}
-                            </button>
-                        {/each}
-                    </div>
-                {/if}
-            </div>
+                <Download size={20} />
+            </button>
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
         <!-- Right side (pinned) -->
