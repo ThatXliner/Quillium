@@ -1,9 +1,6 @@
 <script lang="ts">
-import {
-    contextSummaryPrefs,
-    documentContext,
-    setCollapseContextSummary,
-} from "$lib/ai/settings.svelte";
+import { documentContext } from "$lib/ai/settings.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
 import {
     activeAnnotation,
     annotations,
@@ -67,8 +64,13 @@ const activeSources = $derived(packet.sources.filter((source) => source.active))
 // collapsed it into the header info (ℹ) icon. AISidebar surfaces the same
 // packet via that icon's popover whenever this card is hidden.
 const showContextSummary = $derived(
-    shouldShowContextSummary(packet) && !contextSummaryPrefs.collapsed,
+    shouldShowContextSummary(packet) && !appSettings.collapseContextSummary,
 );
+
+function hideContextSummary() {
+    appSettings.collapseContextSummary = true;
+    persistSettings();
+}
 
 const theme = $derived(
     mode === "feedback"
@@ -128,7 +130,7 @@ function sourceIcon(id: string) {
                 </div>
                 <button
                     type="button"
-                    onclick={() => setCollapseContextSummary(true)}
+                    onclick={hideContextSummary}
                     aria-label="Hide context summary (collapse into the info icon)"
                     title="Hide — collapse into the info icon"
                     class="-mt-0.5 -mr-0.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5

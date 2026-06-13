@@ -34,12 +34,10 @@ import type { Provider } from "$lib/ai/provider";
 import {
     HAS_API_KEY_KEY,
     aiSettings,
-    contextSummaryPrefs,
     hasApiKey,
     loadApiKeyForProvider,
     persistBaseUrl,
     resetApiKeyLoadPromise,
-    setCollapseContextSummary,
 } from "$lib/ai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
@@ -243,7 +241,6 @@ function updateBaseUrl(url: string) {
 }
 
 let saveError = $state("");
-let showAdvanced = $state(false);
 
 async function saveApiKey() {
     clearTimeout(saveTimer);
@@ -552,65 +549,6 @@ async function saveApiKey() {
             </p>
         </div>
     {/if}
-
-    <!-- Advanced -->
-    <div class="flex flex-col gap-2">
-        <button
-            type="button"
-            onclick={() => (showAdvanced = !showAdvanced)}
-            aria-expanded={showAdvanced}
-            class="flex items-center gap-2 rounded-lg bg-white/50 border border-black/10 px-3 py-2.5 text-left transition-colors hover:bg-white/70"
-        >
-            <ChevronDownIcon
-                size={13}
-                class="text-black/40 shrink-0 transition-transform duration-200
-                    {showAdvanced ? 'rotate-0' : '-rotate-90'}"
-            />
-            <div class="flex-1 min-w-0">
-                <p class="text-xs font-medium text-black/70 leading-tight">Advanced</p>
-                <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
-                    Fine-tune how the AI panels behave
-                </p>
-            </div>
-        </button>
-        {#if showAdvanced}
-            <div class="flex flex-col gap-2 pl-1">
-                <!-- Whole row is a convenience hit-target; the inner role="switch"
-                     button carries the real keyboard/ARIA semantics. -->
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
-                    onclick={() => setCollapseContextSummary(!contextSummaryPrefs.collapsed)}
-                    class="flex items-center gap-2 rounded-lg bg-white/50 border border-black/10 px-3 py-2.5 text-left transition-colors hover:bg-white/70 cursor-pointer"
-                >
-                    <div class="flex-1 min-w-0">
-                        <p class="text-xs font-medium text-black/70 leading-tight">
-                            Collapse context summary
-                        </p>
-                        <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
-                            Hide the "AI can see your selection" card and tuck it into the info (ℹ) icon
-                        </p>
-                    </div>
-                    <button
-                        role="switch"
-                        aria-checked={contextSummaryPrefs.collapsed}
-                        aria-label="Collapse context summary into the info icon"
-                        onclick={(e) => {
-                            e.stopPropagation();
-                            setCollapseContextSummary(!contextSummaryPrefs.collapsed);
-                        }}
-                        class="relative shrink-0 w-8 h-4.5 rounded-full transition-colors duration-200
-                            {contextSummaryPrefs.collapsed ? 'bg-blue-500' : 'bg-black/15'}"
-                    >
-                        <span
-                            class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200
-                                {contextSummaryPrefs.collapsed ? 'translate-x-3.5' : 'translate-x-0'}"
-                        ></span>
-                    </button>
-                </div>
-            </div>
-        {/if}
-    </div>
 
     <!-- Third-party notice -->
     <p class="text-[10px] text-black/30 leading-relaxed px-0.5">

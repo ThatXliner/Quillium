@@ -36,6 +36,9 @@ type AppSettings = {
     wordCountDisplayMode: "words" | "chars" | "both";
     autoVersionOnRevisionCreate: boolean;
     showAiSuggestions: boolean;
+    // When true, the AI panels hide the "AI can see your selection" context
+    // summary card and tuck it into the header info (ℹ) icon instead.
+    collapseContextSummary: boolean;
     checkForUpdates: boolean;
     grammarCheckEnabled: boolean;
     grammarDialect: "american" | "british" | "australian";
@@ -71,6 +74,7 @@ const DEFAULTS: AppSettings = {
     wordCountDisplayMode: "both",
     autoVersionOnRevisionCreate: true,
     showAiSuggestions: true,
+    collapseContextSummary: false,
     checkForUpdates: true,
     grammarCheckEnabled: true,
     grammarDialect: "american",

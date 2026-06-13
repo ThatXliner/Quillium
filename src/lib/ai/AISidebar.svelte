@@ -28,7 +28,6 @@
 <script lang="ts">
 import {
     aiProcessing,
-    contextSummaryPrefs,
     documentContext,
     ensureApiKeyLoaded,
     hasApiKey,
@@ -36,6 +35,7 @@ import {
 } from "$lib/ai/settings.svelte";
 import { appEventBus } from "$lib/events/appEventBus";
 import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
 import {
     activeAnnotation,
     annotations,
@@ -244,12 +244,12 @@ const headerContextPacket = $derived(
 );
 // The header info (ℹ) icon stands in for the in-panel context summary card
 // whenever that card isn't shown — either because the packet doesn't warrant a
-// full summary, or because the writer collapsed it via "Hide" / Advanced
-// settings (contextSummaryPrefs.collapsed). ContextLens hides its card under
-// the same conditions, so exactly one of the two is visible at a time.
+// full summary, or because the writer collapsed it via "Hide" / Settings
+// (appSettings.collapseContextSummary). ContextLens hides its card under the
+// same conditions, so exactly one of the two is visible at a time.
 const showHeaderContextInfo = $derived(
     headerContextPacket !== null &&
-        (contextSummaryPrefs.collapsed || !shouldShowContextSummary(headerContextPacket)),
+        (appSettings.collapseContextSummary || !shouldShowContextSummary(headerContextPacket)),
 );
 const headerContextInfoLabel = $derived(
     headerContextPacket
