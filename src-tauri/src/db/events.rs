@@ -121,7 +121,22 @@ pub fn create_named_snapshot(
          VALUES (?1, ?2, ?3, ?4, ?5)",
         params![draft_id, up_to_event_id, state_json, now, label],
     )?;
-    Ok(conn.last_insert_rowid())
+    let snapshot_id = conn.last_insert_rowid();
+    // Named checkpoints are user-visible milestones — surface them in the
+    // document-level timeline too.
+    if let Ok((doc_id, draft_label)) = conn.query_row(
+        "SELECT document_id, label FROM drafts WHERE id = ?1",
+        params![draft_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    ) {
+        let _ = super::tabs::log_doc_event(
+            conn,
+            &doc_id,
+            "checkpoint_created",
+            &serde_json::json!({ "draftId": draft_id, "draftLabel": draft_label, "label": label }),
+        );
+    }
+    Ok(snapshot_id)
 }
 
 pub fn list_snapshots(conn: &Connection, draft_id: &str) -> Result<Vec<SnapshotMeta>> {

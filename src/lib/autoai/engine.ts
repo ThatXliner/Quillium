@@ -14,19 +14,28 @@ import { z } from "zod";
 import { annotations, documentContent, editorView } from "$lib/stores";
 import posthog from "$lib/posthog";
 import { createModel } from "$lib/ai/provider";
-import { aiSettings, documentContext, ensureApiKeyLoaded } from "$lib/ai/settings.svelte";
-import { beginAiTask, endAiTask, getAiAbortSignal } from "$lib/ai/settings.svelte";
-import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
+import {
+    aiSettings,
+    documentContext,
+    ensureApiKeyLoaded,
+    beginAiTask,
+    endAiTask,
+    getAiAbortSignal,
+} from "$lib/ai/settings.svelte";
+import {
+    buildAiContextPacket,
+    contextPacketToPrompt,
+} from "$lib/ai/context";
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildDocumentContextPrompt } from "$lib/ai/utils";
 import {
     createComment,
-    createSuggestion,
     createRevision,
+    createSuggestion,
 } from "$lib/editor/plugins/annotations/index";
-import { autoAISettings, type AutoAIConservativeness } from "./settings.svelte";
-import { toast } from "svelte-sonner";
 import { appEventBus } from "$lib/events/appEventBus";
+import { toast } from "svelte-sonner";
+import { type AutoAIConservativeness, autoAISettings } from "./settings.svelte";
 
 export type AutoAIPhase = "idle" | "thinking" | "reviewing";
 
@@ -255,6 +264,9 @@ export function startAutoAI() {
     unsubscribe = documentContent.subscribe((content) => {
         if (!autoAISettings.enabled) return;
         if (autoAISettings.mode !== "continuous") return;
+        // Locked drafts are read-only — don't burn an AI call reviewing
+        // text that can't be annotated (#160).
+        if (get(editorView)?.state.readOnly) return;
         const diff = Math.abs(content.length - lastReviewedContent.length);
         if (diff < MIN_DIFF_CHARS && lastReviewedContent !== "") return;
         scheduleReview(content);

@@ -181,9 +181,12 @@ src-tauri/src/
 ├── pdf_export.rs                # PDF export with annotation cards
 └── db/
     ├── mod.rs                   # Re-exports and shared types
-    ├── schema.rs                # SQLite schema + migrations
+    ├── schema.rs                # DB open + WAL pragmas; runs migrations
+    ├── migrations.rs            # Versioned migration framework (PRAGMA user_version)
     ├── documents.rs             # Document CRUD, trash, drafts
     ├── events.rs                # Event log append, snapshot CRUD
+    ├── tabs.rs                  # Tab CRUD, iterate/branch, run relocking
+    ├── search.rs                # FTS5 + semantic search (query, KNN, RRF)
     └── load.rs                  # State reconstruction from snapshots
 ```
 

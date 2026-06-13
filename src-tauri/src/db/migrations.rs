@@ -114,6 +114,16 @@ pub const MIGRATIONS: &[Migration] = &[
             ",
         ),
     },
+    Migration {
+        version: 6,
+        name: "tabs_and_draft_tree",
+        kind: MigrationKind::Rust(tabs_and_draft_tree),
+    },
+    Migration {
+        version: 7,
+        name: "draft_branch_relation",
+        kind: MigrationKind::Rust(draft_branch_relation),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.
@@ -154,6 +164,133 @@ fn snapshots_label(conn: &Connection) -> Result<()> {
     if !column_exists(conn, "snapshots", "label")? {
         conn.execute(
             "ALTER TABLE snapshots ADD COLUMN label TEXT DEFAULT NULL",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
+/// Document tabs + draft branching (#160). Existing drafts are attached to
+/// a default "Main" tab so pre-tabs documents keep loading through the new
+/// active-tab/active-draft resolution path.
+fn tabs_and_draft_tree(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS tabs (
+            id          TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            tab_type    TEXT NOT NULL DEFAULT 'draft',
+            label       TEXT NOT NULL DEFAULT 'Main',
+            position    INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS doc_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            event_type  TEXT NOT NULL,
+            payload     TEXT NOT NULL,
+            created_at  INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tabs_document ON tabs(document_id, position ASC);
+        CREATE INDEX IF NOT EXISTS idx_doc_events_document ON doc_events(document_id, id DESC);
+        ",
+    )?;
+
+    if !column_exists(conn, "drafts", "tab_id")? {
+        conn.execute(
+            "ALTER TABLE drafts ADD COLUMN tab_id TEXT DEFAULT NULL REFERENCES tabs(id) ON DELETE CASCADE",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "drafts", "parent_draft_id")? {
+        conn.execute(
+            "ALTER TABLE drafts ADD COLUMN parent_draft_id TEXT DEFAULT NULL REFERENCES drafts(id) ON DELETE SET NULL",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "drafts", "locked")? {
+        conn.execute(
+            "ALTER TABLE drafts ADD COLUMN locked INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "tabs", "deleted_at")? {
+        conn.execute(
+            "ALTER TABLE tabs ADD COLUMN deleted_at INTEGER DEFAULT NULL",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "drafts", "deleted_at")? {
+        conn.execute(
+            "ALTER TABLE drafts ADD COLUMN deleted_at INTEGER DEFAULT NULL",
+            [],
+        )?;
+    }
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drafts_tab ON drafts(tab_id)",
+        [],
+    )?;
+
+    let doc_ids: Vec<String> = {
+        let mut stmt =
+            conn.prepare("SELECT DISTINCT document_id FROM drafts WHERE tab_id IS NULL")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>>>()?
+    };
+
+    for doc_id in doc_ids {
+        let existing_tab = conn
+            .query_row(
+                "SELECT id FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL
+                 ORDER BY position ASC LIMIT 1",
+                params![doc_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let tab_id = match existing_tab {
+            Some(id) => id,
+            None => {
+                let id = uuid::Uuid::new_v4().to_string();
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as i64;
+                conn.execute(
+                    "INSERT INTO tabs (id, document_id, tab_type, label, position, created_at)
+                     VALUES (?1, ?2, 'draft', 'Main', 0, ?3)",
+                    params![id, doc_id, now],
+                )?;
+                id
+            }
+        };
+        conn.execute(
+            "UPDATE drafts SET tab_id = ?1 WHERE document_id = ?2 AND tab_id IS NULL",
+            params![tab_id, doc_id],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Splits the single draft-tree link into two relations (#160):
+///   - `parent_draft_id` — the previous *iteration* (rendered as a flat run)
+///   - `branched_from`    — the *branch* origin (rendered indented)
+/// A draft sets at most one. Pre-existing children were created by the old
+/// fork-as-child model, so their `parent_draft_id` link is reinterpreted as
+/// a branch: move it to `branched_from` to preserve the existing tree shape.
+fn draft_branch_relation(conn: &Connection) -> Result<()> {
+    if !column_exists(conn, "drafts", "branched_from")? {
+        conn.execute(
+            "ALTER TABLE drafts ADD COLUMN branched_from TEXT DEFAULT NULL REFERENCES drafts(id) ON DELETE SET NULL",
+            [],
+        )?;
+        // Old forks were children via parent_draft_id; they meant "branch".
+        conn.execute(
+            "UPDATE drafts SET branched_from = parent_draft_id, parent_draft_id = NULL
+             WHERE parent_draft_id IS NOT NULL",
             [],
         )?;
     }

@@ -43,7 +43,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 | [Annotations](./annotations.md) | Data model, annotationField, three-phase update, undo/redo |
 | [Nested Editors](./nested-editors.md) | Controller lifecycle, parent sync, infinite nesting |
 | [View Plugins](./view-plugins.md) | Decorations, atomic ranges, collapsed resolver, nudge |
-| [Persistence](./persistence.md) | Event log, snapshots, crash safety matrix |
+| [Persistence](./persistence.md) | Event log, snapshots, crash safety matrix, schema migrations |
 | [Collaboration](./collaboration.md) | Yjs sync, relay architecture, awareness, owner/joiner flows |
 | [AutoAI](./autoai.md) | Review engine, widget UI, face state machine |
 | [Reader Personas](./reader-personas.md) | Multi-persona parallel feedback system |

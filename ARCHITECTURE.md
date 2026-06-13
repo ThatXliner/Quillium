@@ -5,6 +5,7 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 ## Quick Orientation
 
 - **Main routes**: `/` (editor), `/library` (document grid), `/history` (version browser)
+- **Document hierarchy**: document → tabs (top bar) → draft tree per tab (left panel); events/snapshots are draft-scoped
 - **Two state worlds**: CodeMirror (immutable, transaction-based) and Svelte stores (reactive, manually synced)
 - **Always use `isAnnotationOfType(annotation, "revision")`** — never compare `_type` directly
 
@@ -31,7 +32,8 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 | [Annotations](./docs/annotations.md) | Data model, annotationField, undo/redo |
 | [Nested Editors](./docs/nested-editors.md) | Controller lifecycle, parent sync |
 | [View Plugins](./docs/view-plugins.md) | Decorations, atomic ranges, resolver |
-| [Persistence](./docs/persistence.md) | Event log, snapshots, crash safety |
+| [Persistence](./docs/persistence.md) | Event log, snapshots, crash safety, schema migrations |
+| [Tabs & Drafts](./docs/tabs-and-drafts.md) | Document tabs, draft trees, forking, locks |
 | [Collaboration](./docs/collaboration.md) | Yjs sync, relay, awareness |
 | [AutoAI](./docs/autoai.md) | Review engine, widget, face FSM |
 | [Reader Personas](./docs/reader-personas.md) | Multi-persona feedback |

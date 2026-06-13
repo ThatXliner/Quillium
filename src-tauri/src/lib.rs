@@ -22,7 +22,12 @@ use db::{
     load::load_document_state,
     schema::open_db,
     search::{search_documents, SearchHit},
-    AppendEventResult, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta,
+    tabs::{
+        branch_draft, create_tab, delete_draft, delete_tab, get_active_draft, get_active_tab,
+        iterate_draft, list_doc_events, list_tab_drafts, list_tabs, rename_draft, rename_tab,
+        restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
+    },
+    AppendEventResult, DocEventRecord, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta, TabMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
@@ -203,6 +208,158 @@ fn cmd_create_draft(
 ) -> Result<String, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     create_draft(&conn, &doc_id, &label).map_err(|e| e.to_string())
+}
+
+// ── Tab commands (#160: document tabs) ────────────────────────────
+
+#[tauri::command]
+fn cmd_list_tabs(state: tauri::State<DbState>, doc_id: String) -> Result<Vec<TabMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_tabs(&conn, &doc_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_create_tab(
+    state: tauri::State<DbState>,
+    doc_id: String,
+    label: String,
+) -> Result<TabMeta, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_tab(&conn, &doc_id, &label).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_rename_tab(
+    state: tauri::State<DbState>,
+    tab_id: String,
+    label: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    rename_tab(&conn, &tab_id, &label).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_delete_tab(state: tauri::State<DbState>, tab_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_tab(&conn, &tab_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_restore_tab(state: tauri::State<DbState>, tab_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    restore_tab(&conn, &tab_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_doc_events(
+    state: tauri::State<DbState>,
+    doc_id: String,
+) -> Result<Vec<DocEventRecord>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_doc_events(&conn, &doc_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_active_tab(
+    state: tauri::State<DbState>,
+    doc_id: String,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_active_tab(&conn, &doc_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_active_tab(
+    state: tauri::State<DbState>,
+    doc_id: String,
+    tab_id: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_active_tab(&conn, &doc_id, &tab_id).map_err(|e| e.to_string())
+}
+
+// ── Draft tree commands (#160: draft branching) ───────────────────
+
+#[tauri::command]
+fn cmd_list_tab_drafts(
+    state: tauri::State<DbState>,
+    tab_id: String,
+) -> Result<Vec<DraftMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_tab_drafts(&conn, &tab_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_iterate_draft(
+    state: tauri::State<DbState>,
+    source_draft_id: String,
+    label: String,
+    state_json: Option<String>,
+) -> Result<DraftMeta, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    iterate_draft(&conn, &source_draft_id, &label, state_json.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_branch_draft(
+    state: tauri::State<DbState>,
+    source_draft_id: String,
+    label: String,
+    state_json: Option<String>,
+) -> Result<DraftMeta, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    branch_draft(&conn, &source_draft_id, &label, state_json.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_rename_draft(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    label: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    rename_draft(&conn, &draft_id, &label).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_draft_locked(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    locked: bool,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_draft_locked(&conn, &draft_id, locked).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_delete_draft(state: tauri::State<DbState>, draft_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_draft(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_restore_draft(state: tauri::State<DbState>, draft_id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    restore_draft(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_get_active_draft(
+    state: tauri::State<DbState>,
+    tab_id: String,
+) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_active_draft(&conn, &tab_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_set_active_draft(
+    state: tauri::State<DbState>,
+    tab_id: String,
+    draft_id: String,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_active_draft(&conn, &tab_id, &draft_id).map_err(|e| e.to_string())
 }
 
 // ── Event/snapshot commands ───────────────────────────────────────
@@ -390,7 +547,9 @@ fn cmd_reset_db(state: tauri::State<DbState>) -> Result<(), String> {
          DELETE FROM chunks;
          DELETE FROM snapshots;
          DELETE FROM events;
+         DELETE FROM doc_events;
          DELETE FROM drafts;
+         DELETE FROM tabs;
          DELETE FROM documents;
          DELETE FROM _meta;",
     )
@@ -744,6 +903,23 @@ pub fn run() {
             cmd_list_trashed_documents,
             cmd_list_drafts,
             cmd_create_draft,
+            cmd_list_tabs,
+            cmd_create_tab,
+            cmd_rename_tab,
+            cmd_delete_tab,
+            cmd_get_active_tab,
+            cmd_set_active_tab,
+            cmd_list_tab_drafts,
+            cmd_iterate_draft,
+            cmd_branch_draft,
+            cmd_rename_draft,
+            cmd_set_draft_locked,
+            cmd_delete_draft,
+            cmd_restore_draft,
+            cmd_restore_tab,
+            cmd_list_doc_events,
+            cmd_get_active_draft,
+            cmd_set_active_draft,
             cmd_append_event,
             cmd_create_snapshot,
             cmd_load_document_state,

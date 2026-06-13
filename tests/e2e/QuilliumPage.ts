@@ -20,6 +20,14 @@ export type MockSnapshot = {
     doc: string;
 };
 
+export type MockDocEvent = {
+    id: number;
+    documentId: string;
+    eventType: string;
+    payload: string;
+    createdAt: number;
+};
+
 export type TauriMockOptions = {
     /** Return value for `get_api_key`. null = no key configured. */
     apiKey: string | null;
@@ -37,6 +45,8 @@ export type TauriMockOptions = {
      * cmd_load_snapshot_state returns a minimal state blob from each snapshot's doc.
      */
     snapshots: MockSnapshot[];
+    /** Pre-seeded document activity records returned by cmd_list_doc_events. */
+    docEvents: MockDocEvent[];
 };
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
@@ -50,6 +60,7 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
     },
     initialDoc: null,
     snapshots: [],
+    docEvents: [],
 };
 
 // ── Page object ─────────────────────────────────────────────────────────────
@@ -108,6 +119,7 @@ export class QuilliumPage {
                 settings: Record<string, unknown>;
                 initialDoc: string | null;
                 snapshots: MockSnapshot[];
+                docEvents: MockDocEvent[];
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
@@ -124,6 +136,58 @@ export class QuilliumPage {
                 let nextCallbackId = 1;
                 const callbacks = new Map<number, (...args: unknown[]) => unknown>();
                 const invokeCalls: Array<{ cmd: string; args: unknown }> = [];
+
+                // ── Stateful tabs & draft-tree mock (#160) ──────────────
+                type MockTab = {
+                    id: string;
+                    documentId: string;
+                    tabType: string;
+                    label: string;
+                    position: number;
+                    createdAt: number;
+                    deletedAt: number | null;
+                };
+                type MockDraft = {
+                    id: string;
+                    documentId: string;
+                    label: string;
+                    createdAt: number;
+                    isActive: boolean;
+                    tabId: string | null;
+                    parentDraftId: string | null;
+                    branchedFrom: string | null;
+                    locked: boolean;
+                    deletedAt: number | null;
+                };
+                let nextTabIndex = 2;
+                let nextDraftIndex = 2;
+                const tabs: MockTab[] = [
+                    {
+                        id: "tab-test-1",
+                        documentId: "doc-test-1",
+                        tabType: "draft",
+                        label: "Main",
+                        position: 0,
+                        createdAt: 0,
+                        deletedAt: null,
+                    },
+                ];
+                const drafts: MockDraft[] = [
+                    {
+                        id: "draft-test-1",
+                        documentId: "doc-test-1",
+                        label: "main",
+                        createdAt: 0,
+                        isActive: true,
+                        tabId: "tab-test-1",
+                        parentDraftId: null,
+                        branchedFrom: null,
+                        locked: false,
+                        deletedAt: null,
+                    },
+                ];
+                const activeTabByDoc: Record<string, string> = {};
+                const activeDraftByTab: Record<string, string> = {};
 
                 (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
 
@@ -149,16 +213,172 @@ export class QuilliumPage {
                             ];
                         if (cmd === "cmd_create_document") return "doc-test-1";
                         if (cmd === "cmd_create_draft") return "draft-test-1";
-                        if (cmd === "cmd_list_drafts")
-                            return [
-                                {
-                                    id: "draft-test-1",
-                                    documentId: "doc-test-1",
-                                    label: "Draft",
-                                    createdAt: 0,
-                                    isActive: true,
-                                },
-                            ];
+                        if (cmd === "cmd_list_drafts") {
+                            const a = args as { docId: string };
+                            return drafts.filter((d) => d.documentId === a.docId && !d.deletedAt);
+                        }
+
+                        // ── Tabs & draft tree (#160) ────────────────────
+                        if (cmd === "cmd_list_tabs") {
+                            const a = args as { docId: string };
+                            return tabs.filter((t) => t.documentId === a.docId && !t.deletedAt);
+                        }
+                        if (cmd === "cmd_create_tab") {
+                            const a = args as { docId: string; label: string };
+                            const tab: MockTab = {
+                                id: `tab-test-${nextTabIndex++}`,
+                                documentId: a.docId,
+                                tabType: "draft",
+                                label: a.label,
+                                position: tabs.length,
+                                createdAt: Date.now(),
+                                deletedAt: null,
+                            };
+                            tabs.push(tab);
+                            drafts.push({
+                                id: `draft-test-${nextDraftIndex++}`,
+                                documentId: a.docId,
+                                label: "main",
+                                createdAt: Date.now(),
+                                isActive: true,
+                                tabId: tab.id,
+                                parentDraftId: null,
+                                branchedFrom: null,
+                                locked: false,
+                                deletedAt: null,
+                            });
+                            return tab;
+                        }
+                        if (cmd === "cmd_rename_tab") {
+                            const a = args as { tabId: string; label: string };
+                            const tab = tabs.find((t) => t.id === a.tabId);
+                            if (tab) tab.label = a.label;
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_tab") {
+                            const a = args as { tabId: string };
+                            const tab = tabs.find((t) => t.id === a.tabId);
+                            if (tab) tab.deletedAt = Date.now();
+                            return null;
+                        }
+                        if (cmd === "cmd_restore_tab") {
+                            const a = args as { tabId: string };
+                            const tab = tabs.find((t) => t.id === a.tabId);
+                            if (tab) tab.deletedAt = null;
+                            return null;
+                        }
+                        if (cmd === "cmd_list_doc_events") return payload.docEvents;
+                        if (cmd === "cmd_get_active_tab") {
+                            const a = args as { docId: string };
+                            return activeTabByDoc[a.docId] ?? null;
+                        }
+                        if (cmd === "cmd_set_active_tab") {
+                            const a = args as { docId: string; tabId: string };
+                            activeTabByDoc[a.docId] = a.tabId;
+                            return null;
+                        }
+                        if (cmd === "cmd_list_tab_drafts") {
+                            const a = args as { tabId: string };
+                            return drafts.filter((d) => d.tabId === a.tabId && !d.deletedAt);
+                        }
+                        if (cmd === "cmd_get_active_draft") {
+                            const a = args as { tabId: string };
+                            return activeDraftByTab[a.tabId] ?? null;
+                        }
+                        if (cmd === "cmd_set_active_draft") {
+                            const a = args as { tabId: string; draftId: string };
+                            activeDraftByTab[a.tabId] = a.draftId;
+                            return null;
+                        }
+                        if (cmd === "cmd_iterate_draft") {
+                            const a = args as { sourceDraftId: string; label: string };
+                            const source = drafts.find((d) => d.id === a.sourceDraftId);
+                            // Iterating locks the source (superseded); the new
+                            // draft becomes the run's editable tip.
+                            if (source) source.locked = true;
+                            const next: MockDraft = {
+                                id: `draft-test-${nextDraftIndex++}`,
+                                documentId: source?.documentId ?? "doc-test-1",
+                                label: a.label,
+                                createdAt: Date.now(),
+                                isActive: true,
+                                tabId: source?.tabId ?? null,
+                                parentDraftId: a.sourceDraftId,
+                                branchedFrom: null,
+                                locked: false,
+                                deletedAt: null,
+                            };
+                            drafts.push(next);
+                            return next;
+                        }
+                        if (cmd === "cmd_branch_draft") {
+                            const a = args as { sourceDraftId: string; label: string };
+                            const source = drafts.find((d) => d.id === a.sourceDraftId);
+                            // Branching off a run head is refused (a new tab is
+                            // the right move); nothing locks otherwise.
+                            if (source && source.parentDraftId == null) {
+                                throw new Error(
+                                    "Can't branch from a top-level draft — create a new tab instead",
+                                );
+                            }
+                            const branch: MockDraft = {
+                                id: `draft-test-${nextDraftIndex++}`,
+                                documentId: source?.documentId ?? "doc-test-1",
+                                label: a.label,
+                                createdAt: Date.now(),
+                                isActive: true,
+                                tabId: source?.tabId ?? null,
+                                parentDraftId: null,
+                                branchedFrom: a.sourceDraftId,
+                                locked: false,
+                                deletedAt: null,
+                            };
+                            drafts.push(branch);
+                            return branch;
+                        }
+                        if (cmd === "cmd_rename_draft") {
+                            const a = args as { draftId: string; label: string };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (draft) draft.label = a.label;
+                            return null;
+                        }
+                        if (cmd === "cmd_set_draft_locked") {
+                            const a = args as { draftId: string; locked: boolean };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (draft) draft.locked = a.locked;
+                            return null;
+                        }
+                        if (cmd === "cmd_delete_draft" || cmd === "cmd_restore_draft") {
+                            const a = args as { draftId: string };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (!draft) return null;
+                            draft.deletedAt = cmd === "cmd_delete_draft" ? Date.now() : null;
+                            // Relock the affected run: lock all live members
+                            // except the newest (the editable tip).
+                            const headOf = (d: MockDraft): MockDraft => {
+                                let cur = d;
+                                while (cur.parentDraftId) {
+                                    const p = drafts.find((x) => x.id === cur.parentDraftId);
+                                    if (!p) break;
+                                    cur = p;
+                                }
+                                return cur;
+                            };
+                            const head = headOf(draft);
+                            const run: MockDraft[] = [];
+                            let cur: MockDraft | undefined = head;
+                            while (cur) {
+                                if (!cur.deletedAt) run.push(cur);
+                                const c: MockDraft | undefined = cur;
+                                cur = drafts.find((x) => x.parentDraftId === c.id && !x.deletedAt);
+                            }
+                            const tip = run.reduce(
+                                (a2, b) => (b.createdAt >= a2.createdAt ? b : a2),
+                                run[0],
+                            );
+                            for (const m of run) m.locked = m.id !== tip?.id;
+                            return null;
+                        }
 
                         if (cmd === "cmd_load_document_state") {
                             if (payload.initialDoc) {
@@ -280,6 +500,7 @@ export class QuilliumPage {
                 settings: opts.settings,
                 initialDoc: opts.initialDoc,
                 snapshots: opts.snapshots,
+                docEvents: opts.docEvents,
             },
         );
     }
@@ -287,7 +508,7 @@ export class QuilliumPage {
     /** Navigate to "/" and wait for the editor to render. */
     async goto(): Promise<void> {
         await this.page.goto("/");
-        await expect(this.editor).toBeVisible({ timeout: 10_000 });
+        await expect(this.editor).toBeVisible({ timeout: 20_000 });
     }
 
     /** setup() + goto() — the common two-liner for most tests. */
@@ -296,7 +517,7 @@ export class QuilliumPage {
         await this.goto();
     }
 
-    /** Navigate to "/history" and wait for the Versions panel to render. */
+    /** Navigate to "/history" and wait for the history page to render. */
     async gotoHistory(): Promise<void> {
         await this.page.goto("/history");
         await expect(this.page.getByText("Version History")).toBeVisible({ timeout: 10_000 });

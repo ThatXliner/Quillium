@@ -4,6 +4,7 @@ pub mod load;
 pub mod migrations;
 pub mod schema;
 pub mod search;
+pub mod tabs;
 
 use serde::{Deserialize, Serialize};
 
@@ -22,12 +23,49 @@ pub struct DocumentMeta {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TabMeta {
+    pub id: String,
+    pub document_id: String,
+    pub tab_type: String,
+    pub label: String,
+    pub position: i64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftMeta {
     pub id: String,
     pub document_id: String,
     pub label: String,
     pub created_at: i64,
     pub is_active: bool,
+    /// Tab this draft belongs to. Nullable only for rows created before
+    /// the tabs migration ran (backfill assigns them on next startup).
+    pub tab_id: Option<String>,
+    /// Previous *iteration* of this draft (the flat chain). None for a run
+    /// head (`main` or a branch root). A draft sets at most one of
+    /// `parent_draft_id` / `branched_from`.
+    pub parent_draft_id: Option<String>,
+    /// The draft this one was *branched* off (a different take, rendered
+    /// indented). None for iterations and for `main`.
+    pub branched_from: Option<String>,
+    /// Soft lock. Superseded iterations (every draft in a run except the
+    /// newest) lock automatically; any draft can also be locked manually.
+    /// The editor shows a lock banner but the DB does not reject writes.
+    pub locked: bool,
+}
+
+/// One entry in the document-level structural audit log (#160):
+/// tab CRUD, draft branching, locks, checkpoints. Payload is JSON.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocEventRecord {
+    pub id: i64,
+    pub document_id: String,
+    pub event_type: String,
+    pub payload: String,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -18,6 +18,16 @@ export type DocumentMeta = {
     deletedAt: number | null;
 };
 
+export type TabMeta = {
+    id: string;
+    documentId: string;
+    /** "draft" for prose tabs; future types (e.g. "canvas") share the bar. */
+    tabType: string;
+    label: string;
+    position: number;
+    createdAt: number;
+};
+
 export type SearchMatchType = "keyword" | "semantic" | "both";
 
 export type SearchHit = DocumentMeta & {
@@ -38,6 +48,33 @@ export type DraftMeta = {
     label: string;
     createdAt: number;
     isActive: boolean;
+    /** Tab this draft belongs to; null only for pre-migration rows. */
+    tabId: string | null;
+    /**
+     * Previous iteration of this draft (the flat run). null for a run head
+     * (main or a branch root). At most one of parentDraftId / branchedFrom
+     * is set.
+     */
+    parentDraftId: string | null;
+    /** The draft this one was branched off (a different take); null otherwise. */
+    branchedFrom: string | null;
+    /**
+     * Soft lock. Superseded iterations (all but the newest in a run) lock
+     * automatically; any draft can also be locked manually.
+     */
+    locked: boolean;
+};
+
+/**
+ * One entry in the document-level structural audit log (#160):
+ * tab CRUD, draft branching, locks, checkpoints. Payload is JSON.
+ */
+export type DocEventRecord = {
+    id: number;
+    documentId: string;
+    eventType: string;
+    payload: string;
+    createdAt: number;
 };
 
 export type AppendEventResult = {

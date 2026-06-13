@@ -220,8 +220,9 @@ pub fn purge_expired_trash(conn: &Connection, days: i64) -> Result<u64> {
 
 pub fn list_drafts(conn: &Connection, doc_id: &str) -> Result<Vec<DraftMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, document_id, label, created_at, is_active FROM drafts
-         WHERE document_id = ?1 ORDER BY created_at ASC",
+        "SELECT id, document_id, label, created_at, is_active, tab_id, parent_draft_id,
+                branched_from, locked
+         FROM drafts WHERE document_id = ?1 AND deleted_at IS NULL ORDER BY created_at ASC",
     )?;
     let rows = stmt.query_map(params![doc_id], |row| {
         Ok(DraftMeta {
@@ -230,18 +231,46 @@ pub fn list_drafts(conn: &Connection, doc_id: &str) -> Result<Vec<DraftMeta>> {
             label: row.get(2)?,
             created_at: row.get(3)?,
             is_active: row.get::<_, i64>(4)? != 0,
+            tab_id: row.get(5)?,
+            parent_draft_id: row.get(6)?,
+            branched_from: row.get(7)?,
+            locked: row.get::<_, i64>(8)? != 0,
         })
     })?;
     rows.collect()
 }
 
+/// Legacy entry point (debug panel, screenshot scenarios): creates a root
+/// draft attached to the document's first tab, creating a "Main" tab first
+/// if the document has none.
 pub fn create_draft(conn: &Connection, doc_id: &str, label: &str) -> Result<String> {
+    let tab_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL
+             ORDER BY position ASC LIMIT 1",
+            params![doc_id],
+            |row| row.get(0),
+        )
+        .ok();
+    let tab_id = match tab_id {
+        Some(id) => id,
+        None => {
+            let id = Uuid::new_v4().to_string();
+            let now = now_ms();
+            conn.execute(
+                "INSERT INTO tabs (id, document_id, tab_type, label, position, created_at)
+                 VALUES (?1, ?2, 'draft', 'Main', 0, ?3)",
+                params![id, doc_id, now],
+            )?;
+            id
+        }
+    };
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
     conn.execute(
-        "INSERT INTO drafts (id, document_id, label, created_at, is_active)
-         VALUES (?1, ?2, ?3, ?4, 1)",
-        params![id, doc_id, label, now],
+        "INSERT INTO drafts (id, document_id, tab_id, label, created_at, is_active, locked)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, 0)",
+        params![id, doc_id, tab_id, label, now],
     )?;
     Ok(id)
 }

@@ -627,8 +627,10 @@ export function createComment({
     comment: string;
     author?: string;
     view: EditorView;
-}) {
+}): boolean {
     const state = view.state;
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
 
     const selection = getSelection({
         editorSelection,
@@ -647,6 +649,7 @@ export function createComment({
             annotations: Transaction.addToHistory.of(true),
         }),
     );
+    return true;
 }
 export function createSuggestion({
     targetText,
@@ -667,6 +670,8 @@ export function createSuggestion({
     author?: string;
     comment?: string;
 }): boolean {
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     // Normalize string shorthand to full shape
     const normalizedReplacements = replacements.map((r) =>
         typeof r === "string" ? { text: r } : r,
@@ -712,6 +717,8 @@ export function createRevision({
     view: EditorView;
 }) {
     const state = view.state;
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     const selection = getSelection({
         editorSelection,
         targetText,
@@ -746,6 +753,8 @@ export function createRevision({
 }
 
 export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     // locks it so that we can't have multiple pending states
     if (!canCreateNewComment(state.field(annotationField))) {
         annotationEventBus.emit({
@@ -770,6 +779,8 @@ export const createCommentCommand: StateCommand = ({ state, dispatch }) => {
 };
 // QUESTION: Should we have some sort of global annotation mutex
 export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
+    // Locked drafts are read-only — no new annotations (#160).
+    if (state.readOnly) return false;
     if (state.selection.main.empty) return false;
     if (!canCreateRevision(state.field(annotationField), state.selection)) {
         annotationEventBus.emit({ type: "overlapping-revision-alert" });
