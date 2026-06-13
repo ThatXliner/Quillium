@@ -1,10 +1,14 @@
 {
+  "0.19": {
+    "date": "June 2026",
+    "content": "Documents now hold **tabs** along the top, so a single piece of work can keep its main draft and its side notes together in one place instead of scattered across the library.\n\nDrafts also gained two clearer ways to move forward. **Iterate** carries a draft into its next version and tidies the earlier one away, keeping a long chain of revisions as a clean, readable list. **Branch** spins off a different take on the same idea and keeps both alive side by side, so you can explore an alternative without losing the original.\n\nThe library gained a proper **search box**: start typing and Quillium finds the right document across everything you've written, with matching text highlighted so you can spot what you were looking for at a glance.\n\nIn the editor, **comments now travel with your text** — cut or copy a passage and paste it elsewhere, and the notes attached to it come along instead of being left behind.\n\nFinally, the **What's New button** is now always within reach, with a dropdown to revisit the notes from any past release whenever you want to look back."
+  },
   "0.18": {
-    "date": "2026-06-10",
+    "date": "June 2026",
     "content": "You can now open **multiple windows** at once — keep two documents side by side, or reference one draft while you write another, without juggling tabs.\n\nThe **annotation sidebar** has a roomier **two-column layout** when you're writing without the assistant panel, so your comments and notes have more space to breathe.\n\nFormatting got richer too: **Markdown headings now go all the way down to the smallest sizes**, giving you finer control over how you structure longer documents.\n\nFinally, sending us a **bug report** is now separate from sharing general **feedback**, so it's clearer how to reach us depending on what's on your mind."
   },
   "0.17": {
-    "date": "2026-06-01",
+    "date": "June 2026",
     "content": "The **annotation sidebar** is easier to adjust while you write. The resize handle now sits on the side where you expect it, and a new reset button makes it simple to get back to the default layout.\n\nWe've also cleaned up a few **interface details**: the font guide no longer shows Inter where it does not belong, and the dictionary shortcut hint now points to the right keyboard command."
   },
   "0.16": {
