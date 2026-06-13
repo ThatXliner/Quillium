@@ -266,8 +266,8 @@ pub fn list_tab_drafts(conn: &Connection, tab_id: &str) -> Result<Vec<DraftMeta>
 }
 
 /// Forks a draft: creates a child draft seeded with the parent's current
-/// state (passed in serialized, since event replay happens in the frontend)
-/// and locks the parent so the branched-from text stays stable.
+/// state (passed in serialized, since event replay happens in the frontend).
+/// Branches remain unlocked by default.
 pub fn fork_draft(
     conn: &Connection,
     parent_draft_id: &str,
@@ -296,10 +296,6 @@ pub fn fork_draft(
             params![draft_id, json, now],
         )?;
     }
-    tx.execute(
-        "UPDATE drafts SET locked = 1 WHERE id = ?1",
-        params![parent_draft_id],
-    )?;
     log_doc_event(
         &tx,
         &doc_id,
@@ -326,7 +322,8 @@ pub fn fork_draft(
 
 /// Creates a root-level draft in a tab (a sibling of "main"), optionally
 /// seeded with serialized state. Powers "+ New draft" for root drafts,
-/// where there is no parent to fork from.
+/// where there is no parent to fork from. The caller locks the source draft
+/// when a previous sibling should be preserved.
 pub fn create_tab_draft(
     conn: &Connection,
     tab_id: &str,
@@ -421,16 +418,12 @@ pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> Resu
 /// Soft-deletes a leaf draft. Its events and snapshots are untouched, so
 /// restoring from the version history brings the text back exactly.
 /// Refuses if the draft has live children or is the tab's last live draft.
-///
-/// Invariant: locks derive from branching, so when the deleted draft was
-/// its parent's last live child, the parent auto-unlocks.
 pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
-    let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
-        conn.query_row(
-            "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
-            params![draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )?;
+    let (doc_id, label, tab_id): (String, String, Option<String>) = conn.query_row(
+        "SELECT document_id, label, tab_id FROM drafts WHERE id = ?1",
+        params![draft_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
     let live_children: i64 = conn.query_row(
         "SELECT COUNT(*) FROM drafts WHERE parent_draft_id = ?1 AND deleted_at IS NULL",
         params![draft_id],
@@ -454,16 +447,6 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
         "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
         params![now_ms(), draft_id],
     )?;
-    // Leaves are never locked: unlock the parent when this was its last
-    // live branch.
-    if let Some(ref parent) = parent_draft_id {
-        tx.execute(
-            "UPDATE drafts SET locked = 0 WHERE id = ?1 AND NOT EXISTS (
-                 SELECT 1 FROM drafts WHERE parent_draft_id = ?1 AND deleted_at IS NULL
-             )",
-            params![parent],
-        )?;
-    }
     log_doc_event(
         &tx,
         &doc_id,
@@ -474,25 +457,18 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Restores a soft-deleted draft. Its parent (if live) re-locks, since it
-/// has a branch again.
+/// Restores a soft-deleted draft without changing any related lock state.
 pub fn restore_draft(conn: &Connection, draft_id: &str) -> Result<()> {
-    let (doc_id, label, parent_draft_id): (String, String, Option<String>) = conn.query_row(
-        "SELECT document_id, label, parent_draft_id FROM drafts WHERE id = ?1",
+    let (doc_id, label): (String, String) = conn.query_row(
+        "SELECT document_id, label FROM drafts WHERE id = ?1",
         params![draft_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "UPDATE drafts SET deleted_at = NULL WHERE id = ?1",
         params![draft_id],
     )?;
-    if let Some(ref parent) = parent_draft_id {
-        tx.execute(
-            "UPDATE drafts SET locked = 1 WHERE id = ?1 AND deleted_at IS NULL",
-            params![parent],
-        )?;
-    }
     log_doc_event(
         &tx,
         &doc_id,

@@ -229,7 +229,7 @@ export async function listTabDrafts(tabId: string): Promise<DraftMeta[]> {
 
 /**
  * Forks a draft into a child seeded with `stateJson` (serialized
- * EditorState) as a "Branch point" snapshot. Locks the parent.
+ * EditorState) as a "Branch point" snapshot. The branch stays unlocked.
  */
 export async function forkDraft(
     parentDraftId: string,
@@ -249,7 +249,8 @@ export async function setDraftLocked(draftId: string, locked: boolean): Promise<
 
 /**
  * Creates a root-level draft in a tab (a sibling of "main"), optionally
- * seeded with serialized state.
+ * seeded with serialized state. Callers decide whether to lock the draft
+ * this sibling was duplicated from.
  */
 export async function createTabDraft(
     tabId: string,

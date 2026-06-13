@@ -249,9 +249,6 @@ let forking = $state(false);
 
 const currentDraft = $derived(tabDrafts.find((d) => d.id === $currentDraftId));
 const isLocked = $derived(currentDraft?.locked ?? false);
-// Locks come from branching or from the panel's manual lock — the banner
-// copy explains whichever applies.
-const currentHasBranches = $derived(tabDrafts.some((d) => d.parentDraftId === $currentDraftId));
 
 /** Flushes queued events + debounced meta writes before switching context. */
 async function flushPendingPersist(): Promise<void> {
@@ -577,8 +574,8 @@ async function handleDraftSelect(draftId: string) {
 
 /**
  * Branches a child draft off `parentDraftId`, seeded with that draft's
- * current state. The parent gets soft-locked so the branched-from text
- * stays stable underneath its children.
+ * current state. Branches stay editable by default; sibling drafts are the
+ * path that locks the draft they were duplicated from.
  */
 async function handleDraftFork(parentDraftId: string) {
     const docId = get(currentDocumentId);
@@ -651,8 +648,7 @@ async function handleDraftDelete(draftId: string) {
 
 /**
  * Re-reads the active tab's drafts and rebuilds the editor state when the
- * open draft's lock changed underneath it (locks derive from live
- * children, so deleting/restoring a branch can lock or unlock its parent).
+ * open draft's lock changed underneath it.
  */
 async function refreshDraftsAndCurrentLock() {
     const tabId = get(currentTabId);
@@ -668,7 +664,8 @@ async function refreshDraftsAndCurrentLock() {
 
 /**
  * "+ New draft": duplicates the open draft as a sibling at the same tree
- * level — a parallel take. Root drafts get a root sibling.
+ * level — a parallel take. The draft duplicated from is locked so the new
+ * sibling has a stable previous take to compare against.
  */
 async function handleNewDraft() {
     const docId = get(currentDocumentId);
@@ -685,8 +682,10 @@ async function handleNewDraft() {
         const sibling = parentId
             ? await forkDraft(parentId, label, stateJson)
             : await createTabDraft(tabId, label, stateJson);
+        await setDraftLocked(current, true);
         tabDrafts = await listTabDrafts(tabId);
         posthog.capture("draft_sibling_created");
+        posthog.capture("draft_locked", { source: "sibling_draft" });
         await switchToDraft(sibling.id);
     } catch (e) {
         console.error("[Editor] new draft failed", e);
@@ -834,11 +833,10 @@ onMount(() => {
             class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
         >
             {#if isLocked}
-                <!-- Lock notice lives inside the page, like a suggestion-mode
-                     strip — locks derive from having branches. -->
+                <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
                 <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900/70">
                     <LockIcon size={11} class="shrink-0 text-amber-700/60" />
-                    <span class="flex-1 min-w-0 truncate">{currentHasBranches ? "This draft is locked because it has branches." : "This draft is locked."}</span>
+                    <span class="flex-1 min-w-0 truncate">This draft is locked.</span>
                     <button
                         onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
                         class="shrink-0 font-medium hover:text-amber-950 transition-colors"

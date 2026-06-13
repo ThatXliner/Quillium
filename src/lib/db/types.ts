@@ -52,7 +52,7 @@ export type DraftMeta = {
     tabId: string | null;
     /** Parent in the draft tree; null for root drafts. */
     parentDraftId: string | null;
-    /** Soft lock — set when this draft has been branched from. */
+    /** Soft lock — used for previous sibling drafts and manual locks. */
     locked: boolean;
 };
 

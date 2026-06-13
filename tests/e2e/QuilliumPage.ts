@@ -290,7 +290,6 @@ export class QuilliumPage {
                         if (cmd === "cmd_fork_draft") {
                             const a = args as { parentDraftId: string; label: string };
                             const parent = drafts.find((d) => d.id === a.parentDraftId);
-                            if (parent) parent.locked = true;
                             const child: MockDraft = {
                                 id: `draft-test-${nextDraftIndex++}`,
                                 documentId: parent?.documentId ?? "doc-test-1",
@@ -339,15 +338,6 @@ export class QuilliumPage {
                             const draft = drafts.find((d) => d.id === a.draftId);
                             if (!draft) return null;
                             draft.deletedAt = Date.now();
-                            // Locks derive from live children: unlock a
-                            // parent that just lost its last branch.
-                            if (draft.parentDraftId) {
-                                const parent = drafts.find((d) => d.id === draft.parentDraftId);
-                                const liveChildren = drafts.filter(
-                                    (d) => d.parentDraftId === draft.parentDraftId && !d.deletedAt,
-                                );
-                                if (parent && liveChildren.length === 0) parent.locked = false;
-                            }
                             return null;
                         }
                         if (cmd === "cmd_restore_draft") {
@@ -355,10 +345,6 @@ export class QuilliumPage {
                             const draft = drafts.find((d) => d.id === a.draftId);
                             if (!draft) return null;
                             draft.deletedAt = null;
-                            if (draft.parentDraftId) {
-                                const parent = drafts.find((d) => d.id === draft.parentDraftId);
-                                if (parent && !parent.deletedAt) parent.locked = true;
-                            }
                             return null;
                         }
 

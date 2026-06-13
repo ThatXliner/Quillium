@@ -21,8 +21,8 @@ Document (one card in Library)
 | Tab | A piece of content within a document (`tab_type: "draft"`; future types e.g. canvas share the bar) | `DocumentTabs.svelte` above the document card |
 | Draft | One editable text + its own event log/snapshots | `DraftTreePanel.svelte`, hugging the document's left edge |
 | Draft tree | Parent/child links between a tab's drafts (`parent_draft_id`) | Indented rows in the panel |
-| Lock | Derived from branching: a draft locks while it has live children | Amber strip inside the page; read-only state |
-| Document activity | Audit log of all structural ops (tab CRUD, branching, locks, checkpoints) | Timeline in version history, with Restore actions |
+| Lock | Soft read-only state, used to preserve a previous sibling draft or applied manually | Amber strip inside the page; read-only state |
+| Document activity | Audit log of all structural ops (tab CRUD, branching, locks, checkpoints) | Unified history timeline, with Restore actions |
 
 ## Schema
 
@@ -58,7 +58,7 @@ ALTER-adds the draft columns and attaches pre-existing drafts to a per-document
 2. Rust creates the child draft and plants the state as a snapshot labeled
    **"Branch point"** (`up_to_event_id = -1`). Labeled snapshots are exempt
    from auto-prune, so the branch base can never be garbage-collected.
-3. The parent is soft-locked (`locked = 1`).
+3. Both parent and child stay unlocked unless the user locks them manually.
 
 The child's event log starts empty; restore-to-"Branch point" in version
 history returns it exactly to the fork state.
@@ -66,17 +66,16 @@ history returns it exactly to the fork state.
 "+ New draft" in the panel creates a **sibling** of the open draft instead —
 a parallel take at the same tree level, seeded with the open draft's state.
 Root drafts get a root sibling via `cmd_create_tab_draft` (no parent to
-fork from).
+fork from). The draft duplicated from is soft-locked so the new sibling has a
+stable previous take beside it.
 
 ## Locking
 
 Locks come from two places sharing one flag:
 
-- **Branching**: forking locks the parent; deleting a parent's last live
-  branch auto-unlocks it; restoring a branch re-locks it.
+- **Sibling drafts**: "+ New draft" locks the draft it duplicated from; the
+  new sibling stays editable.
 - **Manual**: any draft can be locked/unlocked from its row in the panel.
-  (Edge: the auto-unlock on losing the last branch also clears a manual
-  lock — re-lock from the panel if needed.)
 
 While locked, the editor state is built with `EditorState.readOnly.of(true)`
 and an amber strip inside the page offers "Edit anyway" (persistently
@@ -105,7 +104,8 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
   `create_draft` legacy path creates a "Main" tab when none exists).
 - Only leaf drafts can be deleted; all deletions are soft and reversible
   (Undo toast immediately, version-history timeline later).
-- A draft is locked iff it has live children, unless explicitly unlocked.
+- Branching does not imply locking; locks only change through sibling-draft
+  creation or explicit user action.
 
 ## Key files
 

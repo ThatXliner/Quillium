@@ -13,7 +13,7 @@
       ondraftrename  — (draftId, label) after inline rename
       ondraftdelete  — (draftId) delete a leaf draft (soft, undoable)
       ontogglelock   — (draftId, locked) set the soft lock
-      onnewdraft     — duplicate the current draft as a sibling
+      onnewdraft     — duplicate the current draft as a locked-previous sibling
 -->
 <script lang="ts">
 import type { DraftMeta } from "$lib/db/types";

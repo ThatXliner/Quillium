@@ -45,8 +45,8 @@ pub struct DraftMeta {
     pub tab_id: Option<String>,
     /// Parent in the draft tree; None for root drafts.
     pub parent_draft_id: Option<String>,
-    /// Soft lock — set when the draft has been branched from. The editor
-    /// shows a lock banner but the DB does not reject writes.
+    /// Soft lock — used for previous sibling drafts and manual locks. The
+    /// editor shows a lock banner but the DB does not reject writes.
     pub locked: bool,
 }
 

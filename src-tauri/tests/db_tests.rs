@@ -162,7 +162,7 @@ fn test_create_tab_seeds_root_draft() {
 }
 
 #[test]
-fn test_fork_draft_plants_branch_point_and_locks_parent() {
+fn test_fork_draft_plants_branch_point_and_leaves_parent_unlocked() {
     let conn = in_memory_db();
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
@@ -172,10 +172,12 @@ fn test_fork_draft_plants_branch_point_and_locks_parent() {
     assert_eq!(child.parent_draft_id.as_deref(), Some(parent.id.as_str()));
     assert_eq!(child.tab_id.as_deref(), Some(tab.id.as_str()));
 
-    // Parent is now soft-locked.
+    // Branching does not lock either side.
     let drafts = list_tab_drafts(&conn, &tab.id).expect("drafts");
     let parent_after = drafts.iter().find(|d| d.id == parent.id).unwrap();
-    assert!(parent_after.locked);
+    let child_after = drafts.iter().find(|d| d.id == child.id).unwrap();
+    assert!(!parent_after.locked);
+    assert!(!child_after.locked);
 
     // The child loads the branch-point state with an empty event log.
     let loaded = load_document_state(&conn, &doc_id, Some(&child.id)).expect("load");
@@ -269,12 +271,13 @@ fn test_delete_draft_is_soft_and_restorable() {
 }
 
 #[test]
-fn test_lock_derives_from_live_children() {
+fn test_branch_delete_restore_preserves_lock_state() {
     let conn = in_memory_db();
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
     let child = fork_draft(&conn, &root, "v1", None).expect("fork");
+    set_draft_locked(&conn, &root, true).expect("manual lock");
 
     let locked = |id: &str| -> bool {
         list_tab_drafts(&conn, &tab.id)
@@ -284,15 +287,14 @@ fn test_lock_derives_from_live_children() {
             .map(|d| d.locked)
             .unwrap_or(false)
     };
-    assert!(locked(&root), "forking locks the parent");
+    assert!(locked(&root), "manual lock applies");
 
-    // Deleting the only branch unlocks the parent — leaves are never locked.
+    // Deleting/restoring branches no longer derives lock state from children.
     delete_draft(&conn, &child.id).expect("delete child");
-    assert!(!locked(&root), "childless drafts unlock");
+    assert!(locked(&root), "delete preserves source lock");
 
-    // Restoring the branch re-locks the parent.
     restore_draft(&conn, &child.id).expect("restore child");
-    assert!(locked(&root), "restored branch re-locks the parent");
+    assert!(locked(&root), "restore preserves source lock");
 }
 
 #[test]
