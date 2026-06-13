@@ -13,7 +13,10 @@ export type CustomQuickAction = {
     panel: "revise" | "feedback" | "chat";
 };
 
+export type ThemePreference = "light" | "dark" | "system";
+
 type AppSettings = {
+    theme: ThemePreference;
     selectTextInNestedEditor: boolean;
     showNestedEditor: boolean;
     atomicRevisions: boolean;
@@ -49,6 +52,7 @@ type AppSettings = {
 };
 
 const DEFAULTS: AppSettings = {
+    theme: "system",
     selectTextInNestedEditor: true,
     showNestedEditor: true,
     atomicRevisions: true,
@@ -113,6 +117,9 @@ export function applySettings(s: AppSettings) {
     root.style.setProperty("--doc-font-size", `${s.docFontSize}px`);
     root.style.setProperty("--ui-font-family", s.uiFontFamily);
     root.style.zoom = String(s.uiZoom);
+    // Drives the dark-mode token layer in app.css. "system" follows the OS via
+    // prefers-color-scheme; "light"/"dark" force the theme regardless of OS.
+    root.setAttribute("data-theme", s.theme);
 }
 
 export const appSettings = $state<AppSettings>(loadSettings());

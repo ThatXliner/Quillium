@@ -188,7 +188,7 @@ function useContextAction(action: ContextAction) {
     {/if}
 
     {#if showStarterSuggestions && customRevisePrompts.length > 0}
-        <div class="px-3 pb-3 border-b border-black/10">
+        <div class="px-3 pb-3 border-b border-[color:var(--border)]">
             <CustomQuickActions
                 prompts={customRevisePrompts}
                 disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
@@ -205,7 +205,7 @@ function useContextAction(action: ContextAction) {
             <button
                 onclick={clearConversation}
                 title="Start a fresh conversation (clears all messages)"
-                class="text-[10px] text-black/30 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
+                class="text-[10px] text-[color:var(--text-ghost)] hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
             >New chat</button>
         </div>
     {/if}
@@ -225,7 +225,7 @@ function useContextAction(action: ContextAction) {
                             class="relative max-w-[85%] sm:max-w-[75%] lg:max-w-[70%] px-3 py-2 rounded-lg {message.role ===
                             'user'
                                 ? 'bg-purple-500 text-white'
-                                : 'bg-gray-100 text-gray-800'}"
+                                : 'bg-[color:var(--surface-2)] text-[color:var(--text)]'}"
                         >
                             <div
                                 class="text-sm whitespace-pre-wrap break-words"
@@ -243,7 +243,7 @@ function useContextAction(action: ContextAction) {
         {#if chat.status === "streaming" || chat.status === "submitted" || personaInFlight}
             <div class="flex justify-start">
                 <div class="max-w-[85%] sm:max-w-[75%] lg:max-w-[70%]">
-                    <div class="bg-gray-100 text-gray-800 px-3 py-2 rounded-lg">
+                    <div class="bg-[color:var(--surface-2)] text-[color:var(--text)] px-3 py-2 rounded-lg">
                         <div class="flex items-center space-x-2">
                             <span class="inline-block animate-pulse">●</span>
                             <span class="text-sm">{personaInFlight ? "Personas revising..." : "Revising..."}</span>
@@ -255,7 +255,7 @@ function useContextAction(action: ContextAction) {
 
         {#if showStarterSuggestions && !personaInFlight}
             <div
-                class="flex-1 flex items-center justify-center text-gray-400 text-sm"
+                class="flex-1 flex items-center justify-center text-[color:var(--text-faint)] text-sm"
             >
                 Choose a revision action to start
             </div>
@@ -263,7 +263,7 @@ function useContextAction(action: ContextAction) {
     </div>
 
     <!-- Input -->
-    <div class="border-t border-black/10 p-3 bg-white/30">
+    <div class="border-t border-[color:var(--border)] p-3 bg-[color:var(--surface)]">
         {#if !showStarterSuggestions}
             <CustomQuickActions
                 prompts={customRevisePrompts}
@@ -281,7 +281,7 @@ function useContextAction(action: ContextAction) {
                 name="message"
                 placeholder="Describe how to revise..."
                 disabled={chat.status !== "ready" || personaInFlight}
-                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="w-full px-3 py-2 text-sm border border-[color:var(--border-strong)] rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 autocomplete="off"
             />
             <button

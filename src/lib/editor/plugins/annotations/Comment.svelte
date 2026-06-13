@@ -84,16 +84,16 @@ async function aiSuggestion() {
 <div
     class="border shadow-lg overflow-hidden transition-all duration-200
         {isActive
-            ? 'bg-blue-50/90 border-blue-200/60 shadow-xl rounded-[14px]'
-            : 'bg-blue-50/60 border-blue-200/40 rounded-[12px] opacity-90 hover:opacity-100'}"
+            ? 'bg-[color:var(--chip-blue-strong)] border-[color:var(--chip-blue-border)] shadow-xl rounded-[14px]'
+            : 'bg-[color:var(--chip-blue)] border-[color:var(--chip-blue-border)] rounded-[12px] opacity-90 hover:opacity-100'}"
     style="backdrop-filter: blur(12px);"
 >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-0">
-        <h3 class="text-[10px] font-semibold text-blue-600/70 uppercase tracking-wider">Comment</h3>
+        <h3 class="text-[10px] font-semibold text-[color:var(--accent-blue-text)] uppercase tracking-wider">Comment</h3>
         <div class="flex items-center gap-0.5">
             <button
-                class="p-1 rounded-md text-blue-400/50 hover:text-blue-600/70 hover:bg-white/40 transition-colors"
+                class="p-1 rounded-md text-[color:var(--accent-blue-text)] hover:text-[color:var(--accent-blue-text)] hover:bg-[color:var(--surface-2)] transition-colors"
                 onclick={() => {
                     posthog.capture("comment_modal_opened", {
                         thread_length: thread.length,
@@ -111,7 +111,7 @@ async function aiSuggestion() {
                 <Maximize2 size={14} />
             </button>
             <button
-                class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+                class="p-1 rounded-md text-[color:var(--accent-blue-text)] hover:text-[color:var(--accent-red-text)] hover:bg-[color:var(--surface-2)] transition-colors"
                 onclick={() => {
                     posthog.capture("annotation_deleted", {
                         type: "comment",
@@ -131,7 +131,7 @@ async function aiSuggestion() {
     {#if selectedText}
         <div class="px-3 pt-3 pb-0">
             <button
-                class="w-full text-left text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic hover:text-black/70 hover:border-yellow-500/80 transition-colors cursor-pointer"
+                class="w-full text-left text-xs text-[color:var(--text-soft)] border-l-2 border-yellow-400/80 pl-2 truncate italic hover:text-[color:var(--text)] hover:border-yellow-500/80 transition-colors cursor-pointer"
                 onclick={() => {
                     view.dispatch({
                         selection: EditorSelection.cursor(comment.selection.main.from),
@@ -154,7 +154,7 @@ async function aiSuggestion() {
             annotationId={comment.id}
             previewOnly={!isActive}
             onAiSuggest={isActive && appSettings.aiEnabled ? aiSuggestion : undefined}
-            accentClass="text-blue-600/80 hover:text-blue-700"
+            accentClass="text-[color:var(--accent-blue-text)] hover:text-[color:var(--accent-blue-text)]"
         />
     </div>
 </div>

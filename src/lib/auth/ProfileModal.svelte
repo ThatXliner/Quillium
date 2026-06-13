@@ -43,14 +43,14 @@ function handleKeydown(e: KeyboardEvent) {
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 <dialog bind:this={dialogEl} class="profile-modal" onclick={handleBackdropClick}>
     <div class="profile-modal-inner">
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06]">
-            <h2 class="text-[13px] font-semibold text-black/60">Profile</h2>
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)]">
+            <h2 class="text-[13px] font-semibold text-[color:var(--text-soft)]">Profile</h2>
             <button
                 onclick={onclose}
                 aria-label="Close profile"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
@@ -64,31 +64,31 @@ function handleKeydown(e: KeyboardEvent) {
                     {initials(displayName)}
                 </div>
                 <div class="min-w-0">
-                    <div class="text-base font-semibold text-black/80 truncate">{displayName}</div>
-                    <div class="text-xs text-black/45">{accountLabel}</div>
+                    <div class="text-base font-semibold text-[color:var(--text)] truncate">{displayName}</div>
+                    <div class="text-xs text-[color:var(--text-faint)]">{accountLabel}</div>
                 </div>
             </div>
 
-            <div class="rounded-2xl border border-black/[0.06] bg-black/[0.02] px-3 py-3 space-y-3">
+            <div class="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-2)] px-3 py-3 space-y-3">
                 <div class="flex items-start gap-2.5">
-                    <UserRound size={15} class="mt-0.5 text-black/35 shrink-0" />
+                    <UserRound size={15} class="mt-0.5 text-[color:var(--text-faint)] shrink-0" />
                     <div class="min-w-0">
-                        <div class="text-[11px] uppercase tracking-wider text-black/35">Username</div>
-                        <div class="text-sm text-black/75 break-words">{displayName}</div>
+                        <div class="text-[11px] uppercase tracking-wider text-[color:var(--text-faint)]">Username</div>
+                        <div class="text-sm text-[color:var(--text)] break-words">{displayName}</div>
                     </div>
                 </div>
                 <div class="flex items-start gap-2.5">
-                    <Mail size={15} class="mt-0.5 text-black/35 shrink-0" />
+                    <Mail size={15} class="mt-0.5 text-[color:var(--text-faint)] shrink-0" />
                     <div class="min-w-0">
-                        <div class="text-[11px] uppercase tracking-wider text-black/35">Email</div>
-                        <div class="text-sm text-black/75 break-words">{emailLabel}</div>
+                        <div class="text-[11px] uppercase tracking-wider text-[color:var(--text-faint)]">Email</div>
+                        <div class="text-sm text-[color:var(--text)] break-words">{emailLabel}</div>
                     </div>
                 </div>
             </div>
 
             <button
                 onclick={onlogout}
-                class="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 text-sm font-medium text-white bg-black/80 rounded-xl hover:bg-black transition-colors"
+                class="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 text-sm font-medium text-[color:var(--surface)] bg-[color:var(--text-strong)] rounded-xl hover:opacity-90 transition-opacity"
             >
                 <LogOut size={15} />
                 Log out
@@ -118,9 +118,9 @@ function handleKeydown(e: KeyboardEvent) {
 
     .profile-modal-inner {
         width: 360px;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
     }
 </style>

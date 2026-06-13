@@ -28,12 +28,12 @@ function accept() {
     ></button>
 
     <div
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] backdrop-blur-md bg-gray-300/85 border border-white/40 shadow-xl rounded-2xl p-6 flex flex-col gap-4"
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-xl rounded-2xl p-6 flex flex-col gap-4"
         role="document"
     >
         <div>
-            <h3 class="text-sm font-semibold text-black/80 mb-1">Welcome to the Quillium Beta</h3>
-            <p class="text-xs text-black/60 leading-relaxed">
+            <h3 class="text-sm font-semibold text-[color:var(--text)] mb-1">Welcome to the Quillium Beta</h3>
+            <p class="text-xs text-[color:var(--text-soft)] leading-relaxed">
                 By continuing, you agree to the
                 <a
                     href={TERMS_URL}

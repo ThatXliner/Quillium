@@ -1,52 +1,54 @@
 .cm-comment {
-    background-color: #fef2cd;
+    background-color: var(--tint-comment);
 }
 .cm-comment-active {
-    background-color: #fcbc05;
+    background-color: var(--tint-comment-active);
 }
 .cm-comment-active .cm-comment {
-    background-color: #fcbc05;
+    background-color: var(--tint-comment-active);
 }
 .cm-revision {
     text-decoration: underline;
-    text-decoration-color: #a855f7;
+    text-decoration-color: var(--underline-revision);
     text-decoration-thickness: 2px;
     text-underline-offset: 3px;
 }
 .cm-revision-active .cm-revision,
 .cm-revision-active {
-    background-color: #d8b4fe;
+    background-color: var(--tint-revision-active);
     text-decoration: none;
 }
 .cm-suggestion {
     text-decoration: underline;
-    text-decoration-color: #22c55e;
+    text-decoration-color: var(--underline-suggestion);
     text-decoration-thickness: 2px;
     text-underline-offset: 3px;
 }
 .cm-suggestion-active .cm-suggestion,
 .cm-suggestion-active {
-    background-color: #dcfce7;
+    background-color: var(--tint-suggestion-active);
     text-decoration: none;
 }
 .cm-suggestion-diff {
     font-style: normal;
     text-decoration: underline;
-    text-decoration-color: #22c55e;
+    text-decoration-color: var(--underline-suggestion);
     text-decoration-thickness: 2px;
     text-underline-offset: 3px;
 }
+/* Inline word-level diff pills: conventionally light even in dark UIs — kept
+   fixed-light with fixed-dark text so the red/green diff coding stays crisp. */
 .cm-suggestion-diff-del {
-    color: #dc2626;
-    background-color: #fee2e2;
+    color: var(--diff-del-text);
+    background-color: var(--diff-del-bg);
     text-decoration: line-through;
     text-decoration-color: #f87171;
     border-radius: 2px;
     padding: 0 1px;
 }
 .cm-suggestion-diff-ins {
-    color: #15803d;
-    background-color: #bbf7d0;
+    color: var(--diff-ins-text);
+    background-color: var(--diff-ins-bg);
     border-radius: 2px;
     padding: 0 1px;
 }

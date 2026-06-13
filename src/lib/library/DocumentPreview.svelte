@@ -88,12 +88,12 @@ async function loadPreview(id: string, parent: HTMLDivElement): Promise<EditorVi
 
 <div class="relative h-full w-full overflow-hidden">
     {#if loading}
-        <div class="absolute inset-0 flex items-center justify-center bg-gray-50/80">
+        <div class="absolute inset-0 flex items-center justify-center bg-[color:var(--surface-2)]/80">
             <div class="w-5 h-5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin"></div>
         </div>
     {/if}
     {#if error}
-        <div class="absolute inset-0 flex items-center justify-center bg-gray-50">
+        <div class="absolute inset-0 flex items-center justify-center bg-[color:var(--surface-2)]">
             <p class="text-sm text-red-400">{error}</p>
         </div>
     {/if}

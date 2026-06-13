@@ -625,19 +625,19 @@ if (import.meta.env.DEV) {
         <button
             disabled
             class="px-4 py-2 text-xs font-semibold text-red-700/60 bg-red-50/70 backdrop-blur-md
-                rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                rounded-full shadow-md inset-shadow-sm
                 ring-1 ring-red-200/60 cursor-default"
         >
             Reconnecting
         </button>
     {:else if authLoading}
-        <div class="h-8 w-[74px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
-        <div class="h-8 w-[84px] rounded-full bg-black/[0.06] animate-pulse" aria-hidden="true"></div>
+        <div class="h-8 w-[74px] rounded-full bg-[color:var(--surface-2)] animate-pulse" aria-hidden="true"></div>
+        <div class="h-8 w-[84px] rounded-full bg-[color:var(--surface-2)] animate-pulse" aria-hidden="true"></div>
     {:else if authOffline}
         <button
             onclick={handleAuthReconnect}
             class="px-4 py-2 text-xs font-semibold text-red-700 bg-red-50/90 backdrop-blur-md
-                rounded-full shadow-md inset-shadow-sm inset-shadow-white
+                rounded-full shadow-md inset-shadow-sm
                 ring-1 ring-red-200/80 hover:text-red-800 hover:bg-red-100/90 transition-colors"
         >
             Reconnect
@@ -668,6 +668,6 @@ if (import.meta.env.DEV) {
 
 <style>
     :global(html) {
-        background-color: #e5e7eb; /* gray-200 */
+        background-color: var(--bg);
     }
 </style>

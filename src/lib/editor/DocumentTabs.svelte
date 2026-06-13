@@ -75,11 +75,11 @@ function cancelRename() {
                 group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                 rounded-t-lg transition-colors duration-100
                 {isActive
-                    ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
-                    : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
+                    ? 'py-1.5 bg-[color:var(--surface)] text-[color:var(--text-strong)] font-semibold shadow-[0_-2px_6px_rgba(var(--shadow-color),0.06)] z-10 cursor-default'
+                    : 'py-1 bg-[color:var(--surface-2)] backdrop-blur-sm text-[color:var(--text-soft)] hover:text-[color:var(--text)] hover:bg-[color:var(--surface)] z-[1]'}
             "
         >
-            <FileTextIcon size={12} class="shrink-0 {isActive ? 'text-black/50' : 'text-black/30'}" />
+            <FileTextIcon size={12} class="shrink-0 {isActive ? 'text-[color:var(--text-soft)]' : 'text-[color:var(--text-ghost)]'}" />
             {#if isRenaming}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <input
@@ -91,7 +91,7 @@ function cancelRename() {
                         if (e.key === "Enter") { e.preventDefault(); commitRename(tab.id); }
                         if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
                     }}
-                    class="bg-transparent border-none outline-none w-24 text-sm text-black/90 text-center"
+                    class="bg-transparent border-none outline-none w-24 text-sm text-[color:var(--text-strong)] text-center"
                     aria-label="Rename tab"
                 />
             {:else}
@@ -108,7 +108,7 @@ function cancelRename() {
                     class="
                         ml-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px]
                         opacity-0 group-hover:opacity-100 transition-opacity
-                        hover:bg-black/10 text-black/50
+                        hover:bg-[color:var(--surface-2)] text-[color:var(--text-soft)]
                     "
                 >×</span>
             {/if}
@@ -119,7 +119,7 @@ function cancelRename() {
         onclick={ontabcreate}
         aria-label="New tab"
         title="New tab"
-        class="mb-1 ml-1 p-1 rounded text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors"
+        class="mb-1 ml-1 p-1 rounded text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
     >
         <PlusIcon size={14} />
     </button>

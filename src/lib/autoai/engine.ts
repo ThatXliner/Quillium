@@ -22,10 +22,7 @@ import {
     endAiTask,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
-import {
-    buildAiContextPacket,
-    contextPacketToPrompt,
-} from "$lib/ai/context";
+import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildDocumentContextPrompt } from "$lib/ai/utils";
 import {

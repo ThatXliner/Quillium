@@ -60,14 +60,14 @@ const RECOMMENDATIONS: Recommendation[] = [
 >
     <div class="model-guide-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
-            <h2 class="text-[13px] font-semibold text-black/60">Which model should I use?</h2>
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)] shrink-0">
+            <h2 class="text-[13px] font-semibold text-[color:var(--text-soft)]">Which model should I use?</h2>
             <button
                 onclick={onclose}
                 aria-label="Close model guide"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
@@ -75,8 +75,8 @@ const RECOMMENDATIONS: Recommendation[] = [
         <!-- Body -->
         <div class="overflow-y-auto px-5 py-4 flex flex-col gap-0 flex-1">
             <!-- Intro note -->
-            <div class="mb-4 px-3.5 py-3 rounded-xl bg-black/[0.03] border border-black/[0.05]">
-                <p class="text-[12px] text-black/55 leading-relaxed">
+            <div class="mb-4 px-3.5 py-3 rounded-xl bg-[color:var(--surface-2)] border border-[color:var(--border)]">
+                <p class="text-[12px] text-[color:var(--text-soft)] leading-relaxed">
                     Every provider sends your writing to a different company. Pick based on what you
                     care about most—quality, speed, cost, or privacy. You'll need an API key from
                     that provider.
@@ -120,9 +120,9 @@ const RECOMMENDATIONS: Recommendation[] = [
         width: 560px;
         height: auto;
         max-height: 78vh;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -130,7 +130,7 @@ const RECOMMENDATIONS: Recommendation[] = [
 
     .model-entry {
         padding: 0.75rem 0.125rem;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+        border-bottom: 1px solid var(--border);
     }
 
     .model-entry:last-child {
@@ -140,14 +140,14 @@ const RECOMMENDATIONS: Recommendation[] = [
     .model-name {
         font-size: 15px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.78);
+        color: var(--text);
         line-height: 1.2;
     }
 
     .best-badge {
         font-size: 10px;
         font-weight: 600;
-        color: rgba(37, 99, 235, 0.85);
+        color: var(--accent-blue-text);
         background: rgba(59, 130, 246, 0.12);
         border: 1px solid rgba(59, 130, 246, 0.3);
         padding: 1px 6px;
@@ -156,7 +156,7 @@ const RECOMMENDATIONS: Recommendation[] = [
 
     .model-desc {
         font-size: 12px;
-        color: rgba(0, 0, 0, 0.48);
+        color: var(--text-faint);
         line-height: 1.65;
     }
 </style>

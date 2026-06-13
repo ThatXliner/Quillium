@@ -84,14 +84,14 @@ function formatTime(ts: number) {
     {/if}
     <div class="flex-1 min-w-0">
         <div class="flex items-baseline gap-1.5">
-            <span class="text-xs font-semibold text-black/80">{message.author}</span>
-            <span class="text-[10px] text-black/40">{formatTime(message.time)}</span>
+            <span class="text-xs font-semibold text-[color:var(--text)]">{message.author}</span>
+            <span class="text-[10px] text-[color:var(--text-faint)]">{formatTime(message.time)}</span>
         </div>
 
         {#if editing}
             <textarea
                 bind:value={editMessage}
-                class="mt-1 w-full text-xs rounded-lg bg-white/40 border border-white/30 p-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400/50 text-black/70"
+                class="mt-1 w-full text-xs rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)] p-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400/50 text-[color:var(--text)]"
                 rows="3"
                 onkeydown={(e) => {
                     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && editMessage) {
@@ -103,19 +103,19 @@ function formatTime(ts: number) {
                 <button
                     onclick={saveEdit}
                     disabled={!editMessage}
-                    class="text-xs font-medium text-blue-600/80 hover:text-blue-700 disabled:opacity-50"
+                    class="text-xs font-medium text-[color:var(--accent-blue)] hover:text-blue-500 disabled:opacity-50"
                 >Save</button>
                 <button
                     onclick={() => { editing = false; editMessage = message.message; }}
-                    class="text-xs text-black/40 hover:text-black/60"
+                    class="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]"
                 >Cancel</button>
             </div>
         {:else}
-            <p class="text-xs text-black/70 mt-0.5 leading-relaxed {truncate ? 'truncate' : 'whitespace-pre-wrap'}">{message.message}</p>
+            <p class="text-xs text-[color:var(--text)] mt-0.5 leading-relaxed {truncate ? 'truncate' : 'whitespace-pre-wrap'}">{message.message}</p>
             {#if !truncate}
                 <button
                     onclick={() => (editing = true)}
-                    class="text-[10px] text-black/30 hover:text-black/50 mt-0.5"
+                    class="text-[10px] text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] mt-0.5"
                 >Edit</button>
             {/if}
         {/if}

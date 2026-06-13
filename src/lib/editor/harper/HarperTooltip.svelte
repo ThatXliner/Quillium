@@ -160,7 +160,7 @@ let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dic
     <div
         bind:this={tooltipEl}
         class="harper-tooltip-popover fixed z-[100] w-72
-            backdrop-blur-md bg-white/90 border border-white/40 shadow-xl rounded-2xl
+            backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-xl rounded-2xl
             overflow-hidden"
         style="left: {posX}px; top: {posY}px;"
         role="tooltip"
@@ -168,11 +168,11 @@ let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dic
         <div class="p-3 flex flex-col gap-2">
             <!-- Category label + close button -->
             <div class="flex items-center justify-between">
-                <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                <span class="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-faint)]">
                     {diagnostic.title}
                 </span>
                 <button
-                    class="text-gray-300 hover:text-gray-500 transition-colors cursor-pointer -mr-1 -mt-1"
+                    class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors cursor-pointer -mr-1 -mt-1"
                     onclick={dismissAndSuppress}
                     aria-label="Close"
                 >
@@ -181,7 +181,7 @@ let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dic
             </div>
 
             <!-- Message -->
-            <span class="text-[13px] text-gray-700 leading-snug [&_code]:whitespace-nowrap [&_code]:font-semibold">
+            <span class="text-[13px] text-[color:var(--text)] leading-snug [&_code]:whitespace-nowrap [&_code]:font-semibold">
                 {@html diagnosticMessageHtml(diagnostic)}
             </span>
 
@@ -189,7 +189,7 @@ let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dic
             <div class="flex flex-wrap gap-1">
                 {#each suggestionActions as action}
                     <button
-                        class="px-2 py-0.5 text-xs rounded-full border border-gray-200 bg-gray-50 text-gray-700
+                        class="px-2 py-0.5 text-xs rounded-full border border-[color:var(--border)] bg-[color:var(--surface-2)] text-[color:var(--text)]
                             hover:bg-blue-500 hover:border-blue-500 hover:text-white transition-colors cursor-pointer"
                         onclick={() => applySuggestion(action)}
                     >
@@ -199,8 +199,8 @@ let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dic
                 {#if dictionaryAction}
                     {@const dictAction = dictionaryAction}
                     <button
-                        class="px-2 py-0.5 text-xs rounded-full border border-gray-200 bg-gray-50 text-gray-500
-                            hover:bg-gray-100 hover:border-gray-300 hover:text-gray-700 transition-colors cursor-pointer"
+                        class="px-2 py-0.5 text-xs rounded-full border border-[color:var(--border)] bg-[color:var(--surface-2)] text-[color:var(--text-soft)]
+                            hover:bg-[color:var(--surface-3)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--text)] transition-colors cursor-pointer"
                         onclick={() => applySuggestion(dictAction)}
                     >
                         {dictAction.name}
@@ -210,7 +210,7 @@ let dictionaryAction = $derived(diagnostic?.actions?.find((a) => a.kind === "dic
 
             <!-- Ignore -->
             <button
-                class="text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer text-left"
+                class="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors cursor-pointer text-left"
                 onclick={ignoreDiagnostic}
             >
                 Ignore

@@ -60,10 +60,10 @@ function commitRename(draftId: string) {
 </script>
 
 <div
-    class="w-44 rounded-lg bg-white/45 backdrop-blur-sm shadow-md py-2 px-1.5 select-none"
+    class="w-44 rounded-lg bg-[color:var(--surface-2)] backdrop-blur-sm shadow-md py-2 px-1.5 select-none"
     aria-label="Draft tree"
 >
-    <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-black/35">
+    <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-faint)]">
         <GitBranchIcon size={11} />
         <span>Drafts</span>
     </div>
@@ -73,17 +73,17 @@ function commitRename(draftId: string) {
         {@const isRenaming = renamingDraftId === row.draft.id}
         <div
             class="group relative flex items-center gap-1 rounded-md pr-1 transition-colors
-                {isActive ? 'bg-white shadow-sm' : 'hover:bg-white/50'}"
+                {isActive ? 'bg-[color:var(--surface)] shadow-sm' : 'hover:bg-[color:var(--surface-3)]'}"
             style="margin-left: {row.depth * 12}px"
         >
             <button
                 onclick={() => { if (!isActive) ondraftselect(row.draft.id); }}
                 ondblclick={() => startRename(row.draft)}
                 class="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 text-left
-                    {isActive ? 'text-black/80 font-medium cursor-default' : 'text-black/50 hover:text-black/70'}"
+                    {isActive ? 'text-[color:var(--text)] font-medium cursor-default' : 'text-[color:var(--text-soft)] hover:text-[color:var(--text)]'}"
                 aria-current={isActive ? "true" : undefined}
             >
-                <span class="w-1.5 h-1.5 rounded-full shrink-0 {isActive ? 'bg-amber-500' : 'bg-black/20'}"></span>
+                <span class="w-1.5 h-1.5 rounded-full shrink-0 {isActive ? 'bg-amber-500' : 'bg-[color:var(--text-ghost)]'}"></span>
                 {#if isRenaming}
                     <input
                         bind:this={renameInputEl}
@@ -94,14 +94,14 @@ function commitRename(draftId: string) {
                             if (e.key === "Escape") { e.preventDefault(); renamingDraftId = null; }
                         }}
                         onclick={(e) => e.stopPropagation()}
-                        class="w-full bg-transparent border-none outline-none text-xs text-black/80"
+                        class="w-full bg-transparent border-none outline-none text-xs text-[color:var(--text)]"
                         aria-label="Rename draft"
                     />
                 {:else}
                     <span class="text-xs truncate">{row.draft.label}</span>
                 {/if}
                 {#if row.draft.locked}
-                    <LockIcon size={10} class="shrink-0 text-black/30" />
+                    <LockIcon size={10} class="shrink-0 text-[color:var(--text-ghost)]" />
                 {/if}
             </button>
 
@@ -113,7 +113,7 @@ function commitRename(draftId: string) {
                         onclick={() => ondraftiterate(row.draft.id)}
                         title="New version (continue from this draft)"
                         aria-label="Iterate {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                        class="p-0.5 rounded text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)]"
                     >
                         <ChevronsDownIcon size={11} />
                     </button>
@@ -125,7 +125,7 @@ function commitRename(draftId: string) {
                         onclick={() => ondraftbranch(row.draft.id)}
                         title="Branch a different take from this draft"
                         aria-label="Branch from {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                        class="p-0.5 rounded text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)]"
                     >
                         <GitBranchIcon size={11} />
                     </button>
@@ -135,7 +135,7 @@ function commitRename(draftId: string) {
                         onclick={() => ontogglelock(row.draft.id, false)}
                         title="Unlock for editing"
                         aria-label="Unlock {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
+                        class="p-0.5 rounded text-[color:var(--text-ghost)] hover:text-amber-600 hover:bg-[color:var(--surface-3)]"
                     >
                         <LockOpenIcon size={11} />
                     </button>
@@ -144,7 +144,7 @@ function commitRename(draftId: string) {
                         onclick={() => ontogglelock(row.draft.id, true)}
                         title="Lock against edits"
                         aria-label="Lock {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-amber-600 hover:bg-black/5"
+                        class="p-0.5 rounded text-[color:var(--text-ghost)] hover:text-amber-600 hover:bg-[color:var(--surface-3)]"
                     >
                         <LockIcon size={11} />
                     </button>
@@ -154,7 +154,7 @@ function commitRename(draftId: string) {
                         onclick={() => ondraftdelete(row.draft.id)}
                         title="Delete draft (undoable)"
                         aria-label="Delete {row.draft.label}"
-                        class="p-0.5 rounded text-black/30 hover:text-red-500 hover:bg-black/5"
+                        class="p-0.5 rounded text-[color:var(--text-ghost)] hover:text-red-500 hover:bg-[color:var(--surface-3)]"
                     >
                         <Trash2Icon size={11} />
                     </button>

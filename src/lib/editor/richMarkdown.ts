@@ -143,7 +143,7 @@ const richMarkdownTheme = EditorView.baseTheme({
         fontStyle: "italic",
     },
     ".cm-line.cm-rich-markdown-heading": {
-        color: "rgba(0, 0, 0, 0.82)",
+        color: "var(--text-strong)",
         fontWeight: "700",
         lineHeight: "1.25",
         textIndent: "0",
@@ -174,7 +174,7 @@ const richMarkdownTheme = EditorView.baseTheme({
         paddingTop: "0.18em",
     },
     ".cm-line.cm-rich-markdown-heading-6": {
-        color: "rgba(0, 0, 0, 0.6)",
+        color: "var(--text-soft)",
         fontSize: "0.9em",
         paddingBottom: "0.04em",
         paddingTop: "0.16em",

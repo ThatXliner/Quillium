@@ -49,7 +49,7 @@ function openProfile() {
             onclick={() => (dropdownOpen = !dropdownOpen)}
             title={displayName}
             class="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold
-                shadow-md hover:ring-2 hover:ring-black/10 transition-shadow"
+                shadow-md hover:ring-2 hover:ring-[color:var(--border)] transition-shadow"
             style="background: {avatarColor(displayName)};"
             aria-label="Account menu"
         >
@@ -69,9 +69,9 @@ function openProfile() {
         <!-- Logged out: Sign In button per D-15 (glassy, matching StatusBar style) -->
         <button
             onclick={onauthclick}
-            class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md
-                rounded-full shadow-md inset-shadow-sm inset-shadow-white
-                hover:text-black/70 hover:bg-white/60 transition-colors"
+            class="px-4 py-2 text-xs font-medium text-[color:var(--text-soft)] bg-[color:var(--surface-2)] backdrop-blur-md
+                rounded-full shadow-md
+                hover:text-[color:var(--text)] hover:bg-[color:var(--surface)] transition-colors"
         >
             Sign in
         </button>

@@ -467,25 +467,25 @@ function handleKeydown(e: KeyboardEvent) {
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="h-screen w-full flex flex-col bg-[#f5f5f0]">
+<div class="h-screen w-full flex flex-col bg-[color:var(--bg)]">
     <!-- Top bar -->
-    <div class="flex items-center gap-4 px-5 py-3 bg-white border-b border-black/[0.08] shadow-sm flex-shrink-0">
+    <div class="flex items-center gap-4 px-5 py-3 bg-[color:var(--surface)] border-b border-[color:var(--border)] shadow-sm flex-shrink-0">
         <button
             onclick={goToEditor}
-            class="flex items-center gap-2 text-sm text-black/60 hover:text-black/90
-                   transition-colors px-2 py-1 rounded-md hover:bg-black/5"
+            class="flex items-center gap-2 text-sm text-[color:var(--text-soft)] hover:text-[color:var(--text-strong)]
+                   transition-colors px-2 py-1 rounded-md hover:bg-[color:var(--surface-2)]"
         >
             <ArrowLeft size={16} />
             Back
             <Kbd keys={["Esc"]} />
         </button>
-        <div class="w-px h-5 bg-black/15"></div>
+        <div class="w-px h-5 bg-[color:var(--border-strong)]"></div>
         <div class="flex-1 flex items-center gap-2">
-            <Clock size={15} class="text-black/40" />
-            <span class="text-sm font-medium text-black/70">Version History</span>
+            <Clock size={15} class="text-[color:var(--text-faint)]" />
+            <span class="text-sm font-medium text-[color:var(--text)]">Version History</span>
             {#if selectedSnapshot}
-                <ChevronRight size={14} class="text-black/30" />
-                <span class="text-sm text-black/50">
+                <ChevronRight size={14} class="text-[color:var(--text-ghost)]" />
+                <span class="text-sm text-[color:var(--text-soft)]">
                     {selectedSnapshot.label ?? formatTime(selectedSnapshot.createdAt)}
                 </span>
             {/if}
@@ -493,7 +493,7 @@ function handleKeydown(e: KeyboardEvent) {
         <!-- Save named checkpoint -->
         <div class="flex items-center gap-2">
             {#if displayLastSavedAt}
-                <span class="text-xs text-black/35">
+                <span class="text-xs text-[color:var(--text-faint)]">
                     Last saved {formatTimeShort(displayLastSavedAt)}
                 </span>
             {/if}
@@ -503,12 +503,12 @@ function handleKeydown(e: KeyboardEvent) {
                     bind:value={checkpointLabel}
                     placeholder="Name this version…"
                     onkeydown={(e) => e.key === "Enter" && saveCheckpoint()}
-                    class="text-sm px-3 py-1.5 rounded-lg border bg-white
-                           placeholder:text-black/30 focus:outline-none focus:ring-2
+                    class="text-sm px-3 py-1.5 rounded-lg border bg-[color:var(--surface)] text-[color:var(--text)]
+                           placeholder:text-[color:var(--text-ghost)] focus:outline-none focus:ring-2
                            focus:ring-blue-400/40 w-48 transition-colors
                            {checkpointAlerting
                                ? 'border-red-400 ring-2 ring-red-300/50'
-                               : 'border-black/[0.12]'}"
+                               : 'border-[color:var(--border)]'}"
                 />
                 <button
                     onclick={saveCheckpoint}
@@ -523,14 +523,14 @@ function handleKeydown(e: KeyboardEvent) {
             </div>
         </div>
         {#if selectedSnapshot}
-            <div class="w-px h-5 bg-black/15"></div>
+            <div class="w-px h-5 bg-[color:var(--border-strong)]"></div>
             <button
                 onclick={handleRestore}
                 class="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium
                        transition-colors
                        {confirmingRestoreId === selectedSnapshot.id
                            ? 'bg-red-500 text-white hover:bg-red-600'
-                           : 'bg-black/[0.06] text-black/70 hover:bg-black/[0.10]'}"
+                           : 'bg-[color:var(--surface-2)] text-[color:var(--text)] hover:bg-[color:var(--surface-3)]'}"
             >
                 <RotateCcw size={13} />
                 {confirmingRestoreId === selectedSnapshot.id ? "Confirm restore?" : "Restore this version"}
@@ -544,17 +544,17 @@ function handleKeydown(e: KeyboardEvent) {
         <!-- Document preview -->
         <div class="flex-1 overflow-y-auto py-10 px-8 flex justify-center">
             {#if previewLoading}
-                <div class="flex items-center justify-center w-full text-black/30 text-sm">
+                <div class="flex items-center justify-center w-full text-[color:var(--text-ghost)] text-sm">
                     Loading…
                 </div>
             {:else if !selectedSnapshot}
                 <div class="flex flex-col items-center justify-center w-full gap-3 text-center">
-                    <Clock size={36} class="text-black/15" />
-                    <p class="text-sm text-black/40">Select a version to preview it</p>
+                    <Clock size={36} class="text-[color:var(--text-ghost)]" />
+                    <p class="text-sm text-[color:var(--text-faint)]">Select a version to preview it</p>
                 </div>
             {:else}
                 <div
-                    class="version-preview w-[816px] min-h-full bg-white rounded-lg shadow-xl
+                    class="version-preview w-[816px] min-h-full bg-[color:var(--surface)] rounded-lg shadow-xl
                            py-3 px-1 pointer-events-none select-none"
                     bind:this={previewEl}
                 ></div>
@@ -562,11 +562,11 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <!-- Timeline panel -->
-        <div id="versions-panel" class="w-72 bg-white border-l border-black/[0.08] flex flex-col overflow-hidden
-                    shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.06)]">
-            <div class="px-4 pt-3 pb-2 border-b border-black/[0.06] space-y-1.5">
+        <div id="versions-panel" class="w-72 bg-[color:var(--surface)] border-l border-[color:var(--border)] flex flex-col overflow-hidden
+                    shadow-[-4px_0_12px_-4px_rgba(var(--shadow-color),0.06)]">
+            <div class="px-4 pt-3 pb-2 border-b border-[color:var(--border)] space-y-1.5">
                 <div class="flex items-center justify-between">
-                    <h2 class="text-sm font-semibold text-black/70">History</h2>
+                    <h2 class="text-sm font-semibold text-[color:var(--text)]">History</h2>
                     {#if storageBytes !== null}
                         <button
                             title="Manage storage"
@@ -574,7 +574,7 @@ function handleKeydown(e: KeyboardEvent) {
                             class="text-xs px-1.5 py-0.5 rounded transition-colors
                                    {storageBytes >= STORAGE_WARN_BYTES
                                        ? 'text-amber-600 font-medium hover:bg-amber-50'
-                                       : 'text-black/35 hover:text-black/60 hover:bg-black/[0.05]'}"
+                                       : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >
                             {formatBytes(storageBytes)}
                         </button>
@@ -588,16 +588,16 @@ function handleKeydown(e: KeyboardEvent) {
                 {/if}
 
                 {#if showStoragePanel}
-                    <div class="border border-black/[0.08] rounded-lg p-3 space-y-2.5 bg-black/[0.015]">
-                        <p class="text-xs font-semibold text-black/60">Manage storage</p>
+                    <div class="border border-[color:var(--border)] rounded-lg p-3 space-y-2.5 bg-[color:var(--surface-2)]">
+                        <p class="text-xs font-semibold text-[color:var(--text-soft)]">Manage storage</p>
 
                         <!-- Auto-retention -->
                         <div class="flex items-center justify-between gap-2">
-                            <span class="text-xs text-black/45 shrink-0">Auto-prune</span>
+                            <span class="text-xs text-[color:var(--text-faint)] shrink-0">Auto-prune</span>
                             <select
                                 value={snapshotRetention ?? "never"}
                                 onchange={handleRetentionChange}
-                                class="text-xs text-black/60 bg-black/4 hover:bg-black/[0.07]
+                                class="text-xs text-[color:var(--text-soft)] bg-[color:var(--surface-3)] hover:bg-[color:var(--surface-3)]
                                        rounded-full px-2.5 pr-0 py-1 border-0 cursor-pointer appearance-none
                                        focus:outline-none focus:ring-1 focus:ring-blue-400 transition-colors"
                             >
@@ -613,13 +613,13 @@ function handleKeydown(e: KeyboardEvent) {
                         <!-- Keep last N -->
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-1.5">
-                                <span class="text-xs text-black/45 shrink-0">Keep last</span>
+                                <span class="text-xs text-[color:var(--text-faint)] shrink-0">Keep last</span>
                                 <input
                                     type="number"
                                     min="0"
                                     bind:value={pruneKeepN}
-                                    class="w-14 text-xs px-2 py-0.5 rounded border border-black/[0.12]
-                                           bg-white focus:outline-none focus:ring-1 focus:ring-blue-400/50"
+                                    class="w-14 text-xs px-2 py-0.5 rounded border border-[color:var(--border)]
+                                           bg-[color:var(--surface)] text-[color:var(--text)] focus:outline-none focus:ring-1 focus:ring-blue-400/50"
                                 />
                             </div>
                             <button
@@ -629,7 +629,7 @@ function handleKeydown(e: KeyboardEvent) {
                                        disabled:opacity-40
                                        {confirmingPruneKeepN
                                            ? 'bg-red-500 text-white hover:bg-red-600'
-                                           : 'bg-black/[0.06] text-black/60 hover:bg-black/[0.1]'}"
+                                           : 'bg-[color:var(--surface-2)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)]'}"
                             >
                                 {confirmingPruneKeepN ? "Confirm?" : "Prune"}
                             </button>
@@ -638,15 +638,15 @@ function handleKeydown(e: KeyboardEvent) {
                         <!-- Older than N days -->
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-1.5">
-                                <span class="text-xs text-black/45 shrink-0">Older than</span>
+                                <span class="text-xs text-[color:var(--text-faint)] shrink-0">Older than</span>
                                 <input
                                     type="number"
                                     min="1"
                                     bind:value={pruneOlderThanDays}
-                                    class="w-14 text-xs px-2 py-0.5 rounded border border-black/[0.12]
-                                           bg-white focus:outline-none focus:ring-1 focus:ring-blue-400/50"
+                                    class="w-14 text-xs px-2 py-0.5 rounded border border-[color:var(--border)]
+                                           bg-[color:var(--surface)] text-[color:var(--text)] focus:outline-none focus:ring-1 focus:ring-blue-400/50"
                                 />
-                                <span class="text-xs text-black/35">days</span>
+                                <span class="text-xs text-[color:var(--text-faint)]">days</span>
                             </div>
                             <button
                                 onclick={handlePruneOlderThan}
@@ -655,14 +655,14 @@ function handleKeydown(e: KeyboardEvent) {
                                        disabled:opacity-40
                                        {confirmingPruneOlderThan
                                            ? 'bg-red-500 text-white hover:bg-red-600'
-                                           : 'bg-black/[0.06] text-black/60 hover:bg-black/[0.1]'}"
+                                           : 'bg-[color:var(--surface-2)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)]'}"
                             >
                                 {confirmingPruneOlderThan ? "Confirm?" : "Prune"}
                             </button>
                         </div>
 
                         {#if pruneResult !== null}
-                            <p class="text-[11px] text-green-700">
+                            <p class="text-[11px] text-[color:var(--accent-green-text)]">
                                 Deleted {pruneResult} snapshot{pruneResult === 1 ? "" : "s"}.
                             </p>
                         {/if}
@@ -672,14 +672,14 @@ function handleKeydown(e: KeyboardEvent) {
 
             <div class="flex-1 overflow-y-auto">
                 {#if loading}
-                    <div class="flex items-center justify-center py-16 text-black/30 text-sm">
+                    <div class="flex items-center justify-center py-16 text-[color:var(--text-ghost)] text-sm">
                         Loading…
                     </div>
                 {:else if timelineItems.length === 0}
                     <div class="flex flex-col items-center justify-center py-16 gap-2 px-6 text-center">
-                        <Clock size={28} class="text-black/15" />
-                        <p class="text-sm text-black/45">No history yet.</p>
-                        <p class="text-xs text-black/30 leading-relaxed">
+                        <Clock size={28} class="text-[color:var(--text-ghost)]" />
+                        <p class="text-sm text-[color:var(--text-faint)]">No history yet.</p>
+                        <p class="text-xs text-[color:var(--text-ghost)] leading-relaxed">
                             Versions are saved automatically every 50 edits or 2 minutes.
                         </p>
                     </div>
@@ -687,7 +687,7 @@ function handleKeydown(e: KeyboardEvent) {
                     <div role="list" aria-label="History timeline">
                     {#each groups as group}
                         <div class="px-4 pt-4 pb-1">
-                            <span class="text-[11px] font-semibold text-black/35 uppercase tracking-wide">
+                            <span class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wide">
                                 {group.heading}
                             </span>
                         </div>
@@ -704,11 +704,11 @@ function handleKeydown(e: KeyboardEvent) {
                                     class="w-full text-left px-4 py-2.5 flex items-start gap-3
                                            cursor-pointer transition-colors
                                            {isSelected
-                                               ? 'bg-blue-50 border-r-2 border-blue-500'
-                                               : 'hover:bg-black/[0.025] border-r-2 border-transparent'}"
+                                               ? 'bg-[color:var(--surface-3)] border-r-2 border-blue-500'
+                                               : 'hover:bg-[color:var(--surface-2)] border-r-2 border-transparent'}"
                                 >
                                     <div class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0
-                                                {snapshot.label ? 'bg-blue-500' : 'bg-black/20'}">
+                                                {snapshot.label ? 'bg-blue-500' : 'bg-[color:var(--text-ghost)]'}">
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         {#if editingLabelId === snapshot.id}
@@ -739,7 +739,7 @@ function handleKeydown(e: KeyboardEvent) {
                                                         editingLabelId = snapshot.id;
                                                         editingLabelText = snapshot.label ?? "";
                                                     }}
-                                                    class="text-black/20 hover:text-black/50
+                                                    class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)]
                                                            transition-colors flex-shrink-0"
                                                 >
                                                     <Pencil size={10} />
@@ -747,7 +747,7 @@ function handleKeydown(e: KeyboardEvent) {
                                             </div>
                                         {:else}
                                             <div class="flex items-center gap-1">
-                                                <span class="text-xs text-black/50">
+                                                <span class="text-xs text-[color:var(--text-soft)]">
                                                     {formatTimeShort(snapshot.createdAt)}
                                                 </span>
                                                 <button
@@ -758,7 +758,7 @@ function handleKeydown(e: KeyboardEvent) {
                                                     }}
                                                     title="Add label"
                                                     aria-label="Add label"
-                                                    class="text-black/20 hover:text-black/50
+                                                    class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)]
                                                            transition-colors flex-shrink-0"
                                                 >
                                                     <Pencil size={10} />
@@ -766,9 +766,9 @@ function handleKeydown(e: KeyboardEvent) {
                                             </div>
                                         {/if}
                                         {#if snapshot.label}
-                                            <p class="text-[11px] text-black/35 mt-0.5">Named checkpoint</p>
+                                            <p class="text-[11px] text-[color:var(--text-faint)] mt-0.5">Named checkpoint</p>
                                         {:else}
-                                            <p class="text-[11px] text-black/35 mt-0.5">Auto-saved</p>
+                                            <p class="text-[11px] text-[color:var(--text-faint)] mt-0.5">Auto-saved</p>
                                         {/if}
                                     </div>
                                 </div>
@@ -777,10 +777,10 @@ function handleKeydown(e: KeyboardEvent) {
                                 {@const info = describeDocEvent(ev)}
                                 {@const restore = info.restore}
                                 <div class="w-full text-left px-4 py-2.5 flex items-start gap-3 border-r-2 border-transparent">
-                                    <div class="mt-1.5 w-2 h-2 rounded-full bg-black/15 flex-shrink-0"></div>
+                                    <div class="mt-1.5 w-2 h-2 rounded-full bg-[color:var(--text-ghost)] flex-shrink-0"></div>
                                     <div class="flex-1 min-w-0">
-                                        <p class="text-xs text-black/55 leading-snug">{info.text}</p>
-                                        <p class="text-[10px] text-black/30 mt-0.5">{formatTime(ev.createdAt)}</p>
+                                        <p class="text-xs text-[color:var(--text-soft)] leading-snug">{info.text}</p>
+                                        <p class="text-[10px] text-[color:var(--text-ghost)] mt-0.5">{formatTime(ev.createdAt)}</p>
                                     </div>
                                     {#if restore && deletionState.get(`${restore.kind}:${restore.id}`)}
                                         <button

@@ -264,7 +264,7 @@ function handleKeydown(e: KeyboardEvent) {
 >
     <!-- Panel -->
     <div
-        class="relative bg-white/90 backdrop-blur-md border border-white/50 rounded-2xl shadow-2xl w-[860px] max-h-[82vh] flex flex-col overflow-hidden"
+        class="relative bg-[color:var(--surface)] backdrop-blur-md border border-[color:var(--border)] rounded-2xl shadow-2xl w-[860px] max-h-[82vh] flex flex-col overflow-hidden"
         onclick={(e) => e.stopPropagation()}
         onkeydown={(e) => e.stopPropagation()}
         role="dialog"
@@ -272,27 +272,27 @@ function handleKeydown(e: KeyboardEvent) {
         tabindex="-1"
     >
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-4 border-b border-black/10">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-[color:var(--border)]">
             <div class="flex items-center gap-2.5">
                 <span class="text-lg">🐛</span>
-                <span class="font-semibold text-black/80 text-sm">Scenarios</span>
-                <span class="text-[10px] font-mono bg-amber-100 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">DEV</span>
+                <span class="font-semibold text-[color:var(--text)] text-sm">Scenarios</span>
+                <span class="text-[10px] font-mono bg-amber-100 text-[color:var(--accent-amber-text)] border border-amber-200 rounded px-1.5 py-0.5">DEV</span>
             </div>
             <button
                 onclick={close}
-                class="w-6 h-6 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-xs font-bold flex items-center justify-center"
+                class="w-6 h-6 rounded-full bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)] text-[color:var(--text-faint)] hover:text-[color:var(--text)] transition-colors text-xs font-bold flex items-center justify-center"
                 aria-label="Close debug panel"
             >✕</button>
         </div>
 
         <!-- Info bar -->
-        <div class="px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-amber-700">
+        <div class="px-5 py-2.5 bg-amber-50/80 border-b border-amber-100 text-[11px] text-[color:var(--accent-amber-text)]">
             Saves the scenario to disk and reloads the editor. <strong>Overwrites your current draft.</strong>
         </div>
 
         <!-- Error -->
         {#if error}
-            <div class="mx-5 mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700">
+            <div class="mx-5 mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-[color:var(--accent-red-text)]">
                 {error}
             </div>
         {/if}
@@ -303,7 +303,7 @@ function handleKeydown(e: KeyboardEvent) {
             <!-- Debug column -->
             <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
                 <div class="px-4 pt-3 pb-2 flex items-center gap-2">
-                    <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Debug</span>
+                    <span class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-widest">Debug</span>
                 </div>
                 <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
                     {#each debugScenarios as scenario}
@@ -313,17 +313,17 @@ function handleKeydown(e: KeyboardEvent) {
                             class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
                                 isLoaded
                                     ? "border-green-200 bg-green-50/70"
-                                    : "border-black/8 bg-white/50 hover:bg-white/80"
+                                    : "border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)]"
                             }`}
                         >
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                    <span class="text-[12px] font-medium text-[color:var(--text)]">{scenario.label}</span>
                                     {#if isLoaded}
                                         <span class="text-[10px] text-green-600 font-medium">✓ loaded</span>
                                     {/if}
                                 </div>
-                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                                <p class="text-[10.5px] text-[color:var(--text-faint)] mt-0.5 leading-snug">{scenario.description}</p>
                             </div>
                             <button
                                 onclick={() => runScenario(scenario)}
@@ -331,7 +331,7 @@ function handleKeydown(e: KeyboardEvent) {
                                 class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
                                     isLoading
                                         ? "bg-blue-100 text-blue-400 cursor-wait"
-                                        : "bg-black/8 hover:bg-black/14 text-black/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        : "bg-[color:var(--surface-3)] hover:bg-[color:var(--border-strong)] text-[color:var(--text-soft)] disabled:opacity-40 disabled:cursor-not-allowed"
                                 }`}
                             >
                                 {isLoading ? "Saving…" : "Load"}
@@ -342,13 +342,13 @@ function handleKeydown(e: KeyboardEvent) {
             </div>
 
             <!-- Divider -->
-            <div class="w-px bg-black/8 self-stretch my-3"></div>
+            <div class="w-px bg-[color:var(--border)] self-stretch my-3"></div>
 
             <!-- Demo column -->
             <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
                 <div class="px-4 pt-3 pb-2 flex items-center gap-2">
-                    <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Demo</span>
-                    <span class="text-[10px] text-black/30">polished · show-ready</span>
+                    <span class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-widest">Demo</span>
+                    <span class="text-[10px] text-[color:var(--text-ghost)]">polished · show-ready</span>
                 </div>
                 <div class="overflow-y-auto flex-1 px-3 pb-3 flex flex-col gap-1.5">
                     {#each demoScenarios as scenario}
@@ -358,17 +358,17 @@ function handleKeydown(e: KeyboardEvent) {
                             class={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
                                 isLoaded
                                     ? "border-blue-200 bg-blue-50/60"
-                                    : "border-black/8 bg-white/50 hover:bg-white/80"
+                                    : "border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)]"
                             }`}
                         >
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-[12px] font-medium text-black/75">{scenario.label}</span>
+                                    <span class="text-[12px] font-medium text-[color:var(--text)]">{scenario.label}</span>
                                     {#if isLoaded}
                                         <span class="text-[10px] text-blue-500 font-medium">✓ loaded</span>
                                     {/if}
                                 </div>
-                                <p class="text-[10.5px] text-black/45 mt-0.5 leading-snug">{scenario.description}</p>
+                                <p class="text-[10.5px] text-[color:var(--text-faint)] mt-0.5 leading-snug">{scenario.description}</p>
                             </div>
                             <button
                                 onclick={() => runScenario(scenario)}
@@ -389,9 +389,9 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <!-- AutoAI Face Preview -->
-        <div class="px-5 py-3 border-t border-black/10 flex items-center gap-3">
-            <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest">Face</span>
-            <div class="w-[67px] h-[67px] rounded-full bg-[#faf8f5] border-2 border-[#d6b87a] flex items-center justify-center shrink-0">
+        <div class="px-5 py-3 border-t border-[color:var(--border)] flex items-center gap-3">
+            <span class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-widest">Face</span>
+            <div class="w-[67px] h-[67px] rounded-full bg-[color:var(--bg)] border-2 border-[#d6b87a] flex items-center justify-center shrink-0">
                 <AutoAIFace
                     faceState={previewFaceState}
                     eyeOffsetX={0}
@@ -403,7 +403,7 @@ function handleKeydown(e: KeyboardEvent) {
             </div>
             <div class="flex flex-col gap-1.5">
                 <div class="flex items-center gap-1">
-                    <span class="text-[10px] text-black/40 w-10">State</span>
+                    <span class="text-[10px] text-[color:var(--text-faint)] w-10">State</span>
                     <div class="flex flex-wrap gap-1">
                         {#each FACE_STATES as fs}
                             <button
@@ -411,20 +411,20 @@ function handleKeydown(e: KeyboardEvent) {
                                 class="text-[10px] px-1.5 py-0.5 rounded transition-colors
                                     {previewFaceState === fs
                                         ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                                        : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                                        : 'bg-[color:var(--surface-2)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)] border border-transparent'}"
                             >{fs}</button>
                         {/each}
                     </div>
                 </div>
                 <div class="flex items-center gap-1">
-                    <span class="text-[10px] text-black/40 w-10">Idle</span>
+                    <span class="text-[10px] text-[color:var(--text-faint)] w-10">Idle</span>
                     <div class="flex flex-wrap gap-1">
                         <button
                             onclick={() => { previewFaceState = "idle"; previewIdleMode = "auto"; }}
                             class="text-[10px] px-1.5 py-0.5 rounded transition-colors
                                 {previewFaceState === 'idle' && previewIdleMode === 'auto'
                                     ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                    : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                                    : 'bg-[color:var(--surface-2)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)] border border-transparent'}"
                         >auto</button>
                         {#each IDLE_VARIANTS as iv}
                             <button
@@ -432,7 +432,7 @@ function handleKeydown(e: KeyboardEvent) {
                                 class="text-[10px] px-1.5 py-0.5 rounded transition-colors
                                     {previewFaceState === 'idle' && previewIdleMode === iv
                                         ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                        : 'bg-black/5 text-black/50 hover:bg-black/10 border border-transparent'}"
+                                        : 'bg-[color:var(--surface-2)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)] border border-transparent'}"
                             >{iv}</button>
                         {/each}
                     </div>
@@ -441,35 +441,35 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <!-- Simulate section -->
-        <div class="px-5 py-3 border-t border-black/10 flex items-center gap-2">
-            <span class="text-[11px] font-semibold text-black/40 uppercase tracking-widest mr-1">Simulate</span>
+        <div class="px-5 py-3 border-t border-[color:var(--border)] flex items-center gap-2">
+            <span class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-widest mr-1">Simulate</span>
             <button
                 onclick={triggerCrashBanner}
                 disabled={pendingSimulation !== null}
-                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors disabled:opacity-40"
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "crash" ? `Firing in ${countdownSeconds}s…` : "Crash"}</button>
             <button
                 onclick={triggerSuspiciousRemoval}
                 disabled={pendingSimulation !== null}
-                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-600 transition-colors disabled:opacity-40"
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-amber-50 hover:border-amber-200 hover:text-amber-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "removal" ? `Firing in ${countdownSeconds}s…` : "Mass annotation removal"}</button>
             <button
                 onclick={triggerChangelog}
                 disabled={pendingSimulation !== null}
-                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors disabled:opacity-40"
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "changelog" ? `Firing in ${countdownSeconds}s…` : "Changelog"}</button>
             <button
                 onclick={() => triggerUpdateBanner(false)}
                 disabled={pendingSimulation !== null}
-                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "update" ? `Firing in ${countdownSeconds}s…` : "Update banner"}</button>
             <button
                 onclick={() => triggerUpdateBanner(true)}
                 disabled={pendingSimulation !== null}
-                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-green-50 hover:border-green-200 hover:text-green-600 transition-colors disabled:opacity-40"
             >{pendingSimulation === "update-mas" ? `Firing in ${countdownSeconds}s…` : "Update banner (MAS)"}</button>
             <label
-                class="ml-auto flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-amber-50 hover:border-amber-200 transition-colors"
+                class="ml-auto flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-amber-50 hover:border-amber-200 transition-colors"
                 title="Initialise PostHog in dev so 'Send Feedback' shows the survey instead of falling back to the bug form"
             >
                 <input
@@ -480,7 +480,7 @@ function handleKeydown(e: KeyboardEvent) {
                 Force survey
             </label>
             <label
-                class="flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                class="flex items-center gap-2 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-blue-50 hover:border-blue-200 transition-colors"
                 title="Make the auth modal behave like production waitlist gating"
             >
                 <input
@@ -492,22 +492,22 @@ function handleKeydown(e: KeyboardEvent) {
             </label>
             <button
                 onclick={triggerAuthModal}
-                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
             >Auth modal</button>
             <button
                 onclick={triggerAuthOffline}
-                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-black/8 bg-white/50 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
+                class="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-2)] hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
             >Auth offline</button>
         </div>
 
         <!-- Footer -->
-        <div class="px-5 py-3 border-t border-black/10 text-[10px] text-black/35 flex items-center justify-between">
-            <span>Press <kbd class="font-mono bg-black/10 px-1 rounded">Esc</kbd> to close</span>
+        <div class="px-5 py-3 border-t border-[color:var(--border)] text-[10px] text-[color:var(--text-faint)] flex items-center justify-between">
+            <span>Press <kbd class="font-mono bg-[color:var(--surface-3)] px-1 rounded">Esc</kbd> to close</span>
             <div class="flex items-center gap-3">
                 <button
                     onclick={clearUndoHistory}
                     class="text-[10px] font-medium px-2 py-1 rounded-md transition-colors
-                        {historyCleared ? 'bg-green-50 text-green-600' : 'bg-black/6 hover:bg-red-50 hover:text-red-600'}"
+                        {historyCleared ? 'bg-green-50 text-green-600' : 'bg-[color:var(--surface-3)] hover:bg-red-50 hover:text-red-600'}"
                 >
                     {historyCleared ? "✓ history cleared" : "Clear undo history"}
                 </button>

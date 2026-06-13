@@ -296,7 +296,7 @@ async function handleDescribeSubmit(e: Event) {
 <div
     bind:this={popoverEl}
     class="dictionary-popover fixed z-[100] w-80 max-h-[480px] flex flex-col
-        backdrop-blur-md bg-white/90 border border-white/40 shadow-xl rounded-2xl
+        backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-xl rounded-2xl
         overflow-hidden transition-all duration-150
         {visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}"
     style="left: {posX}px; top: {posY}px;"
@@ -304,11 +304,11 @@ async function handleDescribeSubmit(e: Event) {
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
         <div class="flex items-baseline gap-2 min-w-0">
-            <span class="font-semibold text-gray-900 truncate">{word}</span>
+            <span class="font-semibold text-[color:var(--text-strong)] truncate">{word}</span>
             {#if lookupResult}
                 {@const phonetic = getPhonetic(lookupResult[0])}
                 {#if phonetic}
-                    <span class="text-xs text-gray-400 font-mono shrink-0">{phonetic}</span>
+                    <span class="text-xs text-[color:var(--text-faint)] font-mono shrink-0">{phonetic}</span>
                 {/if}
             {/if}
         </div>
@@ -318,31 +318,31 @@ async function handleDescribeSubmit(e: Event) {
                     onclick={openInChat}
                     disabled={!hasApiKey()}
                     title={hasApiKey() ? "Open in Chat" : "Needs API key"}
-                    class="p-1 rounded-full text-black/30 hover:text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-black/30 disabled:hover:bg-transparent"
+                    class="p-1 rounded-full text-[color:var(--text-ghost)] hover:text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-[color:var(--text-ghost)] disabled:hover:bg-transparent"
                 >
                     <ExternalLinkIcon size={13} />
                 </button>
             {/if}
             <button
                 onclick={dismiss}
-                class="p-1 rounded-full text-black/30 hover:text-black/60 hover:bg-black/10 transition-colors"
+                class="p-1 rounded-full text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
                 <XIcon size={13} />
             </button>
         </div>
     </div>
 
-    <div class="w-full h-px bg-black/8 shrink-0"></div>
+    <div class="w-full h-px bg-[color:var(--border)] shrink-0"></div>
 
     <!-- Scrollable body -->
     <div class="flex-1 overflow-y-auto px-3 py-2 space-y-3 min-h-0">
         {#if lookupLoading}
-            <div class="flex items-center gap-2 text-gray-400 text-sm py-2">
+            <div class="flex items-center gap-2 text-[color:var(--text-faint)] text-sm py-2">
                 <span class="animate-pulse">●</span>
                 <span>Looking up...</span>
             </div>
         {:else if lookupError}
-            <p class="text-sm text-gray-400">{lookupError}</p>
+            <p class="text-sm text-[color:var(--text-faint)]">{lookupError}</p>
         {:else if lookupResult}
             {@const entry = lookupResult[0]}
             {@const synonyms = collectSynonyms(lookupResult)}
@@ -355,11 +355,11 @@ async function handleDescribeSubmit(e: Event) {
                         {meaning.partOfSpeech}
                     </p>
                     {#each meaning.definitions.slice(0, 2) as def, i}
-                        <p class="text-xs text-gray-700 leading-snug">
-                            <span class="text-gray-400 mr-1">{i + 1}.</span>{def.definition}
+                        <p class="text-xs text-[color:var(--text)] leading-snug">
+                            <span class="text-[color:var(--text-faint)] mr-1">{i + 1}.</span>{def.definition}
                         </p>
                         {#if def.example}
-                            <p class="text-[11px] text-gray-400 italic pl-3">"{def.example}"</p>
+                            <p class="text-[11px] text-[color:var(--text-faint)] italic pl-3">"{def.example}"</p>
                         {/if}
                     {/each}
                 </div>
@@ -368,8 +368,8 @@ async function handleDescribeSubmit(e: Event) {
             <!-- Synonyms -->
             {#if synonyms.length > 0}
                 <div>
-                    <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
-                        Synonyms <span class="font-normal normal-case tracking-normal text-gray-300">· click to explore</span>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-faint)] mb-1.5">
+                        Synonyms <span class="font-normal normal-case tracking-normal text-[color:var(--text-ghost)]">· click to explore</span>
                     </p>
                     <div class="flex flex-wrap gap-1 w-full">
                         {#each synonyms as syn}
@@ -385,12 +385,12 @@ async function handleDescribeSubmit(e: Event) {
             <!-- Antonyms -->
             {#if antonyms.length > 0}
                 <div>
-                    <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Antonyms</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-faint)] mb-1.5">Antonyms</p>
                     <div class="flex flex-wrap gap-1 w-full">
                         {#each antonyms as ant}
                             <button
                                 onclick={(e) => openStackedLookup(ant, e)}
-                                class="px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded-full border border-gray-200 hover:bg-gray-200 transition-colors"
+                                class="px-2 py-0.5 text-xs bg-[color:var(--surface-2)] text-[color:var(--text-soft)] rounded-full border border-[color:var(--border)] hover:bg-[color:var(--surface-3)] transition-colors"
                             >{ant}</button>
                         {/each}
                     </div>
@@ -400,8 +400,8 @@ async function handleDescribeSubmit(e: Event) {
 
         <!-- Describe → find word (AI) -->
         {#if appSettings.aiEnabled}
-            <div class="border-t border-black/8 pt-2">
-                <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+            <div class="border-t border-[color:var(--border)] pt-2">
+                <p class="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-faint)] mb-1.5">
                     Describe → find word
                     {#if !hasApiKey()}
                         <span class="font-normal normal-case tracking-normal text-amber-500">· needs API key</span>
@@ -413,7 +413,7 @@ async function handleDescribeSubmit(e: Event) {
                         {#if part.type === "text"}
                             {@const renderPromise = renderMarkdown(part.text)}
                             <div class="mt-2 {message.role === 'user' ? 'text-right' : ''}">
-                                <div class="inline-block text-xs px-2 py-1.5 rounded-lg {message.role === 'user' ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-700'}">
+                                <div class="inline-block text-xs px-2 py-1.5 rounded-lg {message.role === 'user' ? 'bg-teal-500 text-white' : 'bg-[color:var(--surface-2)] text-[color:var(--text)]'}">
                                     <div class="prose prose-xs max-w-none {message.role === 'user' ? 'prose-invert' : ''} [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                                         {#await renderPromise then rendered}
                                             {@html rendered}
@@ -426,7 +426,7 @@ async function handleDescribeSubmit(e: Event) {
                 {/each}
 
                 {#if chat.status === "streaming" || chat.status === "submitted"}
-                    <div class="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                    <div class="mt-2 flex items-center gap-1.5 text-xs text-[color:var(--text-faint)]">
                         <span class="animate-pulse">●</span> Finding words...
                     </div>
                 {/if}
@@ -436,7 +436,7 @@ async function handleDescribeSubmit(e: Event) {
                         bind:value={describeInput}
                         placeholder="Describe the idea..."
                         disabled={!hasApiKey() || chat.status !== "ready"}
-                        class="min-w-0 flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
+                        class="min-w-0 flex-1 px-2 py-1 text-xs bg-[color:var(--surface-2)] text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)] border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
                         autocomplete="off"
                     />
                     <button
@@ -453,17 +453,17 @@ async function handleDescribeSubmit(e: Event) {
 {#each stackedLookups as stacked, stackIndex (stacked.id)}
     <div
         class="dictionary-popover fixed z-[101] w-80 max-h-[420px] flex flex-col
-            backdrop-blur-md bg-white/95 border border-white/50 shadow-2xl rounded-2xl
+            backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-2xl rounded-2xl
             overflow-hidden transition-all duration-150"
         style="left: {stacked.posX}px; top: {stacked.posY + stackIndex * 10}px;"
     >
         <div class="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
             <div class="flex items-baseline gap-2 min-w-0">
-                <span class="font-semibold text-gray-900 truncate">{stacked.word}</span>
+                <span class="font-semibold text-[color:var(--text-strong)] truncate">{stacked.word}</span>
                 {#if stacked.lookupResult}
                     {@const phonetic = getPhonetic(stacked.lookupResult[0])}
                     {#if phonetic}
-                        <span class="text-xs text-gray-400 font-mono shrink-0">{phonetic}</span>
+                        <span class="text-xs text-[color:var(--text-faint)] font-mono shrink-0">{phonetic}</span>
                     {/if}
                 {/if}
             </div>
@@ -476,7 +476,7 @@ async function handleDescribeSubmit(e: Event) {
                 </button>
                 <button
                     onclick={() => closeStackedLookup(stacked.id)}
-                    class="p-1 rounded-full text-black/30 hover:text-black/60 hover:bg-black/10 transition-colors"
+                    class="p-1 rounded-full text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
                     aria-label="Close lookup"
                 >
                     <XIcon size={13} />
@@ -484,16 +484,16 @@ async function handleDescribeSubmit(e: Event) {
             </div>
         </div>
 
-        <div class="w-full h-px bg-black/8 shrink-0"></div>
+        <div class="w-full h-px bg-[color:var(--border)] shrink-0"></div>
 
         <div class="flex-1 overflow-y-auto px-3 py-2 space-y-3 min-h-0">
             {#if stacked.lookupLoading}
-                <div class="flex items-center gap-2 text-gray-400 text-sm py-2">
+                <div class="flex items-center gap-2 text-[color:var(--text-faint)] text-sm py-2">
                     <span class="animate-pulse">●</span>
                     <span>Looking up...</span>
                 </div>
             {:else if stacked.lookupError}
-                <p class="text-sm text-gray-400">{stacked.lookupError}</p>
+                <p class="text-sm text-[color:var(--text-faint)]">{stacked.lookupError}</p>
             {:else if stacked.lookupResult}
                 {@const entry = stacked.lookupResult[0]}
                 {@const synonyms = collectSynonyms(stacked.lookupResult)}
@@ -505,11 +505,11 @@ async function handleDescribeSubmit(e: Event) {
                             {meaning.partOfSpeech}
                         </p>
                         {#each meaning.definitions.slice(0, 2) as def, i}
-                            <p class="text-xs text-gray-700 leading-snug">
-                                <span class="text-gray-400 mr-1">{i + 1}.</span>{def.definition}
+                            <p class="text-xs text-[color:var(--text)] leading-snug">
+                                <span class="text-[color:var(--text-faint)] mr-1">{i + 1}.</span>{def.definition}
                             </p>
                             {#if def.example}
-                                <p class="text-[11px] text-gray-400 italic pl-3">"{def.example}"</p>
+                                <p class="text-[11px] text-[color:var(--text-faint)] italic pl-3">"{def.example}"</p>
                             {/if}
                         {/each}
                     </div>
@@ -517,7 +517,7 @@ async function handleDescribeSubmit(e: Event) {
 
                 {#if synonyms.length > 0}
                     <div>
-                        <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Synonyms</p>
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-faint)] mb-1.5">Synonyms</p>
                         <div class="flex flex-wrap gap-1 w-full">
                             {#each synonyms as syn}
                                 <button
@@ -531,12 +531,12 @@ async function handleDescribeSubmit(e: Event) {
 
                 {#if antonyms.length > 0}
                     <div>
-                        <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Antonyms</p>
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-faint)] mb-1.5">Antonyms</p>
                         <div class="flex flex-wrap gap-1 w-full">
                             {#each antonyms as ant}
                                 <button
                                     onclick={(e) => openStackedLookup(ant, e)}
-                                    class="px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded-full border border-gray-200 hover:bg-gray-200 transition-colors"
+                                    class="px-2 py-0.5 text-xs bg-[color:var(--surface-2)] text-[color:var(--text-soft)] rounded-full border border-[color:var(--border)] hover:bg-[color:var(--surface-3)] transition-colors"
                                 >{ant}</button>
                             {/each}
                         </div>

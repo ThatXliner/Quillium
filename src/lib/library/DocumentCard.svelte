@@ -80,7 +80,7 @@ function formatDate(ms: number): string {
      highlights, and the "matched by meaning" badge (position varies). -->
 {#snippet snippetText(segs: SnippetSegment[])}
     {#each segs as seg}
-        {#if seg.highlighted}<mark class="rounded-[2px] bg-amber-200/80 px-px text-black/70">{seg.text}</mark>{:else}{seg.text}{/if}
+        {#if seg.highlighted}<mark class="rounded-[2px] bg-amber-200/80 px-px text-amber-800">{seg.text}</mark>{:else}{seg.text}{/if}
     {/each}
 {/snippet}
 
@@ -98,10 +98,10 @@ function formatDate(ms: number): string {
     <div
         class="ph-mask-text group relative text-left rounded-xl p-4 flex flex-col gap-2 border w-full min-w-0 overflow-hidden cursor-pointer
             {selected
-                ? 'bg-blue-50 border-blue-300 shadow-md ring-2 ring-blue-400/30'
+                ? 'bg-blue-500/15 border-blue-300 shadow-md ring-2 ring-blue-400/30'
                 : trashMode
-                  ? 'bg-white/60 border-white/60 shadow-sm hover:shadow-md hover:border-red-200/60'
-                  : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"
+                  ? 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-red-200/60'
+                  : 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-blue-200/60'}"
         onclick={(e) => onSelect(e)}
         ondblclick={trashMode ? undefined : onOpen}
         onkeydown={(e) => {
@@ -116,24 +116,24 @@ function formatDate(ms: number): string {
         tabindex="0"
     >
         <!-- Document preview area (matched snippet when searching) -->
-        <div class="relative w-full h-28 rounded-lg bg-gray-50/80 border border-gray-100 overflow-hidden p-3 flex-shrink-0">
+        <div class="relative w-full h-28 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)] overflow-hidden p-3 flex-shrink-0">
             {#if snippetSegs}
-                <p class="text-xs text-black/50 leading-relaxed line-clamp-5">
+                <p class="text-xs text-[color:var(--text-soft)] leading-relaxed line-clamp-5">
                     {@render snippetText(snippetSegs)}
                 </p>
                 {#if semanticMatch}
                     {@render similarBadge("absolute bottom-1.5 right-1.5 flex")}
                 {/if}
             {:else}
-                <p class="text-xs text-black/50 leading-relaxed line-clamp-5">
+                <p class="text-xs text-[color:var(--text-soft)] leading-relaxed line-clamp-5">
                     {doc.previewText || "Empty document"}
                 </p>
             {/if}
         </div>
 
         <div class="flex flex-col gap-0.5 w-full overflow-hidden">
-            <p class="text-sm font-medium text-black/80 truncate w-full">{doc.title}</p>
-            <div class="flex items-center gap-2 text-[11px] text-black/40">
+            <p class="text-sm font-medium text-[color:var(--text)] truncate w-full">{doc.title}</p>
+            <div class="flex items-center gap-2 text-[11px] text-[color:var(--text-faint)]">
                 <span>{doc.wordCount.toLocaleString()} words</span>
                 <span>·</span>
                 <span>{formatDate(doc.updatedAt)}</span>
@@ -147,7 +147,7 @@ function formatDate(ms: number): string {
                                 e.stopPropagation();
                                 onTagClick?.(tag);
                             }}
-                            class="max-w-full truncate rounded-full bg-black/[0.045] px-2 py-0.5 text-[10px] text-black/45 transition-colors hover:bg-blue-500/10 hover:text-blue-700"
+                            class="max-w-full truncate rounded-full bg-[color:var(--surface-2)] px-2 py-0.5 text-[10px] text-[color:var(--text-faint)] transition-colors hover:bg-blue-500/10 hover:text-blue-700"
                         >
                             {tag}
                         </button>
@@ -162,14 +162,14 @@ function formatDate(ms: number): string {
                 <button
                     onclick={(e) => { e.stopPropagation(); onRestore(); }}
                     title="Restore"
-                    class="w-7 h-7 rounded-full bg-white/90 border border-blue-200 text-blue-500 hover:bg-blue-50 flex items-center justify-center shadow-sm"
+                    class="w-7 h-7 rounded-full bg-[color:var(--surface)] border border-blue-200 text-blue-500 hover:bg-blue-50 flex items-center justify-center shadow-sm"
                 >
                     <RotateCcw size={12} />
                 </button>
                 <button
                     onclick={handleDeletePermanent}
                     title={confirmingDelete ? "Click again to confirm" : "Delete permanently"}
-                    class="rounded-full bg-white/90 border flex items-center justify-center shadow-sm transition-all
+                    class="rounded-full bg-[color:var(--surface)] border flex items-center justify-center shadow-sm transition-all
                         {confirmingDelete
                             ? 'px-2 h-7 border-red-400 bg-red-50 text-red-600 text-[10px] font-medium'
                             : 'w-7 h-7 border-red-200 text-red-400 hover:bg-red-50'}"
@@ -186,14 +186,14 @@ function formatDate(ms: number): string {
                 <button
                     onclick={(e) => { e.stopPropagation(); onOpenInNewWindow(); }}
                     title="Open in new window"
-                    class="w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
+                    class="w-7 h-7 rounded-full bg-[color:var(--surface)] border border-[color:var(--border-strong)] text-[color:var(--text-faint)] hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
                 >
                     <AppWindow size={12} />
                 </button>
                 <button
                     onclick={(e) => { e.stopPropagation(); onTrash(); }}
                     title="Move to trash"
-                    class="w-7 h-7 rounded-full bg-white/90 border border-gray-200 text-black/40 hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm"
+                    class="w-7 h-7 rounded-full bg-[color:var(--surface)] border border-[color:var(--border-strong)] text-[color:var(--text-faint)] hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm"
                 >
                     <Trash2 size={12} />
                 </button>
@@ -205,10 +205,10 @@ function formatDate(ms: number): string {
     <div
         class="ph-mask-text group relative text-left w-full rounded-xl px-4 py-3 flex items-center gap-4 border cursor-pointer
             {selected
-                ? 'bg-blue-50 border-blue-300 shadow-sm ring-2 ring-blue-400/30'
+                ? 'bg-blue-500/15 border-blue-300 shadow-sm ring-2 ring-blue-400/30'
                 : trashMode
-                  ? 'bg-white/60 border-white/60 shadow-sm hover:shadow-md hover:border-red-200/60'
-                  : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:border-blue-200/60'}"
+                  ? 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-red-200/60'
+                  : 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-blue-200/60'}"
         onclick={(e) => onSelect(e)}
         ondblclick={trashMode ? undefined : onOpen}
         onkeydown={(e) => {
@@ -221,26 +221,26 @@ function formatDate(ms: number): string {
         tabindex="0"
     >
         <!-- Mini preview -->
-        <div class="w-10 h-12 rounded bg-gray-50 border border-gray-100 flex-shrink-0 flex items-start justify-start p-1.5 overflow-hidden">
+        <div class="w-10 h-12 rounded bg-[color:var(--surface-2)] border border-[color:var(--border)] flex-shrink-0 flex items-start justify-start p-1.5 overflow-hidden">
             <div class="w-full space-y-0.5">
-                <div class="h-0.5 bg-gray-300 rounded w-full"></div>
-                <div class="h-0.5 bg-gray-200 rounded w-4/5"></div>
-                <div class="h-0.5 bg-gray-200 rounded w-3/5"></div>
+                <div class="h-0.5 bg-[color:var(--surface-3)] rounded w-full"></div>
+                <div class="h-0.5 bg-[color:var(--surface-3)] rounded w-4/5"></div>
+                <div class="h-0.5 bg-[color:var(--surface-3)] rounded w-3/5"></div>
             </div>
         </div>
         <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-black/80 truncate flex items-center gap-1.5">
+            <p class="text-sm font-medium text-[color:var(--text)] truncate flex items-center gap-1.5">
                 {doc.title}
                 {#if semanticMatch}
                     {@render similarBadge("inline-flex flex-shrink-0")}
                 {/if}
             </p>
             {#if snippetSegs}
-                <p class="text-xs text-black/40 mt-0.5 truncate">
+                <p class="text-xs text-[color:var(--text-faint)] mt-0.5 truncate">
                     {@render snippetText(snippetSegs)}
                 </p>
             {:else}
-                <p class="text-xs text-black/40 mt-0.5 truncate">{doc.previewText || "Empty document"}</p>
+                <p class="text-xs text-[color:var(--text-faint)] mt-0.5 truncate">{doc.previewText || "Empty document"}</p>
             {/if}
             {#if tags.length > 0}
                 <div class="mt-1.5 flex flex-wrap gap-1">
@@ -251,7 +251,7 @@ function formatDate(ms: number): string {
                                 e.stopPropagation();
                                 onTagClick?.(tag);
                             }}
-                            class="max-w-[120px] truncate rounded-full bg-black/[0.045] px-2 py-0.5 text-[10px] text-black/45 transition-colors hover:bg-blue-500/10 hover:text-blue-700"
+                            class="max-w-[120px] truncate rounded-full bg-[color:var(--surface-2)] px-2 py-0.5 text-[10px] text-[color:var(--text-faint)] transition-colors hover:bg-blue-500/10 hover:text-blue-700"
                         >
                             {tag}
                         </button>
@@ -261,8 +261,8 @@ function formatDate(ms: number): string {
         </div>
         <div class="flex-shrink-0 flex items-center gap-2">
             <div class="text-right">
-                <p class="text-xs text-black/40">{formatDate(doc.updatedAt)}</p>
-                <p class="text-xs text-black/30">{doc.wordCount.toLocaleString()} words</p>
+                <p class="text-xs text-[color:var(--text-faint)]">{formatDate(doc.updatedAt)}</p>
+                <p class="text-xs text-[color:var(--text-ghost)]">{doc.wordCount.toLocaleString()} words</p>
             </div>
 
             <!-- List-mode action buttons -->
@@ -271,14 +271,14 @@ function formatDate(ms: number): string {
                     <button
                         onclick={(e) => { e.stopPropagation(); onRestore(); }}
                         title="Restore"
-                        class="w-7 h-7 rounded-full bg-white border border-blue-200 text-blue-500 hover:bg-blue-50 flex items-center justify-center shadow-sm"
+                        class="w-7 h-7 rounded-full bg-[color:var(--surface)] border border-blue-200 text-blue-500 hover:bg-blue-50 flex items-center justify-center shadow-sm"
                     >
                         <RotateCcw size={12} />
                     </button>
                     <button
                         onclick={handleDeletePermanent}
                         title={confirmingDelete ? "Click again to confirm" : "Delete permanently"}
-                        class="rounded-full bg-white border flex items-center justify-center shadow-sm transition-all
+                        class="rounded-full bg-[color:var(--surface)] border flex items-center justify-center shadow-sm transition-all
                             {confirmingDelete
                                 ? 'px-2 h-7 border-red-400 bg-red-50 text-red-600 text-[10px] font-medium'
                                 : 'w-7 h-7 border-red-200 text-red-400 hover:bg-red-50'}"
@@ -295,14 +295,14 @@ function formatDate(ms: number): string {
                     <button
                         onclick={(e) => { e.stopPropagation(); onOpenInNewWindow(); }}
                         title="Open in new window"
-                        class="w-7 h-7 rounded-full bg-white border border-gray-200 text-black/30 hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
+                        class="w-7 h-7 rounded-full bg-[color:var(--surface)] border border-[color:var(--border-strong)] text-[color:var(--text-ghost)] hover:text-blue-500 hover:border-blue-200 flex items-center justify-center shadow-sm"
                     >
                         <AppWindow size={12} />
                     </button>
                     <button
                         onclick={(e) => { e.stopPropagation(); onTrash(); }}
                         title="Move to trash"
-                        class="w-7 h-7 rounded-full bg-white border border-gray-200 text-black/30 hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm"
+                        class="w-7 h-7 rounded-full bg-[color:var(--surface)] border border-[color:var(--border-strong)] text-[color:var(--text-ghost)] hover:text-red-400 hover:border-red-200 flex items-center justify-center shadow-sm"
                     >
                         <Trash2 size={12} />
                     </button>

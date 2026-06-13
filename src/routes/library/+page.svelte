@@ -501,14 +501,14 @@ onDestroy(() => {
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Full-screen 50/50 split -->
-<div class="h-screen flex" style="background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%)">
+<div class="h-screen flex" style="background: linear-gradient(135deg, var(--bg) 0%, var(--surface-2) 100%)">
 
     <!-- Left half: header + document grid -->
     <div class="w-1/2 flex flex-col min-h-0">
         <header class="flex-shrink-0 px-8 pt-8 pb-4">
             <div class="mb-5">
-                <h1 class="text-2xl font-semibold text-black/75">Your Library</h1>
-                <p class="text-sm text-black/40 mt-0.5">
+                <h1 class="text-2xl font-semibold text-[color:var(--text)]">Your Library</h1>
+                <p class="text-sm text-[color:var(--text-faint)] mt-0.5">
                     {#if selectedCount > 1}
                         {selectedCount} selected
                     {:else if trashMode}
@@ -531,7 +531,7 @@ onDestroy(() => {
                 bind:searchInputEl
             />
             {#if contentSearchActive && semanticPreparing}
-                <p class="mt-2 text-xs text-black/35">
+                <p class="mt-2 text-xs text-[color:var(--text-faint)]">
                     Searching titles and full text — search by meaning is still preparing…
                 </p>
             {/if}
@@ -546,11 +546,11 @@ onDestroy(() => {
                 <EmptyState onNew={handleNew} />
             {:else if filtered.length === 0 && activeDocuments.length === 0 && trashMode}
                 <div class="flex flex-col items-center justify-center h-40 gap-2">
-                    <p class="text-sm text-black/40">Trash is empty.</p>
+                    <p class="text-sm text-[color:var(--text-faint)]">Trash is empty.</p>
                 </div>
             {:else if filtered.length === 0}
                 <div class="flex flex-col items-center justify-center h-40">
-                    <p class="text-sm text-black/40">No documents match your search.</p>
+                    <p class="text-sm text-[color:var(--text-faint)]">No documents match your search.</p>
                 </div>
             {:else}
                 <DocumentGrid

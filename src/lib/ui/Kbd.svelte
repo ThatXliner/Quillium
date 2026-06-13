@@ -27,11 +27,11 @@ const keyList = $derived(Array.isArray(keys) ? keys : [keys]);
 const base = "inline-flex items-center justify-center font-mono leading-none";
 
 const styles: Record<string, string> = {
-    default: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-white/80 border border-black/15 shadow-sm rounded text-black/60`,
-    whiteGhost: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-white/20 border border-white/40 shadow-sm rounded text-black/60`,
-    fullWhite: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-white border border-black/15 shadow-sm rounded text-black/60`,
-    red: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-red-50 border border-red-100 shadow-sm rounded text-red-400/80`,
-    large: `${base} min-w-[24px] h-[22px] px-2 text-xs bg-white/90 border border-black/12 shadow-sm rounded-md text-black/55`,
+    default: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-[color:var(--surface)] border border-[color:var(--border-strong)] shadow-sm rounded text-[color:var(--text-soft)]`,
+    whiteGhost: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-[color:var(--surface-2)] border border-[color:var(--border)] shadow-sm rounded text-[color:var(--text-soft)]`,
+    fullWhite: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-[color:var(--surface)] border border-[color:var(--border-strong)] shadow-sm rounded text-[color:var(--text-soft)]`,
+    red: `${base} min-w-[20px] h-[18px] px-1 text-[10px] bg-[color:var(--chip-red)] border border-[color:var(--chip-red-border)] shadow-sm rounded text-[color:var(--accent-red-text)]`,
+    large: `${base} min-w-[24px] h-[22px] px-2 text-xs bg-[color:var(--surface)] border border-[color:var(--border-strong)] shadow-sm rounded-md text-[color:var(--text-soft)]`,
 };
 
 const iconSize: Record<string, number> = {

@@ -101,14 +101,14 @@ const isNameValid = $derived.by(() => {
 <dialog bind:this={dialogEl} class="name-entry-modal" onclick={handleBackdropClick}>
     <div class="name-entry-modal-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-black/[0.06]">
-            <h2 class="text-base font-semibold text-black/60">Join Document</h2>
+        <div class="flex items-center justify-between px-5 py-3 border-b border-[color:var(--border)]">
+            <h2 class="text-base font-semibold text-[color:var(--text-strong)]">Join Document</h2>
             <button
                 onclick={onclose}
                 aria-label="Close"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
@@ -127,7 +127,7 @@ const isNameValid = $derived.by(() => {
 
                 <!-- Input field -->
                 <div class="flex flex-col gap-1.5 flex-1">
-                    <label for="displayName" class="text-xs text-black/50">Your name</label>
+                    <label for="displayName" class="text-xs text-[color:var(--text-soft)]">Your name</label>
                     <input
                         bind:this={inputEl}
                         id="displayName"
@@ -135,13 +135,13 @@ const isNameValid = $derived.by(() => {
                         bind:value={displayName}
                         placeholder="How should others see you?"
                         autocomplete="name"
-                        class="px-3 py-2 text-sm border border-black/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
+                        class="px-3 py-2 text-sm border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-[color:var(--text-ghost)]"
                     />
                 </div>
             </div>
 
             {#if error}
-                <div role="alert" class="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">
+                <div role="alert" class="text-xs text-[color:var(--accent-red-text)] bg-[color:var(--chip-red)] px-3 py-2 rounded-lg">
                     {error}
                 </div>
             {/if}
@@ -164,7 +164,7 @@ const isNameValid = $derived.by(() => {
             <button
                 type="button"
                 onclick={handleSignInClick}
-                class="text-xs text-black/40 hover:text-blue-500 transition-colors"
+                class="text-xs text-[color:var(--text-faint)] hover:text-blue-500 transition-colors"
             >
                 Already have an account? Sign in
             </button>
@@ -193,9 +193,9 @@ const isNameValid = $derived.by(() => {
 
     .name-entry-modal-inner {
         width: 320px;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
     }
 </style>

@@ -36,9 +36,9 @@ const label = $derived.by(() => {
     onclick={cycleMode}
     aria-label="Word count — click to change display"
     title="Click to cycle display mode"
-    class="backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg
-           px-4 py-2 text-sm text-black/80 tabular-nums cursor-pointer
-           hover:bg-gray-200/80 transition-colors select-none"
+    class="backdrop-blur-md rounded-[2rem] bg-[color:var(--surface-2)] border border-[color:var(--border)] shadow-lg
+           px-4 py-2 text-sm text-[color:var(--text)] tabular-nums cursor-pointer
+           hover:bg-[color:var(--surface-3)] transition-colors select-none"
 >
     {label}
 </button>

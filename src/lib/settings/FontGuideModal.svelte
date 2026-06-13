@@ -133,9 +133,9 @@ $effect(() => {
 >
     <div class="font-guide-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)] shrink-0">
             <div class="flex items-baseline gap-4">
-                <h2 class="text-[13px] font-semibold text-black/60">Font Guide</h2>
+                <h2 class="text-[13px] font-semibold text-[color:var(--text-soft)]">Font Guide</h2>
                 <div class="tab-track" bind:this={trackEl} style={pillStyle}>
                     <div class="tab-pill"></div>
                     <button
@@ -151,9 +151,9 @@ $effect(() => {
             <button
                 onclick={onclose}
                 aria-label="Close font guide"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
@@ -162,14 +162,14 @@ $effect(() => {
         <div class="overflow-y-auto px-5 py-4 flex flex-col gap-0 flex-1">
 
             <!-- Philosophy note -->
-            <div class="mb-4 px-3.5 py-3 rounded-xl bg-black/[0.03] border border-black/[0.05]">
-                <p class="text-[12px] text-black/55 leading-relaxed">
+            <div class="mb-4 px-3.5 py-3 rounded-xl bg-[color:var(--surface-2)] border border-[color:var(--border)]">
+                <p class="text-[12px] text-[color:var(--text-soft)] leading-relaxed">
                     A curated list so you can focus on writing, not font hunting. If something's missing,
                     <a
                         href={FEEDBACK_FORM_URL}
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="font-medium text-black/65 underline underline-offset-2 hover:text-black/80 transition-colors"
+                        class="font-medium text-[color:var(--text-soft)] underline underline-offset-2 hover:text-[color:var(--text)] transition-colors"
                     >let us know</a>.
                 </p>
             </div>
@@ -238,9 +238,9 @@ $effect(() => {
         width: 720px;
         height: 78vh;
         max-height: 86vh;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -251,12 +251,12 @@ $effect(() => {
         position: relative;
         display: flex;
         gap: 2px;
-        background: rgba(180, 180, 180, 0.25);
-        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 3px;
         backdrop-filter: blur(8px);
-        box-shadow: inset 0 1px 3px rgba(0,0,0,0.08);
+        box-shadow: inset 0 1px 3px rgba(var(--shadow-color),0.08);
     }
 
     .tab-pill {
@@ -265,9 +265,9 @@ $effect(() => {
         left: 3px;
         height: calc(100% - 6px);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.7);
+        background: var(--surface);
         backdrop-filter: blur(8px);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+        box-shadow: 0 1px 3px rgba(var(--shadow-color),0.12);
         transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
         /* width/transform set dynamically via JS — fallback width */
         width: var(--pill-width, 72px);
@@ -278,7 +278,7 @@ $effect(() => {
         position: relative;
         font-size: 11px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.4);
+        color: var(--text-faint);
         padding: 2px 10px;
         border-radius: 999px;
         transition: color 0.2s;
@@ -287,11 +287,11 @@ $effect(() => {
     }
 
     .tab-btn:hover {
-        color: rgba(0, 0, 0, 0.55);
+        color: var(--text-soft);
     }
 
     .tab-btn-active {
-        color: rgba(0, 0, 0, 0.7);
+        color: var(--text);
     }
 
     /* Font entry */
@@ -305,12 +305,12 @@ $effect(() => {
         position: relative;
         display: inline-flex;
         gap: 2px;
-        background: rgba(180, 180, 180, 0.18);
-        border: 1px solid rgba(255, 255, 255, 0.5);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 3px;
         backdrop-filter: blur(8px);
-        box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+        box-shadow: inset 0 1px 3px rgba(var(--shadow-color),0.06);
     }
 
     .category-pill {
@@ -319,9 +319,9 @@ $effect(() => {
         left: 3px;
         height: calc(100% - 6px);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.72);
+        background: var(--surface);
         backdrop-filter: blur(8px);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9);
+        box-shadow: 0 1px 3px rgba(var(--shadow-color),0.1);
         transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
         width: var(--category-pill-width, 44px);
         transform: translateX(var(--category-pill-x, 0px));
@@ -331,7 +331,7 @@ $effect(() => {
         position: relative;
         font-size: 11px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.38);
+        color: var(--text-faint);
         padding: 2px 10px;
         border-radius: 999px;
         transition: color 0.2s;
@@ -340,16 +340,16 @@ $effect(() => {
     }
 
     .category-tab-btn:hover {
-        color: rgba(0, 0, 0, 0.55);
+        color: var(--text-soft);
     }
 
     .category-tab-btn-active {
-        color: rgba(0, 0, 0, 0.7);
+        color: var(--text);
     }
 
     .font-entry {
         padding: 0.75rem 0.125rem;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+        border-bottom: 1px solid var(--border);
     }
 
     .font-entry:last-child {
@@ -359,7 +359,7 @@ $effect(() => {
     .font-name {
         font-size: 16px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.78);
+        color: var(--text);
         line-height: 1.2;
     }
 
@@ -368,13 +368,13 @@ $effect(() => {
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.28);
+        color: var(--text-ghost);
     }
 
     .pick-badge {
         font-size: 10px;
         font-weight: 600;
-        color: rgba(146, 98, 0, 0.85);
+        color: var(--accent-amber-text);
         background: rgba(251, 191, 36, 0.18);
         border: 1px solid rgba(251, 191, 36, 0.4);
         padding: 1px 6px;
@@ -383,14 +383,14 @@ $effect(() => {
 
     .font-sample {
         font-size: 13px;
-        color: rgba(0, 0, 0, 0.4);
+        color: var(--text-faint);
         line-height: 1.5;
         margin-bottom: 0.25rem;
     }
 
     .font-desc {
         font-size: 12px;
-        color: rgba(0, 0, 0, 0.48);
+        color: var(--text-faint);
         line-height: 1.65;
     }
 </style>

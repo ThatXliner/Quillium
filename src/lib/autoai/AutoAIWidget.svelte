@@ -351,13 +351,12 @@ const annotationPills = [
     .autoai-container {
         position: relative;
         overflow: hidden;
-        background: #faf8f5;
+        background: var(--bg);
         border: 2px solid #d6b87a;
         box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.7),
-            inset 0 -1px 0 rgba(0,0,0,0.04),
-            0 4px 12px rgba(0,0,0,0.12),
-            0 1px 3px rgba(0,0,0,0.08);
+            inset 0 -1px 0 rgba(var(--shadow-color),0.04),
+            0 4px 12px rgba(var(--shadow-color),0.12),
+            0 1px 3px rgba(var(--shadow-color),0.08);
         backdrop-filter: blur(8px);
         transition:
             width 340ms cubic-bezier(0.33,0,0.2,1),
@@ -368,15 +367,15 @@ const annotationPills = [
     }
 
     .autoai-container.w-\[320px\] {
-        border-color: #e8e0d4;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+        border-color: var(--border);
+        box-shadow: 0 4px 16px rgba(var(--shadow-color),0.10), 0 1px 4px rgba(var(--shadow-color),0.06);
         backdrop-filter: none;
     }
 
     .rainbow-active {
         border: 2px solid transparent;
         background:
-            linear-gradient(#faf8f5,#faf8f5) padding-box,
+            linear-gradient(var(--bg),var(--bg)) padding-box,
             conic-gradient(from 0deg,#f59e0b,#ec4899,#8b5cf6,#3b82f6,#10b981,#f59e0b) border-box;
     }
 
@@ -386,8 +385,8 @@ const annotationPills = [
     }
 
     @keyframes rainbow-spin {
-        from { background: linear-gradient(#faf8f5,#faf8f5) padding-box, conic-gradient(from 0deg,#f59e0b,#ec4899,#8b5cf6,#3b82f6,#10b981,#f59e0b) border-box; }
-        to   { background: linear-gradient(#faf8f5,#faf8f5) padding-box, conic-gradient(from 360deg,#f59e0b,#ec4899,#8b5cf6,#3b82f6,#10b981,#f59e0b) border-box; }
+        from { background: linear-gradient(var(--bg),var(--bg)) padding-box, conic-gradient(from 0deg,#f59e0b,#ec4899,#8b5cf6,#3b82f6,#10b981,#f59e0b) border-box; }
+        to   { background: linear-gradient(var(--bg),var(--bg)) padding-box, conic-gradient(from 360deg,#f59e0b,#ec4899,#8b5cf6,#3b82f6,#10b981,#f59e0b) border-box; }
     }
 
     /* ── Layers ── */
@@ -424,8 +423,8 @@ const annotationPills = [
         width: 22px; height: 22px;
         border-radius: 50%;
         border: 1.5px solid #d6b87a;
-        background: #faf8f5;
-        color: #92681a;
+        background: var(--bg);
+        color: var(--accent-amber-text);
         display: flex; align-items: center; justify-content: center;
         flex-shrink: 0;
     }
@@ -433,13 +432,13 @@ const annotationPills = [
     .bubble-icon-active {
         border: 1.5px solid transparent;
         background:
-            linear-gradient(#faf8f5,#faf8f5) padding-box,
+            linear-gradient(var(--bg),var(--bg)) padding-box,
             conic-gradient(from 0deg,#f59e0b,#ec4899,#8b5cf6,#3b82f6,#10b981,#f59e0b) border-box;
         color: #7c3aed;
     }
 
     .name-text {
-        font-size: 13px; font-weight: 600; color: #1f2937;
+        font-size: 13px; font-weight: 600; color: var(--text-strong);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         line-height: 1.2;
     }
@@ -448,14 +447,14 @@ const annotationPills = [
         display: flex; align-items: center; justify-content: center;
         width: 16px; height: 16px;
         border: none; background: transparent; cursor: pointer;
-        color: #c4b89a; padding: 0; border-radius: 3px;
+        color: var(--text-faint); padding: 0; border-radius: 3px;
         transition: color 0.15s;
         flex-shrink: 0;
     }
-    .pencil-btn:hover { color: #92681a; }
+    .pencil-btn:hover { color: var(--accent-amber-text); }
 
     .name-input {
-        font-size: 13px; font-weight: 600; color: #1f2937;
+        font-size: 13px; font-weight: 600; color: var(--text-strong);
         border: none; border-bottom: 1.5px solid #fcd34d;
         background: transparent; outline: none;
         width: 100%; padding: 0; line-height: 1.2;
@@ -463,7 +462,7 @@ const annotationPills = [
 
     .toggle-btn {
         width: 28px; height: 16px; border-radius: 8px;
-        background: #d1d5db; border: none; cursor: pointer;
+        background: var(--surface-3); border: none; cursor: pointer;
         position: relative; transition: background 0.2s; padding: 0; flex-shrink: 0;
     }
     .toggle-btn:disabled { opacity: 0.4; cursor: default; }
@@ -471,7 +470,7 @@ const annotationPills = [
     .toggle-knob {
         position: absolute; top: 2px; left: 2px;
         width: 12px; height: 12px; border-radius: 50%;
-        background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        background: white; box-shadow: 0 1px 2px rgba(var(--shadow-color),0.2);
         transition: transform 0.2s;
     }
     .toggle-btn.on .toggle-knob { transform: translateX(12px); }
@@ -479,56 +478,56 @@ const annotationPills = [
     .icon-btn {
         width: 18px; height: 18px;
         display: flex; align-items: center; justify-content: center;
-        border: none; background: transparent; color: #c4bdb4;
+        border: none; background: transparent; color: var(--text-faint);
         cursor: pointer; border-radius: 3px; padding: 0; flex-shrink: 0;
         transition: color 0.15s;
     }
-    .icon-btn:hover { color: #9ca3af; }
+    .icon-btn:hover { color: var(--text-soft); }
 
     /* ── Status ── */
     .status-line {
-        font-size: 11px; color: #9ca3af; margin: 0; line-height: 1.3;
+        font-size: 11px; color: var(--text-faint); margin: 0; line-height: 1.3;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
     .settings-link {
         background: none; border: none; padding: 0; margin: 0;
-        font-size: inherit; color: #92681a; font-weight: 500;
+        font-size: inherit; color: var(--accent-amber-text); font-weight: 500;
         cursor: pointer; text-decoration: underline;
         text-underline-offset: 2px;
         transition: color 0.15s;
     }
-    .settings-link:hover { color: #b45309; }
+    .settings-link:hover { color: var(--accent-amber-text); text-decoration-thickness: 2px; }
 
     .mode-hint {
-        font-size: 10px; color: #b5a99a; line-height: 1.2;
+        font-size: 10px; color: var(--text-faint); line-height: 1.2;
     }
     .delay-label-row {
         display: flex; align-items: center; justify-content: space-between;
     }
 
-    .divider { height: 1px; background: #ede8e0; flex-shrink: 0; }
+    .divider { height: 1px; background: var(--border); flex-shrink: 0; }
 
     /* ── Fields ── */
     .field { display: flex; flex-direction: column; gap: 4px; }
 
     .field-label {
-        font-size: 9px; font-weight: 500; color: #b5a99a;
+        font-size: 9px; font-weight: 500; color: var(--text-faint);
         text-transform: uppercase; letter-spacing: 0.07em;
     }
 
     /* ── Segmented control ── */
     .seg-ctrl {
-        display: flex; border: 1px solid #e5ddd3;
-        border-radius: 7px; overflow: hidden; background: white;
+        display: flex; border: 1px solid var(--border);
+        border-radius: 7px; overflow: hidden; background: var(--surface);
     }
     .seg-btn {
         flex: 1; padding: 4px 0; font-size: 11px;
-        border: none; background: transparent; color: #6b7280;
+        border: none; background: transparent; color: var(--text-soft);
         cursor: pointer; transition: background 0.15s, color 0.15s;
     }
-    .seg-btn + .seg-btn { border-left: 1px solid #e5ddd3; }
-    .seg-btn.seg-active { background: #fef3c7; color: #92400e; font-weight: 500; }
+    .seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+    .seg-btn.seg-active { background: var(--chip-amber-strong); color: var(--accent-amber-text); font-weight: 500; }
 
     /* ── Range ── */
     .range { width: 100%; accent-color: #f59e0b; }
@@ -537,22 +536,20 @@ const annotationPills = [
     .review-btn {
         width: 100%; padding: 5px 0; margin: 6px 0; border-radius: 7px;
         display: flex; align-items: center; justify-content: center; gap: 6px;
-        background: rgba(254, 243, 199, 0.7);
-        border: 1px solid rgba(252, 211, 77, 0.4);
-        color: #92400e; font-size: 11px; font-weight: 500;
+        background: var(--chip-amber);
+        border: 1px solid var(--chip-amber-border);
+        color: var(--accent-amber-text); font-size: 11px; font-weight: 500;
         cursor: pointer; transition: background 0.15s, box-shadow 0.15s;
         box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.6),
-            inset 0 -1px 0 rgba(0,0,0,0.04),
-            0 1px 3px rgba(0,0,0,0.08);
+            inset 0 -1px 0 rgba(var(--shadow-color),0.04),
+            0 1px 3px rgba(var(--shadow-color),0.08);
         backdrop-filter: blur(4px);
     }
     .review-btn:hover {
-        background: rgba(253, 230, 138, 0.8);
+        background: var(--chip-amber-strong);
         box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.7),
-            inset 0 -1px 0 rgba(0,0,0,0.06),
-            0 2px 4px rgba(0,0,0,0.10);
+            inset 0 -1px 0 rgba(var(--shadow-color),0.06),
+            0 2px 4px rgba(var(--shadow-color),0.10);
     }
 
     /* ── Annotation type pills (right pane) ── */
@@ -563,11 +560,11 @@ const annotationPills = [
         transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
         text-align: center; white-space: nowrap;
     }
-    .pill-off    { background: white; color: #c4bdb4; border-color: #ede8e0; }
-    .pill-off:hover { border-color: #c4b89a; color: #9ca3af; }
-    .pill-comment    { background: #fef9e7; color: #92400e; border-color: #fcd34d; }
-    .pill-suggestion { background: #f0fdf4; color: #166534; border-color: #86efac; }
-    .pill-revision   { background: #faf5ff; color: #6b21a8; border-color: #d8b4fe; }
+    .pill-off    { background: var(--surface); color: var(--text-faint); border-color: var(--border); }
+    .pill-off:hover { border-color: var(--border-strong); color: var(--text-soft); }
+    .pill-comment    { background: var(--chip-amber); color: var(--accent-amber-text); border-color: var(--chip-amber-border); }
+    .pill-suggestion { background: var(--chip-green); color: var(--accent-green-text); border-color: var(--chip-green-border); }
+    .pill-revision   { background: var(--chip-purple); color: var(--accent-purple-text); border-color: var(--chip-purple-border); }
 
     /* ── Focus slider ── */
     .depth-header {
@@ -577,15 +574,15 @@ const annotationPills = [
         display: flex; align-items: baseline; gap: 5px;
     }
     .focus-label {
-        font-size: 11px; font-weight: 500; color: #6b7280;
+        font-size: 11px; font-weight: 500; color: var(--text-soft);
         transition: color 0.2s;
     }
     .focus-desc {
-        font-size: 10px; color: #a89f96;
+        font-size: 10px; color: var(--text-faint);
     }
     .focus-slider-wrap {
         display: flex; align-items: center; gap: 3px;
     }
-    .focus-stop { font-size: 9px; color: #c4bdb4; line-height: 1; }
+    .focus-stop { font-size: 9px; color: var(--text-faint); line-height: 1; }
     .focus-range { flex: 1; accent-color: #f59e0b; }
 </style>

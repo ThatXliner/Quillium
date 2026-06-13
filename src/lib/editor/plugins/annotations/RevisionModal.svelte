@@ -871,7 +871,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   <div class="revision-modal-inner">
     <!-- Header -->
     <div
-      class="flex items-center justify-between px-5 py-3 border-b border-purple-100/80 shrink-0 gap-3 min-w-0"
+      class="flex items-center justify-between px-5 py-3 border-b border-[color:var(--border)] shrink-0 gap-3 min-w-0"
     >
       <!-- Breadcrumb trail -->
       <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
@@ -888,7 +888,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
             <!-- "Revision" label — clickable back if not current -->
             {#if isCurrent}
               <span
-                class="text-[10px] font-semibold text-purple-700/70 uppercase tracking-wider shrink-0"
+                class="text-[10px] font-semibold text-[color:var(--accent-purple-text)] uppercase tracking-wider shrink-0"
                 >Revision</span
               >
             {:else}
@@ -913,7 +913,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                     bind:this={labelInputEl}
                     bind:value={labelInputValue}
                     class="pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium w-[120px]
-                        bg-purple-100/70 text-purple-700/80 ring-1 ring-purple-300/60 outline-none
+                        bg-[color:var(--chip-purple-strong)] text-[color:var(--accent-purple-text)] ring-1 ring-[color:var(--chip-purple-border)] outline-none
                         placeholder-purple-400/50"
                     placeholder="Version name…"
                     onblur={commitLabelEdit}
@@ -927,11 +927,11 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                   class="version-trigger flex items-center gap-1 pl-2 pr-1.5 py-0.5 rounded-md text-[10px] font-medium
                                         transition-all duration-150
                                         {isCurrent
-                    ? 'bg-purple-100/70 text-purple-700/80 hover:bg-purple-100 ring-1 ring-purple-200/60'
-                    : 'bg-black/5 text-black/45 hover:bg-black/8 ring-1 ring-black/10'}
+                    ? 'bg-[color:var(--chip-purple)] text-[color:var(--accent-purple-text)] hover:bg-[color:var(--chip-purple-strong)] ring-1 ring-[color:var(--chip-purple-border)]'
+                    : 'bg-[color:var(--surface-2)] text-[color:var(--text-faint)] hover:bg-[color:var(--surface-3)] ring-1 ring-[color:var(--border)]'}
                                         {openDropdown === ci
                     ? 'ring-2 ' +
-                      (isCurrent ? 'ring-purple-300/60' : 'ring-black/20')
+                      (isCurrent ? 'ring-[color:var(--chip-purple-border)]' : 'ring-[color:var(--border-strong)]')
                     : ''}"
                   onclick={(e) => {
                     e.stopPropagation();
@@ -956,7 +956,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                       : ''}
                                             {isCurrent
                       ? 'text-purple-400/70'
-                      : 'text-black/30'}"
+                      : 'text-[color:var(--text-ghost)]'}"
                   />
                 </button>
                 {/if}
@@ -996,7 +996,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                         </button>
                         {#if isCurrent}
                           <button
-                            class="shrink-0 p-0.5 rounded text-black/25 hover:text-red-500/70 transition-colors"
+                            class="shrink-0 p-0.5 rounded text-[color:var(--text-ghost)] hover:text-red-500/70 transition-colors"
                             onclick={(e) => {
                               e.stopPropagation();
                               deleteVersion(vi);
@@ -1026,8 +1026,8 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       <!-- Right actions -->
       <div class="flex items-center gap-2 shrink-0">
         <button
-          class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
-              bg-purple-50/80 hover:bg-purple-100/60 rounded-md ring-1 ring-purple-200/50 transition-colors"
+          class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-[color:var(--accent-purple-text)]
+              bg-[color:var(--chip-purple)] hover:bg-[color:var(--chip-purple-strong)] rounded-md ring-1 ring-[color:var(--chip-purple-border)] transition-colors"
           onclick={addVersion}
           title="New version ({modKey}↵)"
         >
@@ -1036,7 +1036,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <Kbd keys={[modKey, "↵"]} />
         </button>
         <button
-          class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-purple-50/80 transition-colors"
+          class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-[color:var(--surface-2)] transition-colors"
           onclick={deleteRevision}
           title="Delete entire revision"
           aria-label="Delete entire revision"
@@ -1044,10 +1044,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <Trash2 size={16} />
         </button>
         <button
-          class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+          class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
           onclick={close}
         >
-          <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+          <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
           <X size={16} />
         </button>
       </div>
@@ -1059,17 +1059,17 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     <div class="flex flex-1 overflow-hidden">
       <!-- Thread sidebar (left) -->
       <div
-        class="revision-modal-thread shrink-0 border-r border-purple-100/60 flex flex-col min-h-0 bg-purple-50/90"
+        class="revision-modal-thread shrink-0 border-r border-[color:var(--border)] flex flex-col min-h-0 bg-[color:var(--surface-2)]"
       >
-        <div class="px-4 py-3 border-b border-purple-100/50 shrink-0">
+        <div class="px-4 py-3 border-b border-[color:var(--border)] shrink-0">
           <span
-            class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider"
+            class="text-[9px] font-semibold text-[color:var(--accent-purple-text)] uppercase tracking-wider"
             >Thread</span
           >
         </div>
         <div class="flex-1 overflow-y-auto px-4 py-3">
           {#if revisionThread.length === 0}
-            <p class="text-[11px] text-black/30 leading-relaxed mb-3">
+            <p class="text-[11px] text-[color:var(--text-soft)] leading-relaxed mb-3">
               No messages yet.
             </p>
           {/if}
@@ -1090,16 +1090,16 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
       ></div>
 
       <!-- Right sidebar: context + annotations -->
-        <div class="w-72 shrink-0 border-l border-purple-100/60 flex flex-col min-h-0 bg-purple-50/20 overflow-x-hidden">
+        <div class="w-72 shrink-0 border-l border-[color:var(--border)] flex flex-col min-h-0 bg-[color:var(--surface-2)] overflow-x-hidden">
 
           <!-- Context panel -->
           {#if contextLayers.length > 0}
-            <div class="border-b border-purple-100/60 shrink-0">
+            <div class="border-b border-[color:var(--border)] shrink-0">
               <button
-                class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors"
+                class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[color:var(--surface-3)] transition-colors"
                 onclick={() => contextCollapsed = !contextCollapsed}
               >
-                <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Context</span>
+                <span class="text-[9px] font-semibold text-[color:var(--accent-purple-text)] uppercase tracking-wider">Context</span>
                 {#if contextCollapsed}
                   <ChevronDown size={10} class="text-purple-400/50" />
                 {:else}
@@ -1147,10 +1147,10 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
           <!-- Annotations -->
           <div class="flex-1 min-h-0 flex flex-col">
             <button
-              class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-purple-50/60 transition-colors shrink-0"
+              class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[color:var(--surface-3)] transition-colors shrink-0"
               onclick={() => annotationsCollapsed = !annotationsCollapsed}
             >
-              <span class="text-[9px] font-semibold text-purple-600/60 uppercase tracking-wider">Annotations</span>
+              <span class="text-[9px] font-semibold text-[color:var(--accent-purple-text)] uppercase tracking-wider">Annotations</span>
               {#if annotationsCollapsed}
                 <ChevronDown size={10} class="text-purple-400/50" />
               {:else}
@@ -1168,17 +1168,17 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                   />
                 {:else}
                   <div class="flex flex-col items-center px-2 pt-4 text-center justify-evenly space-y-8">
-                    <p class="text-[11px] text-black/30 leading-relaxed">No annotations yet.</p>
+                    <p class="text-[11px] text-[color:var(--text-soft)] leading-relaxed">No annotations yet.</p>
                     {#if appSettings.showShortcutHints}
-                      <p class="text-[11px] text-black/25 mb-3">Create one with:</p>
+                      <p class="text-[11px] text-[color:var(--text-soft)] mb-3">Create one with:</p>
                       <div class="flex flex-col gap-2">
-                        <div class="flex items-center gap-2 text-black/40">
+                        <div class="flex items-center gap-2 text-[color:var(--text-soft)]">
                           <Kbd keys={[modKey, opt, "M"]} />
-                          <span class="text-[11px] font-medium text-black/35">comment</span>
+                          <span class="text-[11px] font-medium text-[color:var(--text-soft)]">comment</span>
                         </div>
-                        <div class="flex items-center gap-2 text-black/40">
+                        <div class="flex items-center gap-2 text-[color:var(--text-soft)]">
                           <Kbd keys={[modKey, opt, "K"]} />
-                          <span class="text-[11px] font-medium text-black/35">revision</span>
+                          <span class="text-[11px] font-medium text-[color:var(--text-soft)]">revision</span>
                         </div>
                       </div>
                     {/if}
@@ -1220,9 +1220,9 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     flex-direction: column;
     width: 1160px;
     height: 72vh;
-    background: white;
+    background: var(--surface);
     border-radius: 1rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.25);
     overflow: hidden;
   }
 
@@ -1261,12 +1261,12 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     left: 0;
     min-width: 160px;
     max-width: 240px;
-    background: white;
-    border: 1px solid rgba(147, 112, 219, 0.15);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow:
-      0 8px 24px -4px rgba(0, 0, 0, 0.12),
-      0 2px 8px -2px rgba(0, 0, 0, 0.08);
+      0 8px 24px -4px rgba(var(--shadow-color), 0.12),
+      0 2px 8px -2px rgba(var(--shadow-color), 0.08);
     padding: 4px;
     z-index: 10;
     overflow: hidden;
@@ -1280,7 +1280,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     padding: 5px 8px;
     border-radius: 6px;
     font-size: 11px;
-    color: rgba(0, 0, 0, 0.6);
+    color: var(--text-soft);
     transition:
       background 0.1s,
       color 0.1s;
@@ -1288,13 +1288,13 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   }
 
   .version-option:hover {
-    background: rgba(147, 112, 219, 0.08);
-    color: rgba(109, 40, 217, 0.85);
+    background: var(--surface-2);
+    color: var(--accent-purple-text);
   }
 
   .version-option-active {
-    background: rgba(147, 112, 219, 0.1);
-    color: rgba(109, 40, 217, 0.9);
+    background: var(--surface-3);
+    color: var(--accent-purple-text);
     font-weight: 500;
   }
 
@@ -1304,7 +1304,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     scrollbar-width: none;
     -ms-overflow-style: none;
     padding: 10px 14px;
-    background: rgba(245, 240, 255, 0.45);
+    background: var(--surface-3);
     backdrop-filter: blur(12px) saturate(1.3);
     -webkit-backdrop-filter: blur(12px) saturate(1.3);
   }
@@ -1317,7 +1317,7 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
   .context-text {
     font-size: 11px;
     line-height: 1.7;
-    color: rgba(80, 40, 120, 0.35);
+    color: var(--text-faint);
     font-family: var(--doc-font-family, system-ui, sans-serif);
     white-space: pre-wrap;
     word-break: break-word;
@@ -1337,31 +1337,31 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
 
   /* Depth 0: outermost revision highlight (light purple) */
   .context-nest-0 {
-    background: rgba(147, 112, 219, 0.10);
-    color: rgba(88, 28, 135, 0.55);
-    box-shadow: inset 0 0 0 1px rgba(147, 112, 219, 0.18);
+    background: var(--chip-purple);
+    color: var(--accent-purple-text);
+    box-shadow: inset 0 0 0 1px var(--chip-purple-border);
   }
 
   /* Depth 1: one level in (medium purple) */
   .context-nest-1 {
-    background: rgba(126, 87, 194, 0.16);
-    color: rgba(88, 28, 135, 0.70);
-    box-shadow: inset 0 0 0 1px rgba(126, 87, 194, 0.25);
+    background: var(--chip-purple-strong);
+    color: var(--accent-purple-text);
+    box-shadow: inset 0 0 0 1px var(--chip-purple-border);
   }
 
   /* Depth 2: two levels in (deeper purple) */
   .context-nest-2 {
-    background: rgba(109, 40, 217, 0.20);
-    color: rgba(88, 28, 135, 0.82);
-    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.30);
+    background: var(--chip-purple-strong);
+    color: var(--accent-purple-text);
+    box-shadow: inset 0 0 0 2px var(--chip-purple-border);
   }
 
   /* Depth 3+: innermost / deepest (richest purple) */
   .context-nest-3 {
-    background: rgba(88, 28, 135, 0.24);
-    color: rgba(88, 28, 135, 0.92);
+    background: var(--chip-purple-strong);
+    color: var(--accent-purple-text);
     font-weight: 500;
-    box-shadow: inset 0 0 0 1px rgba(88, 28, 135, 0.35);
+    box-shadow: inset 0 0 0 2px var(--chip-purple-border);
   }
 
   .context-jump-btn {
@@ -1374,21 +1374,21 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     padding: 3px 5px;
     font-size: 10px;
     font-weight: 500;
-    color: rgba(109, 40, 217, 0.8);
-    background: rgba(245, 240, 255, 0.85);
+    color: var(--accent-purple-text);
+    background: var(--chip-purple);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(167, 139, 250, 0.35);
+    border: 1px solid var(--chip-purple-border);
     border-radius: 99px;
-    box-shadow: 0 2px 8px rgba(109, 40, 217, 0.12);
+    box-shadow: 0 2px 8px rgba(var(--shadow-color), 0.12);
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
     z-index: 2;
   }
 
   .context-jump-btn:hover {
-    background: rgba(237, 233, 254, 0.95);
-    color: rgba(109, 40, 217, 1);
+    background: var(--chip-purple-strong);
+    color: var(--accent-purple-text);
   }
 
   .context-jump-top {

@@ -67,7 +67,7 @@ const theme = $derived(
               subtext: "text-green-700/65",
               border: "border-green-200/70",
               bg: "bg-green-50/70",
-              hover: "hover:bg-green-50",
+              hover: "hover:bg-[color:var(--surface-2)]",
               icon: "bg-green-100 text-green-700",
               ring: "focus:ring-green-500",
           }
@@ -77,7 +77,7 @@ const theme = $derived(
                 subtext: "text-purple-700/65",
                 border: "border-purple-200/70",
                 bg: "bg-purple-50/70",
-                hover: "hover:bg-purple-50",
+                hover: "hover:bg-[color:var(--surface-2)]",
                 icon: "bg-purple-100 text-purple-700",
                 ring: "focus:ring-purple-500",
             }
@@ -86,7 +86,7 @@ const theme = $derived(
                 subtext: "text-blue-700/65",
                 border: "border-blue-200/70",
                 bg: "bg-blue-50/70",
-                hover: "hover:bg-blue-50",
+                hover: "hover:bg-[color:var(--surface-2)]",
                 icon: "bg-blue-100 text-blue-700",
                 ring: "focus:ring-blue-500",
             },
@@ -103,7 +103,7 @@ function sourceIcon(id: string) {
 }
 </script>
 
-<div class="p-3 border-b border-black/10 space-y-2.5">
+<div class="p-3 border-b border-[color:var(--border)] space-y-2.5">
     {#if showContextSummary}
         <div class="rounded-lg border {theme.border} {theme.bg} p-2.5">
             <div class="flex items-start gap-2">
@@ -123,10 +123,10 @@ function sourceIcon(id: string) {
                     {#each activeSources as source (source.id)}
                         {@const SourceIcon = sourceIcon(source.id)}
                         <div
-                            class="min-w-0 flex items-center gap-1 rounded-md bg-white/55 px-1.5 py-1 text-[10px] text-black/45"
+                            class="min-w-0 flex items-center gap-1 rounded-md bg-[color:var(--surface)] px-1.5 py-1 text-[10px] text-[color:var(--text-faint)]"
                             title="{source.label}: {source.detail}"
                         >
-                            <SourceIcon size={11} class="shrink-0 text-black/30" />
+                            <SourceIcon size={11} class="shrink-0 text-[color:var(--text-ghost)]" />
                             <span class="truncate">{source.label}</span>
                             <span class="ml-auto shrink-0 tabular-nums">{source.chars.toLocaleString()}</span>
                         </div>
@@ -142,18 +142,18 @@ function sourceIcon(id: string) {
                 type="button"
                 onclick={() => onAction(action)}
                 {disabled}
-                class="group w-full rounded-lg border border-black/10 bg-white/80 px-2.5 py-2 text-left shadow-sm transition-all
+                class="group w-full rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] px-2.5 py-2 text-left shadow-sm transition-all
                     disabled:opacity-45 disabled:cursor-not-allowed {theme.hover}
                     focus:outline-none focus:ring-2 {theme.ring}"
             >
                 <div class="flex items-start gap-2">
                     <div class="min-w-0 flex-1">
-                        <div class="text-xs font-semibold text-black/75 truncate">{action.label}</div>
-                        <div class="text-[10px] leading-snug text-black/40">{action.detail}</div>
+                        <div class="text-xs font-semibold text-[color:var(--text)] truncate">{action.label}</div>
+                        <div class="text-[10px] leading-snug text-[color:var(--text-faint)]">{action.detail}</div>
                     </div>
                     <ArrowRightIcon
                         size={13}
-                        class="mt-0.5 shrink-0 text-black/25 transition-transform group-hover:translate-x-0.5 group-hover:text-black/45"
+                        class="mt-0.5 shrink-0 text-[color:var(--text-ghost)] transition-transform group-hover:translate-x-0.5 group-hover:text-[color:var(--text-faint)]"
                     />
                 </div>
             </button>

@@ -188,7 +188,7 @@ $effect(() => {
     id="status-bar"
     role="region"
     aria-label="Status bar"
-    class="relative max-w-[30rem] mx-auto backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg"
+    class="relative max-w-[30rem] mx-auto backdrop-blur-md rounded-[2rem] bg-[color:var(--surface-2)] border border-[color:var(--border)] shadow-lg"
     onmouseenter={onMouseEnter}
     onmouseleave={onMouseLeave}
 >
@@ -209,7 +209,7 @@ $effect(() => {
                                   : "bg-yellow-400"
                     }`}
                 ></div>
-                <span class="text-sm text-black/90">
+                <span class="text-sm text-[color:var(--text)]">
                     {#if $collabState === "connected"}
                         Synced
                     {:else if $collabState === "syncing"}
@@ -250,12 +250,12 @@ $effect(() => {
                 <div
                     class={`w-2 h-2 rounded-full ${$saveStatus === "saved" ? "bg-green-400" : $saveStatus === "error" ? "bg-red-400" : "bg-yellow-400"}`}
                 ></div>
-                <span class="text-sm text-black/90"
+                <span class="text-sm text-[color:var(--text)]"
                     >{$saveStatus === "saved" ? "Saved" : $saveStatus === "error" ? "Error" : "Saving..."}</span
                 >
             {/if}
         </div>
-        <div class="w-px h-8 bg-black/20 shrink-0"></div>
+        <div class="w-px h-8 bg-[color:var(--border-strong)] shrink-0"></div>
         <!-- Middle buttons (scrollable) -->
         <div
             bind:this={secondaryStrip}
@@ -268,7 +268,7 @@ $effect(() => {
                 onclick={goToLibrary}
                 title="Library ({modKey}O)"
                 aria-label="Open library"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-blue-400 hover:text-blue-600 shrink-0"
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors text-blue-400 hover:text-blue-600 shrink-0"
             >
                 <LayoutGrid size={20} />
             </button>
@@ -276,7 +276,7 @@ $effect(() => {
                 onclick={goToHistory}
                 aria-label="Version history"
                 title="Version History ({modKey}Shift+H)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-amber-400 hover:text-amber-600 shrink-0"
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors text-amber-400 hover:text-amber-600 shrink-0"
             >
                 <History size={20} />
             </button>
@@ -284,8 +284,8 @@ $effect(() => {
                 onclick={() => ($settingsOpen = !$settingsOpen)}
                 aria-label="Open settings"
                 title="Settings ({modKey},)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
-                    {$settingsOpen ? 'text-gray-600' : 'text-gray-400 hover:text-gray-600'}"
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors shrink-0
+                    {$settingsOpen ? 'text-[color:var(--text-soft)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]'}"
             >
                 <Settings size={20} />
             </button>
@@ -293,7 +293,7 @@ $effect(() => {
                 onclick={() => ($statsOpen = !$statsOpen)}
                 aria-label="Writing statistics"
                 title="Writing Statistics"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors shrink-0
                     {$statsOpen ? 'text-emerald-600' : 'text-emerald-400 hover:text-emerald-600'}"
             >
                 <BarChart3 size={20} />
@@ -307,7 +307,7 @@ $effect(() => {
                     onclick={toggleExportMenu}
                     aria-label="Export document"
                     title="Export ({modKey}Shift+E)"
-                    class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors
+                    class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors
                         {exportOpen ? 'text-purple-600' : 'text-purple-400 hover:text-purple-600'}"
                 >
                     <Download size={20} />
@@ -315,7 +315,7 @@ $effect(() => {
                 {#if exportOpen}
                     <div
                         bind:this={exportMenuEl}
-                        class="fixed z-[80] w-48 -translate-x-1/2 -translate-y-full overflow-hidden rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-md"
+                        class="fixed z-[80] w-48 -translate-x-1/2 -translate-y-full overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] py-1 shadow-xl backdrop-blur-md"
                         style={exportMenuStyle}
                     >
                         {#each exportItems as item}
@@ -323,7 +323,7 @@ $effect(() => {
                                 type="button"
                                 onclick={() => doExport(item.format)}
                                 disabled={exporting || !$editorView}
-                                class="w-full px-3 py-2 text-left text-xs text-black/65 transition-colors hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-45"
+                                class="w-full px-3 py-2 text-left text-xs text-[color:var(--text-soft)] transition-colors hover:bg-[color:var(--surface-2)] hover:text-[color:var(--accent-purple-text)] disabled:cursor-not-allowed disabled:opacity-45"
                             >
                                 {item.label}
                             </button>
@@ -332,14 +332,14 @@ $effect(() => {
                 {/if}
             </div>
         </div>
-        <div class="w-px h-8 bg-black/20 shrink-0"></div>
+        <div class="w-px h-8 bg-[color:var(--border-strong)] shrink-0"></div>
         <!-- Right side (pinned) -->
         <div class="flex items-center gap-2 shrink-0">
             <button
                 onclick={() => ($tutorialActive = true)}
                 aria-label="Take tour"
                 title="Take tour"
-                class="w-5 h-5 rounded-full bg-black/10 hover:bg-black/20 text-black/40 hover:text-black/70 transition-colors text-[11px] font-semibold leading-none flex items-center justify-center"
+                class="w-5 h-5 rounded-full bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)] text-[color:var(--text-faint)] hover:text-[color:var(--text)] transition-colors text-[11px] font-semibold leading-none flex items-center justify-center"
             >?</button>
             {#if import.meta.env.DEV}
                 <button

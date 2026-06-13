@@ -17,8 +17,8 @@ const { onNew }: Props = $props();
         <BookOpen size={28} class="text-blue-400" />
     </div>
     <div>
-        <h3 class="text-base font-semibold text-black/60 mb-1">No documents yet</h3>
-        <p class="text-sm text-black/40 max-w-xs">
+        <h3 class="text-base font-semibold text-[color:var(--text-strong)] mb-1">No documents yet</h3>
+        <p class="text-sm text-[color:var(--text)] max-w-xs">
             Start a new document and your writing will appear here.
         </p>
     </div>

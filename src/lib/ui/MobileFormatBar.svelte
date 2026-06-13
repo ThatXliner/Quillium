@@ -271,10 +271,10 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         align-items: center;
         gap: 0.25rem;
         padding: 0.25rem 0.5rem;
-        background: rgba(255, 255, 255, 0.85);
+        background: var(--surface);
         backdrop-filter: blur(12px);
-        border-top: 1px solid rgba(0, 0, 0, 0.08);
-        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+        border-top: 1px solid var(--border);
+        box-shadow: 0 -2px 8px rgba(var(--shadow-color), 0.06);
         /* never trap touch gestures meant for the keyboard */
         touch-action: none;
     }
@@ -290,10 +290,10 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         max-width: calc(100vw - 1.5rem);
         gap: 0.125rem;
         padding: 0.25rem;
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--border);
         border-radius: 0.875rem;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 4px 16px rgba(var(--shadow-color), 0.12);
+        background: var(--surface);
     }
 
     .spacer {
@@ -305,7 +305,7 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         width: 1px;
         height: 1.25rem;
         margin: 0 0.125rem;
-        background: rgba(0, 0, 0, 0.12);
+        background: var(--border-strong);
     }
 
     button {
@@ -314,12 +314,12 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         align-items: center;
         justify-content: center;
         border-radius: 0.5rem;
-        color: rgba(0, 0, 0, 0.72);
+        color: var(--text);
         background: transparent;
         transition: background-color 0.12s ease;
     }
     button:active {
-        background: rgba(0, 0, 0, 0.08);
+        background: var(--surface-2);
     }
 
     button.primary {
@@ -335,7 +335,7 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         height: 2.25rem;
     }
     button.icon.active {
-        background: rgba(0, 0, 0, 0.08);
+        background: var(--surface-3);
     }
 
     .format-popover {
@@ -349,9 +349,9 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         padding: 0.25rem 0.5rem;
         overflow-x: auto;
         scrollbar-width: none;
-        background: rgba(255, 255, 255, 0.92);
+        background: var(--surface);
         backdrop-filter: blur(12px);
-        border-top: 1px solid rgba(0, 0, 0, 0.06);
+        border-top: 1px solid var(--border);
         touch-action: none;
     }
     .format-popover::-webkit-scrollbar {
@@ -371,8 +371,8 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         max-width: calc(100vw - 1.5rem);
         gap: 0.125rem;
         padding: 0.25rem;
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--border);
         border-radius: 0.875rem;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 4px 16px rgba(var(--shadow-color), 0.12);
     }
 </style>

@@ -119,7 +119,7 @@ function send() {
         {/each}
 
         {#if previewOnly && thread.length > 1}
-            <p transition:slide={{ duration: 180, easing: cubicOut }} class="text-[10px] text-black/40 pl-9">
+            <p transition:slide={{ duration: 180, easing: cubicOut }} class="text-[10px] text-[color:var(--text-faint)] pl-9">
                 {thread.length - 1} more repl{thread.length === 2 ? "y" : "ies"}
             </p>
         {/if}
@@ -129,15 +129,15 @@ function send() {
 <!-- Reply input — hidden in previewOnly or hideReply mode -->
 {#if !previewOnly && !hideReply}
     <div transition:slide={{ duration: 200, easing: cubicOut }}
-        class="mt-3 rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
-        ring-1 ring-black/5 focus-within:ring-2 {focusRingClass} transition-shadow">
+        class="mt-3 rounded-[10px] bg-[color:var(--surface-2)] inset-shadow-sm overflow-hidden
+        ring-1 ring-[color:var(--border)] focus-within:ring-2 {focusRingClass} transition-shadow">
         <textarea
             bind:this={textareaEl}
             bind:value={() => newMessage, (v) => setDraft(annotationId, v)}
             placeholder="Reply…"
             rows="2"
             class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
-                text-black/70 placeholder:text-black/30"
+                text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)]"
             onfocus={() => (isFocused = true)}
             onblur={() => (isFocused = false)}
             onkeydown={(e) => {
@@ -157,7 +157,7 @@ function send() {
                         aria-label="Get AI suggestion"
                         title="Get AI suggestion"
                         class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium
-                            text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors"
+                            text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
                         onclick={onAiSuggest}
                     >
                         <SparklesIcon size={11} />
@@ -169,7 +169,7 @@ function send() {
                 <button
                     onclick={sendActive ? send : undefined}
                     class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
-                        {sendActive ? `${sendPillClass} shadow-sm` : 'bg-black/5 text-black/30'}"
+                        {sendActive ? `${sendPillClass} shadow-sm` : 'bg-[color:var(--surface-2)] text-[color:var(--text-ghost)]'}"
                 >
                     {isFocused ? "Send" : "Reply"}
                     <span class="flex items-center gap-0.5">

@@ -106,16 +106,16 @@ async function handleSubmit(e: Event) {
 <dialog bind:this={dialogEl} class="auth-modal" onclick={handleBackdropClick}>
     <div class="auth-modal-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06]">
-            <h2 class="text-[13px] font-semibold text-black/60">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)]">
+            <h2 class="text-[13px] font-semibold text-[color:var(--text-soft)]">
                 {activeTab === "login" ? "Log In" : "Sign Up"}
             </h2>
             <button
                 onclick={onclose}
                 aria-label="Close"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
@@ -125,18 +125,18 @@ async function handleSubmit(e: Event) {
             <button
                 onclick={() => switchTab("login")}
                 class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
-                    {activeTab === 'login' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
+                    {activeTab === 'login' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
             >Log in</button>
             {#if signupsEnabled}
                 <button
                     onclick={() => switchTab("signup")}
                     class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
-                        {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}"
+                        {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                 >
                    Sign up
                 </button>
             {:else}
-                <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer" class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-black/40 hover:text-black/60 hover:bg-black/5'}">
+                <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer" class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}">
                     Join the waitlist
                 </a>
             {/if}
@@ -147,44 +147,44 @@ async function handleSubmit(e: Event) {
         <form onsubmit={handleSubmit} class="px-5 py-4 flex flex-col gap-3">
             {#if activeTab === "signup"}
                 <div class="flex flex-col gap-1.5">
-                    <label for="displayName" class="text-xs font-medium text-black/50">Display name</label>
+                    <label for="displayName" class="text-xs font-medium text-[color:var(--text-soft)]">Display name</label>
                     <input
                         id="displayName"
                         type="text"
                         bind:value={displayName}
                         placeholder="Your name"
                         autocomplete="name"
-                        class="px-3 py-2 text-sm border border-black/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
+                        class="px-3 py-2 text-sm border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-[color:var(--text-ghost)]"
                     />
                 </div>
             {/if}
 
             <div class="flex flex-col gap-1.5">
-                <label for="email" class="text-xs font-medium text-black/50">Email</label>
+                <label for="email" class="text-xs font-medium text-[color:var(--text-soft)]">Email</label>
                 <input
                     id="email"
                     type="email"
                     bind:value={email}
                     placeholder="you@example.com"
                     autocomplete="email"
-                    class="px-3 py-2 text-sm border border-black/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
+                    class="px-3 py-2 text-sm border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-[color:var(--text-ghost)]"
                 />
             </div>
 
             <div class="flex flex-col gap-1.5">
-                <label for="password" class="text-xs font-medium text-black/50">Password</label>
+                <label for="password" class="text-xs font-medium text-[color:var(--text-soft)]">Password</label>
                 <input
                     id="password"
                     type="password"
                     bind:value={password}
                     placeholder={activeTab === "signup" ? "At least 8 characters" : "Your password"}
                     autocomplete={activeTab === "login" ? "current-password" : "new-password"}
-                    class="px-3 py-2 text-sm border border-black/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
+                    class="px-3 py-2 text-sm border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-[color:var(--text-ghost)]"
                 />
             </div>
 
             {#if error}
-                <div class="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">
+                <div class="text-xs text-[color:var(--accent-red-text)] bg-[color:var(--chip-red)] border border-[color:var(--chip-red-border)] px-3 py-2 rounded-lg">
                     {error}
                 </div>
             {/if}
@@ -226,9 +226,9 @@ async function handleSubmit(e: Event) {
 
     .auth-modal-inner {
         width: 360px;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
     }
 </style>

@@ -22,6 +22,209 @@
     --ui-font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* ── Dark-mode design tokens ──────────────────────────────────────────────────
+   Theming is token-driven: components reference these CSS vars (via var(...) in
+   <style> or arbitrary Tailwind values like text-[color:var(--text)]) instead of
+   hardcoding neutrals. A theme is one edit here, not a sweep across components.
+
+   The theme is selected by the `data-theme` attribute on <html>, set from the
+   `theme` app setting (settings.svelte.ts → applySettings):
+     • data-theme="light"   → force light
+     • data-theme="dark"    → force dark
+     • data-theme="system"  → follow the OS via prefers-color-scheme (default)
+
+   Light values live in :root; dark values are duplicated under both
+   [data-theme="dark"] (manual override) and the system media query (so the very
+   first paint is correct before JS runs, and "System" mode tracks the OS live).
+   ──────────────────────────────────────────────────────────────────────────── */
+:root {
+    color-scheme: light;
+
+    /* Surfaces — page backdrop, the white "paper", raised panels, inset fills */
+    --bg: #faf8f5; /* app backdrop behind the paper / panels */
+    --surface: #ffffff; /* the editing paper, cards, modals (raised above --bg) */
+    --surface-2: #f6f3ee; /* nested / inset / input / hover fills */
+    --surface-3: #eee9e1; /* deeper inset (selected rows, code chips) */
+
+    /* Text — map by role AND opacity tier (these replace text-black/NN usage) */
+    --text-strong: rgba(0, 0, 0, 0.9); /* headings, primary copy */
+    --text: rgba(0, 0, 0, 0.78); /* body copy */
+    --text-soft: rgba(0, 0, 0, 0.6); /* secondary copy */
+    --text-faint: rgba(0, 0, 0, 0.4); /* captions, fine print, hints, icons */
+    --text-ghost: rgba(0, 0, 0, 0.25); /* placeholders, disabled, faintest */
+
+    /* Lines & elevation */
+    --border: rgba(0, 0, 0, 0.08); /* hairline divider / card edge */
+    --border-strong: rgba(0, 0, 0, 0.18); /* more visible border */
+    --shadow-color: 44, 38, 34; /* rgb triple → rgba(var(--shadow-color), α) */
+
+    /* Brand accents — theme-INDEPENDENT (identical in both modes). Do NOT wrap
+       these in a dark block. Use for buttons, links, badges, accent tints. */
+    --accent-blue: #3b82f6;
+    --accent-blue-deep: #2563eb;
+    --accent-purple: #a855f7;
+    --accent-purple-deep: #9333ea;
+    --accent-green: #22c55e;
+    --accent-green-deep: #16a34a;
+    --accent-amber: #fcbc05;
+    --accent-amber-deep: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-red-deep: #dc2626;
+
+    /* The accents whose TEXT colour flips (deep hue reads on a pale tint chip in
+       light, vanishes in dark → use the bright hue for text in dark). Use these
+       for accent-coloured TEXT/icons sitting on a NEUTRAL --surface (so a deep
+       hue that vanishes on dark gets brightened), OR on a flipping --chip-* tint
+       below. The chip fill does not flip; only the text does. */
+    --accent-blue-text: #1d4ed8; /* → bright blue in dark */
+    --accent-purple-text: #7e22ce; /* → bright purple in dark */
+    --accent-amber-text: #b45309; /* → bright amber in dark */
+    --accent-green-text: #15803d; /* → bright green in dark */
+    --accent-red-text: #b91c1c; /* → bright red in dark */
+
+    /* Coloured CHIP/CARD/BANNER tints — FLIP like the annotation tints. A pale
+       hue in light → a deep same-hue tint in dark, so a colour-coded card or
+       banner keeps its hue AND cream --text (or the flipping --accent-*-text)
+       stays legible on top. Use these in place of fixed-light bg-blue-50 /
+       bg-green-50/80 / hover:bg-purple-50 chips, hover washes, and selected-row
+       fills. `-border` is the matching edge. */
+    --chip-blue: #eff6ff;
+    --chip-blue-strong: #dbeafe; /* selected/active */
+    --chip-blue-border: #bfdbfe;
+    --chip-purple: #faf5ff;
+    --chip-purple-strong: #f3e8ff;
+    --chip-purple-border: #e9d5ff;
+    --chip-green: #f0fdf4;
+    --chip-green-strong: #dcfce7;
+    --chip-green-border: #bbf7d0;
+    --chip-amber: #fffbeb;
+    --chip-amber-strong: #fef3c7;
+    --chip-amber-border: #fde68a;
+    --chip-red: #fef2f2;
+    --chip-red-strong: #fee2e2;
+    --chip-red-border: #fecaca;
+
+    /* Annotation tints (comment/suggestion/revision colour-coding). Unlike
+       accents, these surfaces FLIP: pale tint in light → deep same-hue tint in
+       dark, so the coding survives and cream --text reads on top. */
+    --tint-comment: #fef2cd; /* comment highlight (resting) */
+    --tint-comment-active: #fcbc05; /* comment highlight (selected) */
+    --tint-revision-active: #d8b4fe; /* revision highlight (selected) */
+    --tint-suggestion-active: #dcfce7; /* suggestion highlight (selected) */
+    --underline-revision: #a855f7; /* revision underline */
+    --underline-suggestion: #22c55e; /* suggestion underline */
+
+    /* Inline git-style diff pills — conventionally light even in dark UIs, so
+       these stay fixed-light with fixed-dark text (see DARK_MODE precedent). */
+    --diff-del-bg: #fee2e2;
+    --diff-del-text: #dc2626;
+    --diff-ins-bg: #bbf7d0;
+    --diff-ins-text: #15803d;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        color-scheme: dark;
+
+        --bg: #18130f;
+        --surface: #211b16;
+        --surface-2: #1e1a16;
+        --surface-3: #2a231d;
+
+        --text-strong: rgba(247, 241, 227, 0.95);
+        --text: rgba(247, 241, 227, 0.82);
+        --text-soft: rgba(247, 241, 227, 0.64);
+        --text-faint: rgba(247, 241, 227, 0.58); /* 0.58 not 0.45 → clears AA */
+        --text-ghost: rgba(247, 241, 227, 0.38);
+
+        --border: rgba(255, 255, 255, 0.1);
+        --border-strong: rgba(255, 255, 255, 0.22);
+        --shadow-color: 0, 0, 0;
+
+        --accent-blue-text: #93c5fd;
+        --accent-purple-text: #d8b4fe;
+        --accent-amber-text: #fcbc05;
+        --accent-green-text: #4ade80;
+        --accent-red-text: #f87171;
+
+        --chip-blue: #1c2740;
+        --chip-blue-strong: #243456;
+        --chip-blue-border: #2f4470;
+        --chip-purple: #2e2243;
+        --chip-purple-strong: #3b2c57;
+        --chip-purple-border: #4d3a70;
+        --chip-green: #15301f;
+        --chip-green-strong: #1c4029;
+        --chip-green-border: #275437;
+        --chip-amber: #33280c;
+        --chip-amber-strong: #463610;
+        --chip-amber-border: #5e4915;
+        --chip-red: #3a1c1c;
+        --chip-red-strong: #4d2424;
+        --chip-red-border: #6b2f2f;
+
+        --tint-comment: #4a3a0e;
+        --tint-comment-active: #7a5e10;
+        --tint-revision-active: #4a2f6b;
+        --tint-suggestion-active: #1f4a2e;
+        --underline-revision: #c084fc;
+        --underline-suggestion: #4ade80;
+    }
+}
+
+/* Manual override — identical dark values, applied when the user explicitly
+   picks Dark regardless of OS. Kept in sync with the media query above. */
+[data-theme="dark"] {
+    color-scheme: dark;
+
+    --bg: #18130f;
+    --surface: #211b16;
+    --surface-2: #1e1a16;
+    --surface-3: #2a231d;
+
+    --text-strong: rgba(247, 241, 227, 0.95);
+    --text: rgba(247, 241, 227, 0.82);
+    --text-soft: rgba(247, 241, 227, 0.64);
+    --text-faint: rgba(247, 241, 227, 0.58);
+    --text-ghost: rgba(247, 241, 227, 0.38);
+
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.22);
+    --shadow-color: 0, 0, 0;
+
+    --accent-blue-text: #93c5fd;
+    --accent-purple-text: #d8b4fe;
+    --accent-amber-text: #fcbc05;
+    --accent-green-text: #4ade80;
+    --accent-red-text: #f87171;
+
+    --chip-blue: #1c2740;
+    --chip-blue-strong: #243456;
+    --chip-blue-border: #2f4470;
+    --chip-purple: #2e2243;
+    --chip-purple-strong: #3b2c57;
+    --chip-purple-border: #4d3a70;
+    --chip-green: #15301f;
+    --chip-green-strong: #1c4029;
+    --chip-green-border: #275437;
+    --chip-amber: #33280c;
+    --chip-amber-strong: #463610;
+    --chip-amber-border: #5e4915;
+    --chip-red: #3a1c1c;
+    --chip-red-strong: #4d2424;
+    --chip-red-border: #6b2f2f;
+
+    --tint-comment: #4a3a0e;
+    --tint-comment-active: #7a5e10;
+    --tint-revision-active: #4a2f6b;
+    --tint-suggestion-active: #1f4a2e;
+    --underline-revision: #c084fc;
+    --underline-suggestion: #4ade80;
+}
+
+/* data-theme="light" needs no overrides — :root already holds the light values,
+   and color-scheme:light is inherited from :root. */
+
 /* Pin the document to the viewport so iOS WKWebView doesn't rubber-band /
    scroll the whole app past its bounds (which drags the shell under the status
    bar). Scrolling lives in inner containers, not on <html>/<body>. */
@@ -37,6 +240,11 @@ body {
     /* iOS-safe full height; falls back to 100% above on older webviews. */
     height: 100dvh;
     position: relative;
+    /* Token-driven backdrop + text so an OS/selector theme flip animates
+       rather than snaps. Components paint their own surfaces on top. */
+    background-color: var(--bg);
+    color: var(--text);
+    transition: background-color 300ms ease, color 300ms ease;
 }
 
 @keyframes shake {

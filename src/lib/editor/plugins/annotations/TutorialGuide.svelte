@@ -43,10 +43,10 @@ import { tutorialModalGuide, tutorialNavCommand } from "$lib/stores";
         right: 12px;
         bottom: 12px;
         width: 320px;
-        background: rgba(229, 231, 235, 0.95);
-        border: 1px solid rgba(255, 255, 255, 0.7);
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 14px;
-        box-shadow: 0 14px 28px -10px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 14px 28px -10px rgba(var(--shadow-color), 0.25);
         backdrop-filter: blur(8px);
         padding: 12px;
         z-index: 40;
@@ -55,23 +55,23 @@ import { tutorialModalGuide, tutorialNavCommand } from "$lib/stores";
     .tutorial-inline-guide-title {
         font-size: 13px;
         font-weight: 600;
-        color: rgba(0, 0, 0, 0.82);
+        color: var(--text-strong);
     }
 
     .tutorial-inline-guide-body {
         margin-top: 4px;
         font-size: 12px;
         line-height: 1.45;
-        color: rgba(0, 0, 0, 0.62);
+        color: var(--text-soft);
     }
 
     .tutorial-inline-guide-hint {
         margin-top: 8px;
         font-size: 11px;
         line-height: 1.35;
-        color: rgba(146, 64, 14, 1);
-        background: rgba(255, 251, 235, 0.95);
-        border: 1px solid rgba(253, 230, 138, 0.9);
+        color: var(--accent-amber-text);
+        background: var(--chip-amber);
+        border: 1px solid var(--chip-amber-border);
         border-radius: 8px;
         padding: 6px 8px;
     }
@@ -91,24 +91,24 @@ import { tutorialModalGuide, tutorialNavCommand } from "$lib/stores";
 
     .tutorial-inline-guide-skip {
         font-size: 11px;
-        color: rgba(0, 0, 0, 0.42);
+        color: var(--text-faint);
     }
 
     .tutorial-inline-guide-skip:hover {
-        color: rgba(0, 0, 0, 0.58);
+        color: var(--text-soft);
     }
 
     .tutorial-inline-guide-back {
         font-size: 12px;
         border-radius: 9999px;
         padding: 6px 12px;
-        color: rgba(0, 0, 0, 0.65);
-        background: rgba(255, 255, 255, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.8);
+        color: var(--text-soft);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
     }
 
     .tutorial-inline-guide-back:hover {
-        background: rgba(255, 255, 255, 0.9);
+        background: var(--surface-3);
     }
 
     .tutorial-inline-guide-next {

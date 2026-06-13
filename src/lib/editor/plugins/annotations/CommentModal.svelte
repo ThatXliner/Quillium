@@ -269,28 +269,28 @@ async function aiSuggestion() {
 >
     <div class="comment-modal-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b border-blue-100/80 shrink-0 gap-3 min-w-0">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-[color:var(--border)] shrink-0 gap-3 min-w-0">
             <div class="flex items-center gap-2 min-w-0 flex-1">
-                <MessageSquare size={13} class="text-blue-500/70 shrink-0" />
+                <MessageSquare size={13} class="text-[color:var(--accent-blue-text)] shrink-0" />
                 <nav class="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
                     {#each crumbs as crumb, ci}
                         {#if ci > 0}
-                            <ChevronRight size={10} class="text-blue-300/60 shrink-0" />
+                            <ChevronRight size={10} class="text-[color:var(--text-faint)] shrink-0" />
                         {/if}
                         {#if ci < crumbs.length - 1}
                             <button
-                                class="text-[10px] text-blue-500/60 hover:text-blue-700/80 transition-colors truncate max-w-[120px] shrink-0"
+                                class="text-[10px] text-[color:var(--text-soft)] hover:text-[color:var(--text-strong)] transition-colors truncate max-w-[120px] shrink-0"
                                 onclick={() => modalStack.popTo(ci)}
                             >{crumb.label}</button>
                         {:else}
-                            <span class="text-[10px] font-semibold text-blue-700/70 uppercase tracking-wider shrink-0">Comment</span>
+                            <span class="text-[10px] font-semibold text-[color:var(--text-strong)] uppercase tracking-wider shrink-0">Comment</span>
                         {/if}
                     {/each}
                 </nav>
             </div>
             <div class="flex items-center gap-1 shrink-0">
                 <button
-                    class="p-1 rounded-md text-blue-400/50 hover:text-red-500/60 hover:bg-blue-50/80 transition-colors"
+                    class="p-1 rounded-md text-[color:var(--text-faint)] hover:text-[color:var(--accent-red-text)] hover:bg-[color:var(--surface-2)] transition-colors"
                     onclick={deleteComment}
                     title="Delete comment"
                     aria-label="Delete comment"
@@ -298,10 +298,10 @@ async function aiSuggestion() {
                     <Trash2 size={16} />
                 </button>
                 <button
-                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
                     onclick={close}
                 >
-                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                     <X size={16} />
                 </button>
             </div>
@@ -321,25 +321,25 @@ async function aiSuggestion() {
                             view={parentView}
                             previewOnly={false}
                             hideReply={true}
-                            accentClass="text-blue-600/80 hover:text-blue-700"
+                            accentClass="text-[color:var(--accent-blue-text)] hover:text-[color:var(--accent-blue-text)]"
                         />
                     {:else}
-                        <p class="text-sm text-black/40 text-center mt-8">Comment not found.</p>
+                        <p class="text-sm text-[color:var(--text-faint)] text-center mt-8">Comment not found.</p>
                     {/if}
                 </div>
 
                 <!-- Reply box anchored at bottom -->
                 {#if comment}
                     <div class="px-6 pb-5 pt-2 shrink-0">
-                        <div class="rounded-[10px] bg-white/60 inset-shadow-sm inset-shadow-white overflow-hidden
-                            ring-1 ring-black/5 focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
+                        <div class="rounded-[10px] bg-[color:var(--surface-2)] inset-shadow-sm overflow-hidden
+                            ring-1 ring-[color:var(--border)] focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
                             <textarea
                                 bind:this={textareaEl}
                                 bind:value={() => newMessage, (v) => setDraft(commentId, v)}
                                 placeholder="Reply…"
                                 rows="3"
                                 class="w-full text-xs bg-transparent px-3 pt-2.5 pb-1 resize-none focus:outline-none
-                                    text-black/70 placeholder:text-black/30 max-h-48 overflow-y-auto"
+                                    text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)] max-h-48 overflow-y-auto"
                                 onfocus={() => (isFocused = true)}
                                 onblur={() => (isFocused = false)}
                                 oninput={(e) => autoResize(e.currentTarget)}
@@ -360,7 +360,7 @@ async function aiSuggestion() {
                                         aria-label="Get AI suggestion"
                                         title="Get AI suggestion"
                                         class="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium
-                                            text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors"
+                                            text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)] transition-colors"
                                         onclick={aiSuggestion}
                                     >
                                         <SparklesIcon size={11} />
@@ -372,7 +372,7 @@ async function aiSuggestion() {
                                     <button
                                         onclick={sendActive ? send : undefined}
                                         class="flex items-center gap-1.5 px-3 h-[26px] rounded-full text-[10px] font-medium transition-all duration-150
-                                            {sendActive ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm' : 'bg-black/5 text-black/30'}"
+                                            {sendActive ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm' : 'bg-[color:var(--surface-2)] text-[color:var(--text-ghost)]'}"
                                     >
                                         {isFocused ? "Send" : "Reply"}
                                         <span class="flex items-center gap-0.5">
@@ -389,19 +389,19 @@ async function aiSuggestion() {
 
             <!-- Right sidebar: context + future sections (1/3 of modal) -->
             {#if docContext}
-                <div class="w-1/3 shrink-0 border-l border-blue-100/60 flex flex-col min-h-0 bg-blue-50/20">
+                <div class="w-1/3 shrink-0 border-l border-[color:var(--border)] flex flex-col min-h-0 bg-[color:var(--surface-2)]">
                     <!-- Context panel — currently flex-1 to fill sidebar;
                          constrain to shrink-0 + fixed height when adding more sections -->
-                    <div class="flex-1 min-h-0 flex flex-col border-b border-blue-100/60">
+                    <div class="flex-1 min-h-0 flex flex-col border-b border-[color:var(--border)]">
                         <button
-                            class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50/60 transition-colors shrink-0"
+                            class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[color:var(--surface-3)] transition-colors shrink-0"
                             onclick={() => (contextCollapsed = !contextCollapsed)}
                         >
-                            <span class="text-[9px] font-semibold text-blue-600/60 uppercase tracking-wider">Context</span>
+                            <span class="text-[9px] font-semibold text-[color:var(--text-soft)] uppercase tracking-wider">Context</span>
                             {#if contextCollapsed}
-                                <ChevronDown size={10} class="text-blue-400/50" />
+                                <ChevronDown size={10} class="text-[color:var(--text-faint)]" />
                             {:else}
-                                <ChevronUp size={10} class="text-blue-400/50" />
+                                <ChevronUp size={10} class="text-[color:var(--text-faint)]" />
                             {/if}
                         </button>
                         {#if !contextCollapsed}
@@ -466,9 +466,9 @@ async function aiSuggestion() {
         flex-direction: column;
         width: 1060px;
         height: 72vh;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.25);
         overflow: hidden;
     }
 
@@ -478,7 +478,7 @@ async function aiSuggestion() {
         scrollbar-width: none;
         -ms-overflow-style: none;
         padding: 10px 14px;
-        background: rgba(239, 246, 255, 0.45);
+        background: var(--surface-3);
         backdrop-filter: blur(12px) saturate(1.3);
         -webkit-backdrop-filter: blur(12px) saturate(1.3);
     }
@@ -491,23 +491,23 @@ async function aiSuggestion() {
         display: block;
         font-size: 11px;
         line-height: 1.7;
-        color: rgba(30, 64, 120, 0.35);
+        color: var(--text-faint);
         font-family: var(--doc-font-family, system-ui, sans-serif);
         white-space: pre-wrap;
         word-break: break-word;
     }
 
     .context-surrounding {
-        color: rgba(30, 64, 120, 0.35);
+        color: var(--text-faint);
     }
 
     .context-comment {
         display: inline;
         border-radius: 4px;
         padding: 1px 3px;
-        background: rgba(253, 224, 71, 0.25);
-        color: rgba(120, 80, 10, 0.75);
-        box-shadow: inset 0 0 0 1px rgba(253, 224, 71, 0.45);
+        background: var(--tint-comment);
+        color: var(--accent-amber-text);
+        box-shadow: inset 0 0 0 1px var(--chip-amber-border);
     }
 
     .context-jump-btn {
@@ -520,21 +520,21 @@ async function aiSuggestion() {
         padding: 3px 5px;
         font-size: 10px;
         font-weight: 500;
-        color: rgba(37, 99, 235, 0.8);
-        background: rgba(239, 246, 255, 0.85);
+        color: var(--accent-blue-text);
+        background: var(--chip-blue);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(147, 197, 253, 0.5);
+        border: 1px solid var(--chip-blue-border);
         border-radius: 99px;
-        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+        box-shadow: 0 2px 8px rgba(var(--shadow-color), 0.12);
         cursor: pointer;
         transition: background 0.15s, color 0.15s;
         z-index: 2;
     }
 
     .context-jump-btn:hover {
-        background: rgba(219, 234, 254, 0.95);
-        color: rgba(37, 99, 235, 1);
+        background: var(--chip-blue-strong);
+        color: var(--accent-blue-text);
     }
 
     .context-jump-top {

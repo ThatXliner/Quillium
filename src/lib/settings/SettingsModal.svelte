@@ -500,11 +500,11 @@ function fontLabel(fonts: FontOption[], value: string) {
         <div class="settings-shake-wrapper {alerting ? 'settings-shaking' : ''}">
 
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)] shrink-0">
             <div class="flex items-baseline gap-3">
                 <div class="flex items-baseline gap-1.5">
-                    <h2 class="text-[13px] font-semibold text-black/60">Settings</h2>
-                    <span class="text-[11px] text-black/30 font-medium leading-none">{typeof __APP_VERSION__ === "string" ? `v${__APP_VERSION__}` : "dev"}</span>
+                    <h2 class="text-[13px] font-semibold text-[color:var(--text-soft)]">Settings</h2>
+                    <span class="text-[11px] text-[color:var(--text-ghost)] font-medium leading-none">{typeof __APP_VERSION__ === "string" ? `v${__APP_VERSION__}` : "dev"}</span>
                 </div>
                 <div class="settings-tab-track" bind:this={tabTrackEl} style={tabPillStyle}>
                     <div class="settings-tab-pill"></div>
@@ -537,15 +537,15 @@ function fontLabel(fonts: FontOption[], value: string) {
                         </button>
                         {#if whatsNewOpen}
                             <div
-                                class="absolute top-full right-0 mt-1 w-44 max-h-64 overflow-y-auto rounded-lg bg-white shadow-lg border border-black/[0.08] py-1 z-10"
+                                class="absolute top-full right-0 mt-1 w-44 max-h-64 overflow-y-auto rounded-lg bg-[color:var(--surface)] shadow-lg border border-[color:var(--border)] py-1 z-10"
                             >
                                 {#each changelogVersions as { version, date } (version)}
                                     <button
                                         onclick={() => openChangelog(version)}
                                         class="w-full flex items-baseline justify-between gap-2 px-3 py-1.5 text-left hover:bg-blue-500/[0.06] transition-colors"
                                     >
-                                        <span class="text-[11px] font-medium text-black/70">v{version}</span>
-                                        <span class="text-[10px] text-black/35">{date}</span>
+                                        <span class="text-[11px] font-medium text-[color:var(--text)]">v{version}</span>
+                                        <span class="text-[10px] text-[color:var(--text-faint)]">{date}</span>
                                     </button>
                                 {/each}
                             </div>
@@ -555,9 +555,9 @@ function fontLabel(fonts: FontOption[], value: string) {
                 <button
                     onclick={tryClose}
                     aria-label="Close settings"
-                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
                 >
-                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                     <X size={15} />
                 </button>
             </div>
@@ -578,7 +578,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             onclick={() => openUrl("https://quillium.bryanhu.com/privacy")}
                             aria-label="Privacy policy and your data rights"
                             title="Privacy policy and your data rights"
-                            class="text-black/25 hover:text-black/50 transition-colors"
+                            class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors"
                         >
                             <HelpCircle size={13} />
                         </button>
@@ -598,7 +598,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.analyticsEnabled}
                     aria-label="Toggle usage analytics"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.analyticsEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.analyticsEnabled ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.analyticsEnabled = !draft.analyticsEnabled;
                         handleChange();
@@ -640,7 +640,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.checkForUpdates}
                     aria-label="Toggle automatic update checks"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.checkForUpdates ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.checkForUpdates ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.checkForUpdates = !draft.checkForUpdates;
                         handleChange();
@@ -674,7 +674,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             {:else if semanticStatus === "ready"}
                                 <span class="text-green-600/80">Ready</span>
                             {:else if semanticStatus === "unavailable"}
-                                <span class="text-black/40">Not available on this device</span>
+                                <span class="text-[color:var(--text-faint)]">Not available on this device</span>
                             {:else if semanticStatus.startsWith("error")}
                                 <span class="text-red-500/80">
                                     Couldn't download the model — check your connection
@@ -690,7 +690,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         title="Uninstall model (~30 MB)"
                         aria-label="Uninstall semantic search model"
                         disabled={semanticBusy}
-                        class="text-black/30 hover:text-red-500 disabled:opacity-40 transition-colors"
+                        class="text-[color:var(--text-ghost)] hover:text-red-500 disabled:opacity-40 transition-colors"
                         onclick={uninstallModel}
                     ><Trash2 size={14} /></button>
                 {/if}
@@ -700,7 +700,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-label="Toggle search by meaning"
                     disabled={semanticBusy}
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {semanticEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {semanticEnabled ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={toggleSemanticSearch}
                 >
                     <span
@@ -717,6 +717,34 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- APPEARANCE section -->
             <div class="section-label">Appearance</div>
 
+            <!-- Theme row -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Theme</div>
+                    <div class="setting-desc">Use the light or dark appearance, or follow your system setting automatically</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.theme !== "system"}
+                    <button
+                        type="button"
+                        onclick={() => { draft.theme = "system"; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <div class="flex rounded-lg overflow-hidden border border-[color:var(--border)]">
+                    {#each ([["light", "Light"], ["dark", "Dark"], ["system", "System"]] as const) as [val, label]}
+                        <button
+                            onclick={() => { draft.theme = val; handleChange(); }}
+                            class="px-3 py-1.5 text-[11px] font-medium transition-colors
+                                {draft.theme === val
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
+                        >{label}</button>
+                    {/each}
+                </div>
+                </div>
+            </div>
+
             <!-- Font family row -->
             <div class="setting-row">
                 <div class="setting-meta">
@@ -725,7 +753,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         <button
                             onclick={() => showFontGuide = "doc"}
                             aria-label="Font guide"
-                            class="text-black/25 hover:text-black/50 transition-colors"
+                            class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors"
                         >
                             <HelpCircle size={13} />
                         </button>
@@ -747,7 +775,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="dropdown-trigger {openDropdown === 'doc' ? 'dropdown-trigger-open' : ''}"
                     >
                         <span style="font-family: {draft.docFontFamily}; font-size: 13px;">{fontLabel(DOC_FONTS, draft.docFontFamily)}</span>
-                        <ChevronDown size={11} class="text-black/35 transition-transform duration-150 {openDropdown === 'doc' ? 'rotate-180' : ''}" />
+                        <ChevronDown size={11} class="text-[color:var(--text-faint)] transition-transform duration-150 {openDropdown === 'doc' ? 'rotate-180' : ''}" />
                     </button>
                     {#if openDropdown === "doc"}
                         <div class="dropdown-popover">
@@ -814,7 +842,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         oninput={handleChange}
                         class="w-28 accent-blue-500 cursor-pointer"
                     />
-                    <span class="text-[12px] text-black/50 w-7 text-right tabular-nums">{draft.docFontSize}px</span>
+                    <span class="text-[12px] text-[color:var(--text-soft)] w-7 text-right tabular-nums">{draft.docFontSize}px</span>
                     {#if draft.docFontSize !== 18}
                         <button
                             type="button"
@@ -832,7 +860,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-desc">Scale the entire interface (Cmd+= / Cmd+-)</div>
                 </div>
                 <div class="flex items-center gap-3 shrink-0">
-                    <span class="text-[12px] text-black/50 tabular-nums">{Math.round(draft.uiZoom * 100)}%</span>
+                    <span class="text-[12px] text-[color:var(--text-soft)] tabular-nums">{Math.round(draft.uiZoom * 100)}%</span>
                     {#if draft.uiZoom !== 1}
                         <button
                             type="button"
@@ -851,7 +879,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         <button
                             onclick={() => showFontGuide = "ui"}
                             aria-label="Font guide"
-                            class="text-black/25 hover:text-black/50 transition-colors"
+                            class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors"
                         >
                             <HelpCircle size={13} />
                         </button>
@@ -872,7 +900,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="dropdown-trigger {openDropdown === 'ui' ? 'dropdown-trigger-open' : ''}"
                     >
                         <span style="font-family: {draft.uiFontFamily}; font-size: 13px;">{fontLabel(UI_FONTS, draft.uiFontFamily)}</span>
-                        <ChevronDown size={11} class="text-black/35 transition-transform duration-150 {openDropdown === 'ui' ? 'rotate-180' : ''}" />
+                        <ChevronDown size={11} class="text-[color:var(--text-faint)] transition-transform duration-150 {openDropdown === 'ui' ? 'rotate-180' : ''}" />
                     </button>
                     {#if openDropdown === "ui"}
                         <div class="dropdown-popover">
@@ -941,14 +969,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
                     >Reset</button>
                 {/if}
-                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
+                <div class="flex rounded-lg overflow-hidden border border-[color:var(--border)]">
                     {#each ([["plain", "Plain text"], ["markdown", "Markdown"]] as const) as [val, label]}
                         <button
                             onclick={() => { draft.editorMode = val; handleChange(); }}
                             class="px-3 py-1.5 text-[11px] font-medium transition-colors
                                 {draft.editorMode === val
                                     ? 'bg-blue-500 text-white'
-                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                                    : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{label}</button>
                     {/each}
                 </div>
@@ -974,7 +1002,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.grammarCheckEnabled}
                     aria-label="Toggle grammar check"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.grammarCheckEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.grammarCheckEnabled ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.grammarCheckEnabled = !draft.grammarCheckEnabled;
                         handleChange();
@@ -997,7 +1025,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </div>
                 <div class="shrink-0">
                     <select
-                        class="text-sm bg-white/60 border border-black/10 rounded-md px-2 py-1 cursor-pointer"
+                        class="text-sm bg-[color:var(--surface-2)] border border-[color:var(--border)] rounded-md px-2 py-1 cursor-pointer"
                         value={draft.grammarDialect}
                         onchange={(e) => {
                             draft.grammarDialect = e.currentTarget.value as typeof draft.grammarDialect;
@@ -1032,7 +1060,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.showShortcutHints}
                     aria-label="Toggle shortcut hints"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.showShortcutHints ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.showShortcutHints ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.showShortcutHints = !draft.showShortcutHints;
                         handleChange();
@@ -1066,7 +1094,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.showWordCount}
                     aria-label="Toggle word count overlay"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.showWordCount ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.showWordCount ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.showWordCount = !draft.showWordCount;
                         handleChange();
@@ -1102,7 +1130,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     {/each}
                 </div>
             {:else}
-                <div class="text-[11px] text-black/30 px-0.5 mb-2.5">No custom words yet. Add words to skip spell-check on them.</div>
+                <div class="text-[11px] text-[color:var(--text-ghost)] px-0.5 mb-2.5">No custom words yet. Add words to skip spell-check on them.</div>
             {/if}
 
             <!-- Add word form -->
@@ -1111,7 +1139,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     bind:value={newDictWord}
                     onkeydown={(e) => e.key === "Enter" && addDictWord()}
                     placeholder="Add a word…"
-                    class="flex-1 px-2.5 py-1.5 text-[12px] border border-black/[0.1] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
+                    class="flex-1 px-2.5 py-1.5 text-[12px] border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-[color:var(--text-ghost)]"
                 />
                 <button
                     onclick={addDictWord}
@@ -1140,14 +1168,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
                     >Reset</button>
                 {/if}
-                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
+                <div class="flex rounded-lg overflow-hidden border border-[color:var(--border)]">
                     {#each ([["hover", "On hover"], ["always", "Always"], ["never", "Never"]] as const) as [val, label]}
                         <button
                             onclick={() => { draft.titleVisibility = val; handleChange(); }}
                             class="px-3 py-1.5 text-[11px] font-medium transition-colors
                                 {draft.titleVisibility === val
                                     ? 'bg-blue-500 text-white'
-                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                                    : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{label}</button>
                     {/each}
                 </div>
@@ -1170,7 +1198,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         oninput={handleChange}
                         class="w-28 accent-blue-500 cursor-pointer"
                     />
-                    <span class="text-[12px] text-black/50 w-10 text-right tabular-nums">{draft.titleHoverDelay}ms</span>
+                    <span class="text-[12px] text-[color:var(--text-soft)] w-10 text-right tabular-nums">{draft.titleHoverDelay}ms</span>
                     {#if draft.titleHoverDelay !== 350}
                         <button
                             type="button"
@@ -1197,7 +1225,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         oninput={handleChange}
                         class="w-28 accent-blue-500 cursor-pointer"
                     />
-                    <span class="text-[12px] text-black/50 w-10 text-right tabular-nums">{draft.titleLingerDuration >= 1000 ? `${draft.titleLingerDuration / 1000}s` : `${draft.titleLingerDuration}ms`}</span>
+                    <span class="text-[12px] text-[color:var(--text-soft)] w-10 text-right tabular-nums">{draft.titleLingerDuration >= 1000 ? `${draft.titleLingerDuration / 1000}s` : `${draft.titleLingerDuration}ms`}</span>
                     {#if draft.titleLingerDuration !== 3000}
                         <button
                             type="button"
@@ -1232,7 +1260,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.showNestedEditor}
                     aria-label="Toggle nested editor in revision card"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.showNestedEditor ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.showNestedEditor ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.showNestedEditor = !draft.showNestedEditor;
                         handleChange();
@@ -1266,7 +1294,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.atomicRevisions}
                     aria-label="Toggle atomic revisions"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.atomicRevisions ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.atomicRevisions ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.atomicRevisions = !draft.atomicRevisions;
                         handleChange();
@@ -1300,7 +1328,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.selectTextInNestedEditor}
                     aria-label="Toggle select text in nested editor"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.selectTextInNestedEditor ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.selectTextInNestedEditor ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.selectTextInNestedEditor = !draft.selectTextInNestedEditor;
                         handleChange();
@@ -1334,7 +1362,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.autoVersionOnRevisionCreate}
                     aria-label="Toggle auto-create version on revision"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.autoVersionOnRevisionCreate ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.autoVersionOnRevisionCreate ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.autoVersionOnRevisionCreate = !draft.autoVersionOnRevisionCreate;
                         handleChange();
@@ -1363,14 +1391,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
                     >Reset</button>
                 {/if}
-                <div class="flex rounded-lg overflow-hidden border border-black/[0.09]">
+                <div class="flex rounded-lg overflow-hidden border border-[color:var(--border)]">
                     {#each ([["visual-split", "Balanced"], ["by-type", "By type"], ["single", "One side"]] as const) as [val, label]}
                         <button
                             onclick={() => { draft.annotationLayout = val; handleChange(); }}
                             class="px-3 py-1.5 text-[11px] font-medium transition-colors
                                 {draft.annotationLayout === val
                                     ? 'bg-blue-500 text-white'
-                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                                    : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{label}</button>
                     {/each}
                 </div>
@@ -1390,7 +1418,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             onclick={() => openUrl("https://quillium.bryanhu.com/blog/ai-is-not-the-point")}
                             aria-label="Why is this off by default?"
                             title="Why is this off by default?"
-                            class="text-black/25 hover:text-black/50 transition-colors"
+                            class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors"
                         >
                             <HelpCircle size={13} />
                         </button>
@@ -1403,7 +1431,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         aria-checked={draft.aiEnabled}
                         aria-label="Toggle AI features"
                         class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                            {draft.aiEnabled ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                            {draft.aiEnabled ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                         onclick={() => {
                             draft.aiEnabled = !draft.aiEnabled;
                             handleChange();
@@ -1438,7 +1466,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     aria-checked={draft.showAiSuggestions}
                     aria-label="Toggle AI suggestion underlines"
                     class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
-                        {draft.showAiSuggestions ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                        {draft.showAiSuggestions ? 'bg-blue-500' : 'bg-[color:var(--surface-3)]'}"
                     onclick={() => {
                         draft.showAiSuggestions = !draft.showAiSuggestions;
                         handleChange();
@@ -1465,14 +1493,14 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <div class="setting-title">Panel</div>
                     <div class="setting-desc">Add chips to a specific AI panel</div>
                 </div>
-                <div class="flex rounded-lg overflow-hidden border border-black/[0.09] shrink-0">
+                <div class="flex rounded-lg overflow-hidden border border-[color:var(--border)] shrink-0">
                     {#each (["revise", "feedback", "chat"] as const) as panel}
                         <button
                             onclick={() => { selectedPanel = panel; }}
                             class="px-3 py-1.5 text-[11px] font-medium capitalize transition-colors
                                 {selectedPanel === panel
                                     ? 'bg-blue-500 text-white'
-                                    : 'bg-white text-black/50 hover:bg-black/[0.04]'}"
+                                    : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{panel}</button>
                     {/each}
                 </div>
@@ -1482,15 +1510,15 @@ function fontLabel(fonts: FontOption[], value: string) {
             {#if panelActions.length > 0}
                 <div class="flex flex-col gap-1 mb-2">
                     {#each panelActions as action, i}
-                        <div class="flex items-start gap-2 px-2 py-2 rounded-lg bg-black/[0.02] border border-black/[0.05]">
+                        <div class="flex items-start gap-2 px-2 py-2 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)]">
                             <div class="flex-1 min-w-0">
-                                <div class="text-[12px] font-medium text-black/70 truncate">{action.label}</div>
-                                <div class="text-[11px] text-black/38 mt-0.5 line-clamp-2 leading-snug">{action.prompt}</div>
+                                <div class="text-[12px] font-medium text-[color:var(--text)] truncate">{action.label}</div>
+                                <div class="text-[11px] text-[color:var(--text-faint)] mt-0.5 line-clamp-2 leading-snug">{action.prompt}</div>
                             </div>
                             <button
                                 onclick={() => removeQuickAction(i)}
                                 aria-label="Remove quick action"
-                                class="shrink-0 mt-0.5 p-1 rounded text-black/25 hover:text-red-400 hover:bg-red-50 transition-colors"
+                                class="shrink-0 mt-0.5 p-1 rounded text-[color:var(--text-ghost)] hover:text-red-400 hover:bg-red-50 transition-colors"
                             >
                                 <Trash2 size={12} />
                             </button>
@@ -1498,7 +1526,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     {/each}
                 </div>
             {:else}
-                <div class="text-[11px] text-black/30 px-0.5 mb-2">No custom chips for this panel yet.</div>
+                <div class="text-[11px] text-[color:var(--text-ghost)] px-0.5 mb-2">No custom chips for this panel yet.</div>
             {/if}
 
             <!-- Add new chip form -->
@@ -1506,13 +1534,13 @@ function fontLabel(fonts: FontOption[], value: string) {
                 <input
                     bind:value={newActionLabel}
                     placeholder="Label (shown on chip)"
-                    class="w-full px-2.5 py-1.5 text-[12px] border border-black/[0.1] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-black/25"
+                    class="w-full px-2.5 py-1.5 text-[12px] border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-[color:var(--text-ghost)]"
                 />
                 <textarea
                     bind:value={newActionPrompt}
                     placeholder="Full prompt sent to AI…"
                     rows="2"
-                    class="w-full px-2.5 py-1.5 text-[12px] border border-black/[0.1] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none placeholder:text-black/25"
+                    class="w-full px-2.5 py-1.5 text-[12px] border border-[color:var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none placeholder:text-[color:var(--text-ghost)]"
                 ></textarea>
                 <button
                     onclick={addQuickAction}
@@ -1532,7 +1560,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         </div>
 
         <!-- Footer -->
-        <div class="flex items-center justify-between gap-2 px-5 py-3 border-t border-black/[0.06] shrink-0">
+        <div class="flex items-center justify-between gap-2 px-5 py-3 border-t border-[color:var(--border)] shrink-0">
             <div class="flex items-center gap-3">
                 <button
                     onclick={() => {
@@ -1550,7 +1578,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                 </button>
                 <button
                     onclick={() => openUrl(FEEDBACK_FORM_URL)}
-                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-black/40 hover:text-black/60 transition-colors"
+                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors"
                 >
                     <Bug size={12} />
                     Report a bug
@@ -1561,7 +1589,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                         appEventBus.emit({ type: "show-licenses" });
                         onclose();
                     }}
-                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-black/40 hover:text-black/60 transition-colors"
+                    class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-md text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors"
                 >
                     <Scale size={12} />
                     Licenses
@@ -1573,7 +1601,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <div class="flex items-center gap-2">
                 <button
                     onclick={discard}
-                    class="text-xs text-black/40 hover:text-black/60 transition-colors px-2 py-1"
+                    class="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors px-2 py-1"
                 >Cancel</button>
                 {#key alertKey}
                     <button
@@ -1617,9 +1645,9 @@ function fontLabel(fonts: FontOption[], value: string) {
         width: 640px;
         height: 72vh;
         max-height: 82vh;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
     }
 
@@ -1628,12 +1656,12 @@ function fontLabel(fonts: FontOption[], value: string) {
         position: relative;
         display: flex;
         gap: 2px;
-        background: rgba(180, 180, 180, 0.25);
-        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 3px;
         backdrop-filter: blur(8px);
-        box-shadow: inset 0 1px 3px rgba(0,0,0,0.08);
+        box-shadow: inset 0 1px 3px rgba(var(--shadow-color),0.08);
     }
 
     .settings-tab-pill {
@@ -1642,9 +1670,9 @@ function fontLabel(fonts: FontOption[], value: string) {
         left: 3px;
         height: calc(100% - 6px);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.7);
+        background: var(--surface);
         backdrop-filter: blur(8px);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+        box-shadow: 0 1px 3px rgba(var(--shadow-color),0.12);
         transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
         width: var(--tab-pill-width, 72px);
         transform: translateX(var(--tab-pill-x, 0px));
@@ -1654,7 +1682,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         position: relative;
         font-size: 11px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.4);
+        color: var(--text-faint);
         padding: 2px 10px;
         border-radius: 999px;
         transition: color 0.2s;
@@ -1663,11 +1691,11 @@ function fontLabel(fonts: FontOption[], value: string) {
     }
 
     .settings-tab-btn:hover {
-        color: rgba(0, 0, 0, 0.55);
+        color: var(--text-soft);
     }
 
     .settings-tab-btn-active {
-        color: rgba(0, 0, 0, 0.7);
+        color: var(--text);
     }
 
     /* Personal dictionary word chips */
@@ -1677,9 +1705,9 @@ function fontLabel(fonts: FontOption[], value: string) {
         gap: 4px;
         font-size: 12px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.65);
-        background: rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        color: var(--text-soft);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 2px 8px 2px 10px;
     }
@@ -1688,7 +1716,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         display: flex;
         align-items: center;
         justify-content: center;
-        color: rgba(0, 0, 0, 0.3);
+        color: var(--text-ghost);
         border-radius: 999px;
         padding: 1px;
         transition: color 0.15s, background 0.15s;
@@ -1741,7 +1769,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         font-weight: 600;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.35);
+        color: var(--text-faint);
         margin-top: 0.25rem;
         margin-bottom: 0.5rem;
         padding: 0 0.125rem;
@@ -1749,7 +1777,7 @@ function fontLabel(fonts: FontOption[], value: string) {
 
     .section-divider {
         height: 1px;
-        background: rgba(0, 0, 0, 0.05);
+        background: var(--border);
         margin: 0.75rem 0;
     }
 
@@ -1770,13 +1798,13 @@ function fontLabel(fonts: FontOption[], value: string) {
     .setting-title {
         font-size: 13px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.75);
+        color: var(--text);
         line-height: 1.3;
     }
 
     .setting-desc {
         font-size: 11px;
-        color: rgba(0, 0, 0, 0.38);
+        color: var(--text-faint);
         margin-top: 1px;
         line-height: 1.4;
     }
@@ -1787,8 +1815,8 @@ function fontLabel(fonts: FontOption[], value: string) {
         align-items: center;
         gap: 6px;
         padding: 5px 10px 5px 11px;
-        background: rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.09);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
         border-radius: 8px;
         cursor: pointer;
         white-space: nowrap;
@@ -1798,12 +1826,12 @@ function fontLabel(fonts: FontOption[], value: string) {
     }
 
     .dropdown-trigger:hover {
-        background: rgba(0, 0, 0, 0.07);
-        border-color: rgba(0, 0, 0, 0.13);
+        background: var(--surface-2);
+        border-color: var(--border-strong);
     }
 
     .dropdown-trigger-open {
-        background: rgba(0, 0, 0, 0.06);
+        background: var(--surface-3);
         border-color: rgba(59, 130, 246, 0.4);
         box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
@@ -1816,12 +1844,12 @@ function fontLabel(fonts: FontOption[], value: string) {
         min-width: 200px;
         max-height: 280px;
         overflow-y: auto;
-        background: white;
-        border: 1px solid rgba(0, 0, 0, 0.09);
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 10px;
         box-shadow:
-            0 8px 24px -4px rgba(0, 0, 0, 0.12),
-            0 2px 8px -2px rgba(0, 0, 0, 0.07);
+            0 8px 24px -4px rgba(var(--shadow-color), 0.12),
+            0 2px 8px -2px rgba(var(--shadow-color), 0.07);
         padding: 4px;
         z-index: 50;
     }
@@ -1839,7 +1867,7 @@ function fontLabel(fonts: FontOption[], value: string) {
     }
 
     .dropdown-option:hover {
-        background: rgba(0, 0, 0, 0.04);
+        background: var(--surface-2);
     }
 
     .dropdown-option-active {
@@ -1853,13 +1881,13 @@ function fontLabel(fonts: FontOption[], value: string) {
     .dropdown-option-label {
         font-size: 12px;
         font-weight: 500;
-        color: rgba(0, 0, 0, 0.7);
+        color: var(--text);
         line-height: 1.2;
     }
 
     .dropdown-option-sample {
         font-size: 12px;
-        color: rgba(0, 0, 0, 0.38);
+        color: var(--text-faint);
         margin-top: 2px;
         line-height: 1.3;
     }
@@ -1869,13 +1897,13 @@ function fontLabel(fonts: FontOption[], value: string) {
         font-weight: 600;
         letter-spacing: 0.07em;
         text-transform: uppercase;
-        color: rgba(0, 0, 0, 0.3);
+        color: var(--text-ghost);
         padding: 4px 9px 2px;
     }
 
     .dropdown-divider {
         height: 1px;
-        background: rgba(0, 0, 0, 0.06);
+        background: var(--border);
         margin: 4px 0;
     }
 

@@ -530,16 +530,16 @@ onDestroy(() => {
 
         {#if sectionPickerOpen}
             <div
-                class="absolute pointer-events-auto top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] backdrop-blur-md bg-gray-300/85 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-4"
+                class="absolute pointer-events-auto top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-xl rounded-2xl p-5 flex flex-col gap-4"
                 role="document"
             >
                 <div>
-                    <h3 class="text-sm font-semibold text-black/80 mb-1">Choose Tutorial Sections</h3>
-                    <p class="text-xs text-black/60 leading-relaxed">Core editor basics are always included. Toggle optional sections below.</p>
+                    <h3 class="text-sm font-semibold text-[color:var(--text)] mb-1">Choose Tutorial Sections</h3>
+                    <p class="text-xs text-[color:var(--text-soft)] leading-relaxed">Core editor basics are always included. Toggle optional sections below.</p>
                 </div>
 
                 <div class="flex flex-col gap-2">
-                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
+                    <label class="flex items-start gap-2 p-2 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)]">
                         <input
                             type="checkbox"
                             checked={includeNested}
@@ -547,13 +547,13 @@ onDestroy(() => {
                             class="mt-0.5"
                         />
                         <span>
-                            <span class="block text-xs font-medium text-black/80">Nested Revision Walkthrough</span>
-                            <span class="block text-[11px] text-black/55">Interactive steps for creating and expanding nested revisions</span>
+                            <span class="block text-xs font-medium text-[color:var(--text)]">Nested Revision Walkthrough</span>
+                            <span class="block text-[11px] text-[color:var(--text-soft)]">Interactive steps for creating and expanding nested revisions</span>
                         </span>
                     </label>
 
                     {#if appSettings.aiEnabled}
-                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
+                    <label class="flex items-start gap-2 p-2 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)]">
                         <input
                             type="checkbox"
                             checked={includeAi}
@@ -561,13 +561,13 @@ onDestroy(() => {
                             class="mt-0.5"
                         />
                         <span>
-                            <span class="block text-xs font-medium text-black/80">AI Tools Tour</span>
-                            <span class="block text-[11px] text-black/55">Chat, Feedback, Revise, and Context buttons</span>
+                            <span class="block text-xs font-medium text-[color:var(--text)]">AI Tools Tour</span>
+                            <span class="block text-[11px] text-[color:var(--text-soft)]">Chat, Feedback, Revise, and Context buttons</span>
                         </span>
                     </label>
                     {/if}
 
-                    <label class="flex items-start gap-2 p-2 rounded-lg bg-white/45 border border-white/40">
+                    <label class="flex items-start gap-2 p-2 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)]">
                         <input
                             type="checkbox"
                             checked={includeShortcuts}
@@ -575,8 +575,8 @@ onDestroy(() => {
                             class="mt-0.5"
                         />
                         <span>
-                            <span class="block text-xs font-medium text-black/80">Keyboard Shortcuts</span>
-                            <span class="block text-[11px] text-black/55">Quick reference for all keyboard shortcuts</span>
+                            <span class="block text-xs font-medium text-[color:var(--text)]">Keyboard Shortcuts</span>
+                            <span class="block text-[11px] text-[color:var(--text-soft)]">Quick reference for all keyboard shortcuts</span>
                         </span>
                     </label>
                 </div>
@@ -584,7 +584,7 @@ onDestroy(() => {
                 <div class="flex items-center justify-between">
                     <button
                         onclick={skip}
-                        class="text-[11px] text-black/35 hover:text-black/55 transition-colors"
+                        class="text-[11px] text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors"
                     >
                         Skip tour
                     </button>
@@ -599,7 +599,7 @@ onDestroy(() => {
         {:else if step && !useInlineModalGuide}
             <div
                 bind:this={tooltipEl}
-                class="absolute pointer-events-auto backdrop-blur-md bg-gray-300/90 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3
+                class="absolute pointer-events-auto backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-xl rounded-2xl p-5 flex flex-col gap-3
                     {step.showShortcuts ? 'w-[420px]' : 'w-[320px]'}"
                 style="
                     top: {tooltipPos.top}px;
@@ -612,26 +612,26 @@ onDestroy(() => {
                     <div class="flex gap-1">
                         {#each activeSteps as _, i}
                             <div
-                                class="w-1.5 h-1.5 rounded-full transition-colors duration-200 {i === stepIndex ? 'bg-blue-500' : 'bg-black/20'}"
+                                class="w-1.5 h-1.5 rounded-full transition-colors duration-200 {i === stepIndex ? 'bg-blue-500' : 'bg-[color:var(--text-ghost)]'}"
                             ></div>
                         {/each}
                     </div>
-                    <span class="text-[11px] text-black/40 font-medium">
+                    <span class="text-[11px] text-[color:var(--text-faint)] font-medium">
                         {stepIndex + 1} / {activeSteps.length}
                     </span>
                 </div>
 
                 <div>
-                    <h3 class="text-sm font-semibold text-black/80 mb-1">
+                    <h3 class="text-sm font-semibold text-[color:var(--text)] mb-1">
                         {step.title}
                     </h3>
-                    <p class="text-xs text-black/60 leading-relaxed">
+                    <p class="text-xs text-[color:var(--text-soft)] leading-relaxed">
                         {step.body}
                     </p>
                     {#if step.shortcutHint}
                         <div class="flex items-center gap-1.5 mt-1.5">
                             {#if step.shortcutHint.prefix}
-                                <span class="text-[11px] text-black/50">{step.shortcutHint.prefix}</span>
+                                <span class="text-[11px] text-[color:var(--text-soft)]">{step.shortcutHint.prefix}</span>
                             {/if}
                             <Kbd keys={resolveKeys(step.shortcutHint.keys)} />
                         </div>
@@ -639,16 +639,16 @@ onDestroy(() => {
                 </div>
 
                 {#if step.showShortcuts}
-                    <div class="space-y-3 border-t border-black/10 pt-3">
+                    <div class="space-y-3 border-t border-[color:var(--border)] pt-3">
                         {#each shortcutGroups as group}
                             <div>
-                                <h4 class="text-[9px] font-semibold text-black/40 uppercase tracking-widest mb-1.5">
+                                <h4 class="text-[9px] font-semibold text-[color:var(--text-faint)] uppercase tracking-widest mb-1.5">
                                     {group.title}
                                 </h4>
                                 <div class="space-y-1">
                                     {#each group.shortcuts as shortcut}
                                         <div class="flex items-center justify-between">
-                                            <span class="text-[11px] text-black/65">{shortcut.label}</span>
+                                            <span class="text-[11px] text-[color:var(--text-soft)]">{shortcut.label}</span>
                                             <div class="flex items-center gap-0.5">
                                                 <Kbd keys={shortcut.keys} />
                                             </div>
@@ -663,8 +663,8 @@ onDestroy(() => {
                 {#if requirementState}
                     <div
                         class="text-[11px] rounded-md px-2 py-1.5 border {requirementState.met
-                            ? 'bg-green-50/80 text-green-700 border-green-200/80'
-                            : 'bg-amber-50/80 text-amber-700 border-amber-200/80'}"
+                            ? 'bg-[color:var(--chip-green)] text-[color:var(--accent-green-text)] border-[color:var(--chip-green-border)]'
+                            : 'bg-[color:var(--chip-amber)] text-[color:var(--accent-amber-text)] border-[color:var(--chip-amber-border)]'}"
                     >
                         {requirementState.met ? "Action complete. Continue when ready." : requirementState.hint}
                     </div>
@@ -673,7 +673,7 @@ onDestroy(() => {
                 <div class="flex items-center justify-between">
                     <button
                         onclick={skip}
-                        class="text-[11px] text-black/35 hover:text-black/55 transition-colors"
+                        class="text-[11px] text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors"
                     >
                         Skip tour
                     </button>
@@ -681,7 +681,7 @@ onDestroy(() => {
                         {#if !isFirst}
                             <button
                                 onclick={back}
-                                class="text-xs px-3 py-1.5 rounded-full bg-white/50 hover:bg-white/70 text-black/60 hover:text-black/80 transition-colors border border-white/30"
+                                class="text-xs px-3 py-1.5 rounded-full bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)] text-[color:var(--text-soft)] hover:text-[color:var(--text)] transition-colors border border-[color:var(--border)]"
                             >
                                 Back
                             </button>

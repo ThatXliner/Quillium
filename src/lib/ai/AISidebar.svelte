@@ -122,7 +122,7 @@ const actions: {
         icon: MessageCircleIcon,
         label: "Chat",
         shortcut: isMac ? "⌘⇧1" : "Ctrl+Shift+1",
-        activeClass: "text-blue-600 bg-white/60",
+        activeClass: "text-blue-600 bg-[color:var(--surface)]",
         hoverClass: "hover:text-blue-600",
         requiresApiKey: true,
         preferredHeight: 600,
@@ -132,7 +132,7 @@ const actions: {
         icon: ZapIcon,
         label: "Feedback",
         shortcut: isMac ? "⌘⇧2" : "Ctrl+Shift+2",
-        activeClass: "text-green-600 bg-white/60",
+        activeClass: "text-green-600 bg-[color:var(--surface)]",
         hoverClass: "hover:text-green-600",
         requiresApiKey: true,
         preferredHeight: 600,
@@ -142,7 +142,7 @@ const actions: {
         icon: PenLineIcon,
         label: "Revise",
         shortcut: isMac ? "⌘⇧3" : "Ctrl+Shift+3",
-        activeClass: "text-purple-600 bg-white/60",
+        activeClass: "text-purple-600 bg-[color:var(--surface)]",
         hoverClass: "hover:text-purple-600",
         requiresApiKey: true,
         preferredHeight: 600,
@@ -152,7 +152,7 @@ const actions: {
         icon: CompassIcon,
         label: "Document Context",
         shortcut: isMac ? "⌘⇧4" : "Ctrl+Shift+4",
-        activeClass: "text-amber-600 bg-white/60",
+        activeClass: "text-amber-600 bg-[color:var(--surface)]",
         hoverClass: "hover:text-amber-600",
         requiresApiKey: true,
         preferredWidth: 380,
@@ -162,7 +162,7 @@ const actions: {
         icon: UsersIcon,
         label: "Readers",
         shortcut: isMac ? "⌘⇧5" : "Ctrl+Shift+5",
-        activeClass: "text-rose-600 bg-white/60",
+        activeClass: "text-rose-600 bg-[color:var(--surface)]",
         hoverClass: "hover:text-rose-600",
         requiresApiKey: true,
         preferredWidth: 440,
@@ -468,7 +468,7 @@ function handleKeydown(e: KeyboardEvent) {
 <svelte:window onclick={handleClickOutside} onkeydown={handleKeydown} />
 
 {#snippet kbdHint(key: string)}
-    <span class="ml-auto text-[9px] font-mono opacity-50 bg-black/10 px-1 py-0.5 rounded">{key}</span>
+    <span class="ml-auto text-[9px] font-mono opacity-50 bg-[color:var(--surface-2)] px-1 py-0.5 rounded">{key}</span>
 {/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -480,7 +480,7 @@ function handleKeydown(e: KeyboardEvent) {
     style={containerSizeStyle}
     class="
         fixed left-4 top-1/2 -translate-y-1/2 z-50
-        backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
+        backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-lg
         overflow-hidden {transitionClass}
         {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[280px] rounded-[100px]'}
         {aiProcessing.active ? 'ai-processing' : ''}
@@ -501,8 +501,8 @@ function handleKeydown(e: KeyboardEvent) {
                     title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
                     class="p-2 rounded-full transition-colors
                         {disabled
-                            ? 'text-black/20 cursor-pointer'
-                            : 'text-black/50 ' + a.hoverClass}"
+                            ? 'text-[color:var(--text-ghost)] cursor-pointer'
+                            : 'text-[color:var(--text-soft)] ' + a.hoverClass}"
                 >
                     <a.icon size={18} />
                 </button>
@@ -514,7 +514,7 @@ function handleKeydown(e: KeyboardEvent) {
             aria-label={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
             title={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
             class="relative p-2 rounded-full transition-colors
-                {hasApiKey() ? 'text-black/30 hover:text-black/60' : 'text-amber-600/80 hover:text-amber-700'}"
+                {hasApiKey() ? 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]' : 'text-amber-600/80 hover:text-amber-700'}"
         >
             <SettingsIcon size={15} />
             {#if !hasApiKey()}
@@ -554,8 +554,8 @@ function handleKeydown(e: KeyboardEvent) {
                             {action === a.id
                                 ? a.activeClass
                                 : disabled
-                                    ? 'text-black/30'
-                                    : 'text-black/70 hover:bg-white/30'}"
+                                    ? 'text-[color:var(--text-faint)]'
+                                    : 'text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
                     >
                         <a.icon size={16} />
                     </button>
@@ -565,7 +565,7 @@ function handleKeydown(e: KeyboardEvent) {
 
         <!-- Row 2: title + reset + settings + close -->
         <div class="flex items-center px-3 pb-2 shrink-0">
-            <span class="flex-1 text-xs font-semibold text-black/50 truncate">
+            <span class="flex-1 text-xs font-semibold text-[color:var(--text-soft)] truncate">
                 {action ? panelTitles[action] : ""}
             </span>
             {#if isCustomSize}
@@ -573,7 +573,7 @@ function handleKeydown(e: KeyboardEvent) {
                     onclick={resetSize}
                     aria-label="Reset to default size"
                     title="Reset size"
-                    class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
+                    class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0"
                 >
                     <Minimize2Icon size={14} />
                 </button>
@@ -583,7 +583,7 @@ function handleKeydown(e: KeyboardEvent) {
                     type="button"
                     aria-label="Context: {headerContextInfoLabel}"
                     title={headerContextInfoLabel}
-                    class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0 focus:outline-none focus:ring-2 {headerContextRing}"
+                    class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0 focus:outline-none focus:ring-2 {headerContextRing}"
                 >
                     <InfoIcon size={14} />
                 </button>
@@ -594,21 +594,21 @@ function handleKeydown(e: KeyboardEvent) {
                 title="AI Settings"
                 class="p-1.5 rounded-full transition-colors shrink-0
                     {action === 'settings'
-                        ? 'text-black/60 bg-white/60'
-                        : 'text-black/30 hover:text-black/60 hover:bg-white/40'}"
+                        ? 'text-[color:var(--text-soft)] bg-[color:var(--surface)]'
+                        : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
             >
                 <SettingsIcon size={14} />
             </button>
             <button
                 onclick={() => (action = null)}
                 aria-label="Close"
-                class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
+                class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0"
             >
                 <XIcon size={14} />
             </button>
         </div>
 
-        <div class="w-full h-px bg-black/10 shrink-0"></div>
+        <div class="w-full h-px bg-[color:var(--border)] shrink-0"></div>
 
         <!-- Content — all panels mounted upfront to avoid mount-time jank -->
         <div class="flex-1 flex flex-col min-h-0 relative">
@@ -723,7 +723,7 @@ function handleKeydown(e: KeyboardEvent) {
         right: 4px;
         width: 2px;
         border-radius: 9999px;
-        background-color: rgba(0, 0, 0, 0.08);
+        background-color: var(--border);
         opacity: 0;
         transition:
             background-color 200ms ease,
@@ -731,7 +731,7 @@ function handleKeydown(e: KeyboardEvent) {
     }
 
     .resize-handle-right:hover::after {
-        background-color: rgba(0, 0, 0, 0.18);
+        background-color: var(--border-strong);
         opacity: 1;
     }
 
@@ -743,7 +743,7 @@ function handleKeydown(e: KeyboardEvent) {
         bottom: 4px;
         height: 2px;
         border-radius: 9999px;
-        background-color: rgba(0, 0, 0, 0.08);
+        background-color: var(--border);
         opacity: 0;
         transition:
             background-color 200ms ease,
@@ -751,7 +751,7 @@ function handleKeydown(e: KeyboardEvent) {
     }
 
     .resize-handle-bottom:hover::after {
-        background-color: rgba(0, 0, 0, 0.18);
+        background-color: var(--border-strong);
         opacity: 1;
     }
 
@@ -762,8 +762,8 @@ function handleKeydown(e: KeyboardEvent) {
         bottom: 3px;
         width: 5px;
         height: 5px;
-        border-right: 2px solid rgba(0, 0, 0, 0.2);
-        border-bottom: 2px solid rgba(0, 0, 0, 0.2);
+        border-right: 2px solid var(--border-strong);
+        border-bottom: 2px solid var(--border-strong);
         border-radius: 1px;
         opacity: 0;
         transition: opacity 200ms ease;

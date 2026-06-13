@@ -280,9 +280,9 @@ async function saveApiKey() {
 <div class="flex flex-col gap-4 p-3 overflow-y-auto h-full">
     <!-- No API key banner -->
     {#if !hasApiKey() && !keyLoading}
-        <div class="flex items-start gap-2 rounded-lg bg-amber-50/80 border border-amber-200/60 px-3 py-2.5">
-            <KeyRoundIcon size={13} class="text-amber-500 shrink-0 mt-0.5" />
-            <p class="text-[11px] text-amber-700/90 leading-snug">
+        <div class="flex items-start gap-2 rounded-lg bg-[color:var(--chip-amber)] border border-[color:var(--chip-amber-border)] px-3 py-2.5">
+            <KeyRoundIcon size={13} class="text-[color:var(--accent-amber-text)] shrink-0 mt-0.5" />
+            <p class="text-[11px] text-[color:var(--accent-amber-text)] leading-snug">
                 Add an API key below to enable Chat, Feedback, and Revise.
             </p>
         </div>
@@ -291,14 +291,14 @@ async function saveApiKey() {
     <!-- Provider -->
     <div>
         <div class="flex items-center gap-1.5 mb-2">
-            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider">
+            <p class="text-[10px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider">
                 Provider
             </p>
             <button
                 onclick={() => (showModelGuide = true)}
                 aria-label="Which model should I use?"
                 title="Which model should I use?"
-                class="text-black/25 hover:text-black/55 transition-colors"
+                class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors"
             >
                 <InfoIcon size={12} />
             </button>
@@ -311,8 +311,8 @@ async function saveApiKey() {
                     title={provider.label}
                     class="flex flex-1 items-center justify-center gap-1.5 py-2 rounded-lg transition-all duration-200 ease-out
                         {active
-                        ? 'bg-white/70 shadow-sm border border-black/8 px-2.5'
-                        : 'hover:bg-white/40 border border-transparent px-2 opacity-50 hover:opacity-80'}"
+                        ? 'bg-[color:var(--surface)] shadow-sm border border-[color:var(--border)] px-2.5'
+                        : 'hover:bg-[color:var(--surface-2)] border border-transparent px-2 opacity-50 hover:opacity-80'}"
                 >
                     <div class="w-[18px] h-[18px] shrink-0 flex items-center justify-center">
                         {#if provider.id === "openai"}
@@ -337,7 +337,7 @@ async function saveApiKey() {
                         {/if}
                     </div>
                     <span
-                        class="text-xs font-medium text-black/70 overflow-hidden whitespace-nowrap transition-all duration-200 ease-out
+                        class="text-xs font-medium text-[color:var(--text)] overflow-hidden whitespace-nowrap transition-all duration-200 ease-out
                             {active ? 'max-w-[80px] opacity-100' : 'max-w-0 opacity-0'}"
                     >{provider.label}</span>
                 </button>
@@ -350,18 +350,18 @@ async function saveApiKey() {
         <div class="flex flex-col gap-2">
             <div
                 onclick={() => toggleCustomEndpoint(!useCustomEndpoint)}
-                class="flex items-center gap-2 rounded-lg bg-white/50 border border-black/10 px-3 py-2.5 text-left transition-colors hover:bg-white/70 cursor-pointer"
+                class="flex items-center gap-2 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)] px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--surface)] cursor-pointer"
             >
                 <ChevronDownIcon
                     size={13}
-                    class="text-black/40 shrink-0 transition-transform duration-200
+                    class="text-[color:var(--text-faint)] shrink-0 transition-transform duration-200
                         {useCustomEndpoint ? 'rotate-0' : '-rotate-90'}"
                 />
                 <div class="flex-1 min-w-0">
-                    <p class="text-xs font-medium text-black/70 leading-tight">Custom endpoint</p>
-                    <p class="text-[10px] text-black/35 mt-0.5 leading-snug">
+                    <p class="text-xs font-medium text-[color:var(--text)] leading-tight">Custom endpoint</p>
+                    <p class="text-[10px] text-[color:var(--text-faint)] mt-0.5 leading-snug">
                         {#if useCustomEndpoint}
-                            Using <span class="font-mono text-black/50">{baseUrl || "http://localhost:11434/v1"}</span>
+                            Using <span class="font-mono text-[color:var(--text-soft)]">{baseUrl || "http://localhost:11434/v1"}</span>
                         {:else}
                             Use a compatible API (Ollama, LM Studio, etc.)
                         {/if}
@@ -373,10 +373,10 @@ async function saveApiKey() {
                     aria-label="Use custom endpoint"
                     onclick={(e) => { e.stopPropagation(); toggleCustomEndpoint(!useCustomEndpoint); }}
                     class="relative shrink-0 w-8 h-4.5 rounded-full transition-colors duration-200
-                        {useCustomEndpoint ? 'bg-blue-500' : 'bg-black/15'}"
+                        {useCustomEndpoint ? 'bg-blue-500' : 'bg-[color:var(--border-strong)]'}"
                 >
                     <span
-                        class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200
+                        class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full bg-[color:var(--surface)] shadow-sm transition-transform duration-200
                             {useCustomEndpoint ? 'translate-x-3.5' : 'translate-x-0'}"
                     ></span>
                 </button>
@@ -384,19 +384,19 @@ async function saveApiKey() {
             {#if useCustomEndpoint}
                 <div class="flex flex-col gap-2 pl-1">
                     <div>
-                        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-1.5">
+                        <p class="text-[10px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider mb-1.5">
                             Base URL
                         </p>
-                        <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                        <div class="flex items-center gap-1.5 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)] px-2.5 py-2 focus-within:border-blue-400 transition-colors">
                             <input
                                 type="text"
                                 bind:value={baseUrl}
                                 oninput={() => updateBaseUrl(baseUrl)}
                                 placeholder="http://localhost:11434/v1"
-                                class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                                class="flex-1 bg-transparent text-xs text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)] outline-none font-mono"
                             />
                         </div>
-                        <p class="text-[10px] text-black/35 mt-1 leading-relaxed">
+                        <p class="text-[10px] text-[color:var(--text-faint)] mt-1 leading-relaxed">
                             Endpoint for any OpenAI-compatible API.
                         </p>
                     </div>
@@ -407,20 +407,20 @@ async function saveApiKey() {
 
     <!-- Model -->
     <div>
-        <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
+        <p class="text-[10px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider mb-2">
             Model
         </p>
         {#if useCustomEndpoint}
-            <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+            <div class="flex items-center gap-1.5 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)] px-2.5 py-2 focus-within:border-blue-400 transition-colors">
                 <input
                     type="text"
                     bind:value={selectedModel}
                     oninput={() => selectModel(selectedModel)}
                     placeholder="e.g. llama3, gpt-4o-mini"
-                    class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                    class="flex-1 bg-transparent text-xs text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)] outline-none font-mono"
                 />
             </div>
-            <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+            <p class="text-[10px] text-[color:var(--text-faint)] mt-1.5 leading-relaxed">
                 Type the model ID your endpoint supports.
             </p>
         {:else}
@@ -430,14 +430,14 @@ async function saveApiKey() {
                         onclick={() => selectModel(option.id)}
                         class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors
                             {selectedModel === option.id
-                            ? 'bg-white/70 shadow-sm border border-black/8'
-                            : 'hover:bg-white/40 border border-transparent'}"
+                            ? 'bg-[color:var(--surface)] shadow-sm border border-[color:var(--border)]'
+                            : 'hover:bg-[color:var(--surface-2)] border border-transparent'}"
                     >
                         <div class="flex-1 min-w-0">
-                            <div class="text-sm font-medium text-black/80 leading-tight">
+                            <div class="text-sm font-medium text-[color:var(--text)] leading-tight">
                                 {option.label}
                             </div>
-                            <div class="text-xs text-black/40 mt-0.5">{option.description}</div>
+                            <div class="text-xs text-[color:var(--text-faint)] mt-0.5">{option.description}</div>
                         </div>
                         {#if selectedModel === option.id}
                             <div class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></div>
@@ -451,23 +451,23 @@ async function saveApiKey() {
     <!-- API Key -->
     {#if !useCustomEndpoint}
         <div>
-            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
+            <p class="text-[10px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider mb-2">
                 API Key
             </p>
             <div class="flex flex-col gap-1.5">
-                <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                <div class="flex items-center gap-1.5 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)] px-2.5 py-2 focus-within:border-blue-400 transition-colors">
                     {#if keyLoading}
-                        <span class="flex-1 text-xs text-black/30 font-mono animate-pulse">Loading…</span>
+                        <span class="flex-1 text-xs text-[color:var(--text-ghost)] font-mono animate-pulse">Loading…</span>
                     {:else}
                         <input
                             type={showKey ? "text" : "password"}
                             bind:value={apiKey}
                             placeholder="sk-..."
-                            class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                            class="flex-1 bg-transparent text-xs text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)] outline-none font-mono"
                         />
                         <button
                             onclick={() => (showKey = !showKey)}
-                            class="text-black/30 hover:text-black/60 transition-colors shrink-0"
+                            class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors shrink-0"
                             aria-label={showKey ? "Hide key" : "Show key"}
                         >
                             {#if showKey}
@@ -483,14 +483,14 @@ async function saveApiKey() {
                     disabled={!canSave && !keyLoading}
                     class="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs font-medium transition-colors
                         {saveStatus === 'saved'
-                        ? 'bg-green-500/15 text-green-700'
+                        ? 'bg-green-500/15 text-[color:var(--accent-green-text)]'
                         : saveStatus === 'error'
-                        ? 'bg-red-500/15 text-red-700'
+                        ? 'bg-red-500/15 text-[color:var(--accent-red-text)]'
                         : !canSave
-                        ? 'bg-black/5 text-black/25 cursor-not-allowed'
+                        ? 'bg-[color:var(--surface-2)] text-[color:var(--text-ghost)] cursor-not-allowed'
                         : !apiKey.trim()
-                        ? 'bg-red-500/15 text-red-700 hover:bg-red-500/25'
-                        : 'bg-blue-500/15 text-blue-700 hover:bg-blue-500/25'}"
+                        ? 'bg-red-500/15 text-[color:var(--accent-red-text)] hover:bg-red-500/25'
+                        : 'bg-blue-500/15 text-[color:var(--accent-blue-text)] hover:bg-blue-500/25'}"
                 >
                     {#if saveStatus === "saved"}
                         <CheckIcon size={12} />
@@ -505,9 +505,9 @@ async function saveApiKey() {
                 </button>
             </div>
             {#if saveError}
-                <p class="text-[10px] text-red-600/80 mt-1.5 leading-relaxed break-all">{saveError}</p>
+                <p class="text-[10px] text-[color:var(--accent-red-text)] mt-1.5 leading-relaxed break-all">{saveError}</p>
             {:else}
-                <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+                <p class="text-[10px] text-[color:var(--text-faint)] mt-1.5 leading-relaxed">
                     Stored securely in your system keychain.
                 </p>
             {/if}
@@ -515,24 +515,24 @@ async function saveApiKey() {
     {:else}
         <!-- Optional API Key for custom endpoint -->
         <div>
-            <p class="text-[10px] font-semibold text-black/40 uppercase tracking-wider mb-2">
-                API Key <span class="normal-case font-normal text-black/25">(optional)</span>
+            <p class="text-[10px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider mb-2">
+                API Key <span class="normal-case font-normal text-[color:var(--text-ghost)]">(optional)</span>
             </p>
             <div class="flex flex-col gap-1.5">
-                <div class="flex items-center gap-1.5 rounded-lg bg-white/50 border border-black/10 px-2.5 py-2 focus-within:border-blue-400 transition-colors">
+                <div class="flex items-center gap-1.5 rounded-lg bg-[color:var(--surface-2)] border border-[color:var(--border)] px-2.5 py-2 focus-within:border-blue-400 transition-colors">
                     {#if keyLoading}
-                        <span class="flex-1 text-xs text-black/30 font-mono animate-pulse">Loading…</span>
+                        <span class="flex-1 text-xs text-[color:var(--text-ghost)] font-mono animate-pulse">Loading…</span>
                     {:else}
                         <input
                             type={showKey ? "text" : "password"}
                             bind:value={apiKey}
                             placeholder="Optional, if your endpoint requires one"
                             oninput={() => (aiSettings.apiKey = apiKey)}
-                            class="flex-1 bg-transparent text-xs text-black/70 placeholder:text-black/25 outline-none font-mono"
+                            class="flex-1 bg-transparent text-xs text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)] outline-none font-mono"
                         />
                         <button
                             onclick={() => (showKey = !showKey)}
-                            class="text-black/30 hover:text-black/60 transition-colors shrink-0"
+                            class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors shrink-0"
                             aria-label={showKey ? "Hide key" : "Show key"}
                         >
                             {#if showKey}
@@ -544,29 +544,29 @@ async function saveApiKey() {
                     {/if}
                 </div>
             </div>
-            <p class="text-[10px] text-black/35 mt-1.5 leading-relaxed">
+            <p class="text-[10px] text-[color:var(--text-faint)] mt-1.5 leading-relaxed">
                 Some endpoints don't require a key. If yours does, enter it here — it won't be stored in the keychain.
             </p>
         </div>
     {/if}
 
     <!-- Third-party notice -->
-    <p class="text-[10px] text-black/30 leading-relaxed px-0.5">
+    <p class="text-[10px] text-[color:var(--text-ghost)] leading-relaxed px-0.5">
         By using AI features, your writing is sent directly to
         {#if useCustomEndpoint}
             your custom endpoint. Check its terms and privacy policy.
         {:else if selectedTab === "openai"}
             OpenAI. You agree to their
-            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>privacy policy</button>.
+            <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://openai.com/policies/terms-of-use")}>terms of service</button> and <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://openai.com/policies/privacy-policy")}>privacy policy</button>.
         {:else if selectedTab === "anthropic"}
             Anthropic. You agree to their
-            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/consumer-terms")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/privacy")}>privacy policy</button>.
+            <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/consumer-terms")}>terms of service</button> and <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://www.anthropic.com/legal/privacy")}>privacy policy</button>.
         {:else if selectedTab === "google"}
             Google. You agree to their
-            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://ai.google.dev/gemini-api/terms")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://policies.google.com/privacy")}>privacy policy</button>.
+            <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://ai.google.dev/gemini-api/terms")}>terms of service</button> and <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://policies.google.com/privacy")}>privacy policy</button>.
         {:else if selectedTab === "deepseek"}
             DeepSeek. You agree to their
-            <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html")}>terms of service</button> and <button class="inline underline hover:text-black/50 transition-colors" onclick={() => openUrl("https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html")}>privacy policy</button>.
+            <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html")}>terms of service</button> and <button class="inline underline hover:text-[color:var(--text-soft)] transition-colors" onclick={() => openUrl("https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html")}>privacy policy</button>.
         {/if}
     </p>
 </div>

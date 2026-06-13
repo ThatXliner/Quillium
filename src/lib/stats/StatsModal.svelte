@@ -143,17 +143,17 @@ function formatGradeLevel(grade: number): string {
 >
     <div class="stats-modal-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)] shrink-0">
             <div class="flex items-center gap-2">
-                <BarChart3 size={14} class="text-black/35" />
-                <h2 class="text-[13px] font-semibold text-black/60">Writing Statistics</h2>
+                <BarChart3 size={14} class="text-[color:var(--text-faint)]" />
+                <h2 class="text-[13px] font-semibold text-[color:var(--text-soft)]">Writing Statistics</h2>
             </div>
             <button
                 onclick={onclose}
                 aria-label="Close statistics"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
@@ -185,49 +185,49 @@ function formatGradeLevel(grade: number): string {
                     <div class="stat-value">{stats.avgSentenceLength}</div>
                     <div class="stat-label-row">
                         <span>Avg Sentence Length</span>
-                        <HelpCircle size={14} class="text-black/20" />
+                        <HelpCircle size={14} class="text-[color:var(--text-ghost)]" />
                     </div>
                 </button>
                 <button class="stat-card stat-card-interactive" onclick={() => (infoTopic = "vocabularyDiversity")}>
                     <div class="stat-value">{diversity.label}</div>
                     <div class="stat-label-row">
                         <span>Vocabulary · {diversity.detail}</span>
-                        <HelpCircle size={14} class="text-black/20" />
+                        <HelpCircle size={14} class="text-[color:var(--text-ghost)]" />
                     </div>
                 </button>
                 <button class="stat-card stat-card-interactive" onclick={() => (infoTopic = "readingLevel")}>
                     <div class="stat-value">{formatGradeLevel(stats.readabilityGrade)}</div>
                     <div class="stat-label-row">
                         <span>Reading Level</span>
-                        <HelpCircle size={14} class="text-black/20" />
+                        <HelpCircle size={14} class="text-[color:var(--text-ghost)]" />
                     </div>
                 </button>
             </div>
 
             {#if appSettings.aiEnabled}
                 <!-- Divider -->
-                <div class="border-t border-black/[0.06]"></div>
+                <div class="border-t border-[color:var(--border)]"></div>
 
                 {#if !result && !analyzing && !error}
                     <!-- Analyze button -->
                     <button
                         onclick={analyze}
-                        class="self-center px-5 py-2 rounded-lg bg-black/[0.04] hover:bg-black/[0.08] text-sm text-black/50 hover:text-black/70 transition-colors"
+                        class="self-center px-5 py-2 rounded-lg bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)] text-sm text-[color:var(--text-soft)] hover:text-[color:var(--text)] transition-colors"
                     >
                         Analyze Writing Style
                     </button>
                 {:else if analyzing}
                     <!-- Loading state -->
                     <div class="text-center py-6">
-                        <span class="text-sm text-black/40 animate-pulse">Analyzing...</span>
+                        <span class="text-sm text-[color:var(--text-faint)] animate-pulse">Analyzing...</span>
                     </div>
                 {:else if error}
                     <!-- Error state -->
                     <div class="text-center py-4">
-                        <p class="text-sm text-red-500/70">{error}</p>
+                        <p class="text-sm text-[color:var(--accent-red-text)]">{error}</p>
                         <button
                             onclick={analyze}
-                            class="mt-2 text-xs text-black/40 hover:text-black/60 transition-colors"
+                            class="mt-2 text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors"
                         >
                             Try again
                         </button>
@@ -235,10 +235,10 @@ function formatGradeLevel(grade: number): string {
                 {:else if result}
                     <!-- Characterizer header -->
                     <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-semibold text-black/35 uppercase tracking-wider">Writing Characterizer</span>
+                        <span class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider">Writing Characterizer</span>
                         <button
                             onclick={() => (infoTopic = "characterizer")}
-                            class="text-black/20 hover:text-black/40 transition-colors"
+                            class="text-[color:var(--text-ghost)] hover:text-[color:var(--text-faint)] transition-colors"
                             aria-label="About writing characterizer"
                         >
                             <HelpCircle size={16} />
@@ -253,18 +253,18 @@ function formatGradeLevel(grade: number): string {
                             {@const labels = dimensionLabels[dim] ?? ["", ""]}
                             <div>
                                 <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-semibold text-black/60">{dim}</span>
-                                    <span class="text-xs text-black/40">{score}/10</span>
+                                    <span class="text-xs font-semibold text-[color:var(--text-soft)]">{dim}</span>
+                                    <span class="text-xs text-[color:var(--text-faint)]">{score}/10</span>
                                 </div>
-                                <div class="bg-black/[0.08] rounded-full h-1.5">
+                                <div class="bg-[color:var(--surface-3)] rounded-full h-1.5">
                                     <div
-                                        class="bg-black/40 rounded-full h-1.5 transition-[width] duration-500 ease-out"
+                                        class="bg-[color:var(--text-faint)] rounded-full h-1.5 transition-[width] duration-500 ease-out"
                                         style="width: {score * 10}%"
                                     ></div>
                                 </div>
                                 <div class="flex justify-between mt-0.5">
-                                    <span class="text-[10px] text-black/30 uppercase tracking-wide">{labels[0]}</span>
-                                    <span class="text-[10px] text-black/30 uppercase tracking-wide">{labels[1]}</span>
+                                    <span class="text-[10px] text-[color:var(--text-ghost)] uppercase tracking-wide">{labels[0]}</span>
+                                    <span class="text-[10px] text-[color:var(--text-ghost)] uppercase tracking-wide">{labels[1]}</span>
                                 </div>
                             </div>
                         {/each}
@@ -273,10 +273,10 @@ function formatGradeLevel(grade: number): string {
                     <!-- Detected tones -->
                     {#if result.detectedTones.length > 0}
                         <div>
-                            <div class="text-[11px] font-semibold text-black/35 uppercase tracking-wider mb-2">Detected Tones</div>
+                            <div class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider mb-2">Detected Tones</div>
                             <div class="flex flex-wrap gap-1.5">
                                 {#each result.detectedTones as tone}
-                                    <span class="bg-black/[0.05] border border-black/[0.08] rounded-full px-3 py-1 text-xs text-black/50">
+                                    <span class="bg-[color:var(--surface-2)] border border-[color:var(--border)] rounded-full px-3 py-1 text-xs text-[color:var(--text-soft)]">
                                         {tone}
                                     </span>
                                 {/each}
@@ -287,8 +287,8 @@ function formatGradeLevel(grade: number): string {
                     <!-- Style description -->
                     {#if result.styleDescription}
                         <div>
-                            <div class="text-[11px] font-semibold text-black/35 uppercase tracking-wider mb-2">Style Description</div>
-                            <p class="text-sm text-black/50 leading-relaxed">{result.styleDescription}</p>
+                            <div class="text-[11px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider mb-2">Style Description</div>
+                            <p class="text-sm text-[color:var(--text-soft)] leading-relaxed">{result.styleDescription}</p>
                         </div>
                     {/if}
                 {/if}
@@ -319,16 +319,16 @@ function formatGradeLevel(grade: number): string {
         position: relative;
         max-width: 40rem;
         width: 90vw;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
         display: flex;
         flex-direction: column;
     }
 
     .stat-card {
-        background: rgba(0, 0, 0, 0.03);
+        background: var(--surface-2);
         border-radius: 0.75rem;
         padding: 0.75rem;
         text-align: center;
@@ -341,25 +341,25 @@ function formatGradeLevel(grade: number): string {
     }
 
     .stat-card-interactive:hover {
-        background: rgba(0, 0, 0, 0.06);
+        background: var(--surface-3);
     }
 
     .stat-value {
         font-size: 1.25rem;
         font-weight: 600;
-        color: rgba(0, 0, 0, 0.8);
+        color: var(--text);
         line-height: 1.3;
     }
 
     .stat-label {
         font-size: 0.6875rem;
-        color: rgba(0, 0, 0, 0.4);
+        color: var(--text-faint);
         margin-top: 0.125rem;
     }
 
     .stat-label-row {
         font-size: 0.6875rem;
-        color: rgba(0, 0, 0, 0.4);
+        color: var(--text-faint);
         margin-top: 0.125rem;
         display: flex;
         align-items: center;

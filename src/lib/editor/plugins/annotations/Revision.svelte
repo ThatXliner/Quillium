@@ -488,18 +488,18 @@ onDestroy(() => {
     data-revision-id={revision.id}
     class="border rounded-[14px] transition-all duration-200
         {isActive
-            ? 'bg-purple-50/90 border-purple-200/60 shadow-xl'
-            : 'bg-purple-50/60 border-purple-200/40 shadow-lg opacity-90 hover:opacity-100'}"
+            ? 'bg-[color:var(--chip-purple-strong)] border-[color:var(--chip-purple-border)] shadow-xl'
+            : 'bg-[color:var(--chip-purple)] border-[color:var(--chip-purple-border)] shadow-lg opacity-90 hover:opacity-100'}"
     style="backdrop-filter: blur(12px); clip-path: inset(0 round 14px);"
 >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-2">
-        <h3 class="text-[10px] font-semibold text-purple-600/70 uppercase tracking-wider">Revision</h3>
+        <h3 class="text-[10px] font-semibold text-[color:var(--accent-purple-text)] uppercase tracking-wider">Revision</h3>
         <div class="flex items-center gap-0.5">
             <button
                 data-tutorial-action="expand-revision-modal"
                 data-revision-id={revision.id}
-                class="p-1 rounded-md text-purple-400/50 hover:text-purple-600/70 hover:bg-white/40 transition-colors"
+                class="p-1 rounded-md text-[color:var(--accent-purple-text)] opacity-60 hover:opacity-100 hover:bg-[color:var(--surface-2)] transition-colors"
                 onclick={() => {
                     posthog.capture("revision_modal_opened", {
                         version_count: revision.versions.length,
@@ -517,7 +517,7 @@ onDestroy(() => {
                 <Maximize2 size={14} />
             </button>
             <button
-                class="p-1 rounded-md text-purple-400/50 hover:text-red-500/60 hover:bg-white/40 transition-colors"
+                class="p-1 rounded-md text-[color:var(--accent-purple-text)] opacity-60 hover:opacity-100 hover:text-[color:var(--accent-red-text)] hover:bg-[color:var(--surface-2)] transition-colors"
                 onclick={() => {
                     posthog.capture("annotation_deleted", {
                         type: "revision",
@@ -540,7 +540,7 @@ onDestroy(() => {
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
-                    : 'bg-white/60 ring-1 ring-purple-200/40'}">
+                    : 'bg-[color:var(--surface-2)] ring-1 ring-[color:var(--chip-purple-border)]'}">
                 {#if isEditingThis}
                     <input
                         bind:this={labelInputEl}
@@ -556,7 +556,7 @@ onDestroy(() => {
                 {:else}
                     <button
                         class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
-                            {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
+                            {versionActive ? 'text-white' : 'text-[color:var(--text-soft)] hover:text-[color:var(--text-strong)]'}"
                         disabled={versionActive}
                         title={versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
                         onclick={() => {
@@ -584,7 +584,7 @@ onDestroy(() => {
                 {/if}
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
-                        {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
+                        {versionActive ? 'text-white/60 hover:text-white' : 'text-[color:var(--text-ghost)] hover:text-red-500/70'}"
                     onclick={() => {
                         if (editingLabelIndex === i) cancelLabelEdit();
                         controller.flushCurrentStateToParent(false);
@@ -603,8 +603,8 @@ onDestroy(() => {
     <!-- Actions row -->
     <div class="px-3 pb-3 flex gap-1.5">
         <button
-            class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-purple-600/80
-                bg-white/50 hover:bg-white/70 rounded-md ring-1 ring-purple-200/40 transition-colors"
+            class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-[color:var(--accent-purple-text)]
+                bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)] rounded-md ring-1 ring-[color:var(--chip-purple-border)] transition-colors"
             onclick={async () => {
                 posthog.capture("revision_version_created", {
                     version_count: revision.versions.length,
@@ -636,8 +636,8 @@ onDestroy(() => {
             data-revision-id={revision.id}
             class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md ring-1 transition-colors
                 {isEditorOpen
-                    ? 'text-purple-600/80 bg-purple-100/40 ring-purple-300/40 hover:bg-purple-100/60'
-                    : 'text-purple-600/60 bg-white/50 ring-purple-200/40 hover:bg-white/70'}"
+                    ? 'text-[color:var(--accent-purple-text)] bg-[color:var(--chip-purple-strong)] ring-[color:var(--chip-purple-border)] hover:bg-[color:var(--chip-purple)]'
+                    : 'text-[color:var(--accent-purple-text)] opacity-80 bg-[color:var(--surface-2)] ring-[color:var(--chip-purple-border)] hover:bg-[color:var(--surface-3)]'}"
             onclick={() => {
                 userClosedEditor = isEditorOpen;
                 isEditorOpen = !isEditorOpen;
@@ -658,8 +658,8 @@ onDestroy(() => {
         {#if appSettings.showNestedEditor}
             <button
                 class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
-                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
-                    hover:bg-purple-100/60 transition-colors text-left"
+                    bg-[color:var(--chip-purple)] ring-1 ring-[color:var(--chip-purple-border)] text-[10px] text-[color:var(--accent-purple-text)] leading-snug
+                    hover:bg-[color:var(--chip-purple-strong)] transition-colors text-left"
                 onclick={() => {
                     userClosedEditor = false;
                     isEditorOpen = true;
@@ -672,8 +672,8 @@ onDestroy(() => {
         {:else}
             <button
                 class="mx-3 mb-3 flex items-start gap-1.5 px-2 py-1.5 rounded-md w-[calc(100%-1.5rem)]
-                    bg-purple-50/70 ring-1 ring-purple-200/50 text-[10px] text-purple-600/80 leading-snug
-                    hover:bg-purple-100/60 transition-colors text-left"
+                    bg-[color:var(--chip-purple)] ring-1 ring-[color:var(--chip-purple-border)] text-[10px] text-[color:var(--accent-purple-text)] leading-snug
+                    hover:bg-[color:var(--chip-purple-strong)] transition-colors text-left"
                 onclick={() => modalStack.push({ type: "revision", revisionId: revision.id, parentView: view, label: activeVersion ? previewVersionText(activeVersion) : "Revision" })}
             >
                 <span class="shrink-0 mt-px">↗</span>
@@ -684,7 +684,7 @@ onDestroy(() => {
 
     <!-- Inline CodeMirror editor (collapsible) -->
     {#if isEditorOpen && appSettings.showNestedEditor}
-        <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-white/40 bg-white/60">
+        <div transition:slide={{ duration: 120, easing: cubicOut }} class="mx-3 mb-3 rounded-lg overflow-hidden ring-1 ring-[color:var(--border)] bg-[color:var(--surface-2)]">
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
                 bind:this={nestedEditorHost}
@@ -694,21 +694,21 @@ onDestroy(() => {
                 onfocusout={() => nestedEditorFocused = false}
             ></div>
             {#if !nestedEditorFocused}
-                <div class="flex items-center justify-center gap-1.5 px-2.5 pb-1.5 text-[10px] text-purple-400/70">
+                <div class="flex items-center justify-center gap-1.5 px-2.5 pb-1.5 text-[10px] text-[color:var(--accent-purple-text)] opacity-80">
                     <Kbd keys={["Cmd", "E"]} /> <span>to edit</span>
                 </div>
             {/if}
         </div>
     {:else if isActive}
         <!-- If !showNestedEditor -->
-        <div class="mx-3 mb-2 flex items-center gap-1.5 text-[10px] text-purple-400/70">
+        <div class="mx-3 mb-2 flex items-center gap-1.5 text-[10px] text-[color:var(--accent-purple-text)] opacity-80">
             <Kbd keys={["Cmd", "E"]} /> <span>to edit</span>
         </div>
     {/if}
 
     <!-- Thread -->
     {#if thread.length > 0 || isActive}
-        <div class="border-t border-black/[0.07] px-3 py-2.5">
+        <div class="border-t border-[color:var(--border)] px-3 py-2.5">
             <Thread
                 {thread}
                 {updateThread}
@@ -748,9 +748,9 @@ onDestroy(() => {
     }
 
     @keyframes focus-flash {
-        0%   { background-color: rgba(254, 242, 205, 0.9); }
-        70%  { background-color: rgba(254, 242, 205, 0.9); }
-        100% { background-color: rgba(254, 242, 205, 0); }
+        0%   { background-color: color-mix(in srgb, var(--tint-comment) 90%, transparent); }
+        70%  { background-color: color-mix(in srgb, var(--tint-comment) 90%, transparent); }
+        100% { background-color: color-mix(in srgb, var(--tint-comment) 0%, transparent); }
     }
 
     .revision-inline-editor.cursor-arriving {

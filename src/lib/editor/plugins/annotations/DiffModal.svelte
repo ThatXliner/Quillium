@@ -153,26 +153,26 @@ $effect(() => {
 >
     <div class="diff-modal-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-green-100/80 shrink-0">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)] shrink-0">
             <div class="flex items-center gap-2 min-w-0">
-                <SparklesIcon size={13} class="text-green-500/70 shrink-0" />
+                <SparklesIcon size={13} class="text-[color:var(--accent-green-text)] shrink-0" />
                 <nav class="flex items-center gap-1 min-w-0">
                     {#each crumbs as crumb, ci}
                         {#if ci < crumbs.length - 1}
                             <button
-                                class="text-[10px] text-green-500/60 hover:text-green-700/80 transition-colors truncate max-w-[120px] shrink-0"
+                                class="text-[10px] text-[color:var(--accent-green-text)] hover:text-[color:var(--accent-green-text)] transition-colors truncate max-w-[120px] shrink-0"
                                 onclick={() => modalStack.popTo(ci)}
                             >{crumb.label}</button>
-                            <ChevronRight size={10} class="text-green-300/60 shrink-0" />
+                            <ChevronRight size={10} class="text-[color:var(--accent-green-text)] shrink-0" />
                         {:else}
-                            <span class="text-[10px] font-semibold text-green-700/70 uppercase tracking-wider truncate">{crumb.label}</span>
+                            <span class="text-[10px] font-semibold text-[color:var(--accent-green-text)] uppercase tracking-wider truncate">{crumb.label}</span>
                         {/if}
                     {/each}
                 </nav>
             </div>
             <div class="flex items-center gap-1 shrink-0">
                 <button
-                    class="p-1 rounded-md text-green-400/50 hover:text-red-500/60 hover:bg-green-50/80 transition-colors"
+                    class="p-1 rounded-md text-[color:var(--accent-green-text)] hover:text-[color:var(--accent-red-text)] hover:bg-[color:var(--surface-2)] transition-colors"
                     onclick={deleteSuggestion}
                     title="Delete suggestion"
                     aria-label="Delete suggestion"
@@ -180,10 +180,10 @@ $effect(() => {
                     <Trash2 size={16} />
                 </button>
                 <button
-                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/30 hover:text-black/60 hover:bg-black/5 transition-colors"
+                    class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
                     onclick={close}
                 >
-                    <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                    <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                     <X size={16} />
                 </button>
             </div>
@@ -192,25 +192,25 @@ $effect(() => {
         <!-- Body: diff + sidebar -->
         <div class="flex flex-1 overflow-hidden">
             <!-- Diff -->
-            <div class="flex-1 overflow-y-auto px-6 py-5 text-sm leading-relaxed font-mono border-r border-green-50">
+            <div class="flex-1 overflow-y-auto px-6 py-5 text-sm leading-relaxed font-mono border-r border-[color:var(--border)]">
                 {#each ops as op}
                     {#if op.type === "equal"}
-                        <span>{op.text}</span>
+                        <span class="text-[color:var(--text)]">{op.text}</span>
                     {:else if op.type === "delete"}
-                        <span class="bg-red-100/80 text-red-700 line-through rounded-sm px-0.5">{op.text}</span>
+                        <span class="bg-[var(--diff-del-bg)] text-[color:var(--diff-del-text)] line-through rounded-sm px-0.5">{op.text}</span>
                     {:else}
-                        <span class="bg-green-100/80 text-green-700 rounded-sm px-0.5">{op.text}</span>
+                        <span class="bg-[var(--diff-ins-bg)] text-[color:var(--diff-ins-text)] rounded-sm px-0.5">{op.text}</span>
                     {/if}
                 {/each}
             </div>
 
             <!-- Sidebar: replacements + thread -->
             {#if suggestion}
-                <div class="w-64 shrink-0 flex flex-col overflow-hidden border-l border-green-100/60">
+                <div class="w-64 shrink-0 flex flex-col overflow-hidden border-l border-[color:var(--border)]">
                     <!-- AI comment -->
                     {#if suggestion.thread[0]?.author === "AI"}
-                        <div class="px-4 pt-4 pb-3 border-b border-green-100/60">
-                            <p class="text-[11px] text-black/55 leading-relaxed">{suggestion.thread[0].message}</p>
+                        <div class="px-4 pt-4 pb-3 border-b border-[color:var(--border)]">
+                            <p class="text-[11px] text-[color:var(--text-soft)] leading-relaxed">{suggestion.thread[0].message}</p>
                         </div>
                     {/if}
 
@@ -220,13 +220,13 @@ $effect(() => {
                             <button
                                 class="w-full text-left rounded-lg border overflow-hidden transition-colors
                                     {i === selectedIndex
-                                        ? 'bg-green-100/80 border-green-400/50 ring-1 ring-green-400/40'
-                                        : 'bg-white/60 border-green-100/60 hover:bg-white/80 hover:border-green-200/60'}"
+                                        ? 'bg-[color:var(--chip-green-strong)] border-[color:var(--chip-green-border)] ring-1 ring-[color:var(--chip-green-border)]'
+                                        : 'bg-[color:var(--surface-2)] border-[color:var(--chip-green-border)] hover:bg-[color:var(--surface-3)] hover:border-[color:var(--chip-green-border)]'}"
                                 onclick={() => { selectedIndex = i; }}
                             >
-                                <div class="px-3 py-2 text-xs text-black/80 leading-relaxed">{replacement.text}</div>
+                                <div class="px-3 py-2 text-xs text-[color:var(--text)] leading-relaxed">{replacement.text}</div>
                                 {#if replacement.rationale}
-                                    <div class="px-3 pb-2 text-[10px] text-green-700/60 leading-snug border-t border-green-100/50 pt-1.5">
+                                    <div class="px-3 pb-2 text-[10px] text-[color:var(--accent-green-text)] leading-snug border-t border-[color:var(--chip-green-border)] pt-1.5">
                                         {replacement.rationale}
                                     </div>
                                 {/if}
@@ -236,7 +236,7 @@ $effect(() => {
 
                     <!-- User thread replies (parity with the inline card) -->
                     {#if userThread.length > 0}
-                        <div class="border-t border-green-100/60 px-3 py-2.5 max-h-40 overflow-y-auto shrink-0">
+                        <div class="border-t border-[color:var(--border)] px-3 py-2.5 max-h-40 overflow-y-auto shrink-0">
                             <Thread
                                 thread={suggestion.thread}
                                 updateThread={handleUpdateThread}
@@ -247,12 +247,12 @@ $effect(() => {
                     {/if}
 
                     <!-- Apply / Branch (parity with the inline card) -->
-                    <div class="flex items-center gap-1.5 px-3 py-3 border-t border-green-100/60 shrink-0">
+                    <div class="flex items-center gap-1.5 px-3 py-3 border-t border-[color:var(--border)] shrink-0">
                         <button
                             aria-label="Branch instead"
                             title="Convert to revision with original and suggestion as versions"
-                            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-600/70
-                                bg-white/40 hover:bg-white/60 rounded-md ring-1 ring-green-200/50 transition-colors"
+                            class="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-[color:var(--accent-purple-text)]
+                                bg-[color:var(--surface-2)] hover:bg-[color:var(--surface-3)] rounded-md ring-1 ring-[color:var(--border)] transition-colors"
                             onclick={branch}
                         >
                             <GitBranchIcon size={11} />
@@ -299,9 +299,9 @@ $effect(() => {
         flex-direction: column;
         width: 820px;
         height: 72vh;
-        background: white;
+        background: var(--surface);
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.25);
         overflow: hidden;
     }
 </style>

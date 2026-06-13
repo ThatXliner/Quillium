@@ -475,7 +475,7 @@ async function handleToggle() {
             class="relative inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-md transition-colors
                 {isLive
                     ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
+                    : 'text-[color:var(--text-soft)] bg-[color:var(--surface)] backdrop-blur-md hover:text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
             aria-haspopup="dialog"
             aria-label={shareNeedsUpdate ? "Share, public link has unpublished changes" : "Share"}
         >
@@ -484,7 +484,7 @@ async function handleToggle() {
 
             {#if shareNeedsUpdate}
                 <span
-                    class="absolute -right-[3px] -top-[3px] size-2.5 rounded-full bg-blue-600 shadow-[0_0_0_3px_rgba(255,255,255,0.92),0_4px_10px_rgba(59,130,246,0.2)]"
+                    class="absolute -right-[3px] -top-[3px] size-2.5 rounded-full bg-blue-600 shadow-[0_0_0_3px_var(--surface),0_4px_10px_rgba(59,130,246,0.2)]"
                     aria-hidden="true"
                 ></span>
             {/if}
@@ -493,7 +493,7 @@ async function handleToggle() {
         {#if shareNeedsUpdate}
             <button
                 type="button"
-                class="pointer-events-none inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-blue-500/15 bg-blue-500/10 px-3 text-xs font-[650] text-blue-700 shadow-[0_10px_28px_rgba(59,130,246,0.12),inset_0_1px_0_rgba(255,255,255,0.7)] opacity-0 transition-[background,color,transform,opacity,visibility] duration-150 invisible -translate-y-2 scale-95 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:scale-100 group-focus-within:opacity-100 hover:bg-blue-500/20 hover:text-blue-800 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:pointer-events-auto max-[520px]:visible max-[520px]:translate-y-0 max-[520px]:scale-100 max-[520px]:opacity-100"
+                class="pointer-events-none inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full border border-blue-500/15 bg-blue-500/10 px-3 text-xs font-[650] text-blue-700 shadow-[0_10px_28px_rgba(59,130,246,0.12)] opacity-0 transition-[background,color,transform,opacity,visibility] duration-150 invisible -translate-y-2 scale-95 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:scale-100 group-focus-within:opacity-100 hover:bg-blue-500/20 hover:text-blue-800 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:pointer-events-auto max-[520px]:visible max-[520px]:translate-y-0 max-[520px]:scale-100 max-[520px]:opacity-100"
                 onclick={updateWebPreviewQuickAction}
                 disabled={shareBusy || shareLoading || !shareId}
             >
@@ -517,44 +517,44 @@ async function handleToggle() {
             class="m-0 flex h-screen max-h-screen w-screen max-w-screen items-center justify-center border-none bg-transparent p-0 [&::backdrop]:bg-black/20 [&::backdrop]:backdrop-blur-[5px]"
             onclick={handleBackdropClick}
         >
-            <div class="w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-black/5 bg-white/95 shadow-[0_24px_70px_rgba(0,0,0,0.2)] max-[520px]:w-[calc(100vw-20px)]">
+            <div class="w-[min(560px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] shadow-[0_24px_70px_rgba(var(--shadow-color),0.2)] max-[520px]:w-[calc(100vw-20px)]">
                 <header class="flex items-start justify-between gap-4 px-6 pb-2.5 pt-[22px]">
                     <div>
                         <div class="flex items-center gap-2.5">
-                            <h2 class="m-0 text-2xl/[1.1] font-[650] text-black/80">Share your document</h2>
-                            <span class="inline-flex h-5 items-center rounded-full bg-amber-400/15 px-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-amber-600">Beta</span>
+                            <h2 class="m-0 text-2xl/[1.1] font-[650] text-[color:var(--text)]">Share your document</h2>
+                            <span class="inline-flex h-5 items-center rounded-full bg-amber-400/15 px-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--accent-amber-text)]">Beta</span>
                         </div>
                     </div>
                     <button
                         onclick={closeModal}
                         aria-label="Close"
-                        class="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 pl-2 text-black/30 transition-[color,background] duration-150 hover:bg-black/5 hover:text-black/55"
+                        class="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 pl-2 text-[color:var(--text-ghost)] transition-[color,background] duration-150 hover:bg-[color:var(--surface-2)] hover:text-[color:var(--text-soft)]"
                     >
-                        <span class="font-mono text-[9px] text-black/20">esc</span>
+                        <span class="font-mono text-[9px] text-[color:var(--text-ghost)]">esc</span>
                         <X size={15} />
                     </button>
                 </header>
 
-                <p class="m-0 px-6 pb-4 text-xs/[1.45] text-black/45">
+                <p class="m-0 px-6 pb-4 text-xs/[1.45] text-[color:var(--text-faint)]">
                     Because writing is better together, always.
                 </p>
 
                 <div
-                    class="relative mx-6 flex gap-0.5 rounded-full bg-black/[0.055] p-[3px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]"
+                    class="relative mx-6 flex gap-0.5 rounded-full bg-[color:var(--surface-2)] p-[3px] shadow-[inset_0_1px_2px_rgba(var(--shadow-color),0.06)]"
                     bind:this={tabTrackEl}
                     style={tabPillStyle}
                     role="tablist"
                     aria-label="Share modes"
                 >
                     <div
-                        class="absolute left-[3px] top-[3px] h-[calc(100%-6px)] rounded-full bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.95)] transition-[transform,width] duration-[250ms] [transition-timing-function:cubic-bezier(0.34,1.2,0.64,1)]"
+                        class="absolute left-[3px] top-[3px] h-[calc(100%-6px)] rounded-full bg-[color:var(--surface)] shadow-[0_1px_4px_rgba(var(--shadow-color),0.12)] transition-[transform,width] duration-[250ms] [transition-timing-function:cubic-bezier(0.34,1.2,0.64,1)]"
                         style="width: var(--share-pill-width, 50%); transform: translateX(var(--share-pill-x, 0px));"
                     ></div>
                     <button
                         role="tab"
                         aria-selected={activeTab === "collaborate"}
                         onclick={() => (activeTab = "collaborate")}
-                        class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "collaborate" ? "text-black/70" : "text-black/40 hover:text-black/60"}`}
+                        class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "collaborate" ? "text-[color:var(--text)]" : "text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]"}`}
                     >
                         Omni
                     </button>
@@ -562,13 +562,13 @@ async function handleToggle() {
                         role="tab"
                         aria-selected={activeTab === "preview"}
                         onclick={() => (activeTab = "preview")}
-                        class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "preview" ? "text-black/70" : "text-black/40 hover:text-black/60"}`}
+                        class={`share-tab-btn relative z-[1] min-w-0 flex-1 rounded-full px-2.5 py-[7px] text-xs font-semibold transition-colors ${activeTab === "preview" ? "text-[color:var(--text)]" : "text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]"}`}
                     >
                         Web preview
                     </button>
                 </div>
 
-                <section class="m-[14px_18px_18px] rounded-[14px] border border-black/[0.07] bg-white/80 p-[18px]">
+                <section class="m-[14px_18px_18px] rounded-[14px] border border-[color:var(--border)] bg-[color:var(--surface-2)] p-[18px]">
                     {#if activeTab === "preview"}
                         {#if authenticated}
                             <div class="grid gap-4">
@@ -577,18 +577,18 @@ async function handleToggle() {
                                         <Link size={18} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Anyone with the link can read your document</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">Anyone with the link can read your document</h3>
+                                        <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">
                                             Publish a read-only web page with Quillium branding. It only updates when
                                             you explicitly publish again.
                                         </p>
                                     </div>
                                 </div>
 
-                                <div class="flex items-center justify-between gap-4 rounded-2xl bg-black/[0.035] px-4 py-[14px]">
+                                <div class="flex items-center justify-between gap-4 rounded-2xl bg-[color:var(--surface-2)] px-4 py-[14px]">
                                     <div>
-                                        <div class="text-[13px] font-bold text-black/75">Public link</div>
-                                        <div class="mt-1 text-xs/[1.45] text-black/50">
+                                        <div class="text-[13px] font-bold text-[color:var(--text)]">Public link</div>
+                                        <div class="mt-1 text-xs/[1.45] text-[color:var(--text-soft)]">
                                             {#if readonlyShare?.enabled}
                                                 On. Readers can open the last published snapshot.
                                             {:else}
@@ -598,29 +598,29 @@ async function handleToggle() {
                                     </div>
                                     <button
                                         type="button"
-                                        class={`relative h-[31px] w-[52px] rounded-full p-[3px] transition-colors duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 ${readonlyShare?.enabled ? "bg-[linear-gradient(135deg,rgba(16,185,129,0.95),rgba(5,150,105,0.95))]" : "bg-black/10"}`}
+                                        class={`relative h-[31px] w-[52px] rounded-full p-[3px] transition-colors duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 ${readonlyShare?.enabled ? "bg-[linear-gradient(135deg,rgba(16,185,129,0.95),rgba(5,150,105,0.95))]" : "bg-[color:var(--surface-3)]"}`}
                                         role="switch"
                                         aria-checked={readonlyShare?.enabled ?? false}
                                         aria-label="Toggle public read-only link"
                                         onclick={toggleReadonlyShare}
                                         disabled={shareBusy || shareLoading || !shareId}
                                     >
-                                        <span class={`block size-[25px] rounded-full bg-white shadow-[0_3px_10px_rgba(0,0,0,0.18)] transition-transform duration-200 ease-out ${readonlyShare?.enabled ? "translate-x-[21px]" : "translate-x-0"}`}></span>
+                                        <span class={`block size-[25px] rounded-full bg-[color:var(--surface)] shadow-[0_3px_10px_rgba(var(--shadow-color),0.18)] transition-transform duration-200 ease-out ${readonlyShare?.enabled ? "translate-x-[21px]" : "translate-x-0"}`}></span>
                                     </button>
                                 </div>
 
-                                <div class="grid gap-2.5 rounded-2xl border border-black/[0.055] bg-black/[0.035] px-4 py-[14px]">
+                                <div class="grid gap-2.5 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-2)] px-4 py-[14px]">
                                     <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Public URL</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--text-faint)]">Public URL</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-[color:var(--text)]">{readonlyShare?.enabled ? shareUrl : "Publish to generate a link"}</strong>
                                     </div>
                                     <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Last published</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--text-faint)]">Last published</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-[color:var(--text)]">{formatShareTimestamp(readonlyShare?.publishedAt ?? null)}</strong>
                                     </div>
                                     <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Snapshot status</span>
-                                        <strong class={`break-words text-[13px]/[1.45] ${shareUpToDate ? "text-black/50" : "text-black/75"}`}>{readonlyShare?.enabled
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--text-faint)]">Snapshot status</span>
+                                        <strong class={`break-words text-[13px]/[1.45] ${shareUpToDate ? "text-[color:var(--text-soft)]" : "text-[color:var(--text)]"}`}>{readonlyShare?.enabled
                                             ? shareUpToDate
                                                 ? "Already up to date"
                                                 : "Local draft has unpublished changes"
@@ -630,7 +630,7 @@ async function handleToggle() {
 
                                 <div class="mt-1 flex flex-wrap gap-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
                                     <button
-                                        class={`inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 max-[520px]:w-full ${shareUpToDate ? "bg-black/20 text-white/90" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-45`}
+                                        class={`inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 max-[520px]:w-full ${shareUpToDate ? "bg-[color:var(--surface-3)] text-[color:var(--text-faint)]" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-45`}
                                         onclick={publishCurrentSnapshot}
                                         disabled={shareBusy || shareLoading || !shareId || shareUpToDate}
                                     >
@@ -652,7 +652,7 @@ async function handleToggle() {
                                     </button>
 
                                     <button
-                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-black/[0.055] px-4 text-[13px] font-[650] text-black/70 transition-[background,color] duration-150 hover:bg-black/[0.085] hover:text-black/80 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
+                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-[color:var(--surface-2)] px-4 text-[13px] font-[650] text-[color:var(--text)] transition-[background,color] duration-150 hover:bg-[color:var(--surface-3)] hover:text-[color:var(--text-strong)] disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
                                         onclick={copyReadonlyLink}
                                         disabled={!readonlyShare?.enabled || !shareUrl}
                                     >
@@ -662,9 +662,9 @@ async function handleToggle() {
                                 </div>
 
                                 {#if shareLoading}
-                                    <p class="mt-1 text-xs/[1.45] text-black/50">Loading your public link settings…</p>
+                                    <p class="mt-1 text-xs/[1.45] text-[color:var(--text-soft)]">Loading your public link settings…</p>
                                 {:else if readonlyShare?.enabled}
-                                    <p class="mt-1 text-xs/[1.45] text-black/50">
+                                    <p class="mt-1 text-xs/[1.45] text-[color:var(--text-soft)]">
                                         {#if shareUpToDate}
                                             The public page already matches this draft.
                                         {:else}
@@ -680,8 +680,8 @@ async function handleToggle() {
                                     <LogIn size={18} />
                                 </div>
                                 <div>
-                                    <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Sign in to publish a public link</h3>
-                                    <p class="m-0 text-xs/[1.45] text-black/50">
+                                    <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">Sign in to publish a public link</h3>
+                                    <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">
                                         Read-only sharing uses your Quillium account so you can turn links on and off.
                                     </p>
                                 </div>
@@ -690,7 +690,7 @@ async function handleToggle() {
                             <div class="mt-[18px] grid gap-2.5">
                                 <button
                                     onclick={openAuth}
-                                    class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-blue-600 px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-80 disabled:bg-black/[0.04] disabled:text-black/30"
+                                    class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-blue-600 px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-80 disabled:bg-[color:var(--surface-2)] disabled:text-[color:var(--text-ghost)]"
                                 >
                                     Sign in
                                 </button>
@@ -704,8 +704,8 @@ async function handleToggle() {
                                         <Cloud size={18} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Live collaboration</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">Live collaboration</h3>
+                                        <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">
                                             Bring another writer into this draft right now. Omni will expand this into
                                             persistent sync later, but this room flow still works today.
                                         </p>
@@ -715,18 +715,18 @@ async function handleToggle() {
 
                             <div class="flex items-center justify-between gap-[18px] pt-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
                                 <div class="flex items-center gap-3">
-                                    <div class={`grid size-9 shrink-0 place-items-center rounded-[10px] ${isLive ? "bg-emerald-500/10 text-emerald-600" : "bg-black/[0.055] text-black/35"}`}>
+                                    <div class={`grid size-9 shrink-0 place-items-center rounded-[10px] ${isLive ? "bg-emerald-500/10 text-emerald-600" : "bg-[color:var(--surface-2)] text-[color:var(--text-faint)]"}`}>
                                         <Radio size={17} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">{isLive ? ($isCollabJoiner ? "You're in a Live Room" : "Live Room is open") : "Live Room is off"}</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">Invite another writer into this draft.</p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">{isLive ? ($isCollabJoiner ? "You're in a Live Room" : "Live Room is open") : "Live Room is off"}</h3>
+                                        <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">Invite another writer into this draft.</p>
                                     </div>
                                 </div>
                                 <button
                                     onclick={handleToggle}
                                     disabled={!isLive && !(authenticated && relayConfigured && !!currentId && !connecting)}
-                                    class={`inline-flex min-h-[38px] min-w-[142px] items-center justify-center gap-[7px] rounded-[10px] border px-4 text-[13px] font-[650] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-[background,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full ${isLive ? "border-black/[0.08] bg-black/[0.055] text-black/65 hover:bg-black/[0.085] hover:text-black/80" : "border-emerald-500/20 bg-emerald-500/10 text-black/70 hover:bg-emerald-500/20 hover:text-emerald-800"}`}
+                                    class={`inline-flex min-h-[38px] min-w-[142px] items-center justify-center gap-[7px] rounded-[10px] border px-4 text-[13px] font-[650] transition-[background,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full ${isLive ? "border-[color:var(--border)] bg-[color:var(--surface-2)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)] hover:text-[color:var(--text-strong)]" : "border-emerald-500/20 bg-emerald-500/10 text-[color:var(--text)] hover:bg-emerald-500/20 hover:text-emerald-800"}`}
                                 >
                                     {#if connecting}
                                         <span class="animate-spin" aria-hidden="true">
@@ -747,27 +747,27 @@ async function handleToggle() {
                                 </button>
                             </div>
 
-                            <div class="mt-[14px] border-t border-black/[0.065] pt-[14px]">
+                            <div class="mt-[14px] border-t border-[color:var(--border)] pt-[14px]">
                                 <div class="grid gap-0.5">
-                                    <span class="text-[13px] font-bold text-black/70">Room details</span>
-                                    <span class="text-xs/[1.4] text-black/[0.44]">Copy this room ID or join another room</span>
+                                    <span class="text-[13px] font-bold text-[color:var(--text)]">Room details</span>
+                                    <span class="text-xs/[1.4] text-[color:var(--text-faint)]">Copy this room ID or join another room</span>
                                 </div>
 
                                 <div class="mt-3 grid gap-3">
                                     <div>
-                                        <div class="mb-1.5 block text-[11px] font-[650] text-black/50">Room ID</div>
+                                        <div class="mb-1.5 block text-[11px] font-[650] text-[color:var(--text-soft)]">Room ID</div>
                                         <div class="flex gap-2 max-[520px]:flex-col">
                                             <input
                                                 readonly
                                                 value={currentId}
                                                 aria-label="Current document room ID"
-                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-blue-600/[0.04] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
+                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-[color:var(--border)] bg-blue-600/[0.04] px-2.5 font-mono text-[11px] text-[color:var(--text-soft)] outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
                                             />
                                             <button
                                                 onclick={copyId}
                                                 disabled={!currentId}
                                                 aria-label="Copy document room ID"
-                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
+                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-[color:var(--surface-2)] px-3 text-xs font-[650] text-[color:var(--text-soft)] transition-[background,color,opacity] duration-150 hover:bg-[color:var(--surface-3)] hover:text-[color:var(--text)] disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
                                             >
                                                 <Copy size={14} />
                                                 Copy
@@ -781,19 +781,19 @@ async function handleToggle() {
                                             joinById();
                                         }}
                                     >
-                                        <label for="join-id" class="mb-1.5 block text-[11px] font-[650] text-black/50">Join with room ID</label>
+                                        <label for="join-id" class="mb-1.5 block text-[11px] font-[650] text-[color:var(--text-soft)]">Join with room ID</label>
                                         <div class="flex gap-2 max-[520px]:flex-col">
                                             <input
                                                 id="join-id"
                                                 bind:value={joinIdInput}
                                                 placeholder="Paste UUID..."
                                                 autocomplete="off"
-                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-black/[0.035] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
+                                                class="h-9 min-w-0 flex-1 rounded-[10px] border border-[color:var(--border)] bg-[color:var(--surface-2)] px-2.5 font-mono text-[11px] text-[color:var(--text-soft)] outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
                                             />
                                             <button
                                                 type="submit"
                                                 disabled={connecting || !joinIdInput.trim()}
-                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
+                                                class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-[color:var(--surface-2)] px-3 text-xs font-[650] text-[color:var(--text-soft)] transition-[background,color,opacity] duration-150 hover:bg-[color:var(--surface-3)] hover:text-[color:var(--text)] disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
                                             >
                                                 Join
                                             </button>
@@ -807,33 +807,33 @@ async function handleToggle() {
                                     href={OMNI_WAITLIST_URL}
                                     target="_blank"
                                     rel="noreferrer"
-                                    class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-[650] text-black/50 transition-colors duration-150 hover:text-black/70"
+                                    class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-[650] text-[color:var(--text-soft)] transition-colors duration-150 hover:text-[color:var(--text)]"
                                 >
                                     Learn about Omni
                                     <ExternalLink size={14} />
                                 </a>
                             </div>
 
-                            <div class="mt-[18px] border-t border-black/[0.065] pt-4">
-                                <div class="mb-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-black/35">In the making</div>
-                                <div class="flex items-start gap-3 rounded-xl bg-black/[0.035] p-3 opacity-70">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
+                            <div class="mt-[18px] border-t border-[color:var(--border)] pt-4">
+                                <div class="mb-2 text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--text-faint)]">In the making</div>
+                                <div class="flex items-start gap-3 rounded-xl bg-[color:var(--surface-2)] p-3 opacity-70">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[color:var(--surface-3)] text-[color:var(--text-faint)]">
                                         <ArrowLeftRight size={17} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Async Collaboration</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">Async Collaboration</h3>
+                                        <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">
                                             Stored on our servers to stay available even after you close Quillium.
                                         </p>
                                     </div>
                                 </div>
-                                <div class="mt-2 flex items-start gap-3 rounded-xl bg-black/[0.035] p-3 opacity-70">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
+                                <div class="mt-2 flex items-start gap-3 rounded-xl bg-[color:var(--surface-2)] p-3 opacity-70">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[color:var(--surface-3)] text-[color:var(--text-faint)]">
                                         <Cloud size={17} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Cloud Sync</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">Make this document available on all of your devices.</p>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">Cloud Sync</h3>
+                                        <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">Make this document available on all of your devices.</p>
                                     </div>
                                 </div>
                             </div>
@@ -844,26 +844,26 @@ async function handleToggle() {
                                         <Cloud size={18} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Collaboration is part of Quillium Omni</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">Collaboration is part of Quillium Omni</h3>
+                                        <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">
                                             Live Room, shared invites, cloud sync, and the rest of Quillium's collaboration
                                             features are available exclusively to Omni users.
                                         </p>
                                     </div>
                                 </div>
 
-                                <div class="grid gap-2.5 rounded-2xl border border-black/[0.055] bg-black/[0.035] px-4 py-[14px]">
+                                <div class="grid gap-2.5 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-2)] px-4 py-[14px]">
                                     <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Account</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">Not signed in</strong>
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--text-faint)]">Account</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-[color:var(--text)]">Not signed in</strong>
                                     </div>
                                     <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Status</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">Omni is currently waitlist only</strong>
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--text-faint)]">Status</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-[color:var(--text)]">Omni is currently waitlist only</strong>
                                     </div>
                                     <div class="grid gap-1">
-                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Access</span>
-                                        <strong class="break-words text-[13px]/[1.45] text-black/75">You can't sign up for Omni directly yet. Join the waitlist to get access.</strong>
+                                        <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-[color:var(--text-faint)]">Access</span>
+                                        <strong class="break-words text-[13px]/[1.45] text-[color:var(--text)]">You can't sign up for Omni directly yet. Join the waitlist to get access.</strong>
                                     </div>
                                 </div>
 
@@ -879,7 +879,7 @@ async function handleToggle() {
                                     </a>
 
                                     <button
-                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-black/[0.055] px-4 text-[13px] font-[650] text-black/70 transition-[background,color] duration-150 hover:bg-black/[0.085] hover:text-black/80 max-[520px]:w-full"
+                                        class="inline-flex min-h-[38px] items-center justify-center gap-[7px] rounded-[10px] bg-[color:var(--surface-2)] px-4 text-[13px] font-[650] text-[color:var(--text)] transition-[background,color] duration-150 hover:bg-[color:var(--surface-3)] hover:text-[color:var(--text-strong)] max-[520px]:w-full"
                                         onclick={openAuth}
                                     >
                                         <LogIn size={15} />
@@ -888,14 +888,14 @@ async function handleToggle() {
                                 </div>
                             </div>
 
-                            <div class="mt-[18px] border-t border-black/[0.065] pt-4">
+                            <div class="mt-[18px] border-t border-[color:var(--border)] pt-4">
                                 <div class="flex items-start gap-3">
-                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.055] text-black/35">
+                                    <div class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[color:var(--surface-3)] text-[color:var(--text-faint)]">
                                         <ArrowLeftRight size={17} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Already have access?</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-[color:var(--text)]">Already have access?</h3>
+                                        <p class="m-0 text-xs/[1.45] text-[color:var(--text-soft)]">
                                             Sign in with the account tied to your Omni invite once access has been enabled for you.
                                         </p>
                                     </div>

@@ -32,7 +32,7 @@ const palette = $derived(
     theme === "green"
         ? {
               border: "border-green-100",
-              hover: "hover:bg-green-50 hover:border-green-200/80",
+              hover: "hover:bg-[color:var(--chip-green)] hover:border-[color:var(--chip-green-border)]",
               link: "text-green-700 hover:text-green-800 hover:bg-green-50",
               text: "text-green-700",
               toggle: "border-green-200/70 bg-green-50/70 hover:bg-green-50",
@@ -41,7 +41,7 @@ const palette = $derived(
         : theme === "purple"
           ? {
                 border: "border-purple-100",
-                hover: "hover:bg-purple-50 hover:border-purple-200/80",
+                hover: "hover:bg-[color:var(--chip-purple)] hover:border-[color:var(--chip-purple-border)]",
                 link: "text-purple-700 hover:text-purple-800 hover:bg-purple-50",
                 text: "text-purple-700",
                 toggle: "border-purple-200/70 bg-purple-50/70 hover:bg-purple-50",
@@ -49,7 +49,7 @@ const palette = $derived(
             }
           : {
                 border: "border-blue-100",
-                hover: "hover:bg-blue-50 hover:border-blue-200/80",
+                hover: "hover:bg-[color:var(--chip-blue)] hover:border-[color:var(--chip-blue-border)]",
                 link: "text-blue-700 hover:text-blue-800 hover:bg-blue-50",
                 text: "text-blue-700",
                 toggle: "border-blue-200/70 bg-blue-50/70 hover:bg-blue-50",
@@ -87,9 +87,9 @@ function openQuickActionSettings() {
                 />
             </button>
             {#if expanded}
-                <div class="mt-2 grid gap-1.5 rounded-lg border border-black/10 bg-white/70 p-1.5 shadow-sm">
+                <div class="mt-2 grid gap-1.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] p-1.5 shadow-sm">
                     <div class="flex items-center justify-between gap-2 px-1 pb-0.5">
-                        <span class="text-[10px] font-medium text-black/35">Your custom chips</span>
+                        <span class="text-[10px] font-medium text-[color:var(--text-faint)]">Your custom chips</span>
                         <button
                             type="button"
                             onclick={openQuickActionSettings}
@@ -108,10 +108,10 @@ function openQuickActionSettings() {
                                 disabled:opacity-50 disabled:cursor-not-allowed {palette.hover}
                                 focus:outline-none focus:ring-2 {palette.ring}"
                         >
-                            <span class="min-w-0 flex-1 truncate text-xs font-medium text-black/70">{label}</span>
+                            <span class="min-w-0 flex-1 truncate text-xs font-medium text-[color:var(--text)]">{label}</span>
                             <ChevronRightIcon
                                 size={12}
-                                class="shrink-0 text-black/25 transition-transform group-hover:translate-x-0.5 group-hover:text-black/45"
+                                class="shrink-0 text-[color:var(--text-ghost)] transition-transform group-hover:translate-x-0.5 group-hover:text-[color:var(--text-faint)]"
                             />
                         </button>
                     {/each}
@@ -121,7 +121,7 @@ function openQuickActionSettings() {
     {:else}
         <div class="mb-2 pt-2">
             <div class="mb-1.5 flex items-center justify-between gap-2">
-                <span class="text-[10px] font-medium text-black/35">Your custom chips</span>
+                <span class="text-[10px] font-medium text-[color:var(--text-faint)]">Your custom chips</span>
                 <button
                     type="button"
                     onclick={openQuickActionSettings}
@@ -137,14 +137,14 @@ function openQuickActionSettings() {
                         type="button"
                         onclick={() => choose(prompt)}
                         {disabled}
-                        class="group inline-flex max-w-full items-center gap-1.5 rounded-full border bg-white/75 px-2.5 py-1.5 text-left text-xs shadow-sm transition-all
+                        class="group inline-flex max-w-full items-center gap-1.5 rounded-full border bg-[color:var(--surface)] px-2.5 py-1.5 text-left text-xs shadow-sm transition-all
                             disabled:opacity-50 disabled:cursor-not-allowed {palette.hover} {palette.border}
                             focus:outline-none focus:ring-2 {palette.ring}"
                     >
-                        <span class="min-w-0 truncate font-semibold text-black/75">{label}</span>
+                        <span class="min-w-0 truncate font-semibold text-[color:var(--text)]">{label}</span>
                         <ChevronRightIcon
                             size={12}
-                            class="shrink-0 text-black/25 transition-transform group-hover:translate-x-0.5 group-hover:text-black/45"
+                            class="shrink-0 text-[color:var(--text-ghost)] transition-transform group-hover:translate-x-0.5 group-hover:text-[color:var(--text-faint)]"
                         />
                     </button>
                 {/each}

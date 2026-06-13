@@ -88,11 +88,11 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-        class="flex flex-col rounded-lg cursor-pointer transition-all duration-200 bg-white"
+        class="flex flex-col rounded-lg cursor-pointer transition-all duration-200 bg-[color:var(--surface)]"
         class:opacity-55={dimmed && !isExpanded}
         class:hover:opacity-70={dimmed && !isExpanded}
-        class:hover:bg-gray-50={!isExpanded}
-        style="border-left: 3px solid {dimmed && !isExpanded ? '#d1d5db' : persona.color};"
+        class:hover:bg-[color:var(--surface-2)]={!isExpanded}
+        style="border-left: 3px solid {dimmed && !isExpanded ? 'var(--border-strong)' : persona.color};"
         onclick={() => (expandedId = isExpanded ? null : persona.id)}
     >
         <!-- Collapsed row -->
@@ -111,12 +111,12 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
             </div>
             <div class="flex-1 min-w-0">
                 <div
-                    class="font-semibold text-gray-800 truncate transition-all duration-200"
+                    class="font-semibold text-[color:var(--text)] truncate transition-all duration-200"
                     class:text-xs={!isExpanded}
                     class:text-sm={isExpanded}
                 >{persona.name}</div>
                 {#if !isExpanded}
-                    <div class="text-[10px] text-gray-400 truncate">{persona.description}</div>
+                    <div class="text-[10px] text-[color:var(--text-faint)] truncate">{persona.description}</div>
                 {/if}
             </div>
             <div class="flex items-center gap-1.5" onclick={(e) => e.stopPropagation()}>
@@ -130,8 +130,8 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                         <div
                             class="w-1 h-1 rounded-full transition-colors"
                             style="background: {i < filledDots
-                                ? (dimmed && !isExpanded ? '#9ca3af' : '#f59e0b')
-                                : '#e5ddd3'};"
+                                ? (dimmed && !isExpanded ? 'var(--text-faint)' : '#f59e0b')
+                                : 'var(--surface-3)'};"
                         ></div>
                     {/each}
                 </button>
@@ -140,10 +140,10 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                     aria-label="{persona.enabled ? 'Disable' : 'Enable'} {persona.name}"
                     class="w-7 h-4 rounded-full relative cursor-pointer border-none transition-colors"
                     class:bg-amber-400={persona.enabled}
-                    class:bg-gray-300={!persona.enabled}
+                    class:bg-[color:var(--surface-3)]={!persona.enabled}
                 >
                     <span
-                        class="absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-all duration-150"
+                        class="absolute top-0.5 w-3 h-3 rounded-full bg-[color:var(--surface)] shadow-sm transition-all duration-150"
                         class:right-0.5={persona.enabled}
                         class:left-0.5={!persona.enabled}
                     ></span>
@@ -151,7 +151,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                 {#if !persona.builtin}
                     <button
                         onclick={() => handleRemove(persona.id)}
-                        class="p-0.5 text-gray-300 hover:text-red-400 transition-colors bg-transparent border-none cursor-pointer"
+                        class="p-0.5 text-[color:var(--text-ghost)] hover:text-red-400 transition-colors bg-transparent border-none cursor-pointer"
                         title="Remove custom reader"
                     >
                         <Trash2 size={12} />
@@ -167,13 +167,13 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                 class="px-3 pb-4 space-y-3"
             >
                 <div class="h-px" style="background: {lightTint(persona.color)};"></div>
-                <div class="text-[10px] text-gray-400 italic">{persona.description}</div>
+                <div class="text-[10px] text-[color:var(--text-faint)] italic">{persona.description}</div>
                 {#if persona.profile}
-                    <p class="text-[11px] text-gray-600 leading-relaxed m-0">
+                    <p class="text-[11px] text-[color:var(--text-soft)] leading-relaxed m-0">
                         {persona.profile.about}
                     </p>
                     <div>
-                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider my-2">Good for</div>
+                        <div class="text-[9px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider my-2">Good for</div>
                         <div class="flex flex-wrap gap-1">
                             {#each persona.profile.goodFor as tag}
                                 <span
@@ -184,13 +184,13 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                         </div>
                     </div>
                     <div>
-                        <div class="text-[9px] font-semibold text-gray-400 uppercase tracking-wider my-2">Example</div>
-                        <p class="text-[10px] text-gray-500 italic leading-snug m-0">
+                        <div class="text-[9px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider my-2">Example</div>
+                        <p class="text-[10px] text-[color:var(--text-faint)] italic leading-snug m-0">
                             {persona.profile.example}
                         </p>
                     </div>
                 {:else}
-                    <p class="text-[11px] text-gray-600 leading-relaxed m-0">
+                    <p class="text-[11px] text-[color:var(--text-soft)] leading-relaxed m-0">
                         {persona.description}
                     </p>
                 {/if}
@@ -200,7 +200,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
 {/snippet}
 
 <div class="flex-1 flex flex-col min-h-0">
-    <div class="px-3 pt-1.5 pb-1 text-[10px] text-gray-400">
+    <div class="px-3 pt-1.5 pb-1 text-[10px] text-[color:var(--text-faint)]">
         Dots control how much detail each reader gives in their feedback.
     </div>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -216,7 +216,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
         {#if enabledPersonas.length > 0 && disabledPersonas.length > 0}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="h-px bg-gray-200 my-1" onclick={() => (expandedId = null)}></div>
+            <div class="h-px bg-[color:var(--border)] my-1" onclick={() => (expandedId = null)}></div>
         {/if}
 
         {#each disabledPersonas as persona (persona.id)}
@@ -224,20 +224,20 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
         {/each}
     </div>
 
-    <div class="border-t border-black/10 p-2">
+    <div class="border-t border-[color:var(--border)] p-2">
         {#if showCreateForm}
-            <div class="space-y-2 p-2 bg-white rounded-lg">
+            <div class="space-y-2 p-2 bg-[color:var(--surface)] rounded-lg">
                 <input
                     bind:value={newName}
                     placeholder="Reader name"
-                    class="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-rose-400"
+                    class="w-full px-2 py-1.5 text-xs border border-[color:var(--border)] rounded focus:outline-none focus:ring-1 focus:ring-rose-400"
                     maxlength={30}
                 />
                 <div class="flex gap-2">
                     <input
                         bind:value={newEmoji}
                         placeholder="📝"
-                        class="w-12 px-2 py-1.5 text-xs text-center border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-rose-400"
+                        class="w-12 px-2 py-1.5 text-xs text-center border border-[color:var(--border)] rounded focus:outline-none focus:ring-1 focus:ring-rose-400"
                         maxlength={2}
                     />
                     <div class="flex gap-1 items-center flex-wrap flex-1">
@@ -246,7 +246,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                                 onclick={() => (newColor = swatch)}
                                 aria-label="Select color {swatch}"
                                 class="w-4 h-4 rounded-full border-2 cursor-pointer"
-                                style="background: {swatch}; border-color: {newColor === swatch ? '#1f2937' : 'transparent'};"
+                                style="background: {swatch}; border-color: {newColor === swatch ? 'var(--border-strong)' : 'transparent'};"
                             ></button>
                         {/each}
                     </div>
@@ -254,7 +254,7 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                 <textarea
                     bind:value={newInstruction}
                     placeholder="What should this reader focus on? (e.g., 'looks for technical inaccuracies and missing citations')"
-                    class="w-full px-2 py-1.5 text-xs border border-gray-200 rounded resize-none focus:outline-none focus:ring-1 focus:ring-rose-400"
+                    class="w-full px-2 py-1.5 text-xs border border-[color:var(--border)] rounded resize-none focus:outline-none focus:ring-1 focus:ring-rose-400"
                     rows={3}
                 ></textarea>
                 <div class="flex gap-2">
@@ -265,21 +265,21 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
                     >Save</button>
                     <button
                         onclick={() => (showCreateForm = false)}
-                        class="flex-1 py-1.5 text-xs text-gray-500 rounded hover:bg-gray-100 transition-colors"
+                        class="flex-1 py-1.5 text-xs text-[color:var(--text-soft)] rounded hover:bg-[color:var(--surface-2)] transition-colors"
                     >Cancel</button>
                 </div>
             </div>
         {:else}
             <button
                 onclick={() => (showCreateForm = true)}
-                class="w-full py-1.5 rounded-lg border border-dashed border-gray-300 bg-transparent text-gray-400 text-xs cursor-pointer hover:border-gray-400 hover:text-gray-500 transition-colors"
+                class="w-full py-1.5 rounded-lg border border-dashed border-[color:var(--border-strong)] bg-transparent text-[color:var(--text-faint)] text-xs cursor-pointer hover:border-[color:var(--border-strong)] hover:text-[color:var(--text-soft)] transition-colors"
             >
                 <Plus size={12} class="inline -mt-0.5" /> Create custom reader
             </button>
         {/if}
     </div>
 
-    <div class="px-3 pb-2 text-[10px] text-center text-gray-400">
+    <div class="px-3 pb-2 text-[10px] text-center text-[color:var(--text-faint)]">
         Selected readers provide feedback via Feedback & Revise
     </div>
 </div>

@@ -18,11 +18,11 @@ const { visible }: Props = $props();
 {#if visible}
     <button
         onclick={goToEditor}
-        class="group fixed bottom-6 left-6 flex items-center gap-2 px-5 py-3 rounded-full bg-white/90 border border-white/60 shadow-xl backdrop-blur-md text-sm font-medium text-black/70 hover:text-black hover:bg-white hover:shadow-2xl transition-all duration-200"
+        class="group fixed bottom-6 left-6 flex items-center gap-2 px-5 py-3 rounded-full bg-[color:var(--surface)] border border-[color:var(--border)] shadow-xl backdrop-blur-md text-sm font-medium text-[color:var(--text)] hover:text-[color:var(--text-strong)] hover:bg-[color:var(--surface)] hover:shadow-2xl transition-all duration-200"
     >
         <ArrowLeft size={16} />
         Continue editing
-        <span class="max-w-[140px] truncate text-black/50 font-normal">— {$currentDocumentTitle}</span>
+        <span class="max-w-[140px] truncate text-[color:var(--text-soft)] font-normal">— {$currentDocumentTitle}</span>
         <Kbd keys="Esc" />
     </button>
 {/if}

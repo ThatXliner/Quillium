@@ -44,22 +44,22 @@ const exportFormats: { label: string; format: ExportFormat }[] = [
 ];
 
 const itemClass =
-    "flex items-center gap-2 p-2 px-3 mx-2 my-0.5 text-sm text-left text-gray-700 " +
-    "rounded-lg hover:inset-shadow-white hover:bg-white/60 hover:inset-shadow-sm cursor-pointer";
+    "flex items-center gap-2 p-2 px-3 mx-2 my-0.5 text-sm text-left text-[color:var(--text)] " +
+    "rounded-lg hover:bg-[color:var(--surface-2)] cursor-pointer";
 </script>
 
 <DropdownMenu.Root>
     <DropdownMenu.Trigger
         aria-label="Menu"
         class="fixed bottom-6 right-6 z-50 hidden max-[899px]:flex w-12 h-12 rounded-full
-            bg-white/60 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-lg
-            items-center justify-center text-black/70 hover:bg-gray-50/40 transition-colors"
+            bg-[color:var(--surface)] backdrop-blur-md shadow-lg
+            items-center justify-center text-[color:var(--text)] hover:bg-[color:var(--surface-2)] transition-colors"
     >
         <MenuIcon size={22} />
     </DropdownMenu.Trigger>
 
     <DropdownMenu.Content
-        class="z-50 w-56 bg-white/10 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 py-2"
+        class="z-50 w-56 bg-[color:var(--surface)] backdrop-blur-md rounded-2xl shadow-xl border border-[color:var(--border)] py-2"
         strategy="absolute"
         side="top"
         align="end"
@@ -87,10 +87,10 @@ const itemClass =
             </DropdownMenu.Item>
         </DropdownMenu.Group>
 
-        <DropdownMenu.Separator class="my-1 h-px bg-black/10 mx-3" />
+        <DropdownMenu.Separator class="my-1 h-px bg-[color:var(--border)] mx-3" />
 
         <DropdownMenu.Group>
-            <DropdownMenu.GroupHeading class="px-5 py-1 text-[11px] font-medium text-black/35">
+            <DropdownMenu.GroupHeading class="px-5 py-1 text-[11px] font-medium text-[color:var(--text-faint)]">
                 Export
             </DropdownMenu.GroupHeading>
             {#each exportFormats as fmt (fmt.format)}

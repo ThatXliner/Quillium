@@ -146,10 +146,10 @@ function cancelComment() {
 }
 </script>
 
-<div class="backdrop-blur-md bg-gray-200/80 border border-white/50 shadow-xl rounded-[14px] overflow-hidden">
+<div class="backdrop-blur-md bg-[color:var(--surface-2)] border border-[color:var(--border)] shadow-xl rounded-[14px] overflow-hidden">
     {#if selectedText}
         <div class="px-3 pt-3">
-            <div class="text-xs text-black/50 border-l-2 border-yellow-400/80 pl-2 truncate italic">
+            <div class="text-xs text-[color:var(--text-soft)] border-l-2 border-yellow-400/80 pl-2 truncate italic">
                 {selectedText.slice(0, 80)}{selectedText.length > 80 ? "…" : ""}
             </div>
         </div>
@@ -178,15 +178,15 @@ function cancelComment() {
                 }
             }}
             placeholder="Add a comment…"
-            class="flex-1 text-xs text-black/70 placeholder:text-black/30 bg-transparent resize-none focus:outline-none leading-relaxed"
+            class="flex-1 text-xs text-[color:var(--text)] placeholder:text-[color:var(--text-ghost)] bg-transparent resize-none focus:outline-none leading-relaxed"
             rows="2"
         ></textarea>
     </div>
 
-    <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-black/10 pt-2">
+    <div class="flex items-center justify-end gap-2 px-3 pb-2.5 border-t border-[color:var(--border)] pt-2">
         <button
             onclick={cancelComment}
-            class="text-xs text-black/40 hover:text-black/60 transition-colors"
+            class="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] transition-colors"
         >
             Cancel
         </button>

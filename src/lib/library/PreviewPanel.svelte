@@ -164,25 +164,25 @@ function handleDeletePermanent() {
 
 <svelte:window onclick={handleWindowClick} />
 
-<div class="ph-mask-text h-full flex flex-col bg-white/50 border-l border-black/8">
+<div class="ph-mask-text h-full flex flex-col bg-[color:var(--surface)] border-l border-[color:var(--border)]">
     {#if multiSelect}
         <!-- Multi-select summary -->
         <div class="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
-            <div class="w-14 h-14 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center">
-                <CheckSquare size={24} class="text-blue-500" />
+            <div class="w-14 h-14 rounded-full bg-[color:var(--chip-blue)] border border-[color:var(--chip-blue-border)] flex items-center justify-center">
+                <CheckSquare size={24} class="text-[color:var(--accent-blue-text)]" />
             </div>
             <div>
-                <p class="text-lg font-semibold text-black/70">{selectedCount} documents selected</p>
-                <p class="text-sm text-black/40 mt-1">
+                <p class="text-lg font-semibold text-[color:var(--text)]">{selectedCount} documents selected</p>
+                <p class="text-sm text-[color:var(--text-faint)] mt-1">
                     {#if trashMode}
                         Restore or permanently delete all selected documents.
                     {:else}
-                        Use <kbd class="px-1.5 py-0.5 rounded bg-black/5 text-xs font-mono">{modKey}+⌫</kbd> or the button below to trash them.
+                        Use <kbd class="px-1.5 py-0.5 rounded bg-[color:var(--surface-2)] text-xs font-mono">{modKey}+⌫</kbd> or the button below to trash them.
                     {/if}
                 </p>
             </div>
         </div>
-        <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-black/5 flex flex-col gap-2">
+        <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-[color:var(--border)] flex flex-col gap-2">
             {#if trashMode}
                 <button
                     onclick={onRestore}
@@ -194,7 +194,7 @@ function handleDeletePermanent() {
                 </button>
                 <button
                     onclick={onDeletePermanent}
-                    class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-medium text-red-400 hover:bg-red-50 transition-colors"
+                    class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-medium text-[color:var(--accent-red-text)] hover:bg-[color:var(--chip-red)] transition-colors"
                 >
                     <Trash2 size={16} />
                     Delete {selectedCount} permanently
@@ -211,7 +211,7 @@ function handleDeletePermanent() {
             {/if}
         </div>
     {:else if doc}
-        <div class="flex-shrink-0 px-8 pt-8 pb-5 border-b border-black/5">
+        <div class="flex-shrink-0 px-8 pt-8 pb-5 border-b border-[color:var(--border)]">
             {#if titleEditing}
                 <input
                     bind:this={titleInputEl}
@@ -221,17 +221,17 @@ function handleDeletePermanent() {
                         if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
                         if (e.key === "Escape") { titleEditing = false; }
                     }}
-                    class="text-xl font-semibold text-black/80 leading-snug bg-transparent border-b-2 border-blue-400/60 outline-none w-full"
+                    class="text-xl font-semibold text-[color:var(--text)] leading-snug bg-transparent border-b-2 border-blue-400/60 outline-none w-full"
                     aria-label="Document title"
                 />
             {:else}
                 <div class="flex items-start gap-2">
-                    <h2 class="text-xl font-semibold text-black/80 leading-snug break-words">{doc.title}</h2>
+                    <h2 class="text-xl font-semibold text-[color:var(--text)] leading-snug break-words">{doc.title}</h2>
                     {#if !trashMode}
                         <button
                             onclick={startEditing}
                             title="Rename (R)"
-                            class="mt-1 shrink-0 flex items-center gap-1.5 text-black/25 hover:text-black/55 transition-colors"
+                            class="mt-1 shrink-0 flex items-center gap-1.5 text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors"
                         >
                             <Pencil size={14} />
                             <Kbd keys="R" />
@@ -239,41 +239,41 @@ function handleDeletePermanent() {
                     {/if}
                 </div>
             {/if}
-            <p class="text-xs text-black/40 mt-1.5">Last edited {formatDate(doc.updatedAt)}</p>
+            <p class="text-xs text-[color:var(--text-faint)] mt-1.5">Last edited {formatDate(doc.updatedAt)}</p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-8 py-6">
             <!-- Stats row -->
             <div class="flex gap-4 mb-6">
-                <div class="flex-1 rounded-xl bg-gray-50 border border-gray-100 p-4 text-center">
-                    <p class="text-2xl font-semibold text-black/70">{doc.wordCount.toLocaleString()}</p>
-                    <p class="text-xs text-black/40 mt-1">words</p>
+                <div class="flex-1 rounded-xl bg-[color:var(--surface-2)] border border-[color:var(--border)] p-4 text-center">
+                    <p class="text-2xl font-semibold text-[color:var(--text)]">{doc.wordCount.toLocaleString()}</p>
+                    <p class="text-xs text-[color:var(--text-faint)] mt-1">words</p>
                 </div>
-                <div class="flex-1 rounded-xl bg-gray-50 border border-gray-100 p-4 text-center">
-                    <p class="text-2xl font-semibold text-black/70">
+                <div class="flex-1 rounded-xl bg-[color:var(--surface-2)] border border-[color:var(--border)] p-4 text-center">
+                    <p class="text-2xl font-semibold text-[color:var(--text)]">
                         {new Date(doc.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                     </p>
-                    <p class="text-xs text-black/40 mt-1">created</p>
+                    <p class="text-xs text-[color:var(--text-faint)] mt-1">created</p>
                 </div>
             </div>
 
             <!-- Full document preview -->
-            <div class="rounded-xl bg-gray-50 border border-gray-100 overflow-hidden h-64">
+            <div class="rounded-xl bg-[color:var(--surface-2)] border border-[color:var(--border)] overflow-hidden h-64">
                 <DocumentPreview docId={doc.id} />
             </div>
 
             {#if !trashMode}
                 <div class="mt-5">
-                    <div class="mb-2 flex items-center gap-1.5 text-xs font-medium text-black/45">
+                    <div class="mb-2 flex items-center gap-1.5 text-xs font-medium text-[color:var(--text-faint)]">
                         <Tag size={13} />
                         Tags
                     </div>
-                    <div class="flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <div class="flex flex-wrap items-center gap-1.5 rounded-xl border border-[color:var(--border)] bg-[color:var(--surface-2)] p-3">
                         {#each tags as tag}
                             <button
                                 type="button"
                                 onclick={() => removeTag(tag)}
-                                class="group inline-flex max-w-full items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 text-xs text-black/55 ring-1 ring-black/5 transition-colors hover:bg-red-50 hover:text-red-600"
+                                class="group inline-flex max-w-full items-center gap-1 rounded-full bg-[color:var(--surface)] px-2.5 py-1 text-xs text-[color:var(--text-soft)] ring-1 ring-[color:var(--border)] transition-colors hover:bg-[color:var(--chip-red)] hover:text-[color:var(--accent-red-text)]"
                                 title="Remove tag"
                             >
                                 <span class="truncate">{tag}</span>
@@ -293,14 +293,14 @@ function handleDeletePermanent() {
                             }}
                             onblur={commitTagInput}
                             placeholder={tags.length === 0 ? "Add tag..." : "Add..."}
-                            class="min-w-[6rem] flex-1 bg-transparent px-1 py-1 text-xs text-black/60 outline-none placeholder:text-black/25"
+                            class="min-w-[6rem] flex-1 bg-transparent px-1 py-1 text-xs text-[color:var(--text-soft)] outline-none placeholder:text-[color:var(--text-ghost)]"
                         />
                     </div>
                 </div>
             {/if}
         </div>
 
-        <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-black/5 flex flex-col gap-2">
+        <div class="flex-shrink-0 px-8 pb-8 pt-4 border-t border-[color:var(--border)] flex flex-col gap-2">
             {#if trashMode}
                 <button
                     onclick={onRestore}
@@ -315,7 +315,7 @@ function handleDeletePermanent() {
                     class="group w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-medium transition-colors
                         {confirmingDelete
                             ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm'
-                            : 'text-red-400 hover:bg-red-50'}"
+                            : 'text-[color:var(--accent-red-text)] hover:bg-[color:var(--chip-red)]'}"
                 >
                     <Trash2 size={16} />
                     {confirmingDelete ? "Confirm permanent delete" : "Delete permanently"}
@@ -334,7 +334,7 @@ function handleDeletePermanent() {
                         <button
                             onclick={onOpenInNewWindow}
                             title="Open in new window"
-                            class="flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 text-sm font-medium shadow-sm transition-colors"
+                            class="flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-[color:var(--chip-blue)] text-[color:var(--accent-blue-text)] hover:bg-[color:var(--chip-blue-strong)] text-sm font-medium shadow-sm transition-colors"
                         >
                             <AppWindow size={16} />
                             New Window
@@ -345,7 +345,7 @@ function handleDeletePermanent() {
                         <button
                             onclick={() => (exportOpen = !exportOpen)}
                             class="h-full flex items-center justify-center gap-1.5 py-3 px-4 rounded-full text-sm font-medium shadow-sm transition-colors
-                                {exportOpen ? 'bg-purple-500 text-white' : 'bg-purple-50 text-purple-500 hover:bg-purple-100'}"
+                                {exportOpen ? 'bg-purple-500 text-white' : 'bg-[color:var(--chip-purple)] text-[color:var(--accent-purple-text)] hover:bg-[color:var(--chip-purple-strong)]'}"
                         >
                             <Download size={15} />
                             Export
@@ -354,11 +354,11 @@ function handleDeletePermanent() {
                             <!-- svelte-ignore a11y_no_static_element_interactions -->
                             <div
                                 bind:this={exportMenuEl}
-                                class="absolute bottom-full mb-1 right-0 min-w-[11rem] rounded-xl bg-white border border-black/8 shadow-lg overflow-hidden py-1 px-1"
+                                class="absolute bottom-full mb-1 right-0 min-w-[11rem] rounded-xl bg-[color:var(--surface)] border border-[color:var(--border)] shadow-lg overflow-hidden py-1 px-1"
                                 onmouseleave={() => (hoveredExportIdx = -1)}
                             >
                                 <div
-                                    class="absolute inset-x-1 rounded-lg bg-purple-50 pointer-events-none transition-[top,height,opacity] duration-200 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
+                                    class="absolute inset-x-1 rounded-lg bg-[color:var(--chip-purple)] pointer-events-none transition-[top,height,opacity] duration-200 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
                                     style={exportPillStyle}
                                 ></div>
                                 {#each [
@@ -373,7 +373,7 @@ function handleDeletePermanent() {
                                         onclick={() => doExport(item.format)}
                                         onmouseenter={() => (hoveredExportIdx = i)}
                                         disabled={exporting}
-                                        class="export-item relative z-[1] w-full text-left px-3 py-2.5 text-sm text-black/70 transition-colors disabled:opacity-50"
+                                        class="export-item relative z-[1] w-full text-left px-3 py-2.5 text-sm text-[color:var(--text)] hover:text-[color:var(--accent-purple-text)] transition-colors disabled:opacity-50"
                                     >{item.label}</button>
                                 {/each}
                             </div>
@@ -382,7 +382,7 @@ function handleDeletePermanent() {
                 </div>
                 <button
                     onclick={onTrash}
-                    class="group w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-red-400 hover:bg-red-50 transition-colors"
+                    class="group w-full flex items-center justify-center gap-2 py-2 px-4 rounded-full text-xs font-medium text-[color:var(--accent-red-text)] hover:bg-[color:var(--chip-red)] transition-colors"
                 >
                     <Trash2 size={13} />
                     Move to trash
@@ -392,10 +392,10 @@ function handleDeletePermanent() {
         </div>
     {:else}
         <div class="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
-            <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                <FileText size={22} class="text-black/30" />
+            <div class="w-12 h-12 rounded-full bg-[color:var(--surface-2)] flex items-center justify-center">
+                <FileText size={22} class="text-[color:var(--text-ghost)]" />
             </div>
-            <p class="text-sm text-black/40">Select a document to preview it here.</p>
+            <p class="text-sm text-[color:var(--text-faint)]">Select a document to preview it here.</p>
         </div>
     {/if}
 </div>

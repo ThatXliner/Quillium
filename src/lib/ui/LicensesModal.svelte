@@ -61,20 +61,20 @@ const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
     ></button>
 
     <div
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] max-h-[75vh] bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-black/[0.06]"
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] max-h-[75vh] bg-[color:var(--surface)] shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-[color:var(--border)]"
         role="document"
     >
         <!-- Header -->
         <div class="flex items-start justify-between px-7 pt-7 pb-0 shrink-0">
             <div>
-                <h3 class="text-xl font-bold text-black/85 leading-tight">Open Source Licenses</h3>
-                <p class="text-xs text-black/35 mt-1">Libraries that make Quillium possible</p>
+                <h3 class="text-xl font-bold text-[color:var(--text-strong)] leading-tight">Open Source Licenses</h3>
+                <p class="text-xs text-[color:var(--text-faint)] mt-1">Libraries that make Quillium possible</p>
             </div>
             <button
                 type="button"
                 onclick={ondismiss}
                 aria-label="Close"
-                class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                class="flex items-center justify-center w-8 h-8 rounded-lg bg-[color:var(--surface-2)] text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-3)] transition-colors"
             >
                 <X size={16} />
             </button>
@@ -83,13 +83,13 @@ const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto px-7 pt-5 pb-7">
             {#if loading}
-                <p class="text-sm text-black/35">Loading…</p>
+                <p class="text-sm text-[color:var(--text-faint)]">Loading…</p>
             {:else if error}
-                <p class="text-sm text-black/40">Could not load license information.</p>
+                <p class="text-sm text-[color:var(--text-faint)]">Could not load license information.</p>
             {:else}
                 {#each [{ label: "JavaScript", items: jsEntries }, { label: "Rust", items: rustEntries }] as section}
                     {#if section.items.length > 0}
-                        <h4 class="text-xs font-semibold uppercase tracking-wider text-black/30 mb-3 mt-5 first:mt-0">
+                        <h4 class="text-xs font-semibold uppercase tracking-wider text-[color:var(--text-ghost)] mb-3 mt-5 first:mt-0">
                             {section.label}
                         </h4>
                         <ul class="space-y-2">
@@ -99,17 +99,17 @@ const rustEntries = $derived(entries.filter((e) => e.ecosystem === "rust"));
                                         {#if entry.url}
                                             <button
                                                 type="button"
-                                                class="text-sm font-medium text-black/75 hover:text-black truncate cursor-pointer bg-transparent border-0 p-0 text-left"
+                                                class="text-sm font-medium text-[color:var(--text)] hover:text-[color:var(--text-strong)] truncate cursor-pointer bg-transparent border-0 p-0 text-left"
                                                 onclick={() => openUrl(entry.url!)}
                                             >
                                                 {entry.name}
                                             </button>
                                         {:else}
-                                            <span class="text-sm font-medium text-black/75 truncate">{entry.name}</span>
+                                            <span class="text-sm font-medium text-[color:var(--text)] truncate">{entry.name}</span>
                                         {/if}
-                                        <span class="text-xs text-black/30 shrink-0">{entry.version}</span>
+                                        <span class="text-xs text-[color:var(--text-ghost)] shrink-0">{entry.version}</span>
                                     </div>
-                                    <span class="text-xs text-black/40 bg-black/[0.04] rounded px-2 py-0.5 shrink-0 font-mono">
+                                    <span class="text-xs text-[color:var(--text-faint)] bg-[color:var(--surface-2)] rounded px-2 py-0.5 shrink-0 font-mono">
                                         {entry.license}
                                     </span>
                                 </li>

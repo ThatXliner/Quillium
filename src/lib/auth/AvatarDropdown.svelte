@@ -45,10 +45,10 @@ function handleClickOutside(e: MouseEvent) {
 <svelte:window onkeydown={handleKeydown} onmousedown={handleClickOutside} />
 
 <div
-    class="avatar-dropdown absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl shadow-lg border border-black/[0.08] py-1.5 z-50"
+    class="avatar-dropdown absolute right-0 top-full mt-1.5 w-56 bg-[color:var(--surface)] rounded-xl shadow-lg border border-[color:var(--border)] py-1.5 z-50"
 >
     <!-- User info -->
-    <div class="px-3 py-2 border-b border-black/[0.06]">
+    <div class="px-3 py-2 border-b border-[color:var(--border)]">
         <div class="flex items-center gap-2.5">
             <div
                 class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold"
@@ -57,10 +57,10 @@ function handleClickOutside(e: MouseEvent) {
                 {initials(displayName)}
             </div>
             <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-black/80 truncate">
+                <div class="text-sm font-medium text-[color:var(--text)] truncate">
                     {displayName}
                 </div>
-                <div class="text-xs text-black/40 truncate">{email}</div>
+                <div class="text-xs text-[color:var(--text-faint)] truncate">{email}</div>
             </div>
         </div>
     </div>
@@ -69,16 +69,16 @@ function handleClickOutside(e: MouseEvent) {
     <div class="py-1">
         <button
             onclick={onviewprofile}
-            class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-black/70 hover:bg-black/[0.04] transition-colors"
+            class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-[color:var(--text)] hover:bg-[color:var(--surface-2)] transition-colors"
         >
-            <UserRound size={14} class="text-black/40" />
+            <UserRound size={14} class="text-[color:var(--text-faint)]" />
             View profile
         </button>
         <button
             onclick={onlogout}
-            class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-black/70 hover:bg-black/[0.04] transition-colors"
+            class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-[color:var(--text)] hover:bg-[color:var(--surface-2)] transition-colors"
         >
-            <LogOut size={14} class="text-black/40" />
+            <LogOut size={14} class="text-[color:var(--text-faint)]" />
             Log out
         </button>
     </div>

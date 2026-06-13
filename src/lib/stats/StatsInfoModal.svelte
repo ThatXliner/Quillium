@@ -92,37 +92,37 @@ const entry: InfoEntry = $derived(
 >
     <div class="info-inner">
         <!-- Header -->
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] shrink-0">
-            <h2 class="text-[13px] font-semibold text-black/60">{entry.title}</h2>
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-[color:var(--border)] shrink-0">
+            <h2 class="text-[13px] font-semibold text-[color:var(--text-soft)]">{entry.title}</h2>
             <button
                 onclick={onclose}
                 aria-label="Close info"
-                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-black/25 hover:text-black/55 hover:bg-black/5 transition-colors"
+                class="flex items-center gap-1 pl-1.5 pr-1 py-1 rounded-md text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors"
             >
-                <span class="text-[9px] font-mono text-black/20 leading-none">esc</span>
+                <span class="text-[9px] font-mono text-[color:var(--text-ghost)] leading-none">esc</span>
                 <X size={15} />
             </button>
         </div>
 
         <!-- Body -->
         <div class="px-5 py-4 flex flex-col gap-3">
-            <p class="text-sm text-black/70 leading-relaxed font-medium">{entry.description}</p>
+            <p class="text-sm text-[color:var(--text)] leading-relaxed font-medium">{entry.description}</p>
             {#if entry.details}
-                <p class="text-[13px] text-black/50 leading-relaxed">{entry.details}</p>
+                <p class="text-[13px] text-[color:var(--text-soft)] leading-relaxed">{entry.details}</p>
             {/if}
             {#if entry.scale}
-                <div class="rounded-xl bg-black/[0.03] border border-black/[0.05] overflow-hidden">
+                <div class="rounded-xl bg-[color:var(--surface-2)] border border-[color:var(--border)] overflow-hidden">
                     {#each entry.scale as item, i}
-                        <div class="flex items-center justify-between px-3.5 py-2 {i > 0 ? 'border-t border-black/[0.04]' : ''}">
-                            <span class="text-[12px] font-medium text-black/55">{item.label}</span>
-                            <span class="text-[11px] text-black/35 tabular-nums">{item.range}</span>
+                        <div class="flex items-center justify-between px-3.5 py-2 {i > 0 ? 'border-t border-[color:var(--border)]' : ''}">
+                            <span class="text-[12px] font-medium text-[color:var(--text-soft)]">{item.label}</span>
+                            <span class="text-[11px] text-[color:var(--text-faint)] tabular-nums">{item.range}</span>
                         </div>
                     {/each}
                 </div>
             {/if}
             {#if entry.example}
-                <div class="px-3.5 py-3 rounded-xl bg-black/[0.03] border border-black/[0.05]">
-                    <p class="text-[12px] text-black/45 leading-relaxed">{entry.example}</p>
+                <div class="px-3.5 py-3 rounded-xl bg-[color:var(--surface-2)] border border-[color:var(--border)]">
+                    <p class="text-[12px] text-[color:var(--text-faint)] leading-relaxed">{entry.example}</p>
                 </div>
             {/if}
         </div>
@@ -153,9 +153,9 @@ const entry: InfoEntry = $derived(
         position: relative;
         max-width: 26rem;
         width: 85vw;
-        background: white;
+        background: var(--surface);
         border-radius: 0.875rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 25px 50px -12px rgba(var(--shadow-color), 0.2);
         overflow: hidden;
     }
 </style>

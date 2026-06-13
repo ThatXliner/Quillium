@@ -772,27 +772,27 @@ onMount(() => {
                                     if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
                                     if (e.key === "Escape") { titleEditing = false; }
                                 }}
-                                class="text-sm font-medium text-black/70 bg-transparent border-none outline-none min-w-[8rem] max-w-[28rem] text-center placeholder:text-black/30"
+                                class="text-sm font-medium text-[color:var(--text)] bg-transparent border-none outline-none min-w-[8rem] max-w-[28rem] text-center placeholder:text-[color:var(--text-ghost)]"
                                 aria-label="Document title"
                             />
                         {:else}
                             <button
                                 onclick={startEditingTitle}
                                 title="Rename title ({modKey}L)"
-                                class="flex items-center gap-2 text-sm font-medium text-black/60 hover:text-black/80 transition-colors {appSettings.titleVisibility !== 'always' ? 'max-w-[28rem]' : ''}"
+                                class="flex items-center gap-2 text-sm font-medium text-[color:var(--text-soft)] hover:text-[color:var(--text)] transition-colors {appSettings.titleVisibility !== 'always' ? 'max-w-[28rem]' : ''}"
                             >
                                 <span class={appSettings.titleVisibility !== 'always' ? 'truncate' : ''}>{$currentDocumentTitle}</span>
-                                <Pencil size={14} class="shrink-0 text-black/40" />
+                                <Pencil size={14} class="shrink-0 text-[color:var(--text-faint)]" />
                                 <Kbd keys={[modKey, "L"]} />
                             </button>
                         {/if}
                         {#if appSettings.aiEnabled && hasApiKey()}
-                            <div class="w-px h-3.5 bg-black/20 shrink-0 mx-1.5"></div>
+                            <div class="w-px h-3.5 bg-[color:var(--border-strong)] shrink-0 mx-1.5"></div>
                             <button
                                 onclick={suggestTitle}
                                 disabled={titleSuggesting}
                                 title="Suggest a title with AI"
-                                class="flex items-center gap-1 pr-2 py-1 rounded-md text-[10px] font-medium text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                                class="flex items-center gap-1 pr-2 py-1 rounded-md text-[10px] font-medium text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
                             >
                                 <SparklesIcon size={11} />
                                 <span>{titleSuggesting ? "…" : "Suggest"}</span>
@@ -845,23 +845,23 @@ onMount(() => {
         -->
         <div
             id="editor-document"
-            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-white rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
+            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-[color:var(--surface)] rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
         >
             {#if isLocked}
                 <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
-                <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-1.5 text-[11px] text-amber-900/70">
-                    <LockIcon size={11} class="shrink-0 text-amber-700/60" />
+                <div class="mx-2 mb-2 flex items-center gap-2 rounded-md border border-[color:var(--chip-amber-border)] bg-[color:var(--chip-amber)] px-3 py-1.5 text-[11px] text-[color:var(--accent-amber-text)]">
+                    <LockIcon size={11} class="shrink-0 text-[color:var(--accent-amber-text)] opacity-80" />
                     <span class="flex-1 min-w-0 truncate">{currentIsSuperseded ? "This is an older version." : "This draft is locked."}</span>
                     <button
                         onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
-                        class="shrink-0 font-medium hover:text-amber-950 transition-colors"
+                        class="shrink-0 font-medium hover:opacity-80 transition-opacity"
                     >Edit anyway</button>
                     {#if currentCanBranch}
-                        <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
+                        <span class="shrink-0 w-px h-3 bg-[color:var(--chip-amber-border)]"></span>
                         <button
                             onclick={() => currentDraft && handleDraftBranch(currentDraft.id)}
                             disabled={forking}
-                            class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
+                            class="shrink-0 flex items-center gap-1 font-medium hover:opacity-80 transition-opacity disabled:opacity-40"
                         >
                             <GitBranchIcon size={11} />
                             <span>New take</span>
@@ -884,6 +884,16 @@ onMount(() => {
     :global(.cm-content) {
         font-family: var(--doc-font-family);
         font-size: var(--doc-font-size);
+        /* Document text follows the theme (default CM black is invisible on the
+           dark paper). caret-color tints the cursor to match. */
+        color: var(--text);
+        caret-color: var(--text-strong);
+    }
+    /* Theme-aware text selection on the document (default CM blue washes out on
+       dark; a token tint keeps it legible in both modes). */
+    :global(.cm-editor .cm-selectionBackground),
+    :global(.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground) {
+        background: color-mix(in srgb, var(--accent-blue) 26%, transparent) !important;
     }
     :global(.cm-editor) {
         z-index: 0 !important;

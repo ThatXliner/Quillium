@@ -943,26 +943,26 @@ $effect(() => {
             style="{hintsAtTop ? 'left: 56px; top: 80px;' : `left: ${leftPx}px; top: ${selectionY}px; transform: translateY(-50%);`}"
         >
             {#if !hasComments}
-                <div class="flex items-center gap-2 text-black/40">
+                <div class="flex items-center gap-2 text-[color:var(--text-faint)]">
                     <Kbd variant="large" keys={[mod, opt, "M"]} />
-                    <span class="text-sm font-medium text-black/35">comment</span>
+                    <span class="text-sm font-medium text-[color:var(--text-faint)]">comment</span>
                 </div>
             {/if}
             {#if !hasRevisions}
-                <div class="flex items-center gap-2 text-black/40">
+                <div class="flex items-center gap-2 text-[color:var(--text-faint)]">
                     <Kbd variant="large" keys={[mod, opt, "K"]} />
-                    <span class="text-sm font-medium text-black/35">revision</span>
+                    <span class="text-sm font-medium text-[color:var(--text-faint)]">revision</span>
                 </div>
             {/if}
             {#if isSingleWordSelection}
-                <div class="flex items-center gap-2 text-black/40">
+                <div class="flex items-center gap-2 text-[color:var(--text-faint)]">
                     <Kbd variant="large" keys={[mod, "D"]} />
-                    <span class="text-sm font-medium text-black/35">dictionary</span>
+                    <span class="text-sm font-medium text-[color:var(--text-faint)]">dictionary</span>
                 </div>
             {/if}
             <button
                 type="button"
-                class="mt-1 text-[11px] text-black/30 hover:text-black/50 transition-colors text-left cursor-pointer"
+                class="mt-1 text-[11px] text-[color:var(--text-ghost)] hover:text-[color:var(--text-soft)] transition-colors text-left cursor-pointer"
                 onclick={() => {
                     appSettings.showShortcutHints = false;
                     persistSettings();
@@ -1180,7 +1180,7 @@ $effect(() => {
         right: 4px;
         width: 2px;
         border-radius: 9999px;
-        background-color: rgba(0, 0, 0, 0.1);
+        background-color: var(--border);
         opacity: 0;
         transition:
             background-color 180ms ease,
@@ -1189,7 +1189,7 @@ $effect(() => {
 
     .annotation-resize-handle:hover::after,
     .annotation-resize-handle.is-resizing::after {
-        background-color: rgba(0, 0, 0, 0.2);
+        background-color: var(--border-strong);
         opacity: 1;
     }
 
@@ -1204,13 +1204,13 @@ $effect(() => {
         width: 20px;
         height: 20px;
         border-radius: 9999px;
-        background: white;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        color: rgba(0, 0, 0, 0.35);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-faint);
         cursor: pointer;
         opacity: 0;
         transition: opacity 180ms ease, color 180ms ease, background 180ms ease;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 1px 3px rgba(var(--shadow-color), 0.08);
     }
 
     .annotation-resize-handle:hover .annotation-reset-btn,
@@ -1219,8 +1219,8 @@ $effect(() => {
     }
 
     .annotation-reset-btn:hover {
-        color: rgba(0, 0, 0, 0.6);
-        background: rgba(0, 0, 0, 0.04);
+        color: var(--text-soft);
+        background: var(--surface-2);
     }
 
     .annotation-scroll-inner {
