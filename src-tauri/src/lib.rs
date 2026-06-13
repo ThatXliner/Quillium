@@ -23,8 +23,8 @@ use db::{
     schema::open_db,
     search::{search_documents, SearchHit},
     tabs::{
-        create_tab, create_tab_draft, delete_draft, delete_tab, fork_draft, get_active_draft,
-        get_active_tab, list_doc_events, list_tab_drafts, list_tabs, rename_draft, rename_tab,
+        branch_draft, create_tab, delete_draft, delete_tab, get_active_draft, get_active_tab,
+        iterate_draft, list_doc_events, list_tab_drafts, list_tabs, rename_draft, rename_tab,
         restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
     },
     AppendEventResult, DocEventRecord, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta, TabMeta,
@@ -290,14 +290,25 @@ fn cmd_list_tab_drafts(
 }
 
 #[tauri::command]
-fn cmd_fork_draft(
+fn cmd_iterate_draft(
     state: tauri::State<DbState>,
-    parent_draft_id: String,
+    source_draft_id: String,
     label: String,
     state_json: Option<String>,
 ) -> Result<DraftMeta, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    fork_draft(&conn, &parent_draft_id, &label, state_json.as_deref()).map_err(|e| e.to_string())
+    iterate_draft(&conn, &source_draft_id, &label, state_json.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_branch_draft(
+    state: tauri::State<DbState>,
+    source_draft_id: String,
+    label: String,
+    state_json: Option<String>,
+) -> Result<DraftMeta, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    branch_draft(&conn, &source_draft_id, &label, state_json.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -330,17 +341,6 @@ fn cmd_delete_draft(state: tauri::State<DbState>, draft_id: String) -> Result<()
 fn cmd_restore_draft(state: tauri::State<DbState>, draft_id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     restore_draft(&conn, &draft_id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn cmd_create_tab_draft(
-    state: tauri::State<DbState>,
-    tab_id: String,
-    label: String,
-    state_json: Option<String>,
-) -> Result<DraftMeta, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    create_tab_draft(&conn, &tab_id, &label, state_json.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -910,8 +910,8 @@ pub fn run() {
             cmd_get_active_tab,
             cmd_set_active_tab,
             cmd_list_tab_drafts,
-            cmd_fork_draft,
-            cmd_create_tab_draft,
+            cmd_iterate_draft,
+            cmd_branch_draft,
             cmd_rename_draft,
             cmd_set_draft_locked,
             cmd_delete_draft,

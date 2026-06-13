@@ -43,10 +43,16 @@ pub struct DraftMeta {
     /// Tab this draft belongs to. Nullable only for rows created before
     /// the tabs migration ran (backfill assigns them on next startup).
     pub tab_id: Option<String>,
-    /// Parent in the draft tree; None for root drafts.
+    /// Previous *iteration* of this draft (the flat chain). None for a run
+    /// head (`main` or a branch root). A draft sets at most one of
+    /// `parent_draft_id` / `branched_from`.
     pub parent_draft_id: Option<String>,
-    /// Soft lock — used for previous sibling drafts and manual locks. The
-    /// editor shows a lock banner but the DB does not reject writes.
+    /// The draft this one was *branched* off (a different take, rendered
+    /// indented). None for iterations and for `main`.
+    pub branched_from: Option<String>,
+    /// Soft lock. Superseded iterations (every draft in a run except the
+    /// newest) lock automatically; any draft can also be locked manually.
+    /// The editor shows a lock banner but the DB does not reject writes.
     pub locked: bool,
 }
 

@@ -119,6 +119,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "tabs_and_draft_tree",
         kind: MigrationKind::Rust(tabs_and_draft_tree),
     },
+    Migration {
+        version: 7,
+        name: "draft_branch_relation",
+        kind: MigrationKind::Rust(draft_branch_relation),
+    },
 ];
 
 /// Applies all migrations newer than the DB's current `user_version`.
@@ -267,6 +272,28 @@ fn tabs_and_draft_tree(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    Ok(())
+}
+
+/// Splits the single draft-tree link into two relations (#160):
+///   - `parent_draft_id` — the previous *iteration* (rendered as a flat run)
+///   - `branched_from`    — the *branch* origin (rendered indented)
+/// A draft sets at most one. Pre-existing children were created by the old
+/// fork-as-child model, so their `parent_draft_id` link is reinterpreted as
+/// a branch: move it to `branched_from` to preserve the existing tree shape.
+fn draft_branch_relation(conn: &Connection) -> Result<()> {
+    if !column_exists(conn, "drafts", "branched_from")? {
+        conn.execute(
+            "ALTER TABLE drafts ADD COLUMN branched_from TEXT DEFAULT NULL REFERENCES drafts(id) ON DELETE SET NULL",
+            [],
+        )?;
+        // Old forks were children via parent_draft_id; they meant "branch".
+        conn.execute(
+            "UPDATE drafts SET branched_from = parent_draft_id, parent_draft_id = NULL
+             WHERE parent_draft_id IS NOT NULL",
+            [],
+        )?;
+    }
     Ok(())
 }
 

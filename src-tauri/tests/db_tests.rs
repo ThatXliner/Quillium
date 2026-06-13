@@ -4,7 +4,7 @@ use quillium_lib::db::{
     load::load_document_state,
     schema::open_db,
     tabs::{
-        create_tab, create_tab_draft, delete_draft, delete_tab, fork_draft, get_active_draft,
+        branch_draft, create_tab, delete_draft, delete_tab, get_active_draft, iterate_draft,
         list_doc_events, list_tab_drafts, list_tabs, rename_tab, restore_draft, restore_tab,
         set_active_draft, set_active_tab, set_draft_locked,
     },
@@ -162,40 +162,85 @@ fn test_create_tab_seeds_root_draft() {
 }
 
 #[test]
-fn test_fork_draft_plants_branch_point_and_leaves_parent_unlocked() {
+fn test_iterate_chains_and_locks_superseded() {
     let conn = in_memory_db();
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
-    let parent = &list_tab_drafts(&conn, &tab.id).expect("drafts")[0];
+    let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
-    let child = fork_draft(&conn, &parent.id, "v1", Some(r#"{"doc":"hello"}"#)).expect("fork");
-    assert_eq!(child.parent_draft_id.as_deref(), Some(parent.id.as_str()));
-    assert_eq!(child.tab_id.as_deref(), Some(tab.id.as_str()));
+    let v1 = iterate_draft(&conn, &root, "v1", Some(r#"{"doc":"hello"}"#)).expect("iterate");
+    assert_eq!(v1.parent_draft_id.as_deref(), Some(root.as_str()));
+    assert_eq!(v1.branched_from, None);
 
-    // Branching does not lock either side.
-    let drafts = list_tab_drafts(&conn, &tab.id).expect("drafts");
-    let parent_after = drafts.iter().find(|d| d.id == parent.id).unwrap();
-    let child_after = drafts.iter().find(|d| d.id == child.id).unwrap();
-    assert!(!parent_after.locked);
-    assert!(!child_after.locked);
+    // Iterating locks the source (superseded), leaves the new tip editable.
+    let locked = |id: &str| -> bool {
+        list_tab_drafts(&conn, &tab.id)
+            .expect("drafts")
+            .iter()
+            .find(|d| d.id == id)
+            .map(|d| d.locked)
+            .unwrap_or(false)
+    };
+    assert!(locked(&root), "source iteration locks");
+    assert!(!locked(&v1.id), "new tip stays editable");
 
-    // The child loads the branch-point state with an empty event log.
-    let loaded = load_document_state(&conn, &doc_id, Some(&child.id)).expect("load");
-    assert_eq!(
-        loaded.snapshot_state_json.as_deref(),
-        Some(r#"{"doc":"hello"}"#)
-    );
-    assert_eq!(loaded.events_since.len(), 0);
+    // A second iteration locks v1 too — only the newest in the run is live.
+    let v2 = iterate_draft(&conn, &v1.id, "v2", None).expect("iterate 2");
+    assert!(locked(&root));
+    assert!(locked(&v1.id));
+    assert!(!locked(&v2.id), "only the run tip is editable");
 
-    // The branch-point snapshot is labeled so auto-prune can't remove it.
+    // The seed-state snapshot is labeled so auto-prune can't remove it.
     let label: String = conn
         .query_row(
             "SELECT label FROM snapshots WHERE draft_id = ?1",
-            rusqlite::params![child.id],
+            rusqlite::params![v1.id],
             |row| row.get(0),
         )
         .expect("snapshot label");
     assert_eq!(label, "Branch point");
+}
+
+#[test]
+fn test_branch_starts_new_run_without_locking() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
+    let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
+    // Branch is only allowed off a non-root, so iterate once first.
+    let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
+
+    let b1 = branch_draft(&conn, &v1.id, "take 2", Some(r#"{"doc":"alt"}"#)).expect("branch");
+    assert_eq!(b1.branched_from.as_deref(), Some(v1.id.as_str()));
+    assert_eq!(b1.parent_draft_id, None, "a branch is a new run head");
+
+    let locked = |id: &str| -> bool {
+        list_tab_drafts(&conn, &tab.id)
+            .expect("drafts")
+            .iter()
+            .find(|d| d.id == id)
+            .map(|d| d.locked)
+            .unwrap_or(false)
+    };
+    // Branching locks nothing: v1 (its run's tip) and the branch stay live.
+    assert!(!locked(&v1.id), "branch source stays editable");
+    assert!(!locked(&b1.id), "branch stays editable");
+
+    let loaded = load_document_state(&conn, &doc_id, Some(&b1.id)).expect("load");
+    assert_eq!(
+        loaded.snapshot_state_json.as_deref(),
+        Some(r#"{"doc":"alt"}"#)
+    );
+}
+
+#[test]
+fn test_branch_from_root_is_refused() {
+    let conn = in_memory_db();
+    let doc_id = create_document(&conn, "Doc").expect("doc");
+    let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
+    let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
+    // A top-level take is a new tab, not a branch off main.
+    assert!(branch_draft(&conn, &root, "nope", None).is_err());
 }
 
 #[test]
@@ -208,12 +253,17 @@ fn test_delete_draft_refusals() {
     // Last draft of the tab cannot be deleted.
     assert!(delete_draft(&conn, &root).is_err());
 
-    let child = fork_draft(&conn, &root, "v1", None).expect("fork");
-    // A draft with children cannot be deleted.
+    let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
+    // A draft with a live iteration after it cannot be deleted.
     assert!(delete_draft(&conn, &root).is_err());
-    // A leaf with siblings can.
-    delete_draft(&conn, &child.id).expect("delete leaf");
-    assert_eq!(list_tab_drafts(&conn, &tab.id).expect("drafts").len(), 1);
+
+    let b1 = branch_draft(&conn, &v1.id, "take 2", None).expect("branch");
+    // A draft with a branch off it cannot be deleted.
+    assert!(delete_draft(&conn, &v1.id).is_err());
+
+    // A leaf with siblings can be deleted.
+    delete_draft(&conn, &b1.id).expect("delete leaf");
+    assert_eq!(list_tab_drafts(&conn, &tab.id).expect("drafts").len(), 2);
 }
 
 #[test]
@@ -254,16 +304,16 @@ fn test_delete_draft_is_soft_and_restorable() {
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
-    let child = fork_draft(&conn, &root, "v1", Some(r#"{"doc":"hi"}"#)).expect("fork");
+    let v1 = iterate_draft(&conn, &root, "v1", Some(r#"{"doc":"hi"}"#)).expect("iterate");
 
-    delete_draft(&conn, &child.id).expect("delete child");
+    delete_draft(&conn, &v1.id).expect("delete v1");
     assert_eq!(list_tab_drafts(&conn, &tab.id).expect("drafts").len(), 1);
 
-    restore_draft(&conn, &child.id).expect("restore child");
+    restore_draft(&conn, &v1.id).expect("restore v1");
     let drafts = list_tab_drafts(&conn, &tab.id).expect("drafts");
     assert_eq!(drafts.len(), 2);
-    // The branch-point snapshot survived the delete/restore round-trip.
-    let loaded = load_document_state(&conn, &doc_id, Some(&child.id)).expect("load");
+    // The seed-state snapshot survived the delete/restore round-trip.
+    let loaded = load_document_state(&conn, &doc_id, Some(&v1.id)).expect("load");
     assert_eq!(
         loaded.snapshot_state_json.as_deref(),
         Some(r#"{"doc":"hi"}"#)
@@ -271,13 +321,13 @@ fn test_delete_draft_is_soft_and_restorable() {
 }
 
 #[test]
-fn test_branch_delete_restore_preserves_lock_state() {
+fn test_run_tip_moves_back_on_delete_and_returns_on_restore() {
     let conn = in_memory_db();
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
-    let child = fork_draft(&conn, &root, "v1", None).expect("fork");
-    set_draft_locked(&conn, &root, true).expect("manual lock");
+    let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
+    let v2 = iterate_draft(&conn, &v1.id, "v2", None).expect("iterate 2");
 
     let locked = |id: &str| -> bool {
         list_tab_drafts(&conn, &tab.id)
@@ -287,14 +337,16 @@ fn test_branch_delete_restore_preserves_lock_state() {
             .map(|d| d.locked)
             .unwrap_or(false)
     };
-    assert!(locked(&root), "manual lock applies");
+    assert!(locked(&v1.id) && !locked(&v2.id), "v2 is the tip");
 
-    // Deleting/restoring branches no longer derives lock state from children.
-    delete_draft(&conn, &child.id).expect("delete child");
-    assert!(locked(&root), "delete preserves source lock");
+    // Deleting the tip promotes v1 back to the editable tip.
+    delete_draft(&conn, &v2.id).expect("delete tip");
+    assert!(!locked(&v1.id), "v1 is now the live tip");
 
-    restore_draft(&conn, &child.id).expect("restore child");
-    assert!(locked(&root), "restore preserves source lock");
+    // Restoring v2 hands the tip back to it; v1 re-locks.
+    restore_draft(&conn, &v2.id).expect("restore tip");
+    assert!(locked(&v1.id) && !locked(&v2.id), "v2 reclaims the tip");
+    let _ = doc_id;
 }
 
 #[test]
@@ -303,10 +355,10 @@ fn test_doc_events_record_structural_ops() {
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
-    let child = fork_draft(&conn, &root, "v1", None).expect("fork");
+    let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
     rename_tab(&conn, &tab.id, "Chapter 1").expect("rename tab");
-    delete_draft(&conn, &child.id).expect("delete draft");
-    restore_draft(&conn, &child.id).expect("restore draft");
+    delete_draft(&conn, &v1.id).expect("delete draft");
+    restore_draft(&conn, &v1.id).expect("restore draft");
 
     let events = list_doc_events(&conn, &doc_id).expect("doc events");
     let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
@@ -317,36 +369,13 @@ fn test_doc_events_record_structural_ops() {
             "draft_restored",
             "draft_deleted",
             "tab_renamed",
-            "draft_forked",
+            "draft_iterated",
             "tab_created",
         ]
     );
     // Payloads carry enough to render and restore from the timeline.
-    assert!(events[1].payload.contains(&child.id));
+    assert!(events[1].payload.contains(&v1.id));
     assert!(events[2].payload.contains("Chapter 1"));
-}
-
-#[test]
-fn test_create_tab_draft_makes_root_sibling() {
-    let conn = in_memory_db();
-    let doc_id = create_document(&conn, "Doc").expect("doc");
-    let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
-
-    let sibling =
-        create_tab_draft(&conn, &tab.id, "take 2", Some(r#"{"doc":"alt"}"#)).expect("sibling");
-    assert_eq!(sibling.parent_draft_id, None);
-
-    let drafts = list_tab_drafts(&conn, &tab.id).expect("drafts");
-    assert_eq!(drafts.len(), 2);
-    assert!(
-        drafts.iter().all(|d| d.parent_draft_id.is_none()),
-        "both drafts are roots"
-    );
-    let loaded = load_document_state(&conn, &doc_id, Some(&sibling.id)).expect("load");
-    assert_eq!(
-        loaded.snapshot_state_json.as_deref(),
-        Some(r#"{"doc":"alt"}"#)
-    );
 }
 
 #[test]
@@ -357,12 +386,12 @@ fn test_load_resolves_active_tab_and_draft() {
     let tab2 = create_tab(&conn, &doc_id, "Notes").expect("tab2");
 
     let tab2_root = list_tab_drafts(&conn, &tab2.id).expect("drafts")[0].clone_id();
-    let tab2_child = fork_draft(&conn, &tab2_root, "v1", Some(r#"{"doc":"branch"}"#))
-        .expect("fork")
+    let tab2_v1 = iterate_draft(&conn, &tab2_root, "v1", Some(r#"{"doc":"branch"}"#))
+        .expect("iterate")
         .id;
 
     set_active_tab(&conn, &doc_id, &tab2.id).expect("set tab");
-    set_active_draft(&conn, &tab2.id, &tab2_child).expect("set draft");
+    set_active_draft(&conn, &tab2.id, &tab2_v1).expect("set draft");
 
     // A bare load must land on tab2's active draft, not tab1's root.
     let loaded = load_document_state(&conn, &doc_id, None).expect("load");
@@ -371,8 +400,10 @@ fn test_load_resolves_active_tab_and_draft() {
         Some(r#"{"doc":"branch"}"#)
     );
 
-    // Stale active pointers fall back gracefully.
-    delete_draft(&conn, &tab2_child).expect("delete child");
+    // Stale active pointers fall back gracefully: deleting the active draft
+    // clears the pointer; resolution then finds the run's remaining draft
+    // (tab2's root, which has no seed snapshot).
+    delete_draft(&conn, &tab2_v1).expect("delete tip");
     assert_eq!(get_active_draft(&conn, &tab2.id).expect("active"), None);
     let fallback = load_document_state(&conn, &doc_id, None).expect("load fallback");
     assert!(fallback.snapshot_state_json.is_none());
