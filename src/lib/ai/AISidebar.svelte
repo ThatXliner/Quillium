@@ -103,7 +103,7 @@ const actions: {
         activeClass: "text-blue-600 bg-white/60",
         hoverClass: "hover:text-blue-600",
         requiresApiKey: true,
-        preferredHeight: 680,
+        preferredHeight: 640,
     },
     {
         id: "feedback",
@@ -113,7 +113,7 @@ const actions: {
         activeClass: "text-green-600 bg-white/60",
         hoverClass: "hover:text-green-600",
         requiresApiKey: true,
-        preferredHeight: 680,
+        preferredHeight: 640,
     },
     {
         id: "revise",
@@ -123,7 +123,7 @@ const actions: {
         activeClass: "text-purple-600 bg-white/60",
         hoverClass: "hover:text-purple-600",
         requiresApiKey: true,
-        preferredHeight: 680,
+        preferredHeight: 640,
     },
     {
         id: "context",
