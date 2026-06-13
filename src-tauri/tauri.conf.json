@@ -43,7 +43,8 @@
     ],
     "macOS": {
       "signingIdentity": "468EDC933124742F56059262D0D9CA04CF9576DB",
-      "entitlements": "Entitlements.mac.plist"
+      "entitlements": "Entitlements.mac.plist",
+      "minimumSystemVersion": "12.0"
     },
     "iOS": {
       "developmentTeam": "6AGA46VW38"
