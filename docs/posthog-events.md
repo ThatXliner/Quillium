@@ -109,8 +109,8 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `tab_renamed` | Tab renamed inline | `Editor.svelte` |
 | `tab_deleted` | Tab soft-deleted | `Editor.svelte` |
 | `tab_restored` | Tab restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
-| `draft_forked` | Draft branched | `Editor.svelte` |
-| `draft_sibling_created` | "+ New draft" sibling created | `Editor.svelte` |
+| `draft_iterated` | Next version made (iterate) | `Editor.svelte` |
+| `draft_branched` | Different take made (branch) | `Editor.svelte` |
 | `draft_switched` | Draft tree row clicked | `Editor.svelte` |
 | `draft_deleted` | Leaf draft soft-deleted | `Editor.svelte` |
 | `draft_restored` | Draft restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
