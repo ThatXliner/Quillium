@@ -24,6 +24,20 @@
     Dependencies: chatFactory, utils (renderMarkdown), stores, posthog.
 -->
 <script lang="ts">
+import {
+    beginAiTask,
+    createAiChat,
+    endAiTask,
+    runMultiPersonaStreams,
+    useAiChatEffects,
+} from "$lib/ai/chatFactory";
+import { streamRevise } from "$lib/ai/clientStreams";
+import { personaModes, setPersonasForMode } from "$lib/ai/settings.svelte";
+import { renderMarkdown } from "$lib/ai/utils";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { getEnabledPersonas } from "$lib/readers/settings.svelte";
+import { appSettings } from "$lib/settings.svelte";
 /*
  * Revise.svelte
  *
@@ -58,22 +72,11 @@
  *   ready -> submitted -> streaming -> ready
  *                                   \-> error (chat.error set)
  */
-import { selectedText, documentContent } from "$lib/stores";
-import { renderMarkdown } from "$lib/ai/utils";
-import {
-    createAiChat,
-    useAiChatEffects,
-    beginAiTask,
-    endAiTask,
-    runMultiPersonaStreams,
-} from "$lib/ai/chatFactory";
-import { appSettings } from "$lib/settings.svelte";
-import posthog from "$lib/posthog";
-import { getEnabledPersonas } from "$lib/readers/settings.svelte";
-import { streamRevise } from "$lib/ai/clientStreams";
-import { appEventBus } from "$lib/events/appEventBus";
+import { documentContent, selectedText } from "$lib/stores";
+import { UsersIcon } from "lucide-svelte";
 import ContextLens from "./ContextLens.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
+import PersonaInfoModal from "./PersonaInfoModal.svelte";
 import type { ContextAction } from "./context";
 
 let input = $state("");
@@ -103,11 +106,13 @@ $effect(() => {
 });
 
 /**
- * Central send helper: routes through persona streams when personas
- * are enabled, otherwise falls back to the single-stream chat.
+ * Central send helper: routes through persona streams only when the
+ * user has opted personas IN for this mode (personas multiply token
+ * cost — see issue #259). Otherwise, and as a fallback when no personas
+ * are actually enabled, uses the single-stream chat.
  */
 async function sendRevise(text: string, trigger: string) {
-    const personas = getEnabledPersonas();
+    const personas = personaModes.revise ? getEnabledPersonas() : [];
     if (personas.length === 0) {
         posthog.capture("ai_revise_requested", {
             has_selection: !!$selectedText,
@@ -146,6 +151,12 @@ function handleSubmit(event: SubmitEvent) {
     sendRevise(text, "manual");
 }
 
+function togglePersonaMode() {
+    const next = !personaModes.revise;
+    setPersonasForMode("revise", next);
+    posthog.capture("persona_mode_toggled", { mode: "revise", enabled: next });
+}
+
 let customRevisePrompts = $derived(
     appSettings.customQuickActions
         .filter((a) => a.panel === "revise")
@@ -179,6 +190,34 @@ function useContextAction(action: ContextAction) {
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
+    <!-- Personas opt-in: off by default because personas fan out one
+         AI stream per enabled persona (N× token cost — issue #259). -->
+    <div class="flex items-center justify-between px-3 py-2 border-b border-black/10 shrink-0">
+        <span class="flex items-center gap-1.5 text-[11px] text-black/50">
+            <UsersIcon class="w-3.5 h-3.5" />
+            Reader personas
+            <PersonaInfoModal />
+        </span>
+        <button
+            type="button"
+            role="switch"
+            aria-checked={personaModes.revise}
+            onclick={togglePersonaMode}
+            title={personaModes.revise
+                ? "Personas on — each enabled reader responds in parallel (uses more tokens)"
+                : "Personas off — a single plain revision response"}
+            class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors {personaModes.revise
+                ? 'bg-purple-500'
+                : 'bg-black/15'}"
+        >
+            <span
+                class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform {personaModes.revise
+                    ? 'translate-x-3.5'
+                    : 'translate-x-0.5'}"
+            ></span>
+        </button>
+    </div>
+
     {#if showStarterSuggestions}
         <ContextLens
             mode="revise"

@@ -1,3 +1,4 @@
+import { appEventBus } from "$lib/events/appEventBus";
 /**
  * Reactive AI settings store (Svelte 5 runes).
  *
@@ -8,6 +9,8 @@
  *   the system keychain via Tauri at startup).
  * - `documentContext` — structured writing-context fields (goal, tone,
  *   audience, etc.) persisted to localStorage.
+ * - `personaModes` — per-mode opt-in for reader personas (default OFF
+ *   because personas multiply token cost); persisted to localStorage.
  * - `aiProcessing` — boolean flag consumed by the sidebar glow
  *   animation; toggled by each chat component via `setAiProcessing`.
  *
@@ -25,12 +28,12 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider } from "./provider";
-import { appEventBus } from "$lib/events/appEventBus";
 
 const PROVIDER_KEY = "quillium-ai-provider";
 const MODEL_KEY = "quillium-ai-model";
 const BASE_URL_KEY = "quillium-ai-base-url";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
+const PERSONA_MODES_KEY = "quillium-ai-persona-modes";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
 
 export type DocumentContext = {
@@ -55,6 +58,48 @@ export const documentContext = $state<DocumentContext>(loadDocumentContext());
 
 export function hasDocumentContext(): boolean {
     return documentContext.freeform.trim().length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Per-mode persona opt-in.
+//
+// Reader personas fan a single request out into one parallel AI stream PER
+// enabled persona, so they cost roughly N× the tokens of a normal request.
+// Because of that they default to OFF and are an explicit, per-mode opt-in:
+// each mode (feedback / revise) remembers its own choice. When a mode's flag
+// is false the panel uses a single plain stream regardless of how many
+// personas are enabled in the Readers tab. See GitHub issue #259.
+// ---------------------------------------------------------------------------
+export type PersonaMode = "feedback" | "revise";
+export type PersonaModes = Record<PersonaMode, boolean>;
+
+function loadPersonaModes(): PersonaModes {
+    const defaults: PersonaModes = { feedback: false, revise: false };
+    if (typeof localStorage === "undefined") return defaults;
+    try {
+        const stored = localStorage.getItem(PERSONA_MODES_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored) as Partial<PersonaModes>;
+            return {
+                feedback: typeof parsed.feedback === "boolean" ? parsed.feedback : false,
+                revise: typeof parsed.revise === "boolean" ? parsed.revise : false,
+            };
+        }
+    } catch {}
+    return defaults;
+}
+
+export const personaModes = $state<PersonaModes>(loadPersonaModes());
+
+export function personasEnabledFor(mode: PersonaMode): boolean {
+    return personaModes[mode];
+}
+
+export function setPersonasForMode(mode: PersonaMode, enabled: boolean) {
+    personaModes[mode] = enabled;
+    if (typeof localStorage !== "undefined") {
+        localStorage.setItem(PERSONA_MODES_KEY, JSON.stringify(personaModes));
+    }
 }
 
 // ---------------------------------------------------------------------------
