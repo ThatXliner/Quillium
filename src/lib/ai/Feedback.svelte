@@ -184,6 +184,7 @@ function useContextAction(action: ContextAction) {
             <CustomQuickActions
                 prompts={customFeedbackPrompts}
                 disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                panel="feedback"
                 theme="green"
                 onPrompt={useQuickPrompt}
             />
@@ -260,6 +261,7 @@ function useContextAction(action: ContextAction) {
                 prompts={customFeedbackPrompts}
                 disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
                 compact
+                panel="feedback"
                 theme="green"
                 onPrompt={useQuickPrompt}
             />

@@ -191,6 +191,7 @@ function useContextAction(action: ContextAction) {
             <CustomQuickActions
                 prompts={customRevisePrompts}
                 disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
+                panel="revise"
                 theme="purple"
                 onPrompt={useQuickPrompt}
             />
@@ -267,6 +268,7 @@ function useContextAction(action: ContextAction) {
                 prompts={customRevisePrompts}
                 disabled={chat.status !== "ready" || personaInFlight || !$documentContent}
                 compact
+                panel="revise"
                 theme="purple"
                 onPrompt={useQuickPrompt}
             />

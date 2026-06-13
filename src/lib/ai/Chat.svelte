@@ -219,6 +219,7 @@ async function handleSubmit(event: Event) {
             prompts={customChatPrompts}
             disabled={chat.status !== "ready" || !$documentContent}
             compact={!showStarterSuggestions}
+            panel="chat"
             theme="blue"
             onPrompt={useQuickPrompt}
         />

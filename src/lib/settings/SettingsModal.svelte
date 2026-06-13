@@ -174,6 +174,10 @@ let panelActions = $derived(
     (draft.customQuickActions ?? []).filter((a) => a.panel === selectedPanel),
 );
 
+function isQuickActionPanel(value: string | undefined): value is typeof selectedPanel {
+    return value === "revise" || value === "feedback" || value === "chat";
+}
+
 function addQuickAction() {
     if (!newActionLabel.trim() || !newActionPrompt.trim()) return;
     draft.customQuickActions = [
@@ -197,6 +201,7 @@ function removeQuickAction(index: number) {
 
 let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
 let innerEl = $state<HTMLDivElement | undefined>(undefined);
+let bodyEl = $state<HTMLDivElement | undefined>(undefined);
 
 // Shake + ring state — key increments each trigger so CSS animation replays
 let alertKey = $state(0);
@@ -308,26 +313,56 @@ async function uninstallModel() {
 let openDropdown = $state<"doc" | "ui" | null>(null);
 let showFontGuide = $state<"doc" | "ui" | null>(null);
 
+function scrollToSettingTarget(targetId: string) {
+    requestAnimationFrame(() => {
+        const target = dialogEl?.querySelector<HTMLElement>(`[data-setting-id="${targetId}"]`);
+        if (!target) return;
+        if (bodyEl) {
+            const bodyRect = bodyEl.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            bodyEl.scrollTo({
+                top:
+                    bodyEl.scrollTop +
+                    targetRect.top -
+                    bodyRect.top -
+                    bodyRect.height / 2 +
+                    targetRect.height / 2,
+                behavior: "smooth",
+            });
+        } else {
+            target.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        target.classList.add("setting-flash");
+        target.addEventListener("animationend", () => target.classList.remove("setting-flash"), {
+            once: true,
+        });
+    });
+}
+
+function applyScrollTarget(target: string | undefined) {
+    if (!target) return;
+    const [settingId, detail] = target.split(":");
+    if (settingId === "quick-actions") {
+        activeTab = "advanced";
+        if (isQuickActionPanel(detail)) {
+            selectedPanel = detail;
+        }
+    }
+    scrollToSettingTarget(settingId);
+}
+
 $effect(() => {
     if (dialogEl && !dialogEl.open) {
         dialogEl.showModal();
         posthog.capture("settings_opened");
 
-        if (scrollTo) {
-            // Wait a tick for the dialog layout to settle
-            requestAnimationFrame(() => {
-                const target = dialogEl?.querySelector(`[data-setting-id="${scrollTo}"]`);
-                if (!target) return;
-                target.scrollIntoView({ behavior: "smooth", block: "center" });
-                target.classList.add("setting-flash");
-                target.addEventListener(
-                    "animationend",
-                    () => target.classList.remove("setting-flash"),
-                    { once: true },
-                );
-            });
-        }
+        applyScrollTarget(scrollTo);
     }
+});
+
+$effect(() => {
+    if (!dialogEl?.open || !bodyEl || !scrollTo) return;
+    applyScrollTarget(scrollTo);
 });
 
 // Close dropdowns on outside click
@@ -529,7 +564,7 @@ function fontLabel(fonts: FontOption[], value: string) {
         </div>
 
         <!-- Body -->
-        <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-0">
+        <div bind:this={bodyEl} class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-0">
 
             <!-- PRIVACY section -->
             <div class="section-label">Privacy</div>
@@ -1422,7 +1457,7 @@ function fontLabel(fonts: FontOption[], value: string) {
             <!-- QUICK ACTIONS section (AI-dependent) -->
             {#if draft.aiEnabled}
             <div class="section-divider"></div>
-            <div class="section-label">Quick Actions</div>
+            <div class="section-label" data-setting-id="quick-actions">Quick Actions</div>
 
             <!-- Panel selector -->
             <div class="setting-row">

@@ -116,6 +116,7 @@ test.describe("AI sidebar", () => {
         await expect(
             q.aiSidebar.getByRole("button", { name: /Context: AI can see this draft/ }),
         ).toBeVisible();
+        await expect(q.aiSidebar).toContainText("Your custom chips");
         await expect(q.aiSidebar).toContainText("Make punchy");
 
         await q.aiSidebar.getByRole("button", { name: /Name the center/ }).click();
@@ -125,6 +126,30 @@ test.describe("AI sidebar", () => {
         await expect(q.aiSidebar).not.toContainText("Make punchy");
         await expect(q.aiSidebar.getByRole("button", { name: "Actions" })).toBeVisible();
         await expect(q.aiSidebar.getByRole("button", { name: "New chat" })).toBeVisible();
+    });
+
+    test("custom chip settings link opens quick actions", async ({ page }) => {
+        const q = new QuilliumPage(page, {
+            apiKey: "test-key",
+            settings: {
+                showNestedEditor: true,
+                atomicRevisions: true,
+                aiEnabled: true,
+                customQuickActions: [
+                    { panel: "chat", label: "Make punchy", prompt: "Make this punchier" },
+                ],
+            },
+            initialDoc: "A short draft with enough context for the AI sidebar.",
+        });
+        await q.init();
+
+        await page.locator("#ai-tab-chat").click();
+        await q.aiSidebar.getByRole("button", { name: "Edit in settings" }).click();
+
+        const settingsModal = page.locator(".settings-modal-inner");
+        await expect(settingsModal).toBeVisible();
+        await expect(settingsModal).toContainText("Quick Actions");
+        await expect(settingsModal).toContainText("Make punchy");
     });
 
     test("uses context lens instead of selection banner", async ({ page }) => {
