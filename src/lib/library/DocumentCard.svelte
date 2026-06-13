@@ -3,9 +3,9 @@
 -->
 <script lang="ts">
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
-import { AppWindow, Sparkles, Trash2, RotateCcw, X } from "lucide-svelte";
+import { AppWindow, RotateCcw, Sparkles, Trash2, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
-import { snippetSegments, type SnippetSegment } from "./snippet";
+import { type SnippetSegment, snippetSegments } from "./snippet";
 import { parseTags } from "./tags";
 
 interface Props {
@@ -98,7 +98,7 @@ function formatDate(ms: number): string {
     <div
         class="ph-mask-text group relative text-left rounded-xl p-4 flex flex-col gap-2 border w-full min-w-0 overflow-hidden cursor-pointer
             {selected
-                ? 'bg-blue-500/15 border-blue-300 shadow-md ring-2 ring-blue-400/30'
+                ? 'bg-[color:var(--chip-blue)] border-[color:var(--chip-blue-border)] shadow-md ring-2 ring-[color:var(--accent-blue)]/40'
                 : trashMode
                   ? 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-red-200/60'
                   : 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-blue-200/60'}"
@@ -205,7 +205,7 @@ function formatDate(ms: number): string {
     <div
         class="ph-mask-text group relative text-left w-full rounded-xl px-4 py-3 flex items-center gap-4 border cursor-pointer
             {selected
-                ? 'bg-blue-500/15 border-blue-300 shadow-sm ring-2 ring-blue-400/30'
+                ? 'bg-[color:var(--chip-blue)] border-[color:var(--chip-blue-border)] shadow-sm ring-2 ring-[color:var(--accent-blue)]/40'
                 : trashMode
                   ? 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-red-200/60'
                   : 'bg-[color:var(--surface)] border-[color:var(--border)] shadow-sm hover:shadow-md hover:border-blue-200/60'}"

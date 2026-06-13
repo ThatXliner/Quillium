@@ -129,7 +129,7 @@ function send() {
 <!-- Reply input — hidden in previewOnly or hideReply mode -->
 {#if !previewOnly && !hideReply}
     <div transition:slide={{ duration: 200, easing: cubicOut }}
-        class="mt-3 rounded-[10px] bg-[color:var(--surface-2)] inset-shadow-sm overflow-hidden
+        class="mt-3 rounded-[10px] bg-[color:var(--surface)] inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] overflow-hidden
         ring-1 ring-[color:var(--border)] focus-within:ring-2 {focusRingClass} transition-shadow">
         <textarea
             bind:this={textareaEl}

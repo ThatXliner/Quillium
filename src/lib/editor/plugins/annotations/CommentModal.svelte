@@ -331,7 +331,7 @@ async function aiSuggestion() {
                 <!-- Reply box anchored at bottom -->
                 {#if comment}
                     <div class="px-6 pb-5 pt-2 shrink-0">
-                        <div class="rounded-[10px] bg-[color:var(--surface-2)] inset-shadow-sm overflow-hidden
+                        <div class="rounded-[10px] bg-[color:var(--surface)] inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] overflow-hidden
                             ring-1 ring-[color:var(--border)] focus-within:ring-2 focus-within:ring-blue-300/50 transition-shadow">
                             <textarea
                                 bind:this={textareaEl}

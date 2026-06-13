@@ -35,7 +35,7 @@ let label = $derived(
     <button
         onclick={oninstall}
         disabled={!masMode && installing}
-        class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-full text-[12px] font-medium transition-colors disabled:opacity-50"
+        class="px-3 py-1 bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)] text-[color:var(--accent-blue-text)] rounded-full text-[12px] font-medium transition-colors disabled:opacity-50"
     >{label}</button>
     <button
         onclick={ondismiss}

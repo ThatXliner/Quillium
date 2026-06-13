@@ -47,7 +47,7 @@ function accept() {
         <div class="flex items-center justify-end pt-1">
             <button
                 onclick={accept}
-                class="text-xs px-4 py-1.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-colors font-medium"
+                class="text-xs px-4 py-1.5 rounded-full bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)] text-[color:var(--accent-blue-text)] transition-colors font-medium"
             >
                 I understand
             </button>

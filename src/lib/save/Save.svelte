@@ -12,10 +12,10 @@
       - PostHog for analytics event tracking ("draft_scrapped").
 -->
 <script>
+import posthog from "$lib/posthog";
 import { invoke } from "@tauri-apps/api/core";
 import { DropdownMenu } from "bits-ui";
-import { Trash2, ChevronDown, Images, FolderPlus, SaveIcon, FlameIcon } from "lucide-svelte";
-import posthog from "$lib/posthog";
+import { ChevronDown, FlameIcon, FolderPlus, Images, SaveIcon, Trash2 } from "lucide-svelte";
 
 /** Scrap the current draft via Tauri and reload the app. */
 function scrapDraftAndReload() {
@@ -58,7 +58,7 @@ const options = [
 
 <DropdownMenu.Root>
     <DropdownMenu.Trigger
-        class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors"
+        class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors"
     >
         <SaveIcon size={20} />
     </DropdownMenu.Trigger>

@@ -18,6 +18,11 @@
     stores (selectedText, documentContent), posthog.
 -->
 <script lang="ts">
+import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
+import { renderMarkdown } from "$lib/ai/utils";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
 /*
  * Chat.svelte
  *
@@ -50,12 +55,7 @@
  *   ready -> submitted -> streaming -> ready
  *                                   \-> error
  */
-import { selectedText, documentContent } from "$lib/stores";
-import { renderMarkdown } from "$lib/ai/utils";
-import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
-import { appSettings } from "$lib/settings.svelte";
-import { appEventBus } from "$lib/events/appEventBus";
-import posthog from "$lib/posthog";
+import { documentContent, selectedText } from "$lib/stores";
 import ContextLens from "./ContextLens.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";
@@ -159,7 +159,7 @@ async function handleSubmit(event: Event) {
                             <div
                                 class="px-3 py-2 rounded-lg {message.role ===
                                 'user'
-                                    ? 'bg-blue-500 text-white'
+                                    ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]'
                                     : 'bg-[color:var(--surface-2)] text-[color:var(--text)]'}"
                             >
                                 <div
@@ -236,7 +236,7 @@ async function handleSubmit(event: Event) {
             <button
                 type="submit"
                 disabled={chat.status !== "ready" || !input.trim()}
-                class="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                class="w-full py-2 bg-[color:var(--chip-blue)] text-[color:var(--accent-blue-text)] text-sm font-medium rounded-md hover:bg-[color:var(--chip-blue-strong)] focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
                 Send
             </button>

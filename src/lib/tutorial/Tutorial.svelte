@@ -590,7 +590,7 @@ onDestroy(() => {
                     </button>
                     <button
                         onclick={startTour}
-                        class="text-xs px-3 py-1.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-colors font-medium"
+                        class="text-xs px-3 py-1.5 rounded-full bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)] text-[color:var(--accent-blue-text)] transition-colors font-medium"
                     >
                         Start tour
                     </button>
@@ -689,7 +689,7 @@ onDestroy(() => {
                         <button
                             onclick={advance}
                             disabled={nextDisabled}
-                            class="text-xs px-3 py-1.5 rounded-full text-white transition-colors font-medium {nextDisabled ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}"
+                            class="text-xs px-3 py-1.5 rounded-full text-[color:var(--accent-blue-text)] transition-colors font-medium {nextDisabled ? 'bg-[color:var(--chip-blue)] opacity-60 cursor-not-allowed' : 'bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)]'}"
                         >
                             {isLast ? "Done" : "Next"}
                         </button>

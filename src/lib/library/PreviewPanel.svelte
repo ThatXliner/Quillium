@@ -5,20 +5,20 @@
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
 import { type ExportFormat, exportDocumentById } from "$lib/export";
-import DocumentPreview from "./DocumentPreview.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 import {
-    FileText,
-    ExternalLink,
     AppWindow,
-    Trash2,
-    RotateCcw,
-    Pencil,
     CheckSquare,
     Download,
+    ExternalLink,
+    FileText,
+    Pencil,
+    RotateCcw,
     Tag,
+    Trash2,
     X,
 } from "lucide-svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
+import DocumentPreview from "./DocumentPreview.svelte";
 import { normalizeTag, parseTags, serializeTags } from "./tags";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -186,7 +186,7 @@ function handleDeletePermanent() {
             {#if trashMode}
                 <button
                     onclick={onRestore}
-                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)] text-[color:var(--accent-blue-text)] text-sm font-medium shadow-sm transition-colors"
                 >
                     <RotateCcw size={16} />
                     Restore {selectedCount} documents
@@ -304,7 +304,7 @@ function handleDeletePermanent() {
             {#if trashMode}
                 <button
                     onclick={onRestore}
-                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                    class="group w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)] text-[color:var(--accent-blue-text)] text-sm font-medium shadow-sm transition-colors"
                 >
                     <RotateCcw size={16} />
                     Restore document
@@ -324,11 +324,11 @@ function handleDeletePermanent() {
                 <div class="flex gap-2">
                     <button
                         onclick={onOpen}
-                        class="group flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium shadow-sm transition-colors"
+                        class="group flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)] text-[color:var(--accent-blue-text)] text-sm font-medium shadow-sm transition-colors"
                     >
                         <ExternalLink size={16} />
                         Open
-                        <Kbd variant="fullWhite" keys="↵" />
+                        <Kbd variant="default" keys="↵" />
                     </button>
                     {#if !multiSelect}
                         <button

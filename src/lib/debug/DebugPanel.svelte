@@ -19,32 +19,32 @@
     Only available when import.meta.env.DEV is true (stripped from production).
 -->
 <script lang="ts">
+import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
+import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
 import {
-    editorView,
-    currentDocumentId,
-    currentDocumentTitle,
-    currentDraftId,
-    errorBanner,
-} from "$lib/stores";
-import { saveEmergencyBackup } from "$lib/errorGuard";
-import { debugAuthWaitlistMode, debugForceSurvey, debugPanelActive } from "$lib/debug/store.svelte";
-import { scenarios, type Scenario } from "$lib/debug/scenarios";
-import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { getExtensions, savedFields } from "$lib/editor/extensions";
-import {
-    resetDb,
+    appendEvent,
     createDocument,
     createDraft,
-    appendEvent,
     createSnapshot,
+    resetDb,
     updateDocumentMeta,
 } from "$lib/db";
 import type { EventPayload } from "$lib/db/events";
+import { type Scenario, scenarios } from "$lib/debug/scenarios";
+import { debugAuthWaitlistMode, debugForceSurvey, debugPanelActive } from "$lib/debug/store.svelte";
+import { getExtensions, savedFields } from "$lib/editor/extensions";
 import { buildEventPayload } from "$lib/editor/listeners";
-import AutoAIFace, { type FaceState, type IdleVariant } from "$lib/autoai/AutoAIFace.svelte";
+import { saveEmergencyBackup } from "$lib/errorGuard";
 import { appEventBus } from "$lib/events/appEventBus";
-import { debugForceAuthOffline } from "$lib/auth/auth.svelte";
+import {
+    currentDocumentId,
+    currentDocumentTitle,
+    currentDraftId,
+    editorView,
+    errorBanner,
+} from "$lib/stores";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
 // Face preview state
 const FACE_STATES: FaceState[] = [
@@ -376,7 +376,7 @@ function handleKeydown(e: KeyboardEvent) {
                                 class={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
                                     isLoading
                                         ? "bg-blue-100 text-blue-400 cursor-wait"
-                                        : "bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                        : "bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)] text-[color:var(--accent-blue-text)] disabled:opacity-40 disabled:cursor-not-allowed"
                                 }`}
                             >
                                 {isLoading ? "Saving…" : "Load"}

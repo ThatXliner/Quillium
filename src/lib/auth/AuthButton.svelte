@@ -69,9 +69,9 @@ function openProfile() {
         <!-- Logged out: Sign In button per D-15 (glassy, matching StatusBar style) -->
         <button
             onclick={onauthclick}
-            class="px-4 py-2 text-xs font-medium text-[color:var(--text-soft)] bg-[color:var(--surface-2)] backdrop-blur-md
-                rounded-full shadow-md
-                hover:text-[color:var(--text)] hover:bg-[color:var(--surface)] transition-colors"
+            class="px-4 py-2 text-xs font-medium text-[color:var(--text-soft)] bg-[color:var(--surface)] backdrop-blur-md
+                rounded-full shadow-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)]
+                hover:text-[color:var(--text)] hover:bg-[color:var(--surface-2)] transition-colors"
         >
             Sign in
         </button>

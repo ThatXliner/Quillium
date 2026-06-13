@@ -9,12 +9,12 @@
       - onclose: () => void — called when modal closes
 -->
 <script lang="ts">
-import { signUp, signIn } from "./auth.svelte";
-import { loginSchema, signUpSchema } from "./schemas";
-import { toast } from "svelte-sonner";
-import { X } from "lucide-svelte";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
 import { debugAuthWaitlistMode } from "$lib/debug/store.svelte";
+import { X } from "lucide-svelte";
+import { toast } from "svelte-sonner";
+import { signIn, signUp } from "./auth.svelte";
+import { loginSchema, signUpSchema } from "./schemas";
 
 const { onclose }: { onclose: () => void } = $props();
 const signupsEnabled = $derived(import.meta.env.DEV && !$debugAuthWaitlistMode);
@@ -125,18 +125,18 @@ async function handleSubmit(e: Event) {
             <button
                 onclick={() => switchTab("login")}
                 class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
-                    {activeTab === 'login' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
+                    {activeTab === 'login' ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
             >Log in</button>
             {#if signupsEnabled}
                 <button
                     onclick={() => switchTab("signup")}
                     class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors
-                        {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
+                        {activeTab === 'signup' ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                 >
                    Sign up
                 </button>
             {:else}
-                <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer" class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors {activeTab === 'signup' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}">
+                <a href={OMNI_WAITLIST_URL} target="_blank" rel="noreferrer" class="px-4 py-1.5 text-xs font-medium rounded-full transition-colors {activeTab === 'signup' ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}">
                     Join the waitlist
                 </a>
             {/if}
@@ -192,8 +192,8 @@ async function handleSubmit(e: Event) {
             <button
                 type="submit"
                 disabled={submitting}
-                class="mt-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-500 rounded-lg
-                    hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="mt-2 px-4 py-2.5 text-sm font-medium text-[color:var(--accent-blue-text)] bg-[color:var(--chip-blue)] rounded-lg
+                    hover:bg-[color:var(--chip-blue-strong)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {#if submitting}
                     {activeTab === "login" ? "Logging in..." : "Creating account..."}

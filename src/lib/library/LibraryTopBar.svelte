@@ -3,8 +3,8 @@
     view toggle, and "+ New" merged into one pill.
 -->
 <script lang="ts">
-import { LayoutGrid, List, Plus, Search, Trash2, Timer } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { LayoutGrid, List, Plus, Search, Timer, Trash2 } from "lucide-svelte";
 
 interface Props {
     viewMode: "grid" | "list";
@@ -51,7 +51,7 @@ const retentionLabel = $derived(
         onclick={() => onTabChange("library")}
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors
             {tab === 'library'
-                ? 'bg-blue-500 text-white shadow-sm'
+                ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)] shadow-sm'
                 : 'text-[color:var(--text-soft)] hover:text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
     >
         Library
@@ -124,7 +124,7 @@ const retentionLabel = $derived(
             onclick={() => onViewModeChange("grid")}
             title="Grid view (G)"
             class="group w-8 h-8 rounded-full flex items-center justify-center transition-colors
-                {viewMode === 'grid' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
+                {viewMode === 'grid' ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
         >
             <LayoutGrid size={15} />
         </button>
@@ -132,7 +132,7 @@ const retentionLabel = $derived(
             onclick={() => onViewModeChange("list")}
             title="List view (L)"
             class="group w-8 h-8 rounded-full flex items-center justify-center transition-colors
-                {viewMode === 'list' ? 'bg-blue-500 text-white' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
+                {viewMode === 'list' ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
         >
             <List size={15} />
         </button>
@@ -145,7 +145,7 @@ const retentionLabel = $derived(
         <!-- New document -->
         <button
             onclick={onNew}
-            class="group flex items-center gap-2 px-4 h-full text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+            class="group flex items-center gap-2 px-4 h-full text-sm font-medium text-[color:var(--accent-blue-text)] hover:bg-[color:var(--chip-blue)] transition-colors"
         >
             <Plus size={15} />
             New

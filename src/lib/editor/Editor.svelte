@@ -845,7 +845,7 @@ onMount(() => {
         -->
         <div
             id="editor-document"
-            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-[color:var(--surface)] rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
+            class="mx-auto w-full max-w-[816px] min-h-[calc(100vh-4rem)] mb-12 bg-[color:var(--paper)] rounded-tr-lg rounded-b-lg shadow-xl py-3 px-1 max-[840px]:mx-3 max-[840px]:w-auto"
         >
             {#if isLocked}
                 <!-- Lock notice lives inside the page, like a suggestion-mode strip. -->
@@ -884,10 +884,11 @@ onMount(() => {
     :global(.cm-content) {
         font-family: var(--doc-font-family);
         font-size: var(--doc-font-size);
-        /* Document text follows the theme (default CM black is invisible on the
-           dark paper). caret-color tints the cursor to match. */
-        color: var(--text);
-        caret-color: var(--text-strong);
+        /* Document text uses the paper's own ink (off-white on the near-black
+           reading column in dark; default CM black is invisible there).
+           caret-color tints the cursor to match. */
+        color: var(--paper-text);
+        caret-color: var(--paper-text);
     }
     /* Theme-aware text selection on the document (default CM blue washes out on
        dark; a token tint keeps it legible in both modes). */

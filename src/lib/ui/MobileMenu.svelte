@@ -45,14 +45,14 @@ const exportFormats: { label: string; format: ExportFormat }[] = [
 
 const itemClass =
     "flex items-center gap-2 p-2 px-3 mx-2 my-0.5 text-sm text-left text-[color:var(--text)] " +
-    "rounded-lg hover:bg-[color:var(--surface-2)] cursor-pointer";
+    "rounded-lg hover:bg-[color:var(--surface)] hover:inset-shadow-sm hover:inset-shadow-[color:var(--inset-highlight)] cursor-pointer";
 </script>
 
 <DropdownMenu.Root>
     <DropdownMenu.Trigger
         aria-label="Menu"
         class="fixed bottom-6 right-6 z-50 hidden max-[899px]:flex w-12 h-12 rounded-full
-            bg-[color:var(--surface)] backdrop-blur-md shadow-lg
+            bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] shadow-lg
             items-center justify-center text-[color:var(--text)] hover:bg-[color:var(--surface-2)] transition-colors"
     >
         <MenuIcon size={22} />

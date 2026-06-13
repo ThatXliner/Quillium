@@ -40,11 +40,22 @@
 :root {
     color-scheme: light;
 
-    /* Surfaces — page backdrop, the white "paper", raised panels, inset fills */
-    --bg: #faf8f5; /* app backdrop behind the paper / panels */
-    --surface: #ffffff; /* the editing paper, cards, modals (raised above --bg) */
-    --surface-2: #f6f3ee; /* nested / inset / input / hover fills */
-    --surface-3: #eee9e1; /* deeper inset (selected rows, code chips) */
+    /* Surfaces — page backdrop, raised panels, inset fills. EXACT original light
+       palette: the app shipped neutral grey (gray-200 backdrop, white surfaces,
+       gray inset fills) before tokenisation — NOT warm cream (that's a future
+       "Paper" theme). Values match the pre-token hardcoded literals. */
+    --bg: #e5e7eb; /* gray-200 — original app backdrop */
+    --surface: #ffffff; /* white — cards, modals, buttons */
+    --surface-2: #f3f4f6; /* gray-100 — nested / inset / input / hover fills */
+    --surface-3: #e5e7eb; /* gray-200 — deeper inset (selected rows, code chips) */
+
+    /* The editor "paper" — its OWN surface, separate from --surface so dark mode
+       can give the reading column a near-black/off-white treatment tuned for
+       long-form reading (no halation) without dragging every card dark too.
+       Light: white paper + solid black ink (the original .cm-content had no
+       explicit colour → CodeMirror's default black; match that). */
+    --paper: #ffffff;
+    --paper-text: rgba(0, 0, 0, 0.95);
 
     /* Text — map by role AND opacity tier (these replace text-black/NN usage) */
     --text-strong: rgba(0, 0, 0, 0.9); /* headings, primary copy */
@@ -56,7 +67,11 @@
     /* Lines & elevation */
     --border: rgba(0, 0, 0, 0.08); /* hairline divider / card edge */
     --border-strong: rgba(0, 0, 0, 0.18); /* more visible border */
-    --shadow-color: 44, 38, 34; /* rgb triple → rgba(var(--shadow-color), α) */
+    --shadow-color: 0, 0, 0; /* black — original shadows; rgb triple → rgba(var(--shadow-color), α) */
+    /* Top inner highlight for neumorphic raised pills/wells (status-bar buttons,
+       reply boxes). Pure white in light (the original `inset-shadow-white`); a
+       faint light sheen in dark so the dome still reads. */
+    --inset-highlight: #ffffff;
 
     /* Brand accents — theme-INDEPENDENT (identical in both modes). Do NOT wrap
        these in a dark block. Use for buttons, links, badges, accent tints. */
@@ -82,27 +97,36 @@
     --accent-green-text: #15803d; /* → bright green in dark */
     --accent-red-text: #b91c1c; /* → bright red in dark */
 
+    /* Selected-state pill (active tab / segmented toggle / nav selection). FLIPS:
+       a vivid solid blue with white text in light, but a calm chip-blue fill with
+       bright accent text in dark (raw blue-500 glares on near-black). Use in place
+       of fixed `bg-blue-500 text-white` selected states. */
+    --selected-bg: #3b82f6;
+    --selected-bg-hover: #2563eb;
+    --selected-text: #ffffff;
+
     /* Coloured CHIP/CARD/BANNER tints — FLIP like the annotation tints. A pale
        hue in light → a deep same-hue tint in dark, so a colour-coded card or
        banner keeps its hue AND cream --text (or the flipping --accent-*-text)
        stays legible on top. Use these in place of fixed-light bg-blue-50 /
        bg-green-50/80 / hover:bg-purple-50 chips, hover washes, and selected-row
-       fills. `-border` is the matching edge. */
+       fills. `-border` is the matching edge — TRANSLUCENT `*-200/40`, exactly as
+       the original cards had it (a hard opaque edge looked like an outline). */
     --chip-blue: #eff6ff;
     --chip-blue-strong: #dbeafe; /* selected/active */
-    --chip-blue-border: #bfdbfe;
+    --chip-blue-border: rgba(191, 219, 254, 0.4); /* blue-200/40 */
     --chip-purple: #faf5ff;
     --chip-purple-strong: #f3e8ff;
-    --chip-purple-border: #e9d5ff;
+    --chip-purple-border: rgba(233, 213, 255, 0.4); /* purple-200/40 */
     --chip-green: #f0fdf4;
     --chip-green-strong: #dcfce7;
-    --chip-green-border: #bbf7d0;
+    --chip-green-border: rgba(187, 247, 208, 0.4); /* green-200/40 */
     --chip-amber: #fffbeb;
     --chip-amber-strong: #fef3c7;
-    --chip-amber-border: #fde68a;
+    --chip-amber-border: rgba(253, 230, 138, 0.4); /* amber-200/40 */
     --chip-red: #fef2f2;
     --chip-red-strong: #fee2e2;
-    --chip-red-border: #fecaca;
+    --chip-red-border: rgba(254, 202, 202, 0.4); /* red-200/40 */
 
     /* Annotation tints (comment/suggestion/revision colour-coding). Unlike
        accents, these surfaces FLIP: pale tint in light → deep same-hue tint in
@@ -131,6 +155,11 @@
         --surface-2: #1e1a16;
         --surface-3: #2a231d;
 
+        /* Reading column: neutral near-black paper + soft off-white ink. Avoids
+           pure #000/#fff (halation/glare); ~16:1 contrast for long reading. */
+        --paper: #141414;
+        --paper-text: #ededed;
+
         --text-strong: rgba(247, 241, 227, 0.95);
         --text: rgba(247, 241, 227, 0.82);
         --text-soft: rgba(247, 241, 227, 0.64);
@@ -140,6 +169,7 @@
         --border: rgba(255, 255, 255, 0.1);
         --border-strong: rgba(255, 255, 255, 0.22);
         --shadow-color: 0, 0, 0;
+        --inset-highlight: rgba(255, 255, 255, 0.06);
 
         --accent-blue-text: #93c5fd;
         --accent-purple-text: #d8b4fe;
@@ -147,21 +177,26 @@
         --accent-green-text: #4ade80;
         --accent-red-text: #f87171;
 
+        /* Selected pill → calm chip in dark (no glaring blue-500 on near-black). */
+        --selected-bg: #243456;
+        --selected-bg-hover: #2f4470;
+        --selected-text: #bfdbfe;
+
         --chip-blue: #1c2740;
         --chip-blue-strong: #243456;
-        --chip-blue-border: #2f4470;
+        --chip-blue-border: rgba(147, 197, 253, 0.18);
         --chip-purple: #2e2243;
         --chip-purple-strong: #3b2c57;
-        --chip-purple-border: #4d3a70;
+        --chip-purple-border: rgba(216, 180, 254, 0.18);
         --chip-green: #15301f;
         --chip-green-strong: #1c4029;
-        --chip-green-border: #275437;
+        --chip-green-border: rgba(134, 239, 172, 0.18);
         --chip-amber: #33280c;
         --chip-amber-strong: #463610;
-        --chip-amber-border: #5e4915;
+        --chip-amber-border: rgba(252, 211, 77, 0.18);
         --chip-red: #3a1c1c;
         --chip-red-strong: #4d2424;
-        --chip-red-border: #6b2f2f;
+        --chip-red-border: rgba(252, 165, 165, 0.2);
 
         --tint-comment: #4a3a0e;
         --tint-comment-active: #7a5e10;
@@ -182,6 +217,10 @@
     --surface-2: #1e1a16;
     --surface-3: #2a231d;
 
+    /* See media-query block above — neutral near-black reading column. */
+    --paper: #141414;
+    --paper-text: #ededed;
+
     --text-strong: rgba(247, 241, 227, 0.95);
     --text: rgba(247, 241, 227, 0.82);
     --text-soft: rgba(247, 241, 227, 0.64);
@@ -191,6 +230,7 @@
     --border: rgba(255, 255, 255, 0.1);
     --border-strong: rgba(255, 255, 255, 0.22);
     --shadow-color: 0, 0, 0;
+    --inset-highlight: rgba(255, 255, 255, 0.06);
 
     --accent-blue-text: #93c5fd;
     --accent-purple-text: #d8b4fe;
@@ -198,21 +238,26 @@
     --accent-green-text: #4ade80;
     --accent-red-text: #f87171;
 
+    /* Selected pill → calm chip in dark (no glaring blue-500 on near-black). */
+    --selected-bg: #243456;
+    --selected-bg-hover: #2f4470;
+    --selected-text: #bfdbfe;
+
     --chip-blue: #1c2740;
     --chip-blue-strong: #243456;
-    --chip-blue-border: #2f4470;
+    --chip-blue-border: rgba(147, 197, 253, 0.18);
     --chip-purple: #2e2243;
     --chip-purple-strong: #3b2c57;
-    --chip-purple-border: #4d3a70;
+    --chip-purple-border: rgba(216, 180, 254, 0.18);
     --chip-green: #15301f;
     --chip-green-strong: #1c4029;
-    --chip-green-border: #275437;
+    --chip-green-border: rgba(134, 239, 172, 0.18);
     --chip-amber: #33280c;
     --chip-amber-strong: #463610;
-    --chip-amber-border: #5e4915;
+    --chip-amber-border: rgba(252, 211, 77, 0.18);
     --chip-red: #3a1c1c;
     --chip-red-strong: #4d2424;
-    --chip-red-border: #6b2f2f;
+    --chip-red-border: rgba(252, 165, 165, 0.2);
 
     --tint-comment: #4a3a0e;
     --tint-comment-active: #7a5e10;

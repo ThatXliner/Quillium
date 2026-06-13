@@ -10,11 +10,11 @@
       - onjoin: () => void — called after successful anonymous sign-in
 -->
 <script lang="ts">
-import { signInAnonymously } from "./auth.svelte";
-import { displayNameSchema } from "./schemas";
-import { initials, avatarColor } from "./avatarUtils";
-import { toast } from "svelte-sonner";
 import { X } from "lucide-svelte";
+import { toast } from "svelte-sonner";
+import { signInAnonymously } from "./auth.svelte";
+import { avatarColor, initials } from "./avatarUtils";
+import { displayNameSchema } from "./schemas";
 
 const { onclose, onjoin }: { onclose: () => void; onjoin: () => void } = $props();
 
@@ -150,8 +150,8 @@ const isNameValid = $derived.by(() => {
                 type="submit"
                 disabled={submitting || !isNameValid}
                 aria-disabled={submitting}
-                class="w-full px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-lg
-                    hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="w-full px-4 py-2 text-sm font-semibold text-[color:var(--accent-blue-text)] bg-[color:var(--chip-blue)] rounded-lg
+                    hover:bg-[color:var(--chip-blue-strong)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {#if submitting}
                     Joining...

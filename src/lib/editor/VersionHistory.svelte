@@ -514,7 +514,7 @@ function handleKeydown(e: KeyboardEvent) {
                     onclick={saveCheckpoint}
                     disabled={savingCheckpoint || !checkpointLabel.trim() || !$editorView || $lastPersistedEventId < 0}
                     class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-                           bg-blue-500 text-white hover:bg-blue-600 transition-colors
+                           bg-[color:var(--chip-blue)] text-[color:var(--accent-blue-text)] hover:bg-[color:var(--chip-blue-strong)] transition-colors
                            disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                     <BookmarkPlus size={13} />

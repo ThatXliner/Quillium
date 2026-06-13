@@ -20,15 +20,15 @@
 <script lang="ts">
 import { initials } from "$lib/auth/avatarUtils";
 import {
+    MAX_RECONNECT_ATTEMPTS,
     collabPresenceUsers,
     collabState,
     followedClientId,
-    MAX_RECONNECT_ATTEMPTS,
     pendingUpdatesCount,
     reconnectAttempt,
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
-import { exportDocument, type ExportFormat } from "$lib/export";
+import { type ExportFormat, exportDocument } from "$lib/export";
 import { goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
@@ -268,7 +268,7 @@ $effect(() => {
                 onclick={goToLibrary}
                 title="Library ({modKey}O)"
                 aria-label="Open library"
-                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors text-blue-400 hover:text-blue-600 shrink-0"
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors text-blue-400 hover:text-blue-600 shrink-0"
             >
                 <LayoutGrid size={20} />
             </button>
@@ -276,7 +276,7 @@ $effect(() => {
                 onclick={goToHistory}
                 aria-label="Version history"
                 title="Version History ({modKey}Shift+H)"
-                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors text-amber-400 hover:text-amber-600 shrink-0"
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors text-amber-400 hover:text-amber-600 shrink-0"
             >
                 <History size={20} />
             </button>
@@ -284,7 +284,7 @@ $effect(() => {
                 onclick={() => ($settingsOpen = !$settingsOpen)}
                 aria-label="Open settings"
                 title="Settings ({modKey},)"
-                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors shrink-0
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors shrink-0
                     {$settingsOpen ? 'text-[color:var(--text-soft)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]'}"
             >
                 <Settings size={20} />
@@ -293,7 +293,7 @@ $effect(() => {
                 onclick={() => ($statsOpen = !$statsOpen)}
                 aria-label="Writing statistics"
                 title="Writing Statistics"
-                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors shrink-0
+                class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors shrink-0
                     {$statsOpen ? 'text-emerald-600' : 'text-emerald-400 hover:text-emerald-600'}"
             >
                 <BarChart3 size={20} />
@@ -307,7 +307,7 @@ $effect(() => {
                     onclick={toggleExportMenu}
                     aria-label="Export document"
                     title="Export ({modKey}Shift+E)"
-                    class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors
+                    class="w-12 h-12 rounded-full bg-[color:var(--surface)] backdrop-blur-md inset-shadow-sm inset-shadow-[color:var(--inset-highlight)] shadow-md flex items-center justify-center hover:bg-[color:var(--surface-2)] transition-colors
                         {exportOpen ? 'text-purple-600' : 'text-purple-400 hover:text-purple-600'}"
                 >
                     <Download size={20} />

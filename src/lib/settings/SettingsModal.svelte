@@ -16,6 +16,12 @@
 import changelog from "$lib/changelog.json";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
 import {
+    getSemanticSearchEnabled,
+    pollSearchStatus,
+    setSemanticSearchEnabled,
+    uninstallSemanticModel,
+} from "$lib/db";
+import {
     getEditorLanguageExtension,
     harperCompartment,
     languageCompartment,
@@ -27,12 +33,6 @@ import {
     resetHarper,
 } from "$lib/editor/harper/harperLinter";
 import { forceLinting } from "$lib/editor/harper/lint";
-import {
-    getSemanticSearchEnabled,
-    pollSearchStatus,
-    setSemanticSearchEnabled,
-    uninstallSemanticModel,
-} from "$lib/db";
 import { appEventBus } from "$lib/events/appEventBus";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
 import posthog from "$lib/posthog";
@@ -737,7 +737,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             onclick={() => { draft.theme = val; handleChange(); }}
                             class="px-3 py-1.5 text-[11px] font-medium transition-colors
                                 {draft.theme === val
-                                    ? 'bg-blue-500 text-white'
+                                    ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]'
                                     : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{label}</button>
                     {/each}
@@ -975,7 +975,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             onclick={() => { draft.editorMode = val; handleChange(); }}
                             class="px-3 py-1.5 text-[11px] font-medium transition-colors
                                 {draft.editorMode === val
-                                    ? 'bg-blue-500 text-white'
+                                    ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]'
                                     : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{label}</button>
                     {/each}
@@ -1174,7 +1174,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             onclick={() => { draft.titleVisibility = val; handleChange(); }}
                             class="px-3 py-1.5 text-[11px] font-medium transition-colors
                                 {draft.titleVisibility === val
-                                    ? 'bg-blue-500 text-white'
+                                    ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]'
                                     : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{label}</button>
                     {/each}
@@ -1397,7 +1397,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             onclick={() => { draft.annotationLayout = val; handleChange(); }}
                             class="px-3 py-1.5 text-[11px] font-medium transition-colors
                                 {draft.annotationLayout === val
-                                    ? 'bg-blue-500 text-white'
+                                    ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]'
                                     : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{label}</button>
                     {/each}
@@ -1499,7 +1499,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                             onclick={() => { selectedPanel = panel; }}
                             class="px-3 py-1.5 text-[11px] font-medium capitalize transition-colors
                                 {selectedPanel === panel
-                                    ? 'bg-blue-500 text-white'
+                                    ? 'bg-[color:var(--selected-bg)] text-[color:var(--selected-text)]'
                                     : 'bg-[color:var(--surface)] text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
                         >{panel}</button>
                     {/each}
@@ -1606,7 +1606,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                 {#key alertKey}
                     <button
                         onclick={save}
-                        class="text-xs text-white transition-colors px-3 py-1.5 rounded-full font-medium {alertKey > 0 ? 'save-alert' : ''} {isDirty ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-500/50 hover:bg-blue-500/70'}"
+                        class="text-xs text-[color:var(--accent-blue-text)] transition-colors px-3 py-1.5 rounded-full font-medium {alertKey > 0 ? 'save-alert' : ''} {isDirty ? 'bg-[color:var(--chip-blue)] hover:bg-[color:var(--chip-blue-strong)]' : 'bg-[color:var(--chip-blue)] opacity-60 hover:opacity-80'}"
                     >Save</button>
                 {/key}
             </div>
