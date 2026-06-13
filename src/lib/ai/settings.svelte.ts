@@ -34,6 +34,7 @@ const MODEL_KEY = "quillium-ai-model";
 const BASE_URL_KEY = "quillium-ai-base-url";
 const DOCUMENT_CONTEXT_KEY = "quillium-document-context";
 const PERSONA_MODES_KEY = "quillium-ai-persona-modes";
+const COLLAPSE_CONTEXT_SUMMARY_KEY = "quillium-ai-collapse-context-summary";
 export const HAS_API_KEY_KEY = "quillium-has-api-key";
 
 export type DocumentContext = {
@@ -99,6 +100,30 @@ export function setPersonasForMode(mode: PersonaMode, enabled: boolean) {
     personaModes[mode] = enabled;
     if (typeof localStorage !== "undefined") {
         localStorage.setItem(PERSONA_MODES_KEY, JSON.stringify(personaModes));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Context summary card collapse preference.
+//
+// When the writer has a selection, the chat/feedback/revise panels show a
+// context-summary card ("AI can see your selection" + source breakdown). Some
+// users find it intrusive, so this flag collapses it into the header info (ℹ)
+// icon instead — the same information is still one click away in the popover.
+// Default OFF (card shown). Toggleable from the card's "Hide" button and from
+// Advanced settings.
+// ---------------------------------------------------------------------------
+function loadCollapseContextSummary(): boolean {
+    if (typeof localStorage === "undefined") return false;
+    return localStorage.getItem(COLLAPSE_CONTEXT_SUMMARY_KEY) === "true";
+}
+
+export const contextSummaryPrefs = $state({ collapsed: loadCollapseContextSummary() });
+
+export function setCollapseContextSummary(collapsed: boolean) {
+    contextSummaryPrefs.collapsed = collapsed;
+    if (typeof localStorage !== "undefined") {
+        localStorage.setItem(COLLAPSE_CONTEXT_SUMMARY_KEY, String(collapsed));
     }
 }
 

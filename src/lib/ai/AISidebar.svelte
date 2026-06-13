@@ -28,6 +28,7 @@
 <script lang="ts">
 import {
     aiProcessing,
+    contextSummaryPrefs,
     documentContext,
     ensureApiKeyLoaded,
     hasApiKey,
@@ -241,8 +242,14 @@ const headerContextPacket = $derived(
           })
         : null,
 );
+// The header info (ℹ) icon stands in for the in-panel context summary card
+// whenever that card isn't shown — either because the packet doesn't warrant a
+// full summary, or because the writer collapsed it via "Hide" / Advanced
+// settings (contextSummaryPrefs.collapsed). ContextLens hides its card under
+// the same conditions, so exactly one of the two is visible at a time.
 const showHeaderContextInfo = $derived(
-    headerContextPacket !== null && !shouldShowContextSummary(headerContextPacket),
+    headerContextPacket !== null &&
+        (contextSummaryPrefs.collapsed || !shouldShowContextSummary(headerContextPacket)),
 );
 const headerContextInfoLabel = $derived(
     headerContextPacket
