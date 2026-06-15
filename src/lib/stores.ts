@@ -43,7 +43,7 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { writable } from "svelte/store";
-import type { Annotations, GenericAnnotation } from "./editor/plugins/annotations";
+import type { Annotations, GenericAnnotation, VersionGroups } from "./editor/plugins/annotations";
 import posthog from "./posthog";
 
 /**
@@ -68,6 +68,28 @@ export const editorView = writable<EditorView>();
  * the annotation state field changes.
  */
 export const annotations = writable<Annotations | undefined>();
+
+/**
+ * Mirror of the CodeMirror versionGroupField state (version groups, #268).
+ * Written by: Editor.svelte updateListener on every transaction.
+ * Read by: Revision.svelte to render the "link to group" affordance and the
+ *          group badge on linked version pills.
+ *
+ * Manually synced for the same reason as `annotations` above.
+ */
+export const versionGroups = writable<VersionGroups | undefined>();
+
+/**
+ * Cross-card "link mode" anchor (version groups, #268). When the user starts
+ * linking from a version pill, the anchor (that member + its group if any) is
+ * held here; the next pill they pick on a DIFFERENT revision completes the link.
+ * Shared across Revision cards because a group spans multiple revisions, so the
+ * two picks happen on two different components. null = not linking.
+ */
+export const linkAnchor = writable<{
+    member: { revisionId: number; versionId: string };
+    groupId?: string;
+} | null>(null);
 
 /**
  * The currently focused annotation (comment or revision), if any.

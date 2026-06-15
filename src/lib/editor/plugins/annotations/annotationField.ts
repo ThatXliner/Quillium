@@ -51,12 +51,14 @@ import {
     StateEffect,
     StateField,
     Transaction,
+    type TransactionSpec,
 } from "@codemirror/state";
 import {
     activeVersionIndex,
     createNewAnnotation,
     getLastId,
     getNewId,
+    groupPartnersOf,
     isAnnotationOfType,
     makeVersion,
     normalizeRevision,
@@ -72,6 +74,10 @@ import {
     type VersionState,
 } from "./models";
 import { cleanRangesOf, mapRange } from "./utils";
+// Lazily-used (function-body only) import — see groupSwitchTargets. The
+// annotationField ↔ versionGroupField pair forms a safe ESM cycle because all
+// cross-references happen inside functions, never at module top level.
+import { versionGroupField } from "./versionGroupField";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import { mapValues } from "lodash-es";
@@ -227,7 +233,12 @@ export const _updateRevisionVersionLabel = StateEffect.define<{
     versionId: string;
     label: string | undefined;
 }>();
-export function setActiveRevisionVersion(state: EditorState, annotationId: number, toId: string) {
+export function setActiveRevisionVersion(
+    state: EditorState,
+    annotationId: number,
+    toId: string,
+    options: { moveCursor?: boolean } = {},
+) {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
@@ -236,21 +247,79 @@ export function setActiveRevisionVersion(state: EditorState, annotationId: numbe
     if (!target) {
         return state.update({});
     }
-    const insert = versionText(target);
-    return state.update({
-        effects: [
-            _updateActiveRevisionVersion.of({
-                annotationId,
-                to: toId,
-            }),
-        ],
+
+    // Collect the primary switch plus any linked partners (version groups, #268).
+    // Each switch is one _updateActiveRevisionVersion effect + one doc replacement
+    // at that revision's range; bundling them into ONE transaction makes the whole
+    // group move atomic and revert in a single undo.
+    const switches: Array<{ annotationId: number; toId: string }> = [
+        { annotationId, toId },
+    ];
+    for (const partner of groupSwitchTargets(state, annotationId, toId)) {
+        switches.push(partner);
+    }
+
+    const effects: StateEffect<unknown>[] = [];
+    const changeSpecs: { from: number; to: number; insert: string }[] = [];
+    for (const sw of switches) {
+        const rev = state.field(annotationField)[sw.annotationId];
+        if (!isAnnotationOfType(rev, "revision")) continue;
+        const v = versionById(rev, sw.toId);
+        if (!v) continue;
+        effects.push(_updateActiveRevisionVersion.of({ annotationId: sw.annotationId, to: sw.toId }));
+        changeSpecs.push({
+            from: rev.selection.main.from,
+            to: rev.selection.main.to,
+            insert: versionText(v),
+        });
+    }
+
+    const changes = state.changes(changeSpecs);
+    // Move the EDITOR cursor into the primary switched revision so it becomes the
+    // active annotation — collapses the "double selection" where the card you
+    // click isn't the one the panel anchors to. Off by default so programmatic
+    // switches (AI, the group cascade's partners) don't yank the cursor around.
+    const spec: TransactionSpec = {
+        effects,
         annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
-        changes: state.changes({
-            from: original.selection.main.from,
-            to: original.selection.main.to,
-            insert,
-        }),
-    });
+        changes,
+    };
+    if (options.moveCursor) {
+        const caret = changes.mapPos(original.selection.main.from, 1);
+        spec.selection = EditorSelection.cursor(caret);
+    }
+    return state.update(spec);
+}
+
+/**
+ * Resolve the linked partner switches for activating (annotationId → toId).
+ *
+ * Looks up the target member's version group and, for every OTHER revision in
+ * that group, returns the switch to its grouped version — but only when that
+ * revision isn't already on its target (no redundant doc churn) and the target
+ * version still exists. Empty when the version is ungrouped. Exclusive membership
+ * means each partner revision has exactly one target, so there is no oscillation.
+ *
+ * Imports the group field lazily (function-body access) so the
+ * annotationField ↔ versionGroupField module pair stays a safe ESM cycle.
+ */
+function groupSwitchTargets(
+    state: EditorState,
+    annotationId: number,
+    toId: string,
+): Array<{ annotationId: number; toId: string }> {
+    const groups = state.field(versionGroupField, false);
+    if (!groups) return [];
+    const partners = groupPartnersOf(groups, { revisionId: annotationId, versionId: toId });
+    const result: Array<{ annotationId: number; toId: string }> = [];
+    for (const p of partners) {
+        const rev = state.field(annotationField)[p.revisionId];
+        if (!isAnnotationOfType(rev, "revision")) continue;
+        if (rev.activeVersionId === p.versionId) continue; // already there
+        if (!versionById(rev, p.versionId)) continue; // stale member
+        result.push({ annotationId: p.revisionId, toId: p.versionId });
+    }
+    return result;
 }
 export function createNewRevision(state: EditorState, annotationId: number) {
     const original = state.field(annotationField)[annotationId];

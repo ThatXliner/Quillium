@@ -98,6 +98,7 @@ import {
     suggestionPreviewField,
 } from "./annotationField";
 import { nestedEditorEdit } from "./annotationField";
+import { invertedVersionGroupEffects, versionGroupField } from "./versionGroupField";
 import {
     type Annotation,
     type AnnotationType,
@@ -1020,6 +1021,7 @@ const revisionClickHandler = EditorView.domEventHandlers({
 export const annotations = () => [
     Prec.high(keymap.of(annotationKeymap)),
     annotationField,
+    versionGroupField,
     suggestionPreviewField,
     annotationDecorations,
     revisionAtomicRanges,
@@ -1028,5 +1030,7 @@ export const annotations = () => [
     collapsedRevisionResolver,
     boundaryInsertNudge,
     invertedAnnotationFieldEffects,
+    invertedVersionGroupEffects,
 ];
 export * from "./models";
+export * from "./versionGroupField";

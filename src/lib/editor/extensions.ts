@@ -54,11 +54,12 @@ import { type ListenerOptions, listeners } from "./listeners";
 import { markdownFormattingKeymap } from "./markdownFormatting";
 import { annotationField } from "./plugins/annotations";
 import { annotations } from "./plugins/annotations";
+import { versionGroupField } from "./plugins/annotations";
 import { richMarkdownExtension } from "./richMarkdown";
 
 // Fields that are serialised to JSON on save and restored on load.
 // Adding a field here means it survives across application restarts.
-export const savedFields = { historyField, annotationField };
+export const savedFields = { historyField, annotationField, versionGroupField };
 // Nested editors delegate undo/redo to the parent, so they don't own
 // a history stack. Only annotationField is persisted in version blobs
 // (for nested annotations created inside a modal).

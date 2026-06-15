@@ -315,3 +315,41 @@ In `Revision.svelte` (and mirrored in `RevisionModal.svelte`):
   IDs are per-editor-level; a qualified ref would be needed. Deferred.
 - Dedicated groups management panel.
 - Sharing groups in the public readonly view (stretch).
+
+---
+
+## What shipped (PR 2)
+
+Built as planned, with these concretizations:
+
+- **Storage:** a dedicated `versionGroupField: StateField<VersionGroups>` (the
+  separate-field realization), registered in the `annotations()` bundle and
+  `savedFields` (persisted). Effects + public transaction builders
+  (`createVersionGroup` / `addVersionToGroup` / `removeVersionFromGroup` /
+  `deleteVersionGroup` / `renameVersionGroup`).
+- **Invariants in the reducer:** exclusive membership (add detaches from prior
+  group), one version per revision per group (`canAddMemberToGroup`), and
+  referential integrity (revision/version delete prunes members; a group below
+  two members dissolves). Undo uses a **snapshot-restore** inversion
+  (`_restoreVersionGroups`) — one effect restores the pre-transaction map,
+  uniformly correct for structural ops AND integrity prunes triggered by
+  annotation effects.
+- **Cascade:** folded directly into `setActiveRevisionVersion` via
+  `groupSwitchTargets` — a switch on a grouped version expands to all partners'
+  switches + doc changes in one transaction, so every switch path (pill,
+  `Ctrl-[/]`, modal) cascades for free and reverts in one undo. The
+  annotationField ↔ versionGroupField import pair is a safe ESM cycle
+  (function-body-only cross-refs).
+- **UI:** inline version-pill link button + dropdown ("Link to another
+  revision…", "Join \<group\>", "Unlink") and a per-group colored badge dot on
+  linked pills. Because a group spans revisions, linking is a **two-pick flow**
+  via a shared `linkAnchor` store (anchor on one revision's pill, complete on
+  another's). Modal pill mirror deferred.
+- **Collab deferred** to #273 (group *switches* already sync atomically via the
+  existing annotation sync; only the group *structure* map is unsynced). Pairs
+  with #269.
+
+Tests: `tests/annotations/versionGroups.test.ts` — cascade (both directions),
+one-undo-reverts-all + redo, ungrouped independence, exclusive membership,
+one-version-per-revision, integrity prune/dissolve, undo-restore of a dissolved
+group.
