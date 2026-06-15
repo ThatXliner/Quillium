@@ -118,6 +118,45 @@ It's idempotent, so already-migrated data passes through untouched. The collab
 Yjs wire schema is still index-based (read-tolerant) pending an id-native rewrite;
 see issue #269.
 
+### Version groups (linking versions across revisions)
+
+A **version group** links one version from each of several *different* revisions
+into a matched set, so activating any member switches every member to its partner
+(e.g. flip the intro to "Casual" and the conclusion follows). Lives in a sibling
+`versionGroupField: StateField<VersionGroups>`, kept separate from
+`annotationField` so the annotation reducer stays untouched.
+
+```typescript
+type VersionGroupMember = { revisionId: number; versionId: string };
+type VersionGroup       = { id: string; label: string; members: VersionGroupMember[] };
+type VersionGroups      = { [groupId: string]: VersionGroup };
+```
+
+Reducer invariants:
+- **Exclusive membership** — adding a member detaches it from any prior group.
+- **One version per revision per group** (`canAddMemberToGroup`) — a second
+  version of the same revision is rejected (the cascade target would be
+  ambiguous).
+- **Referential integrity** — when a revision is removed or a version deleted
+  (observed via `removeAnnotation` / `_deleteVersionFromRevision` effects in the
+  same transaction), matching members are pruned; a group that drops below two
+  members dissolves. Undo restores the dissolved group (snapshot-restore
+  inversion via `_restoreVersionGroups`).
+
+**Cascade.** `setActiveRevisionVersion` resolves the target version's group
+partners (`groupSwitchTargets` → `groupPartnersOf`) and bundles every partner's
+`_updateActiveRevisionVersion` effect + doc replacement into the *same*
+transaction. So a group switch is atomic and reverts in one undo, and every
+switch entry point (pill, `Ctrl-[` / `Ctrl-]`, modal) cascades for free. The
+`annotationField ↔ versionGroupField` import pair is a safe ESM cycle (all
+cross-references are inside function bodies).
+
+Public builders: `createVersionGroup(label, members)` → `{ spec, groupId }`,
+`addVersionToGroup`, `removeVersionFromGroup`, `deleteVersionGroup`,
+`renameVersionGroup`. Group switches sync over collab today (they ride the normal
+annotation sync as one transaction); syncing the group *structure* map is tracked
+in #273.
+
 ## The annotationField StateField
 
 `annotationField` is the single source of truth for all annotation data. Its `update()` function runs on **every** CodeMirror transaction in three phases:
