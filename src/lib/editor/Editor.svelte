@@ -41,6 +41,7 @@ import {
     lastSavedAt,
     selectedText,
     selectedTextRange,
+    versionGroups,
     writingStats,
 } from "$lib/stores";
 /**
@@ -95,7 +96,7 @@ import DraftTreePanel from "./DraftTreePanel.svelte";
 import StatusBar from "./StatusBar.svelte";
 import type { ListenerOptions } from "./listeners";
 import { flushMetaDebounces, flushPersistQueue } from "./listeners";
-import { annotationField } from "./plugins/annotations";
+import { annotationField, versionGroupField } from "./plugins/annotations";
 import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { replayEvents } from "./replay";
@@ -221,6 +222,7 @@ function syncStoresToEditorState(state: EditorState) {
     const selText = extractSelectedText(state);
     writingStats.set(computeWritingStats(doc, selText));
     $annotations = state.field(annotationField);
+    $versionGroups = state.field(versionGroupField);
     $activeAnnotation = getActiveAnnotation(state);
     $documentContent = doc;
     $selectedText = selText;

@@ -340,6 +340,18 @@ export function groupPartnersOf(
     return group.members.filter((m) => m.revisionId !== member.revisionId);
 }
 
+/**
+ * Whether a group may accept `member`. A group links at most ONE version per
+ * revision — two versions of the same revision can't both be members, since
+ * activating one would give an ambiguous target for that revision. Returns false
+ * if the group already holds a (different) version of the member's revision.
+ */
+export function canAddMemberToGroup(group: VersionGroup, member: VersionGroupMember): boolean {
+    return !group.members.some(
+        (m) => m.revisionId === member.revisionId && m.versionId !== member.versionId,
+    );
+}
+
 export const VersionGroupMemberSchema = z.object({
     revisionId: z.number(),
     versionId: z.string(),

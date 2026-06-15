@@ -38,6 +38,7 @@ import {
     type VersionGroupMember,
     type VersionGroups,
     VersionGroupsSchema,
+    canAddMemberToGroup,
     groupOfMember,
     membersEqual,
     newGroupId,
@@ -153,6 +154,11 @@ export const versionGroupField = StateField.define<VersionGroups>({
                     groups = rest;
                 }
             } else if (e.is(_addMemberToGroup)) {
+                const g0 = groups[e.value.groupId];
+                // A group holds at most one version per revision; reject a second.
+                if (g0 && !canAddMemberToGroup(g0, e.value.member)) {
+                    continue;
+                }
                 // Exclusive membership: detach from any prior group first.
                 groups = detachMember(groups, e.value.member);
                 const g = groups[e.value.groupId];

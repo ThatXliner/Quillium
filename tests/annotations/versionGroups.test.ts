@@ -25,6 +25,7 @@ import {
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    addVersionToGroup,
     createVersionGroup,
     versionGroupField,
 } from "$lib/editor/plugins/annotations/versionGroupField";
@@ -189,6 +190,28 @@ describe("exclusive membership", () => {
                 (m) => m.revisionId === a.id && m.versionId === a.versionIds[0],
             ),
         ).toBe(true);
+    });
+});
+
+describe("one version per revision per group", () => {
+    it("rejects adding a second version of the same revision to a group", () => {
+        const { v, a, b, formalId } = setupLinkedDoc();
+        view = v;
+        // Formal currently holds a.formal (index 0). Try to also add a.casual.
+        v.dispatch(
+            addVersionToGroup(v.state, formalId, {
+                revisionId: a.id,
+                versionId: a.versionIds[1],
+            }),
+        );
+        const formal = groups(v)[formalId];
+        // Still only the original two members; the second a-version was rejected.
+        expect(formal.members.length).toBe(2);
+        expect(
+            formal.members.some(
+                (m) => m.revisionId === a.id && m.versionId === a.versionIds[1],
+            ),
+        ).toBe(false);
     });
 });
 

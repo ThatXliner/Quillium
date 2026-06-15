@@ -21,7 +21,7 @@
  * updates/deltas to the existing nested editor instance.
  */
 import { EditorView } from "@codemirror/view";
-import { ChevronDown, ChevronUp, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
+import { ChevronDown, ChevronUp, Link2, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
 import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
@@ -38,6 +38,9 @@ import {
     type Thread as ThreadType,
 } from ".";
 import { activeVersionIndex, versionById, versionText, type VersionState } from "./models";
+import { addVersionToGroup, createVersionGroup, removeVersionFromGroup } from "./versionGroupField";
+import { canAddMemberToGroup, groupOfMember, type VersionGroupMember } from "./models";
+import { linkAnchor, versionGroups } from "$lib/stores";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { modalStack } from "$lib/stores";
@@ -160,6 +163,88 @@ function commitLabelEdit() {
 function cancelLabelEdit() {
     editingLabelIndex = null;
 }
+
+// ── Version groups (linking versions across revisions, #268) ────────────────
+// A stable per-group color so a linked pill's badge matches its partners
+// elsewhere. Keyed by group id hashed into the palette.
+const GROUP_COLORS = [
+    "#a855f7", // purple
+    "#0ea5e9", // sky
+    "#f97316", // orange
+    "#22c55e", // green
+    "#ec4899", // pink
+    "#eab308", // amber
+];
+function groupColor(groupId: string): string {
+    let h = 0;
+    for (let i = 0; i < groupId.length; i++) h = (h * 31 + groupId.charCodeAt(i)) >>> 0;
+    return GROUP_COLORS[h % GROUP_COLORS.length];
+}
+
+const allGroups = $derived($versionGroups ?? {});
+function memberOf(versionId: string): VersionGroupMember {
+    return { revisionId: revision.id, versionId };
+}
+// The group a given version belongs to, if any.
+function groupForVersion(versionId: string) {
+    return groupOfMember(allGroups, memberOf(versionId));
+}
+
+// Which version's link dropdown is open (-1 = none).
+let openLinkMenu = $state<number | null>(null);
+
+// Groups this version is allowed to JOIN: existing groups that don't already
+// hold a different version of this same revision, and aren't the version's
+// current group.
+function joinableGroups(versionId: string) {
+    const current = groupForVersion(versionId);
+    return Object.values(allGroups).filter(
+        (g) => g.id !== current?.id && canAddMemberToGroup(g, memberOf(versionId)),
+    );
+}
+
+function linkToExistingGroup(versionId: string, groupId: string) {
+    view.dispatch(addVersionToGroup(view.state, groupId, memberOf(versionId)));
+    openLinkMenu = null;
+}
+function unlinkVersion(versionId: string) {
+    view.dispatch(removeVersionFromGroup(view.state, memberOf(versionId)));
+    openLinkMenu = null;
+}
+
+// "Link mode": a group needs ≥2 members from DIFFERENT revisions, which the
+// inline card can't form alone. So linking is a two-pick flow via a shared
+// store: pick an anchor version on one revision, then pick a partner version on
+// ANOTHER revision to complete the link. The anchor persists across cards.
+function startLink(versionId: string) {
+    const existing = groupForVersion(versionId);
+    // Picking an already-grouped version anchors on its group (so the next pick
+    // joins that group); otherwise anchor on the bare member.
+    $linkAnchor = { member: memberOf(versionId), groupId: existing?.id };
+    openLinkMenu = null;
+}
+function completeLink(versionId: string) {
+    const anchor = $linkAnchor;
+    if (!anchor || anchor.member.revisionId === revision.id) return;
+    const partner = memberOf(versionId);
+    if (anchor.groupId && allGroups[anchor.groupId]) {
+        // Anchor is in a group → just add the partner to it.
+        view.dispatch(addVersionToGroup(view.state, anchor.groupId, partner));
+    } else {
+        // Neither grouped → create a fresh 2-member group.
+        const { spec } = createVersionGroup("Linked", [anchor.member, partner]);
+        view.dispatch(spec);
+    }
+    $linkAnchor = null;
+    openLinkMenu = null;
+}
+function cancelLink() {
+    $linkAnchor = null;
+}
+// True for this card's versions while an anchor on ANOTHER revision is waiting.
+const linkTargetable = $derived(
+    $linkAnchor !== null && $linkAnchor.member.revisionId !== revision.id,
+);
 
 $effect(() => {
     return annotationEventBus.on("revision-boundary-nudge", (event) => {
@@ -537,10 +622,20 @@ onDestroy(() => {
         {#each revision.versions as version, i}
             {@const versionActive = version.id === revision.activeVersionId}
             {@const isEditingThis = editingLabelIndex === i}
-            <div class="inline-flex items-center rounded-md overflow-hidden
+            {@const versionGroup = groupForVersion(version.id)}
+            <div class="relative inline-flex items-center rounded-md overflow-hidden
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
-                    : 'bg-white/60 ring-1 ring-purple-200/40'}">
+                    : 'bg-white/60 ring-1 ring-purple-200/40'}
+                {linkTargetable ? 'ring-2 ring-dashed ring-sky-400/70' : ''}">
+                {#if versionGroup}
+                    <!-- Group badge: a colored dot matching this version's group -->
+                    <span
+                        class="ml-1.5 w-1.5 h-1.5 rounded-full shrink-0"
+                        style="background-color: {groupColor(versionGroup.id)}"
+                        title={`Linked — group "${versionGroup.label}" (${versionGroup.members.length} versions)`}
+                    ></span>
+                {/if}
                 {#if isEditingThis}
                     <input
                         bind:this={labelInputEl}
@@ -555,11 +650,19 @@ onDestroy(() => {
                     />
                 {:else}
                     <button
-                        class="max-w-[120px] px-2 py-1 text-[11px] font-medium truncate transition-colors
+                        class="max-w-[120px] {versionGroup ? 'pl-1' : 'pl-2'} pr-2 py-1 text-[11px] font-medium truncate transition-colors
                             {versionActive ? 'text-white' : 'text-black/65 hover:text-black/85'}"
-                        disabled={versionActive}
-                        title={versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
+                        disabled={versionActive && !linkTargetable}
+                        title={linkTargetable
+                            ? "Link this version to the anchored one"
+                            : versionActive ? "Double-click to rename" : (versionText(version) || "(empty)")}
                         onclick={() => {
+                            // In link mode, clicking any pill on this (different)
+                            // revision completes the link instead of switching.
+                            if (linkTargetable) {
+                                completeLink(version.id);
+                                return;
+                            }
                             if (!versionActive) {
                                 posthog.capture("revision_version_switched", {
                                     version_index: i,
@@ -576,12 +679,22 @@ onDestroy(() => {
                             }
                         }}
                         ondblclick={() => {
-                            if (versionActive) startLabelEdit(i);
+                            if (versionActive && !linkTargetable) startLabelEdit(i);
                         }}
                     >
                         {version.label ?? previewVersionText(version)}
                     </button>
                 {/if}
+                <!-- Link affordance -->
+                <button
+                    class="px-1 py-1 transition-colors text-black/30 hover:text-sky-600/80
+                        {versionGroup ? 'text-sky-600/70' : ''}"
+                    onclick={() => (openLinkMenu = openLinkMenu === i ? null : i)}
+                    title="Link to a version of another revision"
+                    aria-label="Link version"
+                >
+                    <Link2 size={10} />
+                </button>
                 <button
                     class="pr-1.5 pl-0.5 py-1 transition-colors
                         {versionActive ? 'text-white/60 hover:text-white' : 'text-black/30 hover:text-red-500/70'}"
@@ -596,9 +709,52 @@ onDestroy(() => {
                 >
                     <X size={9} />
                 </button>
+
+                {#if openLinkMenu === i}
+                    <!-- Link dropdown -->
+                    <div
+                        class="absolute z-20 top-full mt-1 left-0 min-w-[150px] rounded-lg bg-white shadow-lg ring-1 ring-black/10 py-1 text-[11px]"
+                        transition:slide={{ duration: 120, easing: cubicOut }}
+                    >
+                        {#if versionGroup}
+                            <button
+                                class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
+                                onclick={() => unlinkVersion(version.id)}
+                            >
+                                Unlink from "{versionGroup.label}"
+                            </button>
+                            <div class="my-1 border-t border-black/5"></div>
+                        {/if}
+                        <button
+                            class="w-full text-left px-3 py-1.5 hover:bg-sky-50 text-sky-700 font-medium"
+                            onclick={() => startLink(version.id)}
+                        >
+                            Link to another revision…
+                        </button>
+                        {#each joinableGroups(version.id) as g}
+                            <button
+                                class="w-full flex items-center gap-2 text-left px-3 py-1.5 hover:bg-black/5"
+                                onclick={() => linkToExistingGroup(version.id, g.id)}
+                            >
+                                <span
+                                    class="w-1.5 h-1.5 rounded-full shrink-0"
+                                    style="background-color: {groupColor(g.id)}"
+                                ></span>
+                                <span class="truncate">Join "{g.label}"</span>
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         {/each}
     </div>
+    {#if $linkAnchor && $linkAnchor.member.revisionId === revision.id}
+        <!-- This card holds the anchor; prompt to pick a partner elsewhere -->
+        <div class="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-sky-700">
+            <span>Pick a version on another revision to link…</span>
+            <button class="underline hover:text-sky-900" onclick={cancelLink}>cancel</button>
+        </div>
+    {/if}
 
     <!-- Actions row -->
     <div class="px-3 pb-3 flex gap-1.5">
