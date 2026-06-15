@@ -203,6 +203,11 @@ export const _addVersionToRevision = StateEffect.define<{
     annotationId: number;
     newVersion: VersionState;
     at?: number;
+    // Whether the newly-added version should become active. Defaults to true:
+    // the normal "user adds a new version" flow wants focus to move to it. Set
+    // false when re-inserting on undo of a NON-active delete, so the restored
+    // version reappears without stealing the active pointer (issue #270).
+    makeActive?: boolean;
 }>();
 export const _deleteVersionFromRevision = StateEffect.define<{
     annotationId: number;
@@ -629,12 +634,15 @@ function applyRevisionVersionEffect(
         );
         const newVersions = annotation.versions.slice();
         newVersions.splice(insertionIndex, 0, e.value.newVersion);
-        // Adding a version makes it active (matches prior behavior, where the new
-        // slot's index became active).
+        // Adding a version makes it active by default (matches the user-add flow,
+        // where the new slot's index became active). Undo of a non-active delete
+        // re-inserts with makeActive: false so the restored version doesn't steal
+        // the active pointer (issue #270).
+        const makeActive = e.value.makeActive ?? true;
         return {
             ...annotation,
             versions: newVersions,
-            activeVersionId: e.value.newVersion.id,
+            activeVersionId: makeActive ? e.value.newVersion.id : annotation.activeVersionId,
         };
     }
     if (e.is(_deleteVersionFromRevision)) {
@@ -1033,11 +1041,19 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 const oldIndex = versionIndexById(oldAnnotation, effect.value.versionId);
                 const oldVersion = versionById(oldAnnotation, effect.value.versionId);
                 if (oldVersion) {
+                    // Only re-activate the restored version if it WAS active when
+                    // deleted. Re-inserting a non-active version must not steal the
+                    // active pointer — undo restores prior state, it doesn't move
+                    // focus (issue #270). The active-delete case is already covered
+                    // by the paired _updateActiveRevisionVersion inverse below, but
+                    // setting the flag here keeps the add-inverse self-consistent.
+                    const wasActive = effect.value.versionId === oldAnnotation.activeVersionId;
                     effects.push(
                         _addVersionToRevision.of({
                             annotationId: oldAnnotation.id,
                             newVersion: oldVersion,
                             at: oldIndex < 0 ? undefined : oldIndex,
+                            makeActive: wasActive,
                         }),
                     );
                 }

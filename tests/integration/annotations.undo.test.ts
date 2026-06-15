@@ -7,17 +7,21 @@
  * the annotation in the correct position.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo } from "@codemirror/commands";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    addAnnotation,
+    annotationField,
+    deleteRevisionVersion,
+} from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
+import { history, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -477,5 +481,90 @@ describe("deleting multiple revisions in one selection", () => {
         // All restored annotations must have non-empty selections
         expect(anns.every((a) => !a.selection.main.empty)).toBe(true);
         expect(anns).toHaveLength(2);
+    });
+});
+
+// ── Revision version delete/undo active-pointer tests (issue #270) ────────────
+
+describe("undo of a revision version delete preserves the active pointer", () => {
+    // Resolve a positional version index to its stable id off the live state.
+    function versionIdAt(v: EditorView, revId: number, index: number): string {
+        const ann = v.state.field(annotationField)[revId];
+        if (!isAnnotationOfType(ann, "revision")) {
+            throw new Error(`Annotation ${revId} is not a revision`);
+        }
+        return ann.versions[index].id;
+    }
+
+    function revision(v: EditorView, revId: number) {
+        const ann = v.state.field(annotationField)[revId];
+        if (!isAnnotationOfType(ann, "revision")) {
+            throw new Error(`Annotation ${revId} is not a revision`);
+        }
+        return ann;
+    }
+
+    it("deleting a NON-active version then undoing keeps the original active version", () => {
+        // Three versions; make version 0 active, then delete version 2 (non-active).
+        view = createView("Hello, world!");
+        const revId = addRevision(view, 0, 5, [{ doc: "A" }, { doc: "B" }, { doc: "C" }], 0);
+        const v0 = versionIdAt(view, revId, 0);
+        const v2 = versionIdAt(view, revId, 2);
+        expect(revision(view, revId).activeVersionId).toBe(v0);
+
+        // Delete the non-active version 2.
+        view.dispatch(deleteRevisionVersion(view.state, revId, v2));
+        expect(revision(view, revId).versions).toHaveLength(2);
+        // Active is unchanged by deleting a non-active version.
+        expect(revision(view, revId).activeVersionId).toBe(v0);
+
+        // Undo — version 2 should be restored AND version 0 must remain active.
+        undo(view);
+        const restored = revision(view, revId);
+        expect(restored.versions).toHaveLength(3);
+        // The restored version must NOT have stolen the active pointer.
+        expect(restored.activeVersionId).toBe(v0);
+        // And it really is back in its old slot (index 2).
+        expect(restored.versions[2].id).toBe(v2);
+    });
+
+    it("deleting the ACTIVE version then undoing restores it as active", () => {
+        // Regression guard for the case that already worked: the active-delete
+        // inverse re-activates the restored version via the paired
+        // _updateActiveRevisionVersion inverse.
+        view = createView("Hello, world!");
+        const revId = addRevision(view, 0, 5, [{ doc: "A" }, { doc: "B" }, { doc: "C" }], 1);
+        const v1 = versionIdAt(view, revId, 1);
+        expect(revision(view, revId).activeVersionId).toBe(v1);
+
+        // Delete the active version 1 — active falls to a neighbour.
+        view.dispatch(deleteRevisionVersion(view.state, revId, v1));
+        expect(revision(view, revId).versions).toHaveLength(2);
+        expect(revision(view, revId).activeVersionId).not.toBe(v1);
+
+        // Undo — version 1 is restored and becomes active again.
+        undo(view);
+        const restored = revision(view, revId);
+        expect(restored.versions).toHaveLength(3);
+        expect(restored.activeVersionId).toBe(v1);
+    });
+
+    it("deleting a non-active version with a non-default active still undoes cleanly", () => {
+        // Active = version 1; delete version 0 (before the active one). The
+        // active pointer must survive the index shift on both delete and undo.
+        view = createView("Hello, world!");
+        const revId = addRevision(view, 0, 5, [{ doc: "A" }, { doc: "B" }, { doc: "C" }], 1);
+        const v0 = versionIdAt(view, revId, 0);
+        const v1 = versionIdAt(view, revId, 1);
+        expect(revision(view, revId).activeVersionId).toBe(v1);
+
+        view.dispatch(deleteRevisionVersion(view.state, revId, v0));
+        expect(revision(view, revId).activeVersionId).toBe(v1);
+
+        undo(view);
+        const restored = revision(view, revId);
+        expect(restored.versions).toHaveLength(3);
+        expect(restored.activeVersionId).toBe(v1);
+        expect(restored.versions[0].id).toBe(v0);
     });
 });
