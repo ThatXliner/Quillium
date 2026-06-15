@@ -98,7 +98,13 @@ type SuggestionAnnotation = BaseAnnotation & {
 // Stored as an opaque object — use versionText() to extract the doc string.
 // In collab mode, the subtree Y.Text is the source of truth for doc content;
 // in local mode, this blob is the authoritative state.
+//
+// `id` is a STABLE identity for the version, unique within its revision's
+// versions[]. Links and the active-version pointer reference this id, never the
+// array index (which shifts on add/delete/reorder). The array stays ordered for
+// pill display and Ctrl-[ / Ctrl-] navigation; only identity moved to `id`.
 export type VersionState = object & {
+    id: string;
     doc: string;
     label?: string;
 };
@@ -107,12 +113,117 @@ export function versionText(version: VersionState): string {
     return version.doc;
 }
 
+// Monotonic counter for version ids within this session. The id only needs to be
+// unique within a single revision's versions[], so a session-scoped counter plus
+// a short random suffix (to avoid collisions when two collab clients add a
+// version concurrently) is sufficient and cheap. Not persisted — ids are.
+let _versionIdCounter = 0;
+export function newVersionId(): string {
+    _versionIdCounter += 1;
+    return `v${_versionIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 type RevisionAnnotation = BaseAnnotation & {
     _type: "revision";
-    // this will now refer to an ID
-    activeVersionIndex: number;
+    // Stable id of the active version (key into versions[].id), NOT an array
+    // index. Use activeVersionIndex(rev) to get the positional index.
+    activeVersionId: string;
     versions: VersionState[];
 };
+
+// ── Version lookup helpers ──────────────────────────────────────
+// Positional callers (pill rendering, next/prev navigation) keep using indices
+// via activeVersionIndex(); identity callers (effects, deletes, switch target)
+// use ids via versionById() / versionIndexById().
+export function versionIndexById(rev: RevisionAnnotation, id: string): number {
+    return rev.versions.findIndex((v) => v.id === id);
+}
+export function versionById(rev: RevisionAnnotation, id: string): VersionState | undefined {
+    return rev.versions.find((v) => v.id === id);
+}
+/** Positional index of the active version, clamped to a valid slot (0 if not found). */
+export function activeVersionIndex(rev: RevisionAnnotation): number {
+    const i = versionIndexById(rev, rev.activeVersionId);
+    return i < 0 ? 0 : i;
+}
+/** The active version object, falling back to the first version if the id is stale. */
+export function activeVersion(rev: RevisionAnnotation): VersionState {
+    return versionById(rev, rev.activeVersionId) ?? rev.versions[0];
+}
+
+/**
+ * Build a VersionState, minting a stable id when one isn't supplied. Use this at
+ * every revision-construction site so versions are never created without an id.
+ */
+export function makeVersion(partial: Omit<VersionState, "id"> & { id?: string }): VersionState {
+    const { id, ...rest } = partial;
+    return { id: id ?? newVersionId(), ...rest };
+}
+
+/**
+ * Heal a revision that may be in the legacy index-based shape:
+ *   - versions without `id` get a freshly minted, position-stable id;
+ *   - a revision with `activeVersionIndex` (number) but no valid `activeVersionId`
+ *     gets `activeVersionId` derived from the clamped index.
+ *
+ * Idempotent: a revision already in the new shape passes through unchanged
+ * (same object identity when nothing needed healing, so reactivity isn't churned).
+ * Runs at the load/deserialize boundary (annotationField.fromJSON) and on any
+ * externally-sourced revision (collab read path), so the rest of the system can
+ * assume every version has an id and every revision a valid activeVersionId.
+ */
+export function normalizeRevision(rev: RawRevisionLike): RevisionAnnotation {
+    const legacyIndex =
+        typeof (rev as { activeVersionIndex?: unknown }).activeVersionIndex === "number"
+            ? (rev as { activeVersionIndex: number }).activeVersionIndex
+            : undefined;
+
+    let mutated = false;
+    const versions: VersionState[] = (rev.versions ?? []).map((v) => {
+        if (typeof (v as VersionState).id === "string" && (v as VersionState).id) {
+            return v as VersionState;
+        }
+        mutated = true;
+        return { ...(v as object), id: newVersionId() } as VersionState;
+    });
+
+    const hasValidActiveId =
+        typeof (rev as { activeVersionId?: unknown }).activeVersionId === "string" &&
+        versions.some((v) => v.id === (rev as { activeVersionId: string }).activeVersionId);
+
+    let activeVersionId: string;
+    if (hasValidActiveId) {
+        activeVersionId = (rev as { activeVersionId: string }).activeVersionId;
+    } else {
+        const clamped = Math.max(0, Math.min(legacyIndex ?? 0, versions.length - 1));
+        activeVersionId = versions[clamped]?.id ?? versions[0]?.id ?? newVersionId();
+        mutated = true;
+    }
+
+    // Fast path: already fully migrated (ids present, active id valid, and no
+    // stale legacy index to strip). Preserve object identity to avoid reactivity
+    // churn on load.
+    if (
+        !mutated &&
+        legacyIndex === undefined &&
+        (rev as RevisionAnnotation).activeVersionId === activeVersionId
+    ) {
+        return rev as unknown as RevisionAnnotation;
+    }
+    // Drop the legacy activeVersionIndex; everything downstream reads activeVersionId.
+    const { activeVersionIndex: _drop, ...base } = rev as Record<string, unknown>;
+    void _drop;
+    return { ...base, versions, activeVersionId } as unknown as RevisionAnnotation;
+}
+
+// The loose input shape normalizeRevision accepts: a revision-ish object from
+// either the new or the legacy on-disk shape.
+type RawRevisionLike = {
+    _type: "revision";
+    versions?: Array<Record<string, unknown>>;
+    activeVersionId?: string;
+    activeVersionIndex?: number;
+} & Record<string, unknown>;
 export type GenericAnnotation = CommentAnnotation | SuggestionAnnotation | RevisionAnnotation;
 
 export type Annotation<T extends GenericAnnotation["_type"]> = Extract<
@@ -143,6 +254,10 @@ export const SuggestionReplacementSchema = z.object({
 });
 export const VersionStateSchema = z
     .object({
+        // Optional on disk for back-compat: legacy snapshots predate version ids.
+        // normalizeRevision() mints one at load, so the runtime invariant (every
+        // version has an id) still holds.
+        id: z.string().optional(),
         doc: z.string(),
         label: z.string().optional(),
     })
@@ -161,7 +276,11 @@ export const RawAnnotationSchema = z.discriminatedUnion("_type", [
     }),
     RawBaseSchema.extend({
         _type: z.literal("revision"),
-        activeVersionIndex: z.number(),
+        // Both are optional/tolerated on disk for back-compat: legacy snapshots
+        // carry activeVersionIndex (number); new ones carry activeVersionId
+        // (string). normalizeRevision() reconciles to activeVersionId at load.
+        activeVersionId: z.string().optional(),
+        activeVersionIndex: z.number().optional(),
         versions: z.array(VersionStateSchema).min(1),
     }),
 ]);
@@ -210,7 +329,12 @@ export const SerializedAnnotationSchema = z.discriminatedUnion("_type", [
     }),
     SerializedBase.extend({
         _type: RawRevision.shape._type,
-        activeVersionIndex: z.number().int(),
+        // Clipboard carries the stable active id and full versions[] (each with
+        // its id). On paste, clipboardAnnotations regenerates fresh version ids
+        // (to avoid collisions with the destination) and remaps activeVersionId.
+        // activeVersionIndex stays tolerated for foreign/legacy clipboards.
+        activeVersionId: z.string().optional(),
+        activeVersionIndex: z.number().int().optional(),
         versions: RawRevision.shape.versions,
     }),
 ]);

@@ -11,7 +11,7 @@ import * as Y from "yjs";
 import { createYjsBinding, yjsAnnotation } from "$lib/collab/yjsBinding";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import { isAnnotationOfType, makeVersion } from "$lib/editor/plugins/annotations/models";
 
 describe("yjsBinding", () => {
     let ydoc: Y.Doc;
@@ -178,14 +178,15 @@ describe("yjsBinding", () => {
                 parent: document.body,
             });
 
+            const revVersions = [makeVersion({ doc: "world" }), makeVersion({ doc: "" })];
             view.dispatch({
                 effects: addAnnotation.of({
                     id: 0,
                     _type: "revision",
                     selection: EditorSelection.single(6, 11),
                     thread: [],
-                    versions: [{ doc: "world" }, { doc: "" }],
-                    activeVersionIndex: 0,
+                    versions: revVersions,
+                    activeVersionId: revVersions[0].id,
                 }),
             });
 

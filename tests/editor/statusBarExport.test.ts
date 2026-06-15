@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, render, within } from "@testing-library/svelte";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createRawSnippet } from "svelte";
 import "@testing-library/jest-dom/vitest";
+
+// StatusBar requires a `children` snippet; an empty one suffices for these tests.
+const emptyChildren = createRawSnippet(() => ({ render: () => "<span></span>" }));
 
 // jsdom lacks ResizeObserver, which StatusBar uses to track strip overflow.
 beforeAll(() => {
@@ -21,14 +25,17 @@ import StatusBar from "$lib/editor/StatusBar.svelte";
 afterEach(() => {
     cleanup();
     exportDocument.mockClear();
-    editorView.set(null);
+    // The store is typed non-nullable; reset to a cleared value for test isolation.
+    editorView.set(null as unknown as Parameters<typeof editorView.set>[0]);
 });
 
 // A minimal stand-in for an EditorView — StatusBar only needs it to be truthy.
 const FAKE_VIEW = { state: {}, focus() {} } as unknown as Parameters<typeof editorView.set>[0];
 
 function openModal() {
-    const { getByLabelText } = render(StatusBar, { props: { titleVisibility: "never" } });
+    const { getByLabelText } = render(StatusBar, {
+        props: { titleVisibility: "never", children: emptyChildren },
+    });
     editorView.set(FAKE_VIEW);
     return getByLabelText("Export document");
 }

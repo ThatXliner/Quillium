@@ -23,8 +23,10 @@ import {
     _nestedEditRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersion,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
@@ -56,16 +58,17 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    activeVersionIndex = 0,
+    activeIndex = 0,
 ): number {
+    const builtVersions = versions.map((v) => makeVersion(v));
     const annotation = {
         ...createNewAnnotation(
             parentView.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex,
-        versions,
+        activeVersionId: builtVersions[activeIndex].id,
+        versions: builtVersions,
     };
     parentView.dispatch(parentView.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
@@ -77,7 +80,7 @@ function getRevisionVersionText(parentView: EditorView, revisionId: number): str
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision annotation with id ${revisionId}`);
     }
-    return versionText(rev.versions[rev.activeVersionIndex]);
+    return versionText(activeVersion(rev));
 }
 
 /**

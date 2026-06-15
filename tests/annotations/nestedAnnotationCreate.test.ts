@@ -7,7 +7,11 @@ import { history } from "@codemirror/commands";
 
 import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import {
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
 import Revision from "$lib/editor/plugins/annotations/Revision.svelte";
 import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
 import { modalStack, type NestedEditorCommand } from "$lib/stores";
@@ -25,14 +29,15 @@ function createView(doc: string) {
 }
 
 function addRevision(view: EditorView, from: number, to: number, doc: string) {
+    const v0 = makeVersion({ doc });
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex: 0,
-        versions: [{ doc }],
+        activeVersionId: v0.id,
+        versions: [v0],
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;

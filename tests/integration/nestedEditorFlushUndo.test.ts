@@ -19,10 +19,11 @@ import {
     updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersion,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
     versionText,
-    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 
@@ -39,14 +40,15 @@ function createParentView(doc: string) {
 }
 
 function addRevision(view: EditorView, from: number, to: number, doc: string): number {
+    const versions = [makeVersion({ doc })];
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex: 0,
-        versions: [{ doc }],
+        activeVersionId: versions[0].id,
+        versions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
@@ -55,7 +57,7 @@ function addRevision(view: EditorView, from: number, to: number, doc: string): n
 function getVersionDoc(view: EditorView, revId: number): string {
     const rev = view.state.field(annotationField)[revId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
-    return versionText(rev.versions[rev.activeVersionIndex]);
+    return versionText(activeVersion(rev));
 }
 
 function getRevisionSlice(view: EditorView, revId: number): string {
@@ -91,13 +93,15 @@ function simulateNestedEdit(
 function simulateFlush(view: EditorView, revId: number, nestedDocText: string) {
     const rev = view.state.field(annotationField)[revId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+    const targetVersionId = rev.versions[0].id;
     const existingLabel = rev.versions[0]?.label;
-    const newVersionState: VersionState = {
+    const newVersionState = makeVersion({
+        id: targetVersionId,
         doc: nestedDocText,
         ...(existingLabel !== undefined ? { label: existingLabel } : {}),
-    };
+    });
     view.dispatch(
-        updateRevisionVersionState(view.state, revId, 0, newVersionState, {
+        updateRevisionVersionState(view.state, revId, targetVersionId, newVersionState, {
             addToHistory: false,
         }),
     );

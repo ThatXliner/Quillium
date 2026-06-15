@@ -1,7 +1,11 @@
 import { EditorSelection } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
-import type { Annotations, GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    makeVersion,
+    type Annotations,
+    type GenericAnnotation,
+} from "$lib/editor/plugins/annotations/models";
 
 function commentAnnotation({
     id,
@@ -60,13 +64,14 @@ describe("buildAnnotationContextInputs", () => {
             thread: [],
             replacements: [{ text: "case", rationale: "Less combative" }],
         };
+        const v0 = makeVersion({ label: "Expanded", doc: "thin because it lacks evidence" });
         const revision: GenericAnnotation = {
             id: 2,
             _type: "revision",
             selection: EditorSelection.single(16, 20),
             thread: [{ author: "AI", message: "Try a fuller version.", time: 2 }],
-            activeVersionIndex: 0,
-            versions: [{ label: "Expanded", doc: "thin because it lacks evidence" }],
+            activeVersionId: v0.id,
+            versions: [v0],
         };
         const annotations: Annotations = { 1: suggestion, 2: revision };
 

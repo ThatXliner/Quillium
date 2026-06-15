@@ -120,19 +120,26 @@ function makeComment(id: number): GenericAnnotation {
 }
 
 type TestVersionState = {
+    id?: string;
     doc: string;
     label?: string;
     annotationField?: unknown;
 };
 
+let _testVersionIdCounter = 0;
+
 function makeRevision(id: number, versions: TestVersionState[]): GenericAnnotation {
+    const builtVersions = versions.map((v) => ({
+        ...v,
+        id: v.id ?? `tv${_testVersionIdCounter++}`,
+    }));
     return {
         _type: "revision",
         id,
         thread: [],
         selection: makeSelection(0, 10),
-        activeVersionIndex: 0,
-        versions,
+        activeVersionId: builtVersions[0].id,
+        versions: builtVersions,
     };
 }
 

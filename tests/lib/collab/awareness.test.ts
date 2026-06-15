@@ -25,7 +25,7 @@ import { get } from "svelte/store";
 import { activeAnnotation, modalStack } from "$lib/stores";
 import { followedClientId } from "$lib/collab/store";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
+import { createNewAnnotation, makeVersion } from "$lib/editor/plugins/annotations/models";
 import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
 
 /**
@@ -132,6 +132,7 @@ describe("awareness", () => {
             });
             view = new EditorView({ state: parentState, parent: document.body });
 
+            const revVersion = makeVersion({ doc: "world" });
             view.dispatch({
                 effects: [
                     addAnnotation.of({
@@ -139,8 +140,8 @@ describe("awareness", () => {
                         _type: "revision",
                         thread: [],
                         selection: EditorSelection.single(6, 11),
-                        activeVersionIndex: 0,
-                        versions: [{ doc: "world" }],
+                        activeVersionId: revVersion.id,
+                        versions: [revVersion],
                     }),
                 ],
             });

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { EditorState, EditorSelection } from "@codemirror/state";
 import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import { makeVersion, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,13 +43,14 @@ function makeComment(id: number, from: number, to: number, threadLength = 1): Ge
 }
 
 function makeRevision(id: number, from: number, to: number): GenericAnnotation {
+    const v0 = makeVersion({ doc: "v1" });
     return {
         id,
         _type: "revision",
         selection: EditorSelection.single(from, to),
         thread: [],
-        activeVersionIndex: 0,
-        versions: [{ doc: "v1" }],
+        activeVersionId: v0.id,
+        versions: [v0],
     } as GenericAnnotation;
 }
 

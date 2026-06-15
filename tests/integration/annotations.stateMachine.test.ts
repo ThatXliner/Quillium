@@ -22,7 +22,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import { activeVersionIndex, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
 import { EditorHarness } from "../helpers/EditorHarness";
 
 // ── Command types ───────────────────────────────────────────────────────────
@@ -122,11 +122,11 @@ function assertInvariants(h: EditorHarness, label: string, versionMgmtOccurred =
         if (isAnnotationOfType(ann, "revision")) {
             // activeVersionIndex in bounds
             expect(
-                ann.activeVersionIndex,
+                activeVersionIndex(ann),
                 `${label}: rev ${ann.id} activeVersionIndex`,
             ).toBeGreaterThanOrEqual(0);
             expect(
-                ann.activeVersionIndex,
+                activeVersionIndex(ann),
                 `${label}: rev ${ann.id} activeVersionIndex < versions.length`,
             ).toBeLessThan(ann.versions.length);
 
@@ -290,7 +290,7 @@ function executeCommand(h: EditorHarness, cmd: Command): boolean {
                 if (!isAnnotationOfType(rev, "revision")) return false;
                 if (rev.versions.length < 2) return false;
                 const target = Math.abs(cmd.versionIdx) % rev.versions.length;
-                if (target === rev.activeVersionIndex) return false;
+                if (target === activeVersionIndex(rev)) return false;
                 h.switchVersion(revId, target);
                 return true;
             }

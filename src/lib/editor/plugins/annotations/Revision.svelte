@@ -37,7 +37,7 @@ import {
     type GenericAnnotation,
     type Thread as ThreadType,
 } from ".";
-import { versionText, type VersionState } from "./models";
+import { activeVersionIndex, versionById, versionText, type VersionState } from "./models";
 import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
 import { modalStack } from "$lib/stores";
@@ -65,7 +65,7 @@ const {
 } = $props();
 
 const thread = $derived(revision.thread);
-const activeVersion = $derived(revision.versions[revision.activeVersionIndex]);
+const activeVersion = $derived(versionById(revision, revision.activeVersionId));
 const activeText = $derived(activeVersion ? versionText(activeVersion) : "");
 
 let isEditorOpen = $state(false);
@@ -108,7 +108,7 @@ function readCurrentRevision(): Annotation<"revision"> | undefined {
 function readCurrentActiveVersion(): { version: VersionState; versionIndex: number } | undefined {
     const current = readCurrentRevision();
     if (!current) return undefined;
-    const versionIndex = current.activeVersionIndex;
+    const versionIndex = activeVersionIndex(current);
     const version = current.versions[versionIndex];
     return version ? { version, versionIndex } : undefined;
 }
@@ -145,14 +145,14 @@ function startLabelEdit(i: number) {
 
 function commitLabelEdit() {
     if (editingLabelIndex === null) return;
+    const versionId = revision.versions[editingLabelIndex]?.id;
+    if (versionId === undefined) {
+        editingLabelIndex = null;
+        return;
+    }
     const trimmed = labelInputValue.trim();
     view.dispatch(
-        updateRevisionVersionLabel(
-            view.state,
-            revision.id,
-            editingLabelIndex,
-            trimmed || undefined,
-        ),
+        updateRevisionVersionLabel(view.state, revision.id, versionId, trimmed || undefined),
     );
     editingLabelIndex = null;
 }
@@ -283,7 +283,7 @@ function createNestedEditor(versionOverride?: VersionState, versionIndexOverride
     const current = readCurrentActiveVersion();
     const version = versionOverride ?? current?.version;
     const versionIndex =
-        versionIndexOverride ?? current?.versionIndex ?? revision.activeVersionIndex;
+        versionIndexOverride ?? current?.versionIndex ?? activeVersionIndex(revision);
     if (!version) return;
     controller.create(nestedEditorHost, version, versionIndex);
     controller.applyPendingSelection();
@@ -338,7 +338,7 @@ $effect(() => {
 // When the selected version changes, destroy and recreate.
 $effect(() => {
     if (!controller.editor || !isEditorOpen) return;
-    if (!controller.needsVersionSwitch(revision.activeVersionIndex)) return;
+    if (!controller.needsVersionSwitch(revision.activeVersionId)) return;
 
     destroyNestedEditor();
 
@@ -362,9 +362,9 @@ $effect(() => {
 // Plan 8.5c-01: In collab mode this is a no-op (observeDeep reconciles live).
 $effect(() => {
     const trackedVersion = activeVersion;
-    const trackedVersionIndex = revision.activeVersionIndex;
+    const trackedVersionIndex = activeVersionIndex(revision);
     if (!controller.editor || !isEditorOpen || !trackedVersion) return;
-    if (controller.needsVersionSwitch(revision.activeVersionIndex)) return;
+    if (controller.needsVersionSwitch(revision.activeVersionId)) return;
     const current = readCurrentActiveVersion();
     const version = current?.version ?? trackedVersion;
     if (!controller.needsAnnotationRebuild(version)) return;
@@ -392,14 +392,14 @@ $effect(() => {
             | import("./models").Annotation<"revision">
             | undefined;
         if (!rev) return;
-        const latestVersion = rev.versions[rev.activeVersionIndex];
+        const latestVersion = versionById(rev, rev.activeVersionId);
         if (!latestVersion) return;
         // Plan 8.5c-01: In collab mode this is a no-op (observeDeep reconciles live).
         if (!controller.needsAnnotationRebuild(latestVersion)) return;
         // Destroy WITHOUT flushing — the modal already wrote the correct state.
         controller.destroy({ skipFlush: true });
         activeAnnotation = undefined;
-        createNestedEditor(latestVersion, rev.activeVersionIndex);
+        createNestedEditor(latestVersion, activeVersionIndex(rev));
     });
 });
 
@@ -409,7 +409,7 @@ $effect(() => {
     const trackedVersion = activeVersion;
     if (!controller.editor) return;
     const current = readCurrentActiveVersion();
-    if (current && controller.needsVersionSwitch(current.versionIndex)) {
+    if (current && controller.needsVersionSwitch(current.version.id)) {
         controller.destroy({ skipFlush: true });
         activeAnnotation = undefined;
         createNestedEditor(current.version, current.versionIndex);
@@ -535,7 +535,7 @@ onDestroy(() => {
     <!-- Version pills -->
     <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
         {#each revision.versions as version, i}
-            {@const versionActive = i === revision.activeVersionIndex}
+            {@const versionActive = version.id === revision.activeVersionId}
             {@const isEditingThis = editingLabelIndex === i}
             <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
@@ -567,7 +567,7 @@ onDestroy(() => {
                                 });
                                 controller.flushCurrentStateToParent(false);
                                 view.dispatch(
-                                    setActiveRevisionVersion(view.state, revision.id, i),
+                                    setActiveRevisionVersion(view.state, revision.id, version.id),
                                 );
                             }
                             if (appSettings.showNestedEditor) {
@@ -589,7 +589,7 @@ onDestroy(() => {
                         if (editingLabelIndex === i) cancelLabelEdit();
                         controller.flushCurrentStateToParent(false);
                         view.dispatch(
-                            deleteRevisionVersion(view.state, revision.id, i),
+                            deleteRevisionVersion(view.state, revision.id, version.id),
                         );
                     }}
                     title={`Delete version ${i + 1}`}

@@ -1,6 +1,7 @@
 import { EditorSelection } from "@codemirror/state";
 import { buildReadonlyShareUrl, buildSharePreviewText } from "$lib/collab/share";
 import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
+import { makeVersion } from "$lib/editor/plugins/annotations/models";
 import { describe, expect, it } from "vitest";
 
 describe("buildReadonlyShareUrl", () => {
@@ -118,16 +119,17 @@ describe("serializeAnnotations", () => {
     });
 
     it("includes nested revision annotations from revision version state", () => {
+        const outerVersion = makeVersion({ doc: "hello" });
         const serialized = serializeAnnotations("hello", {
             0: {
                 id: 0,
                 _type: "revision",
                 selection: EditorSelection.single(0, 5),
                 thread: [],
-                activeVersionIndex: 0,
+                activeVersionId: outerVersion.id,
                 versions: [
                     {
-                        doc: "hello",
+                        ...outerVersion,
                         annotationField: {
                             0: {
                                 id: 0,

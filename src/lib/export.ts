@@ -23,6 +23,7 @@ import {
     type GenericAnnotation,
     RawAnnotationsSchema,
     type VersionState,
+    activeVersionIndex,
     isAnnotationOfType,
     versionText,
 } from "./editor/plugins/annotations/models";
@@ -129,7 +130,7 @@ function buildAnnotationsJSON(state: EditorState): object[] {
         if (isAnnotationOfType(a, "revision")) {
             return {
                 ...base,
-                activeVersionIndex: a.activeVersionIndex,
+                activeVersionIndex: activeVersionIndex(a),
                 versions: a.versions.map((v, i) => ({
                     index: i,
                     text: versionText(v),
@@ -177,7 +178,7 @@ function buildMarkdown(state: EditorState): string {
         } else if (isAnnotationOfType(a, "revision")) {
             const versions = a.versions.map((v, i) => {
                 const label = v.label ? ` (${v.label})` : "";
-                const active = i === a.activeVersionIndex ? " [active]" : "";
+                const active = v.id === a.activeVersionId ? " [active]" : "";
                 return `v${i + 1}${label}${active}: "${versionText(v)}"`;
             });
             footnoteContent = `**Revision** — ${versions.join("; ")}`;
@@ -202,9 +203,27 @@ type PdfAnnotationLike = {
     selection: { ranges: ReadonlyArray<{ anchor: number; head: number }> };
     thread: Array<{ author: string; message: string }>;
     replacements?: Array<{ text: string; rationale?: string }>;
+    // PdfAnnotationLike is a loose shape sourced from a raw-parsed annotation map
+    // (which may be legacy index-based or new id-based), so it tolerates both the
+    // stable `activeVersionId` and the legacy `activeVersionIndex` pointer.
+    activeVersionId?: string;
     activeVersionIndex?: number;
     versions?: VersionState[];
 };
+
+/**
+ * Positional index of the active version for a loose PDF annotation. Prefers the
+ * stable `activeVersionId` (matched against versions[].id); falls back to the
+ * legacy `activeVersionIndex` number for back-compat with older raw payloads.
+ */
+function pdfActiveVersionIndex(annotation: PdfAnnotationLike): number {
+    const versions = annotation.versions ?? [];
+    if (annotation.activeVersionId !== undefined) {
+        const byId = versions.findIndex((v) => v.id === annotation.activeVersionId);
+        if (byId >= 0) return byId;
+    }
+    return annotation.activeVersionIndex ?? 0;
+}
 
 function annotationRangeLike(annotation: PdfAnnotationLike): { from: number; to: number } {
     const range = annotation.selection.ranges[0];
@@ -284,11 +303,7 @@ function buildPdfAnnotationCard(
         children:
             annotation._type === "revision"
                 ? (annotation.versions ?? []).map((version, versionIndex) =>
-                      buildPdfVersionCard(
-                          version,
-                          versionIndex,
-                          annotation.activeVersionIndex ?? 0,
-                      ),
+                      buildPdfVersionCard(version, versionIndex, pdfActiveVersionIndex(annotation)),
                   )
                 : [],
     };

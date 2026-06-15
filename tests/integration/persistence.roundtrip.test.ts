@@ -4,7 +4,12 @@ import { EditorView } from "@codemirror/view";
 import { history, historyField, redo, undo } from "@codemirror/commands";
 import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
 
 const roundtripFields = { historyField, annotationField };
 
@@ -32,14 +37,15 @@ describe("persistence round-trip integration", () => {
     it("restores document text, annotations, and undo/redo history", () => {
         view = createView("Hello world");
 
+        const builtVersions = [makeVersion({ doc: "world", label: "Original" })];
         const revision = {
             ...createNewAnnotation(
                 view.state.field(annotationField),
                 EditorSelection.single(6, 11),
                 "revision",
             ),
-            activeVersionIndex: 0,
-            versions: [{ doc: "world", label: "Original" }],
+            activeVersionId: builtVersions[0].id,
+            versions: builtVersions,
         };
 
         view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
@@ -64,6 +70,8 @@ describe("persistence round-trip integration", () => {
         expect(isAnnotationOfType(annotations[0], "revision")).toBe(true);
         if (!isAnnotationOfType(annotations[0], "revision")) return;
         expect(annotations[0].versions[0]?.doc).toBe("world");
+        // The active-version pointer survives the round-trip (still version 0).
+        expect(activeVersionIndex(annotations[0])).toBe(0);
 
         expect(undo(restoredView)).toBe(true);
         expect(restoredView.state.doc.toString()).toBe("Hello world");

@@ -24,6 +24,8 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
     versionText,
+    makeVersion,
+    activeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 
@@ -45,16 +47,17 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    activeVersionIndex = 0,
+    activeIndex = 0,
 ): number {
+    const builtVersions = versions.map((v) => makeVersion(v));
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex,
-        versions,
+        activeVersionId: builtVersions[activeIndex].id,
+        versions: builtVersions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
@@ -90,7 +93,16 @@ function getVersionDoc(view: EditorView, revisionId: number): string {
     if (!rev || !isAnnotationOfType(rev, "revision")) {
         throw new Error(`No revision ${revisionId}`);
     }
-    return versionText(rev.versions[rev.activeVersionIndex]);
+    return versionText(activeVersion(rev));
+}
+
+/** Resolve a positional version index to its stable version id for a revision. */
+function versionIdAt(view: EditorView, revisionId: number, index: number): string {
+    const rev = view.state.field(annotationField)[revisionId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) {
+        throw new Error(`No revision ${revisionId}`);
+    }
+    return rev.versions[index].id;
 }
 
 /** Get the text under the revision range in the parent doc. */
@@ -296,7 +308,7 @@ describe("version switch after nested edit — undo restores correctly", () => {
         expect(getVersionDoc(view, revId)).toBe("hello!");
 
         // Switch to version 1 ("hi")
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("hi");
         expect(getVersionDoc(view, revId)).toBe("hi");
 
@@ -316,7 +328,7 @@ describe("version switch after nested edit — undo restores correctly", () => {
 
         // Edit version 0, then switch to version 1
         simulateNestedEdit(view, revId, 5, 5, "!");
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
 
         // Undo both
         undo(view); // undo version switch

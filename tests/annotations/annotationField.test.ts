@@ -14,9 +14,21 @@ import {
     deleteRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersionIndex,
     createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
     type GenericAnnotation,
 } from "$lib/editor/plugins/annotations/models";
+
+// Resolve a positional version index to its stable id off the live state.
+function versionIdAt(state: EditorState, annotationId: number, index: number): string {
+    const ann = state.field(annotationField)[annotationId];
+    if (!ann || !isAnnotationOfType(ann, "revision")) {
+        throw new Error(`Annotation ${annotationId} is not a revision`);
+    }
+    return ann.versions[index].id;
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -45,15 +57,16 @@ function makeRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    activeVersionIndex = 0,
+    activeIndex = 0,
 ): GenericAnnotation {
+    const builtVersions = versions.map((v) => makeVersion(v));
     return {
         id,
         _type: "revision",
         selection: sel(from, to),
         thread: [],
-        activeVersionIndex,
-        versions,
+        activeVersionId: builtVersions[activeIndex].id,
+        versions: builtVersions,
     };
 }
 
@@ -283,7 +296,7 @@ describe("setActiveRevisionVersion", () => {
         const withComment = state.update({
             effects: [addAnnotation.of(comment)],
         }).state;
-        expect(() => setActiveRevisionVersion(withComment, 0, 0)).toThrow(
+        expect(() => setActiveRevisionVersion(withComment, 0, "v0")).toThrow(
             "Annotation is not a revision",
         );
     });
@@ -295,13 +308,13 @@ describe("setActiveRevisionVersion", () => {
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;
-        const tr = setActiveRevisionVersion(withRevision, 0, 1);
+        const tr = setActiveRevisionVersion(withRevision, 0, versionIdAt(withRevision, 0, 1));
         const newState = withRevision.update(tr).state;
         expect(newState.doc.toString()).toBe("Howdy, world!");
         const ann = newState.field(annotationField)[0];
         expect(ann._type).toBe("revision");
         if (ann._type === "revision") {
-            expect(ann.activeVersionIndex).toBe(1);
+            expect(activeVersionIndex(ann)).toBe(1);
         }
     });
 });
@@ -330,7 +343,7 @@ describe("createNewRevision", () => {
         const ann = newState.field(annotationField)[0];
         if (ann._type === "revision") {
             expect(ann.versions).toHaveLength(2);
-            expect(ann.activeVersionIndex).toBe(1);
+            expect(activeVersionIndex(ann)).toBe(1);
         }
     });
 });
@@ -344,7 +357,7 @@ describe("deleteRevisionVersion", () => {
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;
-        const tr = deleteRevisionVersion(withRevision, 0, 0);
+        const tr = deleteRevisionVersion(withRevision, 0, versionIdAt(withRevision, 0, 0));
         const newState = withRevision.update(tr).state;
         expect(Object.keys(newState.field(annotationField))).toHaveLength(0);
         // The text covered by the revision is removed
@@ -363,14 +376,14 @@ describe("deleteRevisionVersion", () => {
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;
-        const tr = deleteRevisionVersion(withRevision, 0, 1);
+        const tr = deleteRevisionVersion(withRevision, 0, versionIdAt(withRevision, 0, 1));
         const newState = withRevision.update(tr).state;
         const ann = newState.field(annotationField)[0];
         expect(ann).toBeDefined();
         if (ann._type === "revision") {
             expect(ann.versions).toHaveLength(2);
             // Should switch to the next available version
-            expect(ann.activeVersionIndex).toBeLessThan(2);
+            expect(activeVersionIndex(ann)).toBeLessThan(2);
         }
     });
 
@@ -386,13 +399,13 @@ describe("deleteRevisionVersion", () => {
         const withRevision = state.update({
             effects: [addAnnotation.of(revision)],
         }).state;
-        const tr = deleteRevisionVersion(withRevision, 0, 0);
+        const tr = deleteRevisionVersion(withRevision, 0, versionIdAt(withRevision, 0, 0));
         const newState = withRevision.update(tr).state;
         const ann = newState.field(annotationField)[0];
         if (ann._type === "revision") {
             expect(ann.versions).toHaveLength(2);
             // Was 2, deleted index 0, so should shift down to 1
-            expect(ann.activeVersionIndex).toBe(1);
+            expect(activeVersionIndex(ann)).toBe(1);
         }
     });
 });

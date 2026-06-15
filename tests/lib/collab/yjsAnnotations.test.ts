@@ -23,7 +23,12 @@ import {
 } from "$lib/editor/plugins/annotations/annotationField";
 import type { YjsAnnotationNode } from "$lib/collab/types";
 import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
-import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    isAnnotationOfType,
+    makeVersion,
+    type GenericAnnotation,
+} from "$lib/editor/plugins/annotations/models";
 
 function requireYNode<T>(map: Y.Map<T>, key: string): T {
     const node = map.get(key);
@@ -276,13 +281,14 @@ describe("yjsAnnotations", () => {
         });
 
         it("syncs revision annotations", () => {
+            const revVersions = [makeVersion({ doc: "hello" }), makeVersion({ doc: "world" })];
             const annotation: GenericAnnotation = {
                 id: 0,
                 _type: "revision",
                 selection: EditorSelection.single(0, 5),
                 thread: [],
-                versions: [{ doc: "hello" }, { doc: "world" }],
-                activeVersionIndex: 0,
+                versions: revVersions,
+                activeVersionId: revVersions[0].id,
             };
 
             view.dispatch({
@@ -311,15 +317,16 @@ describe("revision sync", () => {
         from: number,
         to: number,
         versions: { doc: string }[],
-        activeVersionIndex = 0,
+        activeIndex = 0,
     ): GenericAnnotation {
+        const builtVersions = versions.map((v) => makeVersion(v));
         return {
             id,
             _type: "revision",
             selection: EditorSelection.single(from, to),
             thread: [],
-            versions,
-            activeVersionIndex,
+            versions: builtVersions,
+            activeVersionId: (builtVersions[activeIndex] ?? builtVersions[0]).id,
         };
     }
 
@@ -362,7 +369,11 @@ describe("revision sync", () => {
         // Simulate what setActiveRevisionVersion does: it emits a doc change
         // plus internal effects. In tests we approximate via remove+add with
         // updated data (the same path that the CM->Yjs sync uses).
-        const updatedAnnotation = { ...annotation, activeVersionIndex: 1 };
+        if (!isAnnotationOfType(annotation, "revision")) throw new Error("Expected revision");
+        const updatedAnnotation = {
+            ...annotation,
+            activeVersionId: annotation.versions[1].id,
+        };
         view.dispatch({
             effects: [removeAnnotation.of(annotation), addAnnotation.of(updatedAnnotation)],
         });
@@ -383,10 +394,11 @@ describe("revision sync", () => {
         const initialVersions = requireYNode(ymap, yjsId).get("versions") as Y.Map<Y.Map<unknown>>;
         expect(initialVersions.size).toBe(1);
 
+        const newVersions = [makeVersion({ doc: "hello" }), makeVersion({ doc: "new version" })];
         const updatedAnnotation = {
             ...annotation,
-            versions: [{ doc: "hello" }, { doc: "new version" }],
-            activeVersionIndex: 1,
+            versions: newVersions,
+            activeVersionId: newVersions[1].id,
         };
         view.dispatch({
             effects: [removeAnnotation.of(annotation), addAnnotation.of(updatedAnnotation)],
@@ -427,7 +439,7 @@ describe("revision sync", () => {
         const annotations = view.state.field(annotationField);
         const updated = annotations[0];
         if (isAnnotationOfType(updated, "revision")) {
-            expect(updated.activeVersionIndex).toBe(1);
+            expect(activeVersionIndex(updated)).toBe(1);
         } else {
             throw new Error("Expected revision annotation");
         }

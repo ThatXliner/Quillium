@@ -94,6 +94,7 @@ import {
     _updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersionIndex,
     isAnnotationOfType,
     type GenericAnnotation,
     type Annotation as AnnotationType,
@@ -470,8 +471,9 @@ export function createAnnotationSyncPlugin(
 
                 // Revision-specific fields
                 if (isAnnotationOfType(ann, "revision")) {
-                    // activeVersionIndex
-                    const cmIndex = ann.activeVersionIndex;
+                    // activeVersionIndex — relay schema stays index-based (issue
+                    // #269); derive the positional index from activeVersionId.
+                    const cmIndex = activeVersionIndex(ann);
                     const yjsIndex = node.get("activeVersionIndex") as number | undefined;
                     if (cmIndex !== yjsIndex) {
                         node.set("activeVersionIndex", cmIndex);

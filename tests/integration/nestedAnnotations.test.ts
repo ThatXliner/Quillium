@@ -27,6 +27,9 @@ import {
     createNewAnnotation,
     isAnnotationOfType,
     versionText,
+    makeVersion,
+    activeVersion,
+    activeVersionIndex,
     type Annotation as AnnotationType,
 } from "$lib/editor/plugins/annotations/models";
 
@@ -60,16 +63,17 @@ function addRevision(
     from: number,
     to: number,
     versions: { doc: string }[],
-    activeVersionIndex = 0,
+    activeIndex = 0,
 ) {
+    const builtVersions = versions.map((v) => makeVersion(v));
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex,
-        versions,
+        activeVersionId: builtVersions[activeIndex].id,
+        versions: builtVersions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
@@ -85,10 +89,17 @@ function getRevision(view: EditorView, id: number) {
     return ann;
 }
 
+/** Resolve a positional version index to its stable version id for a revision. */
+function versionIdAt(view: EditorView, revisionId: number, index: number): string {
+    const rev = getRevision(view, revisionId);
+    if (!rev) throw new Error(`No revision ${revisionId}`);
+    return rev.versions[index].id;
+}
+
 function getVersionDoc(view: EditorView, revisionId: number): string {
     const rev = getRevision(view, revisionId);
     if (!rev) throw new Error(`No revision ${revisionId}`);
-    return versionText(rev.versions[rev.activeVersionIndex]);
+    return versionText(activeVersion(rev));
 }
 
 function getRevisionSlice(view: EditorView, revisionId: number): string {
@@ -244,7 +255,7 @@ describe("version switching combined with nested edits", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("hi world");
         expect(getVersionDoc(view, revId)).toBe("hi");
     });
@@ -253,10 +264,10 @@ describe("version switching combined with nested edits", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("hi world");
 
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 0));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 0)));
         expect(view.state.doc.toString()).toBe("hello world");
     });
 
@@ -264,7 +275,7 @@ describe("version switching combined with nested edits", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("hi world");
 
         undo(view);
@@ -281,7 +292,7 @@ describe("version switching combined with nested edits", () => {
         expect(view.state.doc.toString()).toBe("hello! world");
 
         // Switch to version 1
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("hi world");
 
         // Undo version switch → back to version 0 with the edit
@@ -300,7 +311,7 @@ describe("version switching combined with nested edits", () => {
         const rev1 = addRevision(view, 0, 3, [{ doc: "aaa" }, { doc: "AAA" }], 0);
         const rev2 = addRevision(view, 4, 7, [{ doc: "bbb" }]);
 
-        view.dispatch(setActiveRevisionVersion(view.state, rev1, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, rev1, versionIdAt(view, rev1, 1)));
         expect(view.state.doc.toString()).toBe("AAA bbb ccc");
         expect(getVersionDoc(view, rev2)).toBe("bbb");
         expect(getRevisionSlice(view, rev2)).toBe("bbb");
@@ -314,10 +325,10 @@ describe("deleting versions from a revision", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }, { doc: "hey" }], 0);
 
-        view.dispatch(deleteRevisionVersion(view.state, revId, 2));
+        view.dispatch(deleteRevisionVersion(view.state, revId, versionIdAt(view, revId, 2)));
         const rev = getRevision(view, revId);
         expect(rev?.versions).toHaveLength(2);
-        expect(rev?.activeVersionIndex).toBe(0);
+        expect(rev && activeVersionIndex(rev)).toBe(0);
         expect(getVersionDoc(view, revId)).toBe("hello");
     });
 
@@ -326,10 +337,10 @@ describe("deleting versions from a revision", () => {
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 1);
 
         // Currently on version 1 ("hi"), delete version 1
-        view.dispatch(deleteRevisionVersion(view.state, revId, 1));
+        view.dispatch(deleteRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         const rev = getRevision(view, revId);
         expect(rev?.versions).toHaveLength(1);
-        expect(rev?.activeVersionIndex).toBe(0);
+        expect(rev && activeVersionIndex(rev)).toBe(0);
         // Document should now show version 0's text
         expect(getVersionDoc(view, revId)).toBe("hello");
     });
@@ -338,7 +349,7 @@ describe("deleting versions from a revision", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 0);
 
-        view.dispatch(deleteRevisionVersion(view.state, revId, 1));
+        view.dispatch(deleteRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(getRevision(view, revId)?.versions).toHaveLength(1);
 
         undo(view);
@@ -358,7 +369,7 @@ describe("creating new versions on a revision", () => {
         view.dispatch(createNewRevision(view.state, revId));
         const rev = getRevision(view, revId);
         expect(rev?.versions).toHaveLength(2);
-        expect(rev?.activeVersionIndex).toBe(1);
+        expect(rev && activeVersionIndex(rev)).toBe(1);
         // New version starts empty — the document text under the revision is replaced
         expect(view.state.doc.toString()).toBe(" world");
         expect(getVersionDoc(view, revId)).toBe("");
@@ -374,7 +385,7 @@ describe("creating new versions on a revision", () => {
         undo(view);
         const rev = getRevision(view, revId);
         expect(rev?.versions).toHaveLength(1);
-        expect(rev?.activeVersionIndex).toBe(0);
+        expect(rev && activeVersionIndex(rev)).toBe(0);
     });
 
     it("create version, edit it, undo edit, undo creation restores original", () => {
@@ -383,7 +394,8 @@ describe("creating new versions on a revision", () => {
 
         // Create new version (starts empty, replaces "hello" with "")
         view.dispatch(createNewRevision(view.state, revId));
-        expect(getRevision(view, revId)?.activeVersionIndex).toBe(1);
+        const created = getRevision(view, revId);
+        expect(created && activeVersionIndex(created)).toBe(1);
         expect(view.state.doc.toString()).toBe(" world");
 
         // Edit the new (empty) version via nested editor — type "hi"
@@ -401,7 +413,8 @@ describe("creating new versions on a revision", () => {
         undo(view);
         expect(view.state.doc.toString()).toBe("hello world");
         expect(getRevision(view, revId)?.versions).toHaveLength(1);
-        expect(getRevision(view, revId)?.activeVersionIndex).toBe(0);
+        const restored = getRevision(view, revId);
+        expect(restored && activeVersionIndex(restored)).toBe(0);
     });
 });
 
@@ -534,7 +547,7 @@ describe("revision with empty version content", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe(" world");
         const rev = getRevision(view, revId);
         expect(rev?.selection.main.from).toBe(0);
@@ -545,7 +558,7 @@ describe("revision with empty version content", () => {
         view = createView(" world");
         const revId = addRevision(view, 0, 0, [{ doc: "" }, { doc: "hello" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("hello world");
         const rev = getRevision(view, revId);
         expect(rev?.selection.main.from).toBe(0);
@@ -556,7 +569,7 @@ describe("revision with empty version content", () => {
         view = createView("hello world");
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe(" world");
 
         undo(view);
@@ -655,7 +668,7 @@ describe("undo depth remains consistent with nested operations", () => {
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 0);
 
         const depthBefore = undoDepth(view.state);
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(undoDepth(view.state)).toBe(depthBefore + 1);
     });
 
@@ -673,7 +686,7 @@ describe("undo depth remains consistent with nested operations", () => {
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 0);
 
         const depthBefore = undoDepth(view.state);
-        view.dispatch(deleteRevisionVersion(view.state, revId, 1));
+        view.dispatch(deleteRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(undoDepth(view.state)).toBe(depthBefore + 1);
     });
 
@@ -746,7 +759,7 @@ describe("rapid successive operations", () => {
         const revId = addRevision(view, 0, 5, [{ doc: "hello" }, { doc: "hi" }], 0);
 
         // Switch to v1
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("hi world");
 
         // Edit v1
@@ -754,7 +767,7 @@ describe("rapid successive operations", () => {
         expect(view.state.doc.toString()).toBe("hi! world");
 
         // Switch back to v0
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 0));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 0)));
         expect(view.state.doc.toString()).toBe("hello world");
 
         // Undo switch back → v1 with edit
@@ -782,7 +795,7 @@ describe("rapid successive operations", () => {
         expect(view.state.doc.toString()).toBe("abc123 world");
 
         // Switch to v1
-        view.dispatch(setActiveRevisionVersion(view.state, revId, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revId, versionIdAt(view, revId, 1)));
         expect(view.state.doc.toString()).toBe("xyz world");
 
         // Undo: switch → edit3 → edit2 → edit1 → original
