@@ -14,7 +14,12 @@
 
 import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    type VersionGroupMember,
+    createNewAnnotation,
+    isAnnotationOfType,
+} from "$lib/editor/plugins/annotations/models";
+import { createVersionGroup } from "$lib/editor/plugins/annotations/versionGroupField";
 import { EditorSelection } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
@@ -122,6 +127,37 @@ const DICKENS_DOC = `It was the best of times, it was the worst of times, it was
 We had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way. There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France.
 
 It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this. Mrs. Southcott had recently attained her five-and-twentieth blessed birthday, of whom a prophetic private in the Life Guards had heralded the sublime appearance by announcing that arrangements were made for the swallowing up of London and Westminster.`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a group member `(revisionId, versionId)` for a specific revision's
+ * version, picked by label. Used by the linked-versions scenario to resolve the
+ * ids createRevision assigned internally so they can be grouped. Returns
+ * undefined if the revision or the labelled version isn't found.
+ */
+function memberByVersionLabel(
+    view: EditorView,
+    revisionId: number,
+    label: string,
+): VersionGroupMember | undefined {
+    const ann = view.state.field(annotationField)[revisionId];
+    if (!ann || !isAnnotationOfType(ann, "revision")) return undefined;
+    const v = ann.versions.find((ver) => ver.label === label);
+    return v ? { revisionId, versionId: v.id } : undefined;
+}
+
+/** The id of the most recently added revision annotation, or undefined. */
+function latestRevisionId(view: EditorView): number | undefined {
+    const anns = view.state.field(annotationField);
+    let best: number | undefined;
+    for (const [idStr, ann] of Object.entries(anns)) {
+        if (!isAnnotationOfType(ann, "revision")) continue;
+        const id = Number(idStr);
+        if (best === undefined || id > best) best = id;
+    }
+    return best;
+}
 
 // ── Scenarios ─────────────────────────────────────────────────────────────────
 
@@ -262,6 +298,76 @@ export const scenarios: Scenario[] = [
                 author: "Editor",
                 view,
             });
+        },
+    },
+    {
+        id: "linked-version-groups",
+        label: "Linked version groups",
+        description:
+            "Three revisions whose 'Formal' versions are linked into one group and 'Casual' into another — switch any pill and the whole tone-set follows (#268)",
+        category: "demo",
+        doc: DOC_ESSAY_DRAFT,
+        setup(view) {
+            // Three tonal revisions across the essay. Each gets an "Original"
+            // version (prepended by createRevision) plus "Formal" and "Casual".
+            // After each, capture the revision id so we can link by (id, label).
+            const members: {
+                formal: VersionGroupMember[];
+                casual: VersionGroupMember[];
+            } = { formal: [], casual: [] };
+
+            const tonalRevisions = [
+                {
+                    targetText: "There is a particular cruelty in the way memory works",
+                    formal: "Memory operates with a particular cruelty",
+                    casual: "Memory plays a cruel trick on us",
+                    note: "Opening claim — set the register for the whole piece.",
+                },
+                {
+                    targetText: "Neuroscientists would tell you this is adaptive.",
+                    formal: "The neuroscientific account holds that this asymmetry is adaptive.",
+                    casual: "Scientists say there's a good reason for this.",
+                    note: "Pivot to the scientific frame.",
+                },
+                {
+                    targetText:
+                        "the residue of feeling, stripped of the brittle scaffolding of fact",
+                    formal: "the residuum of feeling, divested of the brittle scaffolding of fact",
+                    casual: "the feeling that's left once the facts fall away",
+                    note: "Closing image — should match the chosen tone.",
+                },
+            ];
+
+            for (const r of tonalRevisions) {
+                createRevision({
+                    targetText: r.targetText,
+                    versions: [
+                        { label: "Formal", text: r.formal },
+                        { label: "Casual", text: r.casual },
+                    ],
+                    threadMessage: r.note,
+                    author: "Editor",
+                    view,
+                });
+                const revId = latestRevisionId(view);
+                if (revId === undefined) continue;
+                const formal = memberByVersionLabel(view, revId, "Formal");
+                const casual = memberByVersionLabel(view, revId, "Casual");
+                if (formal) members.formal.push(formal);
+                if (casual) members.casual.push(casual);
+            }
+
+            // Link the three Formals into one group and the three Casuals into
+            // another. A group needs ≥2 members; guard in case a revision failed
+            // to create (e.g. target text not found).
+            if (members.formal.length >= 2) {
+                const [m0, m1, ...rest] = members.formal;
+                view.dispatch(createVersionGroup("Formal", [m0, m1, ...rest]).spec);
+            }
+            if (members.casual.length >= 2) {
+                const [m0, m1, ...rest] = members.casual;
+                view.dispatch(createVersionGroup("Casual", [m0, m1, ...rest]).spec);
+            }
         },
     },
     {
