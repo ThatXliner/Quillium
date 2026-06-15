@@ -35,7 +35,7 @@ Current gaps and technical debt.
 | Limitation | Impact |
 |------------|--------|
 | **Non-active revision version text is snapshot-only** | If crash occurs between snapshots, non-active versions may be stale. |
-| **`activeVersionIndex` is snapshot-only** | Same crash window concern. |
+| **`activeVersionId` is snapshot-only** | Same crash window concern. |
 | **Version labels are snapshot-only** | Same crash window concern. |
 
 ## UI

@@ -108,9 +108,9 @@ Manual pruning via Version History:
 | Data | Durability |
 |------|------------|
 | Main doc text | Per-keystroke — every `doc_change` event written before next keystroke |
-| Active revision version text | Per-keystroke — `translateAndDispatch` forwards nested changes as `doc_change`; Phase 3 keeps `versions[activeVersionIndex].doc` current |
+| Active revision version text | Per-keystroke — `translateAndDispatch` forwards nested changes as `doc_change`; Phase 3 keeps the active version's `doc` current |
 | Non-active revision version text | **Snapshot-only** |
-| `activeVersionIndex` | **Snapshot-only** |
+| `activeVersionId` | **Snapshot-only** |
 | Version labels | **Snapshot-only** |
 | Thread messages | Per-action — captured as `annotation_update` events |
 

@@ -19,13 +19,13 @@ sequenceDiagram
     Note over Parent: nestedEditorEdit.of(revisionId)<br/>addToHistory.of(true)
     Parent->>Field: Phase 3 runs
     Field->>Field: pushDocToVersionState()
-    Note over Field: versions[activeVersionIndex].doc updated
+    Note over Field: active version's doc updated
 ```
 
 1. The `updateListener` calls `translateAndDispatch(update, parentView, revisionId)`
 2. `translateAndDispatch` translates each change into parent coordinates (`rev.selection.main.from + delta`)
 3. Dispatches to parent with `nestedEditorEdit.of(revisionId)` + `addToHistory.of(true)`
-4. Phase 3 re-reads the post-transaction slice and keeps `versions[activeVersionIndex].doc` current
+4. Phase 3 re-reads the post-transaction slice and keeps the active version's `doc` current (the slot at `activeVersionIndex(rev)`)
 
 ## NestedEditorController
 
