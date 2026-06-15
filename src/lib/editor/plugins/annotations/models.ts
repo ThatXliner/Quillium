@@ -290,6 +290,67 @@ export type RawAnnotation = z.infer<typeof RawAnnotationSchema>;
 export type RawAnnotations = z.infer<typeof RawAnnotationsSchema>;
 export type Annotations = { [id: number]: GenericAnnotation };
 
+// ── Version groups (linking revision versions together, #268) ───
+// A group links one version from each of several DIFFERENT revisions into a
+// matched set: activating any member switches every member to its partner.
+// A member is exclusive — a given (revisionId, versionId) belongs to at most one
+// group. Stored in a sibling StateField (versionGroupField), not on annotations.
+export type VersionGroupMember = {
+    revisionId: number;
+    versionId: string;
+};
+export type VersionGroup = {
+    id: string;
+    label: string;
+    members: VersionGroupMember[];
+};
+export type VersionGroups = { [groupId: string]: VersionGroup };
+
+// Session counter + random suffix, same rationale as newVersionId (see above):
+// group ids are local keys, not global identifiers, so a UUID is unnecessary.
+let _groupIdCounter = 0;
+export function newGroupId(): string {
+    _groupIdCounter += 1;
+    return `g${_groupIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function membersEqual(a: VersionGroupMember, b: VersionGroupMember): boolean {
+    return a.revisionId === b.revisionId && a.versionId === b.versionId;
+}
+
+/** Find the group containing this member, if any (membership is exclusive). */
+export function groupOfMember(
+    groups: VersionGroups,
+    member: VersionGroupMember,
+): VersionGroup | undefined {
+    return Object.values(groups).find((g) => g.members.some((m) => membersEqual(m, member)));
+}
+
+/**
+ * The other members of `member`'s group whose target version differs — i.e. the
+ * partners that an activation of `member` should cascade-switch. Empty if the
+ * member is ungrouped.
+ */
+export function groupPartnersOf(
+    groups: VersionGroups,
+    member: VersionGroupMember,
+): VersionGroupMember[] {
+    const group = groupOfMember(groups, member);
+    if (!group) return [];
+    return group.members.filter((m) => m.revisionId !== member.revisionId);
+}
+
+export const VersionGroupMemberSchema = z.object({
+    revisionId: z.number(),
+    versionId: z.string(),
+});
+export const VersionGroupSchema = z.object({
+    id: z.string(),
+    label: z.string(),
+    members: z.array(VersionGroupMemberSchema),
+});
+export const VersionGroupsSchema = z.record(z.string(), VersionGroupSchema);
+
 // ── Clipboard-serialized shape ──────────────────────────────────
 // An annotation rebased into copy-relative coordinates: its id and selection are
 // stripped (id is regenerated on paste; the selection is replaced by integer
