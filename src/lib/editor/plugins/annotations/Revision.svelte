@@ -166,12 +166,14 @@ function cancelLabelEdit() {
 
 // ── Version groups (linking versions across revisions, #268) ────────────────
 // A stable per-group color so a linked pill's badge matches its partners
-// elsewhere. Keyed by group id hashed into the palette.
+// elsewhere. Keyed by group id hashed into the palette. Linking is the brand
+// blue, so the first (common single-group) color is blue-500; the rest are
+// distinct categorical hues for telling multiple groups apart.
 const GROUP_COLORS = [
-    "#a855f7", // purple
-    "#0ea5e9", // sky
+    "#3b82f6", // blue-500 — the link color
     "#f97316", // orange
-    "#22c55e", // green
+    "#a855f7", // purple
+    "#14b8a6", // teal
     "#ec4899", // pink
     "#eab308", // amber
 ];
@@ -631,7 +633,7 @@ onDestroy(() => {
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
                     : 'bg-white/60 ring-1 ring-purple-200/40'}
-                {linkTargetable ? 'ring-2 ring-dashed ring-sky-400/70' : ''}">
+                {linkTargetable ? 'ring-2 ring-dashed ring-blue-500/50' : ''}">
                 {#if versionGroup}
                     <!-- Group badge: a colored dot matching this version's group -->
                     <span
@@ -691,8 +693,8 @@ onDestroy(() => {
                 {/if}
                 <!-- Link affordance -->
                 <button
-                    class="px-1 py-1 transition-colors text-black/30 hover:text-sky-600/80
-                        {versionGroup ? 'text-sky-600/70' : ''}"
+                    class="px-1 py-1 transition-colors text-black/30 hover:text-blue-600
+                        {versionGroup ? 'text-blue-600' : ''}"
                     onclick={() => (openLinkMenu = openLinkMenu === i ? null : i)}
                     title="Link to a version of another revision"
                     aria-label="Link version"
@@ -732,7 +734,7 @@ onDestroy(() => {
                         <div class="my-1 border-t border-black/5"></div>
                     {/if}
                     <button
-                        class="w-full text-left px-3 py-1.5 hover:bg-sky-50 text-sky-700 font-medium"
+                        class="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-blue-700 font-medium"
                         onclick={() => startLink(version.id)}
                     >
                         Link to another revision…
@@ -756,9 +758,9 @@ onDestroy(() => {
     </div>
     {#if $linkAnchor && $linkAnchor.member.revisionId === revision.id}
         <!-- This card holds the anchor; prompt to pick a partner elsewhere -->
-        <div class="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-sky-700">
+        <div class="px-3 pb-2 -mt-1 flex items-center gap-2 text-[10px] text-blue-700">
             <span>Pick a version on another revision to link…</span>
-            <button class="underline hover:text-sky-900" onclick={cancelLink}>cancel</button>
+            <button class="underline hover:text-blue-800" onclick={cancelLink}>cancel</button>
         </div>
     {/if}
 
