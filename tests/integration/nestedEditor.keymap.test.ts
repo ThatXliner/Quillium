@@ -15,9 +15,10 @@ import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
 import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
-    type VersionState,
+    makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
@@ -39,14 +40,15 @@ function createParentView(doc: string) {
 }
 
 function addRevision(view: EditorView, from: number, to: number) {
+    const versions = [makeVersion({ doc: view.state.sliceDoc(from, to) })];
     const revision = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex: 0,
-        versions: [{ doc: view.state.sliceDoc(from, to) } as VersionState],
+        activeVersionId: versions[0].id,
+        versions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
     return revision.id;
@@ -221,17 +223,18 @@ describe("nested editor keymap intercepts annotation creation", () => {
 // ── makeParentRevisionNavKeymap ───────────────────────────────────────────────
 
 function addMultiVersionRevision(view: EditorView, from: number, to: number) {
+    const versions = [
+        makeVersion({ doc: view.state.sliceDoc(from, to), label: "v1" }),
+        makeVersion({ doc: "alt", label: "v2" }),
+    ];
     const revision = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex: 0,
-        versions: [
-            { doc: view.state.sliceDoc(from, to), label: "v1" } as VersionState,
-            { doc: "alt", label: "v2" } as VersionState,
-        ],
+        activeVersionId: versions[0].id,
+        versions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
     return revision.id;
@@ -271,7 +274,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
         const consumed = runNavKey(nestedView, parentView, revisionId, "Ctrl-]");
 
         expect(consumed).toBe(true);
-        expect(getRevision(parentView, revisionId).activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(getRevision(parentView, revisionId))).toBe(1);
     });
 
     it("Ctrl-[ in nested editor goes back to the previous version on the parent", () => {
@@ -283,7 +286,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
         const consumed = runNavKey(nestedView, parentView, revisionId, "Ctrl-["); // → v1
 
         expect(consumed).toBe(true);
-        expect(getRevision(parentView, revisionId).activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(getRevision(parentView, revisionId))).toBe(0);
     });
 
     it("Ctrl-] wraps around from last to first version", () => {
@@ -294,20 +297,21 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
         runNavKey(nestedView, parentView, revisionId, "Ctrl-]"); // → v2
         runNavKey(nestedView, parentView, revisionId, "Ctrl-]"); // → wraps to v1
 
-        expect(getRevision(parentView, revisionId).activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(getRevision(parentView, revisionId))).toBe(0);
     });
 
     it("Ctrl-] consumes the event (returns true) even when only one version exists", () => {
         parentView = createParentView("hello world");
         // Single-version revision
+        const versions = [makeVersion({ doc: "hello" })];
         const revision = {
             ...createNewAnnotation(
                 parentView.state.field(annotationField),
                 EditorSelection.single(0, 5),
                 "revision",
             ),
-            activeVersionIndex: 0,
-            versions: [{ doc: "hello" } as VersionState],
+            activeVersionId: versions[0].id,
+            versions,
         };
         parentView.dispatch(parentView.state.update({ effects: [addAnnotation.of(revision)] }));
         nestedView = createNestedView(parentView, revision.id, "hello");
@@ -316,6 +320,6 @@ describe("Ctrl-[ / Ctrl-] version navigation in nested editor", () => {
 
         // Should still consume (user intent was navigation, no-op is correct)
         expect(consumed).toBe(true);
-        expect(getRevision(parentView, revision.id).activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(getRevision(parentView, revision.id))).toBe(0);
     });
 });

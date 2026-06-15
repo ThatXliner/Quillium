@@ -440,6 +440,7 @@ function save() {
         annotation_layout: draft.annotationLayout,
         show_shortcut_hints: draft.showShortcutHints,
         show_ai_suggestions: draft.showAiSuggestions,
+        collapse_context_summary: draft.collapseContextSummary,
         show_word_count: draft.showWordCount,
         analytics_enabled: draft.analyticsEnabled,
         // TODO(#191): restore share_document_analytics prop when re-enabled
@@ -1476,6 +1477,40 @@ function fontLabel(fonts: FontOption[], value: string) {
                         class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
                             transition-transform duration-200
                             {draft.showAiSuggestions ? 'translate-x-4' : 'translate-x-0'}"
+                    ></span>
+                </button>
+                </div>
+            </div>
+
+            <!-- Context summary collapse toggle -->
+            <div class="setting-row">
+                <div class="setting-meta">
+                    <div class="setting-title">Collapse context summary</div>
+                    <div class="setting-desc">Hide the "AI can see your selection" card in the AI panels and tuck it into the header info (ℹ) icon.</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                {#if draft.collapseContextSummary}
+                    <button
+                        type="button"
+                        onclick={() => { draft.collapseContextSummary = false; handleChange(); }}
+                        class="text-[11px] text-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                    >Reset</button>
+                {/if}
+                <button
+                    role="switch"
+                    aria-checked={draft.collapseContextSummary}
+                    aria-label="Toggle collapse context summary"
+                    class="relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200
+                        {draft.collapseContextSummary ? 'bg-blue-500' : 'bg-black/[0.15]'}"
+                    onclick={() => {
+                        draft.collapseContextSummary = !draft.collapseContextSummary;
+                        handleChange();
+                    }}
+                >
+                    <span
+                        class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm
+                            transition-transform duration-200
+                            {draft.collapseContextSummary ? 'translate-x-4' : 'translate-x-0'}"
                     ></span>
                 </button>
                 </div>

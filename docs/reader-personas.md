@@ -1,6 +1,8 @@
 # Reader Personas
 
-Reader personas are configurable AI "readers" that provide feedback from distinct perspectives. When the user triggers feedback, all enabled personas run in parallel — each producing annotations attributed to that persona's name.
+Reader personas are configurable AI "readers" that provide feedback from distinct perspectives. When personas are turned **on** for a mode, all enabled personas run in parallel — each producing annotations attributed to that persona's name.
+
+Because personas fan a single request out into one AI stream **per enabled persona**, they cost roughly N× the tokens of a normal request. For that reason they are an explicit, **per-mode opt-in that defaults to OFF** — see [Per-Mode Opt-In](#per-mode-opt-in) below.
 
 ## Files
 
@@ -89,13 +91,27 @@ sequenceDiagram
 ```
 
 When feedback is triggered:
-1. `sendWithPersonas()` checks for enabled personas
-2. If any exist, calls `runMultiPersonaStreams()`
+1. The panel checks the **per-mode opt-in** (`personaModes[mode]`). If the mode is OFF, it uses a single plain stream and stops here.
+2. If ON, it reads `getEnabledPersonas()`; if any exist, it calls `runMultiPersonaStreams()`
 3. Each persona runs **in parallel** (`Promise.all`)
 4. Each stream uses `buildPersonaPrompt(persona)` prepended to system prompt
 5. Tool-call handlers attribute annotations to persona's name
 
-If no personas enabled, falls back to standard single-stream.
+If the mode is OFF, or it is ON but no personas are enabled, it falls back to standard single-stream.
+
+## Per-Mode Opt-In
+
+Personas are gated by a per-mode toggle so the cost is opt-in and explicit (issue #259).
+
+| Where | Detail |
+|-------|--------|
+| State | `personaModes: { feedback: boolean; revise: boolean }` in `src/lib/ai/settings.svelte.ts` |
+| Default | Both `false` (plain single-stream by default) |
+| Persistence | localStorage key `"quillium-ai-persona-modes"` |
+| Setter | `setPersonasForMode(mode, enabled)` — persists + updates the rune |
+| UI | A switch in the **Feedback** and **Revise** tab headers; each mode remembers its own choice |
+
+The per-persona toggles in the Readers tab still select *which* personas run, but they only take effect once the mode toggle is ON. Chat mode does not use personas.
 
 ## UI (Readers.svelte)
 
@@ -111,6 +127,7 @@ Layout:
 
 ## Integration Points
 
-- **Feedback.svelte**: Routes all sends through persona check
+- **Feedback.svelte / Revise.svelte**: Gate sends on `personaModes[mode]`, then route through the persona check; render the per-mode toggle
+- **ai/settings.svelte.ts**: Owns `personaModes` and `setPersonasForMode()`
 - **chatFactory.ts**: `runMultiPersonaStreams()` handles parallel execution
 - **AI sidebar**: Tab index 5 in `AISidebar.svelte`

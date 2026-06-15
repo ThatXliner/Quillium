@@ -51,12 +51,19 @@ import {
     StateEffect,
     StateField,
     Transaction,
+    type TransactionSpec,
 } from "@codemirror/state";
 import {
+    activeVersionIndex,
     createNewAnnotation,
     getLastId,
     getNewId,
+    groupPartnersOf,
     isAnnotationOfType,
+    makeVersion,
+    normalizeRevision,
+    versionById,
+    versionIndexById,
     versionText,
     RawAnnotationsSchema,
     type Annotations,
@@ -67,6 +74,10 @@ import {
     type VersionState,
 } from "./models";
 import { cleanRangesOf, mapRange } from "./utils";
+// Lazily-used (function-body only) import — see groupSwitchTargets. The
+// annotationField ↔ versionGroupField pair forms a safe ESM cycle because all
+// cross-references happen inside functions, never at module top level.
+import { versionGroupField } from "./versionGroupField";
 import { invertedEffects } from "@codemirror/commands";
 import { SearchCursor } from "@codemirror/search";
 import { mapValues } from "lodash-es";
@@ -185,60 +196,135 @@ export const _revisionCleanup = Annotation.define<boolean>();
 // === For revisions ===
 // These also updates the active revision version to the latest one
 // There is no "updateRevisionVersion" since we sniff that from document changes
+// NOTE: `versionId`/`to` below are STABLE version ids (VersionState.id), not
+// array indices. `at?` on add is still a positional insertion slot so pill order
+// is controllable; everything that *identifies* a version uses its id.
 export const _addVersionToRevision = StateEffect.define<{
     annotationId: number;
     newVersion: VersionState;
     at?: number;
+    // Whether the newly-added version should become active. Defaults to true:
+    // the normal "user adds a new version" flow wants focus to move to it. Set
+    // false when re-inserting on undo of a NON-active delete, so the restored
+    // version reappears without stealing the active pointer (issue #270).
+    makeActive?: boolean;
 }>();
 export const _deleteVersionFromRevision = StateEffect.define<{
     annotationId: number;
-    versionId: number;
+    versionId: string;
 }>();
 export const _updateActiveRevisionVersion = StateEffect.define<{
     annotationId: number;
-    to: number;
+    to: string;
 }>();
 export const _updateRevisionVersionState = StateEffect.define<{
     annotationId: number;
-    versionId: number;
+    versionId: string;
     versionState: VersionState;
 }>();
 /**
- * Collab-mode effect: updates ONLY versions[i].doc without triggering parent
- * doc changes. Used by NestedEditorController when collab owns the subtree
+ * Collab-mode effect: updates ONLY the matching version's doc without triggering
+ * parent doc changes. Used by NestedEditorController when collab owns the subtree
  * Y.Text — the nested editor's content is authoritative, and we just need to
  * keep the parent's annotation state in sync for UI rendering.
  */
 export const _updateRevisionVersionDoc = StateEffect.define<{
     annotationId: number;
-    versionIndex: number;
+    versionId: string;
     doc: string;
 }>();
 export const _updateRevisionVersionLabel = StateEffect.define<{
     annotationId: number;
-    versionId: number;
+    versionId: string;
     label: string | undefined;
 }>();
-export function setActiveRevisionVersion(state: EditorState, annotationId: number, to: number) {
+export function setActiveRevisionVersion(
+    state: EditorState,
+    annotationId: number,
+    toId: string,
+    options: { moveCursor?: boolean } = {},
+) {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
     }
-    const insert = versionText(original.versions[to]);
-    return state.update({
-        effects: [
-            _updateActiveRevisionVersion.of({
-                annotationId,
-                to,
-            }),
-        ],
+    const target = versionById(original, toId);
+    if (!target) {
+        return state.update({});
+    }
+
+    // Collect the primary switch plus any linked partners (version groups, #268).
+    // Each switch is one _updateActiveRevisionVersion effect + one doc replacement
+    // at that revision's range; bundling them into ONE transaction makes the whole
+    // group move atomic and revert in a single undo.
+    const switches: Array<{ annotationId: number; toId: string }> = [
+        { annotationId, toId },
+    ];
+    for (const partner of groupSwitchTargets(state, annotationId, toId)) {
+        switches.push(partner);
+    }
+
+    const effects: StateEffect<unknown>[] = [];
+    const changeSpecs: { from: number; to: number; insert: string }[] = [];
+    for (const sw of switches) {
+        const rev = state.field(annotationField)[sw.annotationId];
+        if (!isAnnotationOfType(rev, "revision")) continue;
+        const v = versionById(rev, sw.toId);
+        if (!v) continue;
+        effects.push(_updateActiveRevisionVersion.of({ annotationId: sw.annotationId, to: sw.toId }));
+        changeSpecs.push({
+            from: rev.selection.main.from,
+            to: rev.selection.main.to,
+            insert: versionText(v),
+        });
+    }
+
+    const changes = state.changes(changeSpecs);
+    // Move the EDITOR cursor into the primary switched revision so it becomes the
+    // active annotation — collapses the "double selection" where the card you
+    // click isn't the one the panel anchors to. Off by default so programmatic
+    // switches (AI, the group cascade's partners) don't yank the cursor around.
+    const spec: TransactionSpec = {
+        effects,
         annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
-        changes: state.changes({
-            from: original.selection.main.from,
-            to: original.selection.main.to,
-            insert,
-        }),
-    });
+        changes,
+    };
+    if (options.moveCursor) {
+        const caret = changes.mapPos(original.selection.main.from, 1);
+        spec.selection = EditorSelection.cursor(caret);
+    }
+    return state.update(spec);
+}
+
+/**
+ * Resolve the linked partner switches for activating (annotationId → toId).
+ *
+ * Looks up the target member's version group and, for every OTHER revision in
+ * that group, returns the switch to its grouped version — but only when that
+ * revision isn't already on its target (no redundant doc churn) and the target
+ * version still exists. Empty when the version is ungrouped. Exclusive membership
+ * means each partner revision has exactly one target, so there is no oscillation.
+ *
+ * Imports the group field lazily (function-body access) so the
+ * annotationField ↔ versionGroupField module pair stays a safe ESM cycle.
+ */
+function groupSwitchTargets(
+    state: EditorState,
+    annotationId: number,
+    toId: string,
+): Array<{ annotationId: number; toId: string }> {
+    const groups = state.field(versionGroupField, false);
+    if (!groups) return [];
+    const partners = groupPartnersOf(groups, { revisionId: annotationId, versionId: toId });
+    const result: Array<{ annotationId: number; toId: string }> = [];
+    for (const p of partners) {
+        const rev = state.field(annotationField)[p.revisionId];
+        if (!isAnnotationOfType(rev, "revision")) continue;
+        if (rev.activeVersionId === p.versionId) continue; // already there
+        if (!versionById(rev, p.versionId)) continue; // stale member
+        result.push({ annotationId: p.revisionId, toId: p.versionId });
+    }
+    return result;
 }
 export function createNewRevision(state: EditorState, annotationId: number) {
     const original = state.field(annotationField)[annotationId];
@@ -246,7 +332,7 @@ export function createNewRevision(state: EditorState, annotationId: number) {
         throw new Error("Annotation is not a revision");
     }
     const placeholder = "";
-    const newVersionState: VersionState = { doc: placeholder };
+    const newVersionState: VersionState = makeVersion({ doc: placeholder });
     const from = original.selection.main.from;
     return state.update({
         effects: [
@@ -265,12 +351,13 @@ export function createNewRevision(state: EditorState, annotationId: number) {
         annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
     });
 }
-export function deleteRevisionVersion(state: EditorState, annotationId: number, versionId: number) {
+export function deleteRevisionVersion(state: EditorState, annotationId: number, versionId: string) {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
     }
-    if (versionId < 0 || versionId >= original.versions.length) {
+    const delIndex = versionIndexById(original, versionId);
+    if (delIndex < 0) {
         return state.update({});
     }
 
@@ -287,12 +374,13 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
         });
     }
 
-    const nextVersions = original.versions.filter((_, i) => i !== versionId);
-    let nextSelected = original.activeVersionIndex;
-    if (versionId < original.activeVersionIndex) {
-        nextSelected = original.activeVersionIndex - 1;
-    } else if (versionId === original.activeVersionIndex) {
-        nextSelected = Math.min(versionId, nextVersions.length - 1);
+    const nextVersions = original.versions.filter((v) => v.id !== versionId);
+    const deletingActive = versionId === original.activeVersionId;
+    // When the active version is deleted, fall to its positional neighbor.
+    let nextActiveId = original.activeVersionId;
+    if (deletingActive) {
+        const fallbackIndex = Math.min(delIndex, nextVersions.length - 1);
+        nextActiveId = nextVersions[fallbackIndex].id;
     }
 
     const effects: StateEffect<unknown>[] = [
@@ -301,24 +389,25 @@ export function deleteRevisionVersion(state: EditorState, annotationId: number, 
             versionId,
         }),
     ];
-    if (nextSelected !== original.activeVersionIndex) {
+    if (nextActiveId !== original.activeVersionId) {
         effects.push(
             _updateActiveRevisionVersion.of({
                 annotationId,
-                to: nextSelected,
+                to: nextActiveId,
             }),
         );
     }
 
     const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)];
-    if (versionId === original.activeVersionIndex) {
+    if (deletingActive) {
+        const nextActive = nextVersions.find((v) => v.id === nextActiveId);
         return state.update({
             effects,
             annotations,
             changes: state.changes({
                 from: original.selection.main.from,
                 to: original.selection.main.to,
-                insert: nextVersions[nextSelected] ? versionText(nextVersions[nextSelected]) : "",
+                insert: nextActive ? versionText(nextActive) : "",
             }),
         });
     }
@@ -334,7 +423,7 @@ type UpdateRevisionVersionStateOptions = {
 export function updateRevisionVersionState(
     state: EditorState,
     annotationId: number,
-    versionId: number,
+    versionId: string,
     newVersionState: VersionState,
     options: UpdateRevisionVersionStateOptions = {},
 ) {
@@ -354,7 +443,7 @@ export function updateRevisionVersionState(
         revisionInternalEdit.of(true),
         Transaction.addToHistory.of(options.addToHistory ?? true),
     ];
-    if (original.activeVersionIndex !== versionId) {
+    if (original.activeVersionId !== versionId) {
         return state.update({
             effects,
             annotations,
@@ -384,7 +473,7 @@ export function updateRevisionVersionState(
 export function updateRevisionVersionLabel(
     state: EditorState,
     annotationId: number,
-    versionId: number,
+    versionId: string,
     label: string | undefined,
 ) {
     const original = state.field(annotationField)[annotationId];
@@ -405,11 +494,13 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
     const originalText = state.doc.sliceString(from, to);
 
     const versions: VersionState[] = [
-        { doc: originalText },
-        ...annotation.replacements.map((r) => ({ doc: r.text }) as VersionState),
+        makeVersion({ doc: originalText }),
+        ...annotation.replacements.map((r) => makeVersion({ doc: r.text })),
     ];
 
     const firstReplacement = annotation.replacements[0]?.text ?? originalText;
+    // Active = the first replacement (index 1) when there is one, else the original.
+    const activeVersionId = (versions[1] ?? versions[0]).id;
 
     const newRevision = {
         ...createNewAnnotation(
@@ -417,7 +508,7 @@ export function branchSuggestion(state: EditorState, annotationId: number) {
             EditorSelection.single(from, from + firstReplacement.length),
             "revision",
         ),
-        activeVersionIndex: 1,
+        activeVersionId,
         versions,
         thread: annotation.thread,
     };
@@ -452,7 +543,7 @@ export const suggestionPreviewField = StateField.define<{
         return value;
     },
 });
-const _applySuggestion = StateEffect.define<{
+export const _applySuggestion = StateEffect.define<{
     annotationId: number;
     replacementIndex: number;
 }>();
@@ -543,25 +634,38 @@ function applyRevisionVersionEffect(
         );
         const newVersions = annotation.versions.slice();
         newVersions.splice(insertionIndex, 0, e.value.newVersion);
-        return { ...annotation, versions: newVersions, activeVersionIndex: insertionIndex };
-    } else if (e.is(_deleteVersionFromRevision)) {
-        const newVersions = annotation.versions.slice();
-        newVersions.splice(e.value.versionId, 1);
-        let newIndex = annotation.activeVersionIndex;
-        if (e.value.versionId < newIndex) {
-            newIndex -= 1;
-        } else if (newIndex >= newVersions.length) {
-            newIndex = Math.max(0, newVersions.length - 1);
+        // Adding a version makes it active by default (matches the user-add flow,
+        // where the new slot's index became active). Undo of a non-active delete
+        // re-inserts with makeActive: false so the restored version doesn't steal
+        // the active pointer (issue #270).
+        const makeActive = e.value.makeActive ?? true;
+        return {
+            ...annotation,
+            versions: newVersions,
+            activeVersionId: makeActive ? e.value.newVersion.id : annotation.activeVersionId,
+        };
+    }
+    if (e.is(_deleteVersionFromRevision)) {
+        const delIndex = versionIndexById(annotation, e.value.versionId);
+        const newVersions = annotation.versions.filter((v) => v.id !== e.value.versionId);
+        let activeVersionId = annotation.activeVersionId;
+        if (e.value.versionId === annotation.activeVersionId && newVersions.length > 0) {
+            // Active was deleted: fall to its positional neighbor.
+            const fallback = Math.min(Math.max(delIndex, 0), newVersions.length - 1);
+            activeVersionId = newVersions[fallback].id;
+        } else if (!newVersions.some((v) => v.id === activeVersionId) && newVersions.length > 0) {
+            activeVersionId = newVersions[0].id;
         }
-        return { ...annotation, versions: newVersions, activeVersionIndex: newIndex };
-    } else if (e.is(_updateActiveRevisionVersion)) {
+        return { ...annotation, versions: newVersions, activeVersionId };
+    }
+    if (e.is(_updateActiveRevisionVersion)) {
         // When switching versions, reconstruct the selection
         // to cover the inserted text. This is critical for
         // collapsed ranges (all text was deleted) where
         // selection.map() keeps the range collapsed instead
         // of expanding around the newly inserted version
         // text.
-        const targetVersion = annotation.versions[e.value.to];
+        const targetVersion = versionById(annotation, e.value.to);
         const oldAnnotation = oldAnnotations[e.value.annotationId];
         let selection = annotation.selection;
         if (targetVersion && oldAnnotation) {
@@ -570,7 +674,7 @@ function applyRevisionVersionEffect(
             const to = Math.min(from + vText.length, tr.state.doc.length);
             selection = EditorSelection.single(Math.min(from, tr.state.doc.length), to);
         }
-        return { ...annotation, activeVersionIndex: e.value.to, selection };
+        return { ...annotation, activeVersionId: e.value.to, selection };
     }
     return annotation;
 }
@@ -597,12 +701,13 @@ function pushDocToVersionState(
         if (isAnnotationOfType(x, "revision") && !skipIds.has(x.id)) {
             if (x.selection.main.empty && !isNestedEdit) return x;
             const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
-            if (text === versionText(x.versions[x.activeVersionIndex])) return x;
+            const activeIdx = activeVersionIndex(x);
+            if (text === versionText(x.versions[activeIdx])) return x;
             // Return a new annotation object so Svelte's fine-grained reactivity
             // detects the change and re-derives activeText in Revision.svelte.
             const newVersions = x.versions.slice();
-            newVersions[x.activeVersionIndex] = {
-                ...newVersions[x.activeVersionIndex],
+            newVersions[activeIdx] = {
+                ...newVersions[activeIdx],
                 doc: text,
             };
             return { ...x, versions: newVersions };
@@ -663,11 +768,11 @@ export const annotationField = StateField.define<Annotations>({
             } else if (e.is(_updateRevisionVersionLabel)) {
                 const annotation = annotations[e.value.annotationId];
                 if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
-                const version = annotation.versions[e.value.versionId];
-                if (version) {
+                const vIdx = versionIndexById(annotation, e.value.versionId);
+                if (vIdx >= 0) {
                     const newVersions = annotation.versions.slice();
-                    newVersions[e.value.versionId] = {
-                        ...version,
+                    newVersions[vIdx] = {
+                        ...newVersions[vIdx],
                         label: e.value.label,
                     };
                     annotations[e.value.annotationId] = { ...annotation, versions: newVersions };
@@ -676,10 +781,14 @@ export const annotationField = StateField.define<Annotations>({
                 const annotation = annotations[e.value.annotationId];
                 if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
+                const vIdx = versionIndexById(annotation, e.value.versionId);
+                if (vIdx < 0) continue;
                 const newVersions = annotation.versions.slice();
-                newVersions[e.value.versionId] = e.value.versionState;
+                // Preserve the version's id even if the incoming blob omits it
+                // (nested-editor serialization carries doc/annotationField, not id).
+                newVersions[vIdx] = { ...e.value.versionState, id: e.value.versionId };
                 let selection = annotation.selection;
-                if (annotation.activeVersionIndex === e.value.versionId && tr.docChanged) {
+                if (annotation.activeVersionId === e.value.versionId && tr.docChanged) {
                     // Use the already-remapped selection from Phase 1 (not
                     // oldAnnotations) to avoid double-mapping when both Phase 1
                     // and this effect fire on the same transaction.
@@ -701,10 +810,10 @@ export const annotationField = StateField.define<Annotations>({
                 const annotation = annotations[e.value.annotationId];
                 if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
                 revisionsWithExplicitEffect.add(e.value.annotationId);
-                const newVersions = annotation.versions.slice();
-                const existing = newVersions[e.value.versionIndex];
-                if (existing) {
-                    newVersions[e.value.versionIndex] = { ...existing, doc: e.value.doc };
+                const vIdx = versionIndexById(annotation, e.value.versionId);
+                if (vIdx >= 0) {
+                    const newVersions = annotation.versions.slice();
+                    newVersions[vIdx] = { ...newVersions[vIdx], doc: e.value.doc };
                     annotations[e.value.annotationId] = {
                         ...annotation,
                         versions: newVersions,
@@ -803,10 +912,18 @@ export const annotationField = StateField.define<Annotations>({
             );
             return {} as Annotations;
         }
-        return mapValues(result.data, (x) => ({
-            ...x,
-            selection: EditorSelection.fromJSON(x.selection),
-        })) as Annotations;
+        return mapValues(result.data, (x) => {
+            const withSelection = {
+                ...x,
+                selection: EditorSelection.fromJSON(x.selection),
+            };
+            // Heal legacy revisions (no version ids / activeVersionIndex) into the
+            // stable-id shape. Idempotent for already-migrated data.
+            if (isAnnotationOfType(withSelection as GenericAnnotation, "revision")) {
+                return normalizeRevision(withSelection as never);
+            }
+            return withSelection;
+        }) as Annotations;
     },
 });
 export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) => {
@@ -911,36 +1028,53 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
             if (effect.is(_addVersionToRevision)) {
+                // Inverse of add = delete the just-added version, identified by its
+                // stable id (so position shifts can't target the wrong slot).
                 effects.push(
                     _deleteVersionFromRevision.of({
                         annotationId: oldAnnotation.id,
-                        versionId: effect.value.at ?? oldAnnotation.versions.length,
+                        versionId: effect.value.newVersion.id,
                     }),
                 );
             } else if (effect.is(_deleteVersionFromRevision)) {
-                effects.push(
-                    _addVersionToRevision.of({
-                        annotationId: oldAnnotation.id,
-                        newVersion: oldAnnotation.versions[effect.value.versionId],
-                        at: effect.value.versionId,
-                    }),
-                );
+                // Inverse of delete = re-add the deleted version at its old slot.
+                const oldIndex = versionIndexById(oldAnnotation, effect.value.versionId);
+                const oldVersion = versionById(oldAnnotation, effect.value.versionId);
+                if (oldVersion) {
+                    // Only re-activate the restored version if it WAS active when
+                    // deleted. Re-inserting a non-active version must not steal the
+                    // active pointer — undo restores prior state, it doesn't move
+                    // focus (issue #270). The active-delete case is already covered
+                    // by the paired _updateActiveRevisionVersion inverse below, but
+                    // setting the flag here keeps the add-inverse self-consistent.
+                    const wasActive = effect.value.versionId === oldAnnotation.activeVersionId;
+                    effects.push(
+                        _addVersionToRevision.of({
+                            annotationId: oldAnnotation.id,
+                            newVersion: oldVersion,
+                            at: oldIndex < 0 ? undefined : oldIndex,
+                            makeActive: wasActive,
+                        }),
+                    );
+                }
             } else if (effect.is(_updateActiveRevisionVersion)) {
                 effects.push(
                     _updateActiveRevisionVersion.of({
                         annotationId: oldAnnotation.id,
-                        to: oldAnnotation.activeVersionIndex,
+                        to: oldAnnotation.activeVersionId,
                     }),
                 );
             }
         } else if (effect.is(_updateRevisionVersionState)) {
             const oldAnnotation = oldAnnotations[effect.value.annotationId];
             if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
+            const oldVersion = versionById(oldAnnotation, effect.value.versionId);
+            if (!oldVersion) continue;
             effects.push(
                 _updateRevisionVersionState.of({
                     annotationId: oldAnnotation.id,
                     versionId: effect.value.versionId,
-                    versionState: oldAnnotation.versions[effect.value.versionId],
+                    versionState: oldVersion,
                 }),
             );
         } else if (effect.is(_updateRevisionVersionLabel)) {
@@ -950,7 +1084,7 @@ export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: T
                 _updateRevisionVersionLabel.of({
                     annotationId: oldAnnotation.id,
                     versionId: effect.value.versionId,
-                    label: oldAnnotation.versions[effect.value.versionId]?.label,
+                    label: versionById(oldAnnotation, effect.value.versionId)?.label,
                 }),
             );
         } else if (effect.is(_applySuggestion)) {

@@ -10,17 +10,17 @@
     Dependencies: readers/settings.svelte.ts, readers/presets.ts, posthog.
 -->
 <script lang="ts">
+import posthog from "$lib/posthog";
+import { lightTint, mediumTint } from "$lib/readers/colors";
+import {
+    addCustomPersona,
+    cycleChattiness,
+    readersSettings,
+    removeCustomPersona,
+    togglePersona,
+} from "$lib/readers/settings.svelte";
 import { Plus, Trash2 } from "lucide-svelte";
 import { slide } from "svelte/transition";
-import {
-    readersSettings,
-    togglePersona,
-    cycleChattiness,
-    addCustomPersona,
-    removeCustomPersona,
-} from "$lib/readers/settings.svelte";
-import { lightTint, mediumTint } from "$lib/readers/colors";
-import posthog from "$lib/posthog";
 
 let showCreateForm = $state(false);
 let expandedId = $state<string | null>(null);
@@ -202,6 +202,8 @@ const chattinessLevels = ["quiet", "normal", "verbose"] as const;
 <div class="flex-1 flex flex-col min-h-0">
     <div class="px-3 pt-1.5 pb-1 text-[10px] text-[color:var(--text-faint)]">
         Dots control how much detail each reader gives in their feedback.
+        Turn personas on per mode (the toggle in Feedback / Revise) to use them —
+        they run one reply per reader, so they cost more tokens.
     </div>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->

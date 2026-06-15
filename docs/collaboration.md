@@ -71,11 +71,20 @@ Annotations stored as recursive Y.Map structures:
 
 // Revision-only
 {
-    versions: Y.Map<string, Y.Map<unknown>>;
+    versions: Y.Map<string, Y.Map<unknown>>;  // keyed by String(index)
     // versionNode: { text: Y.Text, label?: string, annotations: Y.Map }
     activeVersionIndex: number;
 }
 ```
+
+> **Note — wire shape is still index-based.** Locally, revision versions use a
+> stable `id` and a revision points at `activeVersionId` (see
+> [annotations.md → Version identity](./annotations.md#version-identity)). The Yjs
+> wire schema above is intentionally *not yet* migrated: the versions `Y.Map` is
+> keyed by `String(index)` and the active pointer is `activeVersionIndex: number`.
+> The CM→Yjs write path derives the index from `activeVersionId`, and the Yjs→CM
+> read path runs `normalizeRevision()` to mint local ids. The relay has no schema
+> migration framework yet, so the id-native rewrite is deferred — see issue #269.
 
 ## Sync Loops
 

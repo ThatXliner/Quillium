@@ -66,7 +66,7 @@ if [[ "$PART" == "minor" || "$PART" == "major" ]]; then
         echo "         Add a \"$MINOR_KEY\" entry to src/lib/changelog.json manually."
     else
         # Don't let a claude failure abort the whole bump (manifests are already written).
-        claude --print "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
+        claude --print --allowedTools "Read,Write,Edit" "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
 
 Check src/lib/changelog.json — if there is no entry for \"$MINOR_KEY\", add one.
 

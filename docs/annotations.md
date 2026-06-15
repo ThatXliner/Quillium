@@ -27,14 +27,18 @@ type CommentAnnotation    = BaseAnnotation & { _type: "comment" };
 type SuggestionAnnotation = BaseAnnotation & { _type: "suggestion"; replacements: SuggestionReplacement[] };
 type RevisionAnnotation   = BaseAnnotation & {
     _type: "revision";
-    activeVersionIndex: number; // index into versions[]
-    versions: VersionState[];   // all version texts
+    activeVersionId: string;    // stable id of the active version (versions[].id)
+    versions: VersionState[];   // all version texts, ordered for display
 };
+
+type VersionState = { id: string; doc: string; label?: string } & object;
 
 type Annotations = { [id: number]: GenericAnnotation };
 ```
 
 **Important:** Always use `isAnnotationOfType(annotation, "revision")` — never compare `_type` directly.
+
+**Important:** A revision points at its active version by **stable `id`** (`activeVersionId`), not by array index. The `versions[]` array stays ordered (pills, `Ctrl-[` / `Ctrl-]` navigation are positional), but identity is the id. Read the active version with the `activeVersion(rev)` / `activeVersionIndex(rev)` helpers — never `rev.versions[rev.activeVersionId]` (it's not an index). See [Version identity](#version-identity).
 
 ### Adding a new annotation type
 
@@ -67,7 +71,91 @@ type's create → edit → undo and (if it should be copyable) copy → paste fl
 
 ### VersionState
 
-`VersionState` is `{ doc: string; label?: string } & object`. Each entry reflects the most recent text under a revision range. Phase 3 pushes the parent document slice into `versions[activeVersionIndex].doc` on each edit. `VersionStateSchema` uses `.passthrough()` so extra keys survive serialization.
+`VersionState` is `{ id: string; doc: string; label?: string } & object`. Each entry reflects the most recent text under a revision range. Phase 3 pushes the parent document slice into the active version's `doc` on each edit (located via `activeVersionIndex(rev)`). `VersionStateSchema` uses `.passthrough()` so extra keys survive serialization (e.g. a nested editor's serialized `annotationField`).
+
+### Version identity
+
+Each version carries a stable string `id`; a revision references its active version
+by `activeVersionId`, and all version-targeting effects/builders take a version id
+(not an array index). This matters because an array index silently rots when a
+version is added, deleted, or reordered — a link or active-pointer stored as an
+index would then point at the wrong text.
+
+**ID scheme — deliberately *not* a UUID.** `newVersionId()` (in `models.ts`) returns
+a session counter plus a short random suffix, e.g. `v3_a9k2zq`:
+
+```ts
+let _versionIdCounter = 0;
+export function newVersionId(): string {
+    _versionIdCounter += 1;
+    return `v${_versionIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
+}
+```
+
+- **Scope is per-revision, not global.** An id only needs to be unique within one
+  revision's `versions[]` (a handful of entries), so a full UUID is overkill. The
+  counter gives readable, roughly-ordered ids; the 6-char base-36 suffix is the
+  collision guard for the one case the counter can't cover — two collab clients
+  minting a version concurrently (each client's counter starts at 0).
+- **Session-scoped, not persisted.** The counter resets to 0 on reload. That's safe
+  because the *ids* are persisted; existing versions keep their stored id, new ones
+  continue from a fresh counter, and the random suffix prevents any clash with
+  reloaded ids. (Annotation `id`s, by contrast, are sequential integers via
+  `getNewId` — a separate scheme.)
+- **Regenerated on paste.** `clipboardAnnotations.rebuildAnnotation` mints fresh
+  version ids on paste and remaps `activeVersionId`, so a pasted version can't
+  collide with an existing one in the destination revision.
+
+**Helpers** (all in `models.ts`): `makeVersion({doc, label?, id?})` (mints an id if
+absent — use it at every construction site), `versionById(rev, id)`,
+`versionIndexById(rev, id)`, `activeVersion(rev)`, `activeVersionIndex(rev)`.
+
+**Back-compat.** Legacy persisted revisions carry the old `activeVersionIndex`
+(number) and id-less versions. `normalizeRevision()` heals them at the load
+boundary (`annotationField.fromJSON` and the collab read path): it mints
+position-stable ids and derives `activeVersionId` from the clamped legacy index.
+It's idempotent, so already-migrated data passes through untouched. The collab
+Yjs wire schema is still index-based (read-tolerant) pending an id-native rewrite;
+see issue #269.
+
+### Version groups (linking versions across revisions)
+
+A **version group** links one version from each of several *different* revisions
+into a matched set, so activating any member switches every member to its partner
+(e.g. flip the intro to "Casual" and the conclusion follows). Lives in a sibling
+`versionGroupField: StateField<VersionGroups>`, kept separate from
+`annotationField` so the annotation reducer stays untouched.
+
+```typescript
+type VersionGroupMember = { revisionId: number; versionId: string };
+type VersionGroup       = { id: string; label: string; members: VersionGroupMember[] };
+type VersionGroups      = { [groupId: string]: VersionGroup };
+```
+
+Reducer invariants:
+- **Exclusive membership** — adding a member detaches it from any prior group.
+- **One version per revision per group** (`canAddMemberToGroup`) — a second
+  version of the same revision is rejected (the cascade target would be
+  ambiguous).
+- **Referential integrity** — when a revision is removed or a version deleted
+  (observed via `removeAnnotation` / `_deleteVersionFromRevision` effects in the
+  same transaction), matching members are pruned; a group that drops below two
+  members dissolves. Undo restores the dissolved group (snapshot-restore
+  inversion via `_restoreVersionGroups`).
+
+**Cascade.** `setActiveRevisionVersion` resolves the target version's group
+partners (`groupSwitchTargets` → `groupPartnersOf`) and bundles every partner's
+`_updateActiveRevisionVersion` effect + doc replacement into the *same*
+transaction. So a group switch is atomic and reverts in one undo, and every
+switch entry point (pill, `Ctrl-[` / `Ctrl-]`, modal) cascades for free. The
+`annotationField ↔ versionGroupField` import pair is a safe ESM cycle (all
+cross-references are inside function bodies).
+
+Public builders: `createVersionGroup(label, members)` → `{ spec, groupId }`,
+`addVersionToGroup`, `removeVersionFromGroup`, `deleteVersionGroup`,
+`renameVersionGroup`. Group switches sync over collab today (they ride the normal
+annotation sync as one transaction); syncing the group *structure* map is tracked
+in #273.
 
 ## The annotationField StateField
 
@@ -104,10 +192,10 @@ Processes each `StateEffect` in the transaction:
 | `addAnnotation` | Insert into map |
 | `removeAnnotation` | Delete from map |
 | `updateThread` | Replace `annotation.thread` |
-| `_addVersionToRevision` | Splice new version into `versions` |
-| `_deleteVersionFromRevision` | Splice version out |
-| `_updateActiveRevisionVersion` | Update `activeVersionIndex`, rebuild selection |
-| `_updateRevisionVersionState` | Replace version blob with nested editor state |
+| `_addVersionToRevision` | Splice new version into `versions`; make it active |
+| `_deleteVersionFromRevision` | Remove version by id; recompute `activeVersionId` |
+| `_updateActiveRevisionVersion` | Update `activeVersionId` (target by id), rebuild selection |
+| `_updateRevisionVersionState` | Replace version blob (by id) with nested editor state |
 | `addSuggestion` | Text search + add suggestion |
 | `_applySuggestion` | Delete suggestion from map |
 
@@ -121,7 +209,7 @@ if (tr.docChanged) {
 }
 ```
 
-For each revision **not** in `revisionsWithExplicitEffect`, reads the document slice under the revision's range and writes it into `versions[activeVersionIndex].doc`.
+For each revision **not** in `revisionsWithExplicitEffect`, reads the document slice under the revision's range and writes it into the active version's `doc` (the slot at `activeVersionIndex(rev)`).
 
 **Critical invariant:** Phase 3 only runs when `tr.docChanged` and skips revisions with explicit effects this transaction.
 
@@ -134,10 +222,10 @@ Registered via `invertedEffects.of(...)`. When CodeMirror undoes/redoes a transa
 | `addAnnotation` | `removeAnnotation` (same object) |
 | `removeAnnotation` | `addAnnotation` (same object) |
 | `updateThread` | `updateThread` with old thread |
-| `_addVersionToRevision` | `_deleteVersionFromRevision` at same index |
-| `_deleteVersionFromRevision` | `_addVersionToRevision` with old version |
-| `_updateActiveRevisionVersion` | `_updateActiveRevisionVersion` with old index |
-| `_updateRevisionVersionState` | `_updateRevisionVersionState` with old blob |
+| `_addVersionToRevision` | `_deleteVersionFromRevision` by the added version's id |
+| `_deleteVersionFromRevision` | `_addVersionToRevision` with old version, at its old slot |
+| `_updateActiveRevisionVersion` | `_updateActiveRevisionVersion` with old `activeVersionId` |
+| `_updateRevisionVersionState` | `_updateRevisionVersionState` with old blob (by id) |
 | `_applySuggestion` | `addAnnotation` (restores suggestion) |
 | *(implicit)* collapsed revision | `removeAnnotation(collapsed)` + `_restoreAnnotation(original)` |
 
@@ -150,14 +238,19 @@ The cleanup transaction from `collapsedRevisionResolver` (tagged `_revisionClean
 Effects prefixed with `_` are internal. External code uses transaction builders:
 
 ```typescript
-// Each returns a TransactionSpec — caller dispatches
-setActiveRevisionVersion(state, annotationId, to)
+// Each returns a TransactionSpec — caller dispatches.
+// `toId` / `versionId` are STABLE version ids (VersionState.id), not indices.
+setActiveRevisionVersion(state, annotationId, toId)
 createNewRevision(state, annotationId)
 deleteRevisionVersion(state, annotationId, versionId)
 updateRevisionVersionState(state, annotationId, versionId, newVersionState)
+updateRevisionVersionLabel(state, annotationId, versionId, label)
 branchSuggestion(state, annotationId)
 applySuggestion(state, annotationId, replacementIndex)
 ```
+
+Positional callers (a pill click, `Ctrl-[` / `Ctrl-]`) translate the target index
+to its id first, e.g. `setActiveRevisionVersion(state, id, rev.versions[next].id)`.
 
 ## Transaction Annotations
 
@@ -191,7 +284,7 @@ User selects text → Mod-Alt-M
 
 ```
 User selects text → Mod-Alt-K
-→ addAnnotation { _type: "revision", versions: [{ doc: selected }], activeVersionIndex: 0 }
+→ addAnnotation { _type: "revision", versions: [makeVersion({ doc: selected })], activeVersionId: <that version's id> }
 → Text becomes atomic in main doc
 → Revision.svelte renders with one version pill
 → isActive → nested editor auto-opens
@@ -201,13 +294,13 @@ User selects text → Mod-Alt-K
 
 ```
 User clicks version pill N
-→ view.dispatch(setActiveRevisionVersion(state, id, N))
+→ view.dispatch(setActiveRevisionVersion(state, id, versions[N].id))
   Transaction contains:
-    - _updateActiveRevisionVersion effect (N)
-    - doc change: replace revision range with versions[N].doc
+    - _updateActiveRevisionVersion effect (target version id)
+    - doc change: replace revision range with that version's doc
     - revisionInternalEdit.of(true)
     - Transaction.addToHistory.of(true)
-→ Phase 2: updates activeVersionIndex, rebuilds selection
+→ Phase 2: updates activeVersionId, rebuilds selection
 → Phase 3 skipped (revision in revisionsWithExplicitEffect)
 → Svelte store sync → Revision.svelte re-renders
 ```

@@ -14,10 +14,12 @@ import {
     generateAnnotationId,
     AnnotationIdMap,
 } from "$lib/collab/annotationSchema";
-import type {
-    GenericAnnotation,
-    RawAnnotations,
-    VersionState,
+import {
+    activeVersionIndex,
+    makeVersion,
+    type GenericAnnotation,
+    type RawAnnotations,
+    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 import type { YjsAnnotationNode } from "$lib/collab/types";
 import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
@@ -99,13 +101,14 @@ describe("annotationSchema", () => {
         });
 
         it("converts a revision annotation to recursive Y.Map with Y.Text versions", () => {
+            const revVersion = makeVersion({ doc: "version text", label: "v1" });
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
                 selection: EditorSelection.single(0, 5),
                 thread: [],
-                versions: [{ doc: "version text", label: "v1" }],
-                activeVersionIndex: 0,
+                versions: [revVersion],
+                activeVersionId: revVersion.id,
             };
 
             const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
@@ -133,7 +136,7 @@ describe("annotationSchema", () => {
                 },
             };
             const version = {
-                doc: "version text",
+                ...makeVersion({ doc: "version text" }),
                 annotationField: nestedAnnotations,
             } as VersionState & { annotationField: RawAnnotations };
             const ann: GenericAnnotation = {
@@ -142,7 +145,7 @@ describe("annotationSchema", () => {
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [version],
-                activeVersionIndex: 0,
+                activeVersionId: version.id,
             };
 
             const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
@@ -214,13 +217,14 @@ describe("annotationSchema", () => {
         });
 
         it("round-trips a revision annotation", () => {
+            const roundtripVersion = makeVersion({ doc: "v1 text" });
             const ann: GenericAnnotation = {
                 id: 3,
                 _type: "revision",
                 selection: EditorSelection.single(0, 5),
                 thread: [],
-                versions: [{ doc: "v1 text" }],
-                activeVersionIndex: 0,
+                versions: [roundtripVersion],
+                activeVersionId: roundtripVersion.id,
             };
 
             const node = codeMirrorToYjsAnnotation(ann, ytext, CLIENT_ID, ydoc);
@@ -232,7 +236,7 @@ describe("annotationSchema", () => {
             expect(restored!._type).toBe("revision");
             if (restored !== null && restored._type === "revision") {
                 expect(restored.versions[0].doc).toBe("v1 text");
-                expect(restored.activeVersionIndex).toBe(0);
+                expect(activeVersionIndex(restored)).toBe(0);
             }
         });
 
@@ -246,7 +250,7 @@ describe("annotationSchema", () => {
                 },
             };
             const version = {
-                doc: "v1 text",
+                ...makeVersion({ doc: "v1 text" }),
                 annotationField: nestedAnnotations,
             } as VersionState & { annotationField: RawAnnotations };
             const ann: GenericAnnotation = {
@@ -255,7 +259,7 @@ describe("annotationSchema", () => {
                 selection: EditorSelection.single(0, 5),
                 thread: [],
                 versions: [version],
-                activeVersionIndex: 0,
+                activeVersionId: version.id,
             };
 
             const idMap = new AnnotationIdMap();

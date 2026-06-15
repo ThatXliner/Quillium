@@ -18,7 +18,11 @@ import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import { EditorSelection } from "@codemirror/state";
 import { codeMirrorToYjsAnnotation, yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    makeVersion,
+    type GenericAnnotation,
+} from "$lib/editor/plugins/annotations/models";
 import type { YjsAnnotationNode } from "$lib/collab/types";
 
 const CLIENT_ID = "client-A";
@@ -83,13 +87,17 @@ describe("annotation tree", () => {
         expect(suggestionNode.get("replacements") instanceof Y.Array).toBe(true);
 
         // Revision
+        const revisionVersions = [
+            makeVersion({ doc: "Hello" }),
+            makeVersion({ doc: "Greetings", label: "alt" }),
+        ];
         const revision: GenericAnnotation = {
             _type: "revision",
             id: 2,
             selection: EditorSelection.single(0, 5),
             thread: [],
-            activeVersionIndex: 0,
-            versions: [{ doc: "Hello" }, { doc: "Greetings", label: "alt" }],
+            activeVersionId: revisionVersions[0].id,
+            versions: revisionVersions,
         };
         const revisionNode = buildAndIntegrate(revision, host, "revision");
         expect(revisionNode instanceof Y.Map).toBe(true);
@@ -132,13 +140,14 @@ describe("annotation tree", () => {
         Y.applyUpdate(a.ydoc, Y.encodeStateAsUpdate(b.ydoc), "remote");
 
         try {
+            const propagationVersion = makeVersion({ doc: "Hello", label: "original" });
             const revision: GenericAnnotation = {
                 _type: "revision",
                 id: 0,
                 selection: EditorSelection.single(0, 5),
                 thread: [],
-                activeVersionIndex: 0,
-                versions: [{ doc: "Hello", label: "original" }],
+                activeVersionId: propagationVersion.id,
+                versions: [propagationVersion],
             };
             buildAndIntegrate(revision, a, "shared-id");
 
@@ -220,7 +229,7 @@ describe("annotation tree", () => {
         expect(decoded).not.toBeNull();
         expect(decoded!._type).toBe("revision");
         if (decoded!._type === "revision") {
-            expect(decoded!.activeVersionIndex).toBe(0);
+            expect(activeVersionIndex(decoded!)).toBe(0);
         }
     });
 
@@ -233,13 +242,14 @@ describe("annotation tree", () => {
         // which happens when the position is decoded against a doc that
         // never received those items at all.
         const host = makeHost("Hello world");
+        const nullSelVersion = makeVersion({ doc: "Hello" });
         const revision: GenericAnnotation = {
             _type: "revision",
             id: 0,
             selection: EditorSelection.single(0, 5),
             thread: [],
-            activeVersionIndex: 0,
-            versions: [{ doc: "Hello" }],
+            activeVersionId: nullSelVersion.id,
+            versions: [nullSelVersion],
         };
         const node = buildAndIntegrate(revision, host, "revision");
 

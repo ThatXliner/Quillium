@@ -30,7 +30,7 @@ function withAnnotations(...types: Array<"comment" | "suggestion" | "revision">)
         } else if (type === "suggestion") {
             annotations[i] = { ...base, _type: "suggestion", replacements: [] };
         } else {
-            annotations[i] = { ...base, _type: "revision", activeVersionIndex: 0, versions: [] };
+            annotations[i] = { ...base, _type: "revision", activeVersionId: "", versions: [] };
         }
     });
     return annotations;
@@ -90,7 +90,7 @@ describe("isAnnotationOfType", () => {
         _type: "revision",
         selection: sel(0, 5),
         thread: [],
-        activeVersionIndex: 0,
+        activeVersionId: "",
         versions: [],
     };
     const suggestion: GenericAnnotation = {
@@ -184,7 +184,7 @@ describe("clone", () => {
 
 describe("versionText", () => {
     it("extracts the doc field from a VersionState", () => {
-        const version = { doc: "hello world", someOtherField: 42 };
+        const version = { id: "v1", doc: "hello world", someOtherField: 42 };
         expect(versionText(version)).toBe("hello world");
     });
 });

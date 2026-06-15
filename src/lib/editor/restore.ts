@@ -25,6 +25,7 @@ import { EditorSelection, Text } from "@codemirror/state";
 import { SearchCursor } from "@codemirror/search";
 import { annotationField, addAnnotation, removeAnnotation } from "./plugins/annotations";
 import {
+    activeVersion,
     isAnnotationOfType,
     versionText,
     type GenericAnnotation,
@@ -155,7 +156,7 @@ export function restoreBackup(view: EditorView, documentText: string): void {
     ).map((ann) => {
         let anchorText: string;
         if (isAnnotationOfType(ann, "revision")) {
-            anchorText = versionText(ann.versions[ann.activeVersionIndex]);
+            anchorText = versionText(activeVersion(ann));
         } else {
             anchorText = view.state.doc.sliceString(ann.selection.main.from, ann.selection.main.to);
         }

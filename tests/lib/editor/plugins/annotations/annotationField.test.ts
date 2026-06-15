@@ -13,19 +13,21 @@ import {
     addAnnotation,
     annotationField,
     createNewRevision,
-    deleteRevisionVersion,
+    deleteRevisionVersion as _deleteRevisionVersion,
     invertedAnnotationFieldEffects,
     nestedEditorEdit,
     _nestedEditRevision,
-    setActiveRevisionVersion,
-    updateRevisionVersionState,
+    setActiveRevisionVersion as _setActiveRevisionVersion,
+    updateRevisionVersionState as _updateRevisionVersionState,
     _updateRevisionVersionLabel,
 } from "$lib/editor/plugins/annotations/annotationField";
+import type { TransactionSpec } from "@codemirror/state";
 import { Transaction } from "@codemirror/state";
 import {
+    activeVersionIndex as activeVersionIndexOf,
     isAnnotationOfType,
+    makeVersion,
     type Annotations,
-    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 import { history, undo, redo } from "@codemirror/commands";
 
@@ -53,15 +55,56 @@ function getRevision(state: EditorState, id: number) {
     return ann;
 }
 
+// Positional index of the active version (versions migrated to stable ids).
+function activeVersionIndex(rev: ReturnType<typeof getRevision>): number {
+    return activeVersionIndexOf(rev);
+}
+
+// Resolve a positional version index to its stable id off the live state.
+function versionIdAt(state: EditorState, id: number, index: number): string {
+    return getRevision(state, id).versions[index].id;
+}
+
+// Index-based wrappers around the now id-based builders, keeping the existing
+// index-oriented test bodies declarative.
+function setActiveRevisionVersion(state: EditorState, id: number, index: number): TransactionSpec {
+    return _setActiveRevisionVersion(state, id, versionIdAt(state, id, index));
+}
+function deleteRevisionVersion(state: EditorState, id: number, index: number): TransactionSpec {
+    return _deleteRevisionVersion(state, id, versionIdAt(state, id, index));
+}
+// A version blob without a stable id (the reducer assigns the target version's
+// id, so the blob's id is irrelevant). May carry extra fields (e.g. nested
+// annotationField) for the sub-annotation tests.
+type TestBlob = { doc: string; label?: string } & Record<string, unknown>;
+function updateRevisionVersionState(
+    state: EditorState,
+    id: number,
+    index: number,
+    blob: TestBlob,
+    options?: { addToHistory?: boolean },
+): TransactionSpec {
+    // The reducer overrides the id with the target version's; mint a throwaway
+    // one only to satisfy the VersionState signature.
+    return _updateRevisionVersionState(
+        state,
+        id,
+        versionIdAt(state, id, index),
+        makeVersion(blob),
+        options,
+    );
+}
+
 /** Add a revision annotation covering [from, to) with the given version docs. */
 function addRevision(
     state: EditorState,
     from: number,
     to: number,
-    versionDocs: string[],
-    activeVersionIndex = 0,
+    versionDocs: Array<string | ({ doc: string } & Record<string, unknown>)>,
+    activeIndex = 0,
 ): EditorState {
     const id = Object.keys(getAnnotations(state)).length;
+    const versions = versionDocs.map((v) => makeVersion(typeof v === "string" ? { doc: v } : v));
     return state.update({
         effects: [
             addAnnotation.of({
@@ -69,8 +112,8 @@ function addRevision(
                 _type: "revision",
                 selection: EditorSelection.single(from, to),
                 thread: [],
-                activeVersionIndex,
-                versions: versionDocs.map((doc) => ({ doc })),
+                activeVersionId: versions[activeIndex].id,
+                versions,
             }),
         ],
     }).state;
@@ -106,7 +149,7 @@ describe("Phase 3: pushDocToVersionState", () => {
         state = state.update(tr).state;
 
         const rev = getRevision(state, 0);
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
         expect(rev.versions[0].doc).toBe("world"); // old version preserved
         expect(rev.versions[1].doc).toBe("earth"); // active version preserved
     });
@@ -131,7 +174,7 @@ describe("Phase 3: pushDocToVersionState", () => {
         state = addRevision(state, 6, 11, ["world"]);
 
         // Set version state with a label
-        const blob: VersionState = { doc: "world", label: "test-label" };
+        const blob: TestBlob = { doc: "world", label: "test-label" };
         const tr = updateRevisionVersionState(state, 0, 0, blob);
         state = state.update(tr).state;
 
@@ -159,7 +202,7 @@ describe("setActiveRevisionVersion", () => {
         state = state.update(tr).state;
 
         const rev = getRevision(state, 0);
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
         expect(state.doc.toString()).toBe("prefix world suffix");
     });
 
@@ -252,7 +295,7 @@ describe("createNewRevision", () => {
         expect(rev.versions).toHaveLength(2);
         expect(rev.versions[0].doc).toBe("hello");
         expect(rev.versions[1].doc).toBe("");
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
         expect(state.doc.toString()).toBe("");
     });
 
@@ -306,7 +349,7 @@ describe("deleteRevisionVersion", () => {
 
         const rev = getRevision(state, 0);
         expect(rev.versions).toHaveLength(2);
-        expect(rev.activeVersionIndex).toBe(1); // was 2, shifted down
+        expect(activeVersionIndex(rev)).toBe(1); // was 2, shifted down
         expect(rev.versions[0].doc).toBe("BB");
         expect(rev.versions[1].doc).toBe("CC");
     });
@@ -319,7 +362,7 @@ describe("updateRevisionVersionState", () => {
         let state = makeState("active");
         state = addRevision(state, 0, 6, ["active", "old"]);
 
-        const newBlob: VersionState = { doc: "updated", label: "test" };
+        const newBlob: TestBlob = { doc: "updated", label: "test" };
         state = state.update(updateRevisionVersionState(state, 0, 1, newBlob)).state;
 
         const rev = getRevision(state, 0);
@@ -332,7 +375,7 @@ describe("updateRevisionVersionState", () => {
         let state = makeState("old text");
         state = addRevision(state, 0, 8, ["old text"]);
 
-        const newBlob: VersionState = { doc: "new text" };
+        const newBlob: TestBlob = { doc: "new text" };
         state = state.update(updateRevisionVersionState(state, 0, 0, newBlob)).state;
 
         const rev = getRevision(state, 0);
@@ -345,7 +388,7 @@ describe("updateRevisionVersionState", () => {
         state = addRevision(state, 0, 4, ["same"]);
 
         // Update active version with same doc text but new metadata
-        const newBlob: VersionState = { doc: "same", label: "meta" };
+        const newBlob: TestBlob = { doc: "same", label: "meta" };
         const tr = updateRevisionVersionState(state, 0, 0, newBlob);
         state = state.update(tr).state;
 
@@ -359,7 +402,7 @@ describe("updateRevisionVersionState", () => {
         state = addRevision(state, 0, 7, ["initial"]);
 
         // updateRevisionVersionState changes both the blob AND the doc
-        const newBlob: VersionState = { doc: "changed", label: "meta" };
+        const newBlob: TestBlob = { doc: "changed", label: "meta" };
         state = state.update(updateRevisionVersionState(state, 0, 0, newBlob)).state;
 
         const rev = getRevision(state, 0);
@@ -378,7 +421,11 @@ describe("updateRevisionVersionLabel", () => {
 
         state = state.update({
             effects: [
-                _updateRevisionVersionLabel.of({ annotationId: 0, versionId: 0, label: "Draft" }),
+                _updateRevisionVersionLabel.of({
+                    annotationId: 0,
+                    versionId: versionIdAt(state, 0, 0),
+                    label: "Draft",
+                }),
             ],
         }).state;
 
@@ -387,18 +434,23 @@ describe("updateRevisionVersionLabel", () => {
     });
 
     it("clears a label by setting undefined", () => {
-        let state = makeState("text");
-        state = addRevision(state, 0, 4, [{ doc: "text", label: "Draft" } as unknown as string]);
-        // Fix: addRevision takes string[], need to set label differently
-        state = addRevision(makeState("text"), 0, 4, ["text"]);
+        let state = addRevision(makeState("text"), 0, 4, [{ doc: "text", label: "Draft" }]);
         state = state.update({
             effects: [
-                _updateRevisionVersionLabel.of({ annotationId: 0, versionId: 0, label: "Draft" }),
+                _updateRevisionVersionLabel.of({
+                    annotationId: 0,
+                    versionId: versionIdAt(state, 0, 0),
+                    label: "Draft",
+                }),
             ],
         }).state;
         state = state.update({
             effects: [
-                _updateRevisionVersionLabel.of({ annotationId: 0, versionId: 0, label: undefined }),
+                _updateRevisionVersionLabel.of({
+                    annotationId: 0,
+                    versionId: versionIdAt(state, 0, 0),
+                    label: undefined,
+                }),
             ],
         }).state;
 
@@ -463,7 +515,7 @@ describe("undo/redo", () => {
             : state;
 
         const rev = getRevision(state, 0);
-        expect(rev.activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(rev)).toBe(0);
         expect(state.doc.toString()).toBe("hello");
     });
 
@@ -573,7 +625,7 @@ describe("rapid sequential operations", () => {
         state = addRevision(state, 0, 6, ["active", "other"]);
 
         // Update non-active version with a blob containing nested annotations
-        const blob: VersionState = {
+        const blob: TestBlob = {
             doc: "updated-other",
             label: "v2",
         };
@@ -616,7 +668,7 @@ describe("toJSON/fromJSON round-trip", () => {
         let state = makeState("text");
         state = addRevision(state, 0, 4, ["text"]);
 
-        const blob: VersionState = { doc: "text", label: "Final" };
+        const blob: TestBlob = { doc: "text", label: "Final" };
         state = state.update(updateRevisionVersionState(state, 0, 0, blob)).state;
 
         const rev = getRevision(state, 0);
@@ -725,7 +777,7 @@ describe("version override prevention", () => {
         state = addRevision(state, 0, 11, ["active-text", "inactive"]);
 
         // Update non-active version blob (simulates modal flush)
-        const blob: VersionState = {
+        const blob: TestBlob = {
             doc: "new-inactive",
             label: "flush",
         };
@@ -736,7 +788,7 @@ describe("version override prevention", () => {
         const rev = getRevision(state, 0);
         expect(rev.versions[0].doc).toBe("active-text");
         expect(rev.versions[1].doc).toBe("new-inactive");
-        expect(rev.activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(rev)).toBe(0);
     });
 
     it("rapid version state updates don't lose data", () => {
@@ -744,10 +796,10 @@ describe("version override prevention", () => {
         state = addRevision(state, 0, 2, ["v0", "v1", "v2"]);
 
         // Update all non-active versions in rapid succession
-        const blob1: VersionState = { doc: "v1-updated" };
+        const blob1: TestBlob = { doc: "v1-updated" };
         state = state.update(updateRevisionVersionState(state, 0, 1, blob1)).state;
 
-        const blob2: VersionState = { doc: "v2-updated" };
+        const blob2: TestBlob = { doc: "v2-updated" };
         state = state.update(updateRevisionVersionState(state, 0, 2, blob2)).state;
 
         const rev = getRevision(state, 0);
@@ -826,11 +878,11 @@ describe("edge cases", () => {
         // Step 1: Switch from version 0 ("hello") to version 1 ("world")
         state = state.update(setActiveRevisionVersion(state, 0, 1)).state;
         expect(state.doc.toString()).toBe("world");
-        expect(getRevision(state, 0).activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(getRevision(state, 0))).toBe(1);
 
         // Step 2: flushToParent fires with OLD version's content to OLD index
         // (this is the correct case — modal editor wasn't synced yet)
-        const correctBlob: VersionState = { doc: "hello" };
+        const correctBlob: TestBlob = { doc: "hello" };
         state = state.update(
             updateRevisionVersionState(state, 0, 0, correctBlob, { addToHistory: false }),
         ).state;
@@ -838,7 +890,7 @@ describe("edge cases", () => {
         const rev = getRevision(state, 0);
         expect(rev.versions[0].doc).toBe("hello"); // old version preserved
         expect(rev.versions[1].doc).toBe("world"); // new version preserved
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
     });
 
     it("version switch does not drop comment annotations outside the revision", () => {
@@ -940,6 +992,7 @@ describe("edge cases", () => {
         // Revision 1 covers "BBB" at [4, 7]
         let state = makeState("AAA BBB");
         state = addRevision(state, 0, 3, ["AAA", "A"]);
+        const rev1Version = makeVersion({ doc: "BBB" });
         state = state.update({
             effects: [
                 addAnnotation.of({
@@ -947,8 +1000,8 @@ describe("edge cases", () => {
                     _type: "revision",
                     selection: EditorSelection.single(4, 7),
                     thread: [],
-                    activeVersionIndex: 0,
-                    versions: [{ doc: "BBB" }],
+                    activeVersionId: rev1Version.id,
+                    versions: [rev1Version],
                 }),
             ],
         }).state;
@@ -1018,7 +1071,7 @@ describe("edge cases", () => {
             },
         };
         state = addRevision(state, 0, 5, [
-            { doc: "hello", annotationField: subAnnotations } as unknown as string,
+            { doc: "hello", annotationField: subAnnotations },
             "world",
         ]);
 
@@ -1029,10 +1082,10 @@ describe("edge cases", () => {
         // Simulate a contaminated flush: the nested editor was synced to "world"
         // which collapsed the sub-annotations, then flushed to version 0's blob.
         // This is the BAD path the guard prevents.
-        const contaminatedBlob = {
+        const contaminatedBlob: TestBlob = {
             doc: "hello", // doc is preserved by merge-only flush
             annotationField: {}, // but annotations were collapsed/dropped
-        } as VersionState & { annotationField: Record<string, never> };
+        };
         state = state.update(
             updateRevisionVersionState(state, 0, 0, contaminatedBlob, { addToHistory: false }),
         ).state;

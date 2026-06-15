@@ -67,9 +67,13 @@ import Thread from "./Thread.svelte";
 import TutorialGuide from "./TutorialGuide.svelte";
 import {
     type VersionState,
+    activeVersion,
+    activeVersionIndex,
     createNewAnnotation,
     getLastId,
     isAnnotationOfType,
+    makeVersion,
+    versionById,
     versionText,
 } from "./models";
 import { previewVersionText } from "./nestedEditor";
@@ -265,7 +269,7 @@ let openDropdown = $state(-1);
 // Sync the version-dropdown selections for each breadcrumb
 // whenever the crumbs array or underlying revision state changes.
 $effect(() => {
-    crumbSelectedVersions = crumbRevisions.map((rev) => rev?.activeVersionIndex ?? 0);
+    crumbSelectedVersions = crumbRevisions.map((rev) => (rev ? activeVersionIndex(rev) : 0));
 });
 
 /**
@@ -284,8 +288,15 @@ function selectVersion(ci: number, vi: number, crumb: (typeof crumbs)[number], i
         version_index: vi,
         context: "modal",
     });
+    // The dropdown yields a positional index; translate to the stable version id.
+    const crumbRev = crumb.parentView.state.field(annotationField)[crumb.revisionId];
+    const targetVersionId =
+        crumbRev && isAnnotationOfType(crumbRev, "revision")
+            ? crumbRev.versions[vi]?.id
+            : undefined;
+    if (targetVersionId === undefined) return;
     crumb.parentView.dispatch(
-        setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, vi),
+        setActiveRevisionVersion(crumb.parentView.state, crumb.revisionId, targetVersionId),
     );
 
     if (isCurrent) {
@@ -348,7 +359,7 @@ function send(event: FsmEvent) {
                             type: "revision",
                             revisionId: newId,
                             parentView: editor,
-                            label: previewVersionText(newAnn.versions[newAnn.activeVersionIndex]),
+                            label: previewVersionText(activeVersion(newAnn)),
                         });
                     }
                 }
@@ -368,7 +379,7 @@ $effect(() => {
     if (fsmState === "mounting" && editorHost) {
         const rev = readRevision();
         if (rev && !controller.editor) {
-            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
+            createEditor(activeVersion(rev), activeVersionIndex(rev));
         }
         const activeEditor = controller.editor;
         if (activeEditor) {
@@ -382,7 +393,7 @@ $effect(() => {
     } else if (fsmState === "rebuilding" && editorHost) {
         const rev = readRevision();
         if (rev) {
-            createEditor(rev.versions[rev.activeVersionIndex], rev.activeVersionIndex);
+            createEditor(activeVersion(rev), activeVersionIndex(rev));
             if (controller.editor) moveCursorToEnd(controller.editor);
         }
         fsmState = "ready";
@@ -476,7 +487,9 @@ function close() {
 }
 
 // ─── Sensor Effect B: External sync (version switch + doc changes) ──
-let lastSyncedVersionIndex = -1;
+// Tracked by stable version id (not index) so a sibling version add/delete
+// can't be misread as a version switch.
+let lastSyncedVersionId: string | undefined;
 $effect(() => {
     let ann: AnnotationsMap | undefined;
     if (stackIndex === 0) {
@@ -488,24 +501,25 @@ $effect(() => {
     }
     if (!ann) return;
     const rev = ann[revisionId] as Annotation<"revision"> | undefined;
-    if (!rev || !isAnnotationOfType(rev, "revision") || !rev.versions?.[rev.activeVersionIndex])
-        return;
+    if (!rev || !isAnnotationOfType(rev, "revision")) return;
+    const activeVersionState = versionById(rev, rev.activeVersionId);
+    if (!activeVersionState) return;
 
-    // Always track the latest version index, even during rebuilds,
+    // Always track the latest version, even during rebuilds,
     // so the rebuild completes with the most recent version.
     if (fsmState !== "ready" || !controller.editor) {
-        lastSyncedVersionIndex = rev.activeVersionIndex;
+        lastSyncedVersionId = rev.activeVersionId;
         return;
     }
 
     // Version switches rebuild the editor, which would destroy it while
     // a child modal depends on it. Only process when we're the top modal.
-    // When not top, don't update lastSyncedVersionIndex — the mismatch
+    // When not top, don't update lastSyncedVersionId — the mismatch
     // will be detected when the child modal closes and this becomes top,
     // triggering the deferred rebuild.
-    if (lastSyncedVersionIndex >= 0 && rev.activeVersionIndex !== lastSyncedVersionIndex) {
+    if (lastSyncedVersionId !== undefined && rev.activeVersionId !== lastSyncedVersionId) {
         if (isTop) {
-            lastSyncedVersionIndex = rev.activeVersionIndex;
+            lastSyncedVersionId = rev.activeVersionId;
             const entry = $modalStack[stackIndex] as
                 | (ModalEntry & { rebuildToken?: number })
                 | undefined;
@@ -514,17 +528,16 @@ $effect(() => {
         }
         return;
     }
-    lastSyncedVersionIndex = rev.activeVersionIndex;
+    lastSyncedVersionId = rev.activeVersionId;
 
-    const activeVersion = rev.versions[rev.activeVersionIndex];
-    if (controller.needsAnnotationRebuild(activeVersion)) {
+    if (controller.needsAnnotationRebuild(activeVersionState)) {
         if (isTop) {
             send({ type: "REBUILD_REQUESTED" });
         }
         return;
     }
 
-    const externalDoc = versionText(activeVersion);
+    const externalDoc = versionText(activeVersionState);
     send({ type: "EXTERNAL_DOC_CHANGED", doc: externalDoc });
 });
 
@@ -585,8 +598,8 @@ function executePendingNestedCommand(
             const originalText = s2.sliceDoc(sel.from, sel.to);
             const autoVersion = appSettings.autoVersionOnRevisionCreate;
             const versions: VersionState[] = autoVersion
-                ? [{ doc: originalText } as VersionState, { doc: "" } as VersionState]
-                : [{ doc: originalText } as VersionState];
+                ? [makeVersion({ doc: originalText }), makeVersion({ doc: "" })]
+                : [makeVersion({ doc: originalText })];
             const annotationSelection = autoVersion
                 ? EditorSelection.single(sel.from)
                 : s2.selection;
@@ -605,7 +618,7 @@ function executePendingNestedCommand(
                     effects: [
                         addAnnotation.of({
                             ...newAnnotation,
-                            activeVersionIndex: autoVersion ? 1 : 0,
+                            activeVersionId: (autoVersion ? versions[1] : versions[0]).id,
                             versions,
                         }),
                     ],
@@ -700,7 +713,7 @@ let labelInputEl = $state<HTMLInputElement | undefined>(undefined);
 function startLabelEdit() {
     const revision = readRevision();
     if (!revision) return;
-    labelInputValue = revision.versions[revision.activeVersionIndex]?.label ?? "";
+    labelInputValue = versionById(revision, revision.activeVersionId)?.label ?? "";
     editingVersionLabel = true;
 }
 
@@ -722,7 +735,7 @@ function commitLabelEdit() {
         updateRevisionVersionLabel(
             view.state,
             revisionId,
-            revision.activeVersionIndex,
+            revision.activeVersionId,
             trimmed || undefined,
         ),
     );
@@ -770,12 +783,14 @@ function deleteRevision() {
 function deleteVersion(vi: number) {
     const revision = readRevision();
     if (!revision) return;
+    const versionId = revision.versions[vi]?.id;
+    if (versionId === undefined) return;
     openDropdown = -1;
     // Preserve any pending nested edits in the mounted version before the
-    // index shift (mirrors the inline card's flush-before-delete).
+    // delete (mirrors the inline card's flush-before-delete).
     controller.flushCurrentStateToParent(false);
     const wasLastVersion = revision.versions.length === 1;
-    view.dispatch(deleteRevisionVersion(view.state, revisionId, vi));
+    view.dispatch(deleteRevisionVersion(view.state, revisionId, versionId));
     if (wasLastVersion) {
         close();
         return;
@@ -788,10 +803,8 @@ function navigateVersion(direction: "prev" | "next") {
     if (!revision) return;
     const count = revision.versions.length;
     if (count <= 1) return;
-    const next =
-        direction === "next"
-            ? (revision.activeVersionIndex + 1) % count
-            : (revision.activeVersionIndex - 1 + count) % count;
+    const current = activeVersionIndex(revision);
+    const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
     selectVersion(crumbs.length - 1, next, crumbs[crumbs.length - 1], true);
 }
 

@@ -1,6 +1,11 @@
 import type { Annotations } from "$lib/editor/plugins/annotations";
 import { getRawAnnotationField } from "$lib/collab/annotationSchema";
-import { isAnnotationOfType, versionText } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    isAnnotationOfType,
+    normalizeRevision,
+    versionText,
+} from "$lib/editor/plugins/annotations/models";
 import { RawAnnotationsSchema, type RawAnnotations } from "$lib/editor/plugins/annotations/models";
 
 export type SerializedThreadMessage = {
@@ -109,11 +114,17 @@ function serializeRawAnnotationMap(
             }
 
             if (annotation._type === "revision") {
+                // Raw revisions may be legacy index-based or missing version ids;
+                // normalize so versions carry ids and the active pointer resolves
+                // to a positional index. The serialized WIRE shape stays
+                // index-based (activeVersionIndex + versions[].index) for the
+                // public share renderer.
+                const revision = normalizeRevision(annotation);
                 return {
                     ...base,
                     type: "revision",
-                    activeVersionIndex: annotation.activeVersionIndex,
-                    versions: annotation.versions.map((version, index) => ({
+                    activeVersionIndex: activeVersionIndex(revision),
+                    versions: revision.versions.map((version, index) => ({
                         index,
                         text: versionText(version),
                         label: version.label,
@@ -171,7 +182,7 @@ function serializeAnnotationMap(
                 return {
                     ...base,
                     type: "revision",
-                    activeVersionIndex: annotation.activeVersionIndex,
+                    activeVersionIndex: activeVersionIndex(annotation),
                     versions: annotation.versions.map((version, index) => ({
                         index,
                         text: versionText(version),

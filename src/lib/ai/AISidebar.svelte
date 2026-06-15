@@ -26,6 +26,35 @@
     components; aiProcessing from settings.svelte.ts; posthog analytics.
 -->
 <script lang="ts">
+import {
+    aiProcessing,
+    documentContext,
+    ensureApiKeyLoaded,
+    hasApiKey,
+    stopAllAi,
+} from "$lib/ai/settings.svelte";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
+import {
+    activeAnnotation,
+    annotations,
+    documentContent,
+    selectedText,
+    selectedTextRange,
+} from "$lib/stores";
+import {
+    CompassIcon,
+    InfoIcon,
+    MessageCircleIcon,
+    Minimize2Icon,
+    PenLineIcon,
+    SettingsIcon,
+    SquareIcon,
+    UsersIcon,
+    XIcon,
+    ZapIcon,
+} from "lucide-svelte";
 /*
  * AISidebar.svelte
  *
@@ -58,40 +87,12 @@
  *     cursor without animation lag.
  */
 import { tick } from "svelte";
-import Chat from "./Chat.svelte";
-import Feedback from "./Feedback.svelte";
-import Revise from "./Revise.svelte";
 import AISettings from "./AISettings.svelte";
+import Chat from "./Chat.svelte";
 import DocumentContext from "./DocumentContext.svelte";
+import Feedback from "./Feedback.svelte";
 import Readers from "./Readers.svelte";
-import {
-    MessageCircleIcon,
-    ZapIcon,
-    PenLineIcon,
-    XIcon,
-    SettingsIcon,
-    CompassIcon,
-    Minimize2Icon,
-    UsersIcon,
-    SquareIcon,
-    InfoIcon,
-} from "lucide-svelte";
-import {
-    aiProcessing,
-    hasApiKey,
-    ensureApiKeyLoaded,
-    stopAllAi,
-    documentContext,
-} from "$lib/ai/settings.svelte";
-import {
-    activeAnnotation,
-    annotations,
-    documentContent,
-    selectedText,
-    selectedTextRange,
-} from "$lib/stores";
-import { appEventBus } from "$lib/events/appEventBus";
-import posthog from "$lib/posthog";
+import Revise from "./Revise.svelte";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
     buildAiContextPacket,
@@ -180,7 +181,7 @@ const panelTitles: Record<NonNullable<Action>, string> = {
 
 const expanded = $derived(action !== null);
 const DEFAULT_WIDTH = 320;
-const DEFAULT_HEIGHT = 520;
+const DEFAULT_HEIGHT = 570;
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 600;
 const MIN_HEIGHT = 400;
@@ -241,8 +242,14 @@ const headerContextPacket = $derived(
           })
         : null,
 );
+// The header info (ℹ) icon stands in for the in-panel context summary card
+// whenever that card isn't shown — either because the packet doesn't warrant a
+// full summary, or because the writer collapsed it via "Hide" / Settings
+// (appSettings.collapseContextSummary). ContextLens hides its card under the
+// same conditions, so exactly one of the two is visible at a time.
 const showHeaderContextInfo = $derived(
-    headerContextPacket !== null && !shouldShowContextSummary(headerContextPacket),
+    headerContextPacket !== null &&
+        (appSettings.collapseContextSummary || !shouldShowContextSummary(headerContextPacket)),
 );
 const headerContextInfoLabel = $derived(
     headerContextPacket
@@ -256,6 +263,22 @@ const headerContextRing = $derived(
           ? "focus:ring-purple-500"
           : "focus:ring-blue-500",
 );
+
+// Context detail popover (opened by the header info button). Lists each
+// context source from the packet so the writer can see exactly what the AI
+// will be shown. Closed on click-outside, Escape, panel switch, or when the
+// info button itself stops rendering.
+let showContextPopover = $state(false);
+const contextPopoverSources = $derived(headerContextPacket?.sources ?? []);
+
+// Auto-close the popover when the info button is no longer relevant (e.g. the
+// user switched to a panel without context, or selection/draft state changed
+// so the button stops rendering).
+$effect(() => {
+    if (!showHeaderContextInfo && showContextPopover) {
+        showContextPopover = false;
+    }
+});
 
 // Inline style when expanded: always set width/height so tab-specific defaults
 // and reset-to-default transitions animate smoothly.
@@ -446,7 +469,27 @@ const actionKeys: Record<string, NonNullable<Action>> = {
     "5": "readers",
 };
 
+// Dismiss the context popover when clicking anywhere inside the sidebar that
+// isn't the info button or the popover itself. The sidebar container stops
+// click propagation to the window, so handleClickOutside never fires for
+// in-sidebar clicks — this handler covers that gap.
+function handleSidebarClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (!showContextPopover) return;
+    const target = e.target as Element;
+    if (target.closest?.(".context-popover") || target.closest?.("[data-context-info-button]")) {
+        return;
+    }
+    showContextPopover = false;
+}
+
 function handleKeydown(e: KeyboardEvent) {
+    // Escape closes the context popover first, before the sidebar itself.
+    if (e.key === "Escape" && showContextPopover) {
+        showContextPopover = false;
+        e.stopPropagation();
+        return;
+    }
     // Escape closes the sidebar
     if (e.key === "Escape" && expanded) {
         // Only close if focus is not inside an input/textarea in the sidebar
@@ -474,322 +517,459 @@ function handleKeydown(e: KeyboardEvent) {
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-    id="ai-sidebar"
-    bind:this={container}
-    onclick={(e) => e.stopPropagation()}
-    style={containerSizeStyle}
-    class="
+  id="ai-sidebar"
+  bind:this={container}
+  onclick={handleSidebarClick}
+  style={containerSizeStyle}
+  class="
         fixed left-4 top-1/2 -translate-y-1/2 z-50
         backdrop-blur-md bg-[color:var(--surface)] border border-[color:var(--border)] shadow-lg
         overflow-hidden {transitionClass}
-        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[280px] rounded-[100px]'}
+        {expanded
+    ? 'w-[320px] h-[520px] rounded-[14px]'
+    : 'w-[52px] h-[280px] rounded-[100px]'}
         {aiProcessing.active ? 'ai-processing' : ''}
     "
 >
-    <!-- Collapsed pill icons -->
-    <div
-        class="absolute inset-0 flex flex-col items-center py-3 px-2 transition-opacity duration-150
+  <!-- Collapsed pill icons -->
+  <div
+    class="absolute inset-0 flex flex-col items-center py-3 px-2 transition-opacity duration-150
             {expanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-    >
-        <div class="flex flex-col gap-1">
-            {#each actions as a}
-                {@const disabled = a.requiresApiKey && !hasApiKey()}
-                <button
-                    id="ai-tab-{a.id}"
-                    onclick={() => selectAction(a.id)}
-                    aria-label={disabled ? `${a.label} (add API key in settings)` : `${a.label} (${a.shortcut})`}
-                    title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
-                    class="p-2 rounded-full transition-colors
-                        {disabled
-                            ? 'text-[color:var(--text-ghost)] cursor-pointer'
-                            : 'text-[color:var(--text-soft)] ' + a.hoverClass}"
-                >
-                    <a.icon size={18} />
-                </button>
-            {/each}
-        </div>
-        <div class="flex-1"></div>
+  >
+    <div class="flex flex-col gap-1">
+      {#each actions as a}
+        {@const disabled = a.requiresApiKey && !hasApiKey()}
         <button
-            onclick={() => (action = "settings")}
-            aria-label={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
-            title={hasApiKey() ? "AI Settings" : "AI Settings — add an API key to get started"}
-            class="relative p-2 rounded-full transition-colors
-                {hasApiKey() ? 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]' : 'text-amber-600/80 hover:text-amber-700'}"
+          id="ai-tab-{a.id}"
+          onclick={() => selectAction(a.id)}
+          aria-label={disabled
+            ? `${a.label} (add API key in settings)`
+            : `${a.label} (${a.shortcut})`}
+          title={disabled
+            ? `${a.label} — add an API key in settings`
+            : `${a.label} ${a.shortcut}`}
+          class="p-2 rounded-full transition-colors
+                        {disabled
+            ? 'text-[color:var(--text-ghost)] cursor-pointer'
+            : 'text-[color:var(--text-soft)] ' + a.hoverClass}"
         >
-            <SettingsIcon size={15} />
-            {#if !hasApiKey()}
-                <span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-            {/if}
+          <a.icon size={18} />
         </button>
+      {/each}
     </div>
-
-    <!-- Expanded panel -->
-    <div
-        class="w-full h-full flex flex-col transition-opacity duration-150
-            {expanded ? 'opacity-100 delay-[80ms]' : 'opacity-0 invisible pointer-events-none'}"
+    <div class="flex-1"></div>
+    <button
+      onclick={() => (action = "settings")}
+      aria-label={hasApiKey()
+        ? "AI Settings"
+        : "AI Settings — add an API key to get started"}
+      title={hasApiKey()
+        ? "AI Settings"
+        : "AI Settings — add an API key to get started"}
+      class="relative p-2 rounded-full transition-colors
+                {hasApiKey()
+        ? 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]'
+        : 'text-amber-600/80 hover:text-amber-700'}"
     >
-        <!-- Row 1: icon wheel -->
-        <div class="shrink-0 pt-2.5 pb-1">
-            <div
-                bind:this={iconStrip}
-                class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
-                style="scrollbar-width: none; -ms-overflow-style: none;{stripOverflows
-                    ? ` mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'});`
-                    : ''}"
-            >
-                {#each actions as a, i}
-                    {@const activeIdx = actions.findIndex(x => x.id === action)}
-                    {@const dist = activeIdx < 0 ? 0 : Math.abs(i - activeIdx)}
-                    {@const maxDist = activeIdx < 0 ? 1 : Math.max(activeIdx, actions.length - 1 - activeIdx)}
-                    {@const t = maxDist === 0 ? 0 : dist / maxDist}
-                    {@const opacity = activeIdx < 0 ? 0.7 : 1 - (1 - 0.45) * Math.sqrt(t)}
-                    {@const disabled = a.requiresApiKey && !hasApiKey()}
-                    <button
-                        bind:this={iconEls[i]}
-                        onclick={() => selectAction(a.id)}
-                        aria-label={disabled ? `${a.label} (add API key in settings)` : `${a.label} (${a.shortcut})`}
-                        title={disabled ? `${a.label} — add an API key in settings` : `${a.label} ${a.shortcut}`}
-                        style="opacity: {disabled ? opacity * 0.4 : opacity};"
-                        class="p-2 rounded-full shrink-0 transition-all duration-200
+      <SettingsIcon size={15} />
+      {#if !hasApiKey()}
+        <span
+          class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"
+        ></span>
+      {/if}
+    </button>
+  </div>
+
+  <!-- Expanded panel -->
+  <div
+    class="w-full h-full flex flex-col transition-opacity duration-150
+            {expanded
+      ? 'opacity-100 delay-[80ms]'
+      : 'opacity-0 invisible pointer-events-none'}"
+  >
+    <!-- Row 1: icon wheel -->
+    <div class="shrink-0 pt-2.5 pb-1">
+      <div
+        bind:this={iconStrip}
+        class="flex items-center gap-0.5 overflow-x-auto px-4 scroll-smooth"
+        style="scrollbar-width: none; -ms-overflow-style: none;{stripOverflows
+          ? ` mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? 'transparent 0%, black 18%' : 'black 0%'}, ${canScrollRight ? 'black 82%, transparent 100%' : 'black 100%'});`
+          : ''}"
+      >
+        {#each actions as a, i}
+          {@const activeIdx = actions.findIndex((x) => x.id === action)}
+          {@const dist = activeIdx < 0 ? 0 : Math.abs(i - activeIdx)}
+          {@const maxDist =
+            activeIdx < 0
+              ? 1
+              : Math.max(activeIdx, actions.length - 1 - activeIdx)}
+          {@const t = maxDist === 0 ? 0 : dist / maxDist}
+          {@const opacity = activeIdx < 0 ? 0.7 : 1 - (1 - 0.45) * Math.sqrt(t)}
+          {@const disabled = a.requiresApiKey && !hasApiKey()}
+          <button
+            bind:this={iconEls[i]}
+            onclick={() => selectAction(a.id)}
+            aria-label={disabled
+              ? `${a.label} (add API key in settings)`
+              : `${a.label} (${a.shortcut})`}
+            title={disabled
+              ? `${a.label} — add an API key in settings`
+              : `${a.label} ${a.shortcut}`}
+            style="opacity: {disabled ? opacity * 0.4 : opacity};"
+            class="p-2 rounded-full shrink-0 transition-all duration-200
                             {action === a.id
-                                ? a.activeClass
-                                : disabled
-                                    ? 'text-[color:var(--text-faint)]'
-                                    : 'text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
-                    >
-                        <a.icon size={16} />
-                    </button>
-                {/each}
-            </div>
-        </div>
-
-        <!-- Row 2: title + reset + settings + close -->
-        <div class="flex items-center px-3 pb-2 shrink-0">
-            <span class="flex-1 text-xs font-semibold text-[color:var(--text-soft)] truncate">
-                {action ? panelTitles[action] : ""}
-            </span>
-            {#if isCustomSize}
-                <button
-                    onclick={resetSize}
-                    aria-label="Reset to default size"
-                    title="Reset size"
-                    class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0"
-                >
-                    <Minimize2Icon size={14} />
-                </button>
-            {/if}
-            {#if showHeaderContextInfo}
-                <button
-                    type="button"
-                    aria-label="Context: {headerContextInfoLabel}"
-                    title={headerContextInfoLabel}
-                    class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0 focus:outline-none focus:ring-2 {headerContextRing}"
-                >
-                    <InfoIcon size={14} />
-                </button>
-            {/if}
-            <button
-                onclick={() => (action = action === "settings" ? null : "settings")}
-                aria-label="AI Settings"
-                title="AI Settings"
-                class="p-1.5 rounded-full transition-colors shrink-0
-                    {action === 'settings'
-                        ? 'text-[color:var(--text-soft)] bg-[color:var(--surface)]'
-                        : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
-            >
-                <SettingsIcon size={14} />
-            </button>
-            <button
-                onclick={() => (action = null)}
-                aria-label="Close"
-                class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0"
-            >
-                <XIcon size={14} />
-            </button>
-        </div>
-
-        <div class="w-full h-px bg-[color:var(--border)] shrink-0"></div>
-
-        <!-- Content — all panels mounted upfront to avoid mount-time jank -->
-        <div class="flex-1 flex flex-col min-h-0 relative">
-            <div class="absolute inset-0 flex flex-col {action === 'chat' ? '' : 'hidden'}"><Chat /></div>
-            <div class="absolute inset-0 flex flex-col {action === 'feedback' ? '' : 'hidden'}"><Feedback /></div>
-            <div class="absolute inset-0 flex flex-col {action === 'revise' ? '' : 'hidden'}"><Revise /></div>
-            <div class="absolute inset-0 overflow-y-auto {action === 'context' ? '' : 'hidden'}"><DocumentContext /></div>
-            <div class="absolute inset-0 flex flex-col {action === 'readers' ? '' : 'hidden'}"><Readers /></div>
-            {#if action === 'settings'}<div class="absolute inset-0 flex flex-col"><AISettings /></div>{/if}
-        </div>
+              ? a.activeClass
+              : disabled
+                ? 'text-[color:var(--text-faint)]'
+                : 'text-[color:var(--text)] hover:bg-[color:var(--surface-2)]'}"
+          >
+            <a.icon size={16} />
+          </button>
+        {/each}
+      </div>
     </div>
 
-    {#if expanded}
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-            role="separator"
-            aria-label="Resize width"
-            aria-orientation="vertical"
-            class="resize-handle resize-handle-right"
-            onpointerdown={(e) => startResize(e, "right")}
-        ></div>
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-            role="separator"
-            aria-label="Resize height"
-            aria-orientation="horizontal"
-            class="resize-handle resize-handle-bottom"
-            onpointerdown={(e) => startResize(e, "bottom")}
-        ></div>
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-            role="separator"
-            aria-label="Resize panel"
-            class="resize-handle resize-handle-corner"
-            onpointerdown={(e) => startResize(e, "corner")}
-        ></div>
-    {/if}
+    <!-- Row 2: title + reset + settings + close -->
+    <div class="flex items-center px-3 pb-2 shrink-0">
+      <span class="flex-1 text-xs font-semibold text-[color:var(--text-soft)] truncate">
+        {action ? panelTitles[action] : ""}
+      </span>
+      {#if isCustomSize}
+        <button
+          onclick={resetSize}
+          aria-label="Reset to default size"
+          title="Reset size"
+          class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0"
+        >
+          <Minimize2Icon size={14} />
+        </button>
+      {/if}
+      {#if showHeaderContextInfo && headerContextPacket}
+        <div class="relative shrink-0">
+          <button
+            type="button"
+            data-context-info-button
+            onclick={() => (showContextPopover = !showContextPopover)}
+            aria-label="Context: {headerContextInfoLabel}"
+            aria-haspopup="dialog"
+            aria-expanded={showContextPopover}
+            title={headerContextInfoLabel}
+            class="p-1.5 rounded-full transition-colors focus:outline-none focus:ring-2 {headerContextRing}
+                            {showContextPopover
+              ? 'text-[color:var(--text-soft)] bg-[color:var(--surface)]'
+              : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
+          >
+            <InfoIcon size={14} />
+          </button>
+          {#if showContextPopover}
+            <div
+              class="context-popover absolute right-0 top-full mt-1.5 z-10 w-64
+                                rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] backdrop-blur-md
+                                shadow-lg p-3 text-left"
+              role="dialog"
+              aria-label="AI context details"
+            >
+              <p class="text-[11px] font-semibold text-[color:var(--text)] leading-snug">
+                {contextScopeLabel(headerContextPacket)}
+              </p>
+              <p class="mt-0.5 text-[10px] text-[color:var(--text-soft)] leading-relaxed">
+                {contextScopeDetail(headerContextPacket)}
+              </p>
+              <div class="mt-2.5 flex flex-col gap-1.5">
+                {#each contextPopoverSources as source (source.id)}
+                  <div class="flex items-start gap-2">
+                    <span
+                      class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full
+                                                {source.active
+                        ? 'bg-emerald-500'
+                        : 'bg-[color:var(--border-strong)]'}"
+                    ></span>
+                    <div class="min-w-0 flex-1">
+                      <p
+                        class="text-[10px] font-medium leading-tight
+                                                    {source.active
+                          ? 'text-[color:var(--text)]'
+                          : 'text-[color:var(--text-faint)]'}"
+                      >
+                        {source.label}
+                      </p>
+                      <p
+                        class="text-[10px] text-[color:var(--text-soft)] leading-snug truncate"
+                      >
+                        {source.detail}
+                      </p>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
+      <button
+        onclick={() => (action = action === "settings" ? null : "settings")}
+        aria-label="AI Settings"
+        title="AI Settings"
+        class="p-1.5 rounded-full transition-colors shrink-0
+                    {action === 'settings'
+          ? 'text-[color:var(--text-soft)] bg-[color:var(--surface)]'
+          : 'text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)]'}"
+      >
+        <SettingsIcon size={14} />
+      </button>
+      <button
+        onclick={() => (action = null)}
+        aria-label="Close"
+        class="p-1.5 rounded-full text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)] hover:bg-[color:var(--surface-2)] transition-colors shrink-0"
+      >
+        <XIcon size={14} />
+      </button>
+    </div>
+
+    <div class="w-full h-px bg-[color:var(--border)] shrink-0"></div>
+
+    <!-- Content — all panels mounted upfront to avoid mount-time jank -->
+    <div class="flex-1 flex flex-col min-h-0 relative">
+      <div
+        class="absolute inset-0 flex flex-col {action === 'chat'
+          ? ''
+          : 'hidden'}"
+      >
+        <Chat />
+      </div>
+      <div
+        class="absolute inset-0 flex flex-col {action === 'feedback'
+          ? ''
+          : 'hidden'}"
+      >
+        <Feedback />
+      </div>
+      <div
+        class="absolute inset-0 flex flex-col {action === 'revise'
+          ? ''
+          : 'hidden'}"
+      >
+        <Revise />
+      </div>
+      <div
+        class="absolute inset-0 overflow-y-auto {action === 'context'
+          ? ''
+          : 'hidden'}"
+      >
+        <DocumentContext />
+      </div>
+      <div
+        class="absolute inset-0 flex flex-col {action === 'readers'
+          ? ''
+          : 'hidden'}"
+      >
+        <Readers />
+      </div>
+      {#if action === "settings"}<div class="absolute inset-0 flex flex-col">
+          <AISettings />
+        </div>{/if}
+    </div>
+  </div>
+
+  {#if expanded}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      role="separator"
+      aria-label="Resize width"
+      aria-orientation="vertical"
+      class="resize-handle resize-handle-right"
+      onpointerdown={(e) => startResize(e, "right")}
+    ></div>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      role="separator"
+      aria-label="Resize height"
+      aria-orientation="horizontal"
+      class="resize-handle resize-handle-bottom"
+      onpointerdown={(e) => startResize(e, "bottom")}
+    ></div>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      role="separator"
+      aria-label="Resize panel"
+      class="resize-handle resize-handle-corner"
+      onpointerdown={(e) => startResize(e, "corner")}
+    ></div>
+  {/if}
 </div>
 
 <!-- Stop button — appears below the sidebar when AI is processing -->
 {#if aiProcessing.active}
-    <button
-        id="ai-stop-button"
-        onclick={stopAllAi}
-        aria-label="Stop AI"
-        title="Stop AI request"
-        class="fixed left-4 z-50 flex items-center gap-1.5 px-3 py-1.5
+  <button
+    id="ai-stop-button"
+    onclick={stopAllAi}
+    aria-label="Stop AI"
+    title="Stop AI request"
+    class="fixed left-4 z-50 flex items-center gap-1.5 px-3 py-1.5
             backdrop-blur-md bg-red-500/80 hover:bg-red-600/90
             text-white text-xs font-medium rounded-full
             shadow-lg transition-all duration-200
             animate-fade-in"
-        style="top: calc(50% + {expanded ? effectiveHeight / 2 : 280 / 2}px + 8px);"
-    >
-        <SquareIcon size={12} fill="currentColor" />
-        Stop
-    </button>
+    style="top: calc(50% + {expanded ? effectiveHeight / 2 : 280 / 2}px + 8px);"
+  >
+    <SquareIcon size={12} fill="currentColor" />
+    Stop
+  </button>
 {/if}
 
 <style>
-    @keyframes fade-in {
-        from { opacity: 0; transform: scale(0.9); }
-        to { opacity: 1; transform: scale(1); }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
     }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 
-    .animate-fade-in {
-        animation: fade-in 150ms ease-out;
-    }
-    div[style*="scrollbar-width"]::-webkit-scrollbar {
-        display: none;
-    }
+  .animate-fade-in {
+    animation: fade-in 150ms ease-out;
+  }
+  div[style*="scrollbar-width"]::-webkit-scrollbar {
+    display: none;
+  }
 
-    .resize-handle {
-        position: absolute;
-        z-index: 10;
-        /* Prevent the browser from treating a drag on the handle as a scroll
+  .resize-handle {
+    position: absolute;
+    z-index: 10;
+    /* Prevent the browser from treating a drag on the handle as a scroll
            gesture on touch devices, so pointer drags resize the panel. */
-        touch-action: none;
-        /*background: transparent;
+    touch-action: none;
+    /*background: transparent;
         border: 0;
         padding: 0;*/
-    }
+  }
 
-    .resize-handle-right {
-        top: 14px;
-        bottom: 14px;
-        right: -2px;
-        width: 10px;
-        cursor: ew-resize;
-    }
+  .resize-handle-right {
+    top: 14px;
+    bottom: 14px;
+    right: -2px;
+    width: 10px;
+    cursor: ew-resize;
+  }
 
-    .resize-handle-bottom {
-        left: 14px;
-        right: 14px;
-        bottom: -2px;
-        height: 10px;
-        cursor: ns-resize;
-    }
+  .resize-handle-bottom {
+    left: 14px;
+    right: 14px;
+    bottom: -2px;
+    height: 10px;
+    cursor: ns-resize;
+  }
 
-    .resize-handle-corner {
-        right: 0;
-        bottom: 0;
-        width: 14px;
-        height: 14px;
-        cursor: nwse-resize;
-    }
+  .resize-handle-corner {
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+  }
 
-    .resize-handle-right::after {
-        content: "";
-        position: absolute;
-        top: 25%;
-        bottom: 25%;
-        right: 4px;
-        width: 2px;
-        border-radius: 9999px;
-        background-color: var(--border);
-        opacity: 0;
-        transition:
-            background-color 200ms ease,
-            opacity 200ms ease;
-    }
+  .resize-handle-right::after {
+    content: "";
+    position: absolute;
+    top: 25%;
+    bottom: 25%;
+    right: 4px;
+    width: 2px;
+    border-radius: 9999px;
+    background-color: var(--border);
+    opacity: 0;
+    transition:
+      background-color 200ms ease,
+      opacity 200ms ease;
+  }
 
-    .resize-handle-right:hover::after {
-        background-color: var(--border-strong);
-        opacity: 1;
-    }
+  .resize-handle-right:hover::after {
+    background-color: var(--border-strong);
+    opacity: 1;
+  }
 
-    .resize-handle-bottom::after {
-        content: "";
-        position: absolute;
-        left: 25%;
-        right: 25%;
-        bottom: 4px;
-        height: 2px;
-        border-radius: 9999px;
-        background-color: var(--border);
-        opacity: 0;
-        transition:
-            background-color 200ms ease,
-            opacity 200ms ease;
-    }
+  .resize-handle-bottom::after {
+    content: "";
+    position: absolute;
+    left: 25%;
+    right: 25%;
+    bottom: 4px;
+    height: 2px;
+    border-radius: 9999px;
+    background-color: var(--border);
+    opacity: 0;
+    transition:
+      background-color 200ms ease,
+      opacity 200ms ease;
+  }
 
-    .resize-handle-bottom:hover::after {
-        background-color: var(--border-strong);
-        opacity: 1;
-    }
+  .resize-handle-bottom:hover::after {
+    background-color: var(--border-strong);
+    opacity: 1;
+  }
 
-    .resize-handle-corner::after {
-        content: "";
-        position: absolute;
-        right: 3px;
-        bottom: 3px;
-        width: 5px;
-        height: 5px;
-        border-right: 2px solid var(--border-strong);
-        border-bottom: 2px solid var(--border-strong);
-        border-radius: 1px;
-        opacity: 0;
-        transition: opacity 200ms ease;
-    }
+  .resize-handle-corner::after {
+    content: "";
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 5px;
+    height: 5px;
+    border-right: 2px solid var(--border-strong);
+    border-bottom: 2px solid var(--border-strong);
+    border-radius: 1px;
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
 
-    .resize-handle-corner:hover::after {
-        opacity: 1;
-    }
+  .resize-handle-corner:hover::after {
+    opacity: 1;
+  }
 
-    /* AI processing glow — reads aiProcessing.active from settings.svelte.ts.
+  /* AI processing glow — reads aiProcessing.active from settings.svelte.ts.
        To remove this effect, delete this block and the {aiProcessing.active ? 'ai-processing' : ''}
        class binding on the container div. No other files need changing. */
-    @keyframes rainbow-glow {
-        0%   { box-shadow: 0 0 0 2px rgba(99,102,241,0.5),  0 0 16px 4px rgba(99,102,241,0.25); }
-        25%  { box-shadow: 0 0 0 2px rgba(168,85,247,0.5),  0 0 16px 4px rgba(168,85,247,0.25); }
-        50%  { box-shadow: 0 0 0 2px rgba(236,72,153,0.5),  0 0 16px 4px rgba(236,72,153,0.25); }
-        75%  { box-shadow: 0 0 0 2px rgba(251,146,60,0.5),  0 0 16px 4px rgba(251,146,60,0.25); }
-        100% { box-shadow: 0 0 0 2px rgba(99,102,241,0.5),  0 0 16px 4px rgba(99,102,241,0.25); }
+  @keyframes rainbow-glow {
+    0% {
+      box-shadow:
+        0 0 0 2px rgba(99, 102, 241, 0.5),
+        0 0 16px 4px rgba(99, 102, 241, 0.25);
     }
+    25% {
+      box-shadow:
+        0 0 0 2px rgba(168, 85, 247, 0.5),
+        0 0 16px 4px rgba(168, 85, 247, 0.25);
+    }
+    50% {
+      box-shadow:
+        0 0 0 2px rgba(236, 72, 153, 0.5),
+        0 0 16px 4px rgba(236, 72, 153, 0.25);
+    }
+    75% {
+      box-shadow:
+        0 0 0 2px rgba(251, 146, 60, 0.5),
+        0 0 16px 4px rgba(251, 146, 60, 0.25);
+    }
+    100% {
+      box-shadow:
+        0 0 0 2px rgba(99, 102, 241, 0.5),
+        0 0 16px 4px rgba(99, 102, 241, 0.25);
+    }
+  }
 
+  .ai-processing {
+    animation: rainbow-glow 2s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition-duration: 0.01ms !important;
+    }
     .ai-processing {
-        animation: rainbow-glow 2s linear infinite;
+      animation: none;
     }
-
-    @media (prefers-reduced-motion: reduce) {
-        * { transition-duration: 0.01ms !important; }
-        .ai-processing { animation: none; }
-    }
+  }
 </style>

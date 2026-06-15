@@ -44,12 +44,23 @@ function selectionText(doc: string, from: number, to: number) {
     return doc.slice(from, to);
 }
 
-function wrapSelection(doc: string, from: number, to: number, token: string): FormatResult {
-    const selected = selectionText(doc, from, to);
+function wrapSelection(doc: string, rawFrom: number, rawTo: number, token: string): FormatResult {
     const len = token.length;
 
+    // Pull the boundaries in past any leading/trailing whitespace (newlines
+    // especially) so the wrap covers the actual content. Selecting a whole
+    // line includes its trailing "\n"; without this the closing token would
+    // land after the break, printing "**" alone on the next line (issue #246).
+    let from = rawFrom;
+    let to = rawTo;
+    while (from < to && /\s/.test(doc[from])) from++;
+    while (to > from && /\s/.test(doc[to - 1])) to--;
+
+    const selected = selectionText(doc, from, to);
+
     if (from === to) {
-        // Insert an empty pair and place the cursor between the tokens.
+        // Selection was empty or all whitespace: insert an empty pair and
+        // place the cursor between the tokens.
         return {
             changes: [{ from, to, insert: `${token}${token}` }],
             selection: { from: from + len, to: from + len },

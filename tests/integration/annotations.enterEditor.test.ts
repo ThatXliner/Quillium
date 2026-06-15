@@ -27,9 +27,10 @@ import {
     createNewRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
-    type VersionState,
+    makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
@@ -47,14 +48,15 @@ function createView(doc: string) {
 }
 
 function addRevision(view: EditorView, from: number, to: number) {
+    const builtVersions = [makeVersion({ doc: view.state.sliceDoc(from, to) })];
     const revision = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex: 0,
-        versions: [{ doc: view.state.sliceDoc(from, to) } as VersionState],
+        activeVersionId: builtVersions[0].id,
+        versions: builtVersions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
     return revision.id;
@@ -195,13 +197,13 @@ describe("Mod-Enter in nested editor still creates version", () => {
 
         const rev = getRevision(view, revisionId);
         expect(rev.versions).toHaveLength(2);
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
 
         // Undo should revert to one version
         undo(view);
         const revAfterUndo = getRevision(view, revisionId);
         expect(revAfterUndo.versions).toHaveLength(1);
-        expect(revAfterUndo.activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(revAfterUndo)).toBe(0);
     });
 });
 

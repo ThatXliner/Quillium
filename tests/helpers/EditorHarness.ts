@@ -27,8 +27,11 @@ import {
     updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersion,
+    activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
     versionText,
     type Annotations,
     type GenericAnnotation,
@@ -109,7 +112,7 @@ export class EditorHarness {
         if (!isAnnotationOfType(rev, "revision")) {
             throw new Error(`Annotation ${revisionId} is not a revision`);
         }
-        return versionText(rev.versions[rev.activeVersionIndex]);
+        return versionText(activeVersion(rev));
     }
 
     /** Version count for a revision annotation. */
@@ -127,7 +130,27 @@ export class EditorHarness {
         if (!isAnnotationOfType(rev, "revision")) {
             throw new Error(`Annotation ${revisionId} is not a revision`);
         }
-        return rev.activeVersionIndex;
+        return activeVersionIndex(rev);
+    }
+
+    /** Active version id for a revision annotation. */
+    activeVersionId(revisionId: number): string {
+        const rev = this.annotation(revisionId);
+        if (!isAnnotationOfType(rev, "revision")) {
+            throw new Error(`Annotation ${revisionId} is not a revision`);
+        }
+        return rev.activeVersionId;
+    }
+
+    /** Resolve a positional version index to its stable id (test convenience). */
+    versionIdAt(revisionId: number, versionIndex: number): string {
+        const rev = this.annotation(revisionId);
+        if (!isAnnotationOfType(rev, "revision")) {
+            throw new Error(`Annotation ${revisionId} is not a revision`);
+        }
+        const v = rev.versions[versionIndex];
+        if (!v) throw new Error(`Revision ${revisionId} has no version at index ${versionIndex}`);
+        return v.id;
     }
 
     /** Selection range [from, to] for an annotation. */
@@ -186,13 +209,19 @@ export class EditorHarness {
     addRevision(
         from: number,
         to: number,
-        versions?: VersionState[],
+        versions?: Array<Partial<VersionState> & { doc: string }>,
         activeVersionIndex = 0,
     ): number {
+        // Mint stable ids for any versions that lack one so tests can pass bare
+        // `{ doc }` literals.
+        const builtVersions: VersionState[] = (
+            versions ?? [{ doc: this.view.state.doc.sliceString(from, to) }]
+        ).map((v) => makeVersion(v));
+        const active = builtVersions[activeVersionIndex] ?? builtVersions[0];
         const ann = {
             ...createNewAnnotation(this.annotations, EditorSelection.single(from, to), "revision"),
-            activeVersionIndex,
-            versions: versions ?? [{ doc: this.view.state.doc.sliceString(from, to) }],
+            activeVersionId: active.id,
+            versions: builtVersions,
         };
         this.view.dispatch({
             effects: [addAnnotation.of(ann)],
@@ -295,10 +324,20 @@ export class EditorHarness {
 
     // ── Version management ──────────────────────────────────────────────
 
-    /** Switch the active version for a revision annotation. */
+    /** Switch the active version for a revision annotation (by positional index). */
     switchVersion(revisionId: number, versionIndex: number): this {
-        const spec = setActiveRevisionVersion(this.view.state, revisionId, versionIndex);
+        const spec = setActiveRevisionVersion(
+            this.view.state,
+            revisionId,
+            this.versionIdAt(revisionId, versionIndex),
+        );
         this.view.dispatch(spec);
+        return this;
+    }
+
+    /** Switch the active version for a revision annotation (by stable id). */
+    switchVersionById(revisionId: number, versionId: string): this {
+        this.view.dispatch(setActiveRevisionVersion(this.view.state, revisionId, versionId));
         return this;
     }
 
@@ -309,9 +348,13 @@ export class EditorHarness {
         return this;
     }
 
-    /** Delete a version from a revision. */
+    /** Delete a version from a revision (by positional index). */
     deleteVersion(revisionId: number, versionIndex: number): this {
-        const spec = deleteRevisionVersion(this.view.state, revisionId, versionIndex);
+        const spec = deleteRevisionVersion(
+            this.view.state,
+            revisionId,
+            this.versionIdAt(revisionId, versionIndex),
+        );
         this.view.dispatch(spec);
         return this;
     }
@@ -371,7 +414,7 @@ export class EditorHarness {
             const slice = this.view.state.doc
                 .sliceString(ann.selection.main.from, ann.selection.main.to)
                 .toString();
-            const vDoc = versionText(ann.versions[ann.activeVersionIndex]);
+            const vDoc = versionText(activeVersion(ann));
             if (slice !== vDoc) {
                 throw new Error(
                     `Version doc mismatch for revision ${ann.id}: ` +

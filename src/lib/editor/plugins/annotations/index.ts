@@ -98,12 +98,15 @@ import {
     suggestionPreviewField,
 } from "./annotationField";
 import { nestedEditorEdit } from "./annotationField";
+import { invertedVersionGroupEffects, versionGroupField } from "./versionGroupField";
 import {
     type Annotation,
     type AnnotationType,
     type VersionState,
+    activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
 } from "./models";
 import {
     canCreateNewComment,
@@ -727,22 +730,21 @@ export function createRevision({
     });
     if (!canCreateRevision(state.field(annotationField), selection)) return false;
     const originalText = state.sliceDoc(selection.main.from, selection.main.to);
-    const originalVersion = {
+    const originalVersion = makeVersion({
         doc: originalText,
         label: "Original",
-    } as VersionState;
+    });
+    const allVersions = [
+        originalVersion,
+        ...versions.map(({ label, text }) => makeVersion({ doc: text, label })),
+    ];
     view.dispatch(
         state.update({
             effects: [
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "revision"),
-                    activeVersionIndex: 0,
-                    versions: [
-                        originalVersion,
-                        ...versions.map(
-                            ({ label, text }) => ({ doc: text, label }) as VersionState,
-                        ),
-                    ],
+                    activeVersionId: originalVersion.id,
+                    versions: allVersions,
                     thread: [{ message: threadMessage, author, time: Date.now() }],
                 }),
             ],
@@ -790,8 +792,8 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     const originalText = state.sliceDoc(sel.from, sel.to);
     const autoVersion = appSettings.autoVersionOnRevisionCreate;
     const versions = autoVersion
-        ? [{ doc: originalText } as VersionState, { doc: "" } as VersionState]
-        : [{ doc: originalText } as VersionState];
+        ? [makeVersion({ doc: originalText }), makeVersion({ doc: "" })]
+        : [makeVersion({ doc: originalText })];
     // When autoVersion is on, the text under the revision is deleted in the
     // same transaction. Effects within a transaction are NOT remapped through
     // that transaction's changes, so the annotation must carry post-change
@@ -808,7 +810,7 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
             effects: [
                 addAnnotation.of({
                     ...newAnnotation,
-                    activeVersionIndex: autoVersion ? 1 : 0,
+                    activeVersionId: (autoVersion ? versions[1] : versions[0]).id,
                     versions,
                 }),
             ],
@@ -844,10 +846,12 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
         if (annotation) {
             const count = annotation.versions.length;
             if (count <= 1) return true;
-            const current = annotation.activeVersionIndex;
+            // Navigation is positional (next/prev pill); translate the target
+            // index to its stable id for the switch.
+            const current = activeVersionIndex(annotation);
             const next =
                 direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
-            dispatch(setActiveRevisionVersion(state, annotation.id, next));
+            dispatch(setActiveRevisionVersion(state, annotation.id, annotation.versions[next].id));
             return true;
         }
         // Cursor isn't inside a revision — find the nearest one and
@@ -1017,6 +1021,7 @@ const revisionClickHandler = EditorView.domEventHandlers({
 export const annotations = () => [
     Prec.high(keymap.of(annotationKeymap)),
     annotationField,
+    versionGroupField,
     suggestionPreviewField,
     annotationDecorations,
     revisionAtomicRanges,
@@ -1025,5 +1030,7 @@ export const annotations = () => [
     collapsedRevisionResolver,
     boundaryInsertNudge,
     invertedAnnotationFieldEffects,
+    invertedVersionGroupEffects,
 ];
 export * from "./models";
+export * from "./versionGroupField";

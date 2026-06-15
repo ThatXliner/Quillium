@@ -15,9 +15,10 @@ import {
     revisionInternalEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
-    type VersionState,
+    makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 
 function createView(doc: string) {
@@ -112,7 +113,7 @@ describe("annotation workflows integration", () => {
         expect(view.state.doc.toString()).toBe("Alpha Delta Gamma");
         if (!isAnnotationOfType(after[0], "revision")) return;
 
-        expect(after[0].activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(after[0])).toBe(1);
         expect(after[0].versions[0]?.doc).toBe("Beta");
         expect(after[0].versions[1]?.doc).toBe("Delta");
     });
@@ -153,14 +154,15 @@ describe("annotation workflows integration", () => {
     it("collapsed revision resolver removes a one-version revision when its text is deleted", async () => {
         view = createView("Alpha Beta Gamma");
 
+        const builtVersions = [makeVersion({ doc: "Beta", label: "Original" })];
         const revision = {
             ...createNewAnnotation(
                 view.state.field(annotationField),
                 EditorSelection.single(6, 10),
                 "revision",
             ),
-            activeVersionIndex: 0,
-            versions: [{ doc: "Beta", label: "Original" }],
+            activeVersionId: builtVersions[0].id,
+            versions: builtVersions,
         };
 
         view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
@@ -180,17 +182,18 @@ describe("annotation workflows integration", () => {
         // because it created a separate history entry that required 3 Cmd+Z presses.
         view = createView("Alpha Delta Gamma");
 
+        const builtVersions = [
+            makeVersion({ doc: "Beta", label: "Original" }),
+            makeVersion({ doc: "Delta", label: "Edited" }),
+        ];
         const revision = {
             ...createNewAnnotation(
                 view.state.field(annotationField),
                 EditorSelection.single(6, 11),
                 "revision",
             ),
-            activeVersionIndex: 1,
-            versions: [
-                { doc: "Beta", label: "Original" },
-                { doc: "Delta", label: "Edited" },
-            ],
+            activeVersionId: builtVersions[1].id,
+            versions: builtVersions,
         };
 
         view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
@@ -227,16 +230,14 @@ describe("annotation workflows integration", () => {
             EditorSelection.single(sel.main.from),
             "revision",
         );
+        const builtVersions = [makeVersion({ doc: originalText }), makeVersion({ doc: "" })];
         view.dispatch(
             view.state.update({
                 effects: [
                     addAnnotation.of({
                         ...newAnnotation,
-                        activeVersionIndex: 1,
-                        versions: [
-                            { doc: originalText } as VersionState,
-                            { doc: "" } as VersionState,
-                        ],
+                        activeVersionId: builtVersions[1].id,
+                        versions: builtVersions,
                     }),
                 ],
                 changes: view.state.changes({ from: 6, to: 10, insert: "" }),
@@ -263,13 +264,14 @@ describe("annotation workflows integration", () => {
             EditorSelection.single(sel.main.from),
             "revision",
         );
+        const builtVersions = [makeVersion({ doc: "Beta" }), makeVersion({ doc: "" })];
         view.dispatch(
             view.state.update({
                 effects: [
                     addAnnotation.of({
                         ...newAnnotation,
-                        activeVersionIndex: 1,
-                        versions: [{ doc: "Beta" } as VersionState, { doc: "" } as VersionState],
+                        activeVersionId: builtVersions[1].id,
+                        versions: builtVersions,
                     }),
                 ],
                 changes: view.state.changes({ from: 6, to: 10, insert: "" }),
@@ -297,13 +299,14 @@ describe("annotation workflows integration", () => {
             EditorSelection.single(sel.main.from),
             "revision",
         );
+        const builtVersions = [makeVersion({ doc: "Beta" }), makeVersion({ doc: "" })];
         view.dispatch(
             view.state.update({
                 effects: [
                     addAnnotation.of({
                         ...newAnnotation,
-                        activeVersionIndex: 1,
-                        versions: [{ doc: "Beta" } as VersionState, { doc: "" } as VersionState],
+                        activeVersionId: builtVersions[1].id,
+                        versions: builtVersions,
                     }),
                 ],
                 changes: view.state.changes({ from: 6, to: 10, insert: "" }),

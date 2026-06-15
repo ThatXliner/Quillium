@@ -309,6 +309,7 @@ describe("exportDocument", () => {
                 5,
                 [
                     {
+                        id: "v0",
                         doc: "Hello",
                         annotationField: {
                             "0": {

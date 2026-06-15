@@ -18,6 +18,7 @@ import {
     getLastId,
     getNewId,
     isAnnotationOfType,
+    makeVersion,
     type Annotations,
     type GenericAnnotation,
 } from "$lib/editor/plugins/annotations/models";
@@ -74,11 +75,12 @@ function makeAnnotation(
     const base = { id, selection, thread: [] };
     if (type === "comment") return { ...base, _type: "comment" };
     if (type === "suggestion") return { ...base, _type: "suggestion", replacements: [] };
+    const v0 = makeVersion({ doc: "v0" });
     return {
         ...base,
         _type: "revision",
-        activeVersionIndex: 0,
-        versions: [{ doc: "v0" }],
+        activeVersionId: v0.id,
+        versions: [v0],
     };
 }
 

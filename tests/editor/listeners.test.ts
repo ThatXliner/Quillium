@@ -9,7 +9,11 @@ import {
     annotationField,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import {
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { history } from "@codemirror/commands";
 import { currentDocumentId, currentDraftId, lastPersistedEventId, lastSavedAt } from "$lib/stores";
@@ -260,21 +264,22 @@ describe("listeners integration", () => {
         view = new EditorView({ state, parent });
 
         // Add a revision with two versions
+        const versions = [makeVersion({ doc: "hello" }), makeVersion({ doc: "hi" })];
         const revision = {
             ...createNewAnnotation(
                 view.state.field(annotationField),
                 EditorSelection.single(0, 5),
                 "revision",
             ),
-            activeVersionIndex: 0,
-            versions: [{ doc: "hello" }, { doc: "hi" }],
+            activeVersionId: versions[0].id,
+            versions,
         };
         view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
         await flushMicrotasks();
         invoked.length = 0; // clear the addAnnotation event
 
         // Switch to version 1 — this is a revisionInternalEdit + docChanged transaction
-        view.dispatch(setActiveRevisionVersion(view.state, revision.id, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, revision.id, versions[1].id));
         await flushMicrotasks();
 
         // Should have persisted the event

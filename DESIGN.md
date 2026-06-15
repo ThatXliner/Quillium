@@ -24,6 +24,14 @@ Version pills are the primary control. Switching versions replaces the text at t
 
 `Ctrl-[` / `Ctrl-]` navigate versions from anywhere: main doc, inline editor, or modal.
 
+### Undo of a version delete does not move the active version (issue #270)
+
+Deleting a version and undoing must restore the *prior state exactly*, including which version was active. Undo is a time machine, not a focus command — it should never change the active selection as a side effect.
+
+Concretely: if version 0 is active and you delete the non-active version 2, undo brings version 2 back **without** making it active; version 0 stays active. Deleting the *active* version is the one case where undo re-activates the restored version, because that restores the prior active pointer too. The two cases are symmetric: undo always returns the active pointer to what it was before the delete.
+
+We deliberately rejected the alternative ("undo of a delete focuses the thing that reappeared"). Surfacing the restored version is a real need, but it belongs to a separate, transient affordance — a brief highlight/flash on the re-added pill — not to stealing the active pointer. That highlight is not yet implemented; this note records the intended direction so the focus-stealing behavior isn't reintroduced as a "fix" for discoverability.
+
 ## Annotation lifecycle
 
 - **Comments** and **suggestions** are tied to their text. Delete the text, the annotation goes away.

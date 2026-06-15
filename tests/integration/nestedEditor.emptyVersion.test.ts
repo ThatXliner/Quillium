@@ -20,8 +20,10 @@ import {
     _nestedEditRevision,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersion,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
@@ -45,14 +47,15 @@ function addRevision(
     versions: { doc: string }[],
     activeVersionIndex = 0,
 ): number {
+    const builtVersions = versions.map((v) => makeVersion(v));
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex,
-        versions,
+        activeVersionId: builtVersions[activeVersionIndex].id,
+        versions: builtVersions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
@@ -78,7 +81,7 @@ function simulateNestedEdit(
 function getVersionDoc(view: EditorView, revisionId: number): string {
     const rev = view.state.field(annotationField)[revisionId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error(`No revision ${revisionId}`);
-    return versionText(rev.versions[rev.activeVersionIndex]);
+    return versionText(activeVersion(rev));
 }
 
 function getRevisionRange(view: EditorView, revisionId: number) {
@@ -135,7 +138,7 @@ describe("nested editor empty version persistence", () => {
         // skip guard keeps the original doc as a safety measure)
         const rev = view.state.field(annotationField)[revId];
         if (rev && isAnnotationOfType(rev, "revision")) {
-            expect(versionText(rev.versions[rev.activeVersionIndex])).toBe("Beta");
+            expect(versionText(activeVersion(rev))).toBe("Beta");
         }
     });
 

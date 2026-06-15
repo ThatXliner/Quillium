@@ -24,9 +24,11 @@
  *
  * Scope: comments, suggestions, and revisions. All three rebase the same way
  *   (offsets relative to the copy origin, fresh id on paste). Revisions also
- *   carry their full versions[] blobs and activeVersionIndex; the copied text
+ *   carry their full versions[] blobs and activeVersionId; the copied text
  *   is by construction the active version's rendered text, so on paste the
- *   revision range and its active version stay consistent. Only annotations
+ *   revision range and its active version stay consistent. Version ids are
+ *   regenerated on paste so pasted versions can't collide with existing ones.
+ *   Only annotations
  *   FULLY contained in the copied range are carried (matches Google Docs).
  *
  * Key dependencies:
@@ -56,6 +58,8 @@ import {
     SerializedAnnotationsSchema,
     getNewId,
     isAnnotationOfType,
+    newVersionId,
+    normalizeRevision,
 } from "./models";
 import { cleanRangesOf } from "./utils";
 
@@ -340,14 +344,26 @@ function rebuildAnnotation(
     const { relAnchor: _relAnchor, relHead: _relHead, ...rest } = serialized;
     const rebuilt = { ...rest, id, selection } as GenericAnnotation;
     if (isAnnotationOfType(rebuilt, "revision")) {
+        // Heal both legacy (activeVersionIndex / no version ids) and new-shape
+        // payloads into a consistent revision, then regenerate fresh version ids
+        // so pasted versions can't collide with versions already in this editor.
         // The active version's doc is, by construction, the text we just inserted,
         // so addAnnotation (which skips Phase 3 for revisions) keeps the range and
-        // active version consistent. Clamp the active index defensively in case a
-        // malformed payload points past the versions array.
-        rebuilt.activeVersionIndex = Math.max(
-            0,
-            Math.min(rebuilt.activeVersionIndex, rebuilt.versions.length - 1),
-        );
+        // active version consistent.
+        const normalized = normalizeRevision(rebuilt as never);
+        const idRemap = new Map<string, string>();
+        const versions = normalized.versions.map((v) => {
+            const fresh = newVersionId();
+            idRemap.set(v.id, fresh);
+            return { ...v, id: fresh };
+        });
+        return {
+            ...normalized,
+            id,
+            selection,
+            versions,
+            activeVersionId: idRemap.get(normalized.activeVersionId) ?? versions[0].id,
+        };
     }
     return rebuilt;
 }

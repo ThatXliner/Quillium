@@ -8,22 +8,27 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { history, undo, redo } from "@codemirror/commands";
 import {
     annotationField,
     addAnnotation,
+    applySuggestion,
     nestedEditorEdit,
     _nestedEditRevision,
     updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    NestedEditorController,
     serializedNestedAnnotationSnapshot,
     transactionsHaveAnnotationMutationEffect,
 } from "$lib/editor/plugins/annotations/NestedEditorController";
 import {
+    activeVersion,
+    activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
     versionText,
     type VersionState,
 } from "$lib/editor/plugins/annotations/models";
@@ -43,15 +48,21 @@ function createView(doc: string) {
     return new EditorView({ state, parent: el });
 }
 
-function addRevision(view: EditorView, from: number, to: number, doc: string): number {
+function addRevision(
+    view: EditorView,
+    from: number,
+    to: number,
+    version: string | { doc: string; label?: string; annotationField?: Record<string, unknown> },
+): number {
+    const built = makeVersion(typeof version === "string" ? { doc: version } : version);
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex: 0,
-        versions: [{ doc }],
+        activeVersionId: built.id,
+        versions: [built],
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
@@ -95,13 +106,140 @@ function simulateNestedEdit(
 function getVersionDoc(view: EditorView, revId: number): string {
     const rev = view.state.field(annotationField)[revId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
-    return versionText(rev.versions[rev.activeVersionIndex]);
+    return versionText(activeVersion(rev));
+}
+
+/** Resolve the stable version id at a positional index for an updateRevisionVersionState call. */
+function versionIdAt(state: EditorState, revId: number, index: number): string {
+    const rev = state.field(annotationField)[revId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+    return rev.versions[index].id;
+}
+
+// makeVersion mints an id and preserves extra keys at runtime, but a literal with
+// an `annotationField` key trips TypeScript's excess-property check. Routing the
+// blob through this helper (a parameter, not a literal) builds a VersionState that
+// carries the nested annotation blob without that friction.
+function makeVersionBlob(blob: {
+    doc: string;
+    label?: string;
+    annotationField?: Record<string, unknown>;
+}): VersionState {
+    return makeVersion(blob);
 }
 
 function getRevisionSlice(view: EditorView, revId: number): string {
     const rev = view.state.field(annotationField)[revId];
     if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
     return view.state.doc.slice(rev.selection.main.from, rev.selection.main.to).toString();
+}
+
+function rawSelection(from: number, to: number) {
+    return { ranges: [{ anchor: from, head: to }], main: 0 };
+}
+
+function nestedComment(id: number, from: number, to: number) {
+    return {
+        _type: "comment",
+        id,
+        selection: rawSelection(from, to),
+        thread: [],
+    };
+}
+
+function nestedSuggestion(
+    id: number,
+    from: number,
+    to: number,
+    replacements: Array<{ text: string; rationale?: string }>,
+) {
+    return {
+        _type: "suggestion",
+        id,
+        selection: rawSelection(from, to),
+        thread: [],
+        replacements,
+    };
+}
+
+function getVersionAnnotationField(view: EditorView, revId: number): Record<string, unknown> {
+    const rev = view.state.field(annotationField)[revId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+    const version = activeVersion(rev) as {
+        annotationField?: Record<string, unknown>;
+    };
+    return version.annotationField ?? {};
+}
+
+function getVersionAnnotation(view: EditorView, revId: number, annId: number): unknown {
+    return getVersionAnnotationField(view, revId)[annId];
+}
+
+function getRawAnnotationRange(annotation: unknown): [number, number] {
+    if (!annotation || typeof annotation !== "object") throw new Error("No annotation");
+    const selection = (annotation as { selection?: unknown }).selection;
+    if (!selection || typeof selection !== "object") throw new Error("No selection");
+
+    const maybeCodeMirrorSelection = selection as { main?: { from: number; to: number } };
+    if (typeof maybeCodeMirrorSelection.main === "object") {
+        return [maybeCodeMirrorSelection.main.from, maybeCodeMirrorSelection.main.to];
+    }
+
+    const raw = selection as {
+        ranges?: Array<{ anchor: number; head: number }>;
+        main?: number;
+    };
+    const range = raw.ranges?.[raw.main ?? 0];
+    if (!range) throw new Error("No range");
+    return [Math.min(range.anchor, range.head), Math.max(range.anchor, range.head)];
+}
+
+function mountNestedController(view: EditorView, revId: number) {
+    const rev = view.state.field(annotationField)[revId];
+    if (!rev || !isAnnotationOfType(rev, "revision")) throw new Error("No revision");
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const controller = new NestedEditorController(view, revId, {}, "flush");
+    const controllerInternals = controller as unknown as {
+        _editor: EditorView | undefined;
+        _mountedVersionIndex: number;
+        _mountedVersionId: string | undefined;
+        _lastDispatchedDoc: string;
+        _editorVersionId: string;
+        _lastMountedBlob: string | undefined;
+        onNestedUpdate(update: ViewUpdate): void;
+    };
+    const version = activeVersion(rev);
+    const hydratedVersion = { ...version, selection: rawSelection(0, 0) };
+    const state = EditorState.fromJSON(
+        hydratedVersion,
+        {
+            extensions: [
+                annotationExtensions(),
+                EditorView.updateListener.of((update) =>
+                    controllerInternals.onNestedUpdate(update),
+                ),
+            ],
+        },
+        nestedSavedFields,
+    );
+    const editor = new EditorView({ state, parent: host });
+    controllerInternals._editor = editor;
+    controllerInternals._mountedVersionIndex = activeVersionIndex(rev);
+    controllerInternals._mountedVersionId = version.id;
+    controllerInternals._editorVersionId = version.id;
+    controllerInternals._lastDispatchedDoc = editor.state.doc.toString();
+    controllerInternals._lastMountedBlob = serializedNestedAnnotationSnapshot(version);
+
+    return {
+        controller,
+        editor,
+        destroy() {
+            controller.destroy({ skipFlush: true });
+            host.remove();
+        },
+    };
 }
 
 /**
@@ -256,9 +394,15 @@ describe("nested annotation creation enters parent undo history via version stat
         };
 
         view.dispatch(
-            updateRevisionVersionState(view.state, revId, 0, blobWithAnnotation as VersionState, {
-                addToHistory: true,
-            }),
+            updateRevisionVersionState(
+                view.state,
+                revId,
+                versionIdAt(view.state, revId, 0),
+                makeVersion(blobWithAnnotation),
+                {
+                    addToHistory: true,
+                },
+            ),
         );
 
         // Verify the version state now has the annotation blob
@@ -305,9 +449,15 @@ describe("nested annotation creation enters parent undo history via version stat
         };
 
         view.dispatch(
-            updateRevisionVersionState(view.state, revId, 0, blobWithAnnotation as VersionState, {
-                addToHistory: true,
-            }),
+            updateRevisionVersionState(
+                view.state,
+                revId,
+                versionIdAt(view.state, revId, 0),
+                makeVersion(blobWithAnnotation),
+                {
+                    addToHistory: true,
+                },
+            ),
         );
 
         undo(view);
@@ -347,9 +497,15 @@ describe("nested annotation creation enters parent undo history via version stat
         };
 
         view.dispatch(
-            updateRevisionVersionState(view.state, revId, 0, blobWithAnnotation as VersionState, {
-                addToHistory: true,
-            }),
+            updateRevisionVersionState(
+                view.state,
+                revId,
+                versionIdAt(view.state, revId, 0),
+                makeVersion(blobWithAnnotation),
+                {
+                    addToHistory: true,
+                },
+            ),
         );
 
         // Undo flush
@@ -369,19 +525,23 @@ describe("nested annotation creation enters parent undo history via version stat
             doc: "hello world",
             extensions: [annotationField],
         });
+        const versions = [makeVersion({ doc: "hello" }), makeVersion({ doc: "draft" })];
         const nestedRevision = {
             ...createNewAnnotation(
                 state.field(annotationField),
                 EditorSelection.single(0, 5),
                 "revision",
             ),
-            activeVersionIndex: 0,
-            versions: [{ doc: "hello" }, { doc: "draft" }],
+            activeVersionId: versions[0].id,
+            versions,
         };
         let nextState = state.update({ effects: addAnnotation.of(nestedRevision) }).state;
-        const update = updateRevisionVersionState(nextState, nestedRevision.id, 1, {
-            doc: "draft edited",
-        } as VersionState);
+        const update = updateRevisionVersionState(
+            nextState,
+            nestedRevision.id,
+            versions[1].id,
+            makeVersion({ doc: "draft edited" }),
+        );
         nextState = update.state;
 
         expect(transactionsHaveAnnotationMutationEffect([update])).toBe(true);
@@ -391,49 +551,125 @@ describe("nested annotation creation enters parent undo history via version stat
     });
 
     it("nested rebuild detection ignores doc-only version text changes", () => {
-        const before = serializedNestedAnnotationSnapshot({
-            doc: "hello",
-            annotationField: {
-                0: {
-                    _type: "comment",
-                    id: 0,
-                    selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
-                    thread: [],
+        const before = serializedNestedAnnotationSnapshot(
+            makeVersionBlob({
+                doc: "hello",
+                annotationField: {
+                    0: {
+                        _type: "comment",
+                        id: 0,
+                        selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+                        thread: [],
+                    },
                 },
-            },
-        } as VersionState);
-        const after = serializedNestedAnnotationSnapshot({
-            doc: "hello!",
-            annotationField: {
-                0: {
-                    _type: "comment",
-                    id: 0,
-                    selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
-                    thread: [],
+            }),
+        );
+        const after = serializedNestedAnnotationSnapshot(
+            makeVersionBlob({
+                doc: "hello!",
+                annotationField: {
+                    0: {
+                        _type: "comment",
+                        id: 0,
+                        selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+                        thread: [],
+                    },
                 },
-            },
-        } as VersionState);
+            }),
+        );
 
         expect(after).toBe(before);
     });
 
     it("nested rebuild detection notices annotation blob changes", () => {
-        const before = serializedNestedAnnotationSnapshot({
-            doc: "hello",
-        } as VersionState);
-        const after = serializedNestedAnnotationSnapshot({
-            doc: "hello",
-            annotationField: {
-                0: {
-                    _type: "comment",
-                    id: 0,
-                    selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
-                    thread: [],
+        const before = serializedNestedAnnotationSnapshot(makeVersion({ doc: "hello" }));
+        const after = serializedNestedAnnotationSnapshot(
+            makeVersionBlob({
+                doc: "hello",
+                annotationField: {
+                    0: {
+                        _type: "comment",
+                        id: 0,
+                        selection: { ranges: [{ anchor: 0, head: 5 }], main: 0 },
+                        thread: [],
+                    },
                 },
-            },
-        } as VersionState);
+            }),
+        );
 
         expect(after).not.toBe(before);
+    });
+});
+
+// ── NestedEditorController sync gap regressions ─────────────────────────────
+
+describe("NestedEditorController annotation flush regressions", () => {
+    it("flushes when a doc change removes the last nested annotation", () => {
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: {
+                0: nestedComment(0, 0, 5),
+            },
+        });
+        const mounted = mountNestedController(view, revId);
+
+        try {
+            mounted.editor.dispatch({ changes: { from: 0, to: 5 } });
+
+            expect(getVersionDoc(view, revId)).toBe(" world");
+            expect(Object.keys(getVersionAnnotationField(view, revId))).toHaveLength(0);
+        } finally {
+            mounted.destroy();
+        }
+    });
+
+    it("treats nested applySuggestion as an undoable annotation mutation", () => {
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: {
+                0: nestedSuggestion(0, 0, 5, [{ text: "hi" }]),
+            },
+        });
+        const mounted = mountNestedController(view, revId);
+
+        try {
+            const transaction = applySuggestion(mounted.editor.state, 0, 0);
+            expect(transactionsHaveAnnotationMutationEffect([transaction])).toBe(true);
+
+            mounted.editor.dispatch(transaction);
+            expect(getVersionAnnotation(view, revId, 0)).toBeUndefined();
+
+            undo(view);
+            expect(getVersionAnnotation(view, revId, 0)).toBeDefined();
+        } finally {
+            mounted.destroy();
+        }
+    });
+
+    it("flushes nested annotation remaps after parent sync transactions", () => {
+        const revId = addRevision(view, 0, 11, {
+            doc: "hello world",
+            annotationField: {
+                0: nestedComment(0, 6, 11),
+            },
+        });
+        const mounted = mountNestedController(view, revId);
+
+        try {
+            view.dispatch({
+                changes: { from: 1, to: 1, insert: "xx" },
+                annotations: Transaction.addToHistory.of(false),
+            });
+
+            const externalDoc = getVersionDoc(view, revId);
+            expect(externalDoc).toBe("hxxello world");
+
+            mounted.controller.syncFromParent(externalDoc);
+
+            expect(getRawAnnotationRange(getVersionAnnotation(view, revId, 0))).toEqual([8, 13]);
+        } finally {
+            mounted.destroy();
+        }
     });
 });
 
@@ -561,9 +797,15 @@ describe("multiple version state flushes are independently undoable", () => {
             },
         };
         view.dispatch(
-            updateRevisionVersionState(view.state, revId, 0, blob1 as VersionState, {
-                addToHistory: true,
-            }),
+            updateRevisionVersionState(
+                view.state,
+                revId,
+                versionIdAt(view.state, revId, 0),
+                makeVersion(blob1),
+                {
+                    addToHistory: true,
+                },
+            ),
         );
 
         // Second flush: add another annotation
@@ -591,9 +833,15 @@ describe("multiple version state flushes are independently undoable", () => {
             },
         };
         view.dispatch(
-            updateRevisionVersionState(view.state, revId, 0, blob2 as VersionState, {
-                addToHistory: true,
-            }),
+            updateRevisionVersionState(
+                view.state,
+                revId,
+                versionIdAt(view.state, revId, 0),
+                makeVersion(blob2),
+                {
+                    addToHistory: true,
+                },
+            ),
         );
 
         // Verify both annotations in blob
@@ -632,9 +880,15 @@ describe("multiple version state flushes are independently undoable", () => {
         // Flush should not change the doc text or revision range
         const blob = { doc: "hello world" };
         view.dispatch(
-            updateRevisionVersionState(view.state, revId, 0, blob as VersionState, {
-                addToHistory: true,
-            }),
+            updateRevisionVersionState(
+                view.state,
+                revId,
+                versionIdAt(view.state, revId, 0),
+                makeVersion(blob),
+                {
+                    addToHistory: true,
+                },
+            ),
         );
 
         expect(view.state.doc.toString()).toBe("hello world");

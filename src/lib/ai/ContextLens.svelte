@@ -1,13 +1,6 @@
 <script lang="ts">
-import {
-    ArrowRightIcon,
-    BookOpenIcon,
-    FileTextIcon,
-    MousePointer2Icon,
-    NotebookTabsIcon,
-    MessageSquareTextIcon,
-    ScanTextIcon,
-} from "lucide-svelte";
+import { documentContext } from "$lib/ai/settings.svelte";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
 import {
     activeAnnotation,
     annotations,
@@ -15,15 +8,24 @@ import {
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
-import { documentContext } from "$lib/ai/settings.svelte";
+import {
+    ArrowRightIcon,
+    BookOpenIcon,
+    EyeOffIcon,
+    FileTextIcon,
+    MessageSquareTextIcon,
+    MousePointer2Icon,
+    NotebookTabsIcon,
+    ScanTextIcon,
+} from "lucide-svelte";
 import { buildAnnotationContextInputs } from "./annotationContext";
 import {
+    type ContextAction,
     buildAiContextPacket,
     contextScopeDetail,
     contextScopeLabel,
     getContextAwareActions,
     shouldShowContextSummary,
-    type ContextAction,
 } from "./context";
 
 const {
@@ -58,7 +60,17 @@ const packet = $derived(
 );
 const actions = $derived(getContextAwareActions(mode, packet));
 const activeSources = $derived(packet.sources.filter((source) => source.active));
-const showContextSummary = $derived(shouldShowContextSummary(packet));
+// Card is shown when the packet warrants a summary AND the writer hasn't
+// collapsed it into the header info (ℹ) icon. AISidebar surfaces the same
+// packet via that icon's popover whenever this card is hidden.
+const showContextSummary = $derived(
+    shouldShowContextSummary(packet) && !appSettings.collapseContextSummary,
+);
+
+function hideContextSummary() {
+    appSettings.collapseContextSummary = true;
+    persistSettings();
+}
 
 const theme = $derived(
     mode === "feedback"
@@ -116,6 +128,18 @@ function sourceIcon(id: string) {
                         {contextScopeDetail(packet)}
                     </div>
                 </div>
+                <button
+                    type="button"
+                    onclick={hideContextSummary}
+                    aria-label="Hide context summary (collapse into the info icon)"
+                    title="Hide — collapse into the info icon"
+                    class="-mt-0.5 -mr-0.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5
+                        text-[10px] font-medium {theme.subtext} hover:bg-white/60
+                        focus:outline-none focus:ring-2 {theme.ring} transition-colors"
+                >
+                    <EyeOffIcon size={11} />
+                    Hide
+                </button>
             </div>
 
             {#if activeSources.length > 0}

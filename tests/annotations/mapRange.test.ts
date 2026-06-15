@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { mapRange } from "$lib/editor/plugins/annotations/utils";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import { makeVersion, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -21,13 +21,14 @@ function makeComment(from: number, to: number): GenericAnnotation {
 }
 
 function makeRevision(from: number, to: number): GenericAnnotation {
+    const v0 = makeVersion({ doc: "text" });
     return {
         id: 0,
         _type: "revision",
         selection: EditorSelection.create([EditorSelection.range(from, to)]),
         thread: [],
-        activeVersionIndex: 0,
-        versions: [{ doc: "text" }],
+        activeVersionId: v0.id,
+        versions: [v0],
     };
 }
 
