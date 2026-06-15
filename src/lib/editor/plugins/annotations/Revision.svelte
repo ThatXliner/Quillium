@@ -623,7 +623,11 @@ onDestroy(() => {
             {@const versionActive = version.id === revision.activeVersionId}
             {@const isEditingThis = editingLabelIndex === i}
             {@const versionGroup = groupForVersion(version.id)}
-            <div class="relative inline-flex items-center rounded-md overflow-hidden
+            <!-- Outer wrapper is the positioning context for the link dropdown and
+                 does NOT clip — the inner pill keeps overflow-hidden for its
+                 rounded corners, so the popover can't be rendered inside it. -->
+            <div class="relative inline-flex">
+            <div class="inline-flex items-center rounded-md overflow-hidden
                 {versionActive
                     ? 'bg-purple-500/80 ring-1 ring-purple-400/40'
                     : 'bg-white/60 ring-1 ring-purple-200/40'}
@@ -709,42 +713,44 @@ onDestroy(() => {
                 >
                     <X size={9} />
                 </button>
+            </div>
 
-                {#if openLinkMenu === i}
-                    <!-- Link dropdown -->
-                    <div
-                        class="absolute z-20 top-full mt-1 left-0 min-w-[150px] rounded-lg bg-white shadow-lg ring-1 ring-black/10 py-1 text-[11px]"
-                        transition:slide={{ duration: 120, easing: cubicOut }}
-                    >
-                        {#if versionGroup}
-                            <button
-                                class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
-                                onclick={() => unlinkVersion(version.id)}
-                            >
-                                Unlink from "{versionGroup.label}"
-                            </button>
-                            <div class="my-1 border-t border-black/5"></div>
-                        {/if}
+            {#if openLinkMenu === i}
+                <!-- Link dropdown — sibling of the clipped pill, inside the
+                     non-clipping outer wrapper, so it's actually visible. -->
+                <div
+                    class="absolute z-30 top-full mt-1 left-0 min-w-[170px] rounded-lg bg-white shadow-lg ring-1 ring-black/10 py-1 text-[11px]"
+                    transition:slide={{ duration: 120, easing: cubicOut }}
+                >
+                    {#if versionGroup}
                         <button
-                            class="w-full text-left px-3 py-1.5 hover:bg-sky-50 text-sky-700 font-medium"
-                            onclick={() => startLink(version.id)}
+                            class="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600"
+                            onclick={() => unlinkVersion(version.id)}
                         >
-                            Link to another revision…
+                            Unlink from "{versionGroup.label}"
                         </button>
-                        {#each joinableGroups(version.id) as g}
-                            <button
-                                class="w-full flex items-center gap-2 text-left px-3 py-1.5 hover:bg-black/5"
-                                onclick={() => linkToExistingGroup(version.id, g.id)}
-                            >
-                                <span
-                                    class="w-1.5 h-1.5 rounded-full shrink-0"
-                                    style="background-color: {groupColor(g.id)}"
-                                ></span>
-                                <span class="truncate">Join "{g.label}"</span>
-                            </button>
-                        {/each}
-                    </div>
-                {/if}
+                        <div class="my-1 border-t border-black/5"></div>
+                    {/if}
+                    <button
+                        class="w-full text-left px-3 py-1.5 hover:bg-sky-50 text-sky-700 font-medium"
+                        onclick={() => startLink(version.id)}
+                    >
+                        Link to another revision…
+                    </button>
+                    {#each joinableGroups(version.id) as g}
+                        <button
+                            class="w-full flex items-center gap-2 text-left px-3 py-1.5 hover:bg-black/5"
+                            onclick={() => linkToExistingGroup(version.id, g.id)}
+                        >
+                            <span
+                                class="w-1.5 h-1.5 rounded-full shrink-0"
+                                style="background-color: {groupColor(g.id)}"
+                            ></span>
+                            <span class="truncate">Join "{g.label}"</span>
+                        </button>
+                    {/each}
+                </div>
+            {/if}
             </div>
         {/each}
     </div>
