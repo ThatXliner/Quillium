@@ -8,7 +8,12 @@ import {
     annotations as annotationExtensions,
 } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 
 function createView(doc: string) {
@@ -36,14 +41,17 @@ function addRevision(
     to: number,
     versions?: { doc: string; label?: string }[],
 ) {
+    const builtVersions = (
+        versions ?? [{ doc: view.state.sliceDoc(from, to), label: "Original" }]
+    ).map((v) => makeVersion(v));
     const revision = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex: 0,
-        versions: versions ?? [{ doc: view.state.sliceDoc(from, to), label: "Original" }],
+        activeVersionId: builtVersions[0].id,
+        versions: builtVersions,
     };
 
     view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
@@ -247,7 +255,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in main editor", () => {
 
         expect(consumed).toBe(true);
         const rev = getRevision(view, revId);
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
     });
 
     it("Ctrl-[ goes back to the previous version", () => {
@@ -260,12 +268,12 @@ describe("Ctrl-[ / Ctrl-] version navigation in main editor", () => {
         view.dispatch({ selection: { anchor: 2 } });
         // Advance to v2 first
         runKey(view, "Ctrl-]");
-        expect(getRevision(view, revId).activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(getRevision(view, revId))).toBe(1);
 
         // Then go back
         const consumed = runKey(view, "Ctrl-[");
         expect(consumed).toBe(true);
-        expect(getRevision(view, revId).activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(getRevision(view, revId))).toBe(0);
     });
 
     it("Ctrl-] wraps around from last version to first", () => {
@@ -279,7 +287,7 @@ describe("Ctrl-[ / Ctrl-] version navigation in main editor", () => {
         runKey(view, "Ctrl-]"); // → v2
         runKey(view, "Ctrl-]"); // → wraps back to v1
 
-        expect(getRevision(view, revId).activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(getRevision(view, revId))).toBe(0);
     });
 
     it("Ctrl-] fires boundary nudge when cursor is outside any revision", () => {

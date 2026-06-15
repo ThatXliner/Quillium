@@ -26,10 +26,12 @@ import {
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersion,
+    activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
+    makeVersion,
     versionText,
-    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,17 +50,18 @@ function addRevision(
     view: EditorView,
     from: number,
     to: number,
-    versions: VersionState[],
-    activeVersionIndex = 0,
+    versions: Array<{ doc: string; label?: string }>,
+    activeIndex = 0,
 ): number {
+    const builtVersions = versions.map((v) => makeVersion(v));
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex,
-        versions,
+        activeVersionId: builtVersions[activeIndex].id,
+        versions: builtVersions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
@@ -70,10 +73,17 @@ function getRevision(view: EditorView, id: number) {
     return ann;
 }
 
+// Resolve a positional version index to its stable id off the live view.
+function versionIdAt(view: EditorView, id: number, index: number): string {
+    const rev = getRevision(view, id);
+    if (!rev) throw new Error(`No revision annotation with id ${id}`);
+    return rev.versions[index].id;
+}
+
 function activeVersionText(view: EditorView, id: number): string {
     const rev = getRevision(view, id);
     if (!rev) return "";
-    return versionText(rev.versions[rev.activeVersionIndex] ?? { doc: "" });
+    return versionText(activeVersion(rev));
 }
 
 let view: EditorView | undefined;
@@ -90,7 +100,14 @@ describe("updateRevisionVersionState writes version text", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
 
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi" }));
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                id,
+                versionIdAt(view, id, 0),
+                makeVersion({ doc: "Hi" }),
+            ),
+        );
 
         expect(activeVersionText(view, id)).toBe("Hi");
     });
@@ -99,7 +116,14 @@ describe("updateRevisionVersionState writes version text", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }, { doc: "Hi" }], 0);
 
-        view.dispatch(updateRevisionVersionState(view.state, id, 1, { doc: "Hey" }));
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                id,
+                versionIdAt(view, id, 1),
+                makeVersion({ doc: "Hey" }),
+            ),
+        );
 
         // Main doc and active version unchanged
         expect(view.state.doc.toString()).toBe("Hello world");
@@ -114,7 +138,14 @@ describe("updateRevisionVersionState writes version text", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello", label: "Draft" }]);
 
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi", label: "Draft" }));
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                id,
+                versionIdAt(view, id, 0),
+                makeVersion({ doc: "Hi", label: "Draft" }),
+            ),
+        );
 
         const rev = getRevision(view, id)!;
         expect(rev.versions[0]?.label).toBe("Draft");
@@ -195,7 +226,14 @@ describe("undo of updateRevisionVersionState restores previous version text", ()
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
 
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi there" }));
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                id,
+                versionIdAt(view, id, 0),
+                makeVersion({ doc: "Hi there" }),
+            ),
+        );
         expect(activeVersionText(view, id)).toBe("Hi there");
 
         undo(view);
@@ -206,7 +244,14 @@ describe("undo of updateRevisionVersionState restores previous version text", ()
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
 
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi there" }));
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                id,
+                versionIdAt(view, id, 0),
+                makeVersion({ doc: "Hi there" }),
+            ),
+        );
         undo(view);
         expect(activeVersionText(view, id)).toBe("Hello");
 
@@ -218,9 +263,12 @@ describe("undo of updateRevisionVersionState restores previous version text", ()
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
 
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi" }));
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hey" }));
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Howdy" }));
+        const vid = versionIdAt(view, id, 0);
+        view.dispatch(updateRevisionVersionState(view.state, id, vid, makeVersion({ doc: "Hi" })));
+        view.dispatch(updateRevisionVersionState(view.state, id, vid, makeVersion({ doc: "Hey" })));
+        view.dispatch(
+            updateRevisionVersionState(view.state, id, vid, makeVersion({ doc: "Howdy" })),
+        );
 
         undo(view);
         expect(activeVersionText(view, id)).toBe("Hey");
@@ -241,8 +289,8 @@ describe("undo of updateRevisionVersionState restores previous version text", ()
             updateRevisionVersionState(
                 view.state,
                 id,
-                0,
-                { doc: "Corrected" },
+                versionIdAt(view, id, 0),
+                makeVersion({ doc: "Corrected" }),
                 { addToHistory: false },
             ),
         );
@@ -270,10 +318,10 @@ describe("setActiveRevisionVersion switches active version", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }, { doc: "Hi" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, id, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, id, versionIdAt(view, id, 1)));
 
         const rev = getRevision(view, id)!;
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
         expect(view.state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("Hi");
     });
 
@@ -281,13 +329,13 @@ describe("setActiveRevisionVersion switches active version", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }, { doc: "Hi" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, id, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, id, versionIdAt(view, id, 1)));
         expect(activeVersionText(view, id)).toBe("Hi");
 
         undo(view);
         expect(activeVersionText(view, id)).toBe("Hello");
         const rev = getRevision(view, id)!;
-        expect(rev.activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(rev)).toBe(0);
         expect(view.state.sliceDoc(rev.selection.main.from, rev.selection.main.to)).toBe("Hello");
     });
 
@@ -295,12 +343,12 @@ describe("setActiveRevisionVersion switches active version", () => {
         view = createView("Hello world");
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }, { doc: "Hi" }], 0);
 
-        view.dispatch(setActiveRevisionVersion(view.state, id, 1));
+        view.dispatch(setActiveRevisionVersion(view.state, id, versionIdAt(view, id, 1)));
         undo(view);
         redo(view);
 
         const rev = getRevision(view, id)!;
-        expect(rev.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(rev)).toBe(1);
         expect(activeVersionText(view, id)).toBe("Hi");
     });
 });
@@ -315,7 +363,14 @@ describe("undo of version state update interleaved with main-doc edits", () => {
         const id = addRevision(view, 0, 5, [{ doc: "Hello" }]);
 
         // Simulate textarea typing
-        view.dispatch(updateRevisionVersionState(view.state, id, 0, { doc: "Hi" }));
+        view.dispatch(
+            updateRevisionVersionState(
+                view.state,
+                id,
+                versionIdAt(view, id, 0),
+                makeVersion({ doc: "Hi" }),
+            ),
+        );
         // User also types " there" after the revision range
         view.dispatch({
             changes: {

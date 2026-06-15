@@ -19,7 +19,12 @@ import {
     handlePaste,
     serializeAnnotationsForCopy,
 } from "$lib/editor/plugins/annotations/clipboardAnnotations";
-import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
 import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -158,10 +163,12 @@ function addRevisionOver(
     activeVersionIndex = 0,
 ) {
     const activeDoc = view.state.sliceDoc(from, to);
-    const versions = altDocs.map((doc, i) => ({
-        doc: i === activeVersionIndex ? activeDoc : doc,
-        label: `v${i}`,
-    }));
+    const versions = altDocs.map((doc, i) =>
+        makeVersion({
+            doc: i === activeVersionIndex ? activeDoc : doc,
+            label: `v${i}`,
+        }),
+    );
     view.dispatch(
         view.state.update({
             effects: addAnnotation.of({
@@ -170,7 +177,7 @@ function addRevisionOver(
                     EditorSelection.single(from, to),
                     "revision",
                 ),
-                activeVersionIndex,
+                activeVersionId: versions[activeVersionIndex].id,
                 versions,
             }),
         }),
@@ -468,7 +475,7 @@ describe("revision copy → paste round trip", () => {
         expect(view.state.sliceDoc(pasted!.selection.main.from, pasted!.selection.main.to)).toBe(
             "brave",
         );
-        expect(pasted!.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(pasted!)).toBe(1);
         expect(pasted!.versions.map((v) => v.doc)).toEqual(["bold", "brave"]);
         // Version labels carried verbatim.
         expect(pasted!.versions.map((v) => v.label)).toEqual(["v0", "v1"]);
@@ -489,7 +496,7 @@ describe("revision copy → paste round trip", () => {
         expect(target.state.doc.toString()).toBe("Existing. brave new world");
         const revisions = getRevisions(target);
         expect(revisions).toHaveLength(1);
-        expect(revisions[0].activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(revisions[0])).toBe(1);
         expect(revisions[0].versions.map((v) => v.doc)).toEqual(["bold", "brave"]);
         expect(
             target.state.sliceDoc(revisions[0].selection.main.from, revisions[0].selection.main.to),
@@ -519,7 +526,7 @@ describe("revision copy → paste round trip", () => {
         const revisions = getRevisions(view);
         expect(revisions).toHaveLength(1);
         // Clamped to the last valid index (0).
-        expect(revisions[0].activeVersionIndex).toBe(0);
+        expect(activeVersionIndex(revisions[0])).toBe(0);
     });
 });
 

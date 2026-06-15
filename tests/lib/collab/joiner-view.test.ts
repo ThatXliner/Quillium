@@ -31,7 +31,12 @@ import {
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    isAnnotationOfType,
+    makeVersion,
+    type GenericAnnotation,
+} from "$lib/editor/plugins/annotations/models";
 import { historyCompartment } from "$lib/editor/extensions";
 import { currentDraftId } from "$lib/stores";
 
@@ -229,14 +234,15 @@ describe("joiner view hardening", () => {
 
     it("joiner version switch preserves revision annotation", async () => {
         const owner = track(makeProductionAnnotationPeer("owner", "hello world"));
+        const ownerVersions = [makeVersion({ doc: "world" }), makeVersion({ doc: "" })];
         owner.view.dispatch({
             effects: addAnnotation.of({
                 id: 0,
                 _type: "revision",
                 selection: EditorSelection.single(6, 11),
                 thread: [],
-                versions: [{ doc: "world" }, { doc: "" }],
-                activeVersionIndex: 0,
+                versions: ownerVersions,
+                activeVersionId: ownerVersions[0].id,
             }),
         });
         await Promise.resolve();
@@ -280,7 +286,14 @@ describe("joiner view hardening", () => {
         await flushAll(owner, joiner);
 
         const annId = Number(Object.keys(joiner.view.state.field(annotationField))[0]);
-        joiner.view.dispatch(setActiveRevisionVersion(joiner.view.state, annId, 1));
+        const joinerRev = joiner.view.state.field(annotationField)[annId];
+        if (!isAnnotationOfType(joinerRev, "revision")) {
+            expect.fail("Expected revision annotation");
+            return;
+        }
+        joiner.view.dispatch(
+            setActiveRevisionVersion(joiner.view.state, annId, joinerRev.versions[1].id),
+        );
         await flushAll(owner, joiner);
         await Promise.resolve();
 
@@ -298,8 +311,8 @@ describe("joiner view hardening", () => {
             expect.fail("Expected revision annotations");
             return;
         }
-        expect(ownerRevision.activeVersionIndex).toBe(1);
-        expect(joinerRevision.activeVersionIndex).toBe(1);
+        expect(activeVersionIndex(ownerRevision)).toBe(1);
+        expect(activeVersionIndex(joinerRevision)).toBe(1);
         expect(owner.view.state.doc.toString()).toBe("hello ");
         expect(joiner.view.state.doc.toString()).toBe("hello ");
     });

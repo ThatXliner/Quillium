@@ -45,7 +45,13 @@ import {
     updateRevisionVersionState,
 } from "./annotationField";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { type VersionState, isAnnotationOfType, versionText } from "./models";
+import {
+    type VersionState,
+    activeVersion,
+    activeVersionIndex,
+    isAnnotationOfType,
+    versionText,
+} from "./models";
 
 const VERSION_PREVIEW_MAX = 34;
 
@@ -477,15 +483,14 @@ export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: 
     function flushNestedState(view: EditorView): void {
         const annotation = parentView.state.field(annotationField)[revisionId];
         if (!annotation || !isAnnotationOfType(annotation, "revision")) return;
-        const versionIndex = annotation.activeVersionIndex;
-        const existing = annotation.versions[versionIndex];
+        const existing = activeVersion(annotation);
         if (!existing) return;
         const nestedState = view.state.toJSON(nestedSavedFields) as Record<string, unknown>;
         parentView.dispatch(
             updateRevisionVersionState(
                 parentView.state,
                 revisionId,
-                versionIndex,
+                existing.id,
                 mergeNestedVersionState(existing, nestedState),
                 { addToHistory: false },
             ),
@@ -498,10 +503,12 @@ export function makeParentRevisionNavKeymap(parentView: EditorView, revisionId: 
         if (!annotation || !isAnnotationOfType(annotation, "revision")) return false;
         const count = annotation.versions.length;
         if (count <= 1) return true; // consume: user intent was "navigate", no-op is correct
-        const current = annotation.activeVersionIndex;
+        const current = activeVersionIndex(annotation);
         const next = direction === "next" ? (current + 1) % count : (current - 1 + count) % count;
         state = parentView.state;
-        parentView.dispatch(setActiveRevisionVersion(state, annotation.id, next));
+        parentView.dispatch(
+            setActiveRevisionVersion(state, annotation.id, annotation.versions[next].id),
+        );
         return true;
     }
 

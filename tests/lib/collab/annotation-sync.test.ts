@@ -33,7 +33,9 @@ import {
     nestedEditorEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersionIndex,
     isAnnotationOfType,
+    makeVersion,
     type GenericAnnotation,
     type RawAnnotations,
     type VersionState,
@@ -49,13 +51,14 @@ function createComment(id: number, from: number, to: number): GenericAnnotation 
 }
 
 function createRevision(id: number, from: number, to: number, doc: string): GenericAnnotation {
+    const version = makeVersion({ doc });
     return {
         id,
         _type: "revision",
         selection: EditorSelection.single(from, to),
         thread: [],
-        versions: [{ doc }],
-        activeVersionIndex: 0,
+        versions: [version],
+        activeVersionId: version.id,
     };
 }
 
@@ -170,7 +173,7 @@ describe("annotation sync (Phase 11)", () => {
             if (isAnnotationOfType(syncedAnn, "revision")) {
                 expect(syncedAnn.versions.length).toBeGreaterThanOrEqual(1);
                 expect(syncedAnn.versions[0].doc).toBe("world");
-                expect(syncedAnn.activeVersionIndex).toBe(0);
+                expect(activeVersionIndex(syncedAnn)).toBe(0);
             }
         });
 
@@ -186,11 +189,17 @@ describe("annotation sync (Phase 11)", () => {
             // Get annotation ID on owner
             const annA = peerA.view.state.field(annotationField);
             const annIdA = Number(Object.keys(annA)[0]);
+            const revToUpdate = annA[annIdA];
+            if (!isAnnotationOfType(revToUpdate, "revision")) throw new Error("Expected revision");
+            const versionIdA = revToUpdate.versions[0].id;
 
             // Owner updates version text
-            const trA = updateRevisionVersionState(peerA.view.state, annIdA, 0, {
-                doc: "modified world",
-            });
+            const trA = updateRevisionVersionState(
+                peerA.view.state,
+                annIdA,
+                versionIdA,
+                makeVersion({ id: versionIdA, doc: "modified world" }),
+            );
             peerA.view.dispatch(trA);
 
             await flushMicrotasks();
@@ -214,6 +223,9 @@ describe("annotation sync (Phase 11)", () => {
             await flushAll(peerA, peerB);
 
             const annIdA = Number(Object.keys(peerA.view.state.field(annotationField))[0]);
+            const revForNested = peerA.view.state.field(annotationField)[annIdA];
+            if (!isAnnotationOfType(revForNested, "revision")) throw new Error("Expected revision");
+            const nestedVersionId = revForNested.versions[0].id;
             const nestedAnnotations: RawAnnotations = {
                 "0": {
                     id: 0,
@@ -223,12 +235,18 @@ describe("annotation sync (Phase 11)", () => {
                 },
             };
             const nestedVersion = {
+                id: nestedVersionId,
                 doc: "world",
                 annotationField: nestedAnnotations,
             } as VersionState & { annotationField: RawAnnotations };
 
             peerA.view.dispatch(
-                updateRevisionVersionState(peerA.view.state, annIdA, 0, nestedVersion),
+                updateRevisionVersionState(
+                    peerA.view.state,
+                    annIdA,
+                    nestedVersionId,
+                    nestedVersion,
+                ),
             );
             await flushAll(peerA, peerB);
 
@@ -311,7 +329,7 @@ describe("annotation sync (Phase 11)", () => {
                 return;
             }
 
-            expect(revB.activeVersionIndex).toBe(1);
+            expect(activeVersionIndex(revB)).toBe(1);
             expect(revB.versions[1].doc).toBe("draft");
             expect(revB.selection.main.from).toBe(6);
             expect(revB.selection.main.to).toBe(11);
@@ -348,11 +366,15 @@ describe("annotation sync (Phase 11)", () => {
 
             expect(revA.versions.length).toBe(2);
             expect(revB.versions.length).toBe(2);
-            expect(revA.activeVersionIndex).toBe(1); // createNewRevision switches to new version
-            expect(revB.activeVersionIndex).toBe(1);
+            expect(activeVersionIndex(revA)).toBe(1); // createNewRevision switches to new version
+            expect(activeVersionIndex(revB)).toBe(1);
 
             // Owner switches back to version 0
-            const switchTr = setActiveRevisionVersion(peerA.view.state, annIdA, 0);
+            const switchTr = setActiveRevisionVersion(
+                peerA.view.state,
+                annIdA,
+                revA.versions[0].id,
+            );
             peerA.view.dispatch(switchTr);
 
             await flushMicrotasks();
@@ -361,18 +383,19 @@ describe("annotation sync (Phase 11)", () => {
             revA = Object.values(peerA.view.state.field(annotationField))[0] as typeof revA;
             revB = Object.values(peerB.view.state.field(annotationField))[0] as typeof revB;
 
-            expect(revA.activeVersionIndex).toBe(0);
-            expect(revB.activeVersionIndex).toBe(0);
+            expect(activeVersionIndex(revA)).toBe(0);
+            expect(activeVersionIndex(revB)).toBe(0);
         });
 
         it("activeVersionIndex switch on joiner preserves revision annotation", async () => {
+            const revVersions = [makeVersion({ doc: "world" }), makeVersion({ doc: "earth" })];
             const revision: GenericAnnotation = {
                 id: 1,
                 _type: "revision",
                 selection: EditorSelection.single(6, 11),
                 thread: [],
-                versions: [{ doc: "world" }, { doc: "earth" }],
-                activeVersionIndex: 0,
+                versions: revVersions,
+                activeVersionId: revVersions[0].id,
             };
             peerA.view.dispatch({
                 effects: addAnnotation.of(revision),
@@ -380,7 +403,11 @@ describe("annotation sync (Phase 11)", () => {
             await flushAll(peerA, peerB);
 
             const annIdB = Number(Object.keys(peerB.view.state.field(annotationField))[0]);
-            peerB.view.dispatch(setActiveRevisionVersion(peerB.view.state, annIdB, 1));
+            const revB0 = peerB.view.state.field(annotationField)[annIdB];
+            if (!isAnnotationOfType(revB0, "revision")) throw new Error("Expected revision");
+            peerB.view.dispatch(
+                setActiveRevisionVersion(peerB.view.state, annIdB, revB0.versions[1].id),
+            );
             await flushAll(peerA, peerB);
             await Promise.resolve();
 
@@ -395,8 +422,8 @@ describe("annotation sync (Phase 11)", () => {
                 expect.fail("Expected revision annotations");
                 return;
             }
-            expect(revA.activeVersionIndex).toBe(1);
-            expect(revB.activeVersionIndex).toBe(1);
+            expect(activeVersionIndex(revA)).toBe(1);
+            expect(activeVersionIndex(revB)).toBe(1);
             expect(peerA.view.state.doc.toString()).toBe("hello earth");
             expect(peerB.view.state.doc.toString()).toBe("hello earth");
         });
@@ -454,7 +481,13 @@ describe("annotation sync (Phase 11)", () => {
             expect(revB.versions.length).toBe(2);
 
             // Owner deletes version 1 (the new one)
-            const delTr = deleteRevisionVersion(peerA.view.state, annIdA, 1);
+            const revToDelete = peerA.view.state.field(annotationField)[annIdA];
+            if (!isAnnotationOfType(revToDelete, "revision")) throw new Error("Expected revision");
+            const delTr = deleteRevisionVersion(
+                peerA.view.state,
+                annIdA,
+                revToDelete.versions[1].id,
+            );
             peerA.view.dispatch(delTr);
 
             await flushMicrotasks();

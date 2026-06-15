@@ -21,7 +21,9 @@ import { EditorSelection } from "@codemirror/state";
 import * as Y from "yjs";
 import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
 import {
+    activeVersionIndex,
     isAnnotationOfType,
+    normalizeRevision,
     RawAnnotationsSchema,
     type GenericAnnotation,
     type RawAnnotation,
@@ -103,7 +105,9 @@ export function codeMirrorToYjsAnnotation(
                 versionsMap.set(String(idx), versionNode);
             });
             node.set("versions", versionsMap);
-            node.set("activeVersionIndex", annotation.activeVersionIndex);
+            // Relay schema stays index-based for now (see issue #269); derive the
+            // positional index from the stable activeVersionId.
+            node.set("activeVersionIndex", activeVersionIndex(annotation));
         }
     }, "init");
 
@@ -186,7 +190,10 @@ export function yjsAnnotationToCodeMirror(
         console.warn("[annotationSchema] Revision has empty versions map");
         return null;
     }
-    const versions: VersionState[] = keys.map((k) => {
+    // Loose pre-normalization versions: no ids yet (the Yjs schema is still
+    // index-based, issue #269). normalizeRevision() mints position-stable ids
+    // below, so this stays a plain record rather than a VersionState[].
+    const versions: Record<string, unknown>[] = keys.map((k) => {
         const v = versionsMap.get(String(k)) as Y.Map<unknown>;
         const vtext = v.get("text");
         const doc = vtext instanceof Y.Text ? vtext.toString() : "";
@@ -209,14 +216,18 @@ export function yjsAnnotationToCodeMirror(
         typeof node.get("activeVersionIndex") === "number"
             ? (node.get("activeVersionIndex") as number)
             : 0;
-    const activeVersionIndex = Math.max(0, Math.min(rawIndex, versions.length - 1));
 
-    return {
+    // The Yjs read path produces a legacy-shaped revision: versions without ids
+    // and an index-based active pointer (the relay schema stays index-based until
+    // issue #269). normalizeRevision heals it into the new id-native shape —
+    // minting position-stable version ids and deriving activeVersionId from the
+    // clamped index — so the collab read path always yields valid new-shape data.
+    return normalizeRevision({
         ...base,
         _type: "revision",
         versions,
-        activeVersionIndex,
-    };
+        activeVersionIndex: rawIndex,
+    });
 }
 
 export function getRawAnnotationField(version: VersionState): RawAnnotations | undefined {

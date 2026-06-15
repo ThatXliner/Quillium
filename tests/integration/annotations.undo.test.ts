@@ -13,7 +13,11 @@ import { EditorView } from "@codemirror/view";
 import { history, undo } from "@codemirror/commands";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import {
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,14 +54,15 @@ function addRevision(
     versions: { doc: string }[],
     activeVersionIndex = 0,
 ) {
+    const builtVersions = versions.map((v) => makeVersion(v));
     const annotation = {
         ...createNewAnnotation(
             view.state.field(annotationField),
             EditorSelection.single(from, to),
             "revision",
         ),
-        activeVersionIndex,
-        versions,
+        activeVersionId: (builtVersions[activeVersionIndex] ?? builtVersions[0]).id,
+        versions: builtVersions,
     };
     view.dispatch(view.state.update({ effects: [addAnnotation.of(annotation)] }));
     return annotation.id;
