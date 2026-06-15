@@ -187,6 +187,21 @@ const allGroups = $derived($versionGroups ?? {});
 function memberOf(versionId: string): VersionGroupMember {
     return { revisionId: revision.id, versionId };
 }
+
+/**
+ * Make this revision the active annotation by moving the editor cursor into its
+ * range — but only when it isn't already active. Collapses the "double
+ * selection" so any interaction with this card (link, delete, switching the
+ * already-active pill) focuses the card you're touching, instead of leaving the
+ * panel anchored to whatever the cursor happened to be on.
+ */
+function focusThisRevision() {
+    if (isActive) return;
+    view.dispatch({
+        selection: { anchor: revision.selection.main.from },
+        scrollIntoView: true,
+    });
+}
 // The group a given version belongs to, if any.
 function groupForVersion(versionId: string) {
     return groupOfMember(allGroups, memberOf(versionId));
@@ -675,8 +690,12 @@ onDestroy(() => {
                                     version_count: revision.versions.length,
                                 });
                                 controller.flushCurrentStateToParent(false);
+                                // Move the cursor into this revision so it becomes
+                                // the active/anchored card — no double-selection.
                                 view.dispatch(
-                                    setActiveRevisionVersion(view.state, revision.id, version.id),
+                                    setActiveRevisionVersion(view.state, revision.id, version.id, {
+                                        moveCursor: true,
+                                    }),
                                 );
                             }
                             if (appSettings.showNestedEditor) {
@@ -695,7 +714,10 @@ onDestroy(() => {
                 <button
                     class="px-1 py-1 transition-colors text-black/30 hover:text-blue-600
                         {versionGroup ? 'text-blue-600' : ''}"
-                    onclick={() => (openLinkMenu = openLinkMenu === i ? null : i)}
+                    onclick={() => {
+                        focusThisRevision();
+                        openLinkMenu = openLinkMenu === i ? null : i;
+                    }}
                     title="Link to a version of another revision"
                     aria-label="Link version"
                 >

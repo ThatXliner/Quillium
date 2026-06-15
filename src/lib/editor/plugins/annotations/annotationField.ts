@@ -51,6 +51,7 @@ import {
     StateEffect,
     StateField,
     Transaction,
+    type TransactionSpec,
 } from "@codemirror/state";
 import {
     activeVersionIndex,
@@ -232,7 +233,12 @@ export const _updateRevisionVersionLabel = StateEffect.define<{
     versionId: string;
     label: string | undefined;
 }>();
-export function setActiveRevisionVersion(state: EditorState, annotationId: number, toId: string) {
+export function setActiveRevisionVersion(
+    state: EditorState,
+    annotationId: number,
+    toId: string,
+    options: { moveCursor?: boolean } = {},
+) {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
         throw new Error("Annotation is not a revision");
@@ -268,11 +274,21 @@ export function setActiveRevisionVersion(state: EditorState, annotationId: numbe
         });
     }
 
-    return state.update({
+    const changes = state.changes(changeSpecs);
+    // Move the EDITOR cursor into the primary switched revision so it becomes the
+    // active annotation — collapses the "double selection" where the card you
+    // click isn't the one the panel anchors to. Off by default so programmatic
+    // switches (AI, the group cascade's partners) don't yank the cursor around.
+    const spec: TransactionSpec = {
         effects,
         annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
-        changes: state.changes(changeSpecs),
-    });
+        changes,
+    };
+    if (options.moveCursor) {
+        const caret = changes.mapPos(original.selection.main.from, 1);
+        spec.selection = EditorSelection.cursor(caret);
+    }
+    return state.update(spec);
 }
 
 /**

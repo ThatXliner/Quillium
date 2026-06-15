@@ -36,6 +36,7 @@ import {
     makeVersion,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
+import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
 
 function createView(doc: string) {
     const state = EditorState.create({
@@ -258,5 +259,32 @@ describe("group structure ops", () => {
         view = v;
         expect(groups(v)[formalId].members.length).toBe(2);
         expect(groups(v)[formalId].label).toBe("Formal");
+    });
+});
+
+describe("switch moves the cursor into the revision (no double-selection)", () => {
+    it("makes the switched revision the active annotation when moveCursor is set", () => {
+        const { v, a, b } = setupLinkedDoc();
+        view = v;
+        // Park the cursor inside revision A so A is the active annotation.
+        v.dispatch({ selection: EditorSelection.cursor(1) });
+        expect(getActiveAnnotation(v.state)?.id).toBe(a.id);
+
+        // Switch revision B with moveCursor → B becomes active, not A.
+        v.dispatch(
+            setActiveRevisionVersion(v.state, b.id, b.versionIds[1], { moveCursor: true }),
+        );
+        expect(getActiveAnnotation(v.state)?.id).toBe(b.id);
+    });
+
+    it("does NOT move the cursor by default (programmatic switches stay put)", () => {
+        const { v, a, b } = setupLinkedDoc();
+        view = v;
+        v.dispatch({ selection: EditorSelection.cursor(1) });
+        expect(getActiveAnnotation(v.state)?.id).toBe(a.id);
+
+        // No moveCursor → cursor stays in A, A remains active even though B switched.
+        v.dispatch(setActiveRevisionVersion(v.state, b.id, b.versionIds[1]));
+        expect(getActiveAnnotation(v.state)?.id).toBe(a.id);
     });
 });
