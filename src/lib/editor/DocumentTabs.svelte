@@ -176,14 +176,42 @@ function onTabPointerDown(e: PointerEvent, tab: TabMeta) {
     window.addEventListener("pointercancel", onWindowPointerUp);
 }
 
+// Stable geometry snapshot captured at drag start (content coords, scroll-
+// independent). We reorder slots analytically from these so the math is immune
+// to the live FLIP animation — measuring getBoundingClientRect() mid-flip was
+// what made the drag jittery and hard to land near the ends.
+let snapWidth: Record<string, number> = {}; // tab id → width at drag start
+let snapGap = 0; // flex gap between tabs
+let snapFirstLeft = 0; // content-coord left of the leftmost tab
+
 function beginDrag(tab: TabMeta) {
     if (!stripEl || !grabbedEl) return;
     draggingId = tab.id;
     order = tabs.map((t) => t.id);
     dragDx = 0;
-    // Home position in strip content coordinates (independent of scroll).
+
     const stripRect = stripEl.getBoundingClientRect();
-    homeLeft = grabbedEl.getBoundingClientRect().left - stripRect.left + stripEl.scrollLeft;
+    snapWidth = {};
+    const lefts: number[] = [];
+    for (const id of order) {
+        const el = tabEls[id];
+        const r = el?.getBoundingClientRect();
+        snapWidth[id] = r?.width ?? 0;
+        lefts.push(r ? r.left - stripRect.left + stripEl.scrollLeft : 0);
+    }
+    snapFirstLeft = lefts[0] ?? 0;
+    snapGap = lefts.length > 1 ? Math.max(0, lefts[1] - (lefts[0] + snapWidth[order[0]])) : 0;
+    homeLeft = slotLeft(order.indexOf(tab.id));
+}
+
+// Content-coord left edge of the slot at `index` in the CURRENT `order`,
+// summing snapshot widths + gaps. Analytic so it never reads animating DOM.
+function slotLeft(index: number): number {
+    let x = snapFirstLeft;
+    for (let i = 0; i < index; i++) {
+        x += (snapWidth[order[i]] ?? 0) + snapGap;
+    }
+    return x;
 }
 
 function onWindowPointerMove(e: PointerEvent) {
@@ -205,45 +233,34 @@ function onWindowPointerMove(e: PointerEvent) {
 // Recompute the dragged tab's translate + live order from the current pointer
 // position. Split out so both pointermove and the edge-scroll loop can call it.
 function updateDrag() {
-    if (!stripEl || !draggingId || !grabbedEl) return;
+    if (!stripEl || !draggingId) return;
     const stripRect = stripEl.getBoundingClientRect();
-    const width = grabbedEl.getBoundingClientRect().width;
+    const width = snapWidth[draggingId] ?? 0;
 
-    // Desired left edge (strip content coords) = pointer + scroll - half width,
-    // clamped so the tab stays fully inside the strip's scrollable content.
-    const desiredLeft = lastClientX - stripRect.left + stripEl.scrollLeft - width / 2;
+    // Hit-test centre follows the RAW pointer (content coords), so it can
+    // strictly pass the first/last slot centre and reach either end. The
+    // VISUAL left edge is clamped separately so the tab stays in-bounds.
+    const pointerContentX = lastClientX - stripRect.left + stripEl.scrollLeft;
+    const centerX = pointerContentX;
+    const desiredLeft = pointerContentX - width / 2;
     const maxLeft = Math.max(0, stripEl.scrollWidth - width);
     const clampedLeft = Math.max(0, Math.min(maxLeft, desiredLeft));
-    dragDx = clampedLeft - homeLeft;
 
-    // Reorder when the dragged tab's centre crosses a neighbour's midpoint.
-    const centerX = clampedLeft + width / 2;
+    // Hit-test against analytic slot centres (snapshot-based, FLIP-immune).
     const rects: Record<string, { left: number; width: number }> = {};
-    for (const id of order) {
-        const el = tabEls[id];
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
-        rects[id] = { left: r.left - stripRect.left + stripEl.scrollLeft, width: r.width };
+    for (let i = 0; i < order.length; i++) {
+        const id = order[i];
+        rects[id] = { left: slotLeft(i), width: snapWidth[id] ?? 0 };
     }
     const next = computeReorder(centerX, rects, order, draggingId);
     if (next.length === order.length && next.some((id, i) => id !== order[i])) {
         order = next;
-        // The dragged tab's resting slot moved; keep dx relative to its new home
-        // so it doesn't teleport. Recompute home from its new index next frame
-        // (the DOM updates after this assignment), so defer via the flip pass:
-        // simplest correct approach is to re-derive home on the next move from
-        // the element's post-flip position. We approximate by re-reading home
-        // immediately after Svelte applies the order on the next tick.
-        tick().then(() => {
-            if (!stripEl || !grabbedEl || !draggingId) return;
-            const sr = stripEl.getBoundingClientRect();
-            const cur = grabbedEl.getBoundingClientRect();
-            // Current visual left (without transform) = element left - dragDx.
-            const visualLeft = cur.left - sr.left + stripEl.scrollLeft - dragDx;
-            homeLeft = visualLeft;
-            dragDx = clampedLeft - homeLeft;
-        });
     }
+
+    // Re-derive home analytically from the (possibly new) index — no DOM read,
+    // so the dragged tab stays glued to the pointer with no teleport/jitter.
+    homeLeft = slotLeft(order.indexOf(draggingId));
+    dragDx = clampedLeft - homeLeft;
 }
 
 function runEdgeAutoScroll() {

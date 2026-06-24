@@ -232,6 +232,23 @@ describe("DocumentTabs", () => {
         expect(ontabreorder.mock.calls[0][0][2]).toBe("a"); // 'a' ends up last
     });
 
+    it("can drag the last tab all the way to the front", async () => {
+        const ontabreorder = vi.fn();
+        const { container, getByText } = render(DocumentTabs, {
+            props: defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], ontabreorder }),
+        });
+        stubGeometry(container);
+        const tabC = getByText("Tab C").closest("[role='tab']") as HTMLElement;
+
+        // Press on C (centre 250), drag left past A's centre (50) → C to front.
+        await pointer(tabC, "pointerdown", 250);
+        await pointer(tabC, "pointermove", 0);
+        await pointer(tabC, "pointerup", 0);
+
+        expect(ontabreorder).toHaveBeenCalledTimes(1);
+        expect(ontabreorder.mock.calls[0][0][0]).toBe("c"); // 'c' ends up first
+    });
+
     it("does not call ontabreorder on a click (press without movement)", async () => {
         const ontabreorder = vi.fn();
         const { container, getByText } = render(DocumentTabs, {
