@@ -353,13 +353,14 @@ function cancelRename() {
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg transition-colors duration-100
-                    {isDragged ? '!transition-none shadow-[0_4px_10px_rgba(0,0,0,0.1)] cursor-grabbing' : ''}
-                    {isActive
-                        ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
-                        : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
+                    {isDragged
+                        ? 'py-1.5 bg-white text-black/90 font-semibold !transition-none cursor-grabbing shadow-[0_-1px_8px_rgba(0,0,0,0.12)]'
+                        : isActive
+                          ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
+                          : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
                 "
             >
-                <FileTextIcon size={12} class="shrink-0 {isActive ? 'text-black/50' : 'text-black/30'}" />
+                <FileTextIcon size={12} class="shrink-0 {isActive || isDragged ? 'text-black/50' : 'text-black/30'}" />
                 {#if isRenaming}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <input
