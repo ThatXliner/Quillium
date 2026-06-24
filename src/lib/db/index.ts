@@ -13,6 +13,7 @@ import type {
     DocumentMeta,
     DraftMeta,
     LoadResult,
+    ReparentEntry,
     SearchHit,
     SnapshotMeta,
     TabMeta,
@@ -266,14 +267,48 @@ export async function setDraftLocked(draftId: string, locked: boolean): Promise<
     return invoke<void>("cmd_set_draft_locked", { draftId, locked });
 }
 
-/** Soft-deletes a leaf draft (restorable). Rejects if it has iterations/branches or is the tab's last draft. */
+/**
+ * Soft-deletes a single draft (restorable). Rejects only if it is the tab's
+ * last live draft. A draft with children must be deleted via
+ * `orphanAndDeleteDraft` or `cascadeDeleteDraft` (this primitive leaves its
+ * children dangling otherwise).
+ */
 export async function deleteDraft(draftId: string): Promise<void> {
     return invoke<void>("cmd_delete_draft", { draftId });
+}
+
+/**
+ * Deletes `draftId` but keeps its children, re-attaching them so the tree
+ * stays valid. Returns the link rewrites it made so Undo can reverse them
+ * (restore the draft, then `reparentDraft` each entry).
+ */
+export async function orphanAndDeleteDraft(draftId: string): Promise<ReparentEntry[]> {
+    return invoke<ReparentEntry[]>("cmd_orphan_and_delete_draft", { draftId });
+}
+
+/**
+ * Deletes `draftId` and its whole subtree (iterations + branches). Returns
+ * the deleted ids (root first) so Undo can restore them all.
+ */
+export async function cascadeDeleteDraft(draftId: string): Promise<string[]> {
+    return invoke<string[]>("cmd_cascade_delete_draft", { draftId });
 }
 
 /** Restores a soft-deleted draft; its run relocks. */
 export async function restoreDraft(draftId: string): Promise<void> {
     return invoke<void>("cmd_restore_draft", { draftId });
+}
+
+/**
+ * Re-attaches a draft to the given links. Used by Undo to reverse an orphan
+ * delete's re-parent after the deleted parent has been restored.
+ */
+export async function reparentDraft(
+    draftId: string,
+    parentDraftId: string | null,
+    branchedFrom: string | null,
+): Promise<void> {
+    return invoke<void>("cmd_reparent_draft", { draftId, parentDraftId, branchedFrom });
 }
 
 export async function getActiveDraft(tabId: string): Promise<string | null> {

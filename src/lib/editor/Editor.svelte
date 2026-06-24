@@ -1,6 +1,7 @@
 <script lang="ts">
 import {
     branchDraft,
+    cascadeDeleteDraft,
     createDocument,
     createDraft,
     createSnapshot,
@@ -16,10 +17,12 @@ import {
     listTabDrafts,
     listTabs,
     loadDocumentState,
+    orphanAndDeleteDraft,
     registerOpenDoc,
     renameDraft,
     renameTab,
     reorderTabs,
+    reparentDraft,
     restoreDraft,
     restoreTab,
     setActiveDraft,
@@ -94,6 +97,8 @@ import { generateText } from "ai";
 import { GitBranchIcon, LockIcon, Pencil, SparklesIcon } from "lucide-svelte";
 import { toast } from "svelte-sonner";
 import DocumentTabs from "./DocumentTabs.svelte";
+import DraftDeleteModal from "./DraftDeleteModal.svelte";
+import { collectSubtree, hasLiveChildren } from "./draftTree";
 import DraftTreePanel from "./DraftTreePanel.svelte";
 import StatusBar from "./StatusBar.svelte";
 import type { ListenerOptions } from "./listeners";
@@ -263,6 +268,8 @@ const getExtensionOptions: ListenerOptions = {
 let tabs = $state<TabMeta[]>([]);
 let tabDrafts = $state<DraftMeta[]>([]);
 let forking = $state(false);
+// Set while the orphan-vs-cascade prompt is open for a draft with children.
+let pendingDelete = $state<{ id: string; label: string; descendants: number } | null>(null);
 
 const currentDraft = $derived(tabDrafts.find((d) => d.id === $currentDraftId));
 const isLocked = $derived(currentDraft?.locked ?? false);
@@ -687,32 +694,106 @@ async function handleDraftRename(draftId: string, label: string) {
 }
 
 async function handleDraftDelete(draftId: string) {
-    const draft = tabDrafts.find((d) => d.id === draftId);
-    // If the open draft is being deleted, move to its parent (or any
-    // sibling) first so the editor never points at a hidden draft.
-    if (draftId === get(currentDraftId)) {
-        const fallback =
-            draft?.parentDraftId ?? tabDrafts.find((d) => d.id !== draftId)?.id ?? null;
-        if (!fallback) return;
-        await switchToDraft(fallback);
-    } else {
-        await flushPendingPersist();
+    // A childless draft deletes straight away; one with children prompts for
+    // orphan vs cascade (the modal then calls the matching handler).
+    if (!hasLiveChildren(draftId, tabDrafts)) {
+        await performDraftDelete(draftId, [draftId], "leaf");
+        return;
     }
+    const draft = tabDrafts.find((d) => d.id === draftId);
+    const descendants = collectSubtree(draftId, tabDrafts).length - 1;
+    pendingDelete = { id: draftId, label: draft?.label ?? "draft", descendants };
+}
+
+/**
+ * Switches the editor off `doomed` (the ids about to be soft-deleted) when the
+ * open draft is among them, landing on a surviving draft so the editor never
+ * points at a hidden one. Returns false if there's no survivor to land on
+ * (shouldn't happen — the backend refuses emptying a tab — but guards anyway).
+ */
+async function ensureEditorOffDeleted(doomed: string[]): Promise<boolean> {
+    if (!doomed.includes(get(currentDraftId) ?? "")) {
+        await flushPendingPersist();
+        return true;
+    }
+    const doomedSet = new Set(doomed);
+    const survivor = tabDrafts.find((d) => !doomedSet.has(d.id));
+    if (!survivor) return false;
+    await switchToDraft(survivor.id);
+    return true;
+}
+
+/** Soft-deletes a childless draft (or its subtree root) and offers Undo. */
+async function performDraftDelete(draftId: string, doomed: string[], mode: "leaf" | "cascade") {
+    const draft = tabDrafts.find((d) => d.id === draftId);
+    if (!(await ensureEditorOffDeleted(doomed))) return;
     try {
-        await deleteDraft(draftId);
+        if (mode === "cascade") {
+            await cascadeDeleteDraft(draftId);
+        } else {
+            await deleteDraft(draftId);
+        }
     } catch (e) {
         console.error("[Editor] delete draft failed", e);
         return;
     }
     await refreshDraftsAndCurrentLock();
-    posthog.capture("draft_deleted");
-    // Soft delete: the draft's text and history survive in the DB.
+    posthog.capture("draft_deleted", { mode });
+    // Soft delete: each draft's text and history survive in the DB, so Undo
+    // restores the whole set (root + any cascaded descendants).
     toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
         duration: 8000,
         action: {
             label: "Undo",
             onClick: async () => {
+                // Restore parents before children so links land on live rows.
+                for (const id of doomed) {
+                    await restoreDraft(id).catch(console.error);
+                }
+                await refreshDraftsAndCurrentLock();
+                posthog.capture("draft_restored");
+            },
+        },
+    });
+}
+
+/** Cascade branch of the delete prompt: remove the draft and its whole subtree. */
+async function handleDeleteCascade(draftId: string) {
+    pendingDelete = null;
+    const doomed = collectSubtree(draftId, tabDrafts);
+    await performDraftDelete(draftId, doomed, "cascade");
+}
+
+/** Orphan branch of the delete prompt: keep the children, re-attaching them. */
+async function handleDeleteOrphan(draftId: string) {
+    pendingDelete = null;
+    const draft = tabDrafts.find((d) => d.id === draftId);
+    // Only the draft itself vanishes; its children survive re-attached.
+    if (!(await ensureEditorOffDeleted([draftId]))) return;
+    let rewrites: Awaited<ReturnType<typeof orphanAndDeleteDraft>>;
+    try {
+        rewrites = await orphanAndDeleteDraft(draftId);
+    } catch (e) {
+        console.error("[Editor] orphan-delete draft failed", e);
+        return;
+    }
+    await refreshDraftsAndCurrentLock();
+    posthog.capture("draft_deleted", { mode: "orphan" });
+    toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
+        duration: 8000,
+        action: {
+            label: "Undo",
+            onClick: async () => {
+                // Restore the parent first, then re-point each moved child back
+                // at it (reversing the orphan rewrite).
                 await restoreDraft(draftId).catch(console.error);
+                for (const r of rewrites) {
+                    await reparentDraft(
+                        r.draftId,
+                        r.oldParentDraftId,
+                        r.oldBranchedFrom,
+                    ).catch(console.error);
+                }
                 await refreshDraftsAndCurrentLock();
                 posthog.capture("draft_restored");
             },
@@ -867,6 +948,16 @@ onMount(() => {
                     />
                 </div>
             </div>
+        {/if}
+
+        {#if pendingDelete}
+            <DraftDeleteModal
+                label={pendingDelete.label}
+                descendants={pendingDelete.descendants}
+                onorphan={() => handleDeleteOrphan(pendingDelete!.id)}
+                oncascade={() => handleDeleteCascade(pendingDelete!.id)}
+                oncancel={() => (pendingDelete = null)}
+            />
         {/if}
 
         <!--

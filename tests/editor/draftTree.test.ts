@@ -1,5 +1,11 @@
 import type { DraftMeta } from "$lib/db/types";
-import { isDeletableDraft, isRunHead, layoutDraftRows } from "$lib/editor/draftTree";
+import {
+    collectSubtree,
+    hasLiveChildren,
+    isDeletableDraft,
+    isRunHead,
+    layoutDraftRows,
+} from "$lib/editor/draftTree";
 import { describe, expect, it } from "vitest";
 
 /** main → v1 → v2 is an iteration run; branches use branchedFrom. */
@@ -220,16 +226,55 @@ describe("isDeletableDraft", () => {
     it("rejects the only draft", () => {
         expect(isDeletableDraft("main", [iter("main", null, 0)])).toBe(false);
     });
-    it("rejects a draft with a live iteration after it", () => {
-        const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
-        expect(isDeletableDraft("main", drafts)).toBe(false);
-    });
-    it("rejects a draft with a branch off it", () => {
-        const drafts = [iter("main", null, 0), iter("v1", "main", 1), branch("b1", "v1", 2)];
-        expect(isDeletableDraft("v1", drafts)).toBe(false);
-    });
     it("allows a leaf when siblings exist", () => {
         const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
         expect(isDeletableDraft("v1", drafts)).toBe(true);
+    });
+    it("allows a draft with a live iteration after it (no longer leaf-only)", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
+        expect(isDeletableDraft("main", drafts)).toBe(true);
+    });
+    it("allows a draft with a branch off it", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1), branch("b1", "v1", 2)];
+        expect(isDeletableDraft("v1", drafts)).toBe(true);
+    });
+    it("rejects a locked draft (the lock is the only protection)", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1, true)];
+        expect(isDeletableDraft("v1", drafts)).toBe(false);
+    });
+});
+
+describe("hasLiveChildren", () => {
+    it("is false for a leaf", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
+        expect(hasLiveChildren("v1", drafts)).toBe(false);
+    });
+    it("is true for a draft with an iteration after it", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
+        expect(hasLiveChildren("main", drafts)).toBe(true);
+    });
+    it("is true for a draft with a branch off it", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1), branch("b1", "v1", 2)];
+        expect(hasLiveChildren("v1", drafts)).toBe(true);
+    });
+});
+
+describe("collectSubtree", () => {
+    it("returns just the draft when it's a leaf", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
+        expect(collectSubtree("v1", drafts)).toEqual(["v1"]);
+    });
+    it("collects iterations and branches transitively, root first", () => {
+        // main → v1 ; branch b1 off v1 ; b1 → b2. Subtree of v1 = v1,b1,b2.
+        const drafts = [
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            branch("b1", "v1", 2),
+            iter("b2", "b1", 3),
+        ];
+        const sub = collectSubtree("v1", drafts);
+        expect(sub[0]).toBe("v1");
+        expect(new Set(sub)).toEqual(new Set(["v1", "b1", "b2"]));
+        expect(sub).not.toContain("main");
     });
 });

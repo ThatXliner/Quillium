@@ -12,7 +12,8 @@
       ondraftiterate — (draftId) make the next version in this draft's run
       ondraftbranch  — (draftId) start a different take off this draft
       ondraftrename  — (draftId, label) after inline rename
-      ondraftdelete  — (draftId) delete a leaf draft (soft, undoable)
+      ondraftdelete  — (draftId) delete any unlocked draft (soft, undoable);
+                       the editor prompts orphan vs cascade if it has children
       ontogglelock   — (draftId, locked) set the soft lock manually
 -->
 <script lang="ts">

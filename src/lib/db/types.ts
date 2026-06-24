@@ -66,6 +66,17 @@ export type DraftMeta = {
 };
 
 /**
+ * One link rewrite from an orphan delete: a child that was re-attached and
+ * the links it held before. Returned by `orphanAndDeleteDraft` so Undo can
+ * restore the original links via `reparentDraft`.
+ */
+export type ReparentEntry = {
+    draftId: string;
+    oldParentDraftId: string | null;
+    oldBranchedFrom: string | null;
+};
+
+/**
  * One entry in the document-level structural audit log (#160):
  * tab CRUD, draft branching, locks, checkpoints. Payload is JSON.
  */

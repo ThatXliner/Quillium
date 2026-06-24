@@ -23,10 +23,11 @@ use db::{
     schema::open_db,
     search::{search_documents, SearchHit},
     tabs::{
-        branch_draft, create_tab, delete_draft, delete_tab, get_active_draft, get_active_tab,
-        iterate_draft, list_doc_events, list_tab_drafts, list_tabs, rename_draft, rename_tab,
-        reorder_tabs, restore_draft, restore_tab, set_active_draft, set_active_tab,
-        set_draft_locked,
+        branch_draft, cascade_delete_draft, create_tab, delete_draft, delete_tab, get_active_draft,
+        get_active_tab, iterate_draft, list_doc_events, list_tab_drafts, list_tabs,
+        orphan_and_delete_draft, rename_draft, rename_tab, reorder_tabs, reparent_draft,
+        restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
+        ReparentEntry,
     },
     AppendEventResult, DocEventRecord, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta, TabMeta,
 };
@@ -348,10 +349,51 @@ fn cmd_delete_draft(state: tauri::State<DbState>, draft_id: String) -> Result<()
     delete_draft(&conn, &draft_id).map_err(|e| e.to_string())
 }
 
+/// Deletes a draft but keeps its children, re-attaching them. Returns the
+/// link rewrites so the frontend can reverse them on Undo.
+#[tauri::command]
+fn cmd_orphan_and_delete_draft(
+    state: tauri::State<DbState>,
+    draft_id: String,
+) -> Result<Vec<ReparentEntry>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    orphan_and_delete_draft(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+/// Deletes a draft and its whole subtree. Returns the deleted ids (root
+/// first) so the frontend can restore them all on Undo.
+#[tauri::command]
+fn cmd_cascade_delete_draft(
+    state: tauri::State<DbState>,
+    draft_id: String,
+) -> Result<Vec<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    cascade_delete_draft(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn cmd_restore_draft(state: tauri::State<DbState>, draft_id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     restore_draft(&conn, &draft_id).map_err(|e| e.to_string())
+}
+
+/// Re-attaches a draft to the given links. Used by Undo to reverse an orphan
+/// delete's re-parent after the deleted parent is restored.
+#[tauri::command]
+fn cmd_reparent_draft(
+    state: tauri::State<DbState>,
+    draft_id: String,
+    parent_draft_id: Option<String>,
+    branched_from: Option<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    reparent_draft(
+        &conn,
+        &draft_id,
+        parent_draft_id.as_deref(),
+        branched_from.as_deref(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -926,7 +968,10 @@ pub fn run() {
             cmd_rename_draft,
             cmd_set_draft_locked,
             cmd_delete_draft,
+            cmd_orphan_and_delete_draft,
+            cmd_cascade_delete_draft,
             cmd_restore_draft,
+            cmd_reparent_draft,
             cmd_restore_tab,
             cmd_reorder_tabs,
             cmd_list_doc_events,
