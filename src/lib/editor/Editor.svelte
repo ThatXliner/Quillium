@@ -86,6 +86,7 @@ import {
     hasApiKey,
 } from "$lib/ai/settings.svelte";
 import type { DraftMeta, EventRecord, TabMeta } from "$lib/db/types";
+import { goToHistory } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
 import type { ViewUpdate } from "@codemirror/view";
@@ -601,6 +602,13 @@ async function handleTabDelete(tabId: string) {
                 posthog.capture("tab_restored");
             },
         },
+        cancel: {
+            label: "View in history",
+            onClick: () => {
+                posthog.capture("delete_toast_view_history", { kind: "tab" });
+                goToHistory().catch(console.error);
+            },
+        },
     });
 }
 
@@ -707,6 +715,13 @@ async function handleDraftDelete(draftId: string) {
                 await restoreDraft(draftId).catch(console.error);
                 await refreshDraftsAndCurrentLock();
                 posthog.capture("draft_restored");
+            },
+        },
+        cancel: {
+            label: "View in history",
+            onClick: () => {
+                posthog.capture("delete_toast_view_history", { kind: "draft" });
+                goToHistory().catch(console.error);
             },
         },
     });
