@@ -1,4 +1,4 @@
-import { cleanup, createEvent, fireEvent, render } from "@testing-library/svelte";
+import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import type { TabMeta } from "$lib/db/types";
@@ -161,61 +161,47 @@ describe("DocumentTabs", () => {
         expect(ontabcreate).toHaveBeenCalledOnce();
     });
 
-    // jsdom doesn't lay out elements, so the drag-over midpoint check reads
-    // getBoundingClientRect() as zeros. Stub each tab's rect with a fixed
-    // 100px-wide slot so the before/after-half logic is deterministic.
-    function stubTabRects(tabEls: HTMLElement[]) {
-        tabEls.forEach((el, i) => {
-            const left = i * 100;
-            el.getBoundingClientRect = () =>
-                ({
-                    left,
-                    right: left + 100,
-                    width: 100,
-                    top: 0,
-                    bottom: 0,
-                    height: 0,
-                    x: left,
-                    y: 0,
-                }) as DOMRect;
-        });
+    // Reordering is driven by svelte-dnd-action, whose pointer-based drag
+    // can't be faithfully simulated in jsdom (it needs real layout + pointer
+    // capture). Instead we drive the component's own `finalize`/`consider`
+    // handlers by dispatching the CustomEvents the library emits, with a
+    // reordered `items` payload — exercising our persistence + suppression
+    // logic without depending on the library's internals.
+    function dispatchDnd(
+        zone: HTMLElement,
+        name: "consider" | "finalize",
+        items: TabMeta[],
+        info: { trigger: string; source: string; id?: string },
+    ) {
+        return fireEvent(zone, new CustomEvent(name, { detail: { items, info } }));
     }
 
-    // jsdom's synthetic DragEvent drops clientX from the init dict, so build
-    // the event and set clientX on it before dispatching.
-    function dragOverAt(el: HTMLElement, clientX: number) {
-        const ev = createEvent.dragOver(el);
-        Object.defineProperty(ev, "clientX", { value: clientX });
-        return fireEvent(el, ev);
-    }
-
-    it("reorders tabs on drag and commits the new order", async () => {
+    it("commits the new order on finalize after a reorder", async () => {
         const ontabreorder = vi.fn();
-        const { getByText } = render(DocumentTabs, {
+        const { getByRole } = render(DocumentTabs, {
             props: defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], ontabreorder }),
         });
-        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
-        const tabC = getByText("Tab C").closest("[role='tab']") as HTMLElement;
-        stubTabRects([tabA, getByText("Tab B").closest("[role='tab']") as HTMLElement, tabC]);
+        const zone = getByRole("tablist");
 
-        await fireEvent.dragStart(tabA);
-        // Drop A onto the right half of C → A moves to the end.
-        await dragOverAt(tabC, 290);
-        await fireEvent.dragEnd(tabA);
+        await dispatchDnd(zone, "finalize", [TAB_B, TAB_C, TAB_A], {
+            trigger: "droppedIntoZone",
+            source: "pointer",
+        });
 
         expect(ontabreorder).toHaveBeenCalledWith(["b", "c", "a"]);
     });
 
-    it("does not call ontabreorder when order is unchanged", async () => {
+    it("does not call ontabreorder when the order is unchanged", async () => {
         const ontabreorder = vi.fn();
-        const { getByText } = render(DocumentTabs, {
-            props: defaultProps({ tabs: [TAB_A, TAB_B], ontabreorder }),
+        const { getByRole } = render(DocumentTabs, {
+            props: defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], ontabreorder }),
         });
-        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
-        stubTabRects([tabA, getByText("Tab B").closest("[role='tab']") as HTMLElement]);
+        const zone = getByRole("tablist");
 
-        await fireEvent.dragStart(tabA);
-        await fireEvent.dragEnd(tabA);
+        await dispatchDnd(zone, "finalize", [TAB_A, TAB_B, TAB_C], {
+            trigger: "droppedIntoZone",
+            source: "pointer",
+        });
 
         expect(ontabreorder).not.toHaveBeenCalled();
     });
@@ -223,7 +209,7 @@ describe("DocumentTabs", () => {
     it("suppresses the post-drag click so a reordered tab isn't also selected", async () => {
         const ontabselect = vi.fn();
         const ontabreorder = vi.fn();
-        const { getByText } = render(DocumentTabs, {
+        const { getByRole, getByText } = render(DocumentTabs, {
             props: defaultProps({
                 tabs: [TAB_A, TAB_B, TAB_C],
                 activeTabId: "a",
@@ -231,14 +217,14 @@ describe("DocumentTabs", () => {
                 ontabreorder,
             }),
         });
-        const tabB = getByText("Tab B").closest("[role='tab']") as HTMLElement;
-        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
-        stubTabRects([tabA, tabB, getByText("Tab C").closest("[role='tab']") as HTMLElement]);
+        const zone = getByRole("tablist");
 
-        await fireEvent.dragStart(tabB);
-        await dragOverAt(tabA, 10); // left half of A → B moves before A
-        await fireEvent.dragEnd(tabB);
-        await fireEvent.click(tabB);
+        await dispatchDnd(zone, "finalize", [TAB_B, TAB_A, TAB_C], {
+            trigger: "droppedIntoZone",
+            source: "pointer",
+        });
+        // The drop fires a trailing click on the moved tab; it must be eaten.
+        await fireEvent.click(getByText("Tab B").closest("[role='tab']")!);
 
         expect(ontabreorder).toHaveBeenCalledWith(["b", "a", "c"]);
         expect(ontabselect).not.toHaveBeenCalled();

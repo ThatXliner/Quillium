@@ -19,6 +19,7 @@
 import type { TabMeta } from "$lib/db/types";
 import { FileTextIcon, PlusIcon } from "lucide-svelte";
 import { tick } from "svelte";
+import { type DndEvent, SOURCES, TRIGGERS, dndzone } from "svelte-dnd-action";
 import { flip } from "svelte/animate";
 
 const {
@@ -106,69 +107,64 @@ const maskStyle = $derived(
         : "",
 );
 
-// ── Drag-to-reorder ───────────────────────────────────────────────
-// During a drag we render `dragOrder` (a working copy of the tab ids) so
-// the strip reorders live under the pointer; on drop we hand the final
-// order to the parent, which persists it. A click suppression flag stops
-// the drag's terminating click from also selecting/switching tabs.
-let draggingId = $state<string | null>(null);
-let dragOrder = $state<string[] | null>(null);
+// ── Drag-to-reorder (svelte-dnd-action) ───────────────────────────
+// The library owns the drag visuals (its own preview + placeholder — no
+// native HTML5 ghost) and reorders a working copy live. `dndItems` is that
+// copy: it mirrors `tabs` at rest and is reordered during a drag. On drop
+// we hand the final order to the parent, which persists it. Dragging is
+// disabled while a tab is being renamed inline.
+const FLIP_MS = 150;
+let dndItems = $state<TabMeta[]>([]);
+let isDragging = $state(false);
+// A drag terminating on the same tab still fires a click; suppress that one
+// so a drag-release doesn't also switch tabs.
 let suppressClick = false;
 
-// The list to render: the live drag preview while dragging, else the
-// real tab order. Mapped back to TabMeta so the template is unchanged.
-const displayTabs = $derived(
-    dragOrder
-        ? dragOrder
-              .map((id) => tabs.find((t) => t.id === id))
-              .filter((t): t is TabMeta => t !== undefined)
-        : tabs,
-);
+// Keep the at-rest list in sync with the source of truth when not dragging.
+$effect(() => {
+    if (!isDragging) dndItems = tabs;
+});
 
-function onDragStart(e: DragEvent, tab: TabMeta) {
-    // Don't start a reorder while renaming a tab inline.
-    if (renamingTabId) {
-        e.preventDefault();
-        return;
-    }
-    draggingId = tab.id;
-    dragOrder = tabs.map((t) => t.id);
-    if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = "move";
-        // Firefox requires data to be set for a drag to begin.
-        e.dataTransfer.setData("text/plain", tab.id);
-    }
-}
-
-function onDragOverTab(e: DragEvent, overId: string) {
-    if (!draggingId || !dragOrder || overId === draggingId) return;
-    e.preventDefault(); // allow drop
-    if (!Number.isFinite(e.clientX)) return;
-    const from = dragOrder.indexOf(draggingId);
-    const target = e.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    // Insert before the hovered tab if the pointer is on its left half.
-    const before = e.clientX < rect.left + rect.width / 2;
-    const overIdx = dragOrder.indexOf(overId);
-    let to = before ? overIdx : overIdx + 1;
-    if (to > from) to -= 1; // account for removing the dragged item first
-    if (to === from) return;
-    const next = dragOrder.filter((id) => id !== draggingId);
-    next.splice(to, 0, draggingId);
-    dragOrder = next;
-}
-
-function onDragEnd() {
-    if (dragOrder && draggingId) {
-        const original = tabs.map((t) => t.id);
-        const changed = dragOrder.some((id, i) => id !== original[i]);
-        if (changed) {
-            suppressClick = true;
-            ontabreorder(dragOrder);
+// Lock the dragged tab to the horizontal axis. svelte-dnd-action moves the
+// floating clone (#dnd-action-dragged-el) with `transform: translate3d(dx,
+// dy, 0)` on every pointer move; we zero out dy each frame so the tab can't
+// drift up/down out of the strip. transformDraggedElement() only fires on
+// index changes, so a rAF loop is the reliable hook for continuous moves.
+$effect(() => {
+    if (!isDragging) return;
+    // Pin to the strip's top so the tab tracks the row even if it scrolls.
+    const lockedTop = stripEl ? `${stripEl.getBoundingClientRect().top}px` : null;
+    let raf = 0;
+    const pin = () => {
+        const el = document.getElementById("dnd-action-dragged-el");
+        if (el) {
+            const m = el.style.transform.match(/translate3d\(([^,]+),/);
+            el.style.transform = `translate3d(${m ? m[1].trim() : "0px"}, 0px, 0)`;
+            if (lockedTop) el.style.top = lockedTop;
         }
-    }
-    draggingId = null;
-    dragOrder = null;
+        raf = requestAnimationFrame(pin);
+    };
+    raf = requestAnimationFrame(pin);
+    return () => cancelAnimationFrame(raf);
+});
+
+const dragDisabled = $derived(renamingTabId !== null);
+
+function handleConsider(e: CustomEvent<DndEvent<TabMeta>>) {
+    const { items, info } = e.detail;
+    dndItems = items;
+    if (info.trigger === TRIGGERS.DRAG_STARTED) isDragging = true;
+}
+
+function handleFinalize(e: CustomEvent<DndEvent<TabMeta>>) {
+    const { items, info } = e.detail;
+    dndItems = items;
+    isDragging = false;
+    // A pointer-driven reorder ends with a click on the dropped tab.
+    if (info.source === SOURCES.POINTER) suppressClick = true;
+    const order = items.map((t) => t.id);
+    const changed = order.some((id, i) => id !== tabs[i]?.id);
+    if (changed) ontabreorder(order);
 }
 
 function startRename(tab: TabMeta) {
@@ -190,36 +186,43 @@ function cancelRename() {
 
 <div
     class="mx-auto w-full max-w-[816px] flex items-end gap-0.5 select-none mt-8 max-[840px]:mx-3 max-[840px]:w-auto"
-    role="tablist"
-    aria-label="Document tabs"
 >
     <!--
-        Inner strip: tabs flex-shrink to fit, then scroll horizontally once
-        they hit their minimum width. Mask fades the scrollable edges; the
-        scrollbar is hidden (scrub by drag/wheel). min-w-0 lets it shrink
+        Inner strip: the actual tablist (holds only the tabs; the + button
+        sits outside it). Tabs flex-shrink to fit, then scroll horizontally
+        once they hit their minimum width. Mask fades the scrollable edges;
+        the scrollbar is hidden (scrub by drag/wheel). min-w-0 lets it shrink
         below content size so the + button stays pinned and never scrolls.
     -->
     <div
         bind:this={stripEl}
         class="strip flex-1 min-w-0 flex items-end gap-0.5 overflow-x-auto scroll-smooth pt-2 -mt-2"
         style={maskStyle}
+        role="tablist"
+        aria-label="Document tabs"
+        use:dndzone={{
+            items: dndItems,
+            flipDurationMs: FLIP_MS,
+            dragDisabled,
+            dropTargetStyle: {},
+            morphDisabled: true,
+            // Keep our own tablist/tab ARIA roles instead of the lib's
+            // list/listitem ones (this is a tab strip, not a generic list).
+            autoAriaDisabled: true,
+        }}
+        onconsider={handleConsider}
+        onfinalize={handleFinalize}
     >
-        {#each displayTabs as tab (tab.id)}
+        {#each dndItems as tab (tab.id)}
             {@const isActive = tab.id === activeTabId}
             {@const isRenaming = renamingTabId === tab.id}
-            {@const isDragging = draggingId === tab.id}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div
                 bind:this={tabEls[tab.id]}
-                animate:flip={{ duration: 150 }}
+                animate:flip={{ duration: FLIP_MS }}
                 role="tab"
                 aria-selected={isActive}
                 tabindex={isActive ? 0 : -1}
-                draggable={!isRenaming}
-                ondragstart={(e) => onDragStart(e, tab)}
-                ondragover={(e) => onDragOverTab(e, tab.id)}
-                ondragend={onDragEnd}
-                ondrop={(e) => e.preventDefault()}
                 onclick={() => {
                     if (suppressClick) { suppressClick = false; return; }
                     if (!isActive) ontabselect(tab.id);
@@ -228,7 +231,6 @@ function cancelRename() {
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg transition-colors duration-100
-                    {isDragging ? 'opacity-40' : ''}
                     {isActive
                         ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
                         : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
