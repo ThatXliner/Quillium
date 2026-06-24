@@ -161,47 +161,88 @@ describe("DocumentTabs", () => {
         expect(ontabcreate).toHaveBeenCalledOnce();
     });
 
-    // Reordering is driven by svelte-dnd-action, whose pointer-based drag
-    // can't be faithfully simulated in jsdom (it needs real layout + pointer
-    // capture). Instead we drive the component's own `finalize`/`consider`
-    // handlers by dispatching the CustomEvents the library emits, with a
-    // reordered `items` payload — exercising our persistence + suppression
-    // logic without depending on the library's internals.
-    function dispatchDnd(
-        zone: HTMLElement,
-        name: "consider" | "finalize",
-        items: TabMeta[],
-        info: { trigger: string; source: string; id?: string },
-    ) {
-        return fireEvent(zone, new CustomEvent(name, { detail: { items, info } }));
+    // Drag is a custom pointer-events implementation. jsdom has no layout and
+    // no pointer capture, so we stub element geometry + the capture methods and
+    // drive a real pointerdown → move (past threshold) → up sequence. The pure
+    // index math is covered separately in tabReorder.test.ts; here we assert
+    // the component's observable contract: a real drag commits a changed order,
+    // a press without movement does not, and a drag eats the trailing click.
+    const TAB_W = 100;
+
+    // Lay each tab out in a 100px slot and stub the strip's geometry so the
+    // drag handlers compute against deterministic coordinates.
+    function stubGeometry(container: HTMLElement) {
+        const strip = container.querySelector("[role='tablist']") as HTMLElement;
+        Object.defineProperty(strip, "scrollLeft", { value: 0, writable: true });
+        Object.defineProperty(strip, "scrollWidth", { value: 1000, configurable: true });
+        Object.defineProperty(strip, "clientWidth", { value: 1000, configurable: true });
+        strip.getBoundingClientRect = () =>
+            ({
+                left: 0,
+                right: 1000,
+                top: 0,
+                bottom: 30,
+                width: 1000,
+                height: 30,
+                x: 0,
+                y: 0,
+            }) as DOMRect;
+        const tabs = [...strip.querySelectorAll("[role='tab']")] as HTMLElement[];
+        tabs.forEach((el, i) => {
+            const left = i * TAB_W;
+            el.getBoundingClientRect = () =>
+                ({
+                    left,
+                    right: left + TAB_W,
+                    top: 0,
+                    bottom: 30,
+                    width: TAB_W,
+                    height: 30,
+                    x: left,
+                    y: 0,
+                }) as DOMRect;
+            // jsdom lacks pointer capture; the handlers call these.
+            el.setPointerCapture = () => {};
+            el.releasePointerCapture = () => {};
+        });
+        return { strip, tabs };
     }
 
-    it("commits the new order on finalize after a reorder", async () => {
+    function pointer(el: HTMLElement, type: string, clientX: number) {
+        return fireEvent(
+            el,
+            new PointerEvent(type, { pointerId: 1, button: 0, clientX, bubbles: true }),
+        );
+    }
+
+    it("commits a changed order after a pointer drag past a neighbour", async () => {
         const ontabreorder = vi.fn();
-        const { getByRole } = render(DocumentTabs, {
+        const { container, getByText } = render(DocumentTabs, {
             props: defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], ontabreorder }),
         });
-        const zone = getByRole("tablist");
+        stubGeometry(container);
+        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
 
-        await dispatchDnd(zone, "finalize", [TAB_B, TAB_C, TAB_A], {
-            trigger: "droppedIntoZone",
-            source: "pointer",
-        });
+        // Press on A (centre 50), drag right past C's centre (250) → A to end.
+        await pointer(tabA, "pointerdown", 50);
+        await pointer(tabA, "pointermove", 300);
+        await pointer(tabA, "pointerup", 300);
 
-        expect(ontabreorder).toHaveBeenCalledWith(["b", "c", "a"]);
+        expect(ontabreorder).toHaveBeenCalledTimes(1);
+        expect(ontabreorder.mock.calls[0][0][2]).toBe("a"); // 'a' ends up last
     });
 
-    it("does not call ontabreorder when the order is unchanged", async () => {
+    it("does not call ontabreorder on a click (press without movement)", async () => {
         const ontabreorder = vi.fn();
-        const { getByRole } = render(DocumentTabs, {
+        const { container, getByText } = render(DocumentTabs, {
             props: defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], ontabreorder }),
         });
-        const zone = getByRole("tablist");
+        stubGeometry(container);
+        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
 
-        await dispatchDnd(zone, "finalize", [TAB_A, TAB_B, TAB_C], {
-            trigger: "droppedIntoZone",
-            source: "pointer",
-        });
+        await pointer(tabA, "pointerdown", 50);
+        await pointer(tabA, "pointermove", 51); // under the 4px threshold
+        await pointer(tabA, "pointerup", 51);
 
         expect(ontabreorder).not.toHaveBeenCalled();
     });
@@ -209,7 +250,7 @@ describe("DocumentTabs", () => {
     it("suppresses the post-drag click so a reordered tab isn't also selected", async () => {
         const ontabselect = vi.fn();
         const ontabreorder = vi.fn();
-        const { getByRole, getByText } = render(DocumentTabs, {
+        const { container, getByText } = render(DocumentTabs, {
             props: defaultProps({
                 tabs: [TAB_A, TAB_B, TAB_C],
                 activeTabId: "a",
@@ -217,16 +258,16 @@ describe("DocumentTabs", () => {
                 ontabreorder,
             }),
         });
-        const zone = getByRole("tablist");
+        stubGeometry(container);
+        const tabB = getByText("Tab B").closest("[role='tab']") as HTMLElement;
 
-        await dispatchDnd(zone, "finalize", [TAB_B, TAB_A, TAB_C], {
-            trigger: "droppedIntoZone",
-            source: "pointer",
-        });
-        // The drop fires a trailing click on the moved tab; it must be eaten.
-        await fireEvent.click(getByText("Tab B").closest("[role='tab']")!);
+        // Drag B left past A's centre, then the trailing click must be eaten.
+        await pointer(tabB, "pointerdown", 150);
+        await pointer(tabB, "pointermove", 10);
+        await pointer(tabB, "pointerup", 10);
+        await fireEvent.click(tabB);
 
-        expect(ontabreorder).toHaveBeenCalledWith(["b", "a", "c"]);
+        expect(ontabreorder).toHaveBeenCalledTimes(1);
         expect(ontabselect).not.toHaveBeenCalled();
     });
 });

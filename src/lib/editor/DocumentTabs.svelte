@@ -8,19 +8,26 @@
       ontabcreate — called when user clicks +
       ontabrename — called with (tabId, newLabel) after inline rename
       ontabdelete — called with (tabId) when user clicks ×
+      ontabreorder — called with the full tab-id list in its new order after a drag
 
     Notes:
       - × is hidden when tabs.length === 1 (can't close last tab)
       - Double-click on label enters rename mode
       - Rename commits on Enter or blur, cancels on Escape
       - Sits flush above the document card; the active tab blends into it
+
+    Drag-to-reorder is a custom pointer-events implementation (NOT a library):
+    the dragged tab is the REAL in-row element translated on the X axis only —
+    never a detached floating clone — so it reads as one solid tab sliding in
+    the strip while siblings shuffle around it (the Chrome / VS Code model).
+    See the "Drag-to-reorder" block below.
 -->
 <script lang="ts">
 import type { TabMeta } from "$lib/db/types";
 import { FileTextIcon, PlusIcon } from "lucide-svelte";
 import { tick } from "svelte";
-import { type DndEvent, SOURCES, TRIGGERS, dndzone } from "svelte-dnd-action";
 import { flip } from "svelte/animate";
+import { computeReorder } from "./tabReorder";
 
 const {
     tabs,
@@ -107,74 +114,178 @@ const maskStyle = $derived(
         : "",
 );
 
-// ── Drag-to-reorder (svelte-dnd-action) ───────────────────────────
-// The library owns the drag visuals (its own preview + placeholder — no
-// native HTML5 ghost) and reorders a working copy live. `dndItems` is that
-// copy: it mirrors `tabs` at rest and is reordered during a drag. On drop
-// we hand the final order to the parent, which persists it. Dragging is
-// disabled while a tab is being renamed inline.
+// ── Drag-to-reorder ───────────────────────────────────────────────
+// Browser-tab model: drag the REAL in-row tab on the X axis only (no floating
+// clone), reordering a working copy `order` live as the dragged tab's centre
+// crosses neighbours' midpoints. Siblings animate via animate:flip; the dragged
+// tab tracks the pointer 1:1 (no transition) and is excluded from flip. The
+// translate is clamped to the strip and the strip auto-scrolls near its edges,
+// so the tab can never leave the row.
 const FLIP_MS = 150;
-let dndItems = $state<TabMeta[]>([]);
-let isDragging = $state(false);
-// A drag terminating on the same tab still fires a click; suppress that one
-// so a drag-release doesn't also switch tabs.
+const DRAG_THRESHOLD = 4; // px before a press becomes a drag (vs. a click)
+const EDGE_ZONE = 36; // px from a strip edge that triggers auto-scroll
+const EDGE_SPEED = 12; // px per frame of edge auto-scroll
+
+// Working order during a drag; mirrors `tabs` at rest, reordered live on drag.
+let order = $state<string[]>([]);
+let draggingId = $state<string | null>(null);
+let dragDx = $state(0); // current X translate of the dragged tab
+// A drag that ends on the same tab still fires a click; eat that one so a
+// drag-release doesn't also switch tabs.
 let suppressClick = false;
 
-// Keep the at-rest list in sync with the source of truth when not dragging.
-$effect(() => {
-    if (!isDragging) dndItems = tabs;
-});
+// Drag bookkeeping (plain locals — not reactive).
+let pointerId = -1;
+let pressStartX = 0; // clientX at pointerdown
+let armed = false; // pressed but not yet past the threshold
+let grabbedEl: HTMLElement | null = null;
+let homeLeft = 0; // dragged tab's left (strip content coords) at drag start
+let edgeRaf = 0;
+let lastClientX = 0;
 
-// Confine the dragged tab to the strip. svelte-dnd-action moves the floating
-// clone (#dnd-action-dragged-el, position: fixed) with `transform:
-// translate3d(dx, dy, 0)` on every pointer move. We rewrite that transform
-// each frame to (a) zero dy so it can't drift up/down out of the row, and
-// (b) clamp dx so the tab stays within the strip's left/right edges — it can
-// never be flung over the sidebar or document. transformDraggedElement()
-// only fires on index changes, so a rAF loop is the reliable continuous hook.
-$effect(() => {
-    if (!isDragging || !stripEl) return;
-    const strip = stripEl.getBoundingClientRect();
-    let raf = 0;
-    const pin = () => {
-        const el = document.getElementById("dnd-action-dragged-el");
-        if (el) {
-            const rect = el.getBoundingClientRect();
-            const originLeft = Number.parseFloat(el.style.left) || 0;
-            const m = el.style.transform.match(/translate3d\(([-\d.]+)px/);
-            let dx = m ? Number.parseFloat(m[1]) : 0;
-            // Keep [originLeft+dx, originLeft+dx+width] inside the strip.
-            const minDx = strip.left - originLeft;
-            const maxDx = strip.right - rect.width - originLeft;
-            dx = Math.max(minDx, Math.min(maxDx, dx));
-            el.style.transform = `translate3d(${dx}px, 0px, 0)`;
-            // Tabs are bottom-aligned (items-end); anchor the clone's bottom
-            // to the strip's bottom so it rides in the row, not above it.
-            el.style.top = `${strip.bottom - rect.height}px`;
-        }
-        raf = requestAnimationFrame(pin);
-    };
-    raf = requestAnimationFrame(pin);
-    return () => cancelAnimationFrame(raf);
-});
+// The list to render: the live drag order while dragging, else the real tabs.
+const displayTabs = $derived(
+    draggingId
+        ? order.map((id) => tabs.find((t) => t.id === id)).filter((t): t is TabMeta => t != null)
+        : tabs,
+);
 
-const dragDisabled = $derived(renamingTabId !== null);
+function onTabPointerDown(e: PointerEvent, tab: TabMeta) {
+    // Left button only; ignore presses on the × or the rename input, and
+    // never start a drag while renaming.
+    if (e.button !== 0 || renamingTabId !== null) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[aria-label="Close tab"]') || target.closest("input")) return;
+    if (!stripEl) return;
 
-function handleConsider(e: CustomEvent<DndEvent<TabMeta>>) {
-    const { items, info } = e.detail;
-    dndItems = items;
-    if (info.trigger === TRIGGERS.DRAG_STARTED) isDragging = true;
+    pointerId = e.pointerId;
+    pressStartX = e.clientX;
+    lastClientX = e.clientX;
+    armed = true;
+    grabbedEl = tabEls[tab.id] ?? null;
+    // Capture so move/up keep flowing even if the pointer leaves the tab.
+    grabbedEl?.setPointerCapture?.(e.pointerId);
 }
 
-function handleFinalize(e: CustomEvent<DndEvent<TabMeta>>) {
-    const { items, info } = e.detail;
-    dndItems = items;
-    isDragging = false;
-    // A pointer-driven reorder ends with a click on the dropped tab.
-    if (info.source === SOURCES.POINTER) suppressClick = true;
-    const order = items.map((t) => t.id);
-    const changed = order.some((id, i) => id !== tabs[i]?.id);
-    if (changed) ontabreorder(order);
+function beginDrag(tab: TabMeta) {
+    if (!stripEl || !grabbedEl) return;
+    draggingId = tab.id;
+    order = tabs.map((t) => t.id);
+    dragDx = 0;
+    // Home position in strip content coordinates (independent of scroll).
+    const stripRect = stripEl.getBoundingClientRect();
+    homeLeft = grabbedEl.getBoundingClientRect().left - stripRect.left + stripEl.scrollLeft;
+}
+
+function onTabPointerMove(e: PointerEvent) {
+    if (e.pointerId !== pointerId || (!armed && !draggingId)) return;
+    lastClientX = e.clientX;
+
+    if (armed && !draggingId) {
+        if (Math.abs(e.clientX - pressStartX) < DRAG_THRESHOLD) return;
+        armed = false;
+        const tab = tabs.find((t) => t.id === (grabbedEl?.dataset.tabId ?? ""));
+        if (tab) beginDrag(tab);
+        if (!draggingId) return;
+    }
+
+    updateDrag();
+    runEdgeAutoScroll();
+}
+
+// Recompute the dragged tab's translate + live order from the current pointer
+// position. Split out so both pointermove and the edge-scroll loop can call it.
+function updateDrag() {
+    if (!stripEl || !draggingId || !grabbedEl) return;
+    const stripRect = stripEl.getBoundingClientRect();
+    const width = grabbedEl.getBoundingClientRect().width;
+
+    // Desired left edge (strip content coords) = pointer + scroll - half width,
+    // clamped so the tab stays fully inside the strip's scrollable content.
+    const desiredLeft = lastClientX - stripRect.left + stripEl.scrollLeft - width / 2;
+    const maxLeft = Math.max(0, stripEl.scrollWidth - width);
+    const clampedLeft = Math.max(0, Math.min(maxLeft, desiredLeft));
+    dragDx = clampedLeft - homeLeft;
+
+    // Reorder when the dragged tab's centre crosses a neighbour's midpoint.
+    const centerX = clampedLeft + width / 2;
+    const rects: Record<string, { left: number; width: number }> = {};
+    for (const id of order) {
+        const el = tabEls[id];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        rects[id] = { left: r.left - stripRect.left + stripEl.scrollLeft, width: r.width };
+    }
+    const next = computeReorder(centerX, rects, order, draggingId);
+    if (next.length === order.length && next.some((id, i) => id !== order[i])) {
+        order = next;
+        // The dragged tab's resting slot moved; keep dx relative to its new home
+        // so it doesn't teleport. Recompute home from its new index next frame
+        // (the DOM updates after this assignment), so defer via the flip pass:
+        // simplest correct approach is to re-derive home on the next move from
+        // the element's post-flip position. We approximate by re-reading home
+        // immediately after Svelte applies the order on the next tick.
+        tick().then(() => {
+            if (!stripEl || !grabbedEl || !draggingId) return;
+            const sr = stripEl.getBoundingClientRect();
+            const cur = grabbedEl.getBoundingClientRect();
+            // Current visual left (without transform) = element left - dragDx.
+            const visualLeft = cur.left - sr.left + stripEl.scrollLeft - dragDx;
+            homeLeft = visualLeft;
+            dragDx = clampedLeft - homeLeft;
+        });
+    }
+}
+
+function runEdgeAutoScroll() {
+    if (edgeRaf || !stripEl || !draggingId) return;
+    const step = () => {
+        if (!stripEl || !draggingId) {
+            edgeRaf = 0;
+            return;
+        }
+        const rect = stripEl.getBoundingClientRect();
+        let dir = 0;
+        if (lastClientX < rect.left + EDGE_ZONE && stripEl.scrollLeft > 0) dir = -1;
+        else if (
+            lastClientX > rect.right - EDGE_ZONE &&
+            stripEl.scrollLeft + stripEl.clientWidth < stripEl.scrollWidth
+        )
+            dir = 1;
+        if (dir !== 0) {
+            stripEl.scrollLeft += dir * EDGE_SPEED;
+            updateDrag();
+            edgeRaf = requestAnimationFrame(step);
+        } else {
+            edgeRaf = 0;
+        }
+    };
+    edgeRaf = requestAnimationFrame(step);
+}
+
+function endDrag() {
+    if (edgeRaf) {
+        cancelAnimationFrame(edgeRaf);
+        edgeRaf = 0;
+    }
+    grabbedEl?.releasePointerCapture?.(pointerId);
+    if (draggingId) {
+        const changed = order.some((id, i) => id !== tabs[i]?.id);
+        if (changed) {
+            suppressClick = true;
+            ontabreorder(order);
+        }
+    }
+    draggingId = null;
+    dragDx = 0;
+    armed = false;
+    grabbedEl = null;
+    pointerId = -1;
+}
+
+function onTabPointerUp(e: PointerEvent) {
+    if (e.pointerId !== pointerId) return;
+    endDrag();
 }
 
 function startRename(tab: TabMeta) {
@@ -210,37 +321,33 @@ function cancelRename() {
         style={maskStyle}
         role="tablist"
         aria-label="Document tabs"
-        use:dndzone={{
-            items: dndItems,
-            flipDurationMs: FLIP_MS,
-            dragDisabled,
-            dropTargetStyle: {},
-            morphDisabled: true,
-            // Keep our own tablist/tab ARIA roles instead of the lib's
-            // list/listitem ones (this is a tab strip, not a generic list).
-            autoAriaDisabled: true,
-        }}
-        onconsider={handleConsider}
-        onfinalize={handleFinalize}
     >
-        {#each dndItems as tab (tab.id)}
+        {#each displayTabs as tab (tab.id)}
             {@const isActive = tab.id === activeTabId}
             {@const isRenaming = renamingTabId === tab.id}
+            {@const isDragged = draggingId === tab.id}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div
                 bind:this={tabEls[tab.id]}
-                animate:flip={{ duration: FLIP_MS }}
+                data-tab-id={tab.id}
+                animate:flip={{ duration: isDragged ? 0 : FLIP_MS }}
                 role="tab"
                 aria-selected={isActive}
                 tabindex={isActive ? 0 : -1}
+                onpointerdown={(e) => onTabPointerDown(e, tab)}
+                onpointermove={onTabPointerMove}
+                onpointerup={onTabPointerUp}
+                onpointercancel={onTabPointerUp}
                 onclick={() => {
                     if (suppressClick) { suppressClick = false; return; }
                     if (!isActive) ontabselect(tab.id);
                 }}
                 ondblclick={() => startRename(tab)}
+                style={isDragged ? `transform: translateX(${dragDx}px);` : ""}
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg transition-colors duration-100
+                    {isDragged ? 'z-20 !transition-none shadow-[0_4px_10px_rgba(0,0,0,0.1)] cursor-grabbing' : ''}
                     {isActive
                         ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
                         : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
@@ -253,6 +360,7 @@ function cancelRename() {
                         bind:this={renameInputEl}
                         bind:value={renameValue}
                         onclick={(e) => e.stopPropagation()}
+                        onpointerdown={(e) => e.stopPropagation()}
                         onblur={() => commitRename(tab.id)}
                         onkeydown={(e) => {
                             if (e.key === "Enter") { e.preventDefault(); commitRename(tab.id); }
@@ -271,6 +379,7 @@ function cancelRename() {
                         role="button"
                         tabindex="-1"
                         aria-label="Close tab"
+                        onpointerdown={(e) => e.stopPropagation()}
                         onclick={(e) => { e.stopPropagation(); ontabdelete(tab.id); }}
                         class="
                             ml-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] shrink-0
@@ -301,45 +410,5 @@ function cancelRename() {
     }
     .strip::-webkit-scrollbar {
         display: none;
-    }
-
-    /* Browser-tab drag feel: one solid tab slides within the row while
-       siblings shuffle around it (like Chrome / VS Code), rather than a card
-       lifting out with a hollow gap left behind.
-
-       svelte-dnd-action always uses two elements — a floating clone
-       (#dnd-action-dragged-el, mounted on <body>) and an in-list placeholder
-       marking the drop slot. We render the clone as the solid moving tab (the
-       rAF loop locks it into the row's height + horizontal bounds), and make
-       the placeholder an invisible same-size gap the clone slides over, so
-       only one solid tab is ever visible. */
-    :global(#dnd-action-dragged-el) {
-        outline: none;
-        background: #fff;
-        border-radius: 0.5rem 0.5rem 0 0;
-        /* Subtle lift — it's sliding in the row, not hovering far above it. */
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        backdrop-filter: none;
-        opacity: 1;
-        color: rgba(0, 0, 0, 0.85);
-    }
-    :global(#dnd-action-dragged-el svg),
-    :global(#dnd-action-dragged-el span) {
-        color: inherit;
-    }
-    /* × is hover-only; keep it hidden on the moving clone. */
-    :global(#dnd-action-dragged-el [aria-label="Close tab"]) {
-        opacity: 0;
-    }
-
-    /* The drop-slot placeholder: an empty gap (same width, no visuals) that
-       the solid clone slides over — never a second visible tab. */
-    :global(.strip [data-is-dnd-shadow-item-internal]) {
-        background: transparent !important;
-        box-shadow: none !important;
-        backdrop-filter: none !important;
-    }
-    :global(.strip [data-is-dnd-shadow-item-internal] *) {
-        visibility: hidden !important;
     }
 </style>
