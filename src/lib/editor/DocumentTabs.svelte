@@ -150,10 +150,13 @@ const displayTabs = $derived(
         : tabs,
 );
 
+// The grabbed tab's id while pressed-but-not-yet-dragging (armed state).
+let pressedTabId: string | null = null;
+
 function onTabPointerDown(e: PointerEvent, tab: TabMeta) {
     // Left button only; ignore presses on the × or the rename input, and
-    // never start a drag while renaming.
-    if (e.button !== 0 || renamingTabId !== null) return;
+    // never start a drag while renaming. Bail if a press is already in flight.
+    if (e.button !== 0 || renamingTabId !== null || pointerId !== -1) return;
     const target = e.target as HTMLElement;
     if (target.closest('[aria-label="Close tab"]') || target.closest("input")) return;
     if (!stripEl) return;
@@ -162,9 +165,15 @@ function onTabPointerDown(e: PointerEvent, tab: TabMeta) {
     pressStartX = e.clientX;
     lastClientX = e.clientX;
     armed = true;
+    pressedTabId = tab.id;
     grabbedEl = tabEls[tab.id] ?? null;
-    // Capture so move/up keep flowing even if the pointer leaves the tab.
-    grabbedEl?.setPointerCapture?.(e.pointerId);
+
+    // Listen on window for the whole gesture so move/up/cancel are never lost
+    // (pointer leaves the tab, released outside the strip, window blur, etc.).
+    // Per-element capture was the source of "stuck dragging" when up was missed.
+    window.addEventListener("pointermove", onWindowPointerMove);
+    window.addEventListener("pointerup", onWindowPointerUp);
+    window.addEventListener("pointercancel", onWindowPointerUp);
 }
 
 function beginDrag(tab: TabMeta) {
@@ -177,14 +186,14 @@ function beginDrag(tab: TabMeta) {
     homeLeft = grabbedEl.getBoundingClientRect().left - stripRect.left + stripEl.scrollLeft;
 }
 
-function onTabPointerMove(e: PointerEvent) {
+function onWindowPointerMove(e: PointerEvent) {
     if (e.pointerId !== pointerId || (!armed && !draggingId)) return;
     lastClientX = e.clientX;
 
     if (armed && !draggingId) {
         if (Math.abs(e.clientX - pressStartX) < DRAG_THRESHOLD) return;
         armed = false;
-        const tab = tabs.find((t) => t.id === (grabbedEl?.dataset.tabId ?? ""));
+        const tab = tabs.find((t) => t.id === pressedTabId);
         if (tab) beginDrag(tab);
         if (!draggingId) return;
     }
@@ -264,29 +273,38 @@ function runEdgeAutoScroll() {
 }
 
 function endDrag() {
+    window.removeEventListener("pointermove", onWindowPointerMove);
+    window.removeEventListener("pointerup", onWindowPointerUp);
+    window.removeEventListener("pointercancel", onWindowPointerUp);
     if (edgeRaf) {
         cancelAnimationFrame(edgeRaf);
         edgeRaf = 0;
     }
-    grabbedEl?.releasePointerCapture?.(pointerId);
     if (draggingId) {
         const changed = order.some((id, i) => id !== tabs[i]?.id);
-        if (changed) {
-            suppressClick = true;
-            ontabreorder(order);
-        }
+        // A real drag ends with a synthetic click on the tab; eat it so the
+        // release doesn't also fire select. (No drag = no suppression, so a
+        // plain press-release still selects normally.)
+        suppressClick = true;
+        if (changed) ontabreorder(order);
     }
     draggingId = null;
     dragDx = 0;
     armed = false;
     grabbedEl = null;
+    pressedTabId = null;
     pointerId = -1;
 }
 
-function onTabPointerUp(e: PointerEvent) {
+function onWindowPointerUp(e: PointerEvent) {
     if (e.pointerId !== pointerId) return;
     endDrag();
 }
+
+// If the component unmounts mid-drag, tear down the window listeners + rAF.
+$effect(() => () => {
+    if (pointerId !== -1) endDrag();
+});
 
 function startRename(tab: TabMeta) {
     renamingTabId = tab.id;
@@ -341,9 +359,6 @@ function cancelRename() {
                 aria-selected={isActive}
                 tabindex={isActive ? 0 : -1}
                 onpointerdown={(e) => onTabPointerDown(e, tab)}
-                onpointermove={onTabPointerMove}
-                onpointerup={onTabPointerUp}
-                onpointercancel={onTabPointerUp}
                 onclick={() => {
                     if (suppressClick) { suppressClick = false; return; }
                     if (!isActive) ontabselect(tab.id);
@@ -353,10 +368,11 @@ function cancelRename() {
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg transition-colors duration-100
-                    {isDragged
-                        ? 'py-1.5 bg-white text-black/90 font-semibold !transition-none cursor-grabbing shadow-[0_-1px_8px_rgba(0,0,0,0.12)]'
-                        : isActive
-                          ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
+                    {isDragged ? '!transition-none cursor-grabbing shadow-[0_-1px_8px_rgba(0,0,0,0.12)]' : ''}
+                    {isActive
+                        ? 'py-1.5 bg-white text-black/90 font-semibold z-10 cursor-default'
+                        : isDragged
+                          ? 'py-1 bg-white text-black/70'
                           : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
                 "
             >
