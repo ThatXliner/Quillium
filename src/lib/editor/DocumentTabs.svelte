@@ -305,8 +305,14 @@ function cancelRename() {
 }
 </script>
 
+<!--
+    While dragging, lift the whole strip above the sticky toolbar (z-50 in
+    Editor.svelte). Inner tab z-index alone can't win — the strip sits in a
+    lower stacking layer than the toolbar, so without this the toolbar paints
+    over a tab dragged toward the top edge. `relative` makes z-index apply.
+-->
 <div
-    class="mx-auto w-full max-w-[816px] flex items-end gap-0.5 select-none mt-8 max-[840px]:mx-3 max-[840px]:w-auto"
+    class="mx-auto w-full max-w-[816px] flex items-end gap-0.5 select-none mt-8 max-[840px]:mx-3 max-[840px]:w-auto relative {draggingId ? 'z-[60]' : ''}"
 >
     <!--
         Inner strip: the actual tablist (holds only the tabs; the + button
@@ -343,11 +349,11 @@ function cancelRename() {
                     if (!isActive) ontabselect(tab.id);
                 }}
                 ondblclick={() => startRename(tab)}
-                style={isDragged ? `transform: translateX(${dragDx}px);` : ""}
+                style={isDragged ? `transform: translateX(${dragDx}px); z-index: 30;` : ""}
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg transition-colors duration-100
-                    {isDragged ? 'z-20 !transition-none shadow-[0_4px_10px_rgba(0,0,0,0.1)] cursor-grabbing' : ''}
+                    {isDragged ? '!transition-none shadow-[0_4px_10px_rgba(0,0,0,0.1)] cursor-grabbing' : ''}
                     {isActive
                         ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
                         : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
