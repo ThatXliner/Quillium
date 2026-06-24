@@ -10,9 +10,23 @@ import {
 
 const NOW = Date.UTC(2026, 3, 29, 12, 0, 0);
 
+// Node 22+ ships an experimental built-in `localStorage` global that
+// shadows jsdom's and throws unless `--localstorage-file` is set, so stub
+// an in-memory implementation (matching tests/errorGuard.test.ts).
+const store: Record<string, string> = {};
+
 describe("update check schedule", () => {
     beforeEach(() => {
-        localStorage.clear();
+        for (const key of Object.keys(store)) delete store[key];
+        vi.stubGlobal("localStorage", {
+            getItem: (k: string) => store[k] ?? null,
+            setItem: (k: string, v: string) => {
+                store[k] = v;
+            },
+            removeItem: (k: string) => {
+                delete store[k];
+            },
+        });
     });
 
     afterEach(() => {
