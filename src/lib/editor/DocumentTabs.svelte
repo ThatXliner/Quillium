@@ -125,22 +125,32 @@ $effect(() => {
     if (!isDragging) dndItems = tabs;
 });
 
-// Lock the dragged tab to the horizontal axis. svelte-dnd-action moves the
-// floating clone (#dnd-action-dragged-el) with `transform: translate3d(dx,
-// dy, 0)` on every pointer move; we zero out dy each frame so the tab can't
-// drift up/down out of the strip. transformDraggedElement() only fires on
-// index changes, so a rAF loop is the reliable hook for continuous moves.
+// Confine the dragged tab to the strip. svelte-dnd-action moves the floating
+// clone (#dnd-action-dragged-el, position: fixed) with `transform:
+// translate3d(dx, dy, 0)` on every pointer move. We rewrite that transform
+// each frame to (a) zero dy so it can't drift up/down out of the row, and
+// (b) clamp dx so the tab stays within the strip's left/right edges — it can
+// never be flung over the sidebar or document. transformDraggedElement()
+// only fires on index changes, so a rAF loop is the reliable continuous hook.
 $effect(() => {
-    if (!isDragging) return;
-    // Pin to the strip's top so the tab tracks the row even if it scrolls.
-    const lockedTop = stripEl ? `${stripEl.getBoundingClientRect().top}px` : null;
+    if (!isDragging || !stripEl) return;
+    const strip = stripEl.getBoundingClientRect();
     let raf = 0;
     const pin = () => {
         const el = document.getElementById("dnd-action-dragged-el");
         if (el) {
-            const m = el.style.transform.match(/translate3d\(([^,]+),/);
-            el.style.transform = `translate3d(${m ? m[1].trim() : "0px"}, 0px, 0)`;
-            if (lockedTop) el.style.top = lockedTop;
+            const rect = el.getBoundingClientRect();
+            const originLeft = Number.parseFloat(el.style.left) || 0;
+            const m = el.style.transform.match(/translate3d\(([-\d.]+)px/);
+            let dx = m ? Number.parseFloat(m[1]) : 0;
+            // Keep [originLeft+dx, originLeft+dx+width] inside the strip.
+            const minDx = strip.left - originLeft;
+            const maxDx = strip.right - rect.width - originLeft;
+            dx = Math.max(minDx, Math.min(maxDx, dx));
+            el.style.transform = `translate3d(${dx}px, 0px, 0)`;
+            // Tabs are bottom-aligned (items-end); anchor the clone's bottom
+            // to the strip's bottom so it rides in the row, not above it.
+            el.style.top = `${strip.bottom - rect.height}px`;
         }
         raf = requestAnimationFrame(pin);
     };
@@ -291,5 +301,45 @@ function cancelRename() {
     }
     .strip::-webkit-scrollbar {
         display: none;
+    }
+
+    /* Browser-tab drag feel: one solid tab slides within the row while
+       siblings shuffle around it (like Chrome / VS Code), rather than a card
+       lifting out with a hollow gap left behind.
+
+       svelte-dnd-action always uses two elements — a floating clone
+       (#dnd-action-dragged-el, mounted on <body>) and an in-list placeholder
+       marking the drop slot. We render the clone as the solid moving tab (the
+       rAF loop locks it into the row's height + horizontal bounds), and make
+       the placeholder an invisible same-size gap the clone slides over, so
+       only one solid tab is ever visible. */
+    :global(#dnd-action-dragged-el) {
+        outline: none;
+        background: #fff;
+        border-radius: 0.5rem 0.5rem 0 0;
+        /* Subtle lift — it's sliding in the row, not hovering far above it. */
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        backdrop-filter: none;
+        opacity: 1;
+        color: rgba(0, 0, 0, 0.85);
+    }
+    :global(#dnd-action-dragged-el svg),
+    :global(#dnd-action-dragged-el span) {
+        color: inherit;
+    }
+    /* × is hover-only; keep it hidden on the moving clone. */
+    :global(#dnd-action-dragged-el [aria-label="Close tab"]) {
+        opacity: 0;
+    }
+
+    /* The drop-slot placeholder: an empty gap (same width, no visuals) that
+       the solid clone slides over — never a second visible tab. */
+    :global(.strip [data-is-dnd-shadow-item-internal]) {
+        background: transparent !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+    }
+    :global(.strip [data-is-dnd-shadow-item-internal] *) {
+        visibility: hidden !important;
     }
 </style>
