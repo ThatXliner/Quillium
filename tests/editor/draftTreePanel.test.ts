@@ -141,6 +141,37 @@ describe("DraftTreePanel", () => {
         expect(ondraftdelete).toHaveBeenCalledWith("v1");
     });
 
+    it("draws a branch elbow rail on an indented branch row", () => {
+        // main → v1 (run tip), branch b1 off v1. b1 indents one level, so it
+        // renders an amber elbow connector into v1's column.
+        const drafts = [
+            makeDraft("main", "main", { createdAt: 0, locked: true }),
+            makeDraft("v1", "v1", { parentDraftId: "main", createdAt: 1 }),
+            makeDraft("b1", "b1", { branchedFrom: "v1", createdAt: 2 }),
+        ];
+        const { container } = render(DraftTreePanel, {
+            props: defaultProps({ drafts, activeDraftId: "v1" }),
+        });
+        // b1 is the only branch off the run tip → a corner elbow.
+        expect(container.querySelector('[data-rail="branch-corner"]')).toBeInTheDocument();
+    });
+
+    it("draws a run-continuation spine for an iteration that has a successor", () => {
+        // main → v1: main continues its run downward, so it draws a spine below.
+        const { container } = render(DraftTreePanel, { props: defaultProps() });
+        expect(container.querySelector('[data-rail="run-continues"]')).toBeInTheDocument();
+    });
+
+    it("draws no rails for a single flat run with no branches", () => {
+        const { container } = render(DraftTreePanel, {
+            props: defaultProps({
+                drafts: [makeDraft("only", "only", { createdAt: 0 })],
+                activeDraftId: "only",
+            }),
+        });
+        expect(container.querySelector("[data-rail]")).not.toBeInTheDocument();
+    });
+
     it("commits inline rename on Enter", async () => {
         const ondraftrename = vi.fn();
         const { getByText, getByRole } = render(DraftTreePanel, {

@@ -42,6 +42,19 @@ const {
 
 const rows = $derived(layoutDraftRows(drafts));
 
+// Gutter geometry. Each indent column is COL_W wide; the rail sits at its
+// horizontal centre. The dot lives DOT_X from the row's left edge (one column
+// in past the deepest gutter rail), so the elbow's horizontal stub reaches it.
+// Rails are 1px borders on absolutely-positioned divs (no SVG) to match the
+// panel's existing Tailwind/border styling.
+const COL_W = 16;
+const DOT_X = COL_W;
+
+/** True when an ancestor run-spine passes vertically through column `c`. */
+function hasSpine(row: (typeof rows)[number], c: number): boolean {
+    return row.spines.includes(c);
+}
+
 let renamingDraftId = $state<string | null>(null);
 let renameValue = $state("");
 let renameInputEl = $state<HTMLInputElement | undefined>();
@@ -72,15 +85,65 @@ function commitRename(draftId: string) {
         {@const isActive = row.draft.id === activeDraftId}
         {@const isRenaming = renamingDraftId === row.draft.id}
         <div
-            class="group relative flex items-center gap-1 rounded-md pr-1 transition-colors
+            class="group relative flex items-stretch gap-1 rounded-md pr-1 transition-colors
                 {isActive ? 'bg-white shadow-sm' : 'hover:bg-white/50'}"
-            style="margin-left: {row.depth * 14}px"
         >
+            <!-- Draft-tree rails, drawn over the row's left gutter and dot
+                 column. The dot sits at x = depth*COL_W + DOT_X; ancestor
+                 spines and the branch elbow live in the columns left of it.
+                 Shape carries the iterate-vs-branch meaning (straight spine vs
+                 elbow); colour (grey vs amber) is the second channel so the
+                 distinction survives without colour (BRANDING rule #4). -->
+            <div class="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
+                {#each Array(row.depth) as _, c (c)}
+                    {@const railX = c * COL_W + DOT_X}
+                    {#if row.branchConnector !== null && c === row.depth - 1}
+                        <!-- Branch elbow into the parent column: vertical from
+                             the top to mid-row, then a horizontal stub toward
+                             the dot. A tee keeps the vertical going below; a
+                             corner stops it. -->
+                        <div
+                            class="absolute top-0 w-px border-l border-amber-400/70
+                                {row.branchConnector === 'corner' ? 'h-1/2' : 'h-full'}"
+                            style="left: {railX}px"
+                            data-rail="branch-{row.branchConnector}"
+                        ></div>
+                        <div
+                            class="absolute top-1/2 h-px border-t border-amber-400/70"
+                            style="left: {railX}px; width: {row.depth * COL_W + DOT_X - railX}px"
+                        ></div>
+                    {:else if hasSpine(row, c)}
+                        <!-- Ancestor run-spine passing straight through. -->
+                        <div
+                            class="absolute top-0 h-full w-px border-l border-black/15"
+                            style="left: {railX}px"
+                            data-rail="spine"
+                        ></div>
+                    {/if}
+                {/each}
+                <!-- Run-spine through the dot: a segment above when this row is
+                     a non-root iteration (joins the draft above), and below
+                     when its run continues (joins the next iteration). -->
+                {#if !isRunHead(row.draft) && row.branchConnector === null}
+                    <div
+                        class="absolute top-0 h-1/2 w-px border-l border-black/15"
+                        style="left: {row.depth * COL_W + DOT_X}px"
+                    ></div>
+                {/if}
+                {#if row.continuesRun}
+                    <div
+                        class="absolute bottom-0 h-1/2 w-px border-l border-black/15"
+                        style="left: {row.depth * COL_W + DOT_X}px"
+                        data-rail="run-continues"
+                    ></div>
+                {/if}
+            </div>
             <button
                 onclick={() => { if (!isActive) ondraftselect(row.draft.id); }}
                 ondblclick={() => startRename(row.draft)}
-                class="flex-1 min-w-0 flex items-center gap-2 px-2.5 py-1.5 text-left
+                class="z-10 flex-1 min-w-0 flex items-center gap-2 py-1.5 pr-2.5 text-left
                     {isActive ? 'text-black/80 font-medium cursor-default' : 'text-black/50 hover:text-black/70'}"
+                style="padding-left: {row.depth * COL_W + DOT_X - 3}px"
                 aria-current={isActive ? "true" : undefined}
             >
                 <span class="w-1.5 h-1.5 rounded-full shrink-0 {isActive ? 'bg-amber-500' : 'bg-black/20'}"></span>

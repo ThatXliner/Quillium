@@ -84,6 +84,128 @@ describe("layoutDraftRows", () => {
     });
 });
 
+describe("layoutDraftRows — rail geometry", () => {
+    it("marks an iteration that has a live successor as continuing its run", () => {
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            iter("v2", "v1", 2),
+        ]);
+        const byId = Object.fromEntries(rows.map((r) => [r.draft.id, r]));
+        expect(byId.main.continuesRun).toBe(true);
+        expect(byId.v1.continuesRun).toBe(true);
+        expect(byId.v2.continuesRun).toBe(false); // tip — nothing below
+        // A flat run draws no ancestor spines and no elbows.
+        expect(rows.every((r) => r.spines.length === 0)).toBe(true);
+        expect(rows.every((r) => r.branchConnector === null)).toBe(true);
+    });
+
+    it("draws a corner elbow for the only branch off a run tip", () => {
+        // main → v1 (tip) ; branch b1 off v1. v1 doesn't continue, b1 is last.
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            branch("b1", "v1", 2),
+        ]);
+        const byId = Object.fromEntries(rows.map((r) => [r.draft.id, r]));
+        expect(byId.b1.branchConnector).toBe("corner");
+        expect(byId.b1.spines).toEqual([]); // nothing passes through column 0
+    });
+
+    it("draws a tee when the parent run continues below the branch", () => {
+        // main → v1 → v2 ; branch b1 off v1. v1 continues to v2, so the elbow
+        // is a tee and v1's spine (column 0) passes through b1.
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            branch("b1", "v1", 2),
+            iter("v2", "v1", 3),
+        ]);
+        const byId = Object.fromEntries(rows.map((r) => [r.draft.id, r]));
+        expect(rows.map((r) => r.draft.id)).toEqual(["main", "v1", "b1", "v2"]);
+        expect(byId.b1.branchConnector).toBe("tee");
+        // b1 is the branch root: it elbows into column 0, so column 0 is NOT a
+        // pass-through spine on its own row.
+        expect(byId.b1.spines).toEqual([]);
+    });
+
+    it("tees every branch but the last off the same parent", () => {
+        // v1 (tip) with three branches; only the last is a corner.
+        const rows = layoutDraftRows([
+            iter("main", null, 0),
+            iter("v1", "main", 1),
+            branch("b1", "v1", 2),
+            branch("b2", "v1", 3),
+            branch("b3", "v1", 4),
+        ]);
+        const byId = Object.fromEntries(rows.map((r) => [r.draft.id, r]));
+        expect(byId.b1.branchConnector).toBe("tee");
+        expect(byId.b2.branchConnector).toBe("tee");
+        expect(byId.b3.branchConnector).toBe("corner");
+    });
+
+    it("passes an ancestor run-spine through a nested branch block (v5 case)", () => {
+        // The screenshot shape:
+        //   Draft → v1 → v2 → v5            (depth-0 run)
+        //              └ b1(new take) → v4 → v8   (depth-1 branch run off v2)
+        //                                  ├ b2(new take)   (depth-2 branches off v8)
+        //                                  └ b3(new take)
+        const rows = layoutDraftRows([
+            iter("Draft", null, 0),
+            iter("v1", "Draft", 1),
+            iter("v2", "v1", 2),
+            branch("b1", "v2", 3),
+            iter("v4", "b1", 4),
+            iter("v8", "v4", 5),
+            branch("b2", "v8", 6),
+            branch("b3", "v8", 7),
+            iter("v5", "v2", 8),
+        ]);
+        const byId = Object.fromEntries(rows.map((r) => [r.draft.id, r]));
+
+        // Display order: each draft, then its branches, then the next iteration.
+        expect(rows.map((r) => r.draft.id)).toEqual([
+            "Draft",
+            "v1",
+            "v2",
+            "b1",
+            "v4",
+            "v8",
+            "b2",
+            "b3",
+            "v5",
+        ]);
+
+        // Depths.
+        expect(byId.v2.depth).toBe(0);
+        expect(byId.b1.depth).toBe(1);
+        expect(byId.v8.depth).toBe(1);
+        expect(byId.b2.depth).toBe(2);
+        expect(byId.v5.depth).toBe(0);
+
+        // v2's run continues to v5, so the branch off v2 tees and v2's column 0
+        // spine passes through the whole branch block.
+        expect(byId.b1.branchConnector).toBe("tee");
+        expect(byId.v4.spines).toEqual([0]); // v2's spine passing through
+        expect(byId.v8.spines).toEqual([0]);
+
+        // b2 / b3 branch off v8 (the branch-run tip, which doesn't continue),
+        // so b2 tees (b3 follows) and b3 corners. While inside them, column 0
+        // (v2's run) still passes through; b1's column (1) elbows on the root
+        // rows but passes through their non-root rows — here both are roots.
+        expect(byId.b2.branchConnector).toBe("tee");
+        expect(byId.b3.branchConnector).toBe("corner");
+        expect(byId.b2.spines).toEqual([0]); // v2 passes through; col 1 is the elbow
+        expect(byId.b3.spines).toEqual([0]);
+
+        // v5 sits below the branch block at depth 0 — no spines pass through it,
+        // it's the bottom of v2's run.
+        expect(byId.v5.spines).toEqual([]);
+        expect(byId.v5.continuesRun).toBe(false);
+        expect(byId.v2.continuesRun).toBe(true);
+    });
+});
+
 describe("isRunHead", () => {
     it("is true for a draft with no parent iteration", () => {
         expect(isRunHead(iter("main", null, 0))).toBe(true);
