@@ -99,6 +99,34 @@ They differ only in the link and the lock side effect:
 - **branch** sets `branched_from = source`, locks nothing, and is refused if
   the source is a run head.
 
+## Deleting drafts
+
+Any **unlocked** draft that isn't the tab's last live draft can be deleted —
+not just leaves. The lock is the only protection (so locked rows hide the
+delete action; unlock first). Three soft-delete paths, all reversible:
+
+- **Leaf** — `cmd_delete_draft(draft_id)` soft-deletes the one draft (refused
+  only if it's the tab's last live draft).
+- **Orphan** (a draft *with* children, "Keep the children") —
+  `cmd_orphan_and_delete_draft(draft_id)` re-attaches every live child so the
+  tree stays valid, then soft-deletes the draft. An iteration child splices
+  the draft out of the run (adopts its `parent_draft_id`); a branch child
+  re-points to the draft's anchor, and is *promoted to a top-level run* when
+  the deleted draft was a run head (a branch may never point at a head, per
+  `branch_draft`). It returns the list of link rewrites so Undo can reverse
+  them via `cmd_reparent_draft` (after the parent is restored). Logs
+  `draft_deleted {mode: "orphan"}` + one `draft_reparented` per moved child.
+- **Cascade** (a draft *with* children, "Delete all N") —
+  `cmd_cascade_delete_draft(draft_id)` soft-deletes the draft and its whole
+  subtree (iterations + branches, transitively) in one transaction; refused
+  if that would empty the tab. Returns the deleted ids so one Undo restores
+  the lot. Logs `draft_deleted {mode: "cascade", ids}`.
+
+The orphan/cascade choice is a modal (`DraftDeleteModal.svelte`); a childless
+draft skips it. The editor switches off any draft about to vanish first, so it
+never points at a hidden draft (for cascade, it lands on a draft *outside* the
+deleted subtree).
+
 ## Locking
 
 A draft is locked when either is true:
@@ -138,11 +166,13 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
   deleting a tab's last live draft is rejected).
 - Every document has ≥ 1 live tab (deleting the last live tab is rejected;
   `create_draft` legacy path creates a "Main" tab when none exists).
-- A draft is a deletable leaf only if nothing iterates from it and nothing
-  branches off it; all deletions are soft and reversible (Undo toast
-  immediately, version-history timeline later).
+- Any unlocked draft that isn't the tab's last live draft is deletable
+  (including parents). Deleting a draft with children prompts orphan (keep
+  them, re-attached) vs cascade (delete the subtree). All deletions are soft
+  and reversible (Undo toast immediately, version-history timeline later).
 - Locking is derived from supersession or set manually; iterate locks the
-  source, branch locks nothing.
+  source, branch locks nothing. A locked draft can't be deleted until
+  unlocked.
 
 ## Key files
 
@@ -153,8 +183,9 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 | `src-tauri/src/db/load.rs` | Tab-aware default draft resolution |
 | `src/lib/editor/DocumentTabs.svelte` | Browser-style tab bar |
 | `src/lib/editor/DraftTreePanel.svelte` | Draft panel (flat runs, indented branches) |
-| `src/lib/editor/draftTree.ts` | Pure row-layout helpers (`layoutDraftRows`) |
-| `src/lib/editor/Editor.svelte` | Tab/draft switching, iterate/branch, lock banner |
+| `src/lib/editor/DraftDeleteModal.svelte` | Orphan-vs-cascade prompt for deleting a draft with children |
+| `src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
+| `src/lib/editor/Editor.svelte` | Tab/draft switching, iterate/branch/delete, lock banner |
 
 ## Omni (web preview) and the single view
 

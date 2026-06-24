@@ -156,13 +156,46 @@ export function isRunHead(draft: DraftMeta): boolean {
 }
 
 /**
- * True when the draft can be deleted: a leaf (no live iteration after it and
- * nothing branched off it) that isn't the tab's only draft.
+ * True when the draft can be deleted: it's unlocked and isn't the tab's only
+ * live draft. A draft with children IS deletable now — the caller then offers
+ * orphan vs cascade (see `hasLiveChildren`). The lock is the only protection.
  */
 export function isDeletableDraft(draftId: string, drafts: DraftMeta[]): boolean {
     if (drafts.length <= 1) return false;
-    const hasDescendant = drafts.some(
-        (d) => d.parentDraftId === draftId || d.branchedFrom === draftId,
-    );
-    return !hasDescendant;
+    const draft = drafts.find((d) => d.id === draftId);
+    return draft != null && !draft.locked;
+}
+
+/** True when any draft iterates from or branches off `draftId`. */
+export function hasLiveChildren(draftId: string, drafts: DraftMeta[]): boolean {
+    return drafts.some((d) => d.parentDraftId === draftId || d.branchedFrom === draftId);
+}
+
+/**
+ * The ids of `draftId` and every draft under it (iterations and branches,
+ * transitively), in breadth-first order with the root first. Used for the
+ * cascade-delete count and to keep the editor off a draft about to vanish.
+ */
+export function collectSubtree(draftId: string, drafts: DraftMeta[]): string[] {
+    const childrenOf = new Map<string, string[]>();
+    for (const d of drafts) {
+        const parent = d.parentDraftId ?? d.branchedFrom;
+        if (parent == null) continue;
+        const list = childrenOf.get(parent) ?? [];
+        list.push(d.id);
+        childrenOf.set(parent, list);
+    }
+    // `out` doubles as the BFS queue: we visit it in order by index, appending
+    // newly-seen children, so it ends up breadth-first with the root first.
+    const out: string[] = [draftId];
+    const seen = new Set<string>([draftId]);
+    for (let i = 0; i < out.length; i++) {
+        for (const child of childrenOf.get(out[i]) ?? []) {
+            if (!seen.has(child)) {
+                seen.add(child);
+                out.push(child);
+            }
+        }
+    }
+    return out;
 }

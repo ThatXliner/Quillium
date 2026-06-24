@@ -12,11 +12,23 @@
 //! show — and restore — tab CRUD and draft branching.
 
 use rusqlite::{params, Connection, OptionalExtension, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 use super::{DocEventRecord, DraftMeta, TabMeta};
+
+/// One link rewrite made by `orphan_and_delete_draft`: the child that was
+/// re-attached and the parent/branch links it held before. Returned to the
+/// frontend so Undo can restore the original links via `reparent_draft`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReparentEntry {
+    pub draft_id: String,
+    pub old_parent_draft_id: Option<String>,
+    pub old_branched_from: Option<String>,
+}
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -542,10 +554,29 @@ pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> Resu
     Ok(())
 }
 
-/// Soft-deletes a leaf draft. Its events and snapshots are untouched, so
-/// restoring from the version history brings the text back exactly.
-/// Refuses if the draft has live iterations or branches off it, or is the
-/// tab's last live draft. The draft's run relocks (the tip may move back).
+/// Refuses if `tab_id` is set and the tab would be left with fewer than
+/// `keep` live drafts after a delete (a tab must keep ≥ 1 live draft). `keep`
+/// is the number of drafts the pending delete removes from this tab.
+fn guard_tab_not_emptied(conn: &Connection, tab_id: &Option<String>, removing: i64) -> Result<()> {
+    if let Some(tab) = tab_id {
+        let live: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM drafts WHERE tab_id = ?1 AND deleted_at IS NULL",
+            params![tab],
+            |row| row.get(0),
+        )?;
+        if live - removing < 1 {
+            return Err(refuse("Cannot delete the last draft of a tab"));
+        }
+    }
+    Ok(())
+}
+
+/// Soft-deletes a single draft. Its events and snapshots are untouched, so
+/// restoring from the version history brings the text back exactly. Refuses
+/// only if it is the tab's last live draft — a draft with iterations or
+/// branches off it can be deleted, but callers must first detach/relocate or
+/// cascade those children (see `orphan_and_delete_draft` /
+/// `cascade_delete_draft`). The draft's run relocks (the tip may move back).
 pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
     let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
         conn.query_row(
@@ -553,28 +584,7 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
             params![draft_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
-    // A leaf has no live iteration after it and nothing branched off it.
-    let live_descendants: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM drafts
-         WHERE (parent_draft_id = ?1 OR branched_from = ?1) AND deleted_at IS NULL",
-        params![draft_id],
-        |row| row.get(0),
-    )?;
-    if live_descendants > 0 {
-        return Err(refuse(
-            "Cannot delete a draft that has iterations or branches",
-        ));
-    }
-    if let Some(ref tab) = tab_id {
-        let live_siblings: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM drafts WHERE tab_id = ?1 AND deleted_at IS NULL",
-            params![tab],
-            |row| row.get(0),
-        )?;
-        if live_siblings <= 1 {
-            return Err(refuse("Cannot delete the last draft of a tab"));
-        }
-    }
+    guard_tab_not_emptied(conn, &tab_id, 1)?;
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
@@ -591,6 +601,191 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
         "draft_deleted",
         &json!({ "draftId": draft_id, "label": label, "tabId": tab_id }),
     )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Deletes `draft_id` but keeps its children alive by re-attaching them so
+/// the tree stays valid, then returns the link rewrites it made (oldest
+/// first) so the caller can reverse them on Undo. The deleted draft's anchor
+/// is its own `parent_draft_id` (None when it is a run head).
+///
+/// - Iteration children (`parent_draft_id = D`) splice `D` out of the run:
+///   they adopt `D`'s parent. If `D` was a run head they become run heads.
+/// - Branch children (`branched_from = D`) re-point to `D`'s anchor. A branch
+///   may never point at a run head (`branch_draft` forbids it), so when `D`
+///   is a run head the branch is *promoted* to a top-level run instead:
+///   `branched_from = NULL`, `parent_draft_id = D`'s parent (None → new head).
+pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<ReparentEntry>> {
+    let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
+        conn.query_row(
+            "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
+            params![draft_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+    guard_tab_not_emptied(conn, &tab_id, 1)?;
+
+    // Snapshot the live children (and their old links) before rewriting, so we
+    // can reverse the rewrite on Undo. Branch children first so the promoted
+    // run reads naturally in the audit log; ordering is otherwise irrelevant.
+    let children: Vec<(String, Option<String>, Option<String>)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, parent_draft_id, branched_from FROM drafts
+             WHERE (parent_draft_id = ?1 OR branched_from = ?1) AND deleted_at IS NULL
+             ORDER BY (branched_from = ?1) DESC, created_at ASC",
+        )?;
+        let rows = stmt.query_map(params![draft_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        rows.collect::<Result<Vec<_>>>()?
+    };
+
+    let tx = conn.unchecked_transaction()?;
+    let mut rewrites: Vec<ReparentEntry> = Vec::with_capacity(children.len());
+    // `relock_run` only needs to run once per distinct head; collect members.
+    let mut relock_seeds: Vec<String> = Vec::new();
+    for (child_id, old_parent, old_branched_from) in &children {
+        let is_branch_child = old_branched_from.as_deref() == Some(draft_id);
+        let (new_parent, new_branched_from): (Option<String>, Option<String>) = if is_branch_child {
+            match &parent_draft_id {
+                // D is an iteration: the branch keeps branching, off D's parent.
+                Some(p) => (None, Some(p.clone())),
+                // D is a run head: promote the branch to a top-level run.
+                None => (None, None),
+            }
+        } else {
+            // Iteration child: splice D out — adopt D's parent.
+            (parent_draft_id.clone(), None)
+        };
+        tx.execute(
+            "UPDATE drafts SET parent_draft_id = ?1, branched_from = ?2 WHERE id = ?3",
+            params![new_parent, new_branched_from, child_id],
+        )?;
+        rewrites.push(ReparentEntry {
+            draft_id: child_id.clone(),
+            old_parent_draft_id: old_parent.clone(),
+            old_branched_from: old_branched_from.clone(),
+        });
+        relock_seeds.push(child_id.clone());
+    }
+
+    tx.execute(
+        "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
+        params![now_ms(), draft_id],
+    )?;
+    // Relock every run touched: each re-attached child's run, plus D's old run
+    // (its parent, now possibly a new tip). `relock_run` walks to the head, so
+    // duplicate seeds within one run are harmless (idempotent).
+    if let Some(ref parent) = parent_draft_id {
+        relock_seeds.push(parent.clone());
+    }
+    for seed in &relock_seeds {
+        relock_run(&tx, seed)?;
+    }
+
+    log_doc_event(
+        &tx,
+        &doc_id,
+        "draft_deleted",
+        &json!({ "draftId": draft_id, "label": label, "tabId": tab_id, "mode": "orphan" }),
+    )?;
+    for r in &rewrites {
+        log_doc_event(
+            &tx,
+            &doc_id,
+            "draft_reparented",
+            &json!({
+                "draftId": r.draft_id,
+                "fromParentDraftId": draft_id,
+                "oldParentDraftId": r.old_parent_draft_id,
+                "oldBranchedFrom": r.old_branched_from,
+            }),
+        )?;
+    }
+    tx.commit()?;
+    Ok(rewrites)
+}
+
+/// Soft-deletes `draft_id` together with every live draft under it
+/// (iterations and branches, transitively). Refuses if that would empty the
+/// tab. Returns the deleted ids (the root first) so Undo can restore them all.
+pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
+    let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
+        conn.query_row(
+            "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
+            params![draft_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+
+    // BFS the live subtree following both links. Runs are shallow, so a plain
+    // queue is fine; `seen` guards against the impossible cycle defensively.
+    let mut subtree: Vec<String> = vec![draft_id.to_string()];
+    let mut seen: std::collections::HashSet<String> =
+        std::collections::HashSet::from([draft_id.to_string()]);
+    let mut queue: std::collections::VecDeque<String> =
+        std::collections::VecDeque::from([draft_id.to_string()]);
+    while let Some(cur) = queue.pop_front() {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM drafts
+             WHERE (parent_draft_id = ?1 OR branched_from = ?1) AND deleted_at IS NULL
+             ORDER BY created_at ASC",
+        )?;
+        let children = stmt
+            .query_map(params![cur], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>>>()?;
+        for child in children {
+            if seen.insert(child.clone()) {
+                subtree.push(child.clone());
+                queue.push_back(child);
+            }
+        }
+    }
+
+    guard_tab_not_emptied(conn, &tab_id, subtree.len() as i64)?;
+
+    let tx = conn.unchecked_transaction()?;
+    let now = now_ms();
+    for id in &subtree {
+        tx.execute(
+            "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+    }
+    // The deleted root's old run may have a new tip; relock from its parent.
+    if let Some(ref parent) = parent_draft_id {
+        relock_run(&tx, parent)?;
+    }
+    log_doc_event(
+        &tx,
+        &doc_id,
+        "draft_deleted",
+        &json!({
+            "draftId": draft_id,
+            "label": label,
+            "tabId": tab_id,
+            "mode": "cascade",
+            "ids": subtree,
+        }),
+    )?;
+    tx.commit()?;
+    Ok(subtree)
+}
+
+/// Reverses an `orphan_and_delete_draft` re-parent: restores `draft_id`'s
+/// original `parent_draft_id` / `branched_from` links. Used by Undo, applied
+/// after the deleted parent is restored so the links point at a live draft.
+pub fn reparent_draft(
+    conn: &Connection,
+    draft_id: &str,
+    parent_draft_id: Option<&str>,
+    branched_from: Option<&str>,
+) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE drafts SET parent_draft_id = ?1, branched_from = ?2 WHERE id = ?3",
+        params![parent_draft_id, branched_from, draft_id],
+    )?;
+    relock_run(&tx, draft_id)?;
     tx.commit()?;
     Ok(())
 }
@@ -648,4 +843,198 @@ pub fn set_active_draft(conn: &Connection, tab_id: &str, draft_id: &str) -> Resu
         params![format!("active_draft:{}", tab_id), draft_id],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::schema::open_db;
+
+    /// Fresh migrated DB with one document; returns (conn, tab_id, main_id).
+    fn setup() -> (Connection, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        // Leak the tempdir so the file outlives the test (conn holds it open).
+        let path = Box::leak(Box::new(dir)).path().join("test.db");
+        let conn = open_db(&path).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('doc', 'T', 0, 0)",
+            [],
+        )
+        .unwrap();
+        let tab = create_tab(&conn, "doc", "Tab").unwrap();
+        let main_id: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        (conn, tab.id, main_id)
+    }
+
+    fn parent_of(conn: &Connection, id: &str) -> Option<String> {
+        conn.query_row(
+            "SELECT parent_draft_id FROM drafts WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+    fn branched_from(conn: &Connection, id: &str) -> Option<String> {
+        conn.query_row(
+            "SELECT branched_from FROM drafts WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+    fn is_live(conn: &Connection, id: &str) -> bool {
+        conn.query_row(
+            "SELECT deleted_at IS NULL FROM drafts WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+            != 0
+    }
+    fn is_locked(conn: &Connection, id: &str) -> bool {
+        conn.query_row("SELECT locked FROM drafts WHERE id = ?1", params![id], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap()
+            != 0
+    }
+
+    #[test]
+    fn delete_draft_allows_a_parent_now() {
+        // main → v1 → v2; deleting v1 (a non-leaf) used to be refused.
+        let (conn, _tab, main) = setup();
+        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        let _v2 = iterate_draft(&conn, &v1, "v2", None).unwrap().id;
+        // delete_draft itself is the childless primitive; the orphan/cascade
+        // callers handle children. It must still reject the tab's last draft.
+        assert!(delete_draft(&conn, &v1).is_ok());
+        assert!(!is_live(&conn, &v1));
+    }
+
+    #[test]
+    fn delete_draft_refuses_last_draft() {
+        let (conn, _tab, main) = setup();
+        assert!(delete_draft(&conn, &main).is_err());
+        assert!(is_live(&conn, &main));
+    }
+
+    #[test]
+    fn orphan_splices_iteration_out_of_run() {
+        // main → v1 → v2. Orphan-delete v1 → v2 adopts main; run relocks.
+        let (conn, _tab, main) = setup();
+        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        let v2 = iterate_draft(&conn, &v1, "v2", None).unwrap().id;
+        let rewrites = orphan_and_delete_draft(&conn, &v1).unwrap();
+        assert!(!is_live(&conn, &v1));
+        assert_eq!(parent_of(&conn, &v2).as_deref(), Some(main.as_str()));
+        // Run is main → v2 now; v2 is the live tip (unlocked), main locked.
+        assert!(!is_locked(&conn, &v2));
+        assert!(is_locked(&conn, &main));
+        // One rewrite recorded for Undo: v2 used to have parent v1.
+        assert_eq!(rewrites.len(), 1);
+        assert_eq!(rewrites[0].draft_id, v2);
+        assert_eq!(rewrites[0].old_parent_draft_id.as_deref(), Some(v1.as_str()));
+    }
+
+    #[test]
+    fn orphan_run_head_promotes_branch_to_top_level() {
+        // main → v1 ; branch b off v1. Orphan-delete v1 (a run head's child,
+        // itself an iteration) → b re-points to main (still an iteration's
+        // anchor). Then orphan-delete main (a run head with branch nothing):
+        // here exercise the run-head-with-branch case directly.
+        let (conn, _tab, main) = setup();
+        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        let b = branch_draft(&conn, &v1, "b", None).unwrap().id;
+        assert_eq!(branched_from(&conn, &b).as_deref(), Some(v1.as_str()));
+        // Orphan-delete v1: iteration child none after it, branch child b.
+        // v1's anchor is main, so b should branch off main.
+        orphan_and_delete_draft(&conn, &v1).unwrap();
+        assert!(!is_live(&conn, &v1));
+        assert_eq!(branched_from(&conn, &b).as_deref(), Some(main.as_str()));
+        assert!(parent_of(&conn, &b).is_none());
+    }
+
+    #[test]
+    fn orphan_promotes_branch_off_run_head_to_new_run() {
+        // Build main → v1 ; branch b off v1 ; then we want to orphan a *run
+        // head* that has a branch. Make a second run head via a top-level
+        // iteration chain: root2 (head) with branch bb off an iteration r2.
+        let (conn, tab, main) = setup();
+        // A run head with a branch directly under it can't be `main` (branch
+        // needs a non-head source), so iterate then branch then orphan the
+        // head's iteration to leave the branch pointing where head-rules bite.
+        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        let b = branch_draft(&conn, &v1, "b", None).unwrap().id;
+        // Orphan-delete main (the run head): v1 becomes a run head; b is a
+        // branch child of v1 (not of main), so it's untouched by main's delete.
+        orphan_and_delete_draft(&conn, &main).unwrap();
+        assert!(!is_live(&conn, &main));
+        assert!(parent_of(&conn, &v1).is_none()); // v1 now a run head
+        assert_eq!(branched_from(&conn, &b).as_deref(), Some(v1.as_str()));
+        // Tab still has live drafts.
+        let live: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM drafts WHERE tab_id = ?1 AND deleted_at IS NULL",
+                params![tab],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(live, 2); // v1, b
+    }
+
+    #[test]
+    fn cascade_deletes_whole_subtree() {
+        // main → v1 ; branch b1 off v1 ; b1 → b2. Cascade-delete v1 removes
+        // v1, b1, b2; main survives.
+        let (conn, _tab, main) = setup();
+        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        let b1 = branch_draft(&conn, &v1, "b1", None).unwrap().id;
+        let b2 = iterate_draft(&conn, &b1, "b2", None).unwrap().id;
+        let deleted = cascade_delete_draft(&conn, &v1).unwrap();
+        assert!(deleted.contains(&v1));
+        assert!(deleted.contains(&b1));
+        assert!(deleted.contains(&b2));
+        assert_eq!(deleted[0], v1); // root first
+        assert!(!is_live(&conn, &v1));
+        assert!(!is_live(&conn, &b1));
+        assert!(!is_live(&conn, &b2));
+        assert!(is_live(&conn, &main));
+    }
+
+    #[test]
+    fn cascade_refuses_when_it_would_empty_the_tab() {
+        // main → v1: cascade-deleting main would remove every draft.
+        let (conn, _tab, main) = setup();
+        let _v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        assert!(cascade_delete_draft(&conn, &main).is_err());
+        assert!(is_live(&conn, &main));
+    }
+
+    #[test]
+    fn reparent_reverses_an_orphan_rewrite() {
+        // main → v1 → v2 ; orphan-delete v1 ; restore v1 ; reparent v2 back.
+        let (conn, _tab, main) = setup();
+        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        let v2 = iterate_draft(&conn, &v1, "v2", None).unwrap().id;
+        let rewrites = orphan_and_delete_draft(&conn, &v1).unwrap();
+        restore_draft(&conn, &v1).unwrap();
+        for r in &rewrites {
+            reparent_draft(
+                &conn,
+                &r.draft_id,
+                r.old_parent_draft_id.as_deref(),
+                r.old_branched_from.as_deref(),
+            )
+            .unwrap();
+        }
+        // Back to main → v1 → v2.
+        assert_eq!(parent_of(&conn, &v2).as_deref(), Some(v1.as_str()));
+        assert!(is_live(&conn, &v1));
+    }
 }

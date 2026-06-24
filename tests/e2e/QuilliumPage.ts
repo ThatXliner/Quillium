@@ -348,23 +348,15 @@ export class QuilliumPage {
                             if (draft) draft.locked = a.locked;
                             return null;
                         }
-                        if (cmd === "cmd_delete_draft" || cmd === "cmd_restore_draft") {
-                            const a = args as { draftId: string };
-                            const draft = drafts.find((d) => d.id === a.draftId);
-                            if (!draft) return null;
-                            draft.deletedAt = cmd === "cmd_delete_draft" ? Date.now() : null;
-                            // Relock the affected run: lock all live members
-                            // except the newest (the editable tip).
-                            const headOf = (d: MockDraft): MockDraft => {
-                                let cur = d;
-                                while (cur.parentDraftId) {
-                                    const p = drafts.find((x) => x.id === cur.parentDraftId);
-                                    if (!p) break;
-                                    cur = p;
-                                }
-                                return cur;
-                            };
-                            const head = headOf(draft);
+                        // Relock the run that `seed` belongs to: lock all live
+                        // members except the newest (the editable tip).
+                        const relockRun = (seed: MockDraft) => {
+                            let head = seed;
+                            while (head.parentDraftId) {
+                                const p = drafts.find((x) => x.id === head.parentDraftId);
+                                if (!p) break;
+                                head = p;
+                            }
                             const run: MockDraft[] = [];
                             let cur: MockDraft | undefined = head;
                             while (cur) {
@@ -372,11 +364,99 @@ export class QuilliumPage {
                                 const c: MockDraft | undefined = cur;
                                 cur = drafts.find((x) => x.parentDraftId === c.id && !x.deletedAt);
                             }
+                            if (run.length === 0) return;
                             const tip = run.reduce(
                                 (a2, b) => (b.createdAt >= a2.createdAt ? b : a2),
                                 run[0],
                             );
                             for (const m of run) m.locked = m.id !== tip?.id;
+                        };
+                        if (cmd === "cmd_delete_draft" || cmd === "cmd_restore_draft") {
+                            const a = args as { draftId: string };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (!draft) return null;
+                            draft.deletedAt = cmd === "cmd_delete_draft" ? Date.now() : null;
+                            relockRun(draft);
+                            return null;
+                        }
+                        if (cmd === "cmd_orphan_and_delete_draft") {
+                            const a = args as { draftId: string };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (!draft) return [];
+                            const rewrites: {
+                                draftId: string;
+                                oldParentDraftId: string | null;
+                                oldBranchedFrom: string | null;
+                            }[] = [];
+                            const children = drafts.filter(
+                                (d) =>
+                                    !d.deletedAt &&
+                                    (d.parentDraftId === draft.id || d.branchedFrom === draft.id),
+                            );
+                            for (const c of children) {
+                                rewrites.push({
+                                    draftId: c.id,
+                                    oldParentDraftId: c.parentDraftId,
+                                    oldBranchedFrom: c.branchedFrom,
+                                });
+                                if (c.branchedFrom === draft.id) {
+                                    // Branch child re-points to D's anchor (or is
+                                    // promoted to a top-level run off a head).
+                                    c.branchedFrom = draft.parentDraftId;
+                                    c.parentDraftId = null;
+                                } else {
+                                    // Iteration child splices D out of the run.
+                                    c.parentDraftId = draft.parentDraftId;
+                                }
+                            }
+                            draft.deletedAt = Date.now();
+                            for (const c of children) relockRun(c);
+                            return rewrites;
+                        }
+                        if (cmd === "cmd_cascade_delete_draft") {
+                            const a = args as { draftId: string };
+                            const root = drafts.find((d) => d.id === a.draftId);
+                            if (!root) return [];
+                            const subtree: string[] = [];
+                            const queue = [root.id];
+                            const seen = new Set([root.id]);
+                            while (queue.length > 0) {
+                                const id = queue.shift()!;
+                                subtree.push(id);
+                                for (const child of drafts) {
+                                    if (
+                                        child.deletedAt ||
+                                        seen.has(child.id) ||
+                                        (child.parentDraftId !== id && child.branchedFrom !== id)
+                                    ) {
+                                        continue;
+                                    }
+                                    seen.add(child.id);
+                                    queue.push(child.id);
+                                }
+                            }
+                            const now = Date.now();
+                            for (const id of subtree) {
+                                const d = drafts.find((x) => x.id === id);
+                                if (d) d.deletedAt = now;
+                            }
+                            if (root.parentDraftId) {
+                                const parent = drafts.find((x) => x.id === root.parentDraftId);
+                                if (parent) relockRun(parent);
+                            }
+                            return subtree;
+                        }
+                        if (cmd === "cmd_reparent_draft") {
+                            const a = args as {
+                                draftId: string;
+                                parentDraftId: string | null;
+                                branchedFrom: string | null;
+                            };
+                            const draft = drafts.find((d) => d.id === a.draftId);
+                            if (!draft) return null;
+                            draft.parentDraftId = a.parentDraftId;
+                            draft.branchedFrom = a.branchedFrom;
+                            relockRun(draft);
                             return null;
                         }
 

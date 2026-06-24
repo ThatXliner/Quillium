@@ -127,14 +127,30 @@ describe("DraftTreePanel", () => {
         expect(ontogglelock).toHaveBeenCalledWith("v1", true);
     });
 
-    it("only offers delete on deletable leaves", () => {
+    it("offers delete on any unlocked draft, including parents", () => {
+        // main → v1 → v2, all unlocked: every draft (even the parents main/v1)
+        // shows a delete action now; only the lock hides it.
+        const drafts = [
+            makeDraft("main", "main", { createdAt: 0 }),
+            makeDraft("v1", "v1", { parentDraftId: "main", createdAt: 1 }),
+            makeDraft("v2", "v2", { parentDraftId: "v1", createdAt: 2 }),
+        ];
+        const { getByRole } = render(DraftTreePanel, {
+            props: defaultProps({ drafts, activeDraftId: "v2" }),
+        });
+        expect(getByRole("button", { name: "Delete main" })).toBeInTheDocument();
+        expect(getByRole("button", { name: "Delete v1" })).toBeInTheDocument();
+        expect(getByRole("button", { name: "Delete v2" })).toBeInTheDocument();
+    });
+
+    it("hides delete on a locked draft", () => {
+        // Default fixture: main is locked (superseded), v1 is the unlocked tip.
         const { getByRole, queryByRole } = render(DraftTreePanel, { props: defaultProps() });
         expect(getByRole("button", { name: "Delete v1" })).toBeInTheDocument();
-        // "main" has a live iteration after it, so it can't be deleted.
         expect(queryByRole("button", { name: "Delete main" })).not.toBeInTheDocument();
     });
 
-    it("calls ondraftdelete for a leaf draft", async () => {
+    it("calls ondraftdelete with the row's draft id", async () => {
         const ondraftdelete = vi.fn();
         const { getByRole } = render(DraftTreePanel, { props: defaultProps({ ondraftdelete }) });
         await fireEvent.click(getByRole("button", { name: "Delete v1" }));
