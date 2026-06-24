@@ -223,6 +223,24 @@ pub fn restore_tab(conn: &Connection, tab_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Persists a new tab order. `ordered_ids` is the full list of the
+/// document's live tabs in their new left-to-right order; each tab's
+/// `position` is rewritten to its index. Reordering is purely cosmetic, so
+/// it isn't logged to the doc-event audit trail.
+pub fn reorder_tabs(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    for (position, tab_id) in ordered_ids.iter().enumerate() {
+        // Scope the update to the document so a stale/foreign id can't
+        // stomp another document's tab positions.
+        tx.execute(
+            "UPDATE tabs SET position = ?1 WHERE id = ?2 AND document_id = ?3",
+            params![position as i64, tab_id, doc_id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 pub fn get_active_tab(conn: &Connection, doc_id: &str) -> Result<Option<String>> {
     let key = format!("active_tab:{}", doc_id);
     let tab_id: Option<String> = conn

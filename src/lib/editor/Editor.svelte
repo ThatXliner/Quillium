@@ -19,6 +19,7 @@ import {
     registerOpenDoc,
     renameDraft,
     renameTab,
+    reorderTabs,
     restoreDraft,
     restoreTab,
     setActiveDraft,
@@ -553,6 +554,22 @@ async function handleTabRename(tabId: string, label: string) {
     posthog.capture("tab_renamed");
 }
 
+async function handleTabReorder(orderedIds: string[]) {
+    const docId = get(currentDocumentId);
+    if (!docId) return;
+    // Optimistically apply the new order, then persist. If persistence
+    // fails, reload from the DB so the bar reflects the true stored order.
+    const byId = new Map(tabs.map((t) => [t.id, t]));
+    tabs = orderedIds.map((id) => byId.get(id)).filter((t): t is TabMeta => t !== undefined);
+    try {
+        await reorderTabs(docId, orderedIds);
+        posthog.capture("tab_reordered");
+    } catch (e) {
+        console.error("[Editor] reorder tabs failed", e);
+        tabs = await listTabs(docId);
+    }
+}
+
 async function handleTabDelete(tabId: string) {
     if (tabs.length <= 1) return;
     const tab = tabs.find((t) => t.id === tabId);
@@ -814,6 +831,7 @@ onMount(() => {
             ontabcreate={handleTabCreate}
             ontabrename={handleTabRename}
             ontabdelete={handleTabDelete}
+            ontabreorder={handleTabReorder}
         />
 
         <!-- Draft tree for the active tab — hugs the document's left edge

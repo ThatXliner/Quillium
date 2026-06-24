@@ -208,6 +208,11 @@ export async function restoreTab(tabId: string): Promise<void> {
     return invoke<void>("cmd_restore_tab", { tabId });
 }
 
+/** Persists a new left-to-right tab order; `tabIds` is the full live list. */
+export async function reorderTabs(docId: string, tabIds: string[]): Promise<void> {
+    return invoke<void>("cmd_reorder_tabs", { docId, tabIds });
+}
+
 /** Document-level structural audit log, newest first. */
 export async function listDocEvents(docId: string): Promise<DocEventRecord[]> {
     return invoke<DocEventRecord[]>("cmd_list_doc_events", { docId });

@@ -25,7 +25,8 @@ use db::{
     tabs::{
         branch_draft, create_tab, delete_draft, delete_tab, get_active_draft, get_active_tab,
         iterate_draft, list_doc_events, list_tab_drafts, list_tabs, rename_draft, rename_tab,
-        restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
+        reorder_tabs, restore_draft, restore_tab, set_active_draft, set_active_tab,
+        set_draft_locked,
     },
     AppendEventResult, DocEventRecord, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta, TabMeta,
 };
@@ -248,6 +249,16 @@ fn cmd_delete_tab(state: tauri::State<DbState>, tab_id: String) -> Result<(), St
 fn cmd_restore_tab(state: tauri::State<DbState>, tab_id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     restore_tab(&conn, &tab_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_reorder_tabs(
+    state: tauri::State<DbState>,
+    doc_id: String,
+    tab_ids: Vec<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    reorder_tabs(&conn, &doc_id, &tab_ids).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -917,6 +928,7 @@ pub fn run() {
             cmd_delete_draft,
             cmd_restore_draft,
             cmd_restore_tab,
+            cmd_reorder_tabs,
             cmd_list_doc_events,
             cmd_get_active_draft,
             cmd_set_active_draft,

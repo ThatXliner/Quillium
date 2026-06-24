@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from "@testing-library/svelte";
+import { cleanup, createEvent, fireEvent, render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import type { TabMeta } from "$lib/db/types";
@@ -20,6 +20,7 @@ function makeTab(id: string, label: string, position = 0): TabMeta {
 
 const TAB_A = makeTab("a", "Tab A", 0);
 const TAB_B = makeTab("b", "Tab B", 1);
+const TAB_C = makeTab("c", "Tab C", 2);
 
 function defaultProps(
     overrides: Partial<{
@@ -29,6 +30,7 @@ function defaultProps(
         ontabcreate: () => void;
         ontabrename: (id: string, label: string) => void;
         ontabdelete: (id: string) => void;
+        ontabreorder: (orderedIds: string[]) => void;
     }> = {},
 ) {
     return {
@@ -38,6 +40,7 @@ function defaultProps(
         ontabcreate: vi.fn(),
         ontabrename: vi.fn(),
         ontabdelete: vi.fn(),
+        ontabreorder: vi.fn(),
         ...overrides,
     };
 }
@@ -156,5 +159,88 @@ describe("DocumentTabs", () => {
         const { getByRole } = render(DocumentTabs, { props: defaultProps({ ontabcreate }) });
         await fireEvent.click(getByRole("button", { name: "New tab" }));
         expect(ontabcreate).toHaveBeenCalledOnce();
+    });
+
+    // jsdom doesn't lay out elements, so the drag-over midpoint check reads
+    // getBoundingClientRect() as zeros. Stub each tab's rect with a fixed
+    // 100px-wide slot so the before/after-half logic is deterministic.
+    function stubTabRects(tabEls: HTMLElement[]) {
+        tabEls.forEach((el, i) => {
+            const left = i * 100;
+            el.getBoundingClientRect = () =>
+                ({
+                    left,
+                    right: left + 100,
+                    width: 100,
+                    top: 0,
+                    bottom: 0,
+                    height: 0,
+                    x: left,
+                    y: 0,
+                }) as DOMRect;
+        });
+    }
+
+    // jsdom's synthetic DragEvent drops clientX from the init dict, so build
+    // the event and set clientX on it before dispatching.
+    function dragOverAt(el: HTMLElement, clientX: number) {
+        const ev = createEvent.dragOver(el);
+        Object.defineProperty(ev, "clientX", { value: clientX });
+        return fireEvent(el, ev);
+    }
+
+    it("reorders tabs on drag and commits the new order", async () => {
+        const ontabreorder = vi.fn();
+        const { getByText } = render(DocumentTabs, {
+            props: defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], ontabreorder }),
+        });
+        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
+        const tabC = getByText("Tab C").closest("[role='tab']") as HTMLElement;
+        stubTabRects([tabA, getByText("Tab B").closest("[role='tab']") as HTMLElement, tabC]);
+
+        await fireEvent.dragStart(tabA);
+        // Drop A onto the right half of C → A moves to the end.
+        await dragOverAt(tabC, 290);
+        await fireEvent.dragEnd(tabA);
+
+        expect(ontabreorder).toHaveBeenCalledWith(["b", "c", "a"]);
+    });
+
+    it("does not call ontabreorder when order is unchanged", async () => {
+        const ontabreorder = vi.fn();
+        const { getByText } = render(DocumentTabs, {
+            props: defaultProps({ tabs: [TAB_A, TAB_B], ontabreorder }),
+        });
+        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
+        stubTabRects([tabA, getByText("Tab B").closest("[role='tab']") as HTMLElement]);
+
+        await fireEvent.dragStart(tabA);
+        await fireEvent.dragEnd(tabA);
+
+        expect(ontabreorder).not.toHaveBeenCalled();
+    });
+
+    it("suppresses the post-drag click so a reordered tab isn't also selected", async () => {
+        const ontabselect = vi.fn();
+        const ontabreorder = vi.fn();
+        const { getByText } = render(DocumentTabs, {
+            props: defaultProps({
+                tabs: [TAB_A, TAB_B, TAB_C],
+                activeTabId: "a",
+                ontabselect,
+                ontabreorder,
+            }),
+        });
+        const tabB = getByText("Tab B").closest("[role='tab']") as HTMLElement;
+        const tabA = getByText("Tab A").closest("[role='tab']") as HTMLElement;
+        stubTabRects([tabA, tabB, getByText("Tab C").closest("[role='tab']") as HTMLElement]);
+
+        await fireEvent.dragStart(tabB);
+        await dragOverAt(tabA, 10); // left half of A → B moves before A
+        await fireEvent.dragEnd(tabB);
+        await fireEvent.click(tabB);
+
+        expect(ontabreorder).toHaveBeenCalledWith(["b", "a", "c"]);
+        expect(ontabselect).not.toHaveBeenCalled();
     });
 });

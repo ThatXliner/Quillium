@@ -19,6 +19,7 @@
 import type { TabMeta } from "$lib/db/types";
 import { FileTextIcon, PlusIcon } from "lucide-svelte";
 import { tick } from "svelte";
+import { flip } from "svelte/animate";
 
 const {
     tabs,
@@ -27,6 +28,7 @@ const {
     ontabcreate,
     ontabrename,
     ontabdelete,
+    ontabreorder,
 }: {
     tabs: TabMeta[];
     activeTabId: string | null;
@@ -34,6 +36,8 @@ const {
     ontabcreate: () => void;
     ontabrename: (tabId: string, label: string) => void;
     ontabdelete: (tabId: string) => void;
+    /** Called with the full tab-id list in its new order after a drag. */
+    ontabreorder: (orderedIds: string[]) => void;
 } = $props();
 
 let renamingTabId = $state<string | null>(null);
@@ -66,7 +70,7 @@ $effect(() => {
         } else if (elRect.left < stripRect.left) {
             delta = elRect.left - stripRect.left - 12;
         }
-        if (delta !== 0) stripEl.scrollBy({ left: delta, behavior: "smooth" });
+        if (delta !== 0) stripEl.scrollBy?.({ left: delta, behavior: "smooth" });
     });
 });
 
@@ -86,11 +90,13 @@ $effect(() => {
     const el = stripEl;
     updateScrollState();
     el.addEventListener("scroll", updateScrollState, { passive: true });
-    const ro = new ResizeObserver(updateScrollState);
-    ro.observe(el);
+    // ResizeObserver is absent in some test/SSR environments; the scroll
+    // listener still keeps the mask correct without it.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateScrollState) : null;
+    ro?.observe(el);
     return () => {
         el.removeEventListener("scroll", updateScrollState);
-        ro.disconnect();
+        ro?.disconnect();
     };
 });
 
@@ -99,6 +105,71 @@ const maskStyle = $derived(
         ? `mask-image: linear-gradient(to right, ${canScrollLeft ? "transparent 0%, black 4%" : "black 0%"}, ${canScrollRight ? "black 96%, transparent 100%" : "black 100%"}); -webkit-mask-image: linear-gradient(to right, ${canScrollLeft ? "transparent 0%, black 4%" : "black 0%"}, ${canScrollRight ? "black 96%, transparent 100%" : "black 100%"});`
         : "",
 );
+
+// ── Drag-to-reorder ───────────────────────────────────────────────
+// During a drag we render `dragOrder` (a working copy of the tab ids) so
+// the strip reorders live under the pointer; on drop we hand the final
+// order to the parent, which persists it. A click suppression flag stops
+// the drag's terminating click from also selecting/switching tabs.
+let draggingId = $state<string | null>(null);
+let dragOrder = $state<string[] | null>(null);
+let suppressClick = false;
+
+// The list to render: the live drag preview while dragging, else the
+// real tab order. Mapped back to TabMeta so the template is unchanged.
+const displayTabs = $derived(
+    dragOrder
+        ? dragOrder
+              .map((id) => tabs.find((t) => t.id === id))
+              .filter((t): t is TabMeta => t !== undefined)
+        : tabs,
+);
+
+function onDragStart(e: DragEvent, tab: TabMeta) {
+    // Don't start a reorder while renaming a tab inline.
+    if (renamingTabId) {
+        e.preventDefault();
+        return;
+    }
+    draggingId = tab.id;
+    dragOrder = tabs.map((t) => t.id);
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        // Firefox requires data to be set for a drag to begin.
+        e.dataTransfer.setData("text/plain", tab.id);
+    }
+}
+
+function onDragOverTab(e: DragEvent, overId: string) {
+    if (!draggingId || !dragOrder || overId === draggingId) return;
+    e.preventDefault(); // allow drop
+    if (!Number.isFinite(e.clientX)) return;
+    const from = dragOrder.indexOf(draggingId);
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    // Insert before the hovered tab if the pointer is on its left half.
+    const before = e.clientX < rect.left + rect.width / 2;
+    const overIdx = dragOrder.indexOf(overId);
+    let to = before ? overIdx : overIdx + 1;
+    if (to > from) to -= 1; // account for removing the dragged item first
+    if (to === from) return;
+    const next = dragOrder.filter((id) => id !== draggingId);
+    next.splice(to, 0, draggingId);
+    dragOrder = next;
+}
+
+function onDragEnd() {
+    if (dragOrder && draggingId) {
+        const original = tabs.map((t) => t.id);
+        const changed = dragOrder.some((id, i) => id !== original[i]);
+        if (changed) {
+            suppressClick = true;
+            ontabreorder(dragOrder);
+        }
+    }
+    draggingId = null;
+    dragOrder = null;
+}
 
 function startRename(tab: TabMeta) {
     renamingTabId = tab.id;
@@ -133,20 +204,31 @@ function cancelRename() {
         class="strip flex-1 min-w-0 flex items-end gap-0.5 overflow-x-auto scroll-smooth pt-2 -mt-2"
         style={maskStyle}
     >
-        {#each tabs as tab (tab.id)}
+        {#each displayTabs as tab (tab.id)}
             {@const isActive = tab.id === activeTabId}
             {@const isRenaming = renamingTabId === tab.id}
+            {@const isDragging = draggingId === tab.id}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div
                 bind:this={tabEls[tab.id]}
+                animate:flip={{ duration: 150 }}
                 role="tab"
                 aria-selected={isActive}
                 tabindex={isActive ? 0 : -1}
-                onclick={() => { if (!isActive) ontabselect(tab.id); }}
+                draggable={!isRenaming}
+                ondragstart={(e) => onDragStart(e, tab)}
+                ondragover={(e) => onDragOverTab(e, tab.id)}
+                ondragend={onDragEnd}
+                ondrop={(e) => e.preventDefault()}
+                onclick={() => {
+                    if (suppressClick) { suppressClick = false; return; }
+                    if (!isActive) ontabselect(tab.id);
+                }}
                 ondblclick={() => startRename(tab)}
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
                     min-w-[7.5rem] shrink rounded-t-lg transition-colors duration-100
+                    {isDragging ? 'opacity-40' : ''}
                     {isActive
                         ? 'py-1.5 bg-white text-black/90 font-semibold shadow-[0_-2px_6px_rgba(0,0,0,0.06)] z-10 cursor-default'
                         : 'py-1 bg-white/45 backdrop-blur-sm text-black/50 hover:text-black/70 hover:bg-white/60 z-[1]'}
