@@ -20,20 +20,20 @@
 <script lang="ts">
 import { initials } from "$lib/auth/avatarUtils";
 import {
+    MAX_RECONNECT_ATTEMPTS,
     collabPresenceUsers,
     collabState,
     followedClientId,
-    MAX_RECONNECT_ATTEMPTS,
     pendingUpdatesCount,
     reconnectAttempt,
 } from "$lib/collab";
 import { debugPanelActive } from "$lib/debug/store.svelte";
-import { exportDocument, type ExportFormat } from "$lib/export";
-import { goToHistory, goToLibrary } from "$lib/navigation";
+import { type ExportFormat, exportDocument } from "$lib/export";
+import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { appSettings } from "$lib/settings.svelte";
 import SettingsModal from "$lib/settings/SettingsModal.svelte";
 import { editorView, saveStatus, settingsOpen, statsOpen, tutorialActive } from "$lib/stores";
-import { BarChart3, Download, History, LayoutGrid, Settings, X } from "lucide-svelte";
+import { BarChart3, Download, History, LayoutGrid, Play, Settings, X } from "lucide-svelte";
 
 const { children, titleVisibility = "hover", titleForced = false } = $props();
 
@@ -56,11 +56,19 @@ let exporting = $state(false);
 
 const exportItems: { format: ExportFormat; label: string; hint: string }[] = [
     { format: "txt", label: "Plain Text", hint: "Document text only (.txt)" },
-    { format: "txt+json", label: "Text + Annotations", hint: "Text with annotations appended (.txt)" },
+    {
+        format: "txt+json",
+        label: "Text + Annotations",
+        hint: "Text with annotations appended (.txt)",
+    },
     { format: "json", label: "JSON", hint: "Structured text + annotations (.json)" },
     { format: "md", label: "Markdown", hint: "Text with annotations as footnotes (.md)" },
     { format: "pdf", label: "PDF", hint: "Formatted document (.pdf)" },
-    { format: "pdf+annotations", label: "PDF + Annotations", hint: "Document plus annotation cards (.pdf)" },
+    {
+        format: "pdf+annotations",
+        label: "PDF + Annotations",
+        hint: "Document plus annotation cards (.pdf)",
+    },
 ];
 
 // Portal the export modal to <body>. The status bar uses backdrop-blur, which
@@ -349,6 +357,14 @@ $effect(() => {
                     {exportOpen ? 'text-purple-600' : 'text-purple-400 hover:text-purple-600'}"
             >
                 <Download size={20} />
+            </button>
+            <button
+                onclick={goToAuthorship}
+                aria-label="Authorship playback"
+                title="Authorship Report ({modKey}Shift+A)"
+                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-violet-400 hover:text-violet-600 shrink-0"
+            >
+                <Play size={20} />
             </button>
         </div>
         <div class="w-px h-8 bg-black/20 shrink-0"></div>
