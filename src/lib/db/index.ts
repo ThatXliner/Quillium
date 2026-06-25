@@ -12,6 +12,7 @@ import type {
     DocEventRecord,
     DocumentMeta,
     DraftMeta,
+    EventRecord,
     LoadResult,
     ReparentEntry,
     SearchHit,
@@ -364,6 +365,15 @@ export async function loadDocumentState(
         docId,
         draftId: draftId ?? null,
     });
+}
+
+/**
+ * Returns the full append-only event stream for a draft, oldest first.
+ * Unlike `loadDocumentState`, this ignores snapshots and never truncates —
+ * the provenance/authorship-proof read path needs every event.
+ */
+export async function listDraftEvents(draftId: string): Promise<EventRecord[]> {
+    return invoke<EventRecord[]>("cmd_list_draft_events", { draftId });
 }
 
 // ── Version history ───────────────────────────────────────────────

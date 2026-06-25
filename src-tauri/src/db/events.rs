@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{AppendEventResult, SnapshotMeta};
+use super::{AppendEventResult, EventRecord, SnapshotMeta};
 
 const SNAPSHOT_EVENT_THRESHOLD: i64 = 50;
 const SNAPSHOT_TIME_THRESHOLD_SECS: i64 = 120;
@@ -46,6 +46,25 @@ pub fn append_event(
         event_id,
         needs_snapshot,
     })
+}
+
+/// Returns the full append-only event stream for a draft, oldest first.
+/// Unlike `load_document_state`, this ignores snapshots and never truncates —
+/// it is the provenance/authorship-proof read path that needs every event.
+pub fn list_draft_events(conn: &Connection, draft_id: &str) -> Result<Vec<EventRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, event_type, payload, created_at FROM events
+         WHERE draft_id = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt.query_map(params![draft_id], |row| {
+        Ok(EventRecord {
+            id: row.get(0)?,
+            event_type: row.get(1)?,
+            payload: row.get(2)?,
+            created_at: row.get(3)?,
+        })
+    })?;
+    rows.collect()
 }
 
 fn extract_event_type(payload_json: &str) -> String {
@@ -277,4 +296,74 @@ pub fn restore_to_snapshot(conn: &Connection, draft_id: &str, snapshot_id: i64) 
     )?;
     tx.commit()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::schema::open_db;
+    use crate::db::tabs::create_tab;
+
+    /// Fresh migrated DB with one document and two tabs (each tab owns a main
+    /// draft); returns (conn, draft_a, draft_b) for two distinct draft_ids.
+    fn setup() -> (Connection, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        // Leak the tempdir so the file outlives the test (conn holds it open).
+        let path = Box::leak(Box::new(dir)).path().join("test.db");
+        let conn = open_db(&path).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at) VALUES ('doc', 'T', 0, 0)",
+            [],
+        )
+        .unwrap();
+        let tab_a = create_tab(&conn, "doc", "A").unwrap();
+        let tab_b = create_tab(&conn, "doc", "B").unwrap();
+        let draft_a: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab_a.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let draft_b: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab_b.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        (conn, draft_a, draft_b)
+    }
+
+    #[test]
+    fn lists_all_events_for_draft_in_id_order() {
+        let (conn, draft_a, draft_b) = setup();
+        // Three events on A interleaved with one on B to prove isolation.
+        append_event(&conn, &draft_a, r#"{"type":"doc","n":1}"#).unwrap();
+        append_event(&conn, &draft_b, r#"{"type":"doc","n":99}"#).unwrap();
+        append_event(&conn, &draft_a, r#"{"type":"doc","n":2}"#).unwrap();
+        append_event(&conn, &draft_a, r#"{"type":"doc","n":3}"#).unwrap();
+
+        let events = list_draft_events(&conn, &draft_a).unwrap();
+
+        // (a) correct count for one draft (B's event excluded).
+        assert_eq!(events.len(), 3);
+        // (b) ordering by id ASC.
+        let ids: Vec<i64> = events.iter().map(|e| e.id).collect();
+        let mut sorted = ids.clone();
+        sorted.sort();
+        assert_eq!(ids, sorted);
+        assert_eq!(events[0].payload, r#"{"type":"doc","n":1}"#);
+        assert_eq!(events[1].payload, r#"{"type":"doc","n":2}"#);
+        assert_eq!(events[2].payload, r#"{"type":"doc","n":3}"#);
+        // (c) draft isolation: none of A's events belong to B's payload.
+        assert!(events.iter().all(|e| !e.payload.contains("99")));
+    }
+
+    #[test]
+    fn returns_empty_for_draft_with_no_events() {
+        let (conn, draft_a, _draft_b) = setup();
+        let events = list_draft_events(&conn, &draft_a).unwrap();
+        assert!(events.is_empty());
+    }
 }

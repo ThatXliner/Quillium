@@ -15,9 +15,9 @@ use db::{
     },
     events::{
         append_event, create_named_snapshot, create_snapshot, get_snapshot_retention,
-        get_snapshot_storage_size, label_snapshot, list_snapshots, load_snapshot_state,
-        prune_snapshots_keep_last_n, prune_snapshots_older_than, restore_to_snapshot,
-        set_snapshot_retention,
+        get_snapshot_storage_size, label_snapshot, list_draft_events, list_snapshots,
+        load_snapshot_state, prune_snapshots_keep_last_n, prune_snapshots_older_than,
+        restore_to_snapshot, set_snapshot_retention,
     },
     load::load_document_state,
     schema::open_db,
@@ -29,7 +29,8 @@ use db::{
         restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
         ReparentEntry,
     },
-    AppendEventResult, DocEventRecord, DocumentMeta, DraftMeta, LoadResult, SnapshotMeta, TabMeta,
+    AppendEventResult, DocEventRecord, DocumentMeta, DraftMeta, EventRecord, LoadResult,
+    SnapshotMeta, TabMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
@@ -446,6 +447,15 @@ fn cmd_load_document_state(
 ) -> Result<LoadResult, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     load_document_state(&conn, &doc_id, draft_id.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_draft_events(
+    state: tauri::State<DbState>,
+    draft_id: String,
+) -> Result<Vec<EventRecord>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_draft_events(&conn, &draft_id).map_err(|e| e.to_string())
 }
 
 // ── Version history commands ──────────────────────────────────────
@@ -980,6 +990,7 @@ pub fn run() {
             cmd_append_event,
             cmd_create_snapshot,
             cmd_load_document_state,
+            cmd_list_draft_events,
             cmd_list_snapshots,
             cmd_load_snapshot_state,
             cmd_label_snapshot,
