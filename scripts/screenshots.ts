@@ -29,6 +29,7 @@
  *   19-ai-context.png       — AI sidebar open on Document Context tab
  *   20-autoai-widget.png    — AutoAI widget expanded showing config panel
  *   21-version-history.png  — version history page with snapshot list
+ *   21b-authorship-playback.png — writing-provenance playback viewer mid-scrub
  *   22-full-ui.png          — hero shot: AI sidebar + annotations on original prose
  *   23-dense-annotations.png — many comments across a longer passage
  *   24-suggestion-active.png — AI suggestion card in expanded active state
@@ -129,6 +130,68 @@ const MOCK_SNAPSHOTS = [
     },
 ];
 
+// ── Authorship playback mock data ───────────────────────────────────────────────
+//
+// A curated event stream for the authorship-playback screenshot. Each entry is a
+// real EventRecord whose `payload` is a provenance-stamped doc_change — exactly
+// the shape src/lib/editor/listeners.ts now writes. Replaying these in order
+// rebuilds a short paragraph; the mix of origins (typed / paste / ai-revision)
+// and a large idle gap give the viewer a realistic, legible timeline.
+function buildAuthorshipEvents() {
+    const base = Date.now() - 1000 * 60 * 60 * 2; // started ~2h ago
+    // Each step: [insert text at end, origin, userEvent, gap-ms-before-this-event]
+    const steps: Array<[string, string, string | undefined, number]> = [
+        ["The argument for ", "type", "input.type", 0],
+        ["renewable energy ", "type", "input.type", 1400],
+        ["rests on three ", "type", "input.type", 1700],
+        ["pillars. ", "type", "input.type", 1500],
+        // a pause, then a pasted citation block (flagged — large)
+        [
+            "As one widely cited report notes, “the transition to clean power is now the cheapest path to new electricity generation across two-thirds of the world.” ",
+            "paste",
+            "input.paste",
+            1000 * 60 * 8, // 8-minute idle gap → splits sessions
+        ],
+        ["But cost alone ", "type", "input.type", 2100],
+        ["does not settle ", "type", "input.type", 1600],
+        ["the debate. ", "type", "input.type", 1500],
+        // an accepted AI revision replaces the trailing sentence
+        [
+            "Reliability, land use, and grid resilience each demand a closer look.",
+            "ai-revision",
+            undefined,
+            4200,
+        ],
+    ];
+
+    let pos = 0;
+    let when = base;
+    return steps.map(([text, origin, userEvent, gap], i) => {
+        when += gap;
+        const from = pos;
+        pos += text.length;
+        const payload = {
+            type: "doc_change",
+            changes: [{ from, to: from, insert: text }],
+            selection: { ranges: [{ anchor: pos, head: pos }], main: 0 },
+            provenance: {
+                origin,
+                userEvent,
+                insertedChars: text.length,
+                removedChars: 0,
+            },
+        };
+        return {
+            id: i + 1,
+            eventType: "doc_change",
+            payload: JSON.stringify(payload),
+            createdAt: when,
+        };
+    });
+}
+
+const AUTHORSHIP_EVENTS = buildAuthorshipEvents();
+
 const LIBRARY_DOCUMENTS = [
     {
         id: "doc-1",
@@ -185,6 +248,8 @@ type TauriMockOptions = {
     trashedDocuments: boolean;
     snapshots: boolean;
     showTutorial: boolean;
+    /** When true, cmd_list_draft_events returns the AUTHORSHIP_EVENTS stream. */
+    authorshipEvents: boolean;
 };
 
 async function installTauriMock(
@@ -197,6 +262,7 @@ async function installTauriMock(
     const trashedDocuments = options.trashedDocuments ?? false;
     const snapshots = options.snapshots ?? false;
     const showTutorial = options.showTutorial ?? false;
+    const authorshipEvents = options.authorshipEvents ?? false;
 
     await page.addInitScript(
         (payload: {
@@ -206,9 +272,11 @@ async function installTauriMock(
             trashedDocuments: boolean;
             snapshots: boolean;
             showTutorial: boolean;
+            authorshipEvents: boolean;
             libraryDocs: typeof LIBRARY_DOCUMENTS;
             trashedDocs: typeof TRASHED_DOCUMENTS;
             mockSnapshots: typeof MOCK_SNAPSHOTS;
+            authorshipEventsData: typeof AUTHORSHIP_EVENTS;
         }) => {
             // Keep the top-right auth/share controls deterministic in screenshot
             // runs, without reaching real Supabase services.
@@ -363,6 +431,8 @@ async function installTauriMock(
                     }
                     if (cmd === "cmd_load_document_state")
                         return { snapshotStateJson: savedState, eventsSince: [] };
+                    if (cmd === "cmd_list_draft_events")
+                        return payload.authorshipEvents ? payload.authorshipEventsData : [];
                     // Snapshot / version history commands
                     if (cmd === "cmd_list_snapshots")
                         return payload.snapshots ? payload.mockSnapshots : [];
@@ -399,9 +469,11 @@ async function installTauriMock(
             trashedDocuments,
             snapshots,
             showTutorial,
+            authorshipEvents,
             libraryDocs: LIBRARY_DOCUMENTS,
             trashedDocs: TRASHED_DOCUMENTS,
             mockSnapshots: MOCK_SNAPSHOTS,
+            authorshipEventsData: AUTHORSHIP_EVENTS,
         },
     );
 }
@@ -1189,6 +1261,34 @@ async function scenarioVersionHistory(ctx: BrowserContext): Promise<void> {
 }
 
 /**
+ * 21b. authorship-playback — The writing-provenance playback viewer mid-scrub,
+ *    showing the reconstructed document, the origin legend, the current-edit
+ *    badge, and the summary header (active writing time, pastes, AI revisions).
+ */
+async function scenarioAuthorshipPlayback(ctx: BrowserContext): Promise<void> {
+    const page = await ctx.newPage();
+    await page.setViewportSize(VIEWPORT);
+    await installTauriMock(page, { authorshipEvents: true });
+    await page.goto(BASE_URL);
+    await waitForEditor(page);
+    // Seed currentDocumentId / currentDraftId via the real scenario flow, then
+    // client-navigate so those stores survive (a page.goto would reset them).
+    await applyDebugScenario(page, "screenshot-full-ui");
+    await page.evaluate(() => {
+        (window as unknown as { __goToAuthorship__?: () => void }).__goToAuthorship__?.();
+    });
+    // Wait for the playback transport to render, then scrub to a midpoint so the
+    // document is partially reconstructed and a non-"Start" origin badge shows.
+    await page.locator("text=Authorship Playback").first().waitFor({ timeout: 10_000 });
+    const scrubber = page.locator(".provenance-scrubber");
+    await scrubber.waitFor({ timeout: 10_000 });
+    await scrubber.fill("6");
+    await page.waitForTimeout(700);
+    await shot(page, "21b-authorship-playback");
+    await page.close();
+}
+
+/**
  * 22. full-ui — Hero/marketing screenshot showing the AI chat
  *    sidebar open alongside comment and revision annotations on
  *    a realistic editorial session.
@@ -1479,6 +1579,7 @@ async function main(): Promise<void> {
         await scenarioAIContext(context);
         await scenarioAutoAIWidget(context);
         await scenarioVersionHistory(context);
+        await scenarioAuthorshipPlayback(context);
         await scenarioFullUI(context);
         await scenarioDenseAnnotations(context);
         await scenarioSuggestionActive(context);
