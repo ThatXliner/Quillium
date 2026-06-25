@@ -256,6 +256,13 @@ async function installTauriMock(
             (window as unknown as Record<string, unknown>).__TAURI_MOCK__ = { invokeCalls };
 
             (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+                // getCurrentWindow()/getCurrentWebviewWindow() read these labels off
+                // metadata. Without them the editor throws on mount in the mocked
+                // (non-Tauri) browser environment.
+                metadata: {
+                    currentWindow: { label: "main" },
+                    currentWebview: { windowLabel: "main", label: "main" },
+                },
                 invoke: async (cmd: string, args: unknown) => {
                     invokeCalls.push({ cmd, args });
                     if (cmd === "load") return savedState;
@@ -298,9 +305,56 @@ async function installTauriMock(
                                 label: "Main",
                                 createdAt: Date.now(),
                                 isActive: true,
+                                tabId: "tab-1",
+                                parentDraftId: null,
+                                branchedFrom: null,
+                                locked: false,
                             },
                         ];
                     if (cmd === "cmd_create_draft") return "draft-1";
+                    // ── Tabs / drafts model (issue #160) ──────────────────────
+                    if (cmd === "cmd_register_open_doc") return null;
+                    if (cmd === "cmd_deregister_open_doc") return null;
+                    if (cmd === "cmd_list_tabs")
+                        return [
+                            {
+                                id: "tab-1",
+                                documentId: (args as { docId: string }).docId,
+                                tabType: "draft",
+                                label: "Draft",
+                                position: 0,
+                                createdAt: Date.now(),
+                            },
+                        ];
+                    if (cmd === "cmd_create_tab")
+                        return {
+                            id: "tab-1",
+                            documentId: (args as { docId: string }).docId,
+                            tabType: "draft",
+                            label: "Draft",
+                            position: 0,
+                            createdAt: Date.now(),
+                        };
+                    if (cmd === "cmd_get_active_tab") return "tab-1";
+                    if (cmd === "cmd_set_active_tab") return null;
+                    if (cmd === "cmd_reorder_tabs") return null;
+                    if (cmd === "cmd_list_tab_drafts")
+                        return [
+                            {
+                                id: "draft-1",
+                                documentId: "doc-1",
+                                label: "Main",
+                                createdAt: Date.now(),
+                                isActive: true,
+                                tabId: (args as { tabId: string }).tabId,
+                                parentDraftId: null,
+                                branchedFrom: null,
+                                locked: false,
+                            },
+                        ];
+                    if (cmd === "cmd_get_active_draft") return "draft-1";
+                    if (cmd === "cmd_set_active_draft") return null;
+                    if (cmd === "cmd_list_doc_events") return [];
                     if (cmd === "cmd_append_event")
                         return { eventId: Math.floor(Math.random() * 100000) };
                     if (cmd === "cmd_create_snapshot") {
