@@ -14,6 +14,39 @@ export type ChangeSpec = {
     insert: string;
 };
 
+// ── Provenance (authorship proof) ────────────────────────────────
+//
+// Provenance enriches doc-changing events with *where the change came
+// from* — typed vs pasted vs an accepted AI revision — so an authorship
+// report can show evidence of the human writing process. It is captured
+// per-event (one CodeMirror transaction = one event = one userEvent +
+// one revision/nested marker) and is OPTIONAL: legacy events written
+// before this feature simply lack the field and are treated as
+// `origin: "unknown"`. See src/lib/provenance/classify.ts.
+
+/** Classification of where a doc-changing event originated. */
+export type ChangeOrigin =
+    | "type" // input.type / input.type.compose — human keystrokes
+    | "paste" // input.paste
+    | "cut" // delete.cut
+    | "delete" // delete.* (non-cut)
+    | "restore" // input.restore — crash-recovery replay, NOT authorship
+    | "format" // bare userEvent "input" (markdownFormatting)
+    | "ai-revision" // revisionInternalEdit present — accepted version switch
+    | "nested-edit" // nestedEditorEdit present
+    | "unknown"; // legacy event or unrecognized userEvent
+
+/** Optional provenance metadata attached to doc_change / compound events. */
+export type Provenance = {
+    origin: ChangeOrigin;
+    /** Raw tr.annotation(Transaction.userEvent), preserved verbatim for forensics. */
+    userEvent?: string;
+    /** Total inserted-char count across the event's ChangeSpecs (paste-size heuristic). */
+    insertedChars?: number;
+    /** Total removed-char count (sum of toA - fromA). */
+    removedChars?: number;
+};
+
 /** Serialised CM6 SelectionRange. */
 export type SelectionRangeJSON = {
     anchor: number;
@@ -55,6 +88,8 @@ export type DocChangeEvent = {
     type: "doc_change";
     changes: ChangeSpec[];
     selection: SelectionJSON;
+    /** Optional provenance — omitted on legacy events (treated as "unknown"). */
+    provenance?: Provenance;
 };
 
 /**
@@ -65,6 +100,8 @@ export type CompoundEvent = {
     docChanges: ChangeSpec[];
     annotationEvents: AnnotationEvent[];
     selection: SelectionJSON;
+    /** Optional provenance — omitted on legacy events (treated as "unknown"). */
+    provenance?: Provenance;
 };
 
 /** Annotation-only event (no doc changes). */

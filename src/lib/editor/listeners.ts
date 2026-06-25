@@ -1,3 +1,33 @@
+import { isCollabJoiner } from "$lib/collab/store";
+import { appendEvent, createNamedSnapshot, createSnapshot, updateDocumentMeta } from "$lib/db";
+import type {
+    AnnotationEvent,
+    ChangeOrigin,
+    ChangeSpec,
+    EventPayload,
+    Provenance,
+    SelectionJSON,
+} from "$lib/db/events";
+import {
+    isDeepAnnotationLoss,
+    isSuspiciousAnnotationChange,
+    isSuspiciousDeletion,
+} from "$lib/errorGuard";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { classifyOrigin } from "$lib/provenance/classify";
+import {
+    currentDocumentId,
+    currentDocumentTitle,
+    currentDraftId,
+    errorBanner,
+    lastPersistedEventId,
+    lastSavedAt,
+    saveStatus,
+} from "$lib/stores";
+import { Transaction } from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { get } from "svelte/store";
 /**
  * listeners.ts — CodeMirror update listeners for event-log persistence.
  *
@@ -16,36 +46,15 @@
  *     annotationsChanged)
  */
 import { savedFields } from "./extensions";
-import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { get } from "svelte/store";
 import {
-    currentDocumentId,
-    currentDraftId,
-    currentDocumentTitle,
-    saveStatus,
-    errorBanner,
-    lastPersistedEventId,
-    lastSavedAt,
-} from "$lib/stores";
-import { appendEvent, createSnapshot, createNamedSnapshot, updateDocumentMeta } from "$lib/db";
-import { isCollabJoiner } from "$lib/collab/store";
-import {
-    isSuspiciousDeletion,
-    isSuspiciousAnnotationChange,
-    isDeepAnnotationLoss,
-} from "$lib/errorGuard";
-import {
-    addAnnotation,
-    removeAnnotation,
-    updateThread,
-    revisionInternalEdit,
-    annotationsChanged,
     type GenericAnnotation,
+    addAnnotation,
+    annotationsChanged,
+    nestedEditorEdit,
+    removeAnnotation,
+    revisionInternalEdit,
+    updateThread,
 } from "./plugins/annotations";
-import type { AnnotationEvent, ChangeSpec, EventPayload, SelectionJSON } from "$lib/db/events";
-import type { Transaction } from "@codemirror/state";
-import posthog from "$lib/posthog";
-import { appEventBus } from "$lib/events/appEventBus";
 
 export interface ListenerOptions {
     updateListener?: (update: ViewUpdate) => void;
@@ -88,6 +97,32 @@ function extractChanges(tr: Transaction): ChangeSpec[] {
         changes.push({ from: fromA, to: toA, insert: inserted.toString() });
     });
     return changes;
+}
+
+/**
+ * Derives provenance for a single CM transaction: where the change came from
+ * (origin), the raw userEvent, and inserted/removed char counts. Pure — never
+ * throws. Aggregated across doc-changing transactions in buildEventPayload.
+ */
+function txProvenance(tr: Transaction): {
+    origin: ChangeOrigin;
+    userEvent: string | undefined;
+    insertedChars: number;
+    removedChars: number;
+} {
+    const userEvent = tr.annotation(Transaction.userEvent);
+    const hasRevisionInternalEdit = !!tr.annotation(revisionInternalEdit);
+    const hasNestedEditorEdit = tr.annotation(nestedEditorEdit) != null;
+
+    let insertedChars = 0;
+    let removedChars = 0;
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        insertedChars += inserted.length;
+        removedChars += toA - fromA;
+    });
+
+    const origin = classifyOrigin({ userEvent, hasRevisionInternalEdit, hasNestedEditorEdit });
+    return { origin, userEvent, insertedChars, removedChars };
 }
 
 /**
@@ -169,9 +204,29 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
     let allDocChanges: ChangeSpec[] = [];
     let allAnnotationEvents: AnnotationEvent[] = [];
 
+    // Aggregate one event-level provenance across all doc-changing transactions:
+    //   - origin: "ai-revision" if ANY tr is a revision-internal edit, else
+    //     "nested-edit" if ANY tr is a nested-editor edit, else the origin of
+    //     the LAST doc-changing transaction.
+    //   - userEvent: the userEvent of that same last doc-changing transaction.
+    //   - inserted/removedChars: summed across all doc-changing transactions.
+    let anyRevisionInternal = false;
+    let anyNestedEdit = false;
+    let lastOrigin: ChangeOrigin = "unknown";
+    let lastUserEvent: string | undefined;
+    let totalInserted = 0;
+    let totalRemoved = 0;
+
     for (const tr of update.transactions) {
         if (tr.docChanged) {
             allDocChanges = allDocChanges.concat(extractChanges(tr));
+            const prov = txProvenance(tr);
+            if (prov.origin === "ai-revision") anyRevisionInternal = true;
+            if (prov.origin === "nested-edit") anyNestedEdit = true;
+            lastOrigin = prov.origin;
+            lastUserEvent = prov.userEvent;
+            totalInserted += prov.insertedChars;
+            totalRemoved += prov.removedChars;
         }
         allAnnotationEvents = allAnnotationEvents.concat(extractAnnotationEvents(tr));
     }
@@ -183,12 +238,26 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
 
     const selection = extractSelection(update);
 
+    const provenance: Provenance | undefined = hasDocChange
+        ? {
+              origin: anyRevisionInternal
+                  ? "ai-revision"
+                  : anyNestedEdit
+                    ? "nested-edit"
+                    : lastOrigin,
+              userEvent: lastUserEvent,
+              insertedChars: totalInserted,
+              removedChars: totalRemoved,
+          }
+        : undefined;
+
     if (hasDocChange && hasAnnotationChange) {
         return {
             type: "compound",
             docChanges: allDocChanges,
             annotationEvents: allAnnotationEvents,
             selection,
+            provenance,
         };
     }
 
@@ -197,6 +266,7 @@ export function buildEventPayload(update: ViewUpdate): EventPayload | null {
             type: "doc_change",
             changes: allDocChanges,
             selection,
+            provenance,
         };
     }
 

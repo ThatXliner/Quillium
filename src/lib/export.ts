@@ -48,7 +48,7 @@ type PdfExportPayload = {
     annotations: PdfAnnotationCard[];
 };
 
-async function saveWithDialog(
+export async function saveWithDialog(
     content: string,
     defaultName: string,
     extension: string,
@@ -82,7 +82,7 @@ async function savePdfWithDialog(payload: PdfExportPayload, defaultName: string)
     return true;
 }
 
-function sanitizeFilename(title: string): string {
+export function sanitizeFilename(title: string): string {
     return title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "document";
 }
 

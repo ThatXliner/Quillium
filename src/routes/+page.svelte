@@ -19,6 +19,7 @@
         completed the tutorial (checked via localStorage).
 -->
 <script lang="ts">
+import { page } from "$app/state";
 import AiSidebar from "$lib/ai/AISidebar.svelte";
 import { getConnectionState, initAuth, isLoading, isOffline, reconnectAuth } from "$lib/auth";
 import AuthButton from "$lib/auth/AuthButton.svelte";
@@ -42,7 +43,7 @@ import {
     recordWordCount,
     registerSurveyLifecycleListeners,
 } from "$lib/feedback/autoSurvey";
-import { goToHistory, goToLibrary } from "$lib/navigation";
+import { goToAuthorship, goToHistory, goToLibrary } from "$lib/navigation";
 import { showFeedbackSurvey } from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import {
@@ -54,7 +55,6 @@ import {
     tutorialActive,
     writingStats,
 } from "$lib/stores";
-import { page } from "$app/state";
 import Tutorial from "$lib/tutorial/Tutorial.svelte";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -382,6 +382,9 @@ onMount(() => {
     listen("menu:history", () => {
         if (!destroyed) goToHistory();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
+    listen("menu:authorship", () => {
+        if (!destroyed) goToAuthorship();
+    }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
     listen("menu:library", () => {
         if (!destroyed) goToLibrary();
     }).then((u) => (destroyed ? u() : menuUnlisteners.push(u)));
@@ -456,6 +459,9 @@ if (import.meta.env.DEV) {
         (window as unknown as Record<string, unknown>).__modalStack__ = modalStack;
         (window as unknown as Record<string, unknown>).__editorView__ = editorView;
         (window as unknown as Record<string, unknown>).__createRevision__ = createRevision;
+        // Client-side nav to the authorship playback page, preserving the
+        // stores seeded by __runScenario__ (a full page.goto would reset them).
+        (window as unknown as Record<string, unknown>).__goToAuthorship__ = () => goToAuthorship();
 
         (window as unknown as Record<string, unknown>).__runScenario__ = async (id: string) => {
             const scenario = scenarios.find((s) => s.id === id);
