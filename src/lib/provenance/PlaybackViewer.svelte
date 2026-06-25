@@ -415,9 +415,8 @@ function handleKeydown(e: KeyboardEvent) {
         </button>
         <div class="w-px h-5 bg-black/15"></div>
         <div class="flex-1 flex items-center gap-2 min-w-0">
-            <Sparkles size={15} class="text-black/40 flex-shrink-0" />
-            <span class="text-sm font-medium text-black/70 flex-shrink-0">Authorship Playback</span>
-            <span class="text-sm text-black/40 truncate">· {$currentDocumentTitle}</span>
+            <span class="text-sm font-medium text-black/70 flex-shrink-0">Authorship Playback for</span>
+            <span class="text-sm text-black/40 truncate">{$currentDocumentTitle}</span>
         </div>
 
         {#if report}
