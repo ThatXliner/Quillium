@@ -811,6 +811,11 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 .accelerator("CmdOrCtrl+Shift+H")
                 .build(app)?,
         )
+        .item(
+            &MenuItemBuilder::with_id("authorship", "Authorship Report…")
+                .accelerator("CmdOrCtrl+Shift+A")
+                .build(app)?,
+        )
         .separator()
         .fullscreen()
         .build()?;
@@ -844,6 +849,7 @@ fn setup_app_menu(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         match id {
             "settings"
             | "history"
+            | "authorship"
             | "library"
             | "open-in-new-window"
             | "licenses"

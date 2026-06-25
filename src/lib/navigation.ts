@@ -24,6 +24,13 @@ export async function goToHistory(): Promise<void> {
     return goto("/history");
 }
 
+export async function goToAuthorship(): Promise<void> {
+    document.documentElement.setAttribute("data-direction", "left");
+    posthog.capture("navigated_to_authorship");
+    await flushPending();
+    return goto("/authorship");
+}
+
 export function goToEditor(): Promise<void> {
     document.documentElement.setAttribute("data-direction", "right");
     posthog.capture("navigated_to_editor");
