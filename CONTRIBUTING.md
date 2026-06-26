@@ -464,6 +464,74 @@ Quillium shows a "What's New" modal on startup after minor version bumps. Change
 - **Keep it short.** 2–5 paragraphs per release. If you can't summarize a change in one paragraph, the changelog isn't the right place for it.
 - **Only add entries for minor bumps** — patch releases don't get changelog entries.
 
+**Adding a feature image (optional but encouraged for visual features):**
+
+Entries can embed a screenshot. The modal renders the `content` as Markdown, so add an image with standard Markdown syntax inside the `content` string:
+
+```json
+"content": "Quillium now tracks **how a document was written**…\n\n![Authorship playback](/changelog/0.20.png)\n\nOpen it from the status bar…"
+```
+
+Don't hand-craft screenshots. Use the reproducible harness, which boots the app, mocks Tauri, seeds realistic state, and crops a clean, modal-sized PNG into `static/changelog/<version>.png` (served at `/changelog/<version>.png`):
+
+```bash
+# A built-in scene (full-screen scenes self-size to avoid dead space):
+bun run changelog:shot --version 0.20 --scene authorship-playback
+
+# Or crop to a specific element of a scene, with padding:
+bun run changelog:shot --version 0.21 --scene editor --crop "#editor-document" --pad 24
+```
+
+Run `bun run changelog:shot` with no args to list available scenes. Pass `--crop` to frame a single element, or `--width`/`--height` to trim a full-screen capture — full 1440px app chrome reads poorly in the modal.
+
+**Creating a custom scene.** A "scene" leaves the app in a captureable state (the right page open, the right state seeded, the right element on screen). When the built-in scenes don't fit your feature, you have two options.
+
+_Option A — add it to the `SCENES` map (preferred when the scene will recur across releases)._ In `scripts/changelog-shot.ts`, add an entry keyed by scene name. `needs` is the boot config (mock flags + an optional `viewport` to size full-screen captures); `run` drives the page into the shot. The harness exports `applyDebugScenario(page, id)` to seed state via any `screenshot-*` scenario in `src/lib/debug/scenarios.ts`, and the app exposes DEV bridges on `window` (e.g. `__goToAuthorship__`, `__runScenario__`):
+
+```ts
+const SCENES: Record<string, { needs: BootOptions; run: Scene }> = {
+    // …existing scenes…
+    "export-menu": {
+        needs: {}, // e.g. { fakeApiKey: true } or { viewport: { width: 900, height: 470 } }
+        run: async (page) => {
+            await waitForEditor(page);
+            await applyDebugScenario(page, "screenshot-full-ui");
+            await page.locator("[data-testid='export-button']").click();
+            await page.waitForTimeout(400); // let the dropdown settle
+        },
+    },
+};
+```
+
+Then capture it like any built-in scene:
+
+```bash
+bun run changelog:shot --version 0.21 --scene export-menu --crop ".export-dropdown" --pad 16
+```
+
+_Option B — a throwaway driver (for a true one-off you won't reuse)._ Import the helper API in a small script, run it, then delete it. `boot()` starts/reuses the dev server and returns `{ page, … }`; `cropShot()` writes `static/changelog/<version>.png`; `shutdown()` tears everything down:
+
+```ts
+// scripts/_my-shot.ts  — delete after running
+import { boot, cropShot, shutdown, applyDebugScenario } from "./changelog-shot";
+
+const h = await boot({ fakeApiKey: true });
+try {
+    await applyDebugScenario(h.page, "screenshot-full-ui");
+    await h.page.getByRole("button", { name: "Readers" }).click();
+    await h.page.waitForTimeout(500);
+    await cropShot(h.page, { version: "0.21", crop: "#ai-sidebar", pad: 20 });
+} finally {
+    await shutdown(h);
+}
+```
+
+```bash
+bun scripts/_my-shot.ts   # then: rm scripts/_my-shot.ts
+```
+
+Either way, the crop selector should target the smallest element that frames the feature cleanly. When a feature has no single wrapping element (e.g. a full-screen viewer with controls pinned to the viewport edges), set a compact `viewport` in `needs` and capture without `--crop` instead — that's what the `authorship-playback` scene does.
+
 ## Recognition
 
 Contributors are recognized through:
