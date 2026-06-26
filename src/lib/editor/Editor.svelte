@@ -788,11 +788,9 @@ async function handleDeleteOrphan(draftId: string) {
                 // at it (reversing the orphan rewrite).
                 await restoreDraft(draftId).catch(console.error);
                 for (const r of rewrites) {
-                    await reparentDraft(
-                        r.draftId,
-                        r.oldParentDraftId,
-                        r.oldBranchedFrom,
-                    ).catch(console.error);
+                    await reparentDraft(r.draftId, r.oldParentDraftId, r.oldBranchedFrom).catch(
+                        console.error,
+                    );
                 }
                 await refreshDraftsAndCurrentLock();
                 posthog.capture("draft_restored");
