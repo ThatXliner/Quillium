@@ -27,6 +27,7 @@
     "bump:major": "bash scripts/bump.sh major",
     "screenshots": "bun scripts/screenshots.ts",
     "screenshots:no-server": "bun scripts/screenshots.ts --no-server",
+    "changelog:shot": "bun scripts/changelog-shot.ts",
     "icons": "bun scripts/icons.ts"
   },
   "license": "MIT",
