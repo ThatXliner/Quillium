@@ -63,4 +63,27 @@ describe("richMarkdownExtension", () => {
             expect(heading?.textContent, `h${level} text`).toBe("Title");
         }
     });
+
+    it("renders a thematic break as a rule and hides its markers when the cursor is away", () => {
+        const editor = createView("Above\n\n---\n\nBelow", EditorSelection.cursor(0));
+        const rule = editor.dom.querySelector(".cm-rich-markdown-horizontal-rule");
+
+        expect(rule).not.toBeNull();
+        expect(rule?.textContent).toBe("");
+        expect(editor.dom.textContent).not.toContain("---");
+    });
+
+    it.each(["---", "***", "___"])("renders the %s thematic break syntax", (syntax) => {
+        const editor = createView(`Above\n\n${syntax}\n\nBelow`, EditorSelection.cursor(0));
+
+        expect(editor.dom.querySelector(".cm-rich-markdown-horizontal-rule")).not.toBeNull();
+    });
+
+    it("reveals the raw markers and drops the rule styling when the cursor is on the line", () => {
+        // Cursor sits inside the `---` line (offset 8 of "Above\n\n---\n\nBelow").
+        const editor = createView("Above\n\n---\n\nBelow", EditorSelection.cursor(8));
+
+        expect(editor.dom.querySelector(".cm-rich-markdown-horizontal-rule")).toBeNull();
+        expect(editor.dom.textContent).toContain("---");
+    });
 });
