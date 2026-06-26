@@ -147,7 +147,15 @@ pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMet
         &tx,
         doc_id,
         "tab_created",
-        &json!({ "tabId": tab_id, "label": label }),
+        // `rootDraftId` + `position` let the version-history replay reconstruct
+        // the tab (and its auto-created "main" draft) at any past point without
+        // consulting the live `drafts`/`tabs` rows.
+        &json!({
+            "tabId": tab_id,
+            "label": label,
+            "rootDraftId": draft_id,
+            "position": position,
+        }),
     )?;
     tx.commit()?;
     Ok(TabMeta {
@@ -237,8 +245,10 @@ pub fn restore_tab(conn: &Connection, tab_id: &str) -> Result<()> {
 
 /// Persists a new tab order. `ordered_ids` is the full list of the
 /// document's live tabs in their new left-to-right order; each tab's
-/// `position` is rewritten to its index. Reordering is purely cosmetic, so
-/// it isn't logged to the doc-event audit trail.
+/// `position` is rewritten to its index. The new order is logged to the
+/// doc-event audit trail so the version-history replay can reconstruct
+/// historical tab order (the `position` column alone only reflects the
+/// latest order).
 pub fn reorder_tabs(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     for (position, tab_id) in ordered_ids.iter().enumerate() {
@@ -249,6 +259,12 @@ pub fn reorder_tabs(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> 
             params![position as i64, tab_id, doc_id],
         )?;
     }
+    log_doc_event(
+        &tx,
+        doc_id,
+        "tabs_reordered",
+        &json!({ "order": ordered_ids }),
+    )?;
     tx.commit()?;
     Ok(())
 }
