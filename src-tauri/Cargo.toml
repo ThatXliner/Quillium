@@ -14,6 +14,11 @@ edition = "2021"
 name = "quillium_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# `mcp-bridge` pulls in the dev-only automation plugin. Off by default so
+# production `tauri build` never compiles it; `bun run tauri:dev:mcp` turns it on.
+mcp-bridge = ["dep:tauri-plugin-mcp-bridge"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -31,6 +36,14 @@ sqlite-vec = "0.1.9"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"
+
+# Dev-only automation bridge for the Tauri MCP server (live DOM/style/screenshot
+# inspection from Claude Code). Optional + behind the `mcp-bridge` feature so it is
+# NOT compiled into production: `tauri build` runs without the feature → the crate
+# is absent from the release dependency tree. The registration in lib.rs is also
+# gated on `debug_assertions` as a second safety net. Enabled only via `bun run
+# tauri:dev:mcp` (which passes `--features mcp-bridge`).
+tauri-plugin-mcp-bridge = { version = "0.11", optional = true }
 
 # PDF export. printpdf's default features pull in the azul-layout HTML engine
 # (→ kuchiki, html5ever, rand 0.7), which does NOT compile for iOS and drags in

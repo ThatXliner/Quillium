@@ -81,13 +81,22 @@ async function aiSuggestion() {
 }
 </script>
 
+<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+     inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
+     corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
+     + box-shadow squares the shadow at the corners; splitting avoids it while still
+     clipping the blur. -->
 <div
-    class="border shadow-lg overflow-hidden transition-all duration-200
-        {isActive
-            ? 'bg-blue-50/90 border-blue-200/60 shadow-xl rounded-[14px]'
-            : 'bg-blue-50/60 border-blue-200/40 rounded-[12px] opacity-90 hover:opacity-100'}"
-    style="backdrop-filter: blur(12px);"
+    class="transition-all duration-200
+        {isActive ? 'shadow-xl rounded-[14px]' : 'shadow-lg rounded-[12px] opacity-90 hover:opacity-100'}"
 >
+  <div
+      class="border overflow-hidden
+          {isActive
+              ? 'bg-blue-50/90 border-blue-200/60 rounded-[14px]'
+              : 'bg-blue-50/60 border-blue-200/40 rounded-[12px]'}"
+      style="backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);"
+  >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-0">
         <h3 class="text-[10px] font-semibold text-blue-600/70 uppercase tracking-wider">Comment</h3>
@@ -157,4 +166,5 @@ async function aiSuggestion() {
             accentClass="text-blue-600/80 hover:text-blue-700"
         />
     </div>
+  </div>
 </div>

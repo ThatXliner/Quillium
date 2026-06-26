@@ -13,6 +13,7 @@
     "tauri": "tauri",
     "dev:ios": "tauri ios dev",
     "tauri:dev2": "QUILLIUM_DEV_PORT=1422 tauri dev --config src-tauri/tauri.dev2.toml",
+    "tauri:dev:mcp": "tauri dev -- --features mcp-bridge",
     "tauri:mas": "VITE_MAS=true tauri build --bundles app --target universal-apple-darwin -- --no-default-features --features mas",
     "test": "vitest",
     "test:run": "vitest run",

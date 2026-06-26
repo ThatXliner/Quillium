@@ -1145,11 +1145,13 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
                       title="Jump to revision"
                       transition:scale={{ start: 0.8, duration: 120, opacity: 0 }}
                     >
-                      {#if revisionDirection === "above"}
-                        <ChevronUp size={14} />
-                      {:else}
-                        <ChevronDown size={14} />
-                      {/if}
+                      <span class="context-jump-btn-inner">
+                        {#if revisionDirection === "above"}
+                          <ChevronUp size={14} />
+                        {:else}
+                          <ChevronDown size={14} />
+                        {/if}
+                      </span>
                     </button>
                   {/if}
                 </div>
@@ -1377,10 +1379,22 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     box-shadow: inset 0 0 0 1px rgba(88, 28, 135, 0.35);
   }
 
+  /* Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+     inner carries backdrop-blur + radius + overflow-hidden + bg/border (clips the blur
+     to the corner). In WebKit a single element with backdrop-filter + radius +
+     overflow-hidden + box-shadow squares the shadow at the corners; splitting avoids it
+     while still clipping the blur. */
   .context-jump-btn {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
+    border-radius: 99px;
+    box-shadow: 0 2px 8px rgba(109, 40, 217, 0.12);
+    cursor: pointer;
+    z-index: 2;
+  }
+
+  .context-jump-btn-inner {
     display: flex;
     align-items: center;
     gap: 3px;
@@ -1393,13 +1407,12 @@ function dispatchUpdateThread(newThreadValue: ThreadType) {
     -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(167, 139, 250, 0.35);
     border-radius: 99px;
-    box-shadow: 0 2px 8px rgba(109, 40, 217, 0.12);
-    cursor: pointer;
+    /* overflow:hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+    overflow: hidden;
     transition: background 0.15s, color 0.15s;
-    z-index: 2;
   }
 
-  .context-jump-btn:hover {
+  .context-jump-btn:hover .context-jump-btn-inner {
     background: rgba(237, 233, 254, 0.95);
     color: rgba(109, 40, 217, 1);
   }

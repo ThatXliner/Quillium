@@ -508,7 +508,7 @@ function fontLabel(fonts: FontOption[], value: string) {
                     <span class="text-[11px] text-black/30 font-medium leading-none">{typeof __APP_VERSION__ === "string" ? `v${__APP_VERSION__}` : "dev"}</span>
                 </div>
                 <div class="settings-tab-track" bind:this={tabTrackEl} style={tabPillStyle}>
-                    <div class="settings-tab-pill"></div>
+                    <div class="settings-tab-pill"><div class="settings-tab-pill-inner"></div></div>
                     <button
                         onclick={() => activeTab = "basic"}
                         class="settings-tab-btn outline-none {activeTab === 'basic' ? 'settings-tab-btn-active' : ''}"
@@ -1668,21 +1668,37 @@ function fontLabel(fonts: FontOption[], value: string) {
         border-radius: 999px;
         padding: 3px;
         backdrop-filter: blur(8px);
+        /* overflow-hidden clips the backdrop-blur to the rounded corner — WebKit won't otherwise */
+        overflow: hidden;
         box-shadow: inset 0 1px 3px rgba(0,0,0,0.08);
     }
 
+    /* Two layers: outer carries the drop shadow + radius (no overflow → shadow stays
+       rounded); inner carries backdrop-blur + radius + overflow-hidden (clips the blur
+       to the corner). In WebKit a single element with backdrop-filter + radius +
+       overflow-hidden + box-shadow squares the shadow at the corners; splitting avoids
+       it while still clipping the blur. */
     .settings-tab-pill {
         position: absolute;
         top: 3px;
         left: 3px;
         height: calc(100% - 6px);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(8px);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12);
         transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
         width: var(--tab-pill-width, 72px);
         transform: translateX(var(--tab-pill-x, 0px));
+    }
+
+    .settings-tab-pill-inner {
+        width: 100%;
+        height: 100%;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(8px);
+        /* overflow-hidden clips the backdrop-blur to the rounded corner — WebKit won't otherwise */
+        overflow: hidden;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
     }
 
     .settings-tab-btn {

@@ -384,7 +384,7 @@ function cancelRename() {
                 style={isDragged ? `transform: translateX(${dragDx}px); z-index: 30;` : ""}
                 class="
                     group relative flex items-center gap-1.5 px-3 text-sm cursor-pointer
-                    min-w-[7.5rem] shrink rounded-t-lg transition-colors duration-100
+                    min-w-[7.5rem] shrink rounded-t-lg overflow-hidden transition-colors duration-100
                     {isDragged ? '!transition-none cursor-grabbing shadow-[0_-1px_8px_rgba(0,0,0,0.12)]' : ''}
                     {isActive
                         ? 'py-1.5 bg-white text-black/90 font-semibold z-10 cursor-default'

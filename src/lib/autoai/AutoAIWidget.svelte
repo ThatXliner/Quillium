@@ -546,6 +546,8 @@ const annotationPills = [
             inset 0 -1px 0 rgba(0,0,0,0.04),
             0 1px 3px rgba(0,0,0,0.08);
         backdrop-filter: blur(4px);
+        /* overflow:hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+        overflow: hidden;
     }
     .review-btn:hover {
         background: rgba(253, 230, 138, 0.8);

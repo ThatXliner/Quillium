@@ -529,10 +529,20 @@ onDestroy(() => {
         {/if}
 
         {#if sectionPickerOpen}
+            <!--
+                Two layers on purpose. The OUTER wrapper carries the shadow + radius but NO
+                overflow clip; the INNER carries the backdrop-blur + radius + overflow-hidden.
+                In WebKit (Tauri) backdrop-filter + radius leaks a square blur halo unless
+                overflow:hidden, but overflow:hidden + box-shadow squares the shadow. Splitting
+                fixes both: shadow stays rounded (outer) and blur is clipped to radius (inner).
+            -->
             <div
-                class="absolute pointer-events-auto top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] backdrop-blur-md bg-gray-300/85 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-4"
+                class="absolute pointer-events-auto top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] shadow-xl rounded-2xl"
                 role="document"
             >
+              <div
+                class="overflow-hidden backdrop-blur-md bg-gray-300/85 border border-white/40 rounded-2xl p-5 flex flex-col gap-4"
+              >
                 <div>
                     <h3 class="text-sm font-semibold text-black/80 mb-1">Choose Tutorial Sections</h3>
                     <p class="text-xs text-black/60 leading-relaxed">Core editor basics are always included. Toggle optional sections below.</p>
@@ -595,11 +605,20 @@ onDestroy(() => {
                         Start tour
                     </button>
                 </div>
+              </div>
             </div>
         {:else if step && !useInlineModalGuide}
+            <!--
+                Two layers on purpose. The OUTER wrapper carries the shadow + radius (and the
+                bind:this + positioning style used for measurement/placement) but NO overflow
+                clip; the INNER carries the backdrop-blur + radius + overflow-hidden. In WebKit
+                (Tauri) backdrop-filter + radius leaks a square blur halo unless overflow:hidden,
+                but overflow:hidden + box-shadow squares the shadow. Splitting fixes both: shadow
+                stays rounded (outer) and blur is clipped to radius (inner).
+            -->
             <div
                 bind:this={tooltipEl}
-                class="absolute pointer-events-auto backdrop-blur-md bg-gray-300/90 border border-white/40 shadow-xl rounded-2xl p-5 flex flex-col gap-3
+                class="absolute pointer-events-auto shadow-xl rounded-2xl
                     {step.showShortcuts ? 'w-[420px]' : 'w-[320px]'}"
                 style="
                     top: {tooltipPos.top}px;
@@ -608,6 +627,9 @@ onDestroy(() => {
                 "
                 role="document"
             >
+              <div
+                class="overflow-hidden backdrop-blur-md bg-gray-300/90 border border-white/40 rounded-2xl p-5 flex flex-col gap-3"
+              >
                 <div class="flex items-center justify-between">
                     <div class="flex gap-1">
                         {#each activeSteps as _, i}
@@ -695,6 +717,7 @@ onDestroy(() => {
                         </button>
                     </div>
                 </div>
+              </div>
             </div>
         {/if}
     </div>

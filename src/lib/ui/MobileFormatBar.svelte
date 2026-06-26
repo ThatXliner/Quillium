@@ -294,6 +294,8 @@ const FORMATS: { format: MarkdownFormat; title: string; icon: typeof BoldIcon }[
         border-radius: 0.875rem;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
         background: rgba(255, 255, 255, 0.92);
+        /* clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+        overflow: hidden;
     }
 
     .spacer {

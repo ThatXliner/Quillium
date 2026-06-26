@@ -5,8 +5,8 @@
       - onclose: () => void
 -->
 <script lang="ts">
-import { X } from "lucide-svelte";
 import { FEEDBACK_FORM_URL } from "$lib/constants";
+import { X } from "lucide-svelte";
 import { FONTS } from "./fonts";
 
 const { onclose, tab = "doc" }: { onclose: () => void; tab?: "doc" | "ui" } = $props();
@@ -256,6 +256,8 @@ $effect(() => {
         border-radius: 999px;
         padding: 3px;
         backdrop-filter: blur(8px);
+        /* overflow:hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+        overflow: hidden;
         box-shadow: inset 0 1px 3px rgba(0,0,0,0.08);
     }
 
@@ -267,6 +269,8 @@ $effect(() => {
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.7);
         backdrop-filter: blur(8px);
+        /* overflow:hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+        overflow: hidden;
         box-shadow: 0 1px 3px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
         transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
         /* width/transform set dynamically via JS — fallback width */
@@ -310,6 +314,8 @@ $effect(() => {
         border-radius: 999px;
         padding: 3px;
         backdrop-filter: blur(8px);
+        /* overflow:hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+        overflow: hidden;
         box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
     }
 
@@ -321,6 +327,8 @@ $effect(() => {
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.72);
         backdrop-filter: blur(8px);
+        /* overflow:hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+        overflow: hidden;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9);
         transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
         width: var(--category-pill-width, 44px);

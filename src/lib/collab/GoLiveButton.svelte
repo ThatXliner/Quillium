@@ -8,8 +8,35 @@
     Per D-70: Updated for Yjs migration.
 -->
 <script lang="ts">
-import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
+import { getSession, getUser, isAuthenticated } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
+import {
+    MAX_RECONNECT_ATTEMPTS,
+    collabState,
+    disableCollab,
+    enableCollab,
+    ownerLeftSignal,
+    reconnectAttempt,
+    registerDocumentForCollab,
+    relayConfigured,
+    restoreJoinerPriorView,
+} from "$lib/collab";
+import {
+    type ReadonlyShare,
+    buildReadonlyShareUrl,
+    buildSharePreviewText,
+    disableReadonlyShare,
+    getReadonlyShare,
+    publishReadonlyShare,
+    readonlyShareState,
+} from "$lib/collab/share";
+import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
+import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
+import { OMNI_WAITLIST_URL } from "$lib/constants";
+import { createNamedSnapshot } from "$lib/db";
+import { savedFields } from "$lib/editor/extensions";
+import { annotationField } from "$lib/editor/plugins/annotations";
+import posthog from "$lib/posthog";
 import {
     annotations,
     currentDocumentId,
@@ -19,34 +46,6 @@ import {
     editorView,
     lastPersistedEventId,
 } from "$lib/stores";
-import { createNamedSnapshot } from "$lib/db";
-import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
-import { savedFields } from "$lib/editor/extensions";
-import { annotationField } from "$lib/editor/plugins/annotations";
-import { OMNI_WAITLIST_URL } from "$lib/constants";
-import {
-    buildSharePreviewText,
-    buildReadonlyShareUrl,
-    disableReadonlyShare,
-    getReadonlyShare,
-    publishReadonlyShare,
-    readonlyShareState,
-    type ReadonlyShare,
-} from "$lib/collab/share";
-import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
-import {
-    enableCollab,
-    disableCollab,
-    restoreJoinerPriorView,
-    relayConfigured,
-    registerDocumentForCollab,
-    ownerLeftSignal,
-    collabState,
-    reconnectAttempt,
-    MAX_RECONNECT_ATTEMPTS,
-} from "$lib/collab";
-import { get } from "svelte/store";
-import { toast } from "svelte-sonner";
 import {
     ArrowLeftRight,
     Cloud,
@@ -60,7 +59,8 @@ import {
     Share2,
     X,
 } from "lucide-svelte";
-import posthog from "$lib/posthog";
+import { toast } from "svelte-sonner";
+import { get } from "svelte/store";
 
 const { onauthclick }: { onauthclick?: () => void } = $props();
 
@@ -470,25 +470,40 @@ async function handleToggle() {
 
 {#if canShowShare}
     <div class="group relative flex flex-col items-end gap-2">
-        <button
-            onclick={() => (modalOpen = true)}
-            class="relative inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-md transition-colors
-                {isLive
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
-            aria-haspopup="dialog"
-            aria-label={shareNeedsUpdate ? "Share, public link has unpublished changes" : "Share"}
-        >
-            <Share2 size={14} />
-            Share
+        <div class="relative">
+            <!-- Split into two layers: WebKit renders a square drop-shadow when backdrop-filter
+                 and overflow-hidden share an element. OUTER keeps the shadow + radius (no
+                 backdrop-filter, no overflow-hidden) so the shadow stays rounded; INNER carries the
+                 backdrop-blur + same radius + overflow-hidden + background so the blur is clipped. -->
+            <button
+                onclick={() => (modalOpen = true)}
+                class="relative inline-flex rounded-full text-xs font-semibold shadow-md transition-colors"
+                aria-haspopup="dialog"
+                aria-label={shareNeedsUpdate
+                    ? "Share, public link has unpublished changes"
+                    : "Share"}
+            >
+                <span
+                    class="inline-flex items-center gap-2 overflow-hidden rounded-full px-4 py-2
+                        {isLive
+                            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                            : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
+                >
+                    <Share2 size={14} />
+                    Share
+                </span>
+            </button>
 
+            <!-- Badge is a sibling, not a button child: overflow-hidden on the button (needed to
+                 clip backdrop-blur to the rounded corner in WebKit) would otherwise clip this
+                 negatively-offset dot and its outer ring shadow. -->
             {#if shareNeedsUpdate}
                 <span
-                    class="absolute -right-[3px] -top-[3px] size-2.5 rounded-full bg-blue-600 shadow-[0_0_0_3px_rgba(255,255,255,0.92),0_4px_10px_rgba(59,130,246,0.2)]"
+                    class="pointer-events-none absolute -right-[3px] -top-[3px] size-2.5 rounded-full bg-blue-600 shadow-[0_0_0_3px_rgba(255,255,255,0.92),0_4px_10px_rgba(59,130,246,0.2)]"
                     aria-hidden="true"
                 ></span>
             {/if}
-        </button>
+        </div>
 
         {#if shareNeedsUpdate}
             <button

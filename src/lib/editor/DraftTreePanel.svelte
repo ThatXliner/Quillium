@@ -73,10 +73,13 @@ function commitRename(draftId: string) {
 }
 </script>
 
-<div
-    class="w-52 rounded-lg bg-white/45 backdrop-blur-sm shadow-md py-2 px-1.5 select-none"
-    aria-label="Draft tree"
->
+<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+     inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
+     corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
+     + box-shadow squares the shadow at the corners; splitting avoids it while still
+     clipping the blur. -->
+<div class="w-52 rounded-lg shadow-md" aria-label="Draft tree">
+<div class="overflow-hidden rounded-lg bg-white/45 backdrop-blur-sm py-2 px-1.5 select-none">
     <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-black/35">
         <GitBranchIcon size={12} />
         <span>Drafts</span>
@@ -226,4 +229,5 @@ function commitRename(draftId: string) {
             </div>
         </div>
     {/each}
+</div>
 </div>
