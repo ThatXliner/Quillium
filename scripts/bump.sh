@@ -73,7 +73,7 @@ Check src/lib/changelog.json — if there is no entry for \"$MINOR_KEY\", add on
 To decide what to write:
 1. Run: git log v${CURRENT}..HEAD --oneline  (if the tag exists, otherwise just use recent commits)
 2. Read the changelog guidelines in CONTRIBUTING.md (search for 'Writing Changelog Entries').
-3. Write the entry following those guidelines exactly: conversational prose, bold keywords, no bullets, no mentions of AI features, 2-5 short paragraphs.
+3. Write the entry following those guidelines exactly: conversational prose, bold keywords, no bullets, no mentions of AI features, short paragraphs. The text should be clear, concise, and coherent.
 4. Set the date field to $(date -u +%Y-%m-%d).
 
 If an entry for \"$MINOR_KEY\" already exists, say so and do nothing." || echo "WARNING: claude exited non-zero — verifying changelog below."

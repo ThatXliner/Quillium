@@ -1,7 +1,7 @@
 {
   "0.20": {
     "date": "2026-06-26",
-    "content": "Quillium can now show **how a document was written**, not just what it ended up saying. As you work, the app quietly keeps track of where each change came from — the words you **typed** yourself versus the passages you **pasted** in from elsewhere — building an honest record of your writing process.\n\nFrom that record you can generate an **authorship report**: how long you actively spent writing, the sessions you wrote across, and a log of everything that was pasted in and how large it was. Useful when a student, applicant, or writer needs to show that the work genuinely came from them. This is reachable from the status bar or the View menu. It **replays your draft coming together step by step** in a read-only editor, color-coded by where each edit originated, with a scrubber and play, pause, and speed controls so you can watch the whole thing unfold or jump to any moment."
+    "content": "Quillium now tracks **how a document was written**, not just what it says — distinguishing the words you **typed** from the passages you **pasted** in. Useful when a student, applicant, or writer needs to show the work is genuinely theirs.\n\nOpen it from the status bar or View menu to **replay your draft coming together step by step**, color-coded by where each edit came from, with a scrubber and play/pause/speed controls."
   },
   "0.19": {
     "date": "June 2026",
