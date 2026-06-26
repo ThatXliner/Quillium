@@ -97,4 +97,17 @@ function dismiss() {
     .changelog-content :global(a:hover) {
         color: #2563eb;
     }
+    /* Feature images embedded via markdown (![alt](/changelog/<version>.png)).
+       Rendered as a card inset within the body padding — rounded corners and a
+       subtle border. Capture them with `bun run changelog:shot` — see
+       CONTRIBUTING.md. */
+    .changelog-content :global(img) {
+        display: block;
+        width: 100%;
+        height: auto;
+        margin: 6px 0 20px 0;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: #f5f5f0;
+    }
 </style>
