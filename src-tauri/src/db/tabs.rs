@@ -669,15 +669,11 @@ pub fn restore_content_nondestructive(
 /// live iteration (the run's editable tip). Mirrors `relock_run`'s walk.
 fn run_tip(conn: &Connection, member: &str) -> Result<String> {
     let head = run_head(conn, member)?;
-    let mut tip = head.clone();
-    let mut tip_created: i64 = conn
-        .query_row(
-            "SELECT created_at FROM drafts WHERE id = ?1",
-            params![head],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-    let mut current = Some(head);
+    // Track only LIVE drafts: a fully soft-deleted run must not return a dead
+    // draft as the tip (callers attach a new iteration off it). `tip` stays the
+    // newest live draft seen; if none are live we fall back to the head.
+    let mut tip: Option<(String, i64)> = None;
+    let mut current = Some(head.clone());
     while let Some(id) = current {
         if let Some(created_at) = conn
             .query_row(
@@ -687,9 +683,8 @@ fn run_tip(conn: &Connection, member: &str) -> Result<String> {
             )
             .optional()?
         {
-            if created_at >= tip_created {
-                tip = id.clone();
-                tip_created = created_at;
+            if tip.as_ref().is_none_or(|(_, c)| created_at >= *c) {
+                tip = Some((id.clone(), created_at));
             }
         }
         current = conn
@@ -701,7 +696,7 @@ fn run_tip(conn: &Connection, member: &str) -> Result<String> {
             )
             .optional()?;
     }
-    Ok(tip)
+    Ok(tip.map(|(id, _)| id).unwrap_or(head))
 }
 
 /// Refuses if `tab_id` is set and the tab would be left with fewer than
@@ -1160,15 +1155,22 @@ pub fn restore_structure_to(conn: &Connection, doc_id: &str, as_of_ms: i64) -> R
 
     // 1. Drafts first (deleting a draft can't empty a tab we're about to fix).
     //    Restore those that should be live; soft-delete those that shouldn't.
+    //    A cascade deletes a whole subtree at once, so later rows in this loop
+    //    may already be gone; track them to avoid re-deleting (which would
+    //    double-log a `draft_deleted` and could spuriously trip the
+    //    tab-not-emptied guard against a stale live count).
+    let mut just_deleted: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (id, is_deleted, _, created_at) in &live_drafts {
         match should_be_live(*created_at, target_drafts.get(id)) {
             Some(true) if *is_deleted => {
                 let _ = restore_draft(conn, id);
             }
-            Some(false) if !*is_deleted => {
+            Some(false) if !*is_deleted && !just_deleted.contains(id) => {
                 // cascade so the whole not-yet-created subtree goes together;
                 // skip on refusal (would empty its tab — leave it live).
-                let _ = cascade_delete_draft(conn, id);
+                if let Ok(ids) = cascade_delete_draft(conn, id) {
+                    just_deleted.extend(ids);
+                }
             }
             _ => {}
         }

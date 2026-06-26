@@ -2,17 +2,17 @@
     TimelinePanel.svelte — The document-wide history timeline (right rail).
 
     One linear, chronological stream interleaving content snapshots (across every
-    draft) with structural events, grouped by date. Snapshot rows are selectable
-    coordinates (and label-editable); activity rows describe a structural change
-    and offer a one-tap restore when their target is currently deleted.
+    draft) with structural events, grouped by date. Both snapshot and activity
+    rows are selectable coordinates; snapshot rows are additionally label-
+    editable. There is exactly one restore path — the parent's top-bar "Restore
+    to here" CTA acting on the selected coordinate — so rows carry no inline
+    restore action.
 
     Props:
       groups          — date-grouped TimelineItem[] (from timeline.ts)
       selectedId      — id of the selected TimelineItem, or null
-      deletion        — Map "kind:id" → currently-deleted, for restore handles
       onselect        — (item) select a coordinate
       onlabel         — (snapshotId, label) commit a snapshot label
-      onstructuralrestore — (kind, id) un-delete a tab/draft from its row
 -->
 <script lang="ts">
 import { PencilIcon } from "lucide-svelte";

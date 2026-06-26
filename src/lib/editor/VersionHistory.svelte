@@ -236,6 +236,21 @@ async function loadContent() {
     }
 }
 
+/**
+ * After the timeline reloads (e.g. a prune dropped snapshots), make sure the
+ * selection still points at a real item: keep it if it survives, otherwise
+ * re-select the newest item, or clear the preview when the timeline is empty.
+ */
+async function reconcileSelection() {
+    if (selectedItem && timelineItems.some((it) => it.id === selectedItem?.id)) return;
+    if (timelineItems.length > 0) {
+        await selectItem(timelineItems[0]);
+    } else {
+        selectedItem = null;
+        await loadContent();
+    }
+}
+
 async function handleRestore() {
     if (!selectedItem) return;
     if (!confirmingRestore) {
@@ -302,6 +317,7 @@ async function handlePruneKeepN() {
         pruneResult = await pruneSnapshotsKeepLastN(draftId, pruneKeepN);
         confirmingPruneKeepN = false;
         await loadTimeline();
+        await reconcileSelection();
         await refreshStorageSize();
     } finally {
         pruning = false;
@@ -322,6 +338,7 @@ async function handlePruneOlderThan() {
         pruneResult = await pruneSnapshotsOlderThan(draftId, pruneOlderThanDays);
         confirmingPruneOlderThan = false;
         await loadTimeline();
+        await reconcileSelection();
         await refreshStorageSize();
     } finally {
         pruning = false;

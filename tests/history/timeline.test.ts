@@ -2,6 +2,7 @@ import type { DocEventRecord, DocumentSnapshotMeta, DraftMeta, TabMeta } from "$
 import {
     buildTimelineItems,
     describeDocEvent,
+    headingForDate,
     reconstructStructureAsOf,
     resolveTabContentAt,
 } from "$lib/editor/history/timeline";
@@ -71,6 +72,13 @@ describe("buildTimelineItems", () => {
         );
         expect(a.map((i) => i.id)).toEqual(b.map((i) => i.id));
     });
+
+    it("breaks same-kind ties by numeric id, not lexically", () => {
+        // Same timestamp: id 10 must sort ABOVE id 2 (newest-first by id), which
+        // a lexical "snapshot:10" < "snapshot:2" compare would get backwards.
+        const items = buildTimelineItems([snapshot(2, "d", 100), snapshot(10, "d", 100)], []);
+        expect(items.map((i) => i.id)).toEqual(["snapshot:10", "snapshot:2"]);
+    });
 });
 
 // ── describeDocEvent (real backend event types) ─────────────────────
@@ -139,6 +147,20 @@ describe("reconstructStructureAsOf", () => {
         expect(after.tabs.find((x) => x.id === "tab1")!.label).toBe("Renamed");
     });
 
+    it("rewinds tab order across a tabs_reordered event", () => {
+        const evs = [...events, docEvent(4, "tabs_reordered", { order: ["tab2", "tab1"] }, 400)];
+        // Before the reorder: creation order (tab1, tab2).
+        expect(reconstructStructureAsOf(tabs, drafts, evs, 350).tabs.map((x) => x.id)).toEqual([
+            "tab1",
+            "tab2",
+        ]);
+        // After: the reordered order (tab2, tab1).
+        expect(reconstructStructureAsOf(tabs, drafts, evs, 450).tabs.map((x) => x.id)).toEqual([
+            "tab2",
+            "tab1",
+        ]);
+    });
+
     it("treats a deleted-then-not-restored draft as gone at T", () => {
         const evs = [...events, docEvent(4, "draft_deleted", { draftId: "d2" }, 400)];
         const { drafts: d } = reconstructStructureAsOf(tabs, drafts, evs, 450);
@@ -194,5 +216,22 @@ describe("resolveTabContentAt", () => {
         const ref = resolveTabContentAt(snaps, drafts, "tabB", 150);
         expect(ref.current).toBeNull();
         expect(ref.draftId).toBeNull();
+    });
+});
+
+// ── headingForDate (calendar days, not elapsed ms) ──────────────────
+
+describe("headingForDate", () => {
+    it("labels an entry from late last night as Yesterday at 12:30am, not Today", () => {
+        const now = new Date(2026, 5, 26, 0, 30).getTime(); // Jun 26, 12:30am
+        const lastNight = new Date(2026, 5, 25, 23, 30).getTime(); // Jun 25, 11:30pm
+        // Only ~1h elapsed, but it's the previous calendar day.
+        expect(headingForDate(lastNight, now)).toBe("Yesterday");
+    });
+
+    it("labels an entry from earlier the same calendar day as Today", () => {
+        const now = new Date(2026, 5, 26, 23, 0).getTime(); // Jun 26, 11pm
+        const morning = new Date(2026, 5, 26, 1, 0).getTime(); // Jun 26, 1am
+        expect(headingForDate(morning, now)).toBe("Today");
     });
 });

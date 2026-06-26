@@ -51,7 +51,17 @@ export function buildTimelineItems(
             event,
         })),
     ];
-    return items.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+    // Newest first. Ties break deterministically: same-kind items by their
+    // numeric id (NOT lexically — "snapshot:10" must sort after "snapshot:2"),
+    // and snapshot-vs-activity ties by kind so the order is always stable.
+    const numericId = (item: TimelineItem) =>
+        item.kind === "snapshot" ? item.snapshot.id : item.event.id;
+    return items.sort(
+        (a, b) =>
+            b.createdAt - a.createdAt ||
+            a.kind.localeCompare(b.kind) ||
+            numericId(b) - numericId(a),
+    );
 }
 
 // ── Structural event descriptions ───────────────────────────────────
@@ -181,6 +191,10 @@ export function reconstructStructureAsOf(
     const tabLabel = new Map<string, string>();
     const draftDeleted = new Map<string, boolean>();
     const draftLabel = new Map<string, string>();
+    // Historical tab order at `t`, mirroring the Rust `reconstruct_structure`:
+    // `tab_created` appends, `tabs_reordered` replaces the whole order. Empty
+    // when no order was ever logged (legacy) → fall back to the live order.
+    let tabOrder: string[] = [];
 
     for (const ev of events) {
         let p: Record<string, unknown> = {};
@@ -198,11 +212,18 @@ export function reconstructStructureAsOf(
                 if (tabId) {
                     tabDeleted.set(tabId, false);
                     if (label) tabLabel.set(tabId, label);
+                    if (!tabOrder.includes(tabId)) tabOrder.push(tabId);
                     const root = str("rootDraftId");
                     if (root) {
                         draftDeleted.set(root, false);
                         draftLabel.set(root, "main");
                     }
+                }
+                break;
+            }
+            case "tabs_reordered": {
+                if (Array.isArray(p.order)) {
+                    tabOrder = p.order.filter((id): id is string => typeof id === "string");
                 }
                 break;
             }
@@ -242,9 +263,22 @@ export function reconstructStructureAsOf(
         }
     }
 
-    const tabs = allTabs
+    const liveTabs = allTabs
         .filter((tab) => tab.createdAt <= t && !(tabDeleted.get(tab.id) ?? false))
         .map((tab) => ({ ...tab, label: tabLabel.get(tab.id) ?? tab.label }));
+
+    // Reorder to the historical order at `t`. A tab missing from `tabOrder`
+    // (legacy / no logged order) sorts after the ordered ones, keeping its live
+    // relative position — a stable sort on the order index, with absent ids at
+    // the end. With no order ever logged, this is a no-op (live order kept).
+    const orderIndex = (id: string) => {
+        const i = tabOrder.indexOf(id);
+        return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    const tabs = liveTabs
+        .map((tab, i) => ({ tab, i }))
+        .sort((a, b) => orderIndex(a.tab.id) - orderIndex(b.tab.id) || a.i - b.i)
+        .map(({ tab }) => tab);
 
     const drafts = allDrafts
         .filter((d) => d.createdAt <= t && !(draftDeleted.get(d.id) ?? false))
@@ -274,7 +308,10 @@ export function groupByDate(items: TimelineItem[], now: number): TimelineGroup[]
 export function headingForDate(ms: number, now: number): string {
     const d = new Date(ms);
     const nowDate = new Date(now);
-    const diffDays = Math.floor((nowDate.getTime() - d.getTime()) / 86400000);
+    // Count CALENDAR days between the two local midnights, not elapsed time —
+    // otherwise an entry from 11pm last night reads as "Today" at 12:30am.
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diffDays = Math.round((startOfDay(nowDate) - startOfDay(d)) / 86400000);
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: "long" });
