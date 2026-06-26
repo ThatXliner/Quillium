@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{AppendEventResult, EventRecord, SnapshotMeta};
+use super::{AppendEventResult, DocumentSnapshotMeta, EventRecord, SnapshotMeta};
 
 const SNAPSHOT_EVENT_THRESHOLD: i64 = 50;
 const SNAPSHOT_TIME_THRESHOLD_SECS: i64 = 120;
@@ -171,6 +171,36 @@ pub fn list_snapshots(conn: &Connection, draft_id: &str) -> Result<Vec<SnapshotM
             up_to_event_id: row.get(2)?,
             created_at: row.get(3)?,
             label: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Lists every snapshot across a whole document — all drafts, including
+/// soft-deleted ones (history of a since-deleted draft still belongs in the
+/// timeline). "Branch point" seed snapshots (`up_to_event_id < 0`) are
+/// internal and excluded so they never appear as bogus restore points.
+/// Newest first, matching `list_snapshots`.
+pub fn list_document_snapshots(
+    conn: &Connection,
+    doc_id: &str,
+) -> Result<Vec<DocumentSnapshotMeta>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.draft_id, d.label, d.tab_id, s.up_to_event_id, s.created_at, s.label
+         FROM snapshots s
+         JOIN drafts d ON d.id = s.draft_id
+         WHERE d.document_id = ?1 AND s.up_to_event_id >= 0
+         ORDER BY s.created_at DESC, s.id DESC",
+    )?;
+    let rows = stmt.query_map(params![doc_id], |row| {
+        Ok(DocumentSnapshotMeta {
+            id: row.get(0)?,
+            draft_id: row.get(1)?,
+            draft_label: row.get(2)?,
+            tab_id: row.get(3)?,
+            up_to_event_id: row.get(4)?,
+            created_at: row.get(5)?,
+            label: row.get(6)?,
         })
     })?;
     rows.collect()
@@ -365,5 +395,46 @@ mod tests {
         let (conn, draft_a, _draft_b) = setup();
         let events = list_draft_events(&conn, &draft_a).unwrap();
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn document_snapshots_span_drafts_exclude_seeds_and_keep_deleted() {
+        let (conn, draft_a, draft_b) = setup();
+        // Two real snapshots (one per draft) + one "Branch point" seed (-1).
+        conn.execute(
+            "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
+             VALUES (?1, 5, '{}', 100)",
+            params![draft_a],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
+             VALUES (?1, 7, '{}', 200)",
+            params![draft_b],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at, label)
+             VALUES (?1, -1, '{}', 150, 'Branch point')",
+            params![draft_a],
+        )
+        .unwrap();
+        // Soft-delete draft_b — its snapshot must still appear in history.
+        conn.execute(
+            "UPDATE drafts SET deleted_at = 999 WHERE id = ?1",
+            params![draft_b],
+        )
+        .unwrap();
+
+        let snaps = list_document_snapshots(&conn, "doc").unwrap();
+
+        // Both real snapshots, no seed (-1).
+        assert_eq!(snaps.len(), 2, "spans drafts, excludes the -1 seed");
+        assert!(snaps.iter().all(|s| s.up_to_event_id >= 0));
+        // Newest first by created_at.
+        assert_eq!(snaps[0].draft_id, draft_b);
+        assert_eq!(snaps[1].draft_id, draft_a);
+        // Snapshot of the soft-deleted draft is included.
+        assert!(snaps.iter().any(|s| s.draft_id == draft_b));
     }
 }

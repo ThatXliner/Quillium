@@ -1,3 +1,15 @@
+<!--
+    VersionHistory.svelte — Document-wide version history ("git reflog").
+
+    Orchestrates a single, linear, chronological timeline for the WHOLE document:
+    every draft's content snapshots interleaved with structural events (tab/draft
+    CRUD, iterate/branch, locks). Selecting a coordinate previews the document's
+    structure AND content as it was then; "Restore to here" non-destructively
+    rewinds the whole document to that point (later coordinates remain).
+
+    Decomposed into: TimelinePanel (the stream), PreviewPane (structure map +
+    content), and the storage-management panel kept inline below.
+-->
 <script lang="ts">
 import {
     createNamedSnapshot,
@@ -5,19 +17,18 @@ import {
     getSnapshotStorageSize,
     labelSnapshot,
     listDocEvents,
+    listDocumentSnapshots,
+    listDocumentStructure,
     listDocuments,
-    listSnapshots,
     loadSnapshotState,
     pruneSnapshotsKeepLastN,
     pruneSnapshotsOlderThan,
     resolveActiveDraftId,
-    restoreDraft,
-    restoreTab,
-    restoreToSnapshot,
+    restoreToCoordinate,
     setSnapshotRetention,
 } from "$lib/db";
-import type { DocEventRecord, SnapshotMeta } from "$lib/db/types";
-import { getExtensions, savedFields } from "$lib/editor/extensions";
+import type { DocEventRecord, DocumentSnapshotMeta, DraftMeta, TabMeta } from "$lib/db/types";
+import { savedFields } from "$lib/editor/extensions";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
 import {
@@ -28,20 +39,43 @@ import {
     lastSavedAt,
 } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { ArrowLeft, BookmarkPlus, ChevronRight, Clock, Pencil, RotateCcw } from "lucide-svelte";
-import { onDestroy, onMount } from "svelte";
+import { ArrowLeft, BookmarkPlus, ChevronRight, Clock, RotateCcw } from "lucide-svelte";
+import { onMount } from "svelte";
 import { get } from "svelte/store";
+import PreviewPane from "./history/PreviewPane.svelte";
+import TimelinePanel from "./history/TimelinePanel.svelte";
+import { docTextFromStateJson } from "./history/diff";
+import {
+    type TimelineItem,
+    buildTimelineItems,
+    describeDocEvent,
+    formatTime,
+    formatTimeShort,
+    groupByDate,
+    reconstructStructureAsOf,
+    resolveTabContentAt,
+} from "./history/timeline";
 
 // ── State ───────────────────────────────────────────────────────
-let snapshots = $state<SnapshotMeta[]>([]);
+let snapshots = $state<DocumentSnapshotMeta[]>([]);
+let docEvents = $state<DocEventRecord[]>([]);
+// Full tab/draft roster incl. soft-deleted — the universe the preview map
+// rewinds over (so since-deleted nodes still render where they were alive).
+let allTabs = $state<TabMeta[]>([]);
+let allDrafts = $state<DraftMeta[]>([]);
 let loading = $state(true);
-let selectedSnapshot = $state<SnapshotMeta | null>(null);
+let selectedItem = $state<TimelineItem | null>(null);
+let confirmingRestore = $state(false);
+
+// Preview content (real read-only editor + track-changes) for the viewed tab.
+let viewedTabId = $state<string | null>(null);
 let previewLoading = $state(false);
-let confirmingRestoreId = $state<number | null>(null);
-let editingLabelId = $state<number | null>(null);
-let editingLabelText = $state("");
+let previewCurrentJson = $state<string | null>(null);
+let previewPreviousText = $state("");
+let previewHasContent = $state(false);
+// Monotonic token so a slow content load can't overwrite a newer selection.
+let previewToken = 0;
+
 let checkpointLabel = $state("");
 let savingCheckpoint = $state(false);
 let checkpointAlerting = $state(false);
@@ -49,7 +83,6 @@ let checkpointAlerting = $state(false);
 // ── Storage management ──────────────────────────────────────────
 const STORAGE_WARN_BYTES = 1_073_741_824; // 1 GB
 let storageBytes = $state<number | null>(null);
-// null = not yet loaded, undefined = disabled
 let snapshotRetention = $state<number | null | undefined>(undefined);
 let showStoragePanel = $state(false);
 let pruneKeepN = $state(50);
@@ -59,42 +92,37 @@ let pruneResult = $state<number | null>(null);
 let confirmingPruneKeepN = $state(false);
 let confirmingPruneOlderThan = $state(false);
 
-// Loaded state JSON for the selected snapshot — set async, consumed by $effect
-let previewStateJson = $state<string | null>(null);
-let previewEl = $state<HTMLDivElement | undefined>();
-let previewView: EditorView | undefined;
+// ── Derived timeline ────────────────────────────────────────────
+const timelineItems = $derived(buildTimelineItems(snapshots, docEvents));
+const groups = $derived(groupByDate(timelineItems, Date.now()));
 
-// Mount/remount the CodeMirror preview whenever the target element or
-// the loaded state JSON changes. This avoids any tick() timing dependency —
-// Svelte will re-run this effect as soon as previewEl is bound.
-$effect(() => {
-    if (!previewEl || previewLoading) return;
-
-    previewView?.destroy();
-
-    const extensions = [
-        ...getExtensions({ persist: false, history: false }),
-        EditorState.readOnly.of(true),
-    ];
-
-    let state: EditorState;
-    const json = previewStateJson;
-    if (json && json !== "{}") {
-        try {
-            state = EditorState.fromJSON(JSON.parse(json), { extensions }, savedFields);
-        } catch {
-            state = EditorState.create({ extensions });
-        }
-    } else {
-        state = EditorState.create({ extensions });
-    }
-
-    previewView = new EditorView({ state, parent: previewEl });
-
-    return () => {
-        previewView?.destroy();
-    };
+// Structure rewound to the selected coordinate's timestamp, over the full
+// roster (incl. since-deleted nodes), with labels/existence replayed to T.
+const previewStructure = $derived.by(() => {
+    if (!selectedItem) return { tabs: [], drafts: [] };
+    return reconstructStructureAsOf(allTabs, allDrafts, docEvents, selectedItem.createdAt);
 });
+
+// What the selected coordinate concerns (for the map highlight + default tab).
+const selectedTarget = $derived.by(() => {
+    if (!selectedItem) return { tabId: null as string | null, draftId: null as string | null };
+    if (selectedItem.kind === "snapshot") {
+        return { tabId: selectedItem.snapshot.tabId, draftId: selectedItem.snapshot.draftId };
+    }
+    const target = describeDocEvent(selectedItem.event).target;
+    if (!target) return { tabId: null, draftId: null };
+    return target.kind === "tab"
+        ? { tabId: target.id, draftId: null }
+        : { tabId: null, draftId: target.id };
+});
+
+// A short note shown above the content when the coordinate is a structural
+// change (the content shown is the viewed tab's state at that same moment).
+const bannerText = $derived(
+    selectedItem?.kind === "activity"
+        ? `${describeDocEvent(selectedItem.event).text} — showing document content at this point`
+        : null,
+);
 
 // ── Lifecycle ───────────────────────────────────────────────────
 
@@ -102,7 +130,7 @@ $effect(() => {
 async function bootstrapDraftId() {
     if (get(currentDraftId)) return;
     const docs = await listDocuments();
-    if (docs.length === 0) return; // No document yet — show empty state.
+    if (docs.length === 0) return;
     if (!get(currentDocumentId)) currentDocumentId.set(docs[0].id);
     const active = await resolveActiveDraftId(docs[0].id);
     if (active) currentDraftId.set(active);
@@ -110,150 +138,30 @@ async function bootstrapDraftId() {
 
 onMount(async () => {
     await bootstrapDraftId();
-    await Promise.all([loadSnapshots(), loadRetention(), loadDocEventsList()]);
-    if (snapshots.length > 0) {
-        await selectSnapshot(snapshots[0]);
-    }
-});
-
-// ── Document activity (structural audit log, #160) ──────────────
-let docEvents = $state<DocEventRecord[]>([]);
-
-async function loadDocEventsList() {
-    const docId = get(currentDocumentId);
-    if (!docId) return;
-    docEvents = await listDocEvents(docId);
-}
-
-type DocEventInfo = { text: string; restore: { kind: "tab" | "draft"; id: string } | null };
-
-function describeDocEvent(ev: DocEventRecord): DocEventInfo {
-    let p: Record<string, unknown> = {};
-    try {
-        p = JSON.parse(ev.payload) as Record<string, unknown>;
-    } catch {
-        // Malformed payload — fall through to the raw event type.
-    }
-    const label = typeof p.label === "string" ? p.label : "";
-    const prev = typeof p.previousLabel === "string" ? p.previousLabel : "";
-    const tabId = typeof p.tabId === "string" ? p.tabId : null;
-    const draftId = typeof p.draftId === "string" ? p.draftId : null;
-    switch (ev.eventType) {
-        case "tab_created":
-            return { text: `Created tab “${label}”`, restore: null };
-        case "tab_renamed":
-            return { text: `Renamed tab “${prev}” to “${label}”`, restore: null };
-        case "tab_deleted":
-            return {
-                text: `Deleted tab “${label}”`,
-                restore: tabId ? { kind: "tab", id: tabId } : null,
-            };
-        case "tab_restored":
-            return { text: `Restored tab “${label}”`, restore: null };
-        case "draft_forked":
-            return { text: `Branched draft “${label}”`, restore: null };
-        case "draft_created":
-            return { text: `Created draft “${label}”`, restore: null };
-        case "draft_renamed":
-            return { text: `Renamed draft “${prev}” to “${label}”`, restore: null };
-        case "draft_deleted":
-            return {
-                text: `Deleted draft “${label}”`,
-                restore: draftId ? { kind: "draft", id: draftId } : null,
-            };
-        case "draft_restored":
-            return { text: `Restored draft “${label}”`, restore: null };
-        case "draft_locked":
-            return { text: `Locked draft “${label}”`, restore: null };
-        case "draft_unlocked":
-            return { text: `Unlocked draft “${label}”`, restore: null };
-        case "checkpoint_created": {
-            const draftLabel = typeof p.draftLabel === "string" ? p.draftLabel : "";
-            return {
-                text: `Saved checkpoint “${label}” on draft “${draftLabel}”`,
-                restore: null,
-            };
-        }
-        default:
-            return { text: ev.eventType, restore: null };
-    }
-}
-
-// Which tabs/drafts are deleted right now: for each target, the newest
-// delete/restore event wins (docEvents arrive newest-first).
-const deletionState = $derived.by(() => {
-    const state = new Map<string, boolean>();
-    for (const ev of docEvents) {
-        const deleted =
-            ev.eventType === "tab_deleted" || ev.eventType === "draft_deleted"
-                ? true
-                : ev.eventType === "tab_restored" || ev.eventType === "draft_restored"
-                  ? false
-                  : null;
-        if (deleted === null) continue;
-        let p: Record<string, unknown> = {};
-        try {
-            p = JSON.parse(ev.payload) as Record<string, unknown>;
-        } catch {
-            continue;
-        }
-        const id = ev.eventType.startsWith("tab_") ? p.tabId : p.draftId;
-        if (typeof id !== "string") continue;
-        const key = `${ev.eventType.startsWith("tab_") ? "tab" : "draft"}:${id}`;
-        if (!state.has(key)) state.set(key, deleted);
-    }
-    return state;
-});
-
-async function handleStructuralRestore(restore: { kind: "tab" | "draft"; id: string }) {
-    try {
-        if (restore.kind === "tab") {
-            await restoreTab(restore.id);
-        } else {
-            await restoreDraft(restore.id);
-        }
-        posthog.capture(restore.kind === "tab" ? "tab_restored" : "draft_restored", {
-            source: "version_history",
-        });
-    } catch (e) {
-        console.error("[VersionHistory] restore failed:", e);
-        return;
-    }
-    await loadDocEventsList();
-}
-
-onDestroy(() => {
-    previewView?.destroy();
+    await Promise.all([loadTimeline(), loadRetention(), refreshStorageSize()]);
+    if (timelineItems.length > 0) await selectItem(timelineItems[0]);
+    loading = false;
 });
 
 // ── Data ────────────────────────────────────────────────────────
+async function loadTimeline() {
+    const docId = get(currentDocumentId);
+    if (!docId) return;
+    const [snaps, events, structure] = await Promise.all([
+        listDocumentSnapshots(docId),
+        listDocEvents(docId),
+        listDocumentStructure(docId),
+    ]);
+    snapshots = snaps;
+    docEvents = events;
+    allTabs = structure.tabs;
+    allDrafts = structure.drafts;
+}
+
 async function refreshStorageSize() {
     const draftId = get(currentDraftId);
     if (!draftId) return;
     storageBytes = await getSnapshotStorageSize(draftId);
-}
-
-async function loadSnapshots() {
-    loading = true;
-    const draftId = get(currentDraftId);
-    if (!draftId) {
-        loading = false;
-        return;
-    }
-    try {
-        snapshots = await listSnapshots(draftId);
-        await refreshStorageSize();
-        // Reconcile selection: if selected snapshot no longer exists, pick the most recent.
-        if (selectedSnapshot !== null) {
-            const stillExists = snapshots.find((s) => s.id === selectedSnapshot!.id);
-            if (!stillExists) {
-                selectedSnapshot = snapshots.length > 0 ? snapshots[0] : null;
-                if (selectedSnapshot) await selectSnapshot(selectedSnapshot);
-            }
-        }
-    } finally {
-        loading = false;
-    }
 }
 
 async function loadRetention() {
@@ -267,41 +175,100 @@ async function handleRetentionChange(e: Event) {
     snapshotRetention = days;
 }
 
-async function selectSnapshot(snapshot: SnapshotMeta) {
-    selectedSnapshot = snapshot;
-    confirmingRestoreId = null;
-    previewLoading = true;
-    previewStateJson = null;
+async function selectItem(item: TimelineItem) {
+    selectedItem = item;
+    confirmingRestore = false;
+    // Default the viewed tab to the coordinate's target tab, else the first tab
+    // live at this point. The user can switch tabs in the structure map after.
+    const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
+    const target = selectedTarget.tabId;
+    viewedTabId =
+        (target && structure.tabs.some((t) => t.id === target) ? target : null) ??
+        structure.tabs[0]?.id ??
+        null;
+    await loadContent();
+}
 
-    try {
-        const stateJson = await loadSnapshotState(snapshot.id);
-        if (stateJson != null) {
-            previewStateJson = stateJson;
-        }
-    } finally {
-        previewLoading = false;
+/** Switch which tab's content the preview shows (same coordinate). */
+async function viewTab(tabId: string) {
+    if (tabId === viewedTabId) return;
+    viewedTabId = tabId;
+    await loadContent();
+}
+
+/**
+ * Loads the viewed tab's content at the selected coordinate and diffs it
+ * against the same draft's previous version → track-changes segments. Guarded
+ * by `previewToken` so a slow load can't clobber a newer selection.
+ */
+async function loadContent() {
+    const item = selectedItem;
+    const tabId = viewedTabId;
+    if (!item || !tabId) {
+        previewCurrentJson = null;
+        previewPreviousText = "";
+        previewHasContent = false;
+        return;
     }
-    // $effect re-runs automatically once previewEl is in the DOM and
-    // previewStateJson/previewLoading have settled — no tick() needed.
+    const token = ++previewToken;
+    previewLoading = true;
+    try {
+        const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
+        const ref = resolveTabContentAt(snapshots, structure.drafts, tabId, item.createdAt);
+        if (!ref.current) {
+            if (token === previewToken) {
+                previewCurrentJson = null;
+                previewPreviousText = "";
+                previewHasContent = false;
+            }
+            return;
+        }
+        const [currentJson, previousJson] = await Promise.all([
+            loadSnapshotState(ref.current.id),
+            ref.previous ? loadSnapshotState(ref.previous.id) : Promise.resolve(null),
+        ]);
+        if (token !== previewToken) return; // a newer selection superseded us
+        previewCurrentJson = currentJson;
+        previewPreviousText = docTextFromStateJson(previousJson);
+        previewHasContent = true;
+    } finally {
+        if (token === previewToken) previewLoading = false;
+    }
 }
 
 async function handleRestore() {
-    if (!selectedSnapshot) return;
-    if (confirmingRestoreId !== selectedSnapshot.id) {
-        confirmingRestoreId = selectedSnapshot.id;
+    if (!selectedItem) return;
+    if (!confirmingRestore) {
+        confirmingRestore = true;
         return;
     }
-    const draftId = get(currentDraftId);
-    if (!draftId) return;
+    const docId = get(currentDocumentId);
+    if (!docId) return;
+    const snapshotId = selectedItem.kind === "snapshot" ? selectedItem.snapshot.id : null;
     try {
-        await restoreToSnapshot(draftId, selectedSnapshot.id);
+        await restoreToCoordinate(docId, selectedItem.createdAt, snapshotId);
+        posthog.capture("version_restored", {
+            kind: selectedItem.kind,
+            source: "version_history",
+        });
     } catch (e) {
-        confirmingRestoreId = null;
-        console.error("Restore failed:", e);
+        confirmingRestore = false;
+        console.error("[VersionHistory] restore failed:", e);
         posthog.captureException(e instanceof Error ? e : new Error(String(e)));
         return;
     }
     goToEditor();
+}
+
+async function commitLabel(snapshotId: number, label: string) {
+    await labelSnapshot(snapshotId, label);
+    await loadTimeline();
+    if (selectedItem?.kind === "snapshot" && selectedItem.snapshot.id === snapshotId) {
+        selectedItem = {
+            ...selectedItem,
+            snapshot: { ...selectedItem.snapshot, label },
+        };
+    }
 }
 
 async function saveCheckpoint() {
@@ -314,21 +281,10 @@ async function saveCheckpoint() {
         const stateJson = JSON.stringify(view.state.toJSON(savedFields));
         await createNamedSnapshot(draftId, stateJson, eventId, checkpointLabel.trim());
         checkpointLabel = "";
-        await loadSnapshots();
+        await loadTimeline();
     } finally {
         savingCheckpoint = false;
     }
-}
-
-async function commitLabelEdit(snapshot: SnapshotMeta) {
-    if (editingLabelText.trim()) {
-        await labelSnapshot(snapshot.id, editingLabelText.trim());
-        await loadSnapshots();
-        if (selectedSnapshot?.id === snapshot.id) {
-            selectedSnapshot = { ...selectedSnapshot, label: editingLabelText.trim() };
-        }
-    }
-    editingLabelId = null;
 }
 
 // ── Storage pruning ─────────────────────────────────────────────
@@ -343,10 +299,10 @@ async function handlePruneKeepN() {
     pruning = true;
     pruneResult = null;
     try {
-        const deleted = await pruneSnapshotsKeepLastN(draftId, pruneKeepN);
-        pruneResult = deleted;
+        pruneResult = await pruneSnapshotsKeepLastN(draftId, pruneKeepN);
         confirmingPruneKeepN = false;
-        await loadSnapshots();
+        await loadTimeline();
+        await refreshStorageSize();
     } finally {
         pruning = false;
     }
@@ -363,10 +319,10 @@ async function handlePruneOlderThan() {
     pruning = true;
     pruneResult = null;
     try {
-        const deleted = await pruneSnapshotsOlderThan(draftId, pruneOlderThanDays);
-        pruneResult = deleted;
+        pruneResult = await pruneSnapshotsOlderThan(draftId, pruneOlderThanDays);
         confirmingPruneOlderThan = false;
-        await loadSnapshots();
+        await loadTimeline();
+        await refreshStorageSize();
     } finally {
         pruning = false;
     }
@@ -379,77 +335,19 @@ function formatBytes(bytes: number): string {
     return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
 }
 
-// ── Unified timeline grouping ───────────────────────────────────
-type TimelineItem =
-    | { id: string; kind: "snapshot"; createdAt: number; snapshot: SnapshotMeta }
-    | { id: string; kind: "activity"; createdAt: number; event: DocEventRecord };
-
-type TimelineGroup = { heading: string; items: TimelineItem[] };
-
-function groupByDate(items: TimelineItem[]): TimelineGroup[] {
-    const groups: TimelineGroup[] = [];
-    let lastHeading = "";
-    for (const item of items) {
-        const heading = headingForDate(item.createdAt);
-        if (heading !== lastHeading) {
-            groups.push({ heading, items: [] });
-            lastHeading = heading;
-        }
-        groups[groups.length - 1].items.push(item);
-    }
-    return groups;
-}
-
-function headingForDate(ms: number): string {
-    const d = new Date(ms);
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: "long" });
-    if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear())
-        return "This month";
-    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-}
-
-function formatTime(ms: number): string {
-    const d = new Date(ms);
-    return (
-        d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
-        ", " +
-        d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-    );
-}
-
-function formatTimeShort(ms: number): string {
-    return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
-
-const timelineItems = $derived.by(() => {
-    const items: TimelineItem[] = [
-        ...snapshots.map((snapshot) => ({
-            id: `snapshot:${snapshot.id}`,
-            kind: "snapshot" as const,
-            createdAt: snapshot.createdAt,
-            snapshot,
-        })),
-        ...docEvents.map((event) => ({
-            id: `activity:${event.id}`,
-            kind: "activity" as const,
-            createdAt: event.createdAt,
-            event,
-        })),
-    ];
-    return items.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
-});
-
-const groups = $derived(groupByDate(timelineItems));
-
-// Use the most recent snapshot's createdAt as a fallback when lastSavedAt
-// is null (direct nav to /history before any save in this session).
+// Use the most recent snapshot's createdAt as a fallback when lastSavedAt is
+// null (direct nav to /history before any save in this session).
 const displayLastSavedAt = $derived(
     $lastSavedAt ?? (snapshots.length > 0 ? snapshots[0].createdAt : null),
 );
+
+const selectedTitle = $derived.by(() => {
+    if (!selectedItem) return null;
+    if (selectedItem.kind === "snapshot") {
+        return selectedItem.snapshot.label ?? formatTime(selectedItem.snapshot.createdAt);
+    }
+    return describeDocEvent(selectedItem.event).text;
+});
 
 function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
@@ -483,11 +381,9 @@ function handleKeydown(e: KeyboardEvent) {
         <div class="flex-1 flex items-center gap-2">
             <Clock size={15} class="text-black/40" />
             <span class="text-sm font-medium text-black/70">Version History</span>
-            {#if selectedSnapshot}
+            {#if selectedTitle}
                 <ChevronRight size={14} class="text-black/30" />
-                <span class="text-sm text-black/50">
-                    {selectedSnapshot.label ?? formatTime(selectedSnapshot.createdAt)}
-                </span>
+                <span class="text-sm text-black/50 truncate max-w-xs">{selectedTitle}</span>
             {/if}
         </div>
         <!-- Save named checkpoint -->
@@ -522,43 +418,39 @@ function handleKeydown(e: KeyboardEvent) {
                 </button>
             </div>
         </div>
-        {#if selectedSnapshot}
+        {#if selectedItem}
             <div class="w-px h-5 bg-black/15"></div>
             <button
                 onclick={handleRestore}
                 class="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium
                        transition-colors
-                       {confirmingRestoreId === selectedSnapshot.id
+                       {confirmingRestore
                            ? 'bg-red-500 text-white hover:bg-red-600'
                            : 'bg-black/[0.06] text-black/70 hover:bg-black/[0.10]'}"
             >
                 <RotateCcw size={13} />
-                {confirmingRestoreId === selectedSnapshot.id ? "Confirm restore?" : "Restore this version"}
+                {confirmingRestore ? "Confirm restore?" : "Restore to here"}
             </button>
         {/if}
     </div>
 
     <!-- Body -->
     <div class="flex flex-1 overflow-hidden">
-
-        <!-- Document preview -->
+        <!-- Preview (structure map + content) -->
         <div class="flex-1 overflow-y-auto py-10 px-8 flex justify-center">
-            {#if previewLoading}
-                <div class="flex items-center justify-center w-full text-black/30 text-sm">
-                    Loading…
-                </div>
-            {:else if !selectedSnapshot}
-                <div class="flex flex-col items-center justify-center w-full gap-3 text-center">
-                    <Clock size={36} class="text-black/15" />
-                    <p class="text-sm text-black/40">Select a version to preview it</p>
-                </div>
-            {:else}
-                <div
-                    class="version-preview w-[816px] min-h-full bg-white rounded-lg shadow-xl
-                           py-3 px-1 pointer-events-none select-none"
-                    bind:this={previewEl}
-                ></div>
-            {/if}
+            <PreviewPane
+                tabs={previewStructure.tabs}
+                drafts={previewStructure.drafts}
+                {viewedTabId}
+                highlightDraftId={selectedTarget.draftId}
+                currentStateJson={previewCurrentJson}
+                previousText={previewPreviousText}
+                loading={previewLoading}
+                hasContent={previewHasContent}
+                {bannerText}
+                empty={!selectedItem}
+                ontabselect={viewTab}
+            />
         </div>
 
         <!-- Timeline panel -->
@@ -684,119 +576,12 @@ function handleKeydown(e: KeyboardEvent) {
                         </p>
                     </div>
                 {:else}
-                    <div role="list" aria-label="History timeline">
-                    {#each groups as group}
-                        <div class="px-4 pt-4 pb-1">
-                            <span class="text-[11px] font-semibold text-black/35 uppercase tracking-wide">
-                                {group.heading}
-                            </span>
-                        </div>
-                        {#each group.items as item (item.id)}
-                            {#if item.kind === "snapshot"}
-                                {@const snapshot = item.snapshot}
-                                {@const isSelected = selectedSnapshot?.id === snapshot.id}
-                                <div
-                                    role="option"
-                                    tabindex="0"
-                                    aria-selected={isSelected}
-                                    onclick={() => selectSnapshot(snapshot)}
-                                    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectSnapshot(snapshot); } }}
-                                    class="w-full text-left px-4 py-2.5 flex items-start gap-3
-                                           cursor-pointer transition-colors
-                                           {isSelected
-                                               ? 'bg-blue-50 border-r-2 border-blue-500'
-                                               : 'hover:bg-black/[0.025] border-r-2 border-transparent'}"
-                                >
-                                    <div class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0
-                                                {snapshot.label ? 'bg-blue-500' : 'bg-black/20'}">
-                                    </div>
-                                    <div class="flex-1 min-w-0">
-                                        {#if editingLabelId === snapshot.id}
-                                            <input
-                                                type="text"
-                                                bind:value={editingLabelText}
-                                                autofocus
-                                                onclick={(e) => e.stopPropagation()}
-                                                onblur={() => commitLabelEdit(snapshot)}
-                                                onkeydown={(e) => {
-                                                    e.stopPropagation();
-                                                    if (e.key === "Enter") commitLabelEdit(snapshot);
-                                                    if (e.key === "Escape") editingLabelId = null;
-                                                }}
-                                                class="text-sm font-medium text-blue-600 bg-blue-50
-                                                       border border-blue-300 rounded px-1.5 py-0.5
-                                                       focus:outline-none w-full"
-                                            />
-                                        {:else if snapshot.label}
-                                            <div class="flex items-center gap-1">
-                                                <span class="text-sm font-medium text-blue-600 truncate">
-                                                    {snapshot.label}
-                                                </span>
-                                                <button
-                                                    aria-label="Edit label"
-                                                    onclick={(e) => {
-                                                        e.stopPropagation();
-                                                        editingLabelId = snapshot.id;
-                                                        editingLabelText = snapshot.label ?? "";
-                                                    }}
-                                                    class="text-black/20 hover:text-black/50
-                                                           transition-colors flex-shrink-0"
-                                                >
-                                                    <Pencil size={10} />
-                                                </button>
-                                            </div>
-                                        {:else}
-                                            <div class="flex items-center gap-1">
-                                                <span class="text-xs text-black/50">
-                                                    {formatTimeShort(snapshot.createdAt)}
-                                                </span>
-                                                <button
-                                                    onclick={(e) => {
-                                                        e.stopPropagation();
-                                                        editingLabelId = snapshot.id;
-                                                        editingLabelText = "";
-                                                    }}
-                                                    title="Add label"
-                                                    aria-label="Add label"
-                                                    class="text-black/20 hover:text-black/50
-                                                           transition-colors flex-shrink-0"
-                                                >
-                                                    <Pencil size={10} />
-                                                </button>
-                                            </div>
-                                        {/if}
-                                        {#if snapshot.label}
-                                            <p class="text-[11px] text-black/35 mt-0.5">Named checkpoint</p>
-                                        {:else}
-                                            <p class="text-[11px] text-black/35 mt-0.5">Auto-saved</p>
-                                        {/if}
-                                    </div>
-                                </div>
-                            {:else}
-                                {@const ev = item.event}
-                                {@const info = describeDocEvent(ev)}
-                                {@const restore = info.restore}
-                                <div class="w-full text-left px-4 py-2.5 flex items-start gap-3 border-r-2 border-transparent">
-                                    <div class="mt-1.5 w-2 h-2 rounded-full bg-black/15 flex-shrink-0"></div>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="text-xs text-black/55 leading-snug">{info.text}</p>
-                                        <p class="text-[10px] text-black/30 mt-0.5">{formatTime(ev.createdAt)}</p>
-                                    </div>
-                                    {#if restore && deletionState.get(`${restore.kind}:${restore.id}`)}
-                                        <button
-                                            onclick={() => handleStructuralRestore(restore)}
-                                            class="shrink-0 flex items-center gap-1 text-[11px] font-medium
-                                                   text-blue-600 hover:text-blue-700 transition-colors"
-                                        >
-                                            <RotateCcw size={10} />
-                                            Restore
-                                        </button>
-                                    {/if}
-                                </div>
-                            {/if}
-                        {/each}
-                    {/each}
-                    </div>
+                    <TimelinePanel
+                        {groups}
+                        selectedId={selectedItem?.id ?? null}
+                        onselect={selectItem}
+                        onlabel={commitLabel}
+                    />
                 {/if}
             </div>
         </div>
@@ -822,12 +607,5 @@ function handleKeydown(e: KeyboardEvent) {
 
     .checkpoint-shaking {
         animation: checkpoint-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-    }
-
-    :global(.version-preview .cm-editor) {
-        pointer-events: none;
-    }
-    :global(.version-preview .cm-cursor) {
-        display: none !important;
     }
 </style>

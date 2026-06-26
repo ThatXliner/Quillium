@@ -56,6 +56,17 @@ pub struct DraftMeta {
     pub locked: bool,
 }
 
+/// The document's full tab/draft roster INCLUDING soft-deleted rows, for the
+/// version-history preview map (which must render structure as-of any past
+/// point, including since-deleted tabs/drafts). Unlike `list_tabs` /
+/// `list_tab_drafts`, this does not filter on `deleted_at`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentStructure {
+    pub tabs: Vec<TabMeta>,
+    pub drafts: Vec<DraftMeta>,
+}
+
 /// One entry in the document-level structural audit log (#160):
 /// tab CRUD, draft branching, locks, checkpoints. Payload is JSON.
 #[derive(Debug, Serialize, Deserialize)]
@@ -97,6 +108,23 @@ pub struct LoadResult {
 pub struct SnapshotMeta {
     pub id: i64,
     pub draft_id: String,
+    pub up_to_event_id: i64,
+    pub created_at: i64,
+    pub label: Option<String>,
+}
+
+/// A snapshot listed across a whole document (not one draft), tagged with the
+/// owning draft's label and tab so the document-wide version-history timeline
+/// can show "which draft this content belongs to". `draft_label` and `tab_id`
+/// come from a join against `drafts` (including soft-deleted ones, so history
+/// of since-deleted drafts still appears).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSnapshotMeta {
+    pub id: i64,
+    pub draft_id: String,
+    pub draft_label: String,
+    pub tab_id: Option<String>,
     pub up_to_event_id: i64,
     pub created_at: i64,
     pub label: Option<String>,
