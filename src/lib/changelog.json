@@ -1,7 +1,7 @@
 {
   "0.20": {
     "date": "2026-06-26",
-    "content": "Quillium now tracks **how a document was written**, not just what it says — distinguishing the words you **typed** from the passages you **pasted** in. Useful when a student, applicant, or writer needs to show the work is genuinely theirs.\n\nOpen it from the status bar or View menu to **replay your draft coming together step by step**, color-coded by where each edit came from, with a scrubber and play/pause/speed controls."
+    "content": "Quillium now tracks **how a document was written**, not just what it says — distinguishing the words you **typed** from the passages you **pasted** in. Useful when a student, applicant, or writer needs to show the work is genuinely theirs.\n\n![Authorship playback replaying a draft, color-coded by where each edit came from](/changelog/0.20.png)\n\nOpen it from the status bar or View menu to **replay your draft coming together step by step**, color-coded by where each edit came from, with a scrubber and play/pause/speed controls."
   },
   "0.19": {
     "date": "June 2026",
