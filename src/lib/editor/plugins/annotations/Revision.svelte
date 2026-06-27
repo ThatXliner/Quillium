@@ -644,7 +644,7 @@ onDestroy(() => {
     <!-- Version pills -->
     <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
         {#each revision.versions as version, i}
-            {@const versionActive = version.id === revision.activeVersionId}
+            {@const versionActive = i === activeVersionIndex(revision)}
             {@const isEditingThis = editingLabelIndex === i}
             {@const versionGroup = groupForVersion(version.id)}
             <!-- Outer wrapper is the positioning context for the link dropdown and
