@@ -86,11 +86,10 @@ describe("DraftTreePanel", () => {
         expect(ondraftiterate).toHaveBeenCalledWith("v1");
     });
 
-    it("offers Branch on non-run-heads but not on main", () => {
-        const { getByRole, queryByRole } = render(DraftTreePanel, { props: defaultProps() });
+    it("offers Branch on every draft, including main", () => {
+        const { getByRole } = render(DraftTreePanel, { props: defaultProps() });
         expect(getByRole("button", { name: "Branch from v1" })).toBeInTheDocument();
-        // main is a run head — a top-level take is a new tab, not a branch.
-        expect(queryByRole("button", { name: "Branch from main" })).not.toBeInTheDocument();
+        expect(getByRole("button", { name: "Branch from main" })).toBeInTheDocument();
     });
 
     it("calls ondraftbranch with the row's draft id", async () => {
@@ -127,20 +126,31 @@ describe("DraftTreePanel", () => {
         expect(ontogglelock).toHaveBeenCalledWith("v1", true);
     });
 
-    it("offers delete on any unlocked draft, including parents", () => {
-        // main → v1 → v2, all unlocked: every draft (even the parents main/v1)
-        // shows a delete action now; only the lock hides it.
+    it("offers delete on unlocked non-root drafts, including parents", () => {
+        // main → v1 → v2, all unlocked: v1 can be deleted even though it is a
+        // parent, but the storyline root stays protected.
         const drafts = [
             makeDraft("main", "main", { createdAt: 0 }),
             makeDraft("v1", "v1", { parentDraftId: "main", createdAt: 1 }),
             makeDraft("v2", "v2", { parentDraftId: "v1", createdAt: 2 }),
         ];
-        const { getByRole } = render(DraftTreePanel, {
+        const { getByRole, queryByRole } = render(DraftTreePanel, {
             props: defaultProps({ drafts, activeDraftId: "v2" }),
         });
-        expect(getByRole("button", { name: "Delete main" })).toBeInTheDocument();
+        expect(queryByRole("button", { name: "Delete main" })).not.toBeInTheDocument();
         expect(getByRole("button", { name: "Delete v1" })).toBeInTheDocument();
         expect(getByRole("button", { name: "Delete v2" })).toBeInTheDocument();
+    });
+
+    it("offers delete on an unlocked branch root", () => {
+        const drafts = [
+            makeDraft("main", "main", { createdAt: 0 }),
+            makeDraft("b1", "b1", { branchedFrom: "main", createdAt: 1 }),
+        ];
+        const { getByRole } = render(DraftTreePanel, {
+            props: defaultProps({ drafts, activeDraftId: "b1" }),
+        });
+        expect(getByRole("button", { name: "Delete b1" })).toBeInTheDocument();
     });
 
     it("hides delete on a locked draft", () => {

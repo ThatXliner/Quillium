@@ -451,24 +451,19 @@ pub fn iterate_draft(
 /// Branch: the rarer "different take" action. Creates a new run rooted off
 /// `source` (linked by `branched_from`, rendered indented), seeded from
 /// `source`'s state. Nothing locks — both the source and the branch stay
-/// live, parallel explorations. Refused on a run head (`main` / branch root,
-/// `parent_draft_id IS NULL`): a top-level take is a new tab.
+/// live, parallel explorations. Any live draft can be branched, including the
+/// storyline root and branch roots.
 pub fn branch_draft(
     conn: &Connection,
     source_draft_id: &str,
     label: &str,
     state_json: Option<&str>,
 ) -> Result<DraftMeta> {
-    let (doc_id, tab_id, parent): (String, Option<String>, Option<String>) = conn.query_row(
-        "SELECT document_id, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
+    let (doc_id, tab_id): (String, Option<String>) = conn.query_row(
+        "SELECT document_id, tab_id FROM drafts WHERE id = ?1",
         params![source_draft_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    if parent.is_none() {
-        return Err(refuse(
-            "Can't branch from a top-level draft — create a new tab instead",
-        ));
-    }
     let draft_id = Uuid::new_v4().to_string();
     let now = now_ms();
     let tx = conn.unchecked_transaction()?;
@@ -571,19 +566,36 @@ fn guard_tab_not_emptied(conn: &Connection, tab_id: &Option<String>, removing: i
     Ok(())
 }
 
+fn guard_not_storyline_root(
+    parent_draft_id: &Option<String>,
+    branched_from: &Option<String>,
+) -> Result<()> {
+    if parent_draft_id.is_none() && branched_from.is_none() {
+        return Err(refuse("Cannot delete the storyline root draft"));
+    }
+    Ok(())
+}
+
 /// Soft-deletes a single draft. Its events and snapshots are untouched, so
 /// restoring from the version history brings the text back exactly. Refuses
-/// only if it is the tab's last live draft — a draft with iterations or
-/// branches off it can be deleted, but callers must first detach/relocate or
-/// cascade those children (see `orphan_and_delete_draft` /
+/// if it is the storyline root or the tab's last live draft — a draft with
+/// iterations or branches off it can be deleted, but callers must first
+/// detach/relocate or cascade those children (see `orphan_and_delete_draft` /
 /// `cascade_delete_draft`). The draft's run relocks (the tip may move back).
 pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
-    let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
+    let (doc_id, label, tab_id, parent_draft_id, branched_from): (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) =
         conn.query_row(
-            "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
+            "SELECT document_id, label, tab_id, parent_draft_id, branched_from FROM drafts WHERE id = ?1",
             params![draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )?;
+    guard_not_storyline_root(&parent_draft_id, &branched_from)?;
     guard_tab_not_emptied(conn, &tab_id, 1)?;
     let tx = conn.unchecked_transaction()?;
     tx.execute(
@@ -608,21 +620,30 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
 /// Deletes `draft_id` but keeps its children alive by re-attaching them so
 /// the tree stays valid, then returns the link rewrites it made (oldest
 /// first) so the caller can reverse them on Undo. The deleted draft's anchor
-/// is its own `parent_draft_id` (None when it is a run head).
+/// is its `parent_draft_id` when it is an iteration, or its `branched_from`
+/// source when it is a branch root. The storyline root has no anchor and is
+/// protected from deletion.
 ///
 /// - Iteration children (`parent_draft_id = D`) splice `D` out of the run:
-///   they adopt `D`'s parent. If `D` was a run head they become run heads.
-/// - Branch children (`branched_from = D`) re-point to `D`'s anchor. A branch
-///   may never point at a run head (`branch_draft` forbids it), so when `D`
-///   is a run head the branch is *promoted* to a top-level run instead:
-///   `branched_from = NULL`, `parent_draft_id = D`'s parent (None → new head).
+///   they adopt `D`'s parent. If `D` was a branch root, they become branch
+///   roots off `D`'s original source.
+/// - Branch children (`branched_from = D`) re-point to `D`'s anchor, whether
+///   that anchor is an iteration parent or the source of the deleted branch
+///   root.
 pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<ReparentEntry>> {
-    let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
+    let (doc_id, label, tab_id, parent_draft_id, branched_from): (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) =
         conn.query_row(
-            "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
+            "SELECT document_id, label, tab_id, parent_draft_id, branched_from FROM drafts WHERE id = ?1",
             params![draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )?;
+    guard_not_storyline_root(&parent_draft_id, &branched_from)?;
     guard_tab_not_emptied(conn, &tab_id, 1)?;
 
     // Snapshot the live children (and their old links) before rewriting, so we
@@ -644,18 +665,20 @@ pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<
     let mut rewrites: Vec<ReparentEntry> = Vec::with_capacity(children.len());
     // `relock_run` only needs to run once per distinct head; collect members.
     let mut relock_seeds: Vec<String> = Vec::new();
+    let reattach_anchor = parent_draft_id.clone().or_else(|| branched_from.clone());
     for (child_id, old_parent, old_branched_from) in &children {
         let is_branch_child = old_branched_from.as_deref() == Some(draft_id);
         let (new_parent, new_branched_from): (Option<String>, Option<String>) = if is_branch_child {
-            match &parent_draft_id {
-                // D is an iteration: the branch keeps branching, off D's parent.
-                Some(p) => (None, Some(p.clone())),
-                // D is a run head: promote the branch to a top-level run.
-                None => (None, None),
-            }
+            (None, reattach_anchor.clone())
         } else {
-            // Iteration child: splice D out — adopt D's parent.
-            (parent_draft_id.clone(), None)
+            // Iteration child: splice D out. If D was a branch root, its first
+            // iteration becomes the new branch root off D's original source.
+            let branch_anchor = if parent_draft_id.is_none() {
+                branched_from.clone()
+            } else {
+                None
+            };
+            (parent_draft_id.clone(), branch_anchor)
         };
         tx.execute(
             "UPDATE drafts SET parent_draft_id = ?1, branched_from = ?2 WHERE id = ?3",
@@ -707,15 +730,23 @@ pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<
 }
 
 /// Soft-deletes `draft_id` together with every live draft under it
-/// (iterations and branches, transitively). Refuses if that would empty the
-/// tab. Returns the deleted ids (the root first) so Undo can restore them all.
+/// (iterations and branches, transitively). Refuses if that would delete the
+/// storyline root or empty the tab. Returns the deleted ids (the root first)
+/// so Undo can restore them all.
 pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
-    let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
+    let (doc_id, label, tab_id, parent_draft_id, branched_from): (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) =
         conn.query_row(
-            "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
+            "SELECT document_id, label, tab_id, parent_draft_id, branched_from FROM drafts WHERE id = ?1",
             params![draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )?;
+    guard_not_storyline_root(&parent_draft_id, &branched_from)?;
 
     // BFS the live subtree following both links. Runs are shallow, so a plain
     // queue is fine; `seen` guards against the impossible cycle defensively.
@@ -898,11 +929,32 @@ mod tests {
             != 0
     }
     fn is_locked(conn: &Connection, id: &str) -> bool {
-        conn.query_row("SELECT locked FROM drafts WHERE id = ?1", params![id], |r| {
-            r.get::<_, i64>(0)
-        })
+        conn.query_row(
+            "SELECT locked FROM drafts WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, i64>(0),
+        )
         .unwrap()
             != 0
+    }
+
+    #[test]
+    fn branch_draft_allows_storyline_root() {
+        let (conn, _tab, main) = setup();
+        let b = branch_draft(&conn, &main, "b", None).unwrap().id;
+
+        assert!(parent_of(&conn, &b).is_none());
+        assert_eq!(branched_from(&conn, &b).as_deref(), Some(main.as_str()));
+    }
+
+    #[test]
+    fn branch_draft_allows_branch_roots() {
+        let (conn, _tab, main) = setup();
+        let b1 = branch_draft(&conn, &main, "b1", None).unwrap().id;
+        let b2 = branch_draft(&conn, &b1, "b2", None).unwrap().id;
+
+        assert!(parent_of(&conn, &b2).is_none());
+        assert_eq!(branched_from(&conn, &b2).as_deref(), Some(b1.as_str()));
     }
 
     #[test]
@@ -918,8 +970,9 @@ mod tests {
     }
 
     #[test]
-    fn delete_draft_refuses_last_draft() {
+    fn delete_draft_refuses_storyline_root() {
         let (conn, _tab, main) = setup();
+        let _v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
         assert!(delete_draft(&conn, &main).is_err());
         assert!(is_live(&conn, &main));
     }
@@ -939,15 +992,15 @@ mod tests {
         // One rewrite recorded for Undo: v2 used to have parent v1.
         assert_eq!(rewrites.len(), 1);
         assert_eq!(rewrites[0].draft_id, v2);
-        assert_eq!(rewrites[0].old_parent_draft_id.as_deref(), Some(v1.as_str()));
+        assert_eq!(
+            rewrites[0].old_parent_draft_id.as_deref(),
+            Some(v1.as_str())
+        );
     }
 
     #[test]
-    fn orphan_run_head_promotes_branch_to_top_level() {
-        // main → v1 ; branch b off v1. Orphan-delete v1 (a run head's child,
-        // itself an iteration) → b re-points to main (still an iteration's
-        // anchor). Then orphan-delete main (a run head with branch nothing):
-        // here exercise the run-head-with-branch case directly.
+    fn orphan_iteration_reattaches_branch_to_parent() {
+        // main → v1 ; branch b off v1. Orphan-delete v1 → b re-points to main.
         let (conn, _tab, main) = setup();
         let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
         let b = branch_draft(&conn, &v1, "b", None).unwrap().id;
@@ -961,31 +1014,32 @@ mod tests {
     }
 
     #[test]
-    fn orphan_promotes_branch_off_run_head_to_new_run() {
-        // Build main → v1 ; branch b off v1 ; then we want to orphan a *run
-        // head* that has a branch. Make a second run head via a top-level
-        // iteration chain: root2 (head) with branch bb off an iteration r2.
-        let (conn, tab, main) = setup();
-        // A run head with a branch directly under it can't be `main` (branch
-        // needs a non-head source), so iterate then branch then orphan the
-        // head's iteration to leave the branch pointing where head-rules bite.
-        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
-        let b = branch_draft(&conn, &v1, "b", None).unwrap().id;
-        // Orphan-delete main (the run head): v1 becomes a run head; b is a
-        // branch child of v1 (not of main), so it's untouched by main's delete.
-        orphan_and_delete_draft(&conn, &main).unwrap();
-        assert!(!is_live(&conn, &main));
-        assert!(parent_of(&conn, &v1).is_none()); // v1 now a run head
-        assert_eq!(branched_from(&conn, &b).as_deref(), Some(v1.as_str()));
-        // Tab still has live drafts.
-        let live: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM drafts WHERE tab_id = ?1 AND deleted_at IS NULL",
-                params![tab],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(live, 2); // v1, b
+    fn orphan_refuses_storyline_root() {
+        let (conn, _tab, main) = setup();
+        let _v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+
+        assert!(orphan_and_delete_draft(&conn, &main).is_err());
+        assert!(is_live(&conn, &main));
+    }
+
+    #[test]
+    fn orphan_branch_root_reattaches_children_to_branch_source() {
+        // main ├ b1 → b2
+        //      └ b3
+        //
+        // Orphan-delete b1: b2 and b3 survive as branches off main.
+        let (conn, _tab, main) = setup();
+        let b1 = branch_draft(&conn, &main, "b1", None).unwrap().id;
+        let b2 = iterate_draft(&conn, &b1, "b2", None).unwrap().id;
+        let b3 = branch_draft(&conn, &b1, "b3", None).unwrap().id;
+
+        orphan_and_delete_draft(&conn, &b1).unwrap();
+
+        assert!(!is_live(&conn, &b1));
+        assert!(parent_of(&conn, &b2).is_none());
+        assert_eq!(branched_from(&conn, &b2).as_deref(), Some(main.as_str()));
+        assert!(parent_of(&conn, &b3).is_none());
+        assert_eq!(branched_from(&conn, &b3).as_deref(), Some(main.as_str()));
     }
 
     #[test]
@@ -1009,7 +1063,7 @@ mod tests {
 
     #[test]
     fn cascade_refuses_when_it_would_empty_the_tab() {
-        // main → v1: cascade-deleting main would remove every draft.
+        // main → v1: the storyline root is protected.
         let (conn, _tab, main) = setup();
         let _v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
         assert!(cascade_delete_draft(&conn, &main).is_err());

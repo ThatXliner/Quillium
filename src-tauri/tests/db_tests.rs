@@ -207,11 +207,9 @@ fn test_branch_starts_new_run_without_locking() {
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
-    // Branch is only allowed off a non-root, so iterate once first.
-    let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
 
-    let b1 = branch_draft(&conn, &v1.id, "take 2", Some(r#"{"doc":"alt"}"#)).expect("branch");
-    assert_eq!(b1.branched_from.as_deref(), Some(v1.id.as_str()));
+    let b1 = branch_draft(&conn, &root, "take 2", Some(r#"{"doc":"alt"}"#)).expect("branch");
+    assert_eq!(b1.branched_from.as_deref(), Some(root.as_str()));
     assert_eq!(b1.parent_draft_id, None, "a branch is a new run head");
 
     let locked = |id: &str| -> bool {
@@ -222,8 +220,8 @@ fn test_branch_starts_new_run_without_locking() {
             .map(|d| d.locked)
             .unwrap_or(false)
     };
-    // Branching locks nothing: v1 (its run's tip) and the branch stay live.
-    assert!(!locked(&v1.id), "branch source stays editable");
+    // Branching locks nothing: main and the branch stay live.
+    assert!(!locked(&root), "branch source stays editable");
     assert!(!locked(&b1.id), "branch stays editable");
 
     let loaded = load_document_state(&conn, &doc_id, Some(&b1.id)).expect("load");
@@ -234,13 +232,15 @@ fn test_branch_starts_new_run_without_locking() {
 }
 
 #[test]
-fn test_branch_from_root_is_refused() {
+fn test_branch_from_root_is_allowed() {
     let conn = in_memory_db();
     let doc_id = create_document(&conn, "Doc").expect("doc");
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
-    // A top-level take is a new tab, not a branch off main.
-    assert!(branch_draft(&conn, &root, "nope", None).is_err());
+
+    let branch = branch_draft(&conn, &root, "take 2", None).expect("branch");
+    assert_eq!(branch.branched_from.as_deref(), Some(root.as_str()));
+    assert_eq!(branch.parent_draft_id, None);
 }
 
 #[test]
@@ -250,16 +250,14 @@ fn test_delete_draft_refusals() {
     let tab = create_tab(&conn, &doc_id, "Main").expect("tab");
     let root = list_tab_drafts(&conn, &tab.id).expect("drafts")[0].clone_id();
 
-    // Last draft of the tab cannot be deleted.
+    // The storyline root cannot be deleted.
     assert!(delete_draft(&conn, &root).is_err());
 
     let v1 = iterate_draft(&conn, &root, "v1", None).expect("iterate");
-    // A draft with a live iteration after it cannot be deleted.
+    // The storyline root stays protected even when other drafts exist.
     assert!(delete_draft(&conn, &root).is_err());
 
     let b1 = branch_draft(&conn, &v1.id, "take 2", None).expect("branch");
-    // A draft with a branch off it cannot be deleted.
-    assert!(delete_draft(&conn, &v1.id).is_err());
 
     // A leaf with siblings can be deleted.
     delete_draft(&conn, &b1.id).expect("delete leaf");

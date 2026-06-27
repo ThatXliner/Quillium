@@ -2,7 +2,7 @@
  * E2E tests for the per-tab draft panel (#160):
  *   - Panel renders the root draft
  *   - Iterate makes the next version and locks the superseded source
- *   - Branch makes a different take and locks nothing (and not off main)
+ *   - Branch makes a different take off any draft and locks nothing
  *   - Deleting a draft is soft and undoable from the toast
  *   - The locked banner's "Edit anyway" unlocks
  */
@@ -23,14 +23,14 @@ test.describe("Draft panel", () => {
         await expect(panel.getByText("main")).toBeVisible();
     });
 
-    test("main offers Iterate but not Branch (a top-level take is a new tab)", async ({ page }) => {
+    test("main offers Iterate and Branch", async ({ page }) => {
         const q = new QuilliumPage(page);
         await q.init();
 
         const panel = page.locator('[aria-label="Draft tree"]');
         await panel.getByText("main").hover();
         await expect(panel.locator('button[aria-label="Iterate main"]')).toBeVisible();
-        await expect(panel.locator('button[aria-label="Branch from main"]')).toHaveCount(0);
+        await expect(panel.locator('button[aria-label="Branch from main"]')).toBeVisible();
     });
 
     test("iterating makes the next version and locks the superseded source", async ({ page }) => {
@@ -61,24 +61,15 @@ test.describe("Draft panel", () => {
         await q.init();
 
         const panel = page.locator('[aria-label="Draft tree"]');
-        // Iterate once so we have a non-root draft to branch from.
         await panel.getByText("main").hover();
-        await panel.locator('button[aria-label="Iterate main"]').click();
-        await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
-            timeout: 5_000,
-        });
-        const tip = page.locator('[aria-label="Draft tree"] button[aria-current="true"]');
-        const tipLabel = (await tip.innerText()).trim();
-
-        await tip.hover();
-        await panel.locator(`button[aria-label="Branch from ${tipLabel}"]`).click();
+        await panel.locator('button[aria-label="Branch from main"]').click();
         await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
             timeout: 5_000,
         });
         expect(await q.countInvocations("cmd_branch_draft")).toBe(1);
 
         // The branch source stays editable (no lock banner on it).
-        await panel.getByText(tipLabel).first().click();
+        await panel.getByText("main").first().click();
         await expect(page.getByText("This draft is locked.", { exact: true })).toBeHidden({
             timeout: 5_000,
         });
@@ -117,9 +108,17 @@ test.describe("Draft panel", () => {
         await q.init();
 
         const panel = page.locator('[aria-label="Draft tree"]');
-        // main → v1: main is now a parent with a live child.
+        // Build main → v1 → v2. v1 is the non-root parent we can delete.
         await panel.getByText("main").hover();
         await panel.locator('button[aria-label="Iterate main"]').click();
+        await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
+            timeout: 5_000,
+        });
+        const parentLabel = (
+            await page.locator('[aria-label="Draft tree"] button[aria-current="true"]').innerText()
+        ).trim();
+        await panel.getByText(parentLabel).hover();
+        await panel.locator(`button[aria-label="Iterate ${parentLabel}"]`).click();
         await expect(panel.locator("button[aria-current='true']")).toHaveCount(1, {
             timeout: 5_000,
         });
@@ -127,25 +126,25 @@ test.describe("Draft panel", () => {
             await page.locator('[aria-label="Draft tree"] button[aria-current="true"]').innerText()
         ).trim();
 
-        // main auto-locked when v1 superseded it; unlock so it's deletable.
-        await panel.getByText("main").hover();
-        await panel.locator('button[aria-label="Unlock main"]').click();
+        // v1 auto-locked when v2 superseded it; unlock so it's deletable.
+        await panel.getByText(parentLabel).hover();
+        await panel.locator(`button[aria-label="Unlock ${parentLabel}"]`).click();
 
-        // Deleting main opens the orphan/cascade prompt rather than deleting.
-        await panel.getByText("main").hover();
-        await panel.locator('button[aria-label="Delete main"]').click();
+        // Deleting v1 opens the orphan/cascade prompt rather than deleting.
+        await panel.getByText(parentLabel).hover();
+        await panel.locator(`button[aria-label="Delete ${parentLabel}"]`).click();
         const modal = page.locator('[aria-label="Delete draft"]');
         await expect(modal).toBeVisible({ timeout: 5_000 });
 
-        // Keep the children: main goes, the child survives (now a run head).
+        // Keep the children: v1 goes, the child survives reattached to main.
         await modal.getByText("Keep the children").click();
-        await expect(panel.getByText("main")).toBeHidden({ timeout: 5_000 });
+        await expect(panel.getByText(parentLabel)).toBeHidden({ timeout: 5_000 });
         await expect(panel.getByText(childLabel)).toBeVisible();
         expect(await q.countInvocations("cmd_orphan_and_delete_draft")).toBe(1);
 
-        // Undo restores main and re-parents the child back under it.
+        // Undo restores v1 and re-parents the child back under it.
         await page.getByRole("button", { name: "Undo" }).click();
-        await expect(panel.getByText("main")).toBeVisible({ timeout: 5_000 });
+        await expect(panel.getByText(parentLabel)).toBeVisible({ timeout: 5_000 });
         expect(await q.countInvocations("cmd_restore_draft")).toBe(1);
         expect(await q.countInvocations("cmd_reparent_draft")).toBe(1);
     });

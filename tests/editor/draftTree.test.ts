@@ -4,6 +4,7 @@ import {
     hasLiveChildren,
     isDeletableDraft,
     isRunHead,
+    isStorylineRoot,
     layoutDraftRows,
 } from "$lib/editor/draftTree";
 import { describe, expect, it } from "vitest";
@@ -222,6 +223,14 @@ describe("isRunHead", () => {
     });
 });
 
+describe("isStorylineRoot", () => {
+    it("is true only for the root draft with no branch source", () => {
+        expect(isStorylineRoot(iter("main", null, 0))).toBe(true);
+        expect(isStorylineRoot(branch("b1", "main", 1))).toBe(false);
+        expect(isStorylineRoot(iter("v1", "main", 2))).toBe(false);
+    });
+});
+
 describe("isDeletableDraft", () => {
     it("rejects the only draft", () => {
         expect(isDeletableDraft("main", [iter("main", null, 0)])).toBe(false);
@@ -230,15 +239,23 @@ describe("isDeletableDraft", () => {
         const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
         expect(isDeletableDraft("v1", drafts)).toBe(true);
     });
-    it("allows a draft with a live iteration after it (no longer leaf-only)", () => {
+    it("rejects the storyline root even when other drafts exist", () => {
         const drafts = [iter("main", null, 0), iter("v1", "main", 1)];
-        expect(isDeletableDraft("main", drafts)).toBe(true);
+        expect(isDeletableDraft("main", drafts)).toBe(false);
+    });
+    it("allows a non-root draft with a live iteration after it", () => {
+        const drafts = [iter("main", null, 0), iter("v1", "main", 1), iter("v2", "v1", 2)];
+        expect(isDeletableDraft("v1", drafts)).toBe(true);
+    });
+    it("allows a branch root", () => {
+        const drafts = [iter("main", null, 0), branch("b1", "main", 1)];
+        expect(isDeletableDraft("b1", drafts)).toBe(true);
     });
     it("allows a draft with a branch off it", () => {
         const drafts = [iter("main", null, 0), iter("v1", "main", 1), branch("b1", "v1", 2)];
         expect(isDeletableDraft("v1", drafts)).toBe(true);
     });
-    it("rejects a locked draft (the lock is the only protection)", () => {
+    it("rejects a locked draft", () => {
         const drafts = [iter("main", null, 0), iter("v1", "main", 1, true)];
         expect(isDeletableDraft("v1", drafts)).toBe(false);
     });

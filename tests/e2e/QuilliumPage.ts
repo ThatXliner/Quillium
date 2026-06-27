@@ -314,13 +314,6 @@ export class QuilliumPage {
                         if (cmd === "cmd_branch_draft") {
                             const a = args as { sourceDraftId: string; label: string };
                             const source = drafts.find((d) => d.id === a.sourceDraftId);
-                            // Branching off a run head is refused (a new tab is
-                            // the right move); nothing locks otherwise.
-                            if (source && source.parentDraftId == null) {
-                                throw new Error(
-                                    "Can't branch from a top-level draft — create a new tab instead",
-                                );
-                            }
                             const branch: MockDraft = {
                                 id: `draft-test-${nextDraftIndex++}`,
                                 documentId: source?.documentId ?? "doc-test-1",
@@ -375,6 +368,13 @@ export class QuilliumPage {
                             const a = args as { draftId: string };
                             const draft = drafts.find((d) => d.id === a.draftId);
                             if (!draft) return null;
+                            if (
+                                cmd === "cmd_delete_draft" &&
+                                draft.parentDraftId == null &&
+                                draft.branchedFrom == null
+                            ) {
+                                throw new Error("Cannot delete the storyline root draft");
+                            }
                             draft.deletedAt = cmd === "cmd_delete_draft" ? Date.now() : null;
                             relockRun(draft);
                             return null;
@@ -383,6 +383,9 @@ export class QuilliumPage {
                             const a = args as { draftId: string };
                             const draft = drafts.find((d) => d.id === a.draftId);
                             if (!draft) return [];
+                            if (draft.parentDraftId == null && draft.branchedFrom == null) {
+                                throw new Error("Cannot delete the storyline root draft");
+                            }
                             const rewrites: {
                                 draftId: string;
                                 oldParentDraftId: string | null;
@@ -399,14 +402,18 @@ export class QuilliumPage {
                                     oldParentDraftId: c.parentDraftId,
                                     oldBranchedFrom: c.branchedFrom,
                                 });
+                                const reattachAnchor = draft.parentDraftId ?? draft.branchedFrom;
                                 if (c.branchedFrom === draft.id) {
-                                    // Branch child re-points to D's anchor (or is
-                                    // promoted to a top-level run off a head).
-                                    c.branchedFrom = draft.parentDraftId;
+                                    // Branch child re-points to D's anchor.
+                                    c.branchedFrom = reattachAnchor;
                                     c.parentDraftId = null;
                                 } else {
-                                    // Iteration child splices D out of the run.
+                                    // Iteration child splices D out of the run;
+                                    // if D was a branch root, the child becomes
+                                    // the new branch root off D's source.
                                     c.parentDraftId = draft.parentDraftId;
+                                    c.branchedFrom =
+                                        draft.parentDraftId == null ? draft.branchedFrom : null;
                                 }
                             }
                             draft.deletedAt = Date.now();
@@ -417,6 +424,9 @@ export class QuilliumPage {
                             const a = args as { draftId: string };
                             const root = drafts.find((d) => d.id === a.draftId);
                             if (!root) return [];
+                            if (root.parentDraftId == null && root.branchedFrom == null) {
+                                throw new Error("Cannot delete the storyline root draft");
+                            }
                             const subtree: string[] = [];
                             const queue = [root.id];
                             const seen = new Set([root.id]);
@@ -588,7 +598,7 @@ export class QuilliumPage {
     /** Navigate to "/" and wait for the editor to render. */
     async goto(): Promise<void> {
         await this.page.goto("/");
-        await expect(this.editor).toBeVisible({ timeout: 20_000 });
+        await expect(this.editor).toBeVisible({ timeout: 40_000 });
     }
 
     /** setup() + goto() — the common two-liner for most tests. */

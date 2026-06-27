@@ -185,18 +185,15 @@ function commitRename(draftId: string) {
                         <ChevronsDownIcon size={13} />
                     </button>
                 {/if}
-                <!-- Branch: a different take. Not on a run head (main / branch
-                     root) — a top-level take is a new tab. -->
-                {#if !isRunHead(row.draft)}
-                    <button
-                        onclick={() => ondraftbranch(row.draft.id)}
-                        title="Branch a different take from this draft"
-                        aria-label="Branch from {row.draft.label}"
-                        class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
-                    >
-                        <GitBranchIcon size={13} />
-                    </button>
-                {/if}
+                <!-- Branch: a different take off any draft, including run heads. -->
+                <button
+                    onclick={() => ondraftbranch(row.draft.id)}
+                    title="Branch a different take from this draft"
+                    aria-label="Branch from {row.draft.label}"
+                    class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                >
+                    <GitBranchIcon size={13} />
+                </button>
                 {#if row.draft.locked}
                     <button
                         onclick={() => ontogglelock(row.draft.id, false)}
