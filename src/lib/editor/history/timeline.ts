@@ -72,6 +72,11 @@ export type DocEventTarget = {
     id: string;
 };
 
+export type TimelineTarget = {
+    tabId: string | null;
+    draftId: string | null;
+};
+
 export type DocEventInfo = {
     text: string;
     /** The tab/draft this event acted on (for preview highlight), or null. */
@@ -79,6 +84,14 @@ export type DocEventInfo = {
     /** A deletion this event performed, restorable from its row, or null. */
     restore: { kind: "tab" | "draft"; id: string } | null;
 };
+
+function parsePayload(payload: string): Record<string, unknown> {
+    try {
+        return JSON.parse(payload) as Record<string, unknown>;
+    } catch {
+        return {};
+    }
+}
 
 /**
  * Human-readable description of a structural event. Matches the event types the
@@ -88,12 +101,7 @@ export type DocEventInfo = {
  * checkpoint_created.
  */
 export function describeDocEvent(ev: DocEventRecord): DocEventInfo {
-    let p: Record<string, unknown> = {};
-    try {
-        p = JSON.parse(ev.payload) as Record<string, unknown>;
-    } catch {
-        // Malformed payload — fall through to the raw event type.
-    }
+    const p = parsePayload(ev.payload);
     const label = typeof p.label === "string" ? p.label : "";
     const prev = typeof p.previousLabel === "string" ? p.previousLabel : "";
     const tabId = typeof p.tabId === "string" ? p.tabId : null;
@@ -121,6 +129,8 @@ export function describeDocEvent(ev: DocEventRecord): DocEventInfo {
             return { text: `Restored tab “${label}”`, target: tabTarget(), restore: null };
         case "tabs_reordered":
             return { text: "Reordered tabs", target: null, restore: null };
+        case "draft_created":
+            return { text: `Created draft “${label}”`, target: draftTarget(), restore: null };
         case "draft_iterated": {
             const restored = typeof p.restoredFromSnapshot === "number";
             return {
@@ -153,13 +163,41 @@ export function describeDocEvent(ev: DocEventRecord): DocEventInfo {
             const draftLabel = typeof p.draftLabel === "string" ? p.draftLabel : "";
             return {
                 text: `Saved checkpoint “${label}” on draft “${draftLabel}”`,
-                target: null,
+                target: draftTarget(),
                 restore: null,
             };
         }
         default:
             return { text: ev.eventType, target: null, restore: null };
     }
+}
+
+/**
+ * Resolves the tab/draft a timeline coordinate concerns. Snapshot rows carry
+ * their tab directly; draft-level activity rows may only carry `draftId`, so
+ * fall back to the full draft roster for older events and lock/rename/delete
+ * events whose payloads do not include `tabId`.
+ */
+export function resolveTimelineTarget(item: TimelineItem, allDrafts: DraftMeta[]): TimelineTarget {
+    if (item.kind === "snapshot") {
+        const draft = allDrafts.find((d) => d.id === item.snapshot.draftId);
+        return {
+            tabId: item.snapshot.tabId ?? draft?.tabId ?? null,
+            draftId: item.snapshot.draftId,
+        };
+    }
+
+    const info = describeDocEvent(item.event);
+    if (!info.target) return { tabId: null, draftId: null };
+    if (info.target.kind === "tab") return { tabId: info.target.id, draftId: null };
+
+    const payload = parsePayload(item.event.payload);
+    const payloadTabId = typeof payload.tabId === "string" ? payload.tabId : null;
+    const draft = allDrafts.find((d) => d.id === info.target?.id);
+    return {
+        tabId: payloadTabId ?? draft?.tabId ?? null,
+        draftId: info.target.id,
+    };
 }
 
 // ── Structure reconstruction (as-of a coordinate) ───────────────────

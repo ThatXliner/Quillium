@@ -6,7 +6,13 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { QuilliumPage, type MockDocEvent, type MockSnapshot } from "./QuilliumPage";
+import {
+    QuilliumPage,
+    type MockDocEvent,
+    type MockDraft,
+    type MockSnapshot,
+    type MockTab,
+} from "./QuilliumPage";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -51,6 +57,57 @@ function makeDocEvents(): MockDocEvent[] {
             createdAt: BASE_TIME - 1000 * 60 * 10,
         },
     ];
+}
+
+function makeTwoTabStructure(): { tabs: MockTab[]; drafts: MockDraft[] } {
+    return {
+        tabs: [
+            {
+                id: "tab-test-1",
+                documentId: "doc-test-1",
+                tabType: "draft",
+                label: "Main",
+                position: 0,
+                createdAt: 0,
+                deletedAt: null,
+            },
+            {
+                id: "tab-test-2",
+                documentId: "doc-test-1",
+                tabType: "draft",
+                label: "Tab 2",
+                position: 1,
+                createdAt: 0,
+                deletedAt: null,
+            },
+        ],
+        drafts: [
+            {
+                id: "draft-test-1",
+                documentId: "doc-test-1",
+                label: "main",
+                createdAt: 0,
+                isActive: true,
+                tabId: "tab-test-1",
+                parentDraftId: null,
+                branchedFrom: null,
+                locked: false,
+                deletedAt: null,
+            },
+            {
+                id: "draft-test-2",
+                documentId: "doc-test-1",
+                label: "take 2",
+                createdAt: 0,
+                isActive: true,
+                tabId: "tab-test-2",
+                parentDraftId: null,
+                branchedFrom: null,
+                locked: false,
+                deletedAt: null,
+            },
+        ],
+    };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -115,6 +172,24 @@ test("selecting a snapshot loads its document text in the preview", async ({ pag
         .toContain("Second version");
 });
 
+test("history preview uses the configured document typography", async ({ page }) => {
+    const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
+    await qp.initHistory();
+
+    const style = await page.locator(".version-preview .cm-content").evaluate((el) => {
+        const computed = getComputedStyle(el);
+        return {
+            fontFamily: computed.fontFamily,
+            fontSize: computed.fontSize,
+            textIndent: computed.textIndent,
+        };
+    });
+
+    expect(style.fontFamily).toContain("Georgia");
+    expect(style.fontSize).toBe("18px");
+    expect(style.textIndent).toBe("36px");
+});
+
 test("most recent snapshot is selected by default", async ({ page }) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     await qp.initHistory();
@@ -124,6 +199,52 @@ test("most recent snapshot is selected by default", async ({ page }) => {
     const selected = page.locator("[aria-selected='true']");
     await expect(selected).toBeVisible();
     await expect(selected).toContainText("Before refactor");
+});
+
+test("draft activity selects its owning tab by default", async ({ page }) => {
+    const structure = makeTwoTabStructure();
+    const qp = new QuilliumPage(page, {
+        ...structure,
+        snapshots: [
+            {
+                id: 1,
+                draftId: "draft-test-1",
+                tabId: "tab-test-1",
+                draftLabel: "main",
+                upToEventId: 10,
+                createdAt: BASE_TIME - 3000,
+                label: null,
+                doc: "Main tab text.",
+            },
+            {
+                id: 2,
+                draftId: "draft-test-2",
+                tabId: "tab-test-2",
+                draftLabel: "take 2",
+                upToEventId: 20,
+                createdAt: BASE_TIME - 2000,
+                label: null,
+                doc: "Second tab text.",
+            },
+        ],
+        docEvents: [
+            {
+                id: 2,
+                documentId: "doc-test-1",
+                eventType: "draft_unlocked",
+                payload: JSON.stringify({ draftId: "draft-test-2", label: "take 2" }),
+                createdAt: BASE_TIME - 1000,
+            },
+        ],
+    });
+    await qp.initHistory();
+
+    await expect(page.getByRole("button", { name: "Tab 2" })).toHaveClass(/bg-blue-50/);
+    await expect
+        .poll(() =>
+            page.locator(".version-preview .cm-content").evaluate((el) => el.textContent ?? ""),
+        )
+        .toContain("Second tab text");
 });
 
 test("empty state renders when there is no history", async ({ page }) => {
@@ -152,13 +273,13 @@ test("Escape key navigates back to the editor", async ({ page }) => {
     expect(page.url()).not.toContain("/history");
 });
 
-test("Restore button requires confirmation before calling cmd_restore_to_snapshot", async ({
+test("Restore button requires confirmation before calling cmd_restore_to_coordinate", async ({
     page,
 }) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     await qp.initHistory();
 
-    const restoreBtn = page.getByRole("button", { name: /restore this version/i });
+    const restoreBtn = page.getByRole("button", { name: /restore to here/i });
     await expect(restoreBtn).toBeVisible();
 
     // First click — should ask for confirmation, not call the command yet
@@ -166,12 +287,12 @@ test("Restore button requires confirmation before calling cmd_restore_to_snapsho
     await expect(page.getByRole("button", { name: /confirm restore/i })).toBeVisible();
 
     const cmdsBefore = await qp.getInvokedCommands();
-    expect(cmdsBefore).not.toContain("cmd_restore_to_snapshot");
+    expect(cmdsBefore).not.toContain("cmd_restore_to_coordinate");
 
     // Second click — confirms, calls the command and navigates away
     await page.getByRole("button", { name: /confirm restore/i }).click();
 
-    await expect.poll(() => qp.getInvokedCommands()).toContain("cmd_restore_to_snapshot");
+    await expect.poll(() => qp.getInvokedCommands()).toContain("cmd_restore_to_coordinate");
     await expect(qp.editor).toBeVisible({ timeout: 10_000 });
 });
 
@@ -210,12 +331,12 @@ test("inline label editing calls cmd_label_snapshot", async ({ page }) => {
     await expect(page.locator("#versions-panel").getByText("Renamed checkpoint")).toBeVisible();
 });
 
-test("cmd_list_snapshots is called on page load", async ({ page }) => {
+test("cmd_list_document_snapshots is called on page load", async ({ page }) => {
     const qp = new QuilliumPage(page, { snapshots: makeSnapshots() });
     await qp.initHistory();
 
     const cmds = await qp.getInvokedCommands();
-    expect(cmds).toContain("cmd_list_snapshots");
+    expect(cmds).toContain("cmd_list_document_snapshots");
 });
 
 // ── Storage management ────────────────────────────────────────────────────────
@@ -318,9 +439,9 @@ test("prune shows deleted count and refreshes the snapshot list", async ({ page 
 
     // Deleted count feedback appears
     await expect(page.getByText(/deleted \d+ snapshot/i)).toBeVisible({ timeout: 5_000 });
-    // cmd_list_snapshots is called again after pruning
+    // cmd_list_document_snapshots is called again after pruning
     const cmds = await qp.getInvokedCommands();
-    expect(cmds.filter((c) => c === "cmd_list_snapshots").length).toBeGreaterThan(1);
+    expect(cmds.filter((c) => c === "cmd_list_document_snapshots").length).toBeGreaterThan(1);
 });
 
 test("named checkpoints are never deleted by keep-last-N prune", async ({ page }) => {

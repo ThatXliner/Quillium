@@ -124,6 +124,24 @@ $effect(() => {
 </div>
 
 <style>
+    :global(.version-preview .cm-editor.cm-focused) {
+        outline: none;
+    }
+
+    :global(.version-preview .cm-editor) {
+        z-index: 0 !important;
+    }
+
+    :global(.version-preview .cm-scroller) {
+        overflow: visible !important;
+    }
+
+    :global(.version-preview .cm-content) {
+        font-family: var(--doc-font-family);
+        font-size: var(--doc-font-size);
+        text-indent: 2em;
+    }
+
     :global(.version-preview .cm-cursor) {
         display: none !important;
     }

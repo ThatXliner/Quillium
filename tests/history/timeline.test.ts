@@ -5,6 +5,7 @@ import {
     headingForDate,
     reconstructStructureAsOf,
     resolveTabContentAt,
+    resolveTimelineTarget,
 } from "$lib/editor/history/timeline";
 import { describe, expect, it } from "vitest";
 
@@ -113,9 +114,52 @@ describe("describeDocEvent", () => {
         expect(info.restore).toBeNull();
     });
 
+    it("handles legacy draft_created activity", () => {
+        const info = describeDocEvent(
+            docEvent(1, "draft_created", { draftId: "d", label: "take 2" }, 0),
+        );
+        expect(info.text).toBe("Created draft “take 2”");
+        expect(info.target).toEqual({ kind: "draft", id: "d" });
+    });
+
     it("falls back to the raw type for unknown events", () => {
         const info = describeDocEvent(docEvent(1, "something_new", {}, 0));
         expect(info.text).toBe("something_new");
+    });
+});
+
+// ── resolveTimelineTarget ──────────────────────────────────────────
+
+describe("resolveTimelineTarget", () => {
+    const drafts = [
+        { ...draft("d1", 0), tabId: "tab1" },
+        { ...draft("d2", 0), tabId: "tab2" },
+    ];
+
+    it("resolves a draft activity's owning tab from the draft roster", () => {
+        const event = docEvent(1, "draft_unlocked", { draftId: "d2", label: "take 2" }, 100);
+        const item = {
+            id: "activity:1",
+            kind: "activity" as const,
+            createdAt: event.createdAt,
+            event,
+        };
+
+        expect(resolveTimelineTarget(item, drafts)).toEqual({ tabId: "tab2", draftId: "d2" });
+    });
+
+    it("prefers a snapshot's tab id and falls back through the draft roster", () => {
+        expect(
+            resolveTimelineTarget(
+                {
+                    id: "snapshot:1",
+                    kind: "snapshot",
+                    createdAt: 100,
+                    snapshot: { ...snapshot(1, "d2", 100), tabId: null },
+                },
+                drafts,
+            ),
+        ).toEqual({ tabId: "tab2", draftId: "d2" });
     });
 });
 

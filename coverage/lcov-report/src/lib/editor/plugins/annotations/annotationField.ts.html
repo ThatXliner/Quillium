@@ -1,0 +1,3397 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/lib/editor/plugins/annotations/annotationField.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../../../prettify.css" />
+    <link rel="stylesheet" href="../../../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../../../index.html">All files</a> / <a href="index.html">src/lib/editor/plugins/annotations</a> annotationField.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">85.79% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>314/366</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">80.3% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>212/264</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">90% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>27/30</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">90.11% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>301/334</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line high'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a>
+<a name='L212'></a><a href='#L212'>212</a>
+<a name='L213'></a><a href='#L213'>213</a>
+<a name='L214'></a><a href='#L214'>214</a>
+<a name='L215'></a><a href='#L215'>215</a>
+<a name='L216'></a><a href='#L216'>216</a>
+<a name='L217'></a><a href='#L217'>217</a>
+<a name='L218'></a><a href='#L218'>218</a>
+<a name='L219'></a><a href='#L219'>219</a>
+<a name='L220'></a><a href='#L220'>220</a>
+<a name='L221'></a><a href='#L221'>221</a>
+<a name='L222'></a><a href='#L222'>222</a>
+<a name='L223'></a><a href='#L223'>223</a>
+<a name='L224'></a><a href='#L224'>224</a>
+<a name='L225'></a><a href='#L225'>225</a>
+<a name='L226'></a><a href='#L226'>226</a>
+<a name='L227'></a><a href='#L227'>227</a>
+<a name='L228'></a><a href='#L228'>228</a>
+<a name='L229'></a><a href='#L229'>229</a>
+<a name='L230'></a><a href='#L230'>230</a>
+<a name='L231'></a><a href='#L231'>231</a>
+<a name='L232'></a><a href='#L232'>232</a>
+<a name='L233'></a><a href='#L233'>233</a>
+<a name='L234'></a><a href='#L234'>234</a>
+<a name='L235'></a><a href='#L235'>235</a>
+<a name='L236'></a><a href='#L236'>236</a>
+<a name='L237'></a><a href='#L237'>237</a>
+<a name='L238'></a><a href='#L238'>238</a>
+<a name='L239'></a><a href='#L239'>239</a>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a>
+<a name='L247'></a><a href='#L247'>247</a>
+<a name='L248'></a><a href='#L248'>248</a>
+<a name='L249'></a><a href='#L249'>249</a>
+<a name='L250'></a><a href='#L250'>250</a>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a>
+<a name='L257'></a><a href='#L257'>257</a>
+<a name='L258'></a><a href='#L258'>258</a>
+<a name='L259'></a><a href='#L259'>259</a>
+<a name='L260'></a><a href='#L260'>260</a>
+<a name='L261'></a><a href='#L261'>261</a>
+<a name='L262'></a><a href='#L262'>262</a>
+<a name='L263'></a><a href='#L263'>263</a>
+<a name='L264'></a><a href='#L264'>264</a>
+<a name='L265'></a><a href='#L265'>265</a>
+<a name='L266'></a><a href='#L266'>266</a>
+<a name='L267'></a><a href='#L267'>267</a>
+<a name='L268'></a><a href='#L268'>268</a>
+<a name='L269'></a><a href='#L269'>269</a>
+<a name='L270'></a><a href='#L270'>270</a>
+<a name='L271'></a><a href='#L271'>271</a>
+<a name='L272'></a><a href='#L272'>272</a>
+<a name='L273'></a><a href='#L273'>273</a>
+<a name='L274'></a><a href='#L274'>274</a>
+<a name='L275'></a><a href='#L275'>275</a>
+<a name='L276'></a><a href='#L276'>276</a>
+<a name='L277'></a><a href='#L277'>277</a>
+<a name='L278'></a><a href='#L278'>278</a>
+<a name='L279'></a><a href='#L279'>279</a>
+<a name='L280'></a><a href='#L280'>280</a>
+<a name='L281'></a><a href='#L281'>281</a>
+<a name='L282'></a><a href='#L282'>282</a>
+<a name='L283'></a><a href='#L283'>283</a>
+<a name='L284'></a><a href='#L284'>284</a>
+<a name='L285'></a><a href='#L285'>285</a>
+<a name='L286'></a><a href='#L286'>286</a>
+<a name='L287'></a><a href='#L287'>287</a>
+<a name='L288'></a><a href='#L288'>288</a>
+<a name='L289'></a><a href='#L289'>289</a>
+<a name='L290'></a><a href='#L290'>290</a>
+<a name='L291'></a><a href='#L291'>291</a>
+<a name='L292'></a><a href='#L292'>292</a>
+<a name='L293'></a><a href='#L293'>293</a>
+<a name='L294'></a><a href='#L294'>294</a>
+<a name='L295'></a><a href='#L295'>295</a>
+<a name='L296'></a><a href='#L296'>296</a>
+<a name='L297'></a><a href='#L297'>297</a>
+<a name='L298'></a><a href='#L298'>298</a>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a>
+<a name='L302'></a><a href='#L302'>302</a>
+<a name='L303'></a><a href='#L303'>303</a>
+<a name='L304'></a><a href='#L304'>304</a>
+<a name='L305'></a><a href='#L305'>305</a>
+<a name='L306'></a><a href='#L306'>306</a>
+<a name='L307'></a><a href='#L307'>307</a>
+<a name='L308'></a><a href='#L308'>308</a>
+<a name='L309'></a><a href='#L309'>309</a>
+<a name='L310'></a><a href='#L310'>310</a>
+<a name='L311'></a><a href='#L311'>311</a>
+<a name='L312'></a><a href='#L312'>312</a>
+<a name='L313'></a><a href='#L313'>313</a>
+<a name='L314'></a><a href='#L314'>314</a>
+<a name='L315'></a><a href='#L315'>315</a>
+<a name='L316'></a><a href='#L316'>316</a>
+<a name='L317'></a><a href='#L317'>317</a>
+<a name='L318'></a><a href='#L318'>318</a>
+<a name='L319'></a><a href='#L319'>319</a>
+<a name='L320'></a><a href='#L320'>320</a>
+<a name='L321'></a><a href='#L321'>321</a>
+<a name='L322'></a><a href='#L322'>322</a>
+<a name='L323'></a><a href='#L323'>323</a>
+<a name='L324'></a><a href='#L324'>324</a>
+<a name='L325'></a><a href='#L325'>325</a>
+<a name='L326'></a><a href='#L326'>326</a>
+<a name='L327'></a><a href='#L327'>327</a>
+<a name='L328'></a><a href='#L328'>328</a>
+<a name='L329'></a><a href='#L329'>329</a>
+<a name='L330'></a><a href='#L330'>330</a>
+<a name='L331'></a><a href='#L331'>331</a>
+<a name='L332'></a><a href='#L332'>332</a>
+<a name='L333'></a><a href='#L333'>333</a>
+<a name='L334'></a><a href='#L334'>334</a>
+<a name='L335'></a><a href='#L335'>335</a>
+<a name='L336'></a><a href='#L336'>336</a>
+<a name='L337'></a><a href='#L337'>337</a>
+<a name='L338'></a><a href='#L338'>338</a>
+<a name='L339'></a><a href='#L339'>339</a>
+<a name='L340'></a><a href='#L340'>340</a>
+<a name='L341'></a><a href='#L341'>341</a>
+<a name='L342'></a><a href='#L342'>342</a>
+<a name='L343'></a><a href='#L343'>343</a>
+<a name='L344'></a><a href='#L344'>344</a>
+<a name='L345'></a><a href='#L345'>345</a>
+<a name='L346'></a><a href='#L346'>346</a>
+<a name='L347'></a><a href='#L347'>347</a>
+<a name='L348'></a><a href='#L348'>348</a>
+<a name='L349'></a><a href='#L349'>349</a>
+<a name='L350'></a><a href='#L350'>350</a>
+<a name='L351'></a><a href='#L351'>351</a>
+<a name='L352'></a><a href='#L352'>352</a>
+<a name='L353'></a><a href='#L353'>353</a>
+<a name='L354'></a><a href='#L354'>354</a>
+<a name='L355'></a><a href='#L355'>355</a>
+<a name='L356'></a><a href='#L356'>356</a>
+<a name='L357'></a><a href='#L357'>357</a>
+<a name='L358'></a><a href='#L358'>358</a>
+<a name='L359'></a><a href='#L359'>359</a>
+<a name='L360'></a><a href='#L360'>360</a>
+<a name='L361'></a><a href='#L361'>361</a>
+<a name='L362'></a><a href='#L362'>362</a>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a>
+<a name='L367'></a><a href='#L367'>367</a>
+<a name='L368'></a><a href='#L368'>368</a>
+<a name='L369'></a><a href='#L369'>369</a>
+<a name='L370'></a><a href='#L370'>370</a>
+<a name='L371'></a><a href='#L371'>371</a>
+<a name='L372'></a><a href='#L372'>372</a>
+<a name='L373'></a><a href='#L373'>373</a>
+<a name='L374'></a><a href='#L374'>374</a>
+<a name='L375'></a><a href='#L375'>375</a>
+<a name='L376'></a><a href='#L376'>376</a>
+<a name='L377'></a><a href='#L377'>377</a>
+<a name='L378'></a><a href='#L378'>378</a>
+<a name='L379'></a><a href='#L379'>379</a>
+<a name='L380'></a><a href='#L380'>380</a>
+<a name='L381'></a><a href='#L381'>381</a>
+<a name='L382'></a><a href='#L382'>382</a>
+<a name='L383'></a><a href='#L383'>383</a>
+<a name='L384'></a><a href='#L384'>384</a>
+<a name='L385'></a><a href='#L385'>385</a>
+<a name='L386'></a><a href='#L386'>386</a>
+<a name='L387'></a><a href='#L387'>387</a>
+<a name='L388'></a><a href='#L388'>388</a>
+<a name='L389'></a><a href='#L389'>389</a>
+<a name='L390'></a><a href='#L390'>390</a>
+<a name='L391'></a><a href='#L391'>391</a>
+<a name='L392'></a><a href='#L392'>392</a>
+<a name='L393'></a><a href='#L393'>393</a>
+<a name='L394'></a><a href='#L394'>394</a>
+<a name='L395'></a><a href='#L395'>395</a>
+<a name='L396'></a><a href='#L396'>396</a>
+<a name='L397'></a><a href='#L397'>397</a>
+<a name='L398'></a><a href='#L398'>398</a>
+<a name='L399'></a><a href='#L399'>399</a>
+<a name='L400'></a><a href='#L400'>400</a>
+<a name='L401'></a><a href='#L401'>401</a>
+<a name='L402'></a><a href='#L402'>402</a>
+<a name='L403'></a><a href='#L403'>403</a>
+<a name='L404'></a><a href='#L404'>404</a>
+<a name='L405'></a><a href='#L405'>405</a>
+<a name='L406'></a><a href='#L406'>406</a>
+<a name='L407'></a><a href='#L407'>407</a>
+<a name='L408'></a><a href='#L408'>408</a>
+<a name='L409'></a><a href='#L409'>409</a>
+<a name='L410'></a><a href='#L410'>410</a>
+<a name='L411'></a><a href='#L411'>411</a>
+<a name='L412'></a><a href='#L412'>412</a>
+<a name='L413'></a><a href='#L413'>413</a>
+<a name='L414'></a><a href='#L414'>414</a>
+<a name='L415'></a><a href='#L415'>415</a>
+<a name='L416'></a><a href='#L416'>416</a>
+<a name='L417'></a><a href='#L417'>417</a>
+<a name='L418'></a><a href='#L418'>418</a>
+<a name='L419'></a><a href='#L419'>419</a>
+<a name='L420'></a><a href='#L420'>420</a>
+<a name='L421'></a><a href='#L421'>421</a>
+<a name='L422'></a><a href='#L422'>422</a>
+<a name='L423'></a><a href='#L423'>423</a>
+<a name='L424'></a><a href='#L424'>424</a>
+<a name='L425'></a><a href='#L425'>425</a>
+<a name='L426'></a><a href='#L426'>426</a>
+<a name='L427'></a><a href='#L427'>427</a>
+<a name='L428'></a><a href='#L428'>428</a>
+<a name='L429'></a><a href='#L429'>429</a>
+<a name='L430'></a><a href='#L430'>430</a>
+<a name='L431'></a><a href='#L431'>431</a>
+<a name='L432'></a><a href='#L432'>432</a>
+<a name='L433'></a><a href='#L433'>433</a>
+<a name='L434'></a><a href='#L434'>434</a>
+<a name='L435'></a><a href='#L435'>435</a>
+<a name='L436'></a><a href='#L436'>436</a>
+<a name='L437'></a><a href='#L437'>437</a>
+<a name='L438'></a><a href='#L438'>438</a>
+<a name='L439'></a><a href='#L439'>439</a>
+<a name='L440'></a><a href='#L440'>440</a>
+<a name='L441'></a><a href='#L441'>441</a>
+<a name='L442'></a><a href='#L442'>442</a>
+<a name='L443'></a><a href='#L443'>443</a>
+<a name='L444'></a><a href='#L444'>444</a>
+<a name='L445'></a><a href='#L445'>445</a>
+<a name='L446'></a><a href='#L446'>446</a>
+<a name='L447'></a><a href='#L447'>447</a>
+<a name='L448'></a><a href='#L448'>448</a>
+<a name='L449'></a><a href='#L449'>449</a>
+<a name='L450'></a><a href='#L450'>450</a>
+<a name='L451'></a><a href='#L451'>451</a>
+<a name='L452'></a><a href='#L452'>452</a>
+<a name='L453'></a><a href='#L453'>453</a>
+<a name='L454'></a><a href='#L454'>454</a>
+<a name='L455'></a><a href='#L455'>455</a>
+<a name='L456'></a><a href='#L456'>456</a>
+<a name='L457'></a><a href='#L457'>457</a>
+<a name='L458'></a><a href='#L458'>458</a>
+<a name='L459'></a><a href='#L459'>459</a>
+<a name='L460'></a><a href='#L460'>460</a>
+<a name='L461'></a><a href='#L461'>461</a>
+<a name='L462'></a><a href='#L462'>462</a>
+<a name='L463'></a><a href='#L463'>463</a>
+<a name='L464'></a><a href='#L464'>464</a>
+<a name='L465'></a><a href='#L465'>465</a>
+<a name='L466'></a><a href='#L466'>466</a>
+<a name='L467'></a><a href='#L467'>467</a>
+<a name='L468'></a><a href='#L468'>468</a>
+<a name='L469'></a><a href='#L469'>469</a>
+<a name='L470'></a><a href='#L470'>470</a>
+<a name='L471'></a><a href='#L471'>471</a>
+<a name='L472'></a><a href='#L472'>472</a>
+<a name='L473'></a><a href='#L473'>473</a>
+<a name='L474'></a><a href='#L474'>474</a>
+<a name='L475'></a><a href='#L475'>475</a>
+<a name='L476'></a><a href='#L476'>476</a>
+<a name='L477'></a><a href='#L477'>477</a>
+<a name='L478'></a><a href='#L478'>478</a>
+<a name='L479'></a><a href='#L479'>479</a>
+<a name='L480'></a><a href='#L480'>480</a>
+<a name='L481'></a><a href='#L481'>481</a>
+<a name='L482'></a><a href='#L482'>482</a>
+<a name='L483'></a><a href='#L483'>483</a>
+<a name='L484'></a><a href='#L484'>484</a>
+<a name='L485'></a><a href='#L485'>485</a>
+<a name='L486'></a><a href='#L486'>486</a>
+<a name='L487'></a><a href='#L487'>487</a>
+<a name='L488'></a><a href='#L488'>488</a>
+<a name='L489'></a><a href='#L489'>489</a>
+<a name='L490'></a><a href='#L490'>490</a>
+<a name='L491'></a><a href='#L491'>491</a>
+<a name='L492'></a><a href='#L492'>492</a>
+<a name='L493'></a><a href='#L493'>493</a>
+<a name='L494'></a><a href='#L494'>494</a>
+<a name='L495'></a><a href='#L495'>495</a>
+<a name='L496'></a><a href='#L496'>496</a>
+<a name='L497'></a><a href='#L497'>497</a>
+<a name='L498'></a><a href='#L498'>498</a>
+<a name='L499'></a><a href='#L499'>499</a>
+<a name='L500'></a><a href='#L500'>500</a>
+<a name='L501'></a><a href='#L501'>501</a>
+<a name='L502'></a><a href='#L502'>502</a>
+<a name='L503'></a><a href='#L503'>503</a>
+<a name='L504'></a><a href='#L504'>504</a>
+<a name='L505'></a><a href='#L505'>505</a>
+<a name='L506'></a><a href='#L506'>506</a>
+<a name='L507'></a><a href='#L507'>507</a>
+<a name='L508'></a><a href='#L508'>508</a>
+<a name='L509'></a><a href='#L509'>509</a>
+<a name='L510'></a><a href='#L510'>510</a>
+<a name='L511'></a><a href='#L511'>511</a>
+<a name='L512'></a><a href='#L512'>512</a>
+<a name='L513'></a><a href='#L513'>513</a>
+<a name='L514'></a><a href='#L514'>514</a>
+<a name='L515'></a><a href='#L515'>515</a>
+<a name='L516'></a><a href='#L516'>516</a>
+<a name='L517'></a><a href='#L517'>517</a>
+<a name='L518'></a><a href='#L518'>518</a>
+<a name='L519'></a><a href='#L519'>519</a>
+<a name='L520'></a><a href='#L520'>520</a>
+<a name='L521'></a><a href='#L521'>521</a>
+<a name='L522'></a><a href='#L522'>522</a>
+<a name='L523'></a><a href='#L523'>523</a>
+<a name='L524'></a><a href='#L524'>524</a>
+<a name='L525'></a><a href='#L525'>525</a>
+<a name='L526'></a><a href='#L526'>526</a>
+<a name='L527'></a><a href='#L527'>527</a>
+<a name='L528'></a><a href='#L528'>528</a>
+<a name='L529'></a><a href='#L529'>529</a>
+<a name='L530'></a><a href='#L530'>530</a>
+<a name='L531'></a><a href='#L531'>531</a>
+<a name='L532'></a><a href='#L532'>532</a>
+<a name='L533'></a><a href='#L533'>533</a>
+<a name='L534'></a><a href='#L534'>534</a>
+<a name='L535'></a><a href='#L535'>535</a>
+<a name='L536'></a><a href='#L536'>536</a>
+<a name='L537'></a><a href='#L537'>537</a>
+<a name='L538'></a><a href='#L538'>538</a>
+<a name='L539'></a><a href='#L539'>539</a>
+<a name='L540'></a><a href='#L540'>540</a>
+<a name='L541'></a><a href='#L541'>541</a>
+<a name='L542'></a><a href='#L542'>542</a>
+<a name='L543'></a><a href='#L543'>543</a>
+<a name='L544'></a><a href='#L544'>544</a>
+<a name='L545'></a><a href='#L545'>545</a>
+<a name='L546'></a><a href='#L546'>546</a>
+<a name='L547'></a><a href='#L547'>547</a>
+<a name='L548'></a><a href='#L548'>548</a>
+<a name='L549'></a><a href='#L549'>549</a>
+<a name='L550'></a><a href='#L550'>550</a>
+<a name='L551'></a><a href='#L551'>551</a>
+<a name='L552'></a><a href='#L552'>552</a>
+<a name='L553'></a><a href='#L553'>553</a>
+<a name='L554'></a><a href='#L554'>554</a>
+<a name='L555'></a><a href='#L555'>555</a>
+<a name='L556'></a><a href='#L556'>556</a>
+<a name='L557'></a><a href='#L557'>557</a>
+<a name='L558'></a><a href='#L558'>558</a>
+<a name='L559'></a><a href='#L559'>559</a>
+<a name='L560'></a><a href='#L560'>560</a>
+<a name='L561'></a><a href='#L561'>561</a>
+<a name='L562'></a><a href='#L562'>562</a>
+<a name='L563'></a><a href='#L563'>563</a>
+<a name='L564'></a><a href='#L564'>564</a>
+<a name='L565'></a><a href='#L565'>565</a>
+<a name='L566'></a><a href='#L566'>566</a>
+<a name='L567'></a><a href='#L567'>567</a>
+<a name='L568'></a><a href='#L568'>568</a>
+<a name='L569'></a><a href='#L569'>569</a>
+<a name='L570'></a><a href='#L570'>570</a>
+<a name='L571'></a><a href='#L571'>571</a>
+<a name='L572'></a><a href='#L572'>572</a>
+<a name='L573'></a><a href='#L573'>573</a>
+<a name='L574'></a><a href='#L574'>574</a>
+<a name='L575'></a><a href='#L575'>575</a>
+<a name='L576'></a><a href='#L576'>576</a>
+<a name='L577'></a><a href='#L577'>577</a>
+<a name='L578'></a><a href='#L578'>578</a>
+<a name='L579'></a><a href='#L579'>579</a>
+<a name='L580'></a><a href='#L580'>580</a>
+<a name='L581'></a><a href='#L581'>581</a>
+<a name='L582'></a><a href='#L582'>582</a>
+<a name='L583'></a><a href='#L583'>583</a>
+<a name='L584'></a><a href='#L584'>584</a>
+<a name='L585'></a><a href='#L585'>585</a>
+<a name='L586'></a><a href='#L586'>586</a>
+<a name='L587'></a><a href='#L587'>587</a>
+<a name='L588'></a><a href='#L588'>588</a>
+<a name='L589'></a><a href='#L589'>589</a>
+<a name='L590'></a><a href='#L590'>590</a>
+<a name='L591'></a><a href='#L591'>591</a>
+<a name='L592'></a><a href='#L592'>592</a>
+<a name='L593'></a><a href='#L593'>593</a>
+<a name='L594'></a><a href='#L594'>594</a>
+<a name='L595'></a><a href='#L595'>595</a>
+<a name='L596'></a><a href='#L596'>596</a>
+<a name='L597'></a><a href='#L597'>597</a>
+<a name='L598'></a><a href='#L598'>598</a>
+<a name='L599'></a><a href='#L599'>599</a>
+<a name='L600'></a><a href='#L600'>600</a>
+<a name='L601'></a><a href='#L601'>601</a>
+<a name='L602'></a><a href='#L602'>602</a>
+<a name='L603'></a><a href='#L603'>603</a>
+<a name='L604'></a><a href='#L604'>604</a>
+<a name='L605'></a><a href='#L605'>605</a>
+<a name='L606'></a><a href='#L606'>606</a>
+<a name='L607'></a><a href='#L607'>607</a>
+<a name='L608'></a><a href='#L608'>608</a>
+<a name='L609'></a><a href='#L609'>609</a>
+<a name='L610'></a><a href='#L610'>610</a>
+<a name='L611'></a><a href='#L611'>611</a>
+<a name='L612'></a><a href='#L612'>612</a>
+<a name='L613'></a><a href='#L613'>613</a>
+<a name='L614'></a><a href='#L614'>614</a>
+<a name='L615'></a><a href='#L615'>615</a>
+<a name='L616'></a><a href='#L616'>616</a>
+<a name='L617'></a><a href='#L617'>617</a>
+<a name='L618'></a><a href='#L618'>618</a>
+<a name='L619'></a><a href='#L619'>619</a>
+<a name='L620'></a><a href='#L620'>620</a>
+<a name='L621'></a><a href='#L621'>621</a>
+<a name='L622'></a><a href='#L622'>622</a>
+<a name='L623'></a><a href='#L623'>623</a>
+<a name='L624'></a><a href='#L624'>624</a>
+<a name='L625'></a><a href='#L625'>625</a>
+<a name='L626'></a><a href='#L626'>626</a>
+<a name='L627'></a><a href='#L627'>627</a>
+<a name='L628'></a><a href='#L628'>628</a>
+<a name='L629'></a><a href='#L629'>629</a>
+<a name='L630'></a><a href='#L630'>630</a>
+<a name='L631'></a><a href='#L631'>631</a>
+<a name='L632'></a><a href='#L632'>632</a>
+<a name='L633'></a><a href='#L633'>633</a>
+<a name='L634'></a><a href='#L634'>634</a>
+<a name='L635'></a><a href='#L635'>635</a>
+<a name='L636'></a><a href='#L636'>636</a>
+<a name='L637'></a><a href='#L637'>637</a>
+<a name='L638'></a><a href='#L638'>638</a>
+<a name='L639'></a><a href='#L639'>639</a>
+<a name='L640'></a><a href='#L640'>640</a>
+<a name='L641'></a><a href='#L641'>641</a>
+<a name='L642'></a><a href='#L642'>642</a>
+<a name='L643'></a><a href='#L643'>643</a>
+<a name='L644'></a><a href='#L644'>644</a>
+<a name='L645'></a><a href='#L645'>645</a>
+<a name='L646'></a><a href='#L646'>646</a>
+<a name='L647'></a><a href='#L647'>647</a>
+<a name='L648'></a><a href='#L648'>648</a>
+<a name='L649'></a><a href='#L649'>649</a>
+<a name='L650'></a><a href='#L650'>650</a>
+<a name='L651'></a><a href='#L651'>651</a>
+<a name='L652'></a><a href='#L652'>652</a>
+<a name='L653'></a><a href='#L653'>653</a>
+<a name='L654'></a><a href='#L654'>654</a>
+<a name='L655'></a><a href='#L655'>655</a>
+<a name='L656'></a><a href='#L656'>656</a>
+<a name='L657'></a><a href='#L657'>657</a>
+<a name='L658'></a><a href='#L658'>658</a>
+<a name='L659'></a><a href='#L659'>659</a>
+<a name='L660'></a><a href='#L660'>660</a>
+<a name='L661'></a><a href='#L661'>661</a>
+<a name='L662'></a><a href='#L662'>662</a>
+<a name='L663'></a><a href='#L663'>663</a>
+<a name='L664'></a><a href='#L664'>664</a>
+<a name='L665'></a><a href='#L665'>665</a>
+<a name='L666'></a><a href='#L666'>666</a>
+<a name='L667'></a><a href='#L667'>667</a>
+<a name='L668'></a><a href='#L668'>668</a>
+<a name='L669'></a><a href='#L669'>669</a>
+<a name='L670'></a><a href='#L670'>670</a>
+<a name='L671'></a><a href='#L671'>671</a>
+<a name='L672'></a><a href='#L672'>672</a>
+<a name='L673'></a><a href='#L673'>673</a>
+<a name='L674'></a><a href='#L674'>674</a>
+<a name='L675'></a><a href='#L675'>675</a>
+<a name='L676'></a><a href='#L676'>676</a>
+<a name='L677'></a><a href='#L677'>677</a>
+<a name='L678'></a><a href='#L678'>678</a>
+<a name='L679'></a><a href='#L679'>679</a>
+<a name='L680'></a><a href='#L680'>680</a>
+<a name='L681'></a><a href='#L681'>681</a>
+<a name='L682'></a><a href='#L682'>682</a>
+<a name='L683'></a><a href='#L683'>683</a>
+<a name='L684'></a><a href='#L684'>684</a>
+<a name='L685'></a><a href='#L685'>685</a>
+<a name='L686'></a><a href='#L686'>686</a>
+<a name='L687'></a><a href='#L687'>687</a>
+<a name='L688'></a><a href='#L688'>688</a>
+<a name='L689'></a><a href='#L689'>689</a>
+<a name='L690'></a><a href='#L690'>690</a>
+<a name='L691'></a><a href='#L691'>691</a>
+<a name='L692'></a><a href='#L692'>692</a>
+<a name='L693'></a><a href='#L693'>693</a>
+<a name='L694'></a><a href='#L694'>694</a>
+<a name='L695'></a><a href='#L695'>695</a>
+<a name='L696'></a><a href='#L696'>696</a>
+<a name='L697'></a><a href='#L697'>697</a>
+<a name='L698'></a><a href='#L698'>698</a>
+<a name='L699'></a><a href='#L699'>699</a>
+<a name='L700'></a><a href='#L700'>700</a>
+<a name='L701'></a><a href='#L701'>701</a>
+<a name='L702'></a><a href='#L702'>702</a>
+<a name='L703'></a><a href='#L703'>703</a>
+<a name='L704'></a><a href='#L704'>704</a>
+<a name='L705'></a><a href='#L705'>705</a>
+<a name='L706'></a><a href='#L706'>706</a>
+<a name='L707'></a><a href='#L707'>707</a>
+<a name='L708'></a><a href='#L708'>708</a>
+<a name='L709'></a><a href='#L709'>709</a>
+<a name='L710'></a><a href='#L710'>710</a>
+<a name='L711'></a><a href='#L711'>711</a>
+<a name='L712'></a><a href='#L712'>712</a>
+<a name='L713'></a><a href='#L713'>713</a>
+<a name='L714'></a><a href='#L714'>714</a>
+<a name='L715'></a><a href='#L715'>715</a>
+<a name='L716'></a><a href='#L716'>716</a>
+<a name='L717'></a><a href='#L717'>717</a>
+<a name='L718'></a><a href='#L718'>718</a>
+<a name='L719'></a><a href='#L719'>719</a>
+<a name='L720'></a><a href='#L720'>720</a>
+<a name='L721'></a><a href='#L721'>721</a>
+<a name='L722'></a><a href='#L722'>722</a>
+<a name='L723'></a><a href='#L723'>723</a>
+<a name='L724'></a><a href='#L724'>724</a>
+<a name='L725'></a><a href='#L725'>725</a>
+<a name='L726'></a><a href='#L726'>726</a>
+<a name='L727'></a><a href='#L727'>727</a>
+<a name='L728'></a><a href='#L728'>728</a>
+<a name='L729'></a><a href='#L729'>729</a>
+<a name='L730'></a><a href='#L730'>730</a>
+<a name='L731'></a><a href='#L731'>731</a>
+<a name='L732'></a><a href='#L732'>732</a>
+<a name='L733'></a><a href='#L733'>733</a>
+<a name='L734'></a><a href='#L734'>734</a>
+<a name='L735'></a><a href='#L735'>735</a>
+<a name='L736'></a><a href='#L736'>736</a>
+<a name='L737'></a><a href='#L737'>737</a>
+<a name='L738'></a><a href='#L738'>738</a>
+<a name='L739'></a><a href='#L739'>739</a>
+<a name='L740'></a><a href='#L740'>740</a>
+<a name='L741'></a><a href='#L741'>741</a>
+<a name='L742'></a><a href='#L742'>742</a>
+<a name='L743'></a><a href='#L743'>743</a>
+<a name='L744'></a><a href='#L744'>744</a>
+<a name='L745'></a><a href='#L745'>745</a>
+<a name='L746'></a><a href='#L746'>746</a>
+<a name='L747'></a><a href='#L747'>747</a>
+<a name='L748'></a><a href='#L748'>748</a>
+<a name='L749'></a><a href='#L749'>749</a>
+<a name='L750'></a><a href='#L750'>750</a>
+<a name='L751'></a><a href='#L751'>751</a>
+<a name='L752'></a><a href='#L752'>752</a>
+<a name='L753'></a><a href='#L753'>753</a>
+<a name='L754'></a><a href='#L754'>754</a>
+<a name='L755'></a><a href='#L755'>755</a>
+<a name='L756'></a><a href='#L756'>756</a>
+<a name='L757'></a><a href='#L757'>757</a>
+<a name='L758'></a><a href='#L758'>758</a>
+<a name='L759'></a><a href='#L759'>759</a>
+<a name='L760'></a><a href='#L760'>760</a>
+<a name='L761'></a><a href='#L761'>761</a>
+<a name='L762'></a><a href='#L762'>762</a>
+<a name='L763'></a><a href='#L763'>763</a>
+<a name='L764'></a><a href='#L764'>764</a>
+<a name='L765'></a><a href='#L765'>765</a>
+<a name='L766'></a><a href='#L766'>766</a>
+<a name='L767'></a><a href='#L767'>767</a>
+<a name='L768'></a><a href='#L768'>768</a>
+<a name='L769'></a><a href='#L769'>769</a>
+<a name='L770'></a><a href='#L770'>770</a>
+<a name='L771'></a><a href='#L771'>771</a>
+<a name='L772'></a><a href='#L772'>772</a>
+<a name='L773'></a><a href='#L773'>773</a>
+<a name='L774'></a><a href='#L774'>774</a>
+<a name='L775'></a><a href='#L775'>775</a>
+<a name='L776'></a><a href='#L776'>776</a>
+<a name='L777'></a><a href='#L777'>777</a>
+<a name='L778'></a><a href='#L778'>778</a>
+<a name='L779'></a><a href='#L779'>779</a>
+<a name='L780'></a><a href='#L780'>780</a>
+<a name='L781'></a><a href='#L781'>781</a>
+<a name='L782'></a><a href='#L782'>782</a>
+<a name='L783'></a><a href='#L783'>783</a>
+<a name='L784'></a><a href='#L784'>784</a>
+<a name='L785'></a><a href='#L785'>785</a>
+<a name='L786'></a><a href='#L786'>786</a>
+<a name='L787'></a><a href='#L787'>787</a>
+<a name='L788'></a><a href='#L788'>788</a>
+<a name='L789'></a><a href='#L789'>789</a>
+<a name='L790'></a><a href='#L790'>790</a>
+<a name='L791'></a><a href='#L791'>791</a>
+<a name='L792'></a><a href='#L792'>792</a>
+<a name='L793'></a><a href='#L793'>793</a>
+<a name='L794'></a><a href='#L794'>794</a>
+<a name='L795'></a><a href='#L795'>795</a>
+<a name='L796'></a><a href='#L796'>796</a>
+<a name='L797'></a><a href='#L797'>797</a>
+<a name='L798'></a><a href='#L798'>798</a>
+<a name='L799'></a><a href='#L799'>799</a>
+<a name='L800'></a><a href='#L800'>800</a>
+<a name='L801'></a><a href='#L801'>801</a>
+<a name='L802'></a><a href='#L802'>802</a>
+<a name='L803'></a><a href='#L803'>803</a>
+<a name='L804'></a><a href='#L804'>804</a>
+<a name='L805'></a><a href='#L805'>805</a>
+<a name='L806'></a><a href='#L806'>806</a>
+<a name='L807'></a><a href='#L807'>807</a>
+<a name='L808'></a><a href='#L808'>808</a>
+<a name='L809'></a><a href='#L809'>809</a>
+<a name='L810'></a><a href='#L810'>810</a>
+<a name='L811'></a><a href='#L811'>811</a>
+<a name='L812'></a><a href='#L812'>812</a>
+<a name='L813'></a><a href='#L813'>813</a>
+<a name='L814'></a><a href='#L814'>814</a>
+<a name='L815'></a><a href='#L815'>815</a>
+<a name='L816'></a><a href='#L816'>816</a>
+<a name='L817'></a><a href='#L817'>817</a>
+<a name='L818'></a><a href='#L818'>818</a>
+<a name='L819'></a><a href='#L819'>819</a>
+<a name='L820'></a><a href='#L820'>820</a>
+<a name='L821'></a><a href='#L821'>821</a>
+<a name='L822'></a><a href='#L822'>822</a>
+<a name='L823'></a><a href='#L823'>823</a>
+<a name='L824'></a><a href='#L824'>824</a>
+<a name='L825'></a><a href='#L825'>825</a>
+<a name='L826'></a><a href='#L826'>826</a>
+<a name='L827'></a><a href='#L827'>827</a>
+<a name='L828'></a><a href='#L828'>828</a>
+<a name='L829'></a><a href='#L829'>829</a>
+<a name='L830'></a><a href='#L830'>830</a>
+<a name='L831'></a><a href='#L831'>831</a>
+<a name='L832'></a><a href='#L832'>832</a>
+<a name='L833'></a><a href='#L833'>833</a>
+<a name='L834'></a><a href='#L834'>834</a>
+<a name='L835'></a><a href='#L835'>835</a>
+<a name='L836'></a><a href='#L836'>836</a>
+<a name='L837'></a><a href='#L837'>837</a>
+<a name='L838'></a><a href='#L838'>838</a>
+<a name='L839'></a><a href='#L839'>839</a>
+<a name='L840'></a><a href='#L840'>840</a>
+<a name='L841'></a><a href='#L841'>841</a>
+<a name='L842'></a><a href='#L842'>842</a>
+<a name='L843'></a><a href='#L843'>843</a>
+<a name='L844'></a><a href='#L844'>844</a>
+<a name='L845'></a><a href='#L845'>845</a>
+<a name='L846'></a><a href='#L846'>846</a>
+<a name='L847'></a><a href='#L847'>847</a>
+<a name='L848'></a><a href='#L848'>848</a>
+<a name='L849'></a><a href='#L849'>849</a>
+<a name='L850'></a><a href='#L850'>850</a>
+<a name='L851'></a><a href='#L851'>851</a>
+<a name='L852'></a><a href='#L852'>852</a>
+<a name='L853'></a><a href='#L853'>853</a>
+<a name='L854'></a><a href='#L854'>854</a>
+<a name='L855'></a><a href='#L855'>855</a>
+<a name='L856'></a><a href='#L856'>856</a>
+<a name='L857'></a><a href='#L857'>857</a>
+<a name='L858'></a><a href='#L858'>858</a>
+<a name='L859'></a><a href='#L859'>859</a>
+<a name='L860'></a><a href='#L860'>860</a>
+<a name='L861'></a><a href='#L861'>861</a>
+<a name='L862'></a><a href='#L862'>862</a>
+<a name='L863'></a><a href='#L863'>863</a>
+<a name='L864'></a><a href='#L864'>864</a>
+<a name='L865'></a><a href='#L865'>865</a>
+<a name='L866'></a><a href='#L866'>866</a>
+<a name='L867'></a><a href='#L867'>867</a>
+<a name='L868'></a><a href='#L868'>868</a>
+<a name='L869'></a><a href='#L869'>869</a>
+<a name='L870'></a><a href='#L870'>870</a>
+<a name='L871'></a><a href='#L871'>871</a>
+<a name='L872'></a><a href='#L872'>872</a>
+<a name='L873'></a><a href='#L873'>873</a>
+<a name='L874'></a><a href='#L874'>874</a>
+<a name='L875'></a><a href='#L875'>875</a>
+<a name='L876'></a><a href='#L876'>876</a>
+<a name='L877'></a><a href='#L877'>877</a>
+<a name='L878'></a><a href='#L878'>878</a>
+<a name='L879'></a><a href='#L879'>879</a>
+<a name='L880'></a><a href='#L880'>880</a>
+<a name='L881'></a><a href='#L881'>881</a>
+<a name='L882'></a><a href='#L882'>882</a>
+<a name='L883'></a><a href='#L883'>883</a>
+<a name='L884'></a><a href='#L884'>884</a>
+<a name='L885'></a><a href='#L885'>885</a>
+<a name='L886'></a><a href='#L886'>886</a>
+<a name='L887'></a><a href='#L887'>887</a>
+<a name='L888'></a><a href='#L888'>888</a>
+<a name='L889'></a><a href='#L889'>889</a>
+<a name='L890'></a><a href='#L890'>890</a>
+<a name='L891'></a><a href='#L891'>891</a>
+<a name='L892'></a><a href='#L892'>892</a>
+<a name='L893'></a><a href='#L893'>893</a>
+<a name='L894'></a><a href='#L894'>894</a>
+<a name='L895'></a><a href='#L895'>895</a>
+<a name='L896'></a><a href='#L896'>896</a>
+<a name='L897'></a><a href='#L897'>897</a>
+<a name='L898'></a><a href='#L898'>898</a>
+<a name='L899'></a><a href='#L899'>899</a>
+<a name='L900'></a><a href='#L900'>900</a>
+<a name='L901'></a><a href='#L901'>901</a>
+<a name='L902'></a><a href='#L902'>902</a>
+<a name='L903'></a><a href='#L903'>903</a>
+<a name='L904'></a><a href='#L904'>904</a>
+<a name='L905'></a><a href='#L905'>905</a>
+<a name='L906'></a><a href='#L906'>906</a>
+<a name='L907'></a><a href='#L907'>907</a>
+<a name='L908'></a><a href='#L908'>908</a>
+<a name='L909'></a><a href='#L909'>909</a>
+<a name='L910'></a><a href='#L910'>910</a>
+<a name='L911'></a><a href='#L911'>911</a>
+<a name='L912'></a><a href='#L912'>912</a>
+<a name='L913'></a><a href='#L913'>913</a>
+<a name='L914'></a><a href='#L914'>914</a>
+<a name='L915'></a><a href='#L915'>915</a>
+<a name='L916'></a><a href='#L916'>916</a>
+<a name='L917'></a><a href='#L917'>917</a>
+<a name='L918'></a><a href='#L918'>918</a>
+<a name='L919'></a><a href='#L919'>919</a>
+<a name='L920'></a><a href='#L920'>920</a>
+<a name='L921'></a><a href='#L921'>921</a>
+<a name='L922'></a><a href='#L922'>922</a>
+<a name='L923'></a><a href='#L923'>923</a>
+<a name='L924'></a><a href='#L924'>924</a>
+<a name='L925'></a><a href='#L925'>925</a>
+<a name='L926'></a><a href='#L926'>926</a>
+<a name='L927'></a><a href='#L927'>927</a>
+<a name='L928'></a><a href='#L928'>928</a>
+<a name='L929'></a><a href='#L929'>929</a>
+<a name='L930'></a><a href='#L930'>930</a>
+<a name='L931'></a><a href='#L931'>931</a>
+<a name='L932'></a><a href='#L932'>932</a>
+<a name='L933'></a><a href='#L933'>933</a>
+<a name='L934'></a><a href='#L934'>934</a>
+<a name='L935'></a><a href='#L935'>935</a>
+<a name='L936'></a><a href='#L936'>936</a>
+<a name='L937'></a><a href='#L937'>937</a>
+<a name='L938'></a><a href='#L938'>938</a>
+<a name='L939'></a><a href='#L939'>939</a>
+<a name='L940'></a><a href='#L940'>940</a>
+<a name='L941'></a><a href='#L941'>941</a>
+<a name='L942'></a><a href='#L942'>942</a>
+<a name='L943'></a><a href='#L943'>943</a>
+<a name='L944'></a><a href='#L944'>944</a>
+<a name='L945'></a><a href='#L945'>945</a>
+<a name='L946'></a><a href='#L946'>946</a>
+<a name='L947'></a><a href='#L947'>947</a>
+<a name='L948'></a><a href='#L948'>948</a>
+<a name='L949'></a><a href='#L949'>949</a>
+<a name='L950'></a><a href='#L950'>950</a>
+<a name='L951'></a><a href='#L951'>951</a>
+<a name='L952'></a><a href='#L952'>952</a>
+<a name='L953'></a><a href='#L953'>953</a>
+<a name='L954'></a><a href='#L954'>954</a>
+<a name='L955'></a><a href='#L955'>955</a>
+<a name='L956'></a><a href='#L956'>956</a>
+<a name='L957'></a><a href='#L957'>957</a>
+<a name='L958'></a><a href='#L958'>958</a>
+<a name='L959'></a><a href='#L959'>959</a>
+<a name='L960'></a><a href='#L960'>960</a>
+<a name='L961'></a><a href='#L961'>961</a>
+<a name='L962'></a><a href='#L962'>962</a>
+<a name='L963'></a><a href='#L963'>963</a>
+<a name='L964'></a><a href='#L964'>964</a>
+<a name='L965'></a><a href='#L965'>965</a>
+<a name='L966'></a><a href='#L966'>966</a>
+<a name='L967'></a><a href='#L967'>967</a>
+<a name='L968'></a><a href='#L968'>968</a>
+<a name='L969'></a><a href='#L969'>969</a>
+<a name='L970'></a><a href='#L970'>970</a>
+<a name='L971'></a><a href='#L971'>971</a>
+<a name='L972'></a><a href='#L972'>972</a>
+<a name='L973'></a><a href='#L973'>973</a>
+<a name='L974'></a><a href='#L974'>974</a>
+<a name='L975'></a><a href='#L975'>975</a>
+<a name='L976'></a><a href='#L976'>976</a>
+<a name='L977'></a><a href='#L977'>977</a>
+<a name='L978'></a><a href='#L978'>978</a>
+<a name='L979'></a><a href='#L979'>979</a>
+<a name='L980'></a><a href='#L980'>980</a>
+<a name='L981'></a><a href='#L981'>981</a>
+<a name='L982'></a><a href='#L982'>982</a>
+<a name='L983'></a><a href='#L983'>983</a>
+<a name='L984'></a><a href='#L984'>984</a>
+<a name='L985'></a><a href='#L985'>985</a>
+<a name='L986'></a><a href='#L986'>986</a>
+<a name='L987'></a><a href='#L987'>987</a>
+<a name='L988'></a><a href='#L988'>988</a>
+<a name='L989'></a><a href='#L989'>989</a>
+<a name='L990'></a><a href='#L990'>990</a>
+<a name='L991'></a><a href='#L991'>991</a>
+<a name='L992'></a><a href='#L992'>992</a>
+<a name='L993'></a><a href='#L993'>993</a>
+<a name='L994'></a><a href='#L994'>994</a>
+<a name='L995'></a><a href='#L995'>995</a>
+<a name='L996'></a><a href='#L996'>996</a>
+<a name='L997'></a><a href='#L997'>997</a>
+<a name='L998'></a><a href='#L998'>998</a>
+<a name='L999'></a><a href='#L999'>999</a>
+<a name='L1000'></a><a href='#L1000'>1000</a>
+<a name='L1001'></a><a href='#L1001'>1001</a>
+<a name='L1002'></a><a href='#L1002'>1002</a>
+<a name='L1003'></a><a href='#L1003'>1003</a>
+<a name='L1004'></a><a href='#L1004'>1004</a>
+<a name='L1005'></a><a href='#L1005'>1005</a>
+<a name='L1006'></a><a href='#L1006'>1006</a>
+<a name='L1007'></a><a href='#L1007'>1007</a>
+<a name='L1008'></a><a href='#L1008'>1008</a>
+<a name='L1009'></a><a href='#L1009'>1009</a>
+<a name='L1010'></a><a href='#L1010'>1010</a>
+<a name='L1011'></a><a href='#L1011'>1011</a>
+<a name='L1012'></a><a href='#L1012'>1012</a>
+<a name='L1013'></a><a href='#L1013'>1013</a>
+<a name='L1014'></a><a href='#L1014'>1014</a>
+<a name='L1015'></a><a href='#L1015'>1015</a>
+<a name='L1016'></a><a href='#L1016'>1016</a>
+<a name='L1017'></a><a href='#L1017'>1017</a>
+<a name='L1018'></a><a href='#L1018'>1018</a>
+<a name='L1019'></a><a href='#L1019'>1019</a>
+<a name='L1020'></a><a href='#L1020'>1020</a>
+<a name='L1021'></a><a href='#L1021'>1021</a>
+<a name='L1022'></a><a href='#L1022'>1022</a>
+<a name='L1023'></a><a href='#L1023'>1023</a>
+<a name='L1024'></a><a href='#L1024'>1024</a>
+<a name='L1025'></a><a href='#L1025'>1025</a>
+<a name='L1026'></a><a href='#L1026'>1026</a>
+<a name='L1027'></a><a href='#L1027'>1027</a>
+<a name='L1028'></a><a href='#L1028'>1028</a>
+<a name='L1029'></a><a href='#L1029'>1029</a>
+<a name='L1030'></a><a href='#L1030'>1030</a>
+<a name='L1031'></a><a href='#L1031'>1031</a>
+<a name='L1032'></a><a href='#L1032'>1032</a>
+<a name='L1033'></a><a href='#L1033'>1033</a>
+<a name='L1034'></a><a href='#L1034'>1034</a>
+<a name='L1035'></a><a href='#L1035'>1035</a>
+<a name='L1036'></a><a href='#L1036'>1036</a>
+<a name='L1037'></a><a href='#L1037'>1037</a>
+<a name='L1038'></a><a href='#L1038'>1038</a>
+<a name='L1039'></a><a href='#L1039'>1039</a>
+<a name='L1040'></a><a href='#L1040'>1040</a>
+<a name='L1041'></a><a href='#L1041'>1041</a>
+<a name='L1042'></a><a href='#L1042'>1042</a>
+<a name='L1043'></a><a href='#L1043'>1043</a>
+<a name='L1044'></a><a href='#L1044'>1044</a>
+<a name='L1045'></a><a href='#L1045'>1045</a>
+<a name='L1046'></a><a href='#L1046'>1046</a>
+<a name='L1047'></a><a href='#L1047'>1047</a>
+<a name='L1048'></a><a href='#L1048'>1048</a>
+<a name='L1049'></a><a href='#L1049'>1049</a>
+<a name='L1050'></a><a href='#L1050'>1050</a>
+<a name='L1051'></a><a href='#L1051'>1051</a>
+<a name='L1052'></a><a href='#L1052'>1052</a>
+<a name='L1053'></a><a href='#L1053'>1053</a>
+<a name='L1054'></a><a href='#L1054'>1054</a>
+<a name='L1055'></a><a href='#L1055'>1055</a>
+<a name='L1056'></a><a href='#L1056'>1056</a>
+<a name='L1057'></a><a href='#L1057'>1057</a>
+<a name='L1058'></a><a href='#L1058'>1058</a>
+<a name='L1059'></a><a href='#L1059'>1059</a>
+<a name='L1060'></a><a href='#L1060'>1060</a>
+<a name='L1061'></a><a href='#L1061'>1061</a>
+<a name='L1062'></a><a href='#L1062'>1062</a>
+<a name='L1063'></a><a href='#L1063'>1063</a>
+<a name='L1064'></a><a href='#L1064'>1064</a>
+<a name='L1065'></a><a href='#L1065'>1065</a>
+<a name='L1066'></a><a href='#L1066'>1066</a>
+<a name='L1067'></a><a href='#L1067'>1067</a>
+<a name='L1068'></a><a href='#L1068'>1068</a>
+<a name='L1069'></a><a href='#L1069'>1069</a>
+<a name='L1070'></a><a href='#L1070'>1070</a>
+<a name='L1071'></a><a href='#L1071'>1071</a>
+<a name='L1072'></a><a href='#L1072'>1072</a>
+<a name='L1073'></a><a href='#L1073'>1073</a>
+<a name='L1074'></a><a href='#L1074'>1074</a>
+<a name='L1075'></a><a href='#L1075'>1075</a>
+<a name='L1076'></a><a href='#L1076'>1076</a>
+<a name='L1077'></a><a href='#L1077'>1077</a>
+<a name='L1078'></a><a href='#L1078'>1078</a>
+<a name='L1079'></a><a href='#L1079'>1079</a>
+<a name='L1080'></a><a href='#L1080'>1080</a>
+<a name='L1081'></a><a href='#L1081'>1081</a>
+<a name='L1082'></a><a href='#L1082'>1082</a>
+<a name='L1083'></a><a href='#L1083'>1083</a>
+<a name='L1084'></a><a href='#L1084'>1084</a>
+<a name='L1085'></a><a href='#L1085'>1085</a>
+<a name='L1086'></a><a href='#L1086'>1086</a>
+<a name='L1087'></a><a href='#L1087'>1087</a>
+<a name='L1088'></a><a href='#L1088'>1088</a>
+<a name='L1089'></a><a href='#L1089'>1089</a>
+<a name='L1090'></a><a href='#L1090'>1090</a>
+<a name='L1091'></a><a href='#L1091'>1091</a>
+<a name='L1092'></a><a href='#L1092'>1092</a>
+<a name='L1093'></a><a href='#L1093'>1093</a>
+<a name='L1094'></a><a href='#L1094'>1094</a>
+<a name='L1095'></a><a href='#L1095'>1095</a>
+<a name='L1096'></a><a href='#L1096'>1096</a>
+<a name='L1097'></a><a href='#L1097'>1097</a>
+<a name='L1098'></a><a href='#L1098'>1098</a>
+<a name='L1099'></a><a href='#L1099'>1099</a>
+<a name='L1100'></a><a href='#L1100'>1100</a>
+<a name='L1101'></a><a href='#L1101'>1101</a>
+<a name='L1102'></a><a href='#L1102'>1102</a>
+<a name='L1103'></a><a href='#L1103'>1103</a>
+<a name='L1104'></a><a href='#L1104'>1104</a>
+<a name='L1105'></a><a href='#L1105'>1105</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">186x</span>
+<span class="cline-any cline-yes">186x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">191x</span>
+<span class="cline-any cline-yes">191x</span>
+<span class="cline-any cline-yes">191x</span>
+<span class="cline-any cline-yes">191x</span>
+<span class="cline-any cline-yes">191x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">191x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">185x</span>
+<span class="cline-any cline-yes">141x</span>
+<span class="cline-any cline-yes">141x</span>
+<span class="cline-any cline-yes">141x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">141x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">642x</span>
+<span class="cline-any cline-yes">642x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">641x</span>
+<span class="cline-any cline-yes">641x</span>
+<span class="cline-any cline-yes">641x</span>
+<span class="cline-any cline-yes">641x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">120x</span>
+<span class="cline-any cline-yes">120x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">120x</span>
+<span class="cline-any cline-yes">120x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">120x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">280x</span>
+<span class="cline-any cline-yes">118x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">118x</span>
+<span class="cline-any cline-yes">118x</span>
+<span class="cline-any cline-yes">47x</span>
+<span class="cline-any cline-yes">47x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">118x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">118x</span>
+<span class="cline-any cline-yes">47x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">118x</span>
+<span class="cline-any cline-yes">118x</span>
+<span class="cline-any cline-yes">60x</span>
+<span class="cline-any cline-yes">47x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">71x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">45x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">36x</span>
+<span class="cline-any cline-yes">36x</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2982x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26603x</span>
+<span class="cline-any cline-yes">20208x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26599x</span>
+<span class="cline-any cline-yes">8917x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">308x</span>
+<span class="cline-any cline-yes">308x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">308x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-yes">35423x</span>
+<span class="cline-any cline-yes">35423x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">35423x</span>
+<span class="cline-any cline-yes">34884x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1433x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1433x</span>
+<span class="cline-any cline-yes">761x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">761x</span>
+<span class="cline-any cline-yes">761x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">761x</span>
+<span class="cline-any cline-yes">761x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">672x</span>
+<span class="cline-any cline-yes">358x</span>
+<span class="cline-any cline-yes">850x</span>
+<span class="cline-any cline-yes">358x</span>
+<span class="cline-any cline-yes">358x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">285x</span>
+<span class="cline-any cline-yes">285x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">358x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">314x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">23931x</span>
+<span class="cline-any cline-yes">17124x</span>
+<span class="cline-any cline-yes">15252x</span>
+<span class="cline-any cline-yes">15252x</span>
+<span class="cline-any cline-yes">15252x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9774x</span>
+<span class="cline-any cline-yes">9774x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9774x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6807x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3141x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-yes">20506x</span>
+<span class="cline-any cline-yes">6737x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6737x</span>
+<span class="cline-any cline-yes">4025x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13769x</span>
+<span class="cline-any cline-yes">477x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">477x</span>
+<span class="cline-any cline-yes">371x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13292x</span>
+<span class="cline-any cline-yes">2570x</span>
+<span class="cline-any cline-yes">10722x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">10700x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1436x</span>
+<span class="cline-any cline-yes">1436x</span>
+<span class="cline-any cline-yes">1433x</span>
+<span class="cline-any cline-yes">1433x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9264x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9261x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-yes">19x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9202x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9202x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9199x</span>
+<span class="cline-any cline-yes">308x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">4319x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">11362x</span>
+<span class="cline-any cline-yes">8770x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">4667x</span>
+<span class="cline-any cline-yes">4668x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-yes">6528x</span>
+<span class="cline-any cline-yes">6528x</span>
+<span class="cline-any cline-yes">6509x</span>
+<span class="cline-any cline-yes">6509x</span>
+<span class="cline-any cline-yes">6509x</span>
+<span class="cline-any cline-yes">6509x</span>
+<span class="cline-any cline-yes">6509x</span>
+<span class="cline-any cline-yes">4937x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18009x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">27146x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-yes">5318x</span>
+<span class="cline-any cline-yes">6786x</span>
+<span class="cline-any cline-yes">6786x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6786x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">324x</span>
+<span class="cline-any cline-yes">6462x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1358x</span>
+<span class="cline-any cline-yes">1358x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-yes">20101x</span>
+<span class="cline-any cline-yes">6556x</span>
+<span class="cline-any cline-yes">13545x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">477x</span>
+<span class="cline-any cline-yes">13068x</span>
+<span class="cline-any cline-yes">2434x</span>
+<span class="cline-any cline-yes">10634x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10628x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">10628x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1417x</span>
+<span class="cline-any cline-yes">1417x</span>
+<span class="cline-any cline-yes">1414x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">756x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">658x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">355x</span>
+<span class="cline-any cline-yes">355x</span>
+<span class="cline-any cline-yes">355x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">355x</span>
+<span class="cline-any cline-yes">355x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">303x</span>
+<span class="cline-any cline-yes">303x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9211x</span>
+<span class="cline-any cline-yes">40x</span>
+<span class="cline-any cline-yes">40x</span>
+<span class="cline-any cline-yes">40x</span>
+<span class="cline-any cline-yes">40x</span>
+<span class="cline-any cline-yes">40x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9171x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">9168x</span>
+<span class="cline-any cline-yes">306x</span>
+<span class="cline-any cline-yes">306x</span>
+<span class="cline-any cline-yes">306x</span>
+<span class="cline-any cline-yes">306x</span>
+<span class="cline-any cline-yes">8862x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8769x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">26425x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+ * annotationField.ts — Core annotation state and effects
+ *
+ * This file defines the CodeMirror StateField that holds all
+ * annotation data (comments, revisions, suggestions) and the
+ * StateEffects that mutate it. It is the single source of
+ * truth for annotation state.
+ *
+ * Role in the annotation subsystem:
+ *   - Owns `annotationField`, the StateField whose value is
+ *     an `Annotations` map (id -&gt; GenericAnnotation).
+ *   - Declares all StateEffects that can modify annotations
+ *     (add, remove, thread updates, version management,
+ *     suggestion application, undo-restore, cleanup).
+ *   - Exports transaction-builder functions (e.g.
+ *     setActiveRevisionVersion, createNewRevision) that
+ *     bundle effects + doc changes into atomic updates.
+ *   - Exports `invertedAnnotationFieldEffects` (built with
+ *     the `invertedEffects` utility from @codemirror/commands)
+ *     so undo/redo correctly inverts annotation mutations.
+ *
+ * State lifecycle:
+ *   - Created as an empty map `[]`.
+ *   - On every transaction, the reducer:
+ *     1. Remaps all annotation selections through doc changes.
+ *     2. Processes effects (add/remove/update).
+ *     3. Pulls active revision version text from the document.
+ *   - Serialized/deserialized via toJSON/fromJSON for
+ *     persistence.
+ *
+ * Key dependencies:
+ *   - @codemirror/state (StateField, StateEffect, Transaction)
+ *   - @codemirror/commands (invertedEffects) for undo support
+ *   - @codemirror/search (SearchCursor) for text-based
+ *     suggestion placement
+ *   - ./models for type definitions
+ *   - ./utils for range mapping helpers
+ *
+ * Interactions:
+ *   - index.ts imports effects and transaction builders to
+ *     wire up keybindings and public API functions.
+ *   - utils.ts reads annotationField for cursor queries.
+ *   - Svelte stores sync with this field via updateListener.
+ */
+&nbsp;
+import {
+    Annotation,
+    EditorSelection,
+    type EditorState,
+    SelectionRange,
+    StateEffect,
+    StateField,
+    Transaction,
+    type TransactionSpec,
+} from "@codemirror/state";
+import {
+    activeVersionIndex,
+    createNewAnnotation,
+    getLastId,
+    getNewId,
+    groupPartnersOf,
+    isAnnotationOfType,
+    makeVersion,
+    normalizeRevision,
+    versionById,
+    versionIndexById,
+    versionText,
+    RawAnnotationsSchema,
+    type Annotations,
+    type GenericAnnotation,
+    type RawAnnotations,
+    type SuggestionReplacement,
+    type Thread,
+    type VersionState,
+} from "./models";
+import { cleanRangesOf, mapRange } from "./utils";
+// Lazily-used (function-body only) import — see groupSwitchTargets. The
+// annotationField ↔ versionGroupField pair forms a safe ESM cycle because all
+// cross-references happen inside functions, never at module top level.
+import { versionGroupField } from "./versionGroupField";
+import { invertedEffects } from "@codemirror/commands";
+import { SearchCursor } from "@codemirror/search";
+import { mapValues } from "lodash-es";
+// -------------------------------------------------------
+// StateEffect declarations
+//
+// Each effect represents a discrete mutation on the
+// annotation map. Separating them (rather than a single
+// "updateAnnotation" effect) makes undo/redo inversion
+// straightforward — each effect has a clear inverse.
+//
+// Effects that carry a GenericAnnotation use `map: mapRange`
+// so their positional data stays accurate when mapped
+// through the undo history.
+// -------------------------------------------------------
+&nbsp;
+// === For all annotations ===
+export const addAnnotation = StateEffect.define&lt;GenericAnnotation&gt;({
+    map: mapRange,
+});
+// Used exclusively by the undo system when restoring an annotation that was
+// implicitly dropped or collapsed by a text deletion. Carries the original
+// annotation with its pre-deletion selection. The map function remaps
+// positions through intervening transactions without filtering collapsed
+// ranges (unlike mapRange), so the annotation survives further edits
+// before undo is applied.
+const _restoreAnnotation = StateEffect.define&lt;GenericAnnotation&gt;({
+<span class="fstat-no" title="function not covered" >    map(a</span>nnotation, change) {
+        // Remap each range's from and to independently without filtering
+        // collapsed ranges (unlike mapRange). If any position is out of range
+        // for this change (e.g. an addToHistory:false resolver dispatch on an
+        // empty doc), drop the effect so it doesn't cause a RangeError.
+<span class="cstat-no" title="statement not covered" >        try {</span>
+            const newRanges = <span class="cstat-no" title="statement not covered" >annotation.selection.ranges.map(<span class="fstat-no" title="function not covered" >(r</span>) =&gt;</span>
+<span class="cstat-no" title="statement not covered" >                EditorSelection.range(change.mapPos(r.from, -1), change.mapPos(r.to, 1)),</span>
+            );
+<span class="cstat-no" title="statement not covered" >            return {</span>
+                ...annotation,
+                selection: EditorSelection.create(newRanges, annotation.selection.mainIndex),
+            };
+        } catch {
+            // Position out of range — preserve with original positions.
+<span class="cstat-no" title="statement not covered" >            return annotation;</span>
+        }
+    },
+});
+// Carries the full annotation object (not just an ID) so that undo inversion
+// can restore exact prior state without a startState lookup.
+export const removeAnnotation = StateEffect.define&lt;GenericAnnotation&gt;({
+    map: mapRange,
+});
+// Each mutation gets its own effect type so undo/redo inversion is explicit
+// and local — each effect's inverse is declared adjacent to it in
+// invertedAnnotationFieldEffects.
+&nbsp;
+// updateThread carries the full annotation ID + new thread; using only an ID
+// would require reading startState inside effects, which is more complex.
+// === Generic annotation thread management ===
+export const updateThread = StateEffect.define&lt;{
+    annotationId: number;
+    newThread: Thread;
+}&gt;();
+// Marks a transaction as a revision-internal doc edit — i.e. the document
+// change is part of the revision system's own operation (version switch,
+// version delete, branch, etc.), not the user typing. Set to true on every
+// transaction dispatched by the public revision API builders.
+//
+// Two consumers check for this flag to avoid treating system-driven changes
+// as user edits:
+//   - collapsedRevisionResolver: skips auto-removal of collapsed revisions,
+//     because the collapse is intentional (the builder is about to replace
+//     the text with the correct version content).
+//   - boundaryInsertNudge: skips emitting nudge UI events for programmatic
+//     insertions.
+//   - invertedAnnotationFieldEffects: skips implicit annotation remapping
+//     detection, because these transactions manage their own annotation state
+//     via explicit StateEffects.
+//
+// This is a Transaction.annotation (not a StateEffect), so it is never
+// stored in history and never inverted. The inverted StateEffects on each
+// transaction already carry the full semantic meaning of "undo this op."
+export const revisionInternalEdit = Annotation.define&lt;boolean&gt;();
+&nbsp;
+// Marks a parent-editor transaction that was originated by a nested editor
+// acting as a direct viewport. Set to the revision ID whose nested editor
+// dispatched the change.
+// Consumers (non-exhaustive):
+//   - annotationField Phase 3: uses this to pull versions[selected].doc from
+//     the parent doc slice so version switching shows current content.
+//   - Plugins / integrations that gate behavior on whether a change
+//     originated from a nested editor (e.g. to avoid feedback loops or to
+//     skip nested-only logic when replaying parent-originated transactions).
+// Like revisionInternalEdit, this is a Transaction.annotation — ephemeral,
+// not stored in history.
+export const nestedEditorEdit = Annotation.define&lt;number&gt;();
+// Persists the revision ID for a nested-editor doc change through undo/redo.
+// Unlike the nestedEditorEdit Transaction.Annotation (which is ephemeral),
+// this StateEffect is stored in CodeMirror's history and replayed on redo.
+// Phase 3 reads it to apply the same boundary-expansion logic that runs
+// on the forward pass (via nestedEditorEdit), ensuring redo correctly
+// expands the revision range when text is re-inserted at its trailing edge.
+// invertedAnnotationFieldEffects produces a matching inverse so undo does
+// not need to do anything special (Phase 1 shrinks the range correctly).
+export const _nestedEditRevision = StateEffect.define&lt;number&gt;({
+    // Map the stored revision ID through doc changes — for this effect the
+    // payload is just an integer ID, not a position, so no mapping needed.
+    map: (value) =&gt; value,
+});
+// Marks a transaction dispatched by collapsedRevisionResolver to remove
+// collapsed revisions after a deletion. addToHistory.of(false) ensures no
+// new undo entry is created, and this annotation prevents invertedEffects from
+// generating spurious addAnnotation effects that would pollute the deletion's
+// undo entry (since the deletion's undo already carries the correct
+// _restoreAnnotation effects for every collapsed revision).
+export const _revisionCleanup = Annotation.define&lt;boolean&gt;();
+// === For revisions ===
+// These also updates the active revision version to the latest one
+// There is no "updateRevisionVersion" since we sniff that from document changes
+// NOTE: `versionId`/`to` below are STABLE version ids (VersionState.id), not
+// array indices. `at?` on add is still a positional insertion slot so pill order
+// is controllable; everything that *identifies* a version uses its id.
+export const _addVersionToRevision = StateEffect.define&lt;{
+    annotationId: number;
+    newVersion: VersionState;
+    at?: number;
+    // Whether the newly-added version should become active. Defaults to true:
+    // the normal "user adds a new version" flow wants focus to move to it. Set
+    // false when re-inserting on undo of a NON-active delete, so the restored
+    // version reappears without stealing the active pointer (issue #270).
+    makeActive?: boolean;
+}&gt;();
+export const _deleteVersionFromRevision = StateEffect.define&lt;{
+    annotationId: number;
+    versionId: string;
+}&gt;();
+export const _updateActiveRevisionVersion = StateEffect.define&lt;{
+    annotationId: number;
+    to: string;
+}&gt;();
+export const _updateRevisionVersionState = StateEffect.define&lt;{
+    annotationId: number;
+    versionId: string;
+    versionState: VersionState;
+}&gt;();
+/**
+ * Collab-mode effect: updates ONLY the matching version's doc without triggering
+ * parent doc changes. Used by NestedEditorController when collab owns the subtree
+ * Y.Text — the nested editor's content is authoritative, and we just need to
+ * keep the parent's annotation state in sync for UI rendering.
+ */
+export const _updateRevisionVersionDoc = StateEffect.define&lt;{
+    annotationId: number;
+    versionId: string;
+    doc: string;
+}&gt;();
+export const _updateRevisionVersionLabel = StateEffect.define&lt;{
+    annotationId: number;
+    versionId: string;
+    label: string | undefined;
+}&gt;();
+export function setActiveRevisionVersion(
+    state: EditorState,
+    annotationId: number,
+    toId: string,
+    options: { moveCursor?: boolean } = {},
+) {
+    const original = state.field(annotationField)[annotationId];
+    if (!isAnnotationOfType(original, "revision")) {
+        throw new Error("Annotation is not a revision");
+    }
+    const target = versionById(original, toId);
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!target) {
+<span class="cstat-no" title="statement not covered" >        return state.update({});</span>
+    }
+&nbsp;
+    // Collect the primary switch plus any linked partners (version groups, #268).
+    // Each switch is one _updateActiveRevisionVersion effect + one doc replacement
+    // at that revision's range; bundling them into ONE transaction makes the whole
+    // group move atomic and revert in a single undo.
+    const switches: Array&lt;{ annotationId: number; toId: string }&gt; = [{ annotationId, toId }];
+    for (const partner of groupSwitchTargets(state, annotationId, toId)) {
+        switches.push(partner);
+    }
+&nbsp;
+    const effects: StateEffect&lt;unknown&gt;[] = [];
+    const changeSpecs: { from: number; to: number; insert: string }[] = [];
+    for (const sw of switches) {
+        const rev = state.field(annotationField)[sw.annotationId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (!isAnnotationOfType(rev, "revision")) <span class="cstat-no" title="statement not covered" >continue;</span>
+        const v = versionById(rev, sw.toId);
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (!v) <span class="cstat-no" title="statement not covered" >continue;</span>
+        effects.push(
+            _updateActiveRevisionVersion.of({ annotationId: sw.annotationId, to: sw.toId }),
+        );
+        changeSpecs.push({
+            from: rev.selection.main.from,
+            to: rev.selection.main.to,
+            insert: versionText(v),
+        });
+    }
+&nbsp;
+    const changes = state.changes(changeSpecs);
+    // Move the EDITOR cursor into the primary switched revision so it becomes the
+    // active annotation — collapses the "double selection" where the card you
+    // click isn't the one the panel anchors to. Off by default so programmatic
+    // switches (AI, the group cascade's partners) don't yank the cursor around.
+    const spec: TransactionSpec = {
+        effects,
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+        changes,
+    };
+    if (options.moveCursor) {
+        const caret = changes.mapPos(original.selection.main.from, 1);
+        spec.selection = EditorSelection.cursor(caret);
+    }
+    return state.update(spec);
+}
+&nbsp;
+/**
+ * Resolve the linked partner switches for activating (annotationId → toId).
+ *
+ * Looks up the target member's version group and, for every OTHER revision in
+ * that group, returns the switch to its grouped version — but only when that
+ * revision isn't already on its target (no redundant doc churn) and the target
+ * version still exists. Empty when the version is ungrouped. Exclusive membership
+ * means each partner revision has exactly one target, so there is no oscillation.
+ *
+ * Imports the group field lazily (function-body access) so the
+ * annotationField ↔ versionGroupField module pair stays a safe ESM cycle.
+ */
+function groupSwitchTargets(
+    state: EditorState,
+    annotationId: number,
+    toId: string,
+): Array&lt;{ annotationId: number; toId: string }&gt; {
+    const groups = state.field(versionGroupField, false);
+    if (!groups) return [];
+    const partners = groupPartnersOf(groups, { revisionId: annotationId, versionId: toId });
+    const result: Array&lt;{ annotationId: number; toId: string }&gt; = [];
+    for (const p of partners) {
+        const rev = state.field(annotationField)[p.revisionId];
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (!isAnnotationOfType(rev, "revision")) <span class="cstat-no" title="statement not covered" >continue;</span>
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (rev.activeVersionId === p.versionId) <span class="cstat-no" title="statement not covered" >continue; // already there</span>
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (!versionById(rev, p.versionId)) <span class="cstat-no" title="statement not covered" >continue; // stale member</span>
+        result.push({ annotationId: p.revisionId, toId: p.versionId });
+    }
+    return result;
+}
+export function createNewRevision(state: EditorState, annotationId: number) {
+    const original = state.field(annotationField)[annotationId];
+    if (!isAnnotationOfType(original, "revision")) {
+        throw new Error("Annotation is not a revision");
+    }
+    const placeholder = "";
+    const newVersionState: VersionState = makeVersion({ doc: placeholder });
+    const from = original.selection.main.from;
+    return state.update({
+        effects: [
+            _addVersionToRevision.of({
+                annotationId,
+                newVersion: newVersionState,
+            }),
+        ],
+        changes: state.changes({
+            from,
+            to: original.selection.main.to,
+            insert: placeholder,
+        }),
+        // Place cursor at start of the new version so isActive becomes true.
+        selection: EditorSelection.cursor(from),
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+    });
+}
+export function deleteRevisionVersion(state: EditorState, annotationId: number, versionId: string) {
+    const original = state.field(annotationField)[annotationId];
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!isAnnotationOfType(original, "revision")) {
+<span class="cstat-no" title="statement not covered" >        throw new Error("Annotation is not a revision");</span>
+    }
+    const delIndex = versionIndexById(original, versionId);
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (delIndex &lt; 0) {
+<span class="cstat-no" title="statement not covered" >        return state.update({});</span>
+    }
+&nbsp;
+    // Deleting the last remaining version deletes the whole revision atom.
+    if (original.versions.length === 1) {
+        return state.update({
+            effects: [removeAnnotation.of(original)],
+            annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+            changes: state.changes({
+                from: original.selection.main.from,
+                to: original.selection.main.to,
+                insert: "",
+            }),
+        });
+    }
+&nbsp;
+    const nextVersions = original.versions.filter((v) =&gt; v.id !== versionId);
+    const deletingActive = versionId === original.activeVersionId;
+    // When the active version is deleted, fall to its positional neighbor.
+    let nextActiveId = original.activeVersionId;
+    if (deletingActive) {
+        const fallbackIndex = Math.min(delIndex, nextVersions.length - 1);
+        nextActiveId = nextVersions[fallbackIndex].id;
+    }
+&nbsp;
+    const effects: StateEffect&lt;unknown&gt;[] = [
+        _deleteVersionFromRevision.of({
+            annotationId,
+            versionId,
+        }),
+    ];
+    if (nextActiveId !== original.activeVersionId) {
+        effects.push(
+            _updateActiveRevisionVersion.of({
+                annotationId,
+                to: nextActiveId,
+            }),
+        );
+    }
+&nbsp;
+    const annotations = [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)];
+    if (deletingActive) {
+        const nextActive = nextVersions.find((v) =&gt; v.id === nextActiveId);
+        return state.update({
+            effects,
+            annotations,
+            changes: state.changes({
+                from: original.selection.main.from,
+                to: original.selection.main.to,
+                insert: nextActive ? versionText(nextActive) : <span class="branch-1 cbranch-no" title="branch not covered" >"",</span>
+            }),
+        });
+    }
+    return state.update({
+        effects,
+        annotations,
+    });
+}
+type UpdateRevisionVersionStateOptions = {
+    addToHistory?: boolean;
+};
+&nbsp;
+export function updateRevisionVersionState(
+    state: EditorState,
+    annotationId: number,
+    versionId: string,
+    newVersionState: VersionState,
+    options: UpdateRevisionVersionStateOptions = {},
+) {
+    const original = state.field(annotationField)[annotationId];
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!isAnnotationOfType(original, "revision")) {
+<span class="cstat-no" title="statement not covered" >        throw new Error("Annotation is not a revision");</span>
+    }
+    const text = versionText(newVersionState);
+    const effects = [
+        _updateRevisionVersionState.of({
+            annotationId,
+            versionId,
+            versionState: newVersionState,
+        }),
+    ];
+    const annotations = [
+        revisionInternalEdit.of(true),
+        Transaction.addToHistory.of(options.addToHistory ?? true),
+    ];
+    if (original.activeVersionId !== versionId) {
+        return state.update({
+            effects,
+            annotations,
+        });
+    }
+    // Skip doc changes when the document already matches the version text.
+    // Redundant changes would appear as "foreign" edits to CodeMirror's
+    // history, breaking undo of prior entries (e.g. modal flush after
+    // translateAndDispatch).
+    const currentText = state.sliceDoc(original.selection.main.from, original.selection.main.to);
+    if (currentText === text) {
+        return state.update({
+            effects,
+            annotations,
+        });
+    }
+    return state.update({
+        effects,
+        annotations,
+        changes: state.changes({
+            from: original.selection.main.from,
+            to: original.selection.main.to,
+            insert: text,
+        }),
+    });
+}
+export function <span class="fstat-no" title="function not covered" >updateRevisionVersionLabel(</span>
+    state: EditorState,
+    annotationId: number,
+    versionId: string,
+    label: string | undefined,
+) {
+    const original = <span class="cstat-no" title="statement not covered" >state.field(annotationField)[annotationId];</span>
+<span class="cstat-no" title="statement not covered" >    if (!isAnnotationOfType(original, "revision")) {</span>
+<span class="cstat-no" title="statement not covered" >        throw new Error("Annotation is not a revision");</span>
+    }
+<span class="cstat-no" title="statement not covered" >    return state.update({</span>
+        effects: [_updateRevisionVersionLabel.of({ annotationId, versionId, label })],
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+    });
+}
+export function branchSuggestion(state: EditorState, annotationId: number) {
+    const annotation = state.field(annotationField)[annotationId];
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!isAnnotationOfType(annotation, "suggestion")) {
+<span class="cstat-no" title="statement not covered" >        throw new Error("Annotation is not a suggestion");</span>
+    }
+    const { from, to } = annotation.selection.main;
+    const originalText = state.doc.sliceString(from, to);
+&nbsp;
+    const versions: VersionState[] = [
+        makeVersion({ doc: originalText }),
+        ...annotation.replacements.map((r) =&gt; makeVersion({ doc: r.text })),
+    ];
+&nbsp;
+    const firstReplacement = annotation.replacements[0]?.text ?? <span class="branch-1 cbranch-no" title="branch not covered" >originalText;</span>
+    // Active = the first replacement (index 1) when there is one, else the original.
+    const activeVersionId = (versions[1] ?? <span class="branch-1 cbranch-no" title="branch not covered" >versions[0]).i</span>d;
+&nbsp;
+    const newRevision = {
+        ...createNewAnnotation(
+            state.field(annotationField),
+            EditorSelection.single(from, from + firstReplacement.length),
+            "revision",
+        ),
+        activeVersionId,
+        versions,
+        thread: annotation.thread,
+    };
+&nbsp;
+    return state.update({
+        effects: [removeAnnotation.of(annotation), addAnnotation.of(newRevision)],
+        changes: state.changes({ from, to, insert: firstReplacement }),
+        annotations: [revisionInternalEdit.of(true), Transaction.addToHistory.of(true)],
+    });
+}
+// === For suggestions ===
+export const addSuggestion = StateEffect.define&lt;{
+    targetText: string;
+    replacements: SuggestionReplacement[];
+}&gt;();
+// Preview: { annotationId, replacementIndex } while hovering/selecting, null to clear
+export const previewSuggestion = StateEffect.define&lt;{
+    annotationId: number;
+    replacementIndex: number;
+} | null&gt;();
+export const suggestionPreviewField = StateField.define&lt;{
+    annotationId: number;
+    replacementIndex: number;
+} | null&gt;({
+    create: () =&gt; null,
+    update(value, tr) {
+        for (const e of tr.effects) {
+            if (e.is(previewSuggestion)) return e.value;
+        }
+        // Clear preview when doc changes (suggestion was applied or removed)
+        if (tr.docChanged) return null;
+        return value;
+    },
+});
+export const _applySuggestion = StateEffect.define&lt;{
+    annotationId: number;
+    replacementIndex: number;
+}&gt;();
+export function applySuggestion(
+    state: EditorState,
+    annotationId: number,
+    replacementIndex: number,
+) {
+    const annotation = state.field(annotationField)[annotationId];
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!isAnnotationOfType(annotation, "suggestion")) {
+<span class="cstat-no" title="statement not covered" >        throw new Error("Invalid annotation type");</span>
+    }
+    return state.update({
+        effects: [_applySuggestion.of({ annotationId, replacementIndex })],
+        changes: state.changes({
+            from: annotation.selection.main.from,
+            to: annotation.selection.main.to,
+            insert: annotation.replacements[replacementIndex].text,
+        }),
+    });
+}
+// -------------------------------------------------------
+// annotationField — the central StateField
+//
+// State shape: Annotations (a record of id -&gt; annotation).
+//
+// The reducer runs in three phases on every transaction:
+//   1. remapAnnotationSelections — shift all annotation
+//      ranges through the document change set so they track
+//      edits. Annotations whose ranges collapse to zero
+//      width are removed (except revisions, which survive
+//      to allow version switching).
+//   2. applyAnnotationEffects — process each StateEffect
+//      in the transaction to add/remove/mutate annotations.
+//   3. pushDocToVersionState — when no explicit
+//      revision effect fired, copy the document slice
+//      under each active revision back into its version
+//      state so the stored text stays current.
+//
+// Triggers: any transaction (doc changes, effects, or both).
+// Downstream: Svelte stores sync via Editor.svelte's
+// updateListener; decoration plugins read this field to
+// render highlights.
+// -------------------------------------------------------
+&nbsp;
+// See issue #78: implicit annotation deletion via text deletion is not tracked
+// in the undo history — undoing text does not restore the annotation.
+&nbsp;
+/**
+ * Phase 1: Remap all annotation selections through the
+ * transaction's change set. Removes annotations whose
+ * ranges were fully consumed (collapsed to zero width),
+ * except revisions which are kept alive via allowEmpty.
+ */
+function remapAnnotationSelections(annotations: Annotations, tr: Transaction): Annotations {
+    const result: Annotations = {};
+    for (const [id, x] of Object.entries(annotations)) {
+        const isRevision = isAnnotationOfType(x, "revision");
+        const newSelection = cleanRangesOf(
+            x.selection.map(tr.changes, isRevision ? 1 : 0),
+            isRevision,
+        );
+        if (newSelection) {
+            result[id as unknown as number] = { ...x, selection: newSelection };
+        }
+    }
+    return result;
+}
+&nbsp;
+/**
+ * Handles _addVersionToRevision, _deleteVersionFromRevision,
+ * and _updateActiveRevisionVersion effects on a single
+ * revision annotation. Mutates the annotation in place and
+ * returns whether a revision effect was processed.
+ */
+function applyRevisionVersionEffect(
+    e: StateEffect&lt;{ annotationId: number; [key: string]: unknown }&gt;,
+    annotation: GenericAnnotation,
+    oldAnnotations: Annotations,
+    tr: Transaction,
+): GenericAnnotation {
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!isAnnotationOfType(annotation, "revision")) <span class="cstat-no" title="statement not covered" >return annotation;</span>
+&nbsp;
+    if (e.is(_addVersionToRevision)) {
+        const insertionIndex = Math.max(
+            0,
+            Math.min(e.value.at ?? annotation.versions.length, annotation.versions.length),
+        );
+        const newVersions = annotation.versions.slice();
+        newVersions.splice(insertionIndex, 0, e.value.newVersion);
+        // Adding a version makes it active by default (matches the user-add flow,
+        // where the new slot's index became active). Undo of a non-active delete
+        // re-inserts with makeActive: false so the restored version doesn't steal
+        // the active pointer (issue #270).
+        const makeActive = e.value.makeActive ?? true;
+        return {
+            ...annotation,
+            versions: newVersions,
+            activeVersionId: makeActive ? e.value.newVersion.id : annotation.activeVersionId,
+        };
+    }
+    if (e.is(_deleteVersionFromRevision)) {
+        const delIndex = versionIndexById(annotation, e.value.versionId);
+        const newVersions = annotation.versions.filter((v) =&gt; v.id !== e.value.versionId);
+        let activeVersionId = annotation.activeVersionId;
+        if (e.value.versionId === annotation.activeVersionId &amp;&amp; newVersions.length &gt; 0) {
+            // Active was deleted: fall to its positional neighbor.
+            const fallback = Math.min(Math.max(delIndex, 0), newVersions.length - 1);
+            activeVersionId = newVersions[fallback].id;
+        <span class="missing-if-branch" title="if path not taken" >I</span>} else if (!newVersions.some((v) =&gt; v.id === activeVersionId) &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >newVersions.length &gt; 0) {</span>
+<span class="cstat-no" title="statement not covered" >            activeVersionId = newVersions[0].id;</span>
+        }
+        return { ...annotation, versions: newVersions, activeVersionId };
+    }
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (e.is(_updateActiveRevisionVersion)) {
+        // When switching versions, reconstruct the selection
+        // to cover the inserted text. This is critical for
+        // collapsed ranges (all text was deleted) where
+        // selection.map() keeps the range collapsed instead
+        // of expanding around the newly inserted version
+        // text.
+        const targetVersion = versionById(annotation, e.value.to);
+        const oldAnnotation = oldAnnotations[e.value.annotationId];
+        let selection = annotation.selection;
+        <span class="missing-if-branch" title="else path not taken" >E</span>if (targetVersion &amp;&amp; oldAnnotation) {
+            const from = tr.changes.mapPos(oldAnnotation.selection.main.from, -1);
+            const vText = versionText(targetVersion);
+            const to = Math.min(from + vText.length, tr.state.doc.length);
+            selection = EditorSelection.single(Math.min(from, tr.state.doc.length), to);
+        }
+        return { ...annotation, activeVersionId: e.value.to, selection };
+    }
+<span class="cstat-no" title="statement not covered" >    return annotation;</span>
+}
+&nbsp;
+/**
+ * Phase 3: For revisions not touched by an explicit effect,
+ * pull the active version's doc text from the actual document
+ * content under the revision's range.
+ *
+ * @param skipIds - revision IDs that had an explicit effect this
+ *   transaction and should not be pulled here.
+ */
+function pushDocToVersionState(
+    annotations: Annotations,
+    tr: Transaction,
+    skipIds: Set&lt;number&gt; = new Set(),
+): Annotations {
+    // Nested editor edits that collapse a revision to empty should still
+    // pull version.doc to "" — otherwise the stale doc gets pushed back
+    // into the nested editor by the external-sync effect. Non-nested
+    // deletions skip pulling so undo can restore from _restoreAnnotation.
+    const isNestedEdit = tr.annotation(nestedEditorEdit) !== undefined;
+    return mapValues(annotations, (x) =&gt; {
+        if (isAnnotationOfType(x, "revision") &amp;&amp; !skipIds.has(x.id)) {
+            if (x.selection.main.empty &amp;&amp; !isNestedEdit) return x;
+            const text = tr.state.doc.slice(x.selection.main.from, x.selection.main.to).toString();
+            const activeIdx = activeVersionIndex(x);
+            if (text === versionText(x.versions[activeIdx])) return x;
+            // Return a new annotation object so Svelte's fine-grained reactivity
+            // detects the change and re-derives activeText in Revision.svelte.
+            const newVersions = x.versions.slice();
+            newVersions[activeIdx] = {
+                ...newVersions[activeIdx],
+                doc: text,
+            };
+            return { ...x, versions: newVersions };
+        }
+        return x;
+    });
+}
+&nbsp;
+export const annotationField = StateField.define&lt;Annotations&gt;({
+    create(): Annotations {
+        return {};
+    },
+    update(oldAnnotations: Annotations, tr: Transaction): Annotations {
+        // Phase 1: remap annotation ranges through doc changes
+        let annotations = remapAnnotationSelections(oldAnnotations, tr);
+&nbsp;
+        // Phase 2: apply effects
+        // Track which revision IDs had an explicit effect so Phase 3
+        // can skip pulling only those revisions (not all of them).
+        const revisionsWithExplicitEffect = new Set&lt;number&gt;();
+        for (const e of tr.effects) {
+            if (e.is(addAnnotation)) {
+                annotations[e.value.id] = e.value;
+                // Skip Phase 3 for revisions added via addAnnotation (e.g., from
+                // remote sync). The annotation already has correct versions[].doc
+                // from the source; pulling from the main doc would overwrite it
+                // with stale content. (#12-01 fix for version switch corruption)
+                if (isAnnotationOfType(e.value, "revision")) {
+                    revisionsWithExplicitEffect.add(e.value.id);
+                }
+            } else if (e.is(_restoreAnnotation)) {
+                annotations[e.value.id] = e.value;
+                // Same logic for restore — the restored annotation has the correct
+                // version doc from the undo history.
+                if (isAnnotationOfType(e.value, "revision")) {
+                    revisionsWithExplicitEffect.add(e.value.id);
+                }
+            } else if (e.is(removeAnnotation)) {
+                delete annotations[e.value.id];
+            } else if (e.is(updateThread)) {
+                const annotation = annotations[e.value.annotationId];
+                <span class="missing-if-branch" title="if path not taken" >I</span>if (!annotation) <span class="cstat-no" title="statement not covered" >continue;</span>
+                annotations[e.value.annotationId] = { ...annotation, thread: e.value.newThread };
+            } else if (
+                e.is(_addVersionToRevision) ||
+                e.is(_deleteVersionFromRevision) ||
+                e.is(_updateActiveRevisionVersion)
+            ) {
+                const annotation = annotations[e.value.annotationId];
+                if (!annotation || !isAnnotationOfType(annotation, "revision")) continue;
+                revisionsWithExplicitEffect.add(e.value.annotationId);
+                annotations[e.value.annotationId] = applyRevisionVersionEffect(
+                    e,
+                    annotation,
+                    oldAnnotations,
+                    tr,
+                );
+            } else if (e.is(_updateRevisionVersionLabel)) {
+                const annotation = annotations[e.value.annotationId];
+                <span class="missing-if-branch" title="if path not taken" >I</span>if (!annotation || !isAnnotationOfType(annotation, "revision")) <span class="cstat-no" title="statement not covered" >continue;</span>
+                const vIdx = versionIndexById(annotation, e.value.versionId);
+                <span class="missing-if-branch" title="else path not taken" >E</span>if (vIdx &gt;= 0) {
+                    const newVersions = annotation.versions.slice();
+                    newVersions[vIdx] = {
+                        ...newVersions[vIdx],
+                        label: e.value.label,
+                    };
+                    annotations[e.value.annotationId] = { ...annotation, versions: newVersions };
+                }
+            } else if (e.is(_updateRevisionVersionState)) {
+                const annotation = annotations[e.value.annotationId];
+                <span class="missing-if-branch" title="if path not taken" >I</span>if (!annotation || !isAnnotationOfType(annotation, "revision")) <span class="cstat-no" title="statement not covered" >continue;</span>
+                revisionsWithExplicitEffect.add(e.value.annotationId);
+                const vIdx = versionIndexById(annotation, e.value.versionId);
+                <span class="missing-if-branch" title="if path not taken" >I</span>if (vIdx &lt; 0) <span class="cstat-no" title="statement not covered" >continue;</span>
+                const newVersions = annotation.versions.slice();
+                // Preserve the version's id even if the incoming blob omits it
+                // (nested-editor serialization carries doc/annotationField, not id).
+                newVersions[vIdx] = { ...e.value.versionState, id: e.value.versionId };
+                let selection = annotation.selection;
+                if (annotation.activeVersionId === e.value.versionId &amp;&amp; tr.docChanged) {
+                    // Use the already-remapped selection from Phase 1 (not
+                    // oldAnnotations) to avoid double-mapping when both Phase 1
+                    // and this effect fire on the same transaction.
+                    const from = annotation.selection.main.from;
+                    const text = versionText(e.value.versionState);
+                    const to = from + text.length;
+                    selection = EditorSelection.single(from, to);
+                }
+                annotations[e.value.annotationId] = {
+                    ...annotation,
+                    versions: newVersions,
+                    selection,
+                };
+            <span class="missing-if-branch" title="if path not taken" >I</span>} else if (e.is(_updateRevisionVersionDoc)) {
+                // Collab-mode: update ONLY the version's doc text without
+                // affecting parent document or selection. The nested editor's
+                // Y.Text is authoritative; this just keeps the annotation state
+                // in sync for UI rendering and persistence.
+                const annotation = <span class="cstat-no" title="statement not covered" >annotations[e.value.annotationId];</span>
+<span class="cstat-no" title="statement not covered" >                if (!annotation || !isAnnotationOfType(annotation, "revision")) <span class="cstat-no" title="statement not covered" >continue;</span></span>
+<span class="cstat-no" title="statement not covered" >                revisionsWithExplicitEffect.add(e.value.annotationId);</span>
+                const <span class="cstat-no" title="statement not covered" >vIdx = versionIndexById(annotation, e.value.versionId);</span>
+<span class="cstat-no" title="statement not covered" >                if (vIdx &gt;= 0) {</span>
+                    const newVersions = <span class="cstat-no" title="statement not covered" >annotation.versions.slice();</span>
+<span class="cstat-no" title="statement not covered" >                    newVersions[vIdx] = { ...newVersions[vIdx], doc: e.value.doc };</span>
+<span class="cstat-no" title="statement not covered" >                    annotations[e.value.annotationId] = {</span>
+                        ...annotation,
+                        versions: newVersions,
+                    };
+                }
+            } else if (e.is(addSuggestion)) {
+                const cursor = new SearchCursor(tr.state.doc, e.value.targetText);
+                for (const { from, to } of cursor) {
+                    // Search through the document for the text
+                    annotations[getNewId(annotations)] = {
+                        ...createNewAnnotation(
+                            annotations,
+                            EditorSelection.single(from, to),
+                            "suggestion",
+                        ),
+                        replacements: e.value.replacements,
+                    };
+                }
+            } else if (e.is(_applySuggestion)) {
+                delete annotations[e.value.annotationId];
+            }
+        }
+        // Phase 3: pull active revision version text from the
+        // document, but only for revisions that had no explicit effect
+        // this transaction and only when the document actually changed.
+        if (tr.docChanged) {
+            // Collect all revision IDs that need boundary expansion.
+            // This covers both the forward pass (nestedEditorEdit annotation)
+            // and redo replays (_nestedEditRevision StateEffect stored in history).
+            const nestedEditRevIds = new Set&lt;number&gt;();
+            const nestedEditAnnotationId = tr.annotation(nestedEditorEdit);
+            if (nestedEditAnnotationId !== undefined) {
+                nestedEditRevIds.add(nestedEditAnnotationId);
+            }
+            for (const e of tr.effects) {
+                if (e.is(_nestedEditRevision)) {
+                    nestedEditRevIds.add(e.value);
+                }
+            }
+&nbsp;
+            // Fix revision selection boundaries for nested editor edits (forward
+            // pass and redo only). Phase 1 uses EditorSelection.map() which does
+            // not expand non-collapsed ranges when text is inserted exactly at
+            // their trailing boundary. We use mapPos(from,-1) / mapPos(to,+1)
+            // to ensure the revision range absorbs content added at its edges.
+            // Skip on undo when the undo is purely a deletion (undoing an
+            // insertion): Phase 1 shrinks the range correctly, and expansion
+            // bias would pin the boundary at the wrong position. But allow
+            // expansion when the undo re-inserts text (undoing a deletion),
+            // because Phase 1's selection.map() won't expand at boundaries.
+            const isUndo = tr.isUserEvent("undo");
+            let undoInsertsText = false;
+            if (isUndo) {
+                tr.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) =&gt; {
+                    if (inserted.length &gt; 0) undoInsertsText = true;
+                });
+            }
+            for (const revId of isUndo &amp;&amp; !undoInsertsText ? [] : nestedEditRevIds) {
+                const ann = annotations[revId];
+                if (ann &amp;&amp; isAnnotationOfType(ann, "revision")) {
+                    const oldAnn = oldAnnotations[revId];
+                    <span class="missing-if-branch" title="else path not taken" >E</span>if (oldAnn) {
+                        const from = tr.changes.mapPos(oldAnn.selection.main.from, -1);
+                        const to = tr.changes.mapPos(oldAnn.selection.main.to, 1);
+                        if (from !== ann.selection.main.from || to !== ann.selection.main.to) {
+                            annotations[revId] = {
+                                ...ann,
+                                selection: EditorSelection.single(from, to),
+                            };
+                        }
+                    }
+                }
+            }
+&nbsp;
+            // NOTE: we intentionally do NOT skip Phase 3 for nestedEditorEdit.
+            // Phase 3 pulls versions[selected].doc from the parent doc slice,
+            // which is needed so that version switching shows current content.
+            annotations = pushDocToVersionState(annotations, tr, revisionsWithExplicitEffect);
+        }
+        return annotations;
+    },
+    toJSON(value: Annotations) {
+        return mapValues(value, (c) =&gt; ({
+            ...c,
+            selection: c.selection.toJSON(),
+        }));
+    },
+    fromJSON(value: unknown) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (value == null) <span class="cstat-no" title="statement not covered" >return {} as Annotations;</span>
+        const result = RawAnnotationsSchema.safeParse(value);
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (!result.success) {
+<span class="cstat-no" title="statement not covered" >            console.warn(</span>
+                "[annotationField] fromJSON: persisted annotation data failed validation,",
+                "starting with an empty annotation map.",
+                result.error.flatten(),
+            );
+<span class="cstat-no" title="statement not covered" >            return {} as Annotations;</span>
+        }
+        return mapValues(result.data, (x) =&gt; {
+            const withSelection = {
+                ...x,
+                selection: EditorSelection.fromJSON(x.selection),
+            };
+            // Heal legacy revisions (no version ids / activeVersionIndex) into the
+            // stable-id shape. Idempotent for already-migrated data.
+            if (isAnnotationOfType(withSelection as GenericAnnotation, "revision")) {
+                return normalizeRevision(withSelection as never);
+            }
+            return withSelection;
+        }) as Annotations;
+    },
+});
+export const invertedAnnotationFieldEffects = invertedEffects.of((transaction: Transaction) =&gt; {
+    const effects = [];
+    const oldAnnotations = transaction.startState.field(annotationField);
+&nbsp;
+    // Skip transactions that opted out of history (addToHistory.of(false)).
+    // These don't create a new undo entry, so any inverted effects we
+    // generate would get merged into the *previous* undo entry and corrupt
+    // its replay. This covers:
+    //   - Cleanup transactions from collapsedRevisionResolver
+    //   - Modal flush dispatches (flushToParent)
+    //   - Any other internal bookkeeping dispatches
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (transaction.annotation(Transaction.addToHistory) === false) <span class="cstat-no" title="statement not covered" >return [];</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (transaction.annotation(_revisionCleanup)) <span class="cstat-no" title="statement not covered" >return [];</span>
+&nbsp;
+    // Detect annotations implicitly affected by remapAnnotationSelections (phase 1)
+    // when text they were anchored to was deleted. These have no explicit effect,
+    // so invertedEffects would never see them.
+    //
+    // Effects stored by invertedEffects carry post-transaction positions —
+    // CodeMirror remaps them through the undo's inverse change on replay.
+    // We use _restoreAnnotation (which does not filter collapsed ranges) so
+    // the collapsed post-deletion point gets mapped back to the full span
+    // by the undo re-insertion, regardless of what other text was deleted
+    // around the annotation.
+    // Only generate implicit restore effects for plain user text edits.
+    // Skip undo/redo replays (they already carry stored effects) and
+    // revision-internal edits (revisionInternalEdit), which handle their
+    // own annotation state via explicit effects.
+    const isUndoRedo = transaction.isUserEvent("undo") || transaction.isUserEvent("redo");
+    const isRevisionEdit = transaction.annotation(revisionInternalEdit);
+    // nestedEditorEdit transactions are plain doc changes originated by a nested
+    // editor viewport — they manage positions via the normal doc-change path, so
+    // implicit annotation restoration is not needed (and would double-restore).
+    const isNestedEdit = transaction.annotation(nestedEditorEdit) !== undefined;
+    if (transaction.docChanged &amp;&amp; !isUndoRedo &amp;&amp; !isRevisionEdit &amp;&amp; !isNestedEdit) {
+        for (const annotation of Object.values(oldAnnotations)) {
+            const isRevision = isAnnotationOfType(annotation, "revision");
+            const remapped = cleanRangesOf(
+                annotation.selection.map(transaction.changes, isRevision ? 1 : 0),
+                isRevision,
+            );
+            if (!isRevision &amp;&amp; remapped === null) {
+                // Annotation was silently dropped. Store it with its original
+                // pre-deletion selection so undo re-adds it at the right position.
+                effects.push(_restoreAnnotation.of(annotation));
+            } else if (isRevision &amp;&amp; remapped !== null &amp;&amp; remapped.main.empty) {
+                // Revision survived remapping but collapsed to a point. Two
+                // effects are needed on undo:
+                //   1. removeAnnotation(collapsed) — the collapsed revision
+                //      still exists in the field at undo time (collapsedRevisionResolver
+                //      fires asynchronously in a microtask); undo must remove it
+                //      first, otherwise the field ends up with two entries for
+                //      the same annotation ID.
+                //   2. _restoreAnnotation(original) — re-adds the annotation
+                //      with its full pre-deletion selection. Using _restoreAnnotation
+                //      instead of addAnnotation means the map function does not
+                //      filter collapsed ranges, so positions remap correctly
+                //      through the undo's inverse change.
+                effects.push(removeAnnotation.of({ ...annotation, selection: remapped }));
+                effects.push(_restoreAnnotation.of(annotation));
+            }
+        }
+    }
+&nbsp;
+    for (const effect of transaction.effects) {
+        if (effect.is(addAnnotation)) {
+            effects.push(removeAnnotation.of(effect.value));
+        } else if (effect.is(_restoreAnnotation)) {
+            // Redo: drop the restored annotation again.
+            effects.push(removeAnnotation.of(effect.value));
+        } else if (effect.is(removeAnnotation)) {
+            effects.push(addAnnotation.of(effect.value));
+        } else if (effect.is(updateThread)) {
+            const oldAnnotation = oldAnnotations[effect.value.annotationId];
+            <span class="missing-if-branch" title="if path not taken" >I</span>if (!oldAnnotation) <span class="cstat-no" title="statement not covered" >continue;</span>
+            // Was a comment in the "pending" state
+            if (oldAnnotation.thread.length === 0) {
+                effects.push(removeAnnotation.of(oldAnnotation));
+            } else <span class="missing-if-branch" title="else path not taken" >E</span>{
+<span class="cstat-no" title="statement not covered" >                effects.push(</span>
+                    updateThread.of({
+                        ...effect.value,
+                        newThread: oldAnnotation.thread,
+                    }),
+                );
+            }
+        <span class="missing-if-branch" title="if path not taken" >I</span>} else if (effect.is(addSuggestion)) {
+            const newAnnotations = <span class="cstat-no" title="statement not covered" >transaction.state.field(annotationField);</span>
+            const oldKeys = <span class="cstat-no" title="statement not covered" >new Set(Object.keys(oldAnnotations).map(Number));</span>
+<span class="cstat-no" title="statement not covered" >            for (const [idStr, ann] of Object.entries(newAnnotations)) {</span>
+<span class="cstat-no" title="statement not covered" >                if (!oldKeys.has(Number(idStr)) &amp;&amp; isAnnotationOfType(ann, "suggestion")) {</span>
+<span class="cstat-no" title="statement not covered" >                    effects.push(removeAnnotation.of(ann));</span>
+                }
+            }
+        } else if (
+            effect.is(_addVersionToRevision) ||
+            effect.is(_deleteVersionFromRevision) ||
+            effect.is(_updateActiveRevisionVersion)
+        ) {
+            const oldAnnotation = oldAnnotations[effect.value.annotationId];
+            if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) continue;
+            if (effect.is(_addVersionToRevision)) {
+                // Inverse of add = delete the just-added version, identified by its
+                // stable id (so position shifts can't target the wrong slot).
+                effects.push(
+                    _deleteVersionFromRevision.of({
+                        annotationId: oldAnnotation.id,
+                        versionId: effect.value.newVersion.id,
+                    }),
+                );
+            } else if (effect.is(_deleteVersionFromRevision)) {
+                // Inverse of delete = re-add the deleted version at its old slot.
+                const oldIndex = versionIndexById(oldAnnotation, effect.value.versionId);
+                const oldVersion = versionById(oldAnnotation, effect.value.versionId);
+                <span class="missing-if-branch" title="else path not taken" >E</span>if (oldVersion) {
+                    // Only re-activate the restored version if it WAS active when
+                    // deleted. Re-inserting a non-active version must not steal the
+                    // active pointer — undo restores prior state, it doesn't move
+                    // focus (issue #270). The active-delete case is already covered
+                    // by the paired _updateActiveRevisionVersion inverse below, but
+                    // setting the flag here keeps the add-inverse self-consistent.
+                    const wasActive = effect.value.versionId === oldAnnotation.activeVersionId;
+                    effects.push(
+                        _addVersionToRevision.of({
+                            annotationId: oldAnnotation.id,
+                            newVersion: oldVersion,
+                            at: oldIndex &lt; 0 ? <span class="branch-0 cbranch-no" title="branch not covered" >undefined : o</span>ldIndex,
+                            makeActive: wasActive,
+                        }),
+                    );
+                }
+            <span class="missing-if-branch" title="else path not taken" >E</span>} else if (effect.is(_updateActiveRevisionVersion)) {
+                effects.push(
+                    _updateActiveRevisionVersion.of({
+                        annotationId: oldAnnotation.id,
+                        to: oldAnnotation.activeVersionId,
+                    }),
+                );
+            }
+        } else if (effect.is(_updateRevisionVersionState)) {
+            const oldAnnotation = oldAnnotations[effect.value.annotationId];
+            <span class="missing-if-branch" title="if path not taken" >I</span>if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) <span class="cstat-no" title="statement not covered" >continue;</span>
+            const oldVersion = versionById(oldAnnotation, effect.value.versionId);
+            <span class="missing-if-branch" title="if path not taken" >I</span>if (!oldVersion) <span class="cstat-no" title="statement not covered" >continue;</span>
+            effects.push(
+                _updateRevisionVersionState.of({
+                    annotationId: oldAnnotation.id,
+                    versionId: effect.value.versionId,
+                    versionState: oldVersion,
+                }),
+            );
+        } else if (effect.is(_updateRevisionVersionLabel)) {
+            const oldAnnotation = oldAnnotations[effect.value.annotationId];
+            <span class="missing-if-branch" title="if path not taken" >I</span>if (!oldAnnotation || !isAnnotationOfType(oldAnnotation, "revision")) <span class="cstat-no" title="statement not covered" >continue;</span>
+            effects.push(
+                _updateRevisionVersionLabel.of({
+                    annotationId: oldAnnotation.id,
+                    versionId: effect.value.versionId,
+                    label: versionById(oldAnnotation, effect.value.versionId)?.label,
+                }),
+            );
+        } else if (effect.is(_applySuggestion)) {
+            const annotations = transaction.startState.field(annotationField);
+            const ann = annotations[effect.value.annotationId];
+            <span class="missing-if-branch" title="if path not taken" >I</span>if (!ann) <span class="cstat-no" title="statement not covered" >continue;</span>
+            effects.push(addAnnotation.of(ann));
+        } else if (effect.is(_nestedEditRevision)) {
+            // _nestedEditRevision is its own inverse: on undo the stored effect
+            // would be the forward one, but undo doesn't need range expansion
+            // (Phase 1 shrinks correctly). We still emit the inverse so that
+            // if the undo itself is redone, redo sees the effect and expands.
+            effects.push(_nestedEditRevision.of(effect.value));
+        }
+    }
+    return effects;
+});
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-06-27T18:20:10.965Z
+            </div>
+        <script src="../../../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../../../sorter.js"></script>
+        <script src="../../../../../block-navigation.js"></script>
+    </body>
+</html>
+    

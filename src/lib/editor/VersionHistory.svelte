@@ -54,6 +54,7 @@ import {
     groupByDate,
     reconstructStructureAsOf,
     resolveTabContentAt,
+    resolveTimelineTarget,
 } from "./history/timeline";
 
 // ── State ───────────────────────────────────────────────────────
@@ -106,14 +107,7 @@ const previewStructure = $derived.by(() => {
 // What the selected coordinate concerns (for the map highlight + default tab).
 const selectedTarget = $derived.by(() => {
     if (!selectedItem) return { tabId: null as string | null, draftId: null as string | null };
-    if (selectedItem.kind === "snapshot") {
-        return { tabId: selectedItem.snapshot.tabId, draftId: selectedItem.snapshot.draftId };
-    }
-    const target = describeDocEvent(selectedItem.event).target;
-    if (!target) return { tabId: null, draftId: null };
-    return target.kind === "tab"
-        ? { tabId: target.id, draftId: null }
-        : { tabId: null, draftId: target.id };
+    return resolveTimelineTarget(selectedItem, allDrafts);
 });
 
 // A short note shown above the content when the coordinate is a structural
@@ -181,7 +175,7 @@ async function selectItem(item: TimelineItem) {
     // Default the viewed tab to the coordinate's target tab, else the first tab
     // live at this point. The user can switch tabs in the structure map after.
     const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
-    const target = selectedTarget.tabId;
+    const target = resolveTimelineTarget(item, allDrafts).tabId;
     viewedTabId =
         (target && structure.tabs.some((t) => t.id === target) ? target : null) ??
         structure.tabs[0]?.id ??
