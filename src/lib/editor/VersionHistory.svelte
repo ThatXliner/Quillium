@@ -48,6 +48,7 @@ import { docTextFromStateJson } from "./history/diff";
 import {
     type TimelineItem,
     buildTimelineItems,
+    coordinateForItem,
     describeDocEvent,
     formatTime,
     formatTimeShort,
@@ -101,7 +102,7 @@ const groups = $derived(groupByDate(timelineItems, Date.now()));
 // roster (incl. since-deleted nodes), with labels/existence replayed to T.
 const previewStructure = $derived.by(() => {
     if (!selectedItem) return { tabs: [], drafts: [] };
-    return reconstructStructureAsOf(allTabs, allDrafts, docEvents, selectedItem.createdAt);
+    return reconstructStructureAsOf(allTabs, allDrafts, docEvents, coordinateForItem(selectedItem));
 });
 
 // What the selected coordinate concerns (for the map highlight + default tab).
@@ -176,7 +177,12 @@ async function selectItem(item: TimelineItem) {
     // live at this point. The user can switch tabs in the structure map after.
     // The structure is computed once here and threaded into loadContent so the
     // O(events) replay runs once per selection, not twice.
-    const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
+    const structure = reconstructStructureAsOf(
+        allTabs,
+        allDrafts,
+        docEvents,
+        coordinateForItem(item),
+    );
     const target = resolveTimelineTarget(item, allDrafts).tabId;
     viewedTabId =
         (target && structure.tabs.some((t) => t.id === target) ? target : null) ??
@@ -212,8 +218,9 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
     previewLoading = true;
     try {
         const resolved =
-            structure ?? reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
-        const ref = resolveTabContentAt(snapshots, resolved.drafts, tabId, item.createdAt);
+            structure ??
+            reconstructStructureAsOf(allTabs, allDrafts, docEvents, coordinateForItem(item));
+        const ref = resolveTabContentAt(snapshots, resolved.drafts, tabId, coordinateForItem(item));
         if (!ref.current) {
             if (token === previewToken) {
                 previewCurrentJson = null;
@@ -267,8 +274,9 @@ async function handleRestore() {
     const docId = get(currentDocumentId);
     if (!docId) return;
     const snapshotId = selectedItem.kind === "snapshot" ? selectedItem.snapshot.id : null;
+    const coordinate = coordinateForItem(selectedItem);
     try {
-        await restoreToCoordinate(docId, selectedItem.createdAt, snapshotId);
+        await restoreToCoordinate(docId, coordinate.createdAt, coordinate.docEventId, snapshotId);
         posthog.capture("version_restored", {
             kind: selectedItem.kind,
             source: "version_history",

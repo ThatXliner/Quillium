@@ -426,9 +426,15 @@ export async function restoreToSnapshot(draftId: string, snapshotId: number): Pr
 export async function restoreToCoordinate(
     docId: string,
     asOfMs: number,
+    asOfEventId: number | null,
     snapshotId: number | null,
 ): Promise<RestoreLanding> {
-    return invoke<RestoreLanding>("cmd_restore_to_coordinate", { docId, asOfMs, snapshotId });
+    return invoke<RestoreLanding>("cmd_restore_to_coordinate", {
+        docId,
+        asOfMs,
+        asOfEventId,
+        snapshotId,
+    });
 }
 
 /** Returns the auto-prune retention in days, or null if disabled. */

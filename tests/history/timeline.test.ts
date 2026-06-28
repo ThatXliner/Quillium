@@ -1,6 +1,7 @@
 import type { DocEventRecord, DocumentSnapshotMeta, DraftMeta, TabMeta } from "$lib/db/types";
 import {
     buildTimelineItems,
+    coordinateForItem,
     describeDocEvent,
     headingForDate,
     reconstructStructureAsOf,
@@ -50,6 +51,16 @@ function draft(id: string, createdAt: number, label = id): DraftMeta {
     };
 }
 
+const coord = (
+    createdAt: number,
+    docEventId: number | null = null,
+    snapshotId: number | null = null,
+) => ({
+    createdAt,
+    docEventId,
+    snapshotId,
+});
+
 // ── buildTimelineItems ──────────────────────────────────────────────
 
 describe("buildTimelineItems", () => {
@@ -79,6 +90,23 @@ describe("buildTimelineItems", () => {
         // a lexical "snapshot:10" < "snapshot:2" compare would get backwards.
         const items = buildTimelineItems([snapshot(2, "d", 100), snapshot(10, "d", 100)], []);
         expect(items.map((i) => i.id)).toEqual(["snapshot:10", "snapshot:2"]);
+    });
+
+    it("derives event and snapshot tie-breaker coordinates", () => {
+        const items = buildTimelineItems(
+            [snapshot(2, "d", 100)],
+            [docEvent(9, "tab_created", {}, 100)],
+        );
+        expect(coordinateForItem(items[0])).toEqual({
+            createdAt: 100,
+            docEventId: 9,
+            snapshotId: null,
+        });
+        expect(coordinateForItem(items[1])).toEqual({
+            createdAt: 100,
+            docEventId: null,
+            snapshotId: 2,
+        });
     });
 });
 
@@ -175,18 +203,18 @@ describe("reconstructStructureAsOf", () => {
     ];
 
     it("excludes a tab created after T", () => {
-        const { tabs: t } = reconstructStructureAsOf(tabs, drafts, events, 100);
+        const { tabs: t } = reconstructStructureAsOf(tabs, drafts, events, coord(100, 1));
         expect(t.map((x) => x.id)).toEqual(["tab1"]);
     });
 
     it("includes both tabs after the second was created", () => {
-        const { tabs: t } = reconstructStructureAsOf(tabs, drafts, events, 250);
+        const { tabs: t } = reconstructStructureAsOf(tabs, drafts, events, coord(250, 2));
         expect(t.map((x) => x.id).sort()).toEqual(["tab1", "tab2"]);
     });
 
     it("rewinds a label to its value at T", () => {
-        const before = reconstructStructureAsOf(tabs, drafts, events, 250);
-        const after = reconstructStructureAsOf(tabs, drafts, events, 350);
+        const before = reconstructStructureAsOf(tabs, drafts, events, coord(250, 2));
+        const after = reconstructStructureAsOf(tabs, drafts, events, coord(350, 3));
         expect(before.tabs.find((x) => x.id === "tab1")!.label).toBe("Main");
         expect(after.tabs.find((x) => x.id === "tab1")!.label).toBe("Renamed");
     });
@@ -194,20 +222,18 @@ describe("reconstructStructureAsOf", () => {
     it("rewinds tab order across a tabs_reordered event", () => {
         const evs = [...events, docEvent(4, "tabs_reordered", { order: ["tab2", "tab1"] }, 400)];
         // Before the reorder: creation order (tab1, tab2).
-        expect(reconstructStructureAsOf(tabs, drafts, evs, 350).tabs.map((x) => x.id)).toEqual([
-            "tab1",
-            "tab2",
-        ]);
+        expect(
+            reconstructStructureAsOf(tabs, drafts, evs, coord(350, 3)).tabs.map((x) => x.id),
+        ).toEqual(["tab1", "tab2"]);
         // After: the reordered order (tab2, tab1).
-        expect(reconstructStructureAsOf(tabs, drafts, evs, 450).tabs.map((x) => x.id)).toEqual([
-            "tab2",
-            "tab1",
-        ]);
+        expect(
+            reconstructStructureAsOf(tabs, drafts, evs, coord(450, 4)).tabs.map((x) => x.id),
+        ).toEqual(["tab2", "tab1"]);
     });
 
     it("treats a deleted-then-not-restored draft as gone at T", () => {
         const evs = [...events, docEvent(4, "draft_deleted", { draftId: "d2" }, 400)];
-        const { drafts: d } = reconstructStructureAsOf(tabs, drafts, evs, 450);
+        const { drafts: d } = reconstructStructureAsOf(tabs, drafts, evs, coord(450, 4));
         expect(d.map((x) => x.id)).not.toContain("d2");
     });
 
@@ -217,8 +243,22 @@ describe("reconstructStructureAsOf", () => {
             docEvent(4, "draft_deleted", { draftId: "d2" }, 400),
             docEvent(5, "draft_restored", { draftId: "d2" }, 500),
         ];
-        const { drafts: d } = reconstructStructureAsOf(tabs, drafts, evs, 550);
+        const { drafts: d } = reconstructStructureAsOf(tabs, drafts, evs, coord(550, 5));
         expect(d.map((x) => x.id)).toContain("d2");
+    });
+
+    it("uses the doc event id to split same-millisecond structural coordinates", () => {
+        const evs = [
+            docEvent(1, "tab_created", { tabId: "tab1", label: "Main", rootDraftId: "d1" }, 100),
+            docEvent(2, "tab_renamed", { tabId: "tab1", label: "Renamed" }, 100),
+        ];
+
+        expect(reconstructStructureAsOf(tabs, drafts, evs, coord(100, 1)).tabs[0].label).toBe(
+            "Main",
+        );
+        expect(reconstructStructureAsOf(tabs, drafts, evs, coord(100, 2)).tabs[0].label).toBe(
+            "Renamed",
+        );
     });
 });
 
@@ -238,28 +278,39 @@ describe("resolveTabContentAt", () => {
     const snaps = [snap(3, "dA", 300), snap(2, "dB", 200), snap(1, "dA", 100)];
 
     it("returns the latest snapshot of the tab at/before T as current", () => {
-        const ref = resolveTabContentAt(snaps, drafts, "tabA", 350);
+        const ref = resolveTabContentAt(snaps, drafts, "tabA", coord(350));
         expect(ref.current?.id).toBe(3);
         expect(ref.previous?.id).toBe(1); // prior dA snapshot is the baseline
         expect(ref.draftId).toBe("dA");
     });
 
     it("ignores snapshots after T", () => {
-        const ref = resolveTabContentAt(snaps, drafts, "tabA", 150);
+        const ref = resolveTabContentAt(snaps, drafts, "tabA", coord(150));
         expect(ref.current?.id).toBe(1);
         expect(ref.previous).toBeNull(); // nothing older
     });
 
     it("scopes to the requested tab only", () => {
-        const ref = resolveTabContentAt(snaps, drafts, "tabB", 350);
+        const ref = resolveTabContentAt(snaps, drafts, "tabB", coord(350));
         expect(ref.current?.id).toBe(2);
         expect(ref.draftId).toBe("dB");
     });
 
     it("returns nulls when the tab has no content at T", () => {
-        const ref = resolveTabContentAt(snaps, drafts, "tabB", 150);
+        const ref = resolveTabContentAt(snaps, drafts, "tabB", coord(150));
         expect(ref.current).toBeNull();
         expect(ref.draftId).toBeNull();
+    });
+
+    it("uses the snapshot id to split same-millisecond content coordinates", () => {
+        const sameTime = [snap(10, "dA", 100), snap(2, "dA", 100)];
+
+        expect(resolveTabContentAt(sameTime, drafts, "tabA", coord(100, null, 2)).current?.id).toBe(
+            2,
+        );
+        expect(
+            resolveTabContentAt(sameTime, drafts, "tabA", coord(100, null, 10)).current?.id,
+        ).toBe(10);
     });
 });
 

@@ -40,15 +40,19 @@ function tokenize(text: string): string[] {
  * tokens of the same type are coalesced into one segment. An empty `before`
  * yields all-add; an empty `after` yields all-del.
  *
- * Uses the classic LCS dynamic-program. Inputs are tokenized to words, so the
- * table is words×words — fine for documents (prose), and the preview only ever
- * diffs two adjacent snapshots, not the whole history.
+ * Uses the classic LCS dynamic-program, capped so very large documents fall
+ * back to an undecorated current preview instead of locking the renderer.
  */
 export function wordDiff(before: string, after: string): DiffSegment[] {
     const a = tokenize(before);
     const b = tokenize(after);
     const n = a.length;
     const m = b.length;
+    const maxCells = 1_000_000;
+
+    if (n * m > maxCells) {
+        return after ? [{ type: "same", text: after }] : [];
+    }
 
     // lcs[i][j] = length of the longest common subsequence of a[i..] and b[j..].
     const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));

@@ -29,6 +29,40 @@ export type TimelineItem =
           event: DocEventRecord;
       };
 
+export type TimelineCoordinate = {
+    createdAt: number;
+    /** Doc-event tie-breaker at this millisecond; null means before same-ms events. */
+    docEventId: number | null;
+    /** Snapshot tie-breaker at this millisecond; null means include same-ms snapshots. */
+    snapshotId: number | null;
+};
+
+export function coordinateForItem(item: TimelineItem): TimelineCoordinate {
+    return {
+        createdAt: item.createdAt,
+        docEventId: item.kind === "activity" ? item.event.id : null,
+        snapshotId: item.kind === "snapshot" ? item.snapshot.id : null,
+    };
+}
+
+function docEventAtOrBeforeCoordinate(
+    event: DocEventRecord,
+    coordinate: TimelineCoordinate,
+): boolean {
+    if (event.createdAt < coordinate.createdAt) return true;
+    if (event.createdAt > coordinate.createdAt) return false;
+    return coordinate.docEventId !== null && event.id <= coordinate.docEventId;
+}
+
+function snapshotAtOrBeforeCoordinate(
+    snapshot: DocumentSnapshotMeta,
+    coordinate: TimelineCoordinate,
+): boolean {
+    if (snapshot.createdAt < coordinate.createdAt) return true;
+    if (snapshot.createdAt > coordinate.createdAt) return false;
+    return coordinate.snapshotId === null || snapshot.id <= coordinate.snapshotId;
+}
+
 /**
  * Merges document-wide snapshots and structural events into one timeline,
  * newest first. Ties break deterministically by id so the order is stable.
@@ -218,11 +252,12 @@ export function reconstructStructureAsOf(
     allTabs: TabMeta[],
     allDrafts: DraftMeta[],
     docEvents: DocEventRecord[],
-    t: number,
+    coordinate: TimelineCoordinate,
 ): { tabs: TabMeta[]; drafts: DraftMeta[] } {
-    // Replay events ≤ t (oldest first) into deleted-state + label maps.
+    // Replay events at/before the exact coordinate (oldest first) into
+    // deleted-state + label maps.
     const events = [...docEvents]
-        .filter((e) => e.createdAt <= t)
+        .filter((e) => docEventAtOrBeforeCoordinate(e, coordinate))
         .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id);
 
     const tabDeleted = new Map<string, boolean>();
@@ -302,7 +337,9 @@ export function reconstructStructureAsOf(
     }
 
     const liveTabs = allTabs
-        .filter((tab) => tab.createdAt <= t && !(tabDeleted.get(tab.id) ?? false))
+        .filter(
+            (tab) => tab.createdAt <= coordinate.createdAt && !(tabDeleted.get(tab.id) ?? false),
+        )
         .map((tab) => ({ ...tab, label: tabLabel.get(tab.id) ?? tab.label }));
 
     // Reorder to the historical order at `t`. A tab missing from `tabOrder`
@@ -319,7 +356,7 @@ export function reconstructStructureAsOf(
         .map(({ tab }) => tab);
 
     const drafts = allDrafts
-        .filter((d) => d.createdAt <= t && !(draftDeleted.get(d.id) ?? false))
+        .filter((d) => d.createdAt <= coordinate.createdAt && !(draftDeleted.get(d.id) ?? false))
         .map((d) => ({ ...d, label: draftLabel.get(d.id) ?? d.label }));
 
     return { tabs, drafts };
@@ -400,12 +437,12 @@ export function resolveTabContentAt(
     snapshots: DocumentSnapshotMeta[],
     drafts: DraftMeta[],
     tabId: string,
-    t: number,
+    coordinate: TimelineCoordinate,
 ): TabContentRef {
     const tabDraftIds = new Set(drafts.filter((d) => d.tabId === tabId).map((d) => d.id));
-    // Snapshots of this tab's drafts at/before t, newest first.
+    // Snapshots of this tab's drafts at/before the coordinate, newest first.
     const eligible = snapshots
-        .filter((s) => tabDraftIds.has(s.draftId) && s.createdAt <= t)
+        .filter((s) => tabDraftIds.has(s.draftId) && snapshotAtOrBeforeCoordinate(s, coordinate))
         .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
 
     if (eligible.length === 0) return { draftId: null, current: null, previous: null };

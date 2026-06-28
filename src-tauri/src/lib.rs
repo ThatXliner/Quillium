@@ -26,8 +26,8 @@ use db::{
         branch_draft, cascade_delete_draft, create_tab, delete_draft, delete_tab, get_active_draft,
         get_active_tab, iterate_draft, list_doc_events, list_document_structure, list_tab_drafts,
         list_tabs, orphan_and_delete_draft, rename_draft, rename_tab, reorder_tabs, reparent_draft,
-        restore_content_nondestructive, restore_draft, restore_structure_to, restore_tab,
-        set_active_draft, set_active_tab, set_draft_locked, ReparentEntry,
+        restore_coordinate_nondestructive, restore_draft, restore_tab, set_active_draft,
+        set_active_tab, set_draft_locked, ReparentEntry,
     },
     AppendEventResult, DocEventRecord, DocumentMeta, DocumentSnapshotMeta, DocumentStructure,
     DraftMeta, EventRecord, LoadResult, SnapshotMeta, TabMeta,
@@ -525,40 +525,32 @@ struct RestoreLanding {
 }
 
 /// Non-destructively restores the whole document to a timeline coordinate (the
-/// "git reflog" reset). `as_of_ms` is the coordinate's timestamp; the structure
-/// is rewound to that moment. When `snapshot_id` is given (a content
-/// coordinate), the relevant draft's content is restored too — as a new
-/// iteration tip — and the returned landing points the editor at it. For a
-/// purely structural coordinate (`snapshot_id` is None) the landing is empty
-/// and the caller keeps its current position. Nothing is deleted; later
-/// coordinates remain in the timeline.
+/// "git reflog" reset). `as_of_ms` plus optional `as_of_event_id` identify the
+/// exact structural coordinate; when `snapshot_id` is given, the relevant
+/// draft's content is restored too as a new iteration tip. Nothing is deleted;
+/// later coordinates remain in the timeline.
 #[tauri::command]
 fn cmd_restore_to_coordinate(
     state: tauri::State<DbState>,
     doc_id: String,
     as_of_ms: i64,
+    as_of_event_id: Option<i64>,
     snapshot_id: Option<i64>,
 ) -> Result<RestoreLanding, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    restore_structure_to(&conn, &doc_id, as_of_ms).map_err(|e| e.to_string())?;
-    let landing = match snapshot_id {
-        Some(id) => {
-            let draft = restore_content_nondestructive(&conn, id).map_err(|e| e.to_string())?;
-            if let Some(tab) = &draft.tab_id {
-                set_active_tab(&conn, &doc_id, tab).map_err(|e| e.to_string())?;
-                set_active_draft(&conn, tab, &draft.id).map_err(|e| e.to_string())?;
-            }
-            RestoreLanding {
-                tab_id: draft.tab_id,
-                draft_id: Some(draft.id),
-            }
-        }
-        None => RestoreLanding {
+    let landing =
+        restore_coordinate_nondestructive(&conn, &doc_id, as_of_ms, as_of_event_id, snapshot_id)
+            .map_err(|e| e.to_string())?;
+    match landing {
+        Some(draft) => Ok(RestoreLanding {
+            tab_id: draft.tab_id,
+            draft_id: Some(draft.id),
+        }),
+        None => Ok(RestoreLanding {
             tab_id: None,
             draft_id: None,
-        },
-    };
-    Ok(landing)
+        }),
+    }
 }
 
 #[tauri::command]

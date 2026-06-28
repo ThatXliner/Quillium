@@ -88,4 +88,10 @@ describe("wordDiff", () => {
             .join("");
         expect(rebuiltAfter).toBe("line one\nline 2");
     });
+
+    it("falls back instead of allocating a huge LCS table", () => {
+        const before = Array.from({ length: 1100 }, (_, i) => `before${i}`).join(" ");
+        const after = Array.from({ length: 1100 }, (_, i) => `after${i}`).join(" ");
+        expect(wordDiff(before, after)).toEqual([{ type: "same", text: after }]);
+    });
 });
