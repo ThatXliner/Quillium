@@ -350,7 +350,10 @@ export function headingForDate(ms: number, now: number): string {
     // otherwise an entry from 11pm last night reads as "Today" at 12:30am.
     const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
     const diffDays = Math.round((startOfDay(nowDate) - startOfDay(d)) / 86400000);
-    if (diffDays === 0) return "Today";
+    // `diffDays <= 0` (not just `=== 0`) so an entry whose stored timestamp is
+    // slightly ahead of `now` (backend/frontend clock skew) still reads "Today"
+    // instead of falling through to the weekday branch.
+    if (diffDays <= 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: "long" });
     if (d.getMonth() === nowDate.getMonth() && d.getFullYear() === nowDate.getFullYear())

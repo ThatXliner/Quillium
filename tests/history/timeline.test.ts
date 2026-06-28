@@ -278,4 +278,10 @@ describe("headingForDate", () => {
         const morning = new Date(2026, 5, 26, 1, 0).getTime(); // Jun 26, 1am
         expect(headingForDate(morning, now)).toBe("Today");
     });
+
+    it("labels a slightly-future entry (clock skew) as Today, not a weekday", () => {
+        const now = new Date(2026, 5, 26, 12, 0).getTime(); // Jun 26, noon
+        const future = new Date(2026, 5, 27, 1, 0).getTime(); // Jun 27, 1am (ahead of now)
+        expect(headingForDate(future, now)).toBe("Today");
+    });
 });

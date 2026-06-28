@@ -174,13 +174,15 @@ async function selectItem(item: TimelineItem) {
     confirmingRestore = false;
     // Default the viewed tab to the coordinate's target tab, else the first tab
     // live at this point. The user can switch tabs in the structure map after.
+    // The structure is computed once here and threaded into loadContent so the
+    // O(events) replay runs once per selection, not twice.
     const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
     const target = resolveTimelineTarget(item, allDrafts).tabId;
     viewedTabId =
         (target && structure.tabs.some((t) => t.id === target) ? target : null) ??
         structure.tabs[0]?.id ??
         null;
-    await loadContent();
+    await loadContent(structure);
 }
 
 /** Switch which tab's content the preview shows (same coordinate). */
@@ -193,9 +195,11 @@ async function viewTab(tabId: string) {
 /**
  * Loads the viewed tab's content at the selected coordinate and diffs it
  * against the same draft's previous version → track-changes segments. Guarded
- * by `previewToken` so a slow load can't clobber a newer selection.
+ * by `previewToken` so a slow load can't clobber a newer selection. The caller
+ * may pass an already-computed structure for the current coordinate to avoid a
+ * redundant replay.
  */
-async function loadContent() {
+async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] }) {
     const item = selectedItem;
     const tabId = viewedTabId;
     if (!item || !tabId) {
@@ -207,8 +211,9 @@ async function loadContent() {
     const token = ++previewToken;
     previewLoading = true;
     try {
-        const structure = reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
-        const ref = resolveTabContentAt(snapshots, structure.drafts, tabId, item.createdAt);
+        const resolved =
+            structure ?? reconstructStructureAsOf(allTabs, allDrafts, docEvents, item.createdAt);
+        const ref = resolveTabContentAt(snapshots, resolved.drafts, tabId, item.createdAt);
         if (!ref.current) {
             if (token === previewToken) {
                 previewCurrentJson = null;
@@ -231,12 +236,20 @@ async function loadContent() {
 }
 
 /**
- * After the timeline reloads (e.g. a prune dropped snapshots), make sure the
- * selection still points at a real item: keep it if it survives, otherwise
+ * After the timeline reloads (e.g. a prune dropped snapshots, a label changed,
+ * or a checkpoint was saved), make sure the selection still points at a real,
+ * fresh item: rebind it to the just-loaded object if its id survives, otherwise
  * re-select the newest item, or clear the preview when the timeline is empty.
+ * Rebinding matters because `loadTimeline` replaces the snapshot/event arrays
+ * with new object identities — keeping the stale `selectedItem` reference would
+ * leave the preview/restore acting on pre-reload data.
  */
 async function reconcileSelection() {
-    if (selectedItem && timelineItems.some((it) => it.id === selectedItem?.id)) return;
+    const fresh = selectedItem ? timelineItems.find((it) => it.id === selectedItem?.id) : undefined;
+    if (fresh) {
+        selectedItem = fresh;
+        return;
+    }
     if (timelineItems.length > 0) {
         await selectItem(timelineItems[0]);
     } else {
@@ -272,12 +285,9 @@ async function handleRestore() {
 async function commitLabel(snapshotId: number, label: string) {
     await labelSnapshot(snapshotId, label);
     await loadTimeline();
-    if (selectedItem?.kind === "snapshot" && selectedItem.snapshot.id === snapshotId) {
-        selectedItem = {
-            ...selectedItem,
-            snapshot: { ...selectedItem.snapshot, label },
-        };
-    }
+    // Rebind selectedItem to the freshly-loaded object (which already carries
+    // the new label) so it never points at a stale pre-reload snapshot.
+    await reconcileSelection();
 }
 
 async function saveCheckpoint() {
@@ -291,6 +301,8 @@ async function saveCheckpoint() {
         await createNamedSnapshot(draftId, stateJson, eventId, checkpointLabel.trim());
         checkpointLabel = "";
         await loadTimeline();
+        await reconcileSelection();
+        await refreshStorageSize();
     } finally {
         savingCheckpoint = false;
     }
