@@ -281,9 +281,8 @@ export async function setDraftLocked(draftId: string, locked: boolean): Promise<
 
 /**
  * Soft-deletes a single draft (restorable). Rejects only if it is the tab's
- * last live draft. A draft with children must be deleted via
- * `orphanAndDeleteDraft` or `cascadeDeleteDraft` (this primitive leaves its
- * children dangling otherwise).
+ * last live draft or has live children. A draft with children must be deleted
+ * via `orphanAndDeleteDraft` or `cascadeDeleteDraft` so the tree stays valid.
  */
 export async function deleteDraft(draftId: string): Promise<void> {
     return invoke<void>("cmd_delete_draft", { draftId });

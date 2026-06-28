@@ -747,12 +747,27 @@ fn guard_tab_not_emptied(conn: &Connection, tab_id: &Option<String>, removing: i
     Ok(())
 }
 
-/// Soft-deletes a single draft. Its events and snapshots are untouched, so
-/// restoring from the version history brings the text back exactly. Refuses
-/// only if it is the tab's last live draft — a draft with iterations or
-/// branches off it can be deleted, but callers must first detach/relocate or
-/// cascade those children (see `orphan_and_delete_draft` /
-/// `cascade_delete_draft`). The draft's run relocks (the tip may move back).
+fn guard_draft_has_no_live_children(conn: &Connection, draft_id: &str) -> Result<()> {
+    let live_children: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM drafts
+         WHERE (parent_draft_id = ?1 OR branched_from = ?1) AND deleted_at IS NULL",
+        params![draft_id],
+        |row| row.get(0),
+    )?;
+    if live_children > 0 {
+        return Err(refuse(
+            "Cannot delete a draft with live children; orphan or cascade it instead",
+        ));
+    }
+    Ok(())
+}
+
+/// Soft-deletes a single leaf draft. Its events and snapshots are untouched,
+/// so restoring from the version history brings the text back exactly.
+/// Refuses if deleting it would empty the tab or leave live children dangling.
+/// Parent drafts must be deleted with `orphan_and_delete_draft` or
+/// `cascade_delete_draft`, which keep the tree valid. The draft's run relocks
+/// (the tip may move back).
 pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
     let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
         conn.query_row(
@@ -761,6 +776,7 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
     guard_tab_not_emptied(conn, &tab_id, 1)?;
+    guard_draft_has_no_live_children(conn, draft_id)?;
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
@@ -1522,15 +1538,15 @@ mod tests {
     }
 
     #[test]
-    fn delete_draft_allows_a_parent_now() {
-        // main → v1 → v2; deleting v1 (a non-leaf) used to be refused.
+    fn delete_draft_refuses_live_children() {
+        // main → v1 → v2; deleting v1 directly would leave v2 attached to a
+        // hidden parent. Callers must choose orphan or cascade instead.
         let (conn, _tab, main) = setup();
         let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
-        let _v2 = iterate_draft(&conn, &v1, "v2", None).unwrap().id;
-        // delete_draft itself is the childless primitive; the orphan/cascade
-        // callers handle children. It must still reject the tab's last draft.
-        assert!(delete_draft(&conn, &v1).is_ok());
-        assert!(!is_live(&conn, &v1));
+        let v2 = iterate_draft(&conn, &v1, "v2", None).unwrap().id;
+        assert!(delete_draft(&conn, &v1).is_err());
+        assert!(is_live(&conn, &v1));
+        assert!(is_live(&conn, &v2));
     }
 
     #[test]
@@ -1739,9 +1755,9 @@ mod tests {
         let d1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
         let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
         std::thread::sleep(std::time::Duration::from_millis(2));
-        // After T0: iterate again (d2, created after T) and delete d1.
+        // After T0: iterate again (d2, created after T) and orphan-delete d1.
         let d2 = iterate_draft(&conn, &d1, "v2", None).unwrap().id;
-        delete_draft(&conn, &d1).unwrap();
+        orphan_and_delete_draft(&conn, &d1).unwrap();
 
         restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
 
