@@ -119,6 +119,16 @@ describe("layoutDraftRows — rail geometry", () => {
         expect(byId.b1.spines).toEqual([]); // nothing passes through column 0
     });
 
+    it("starts an amber connector on a leaf draft with branches", () => {
+        // main has no later iteration, so the branch elbow cannot meet a grey
+        // run spine. The source row must draw its own amber segment downward.
+        const rows = layoutDraftRows([iter("main", null, 0), branch("b1", "main", 1)]);
+        const byId = Object.fromEntries(rows.map((r) => [r.draft.id, r]));
+        expect(byId.main.continuesRun).toBe(false);
+        expect(byId.main.branchContinuationBelow).toBe(true);
+        expect(byId.b1.branchConnector).toBe("corner");
+    });
+
     it("draws a tee when the parent run continues below the branch", () => {
         // main → v1 → v2 ; branch b1 off v1. v1 continues to v2, so the elbow
         // is a tee and v1's spine (column 0) passes through b1.

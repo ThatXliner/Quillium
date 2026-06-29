@@ -38,6 +38,12 @@ export type DraftRow = {
      * under the dot.
      */
     continuesRun: boolean;
+    /**
+     * True when this draft has branch children but no later iteration below
+     * it. In that shape there is no grey run spine for branch elbows to meet,
+     * so the source row draws an amber segment down from its own dot.
+     */
+    branchContinuationBelow: boolean;
 };
 
 /**
@@ -119,6 +125,7 @@ export function layoutDraftRows(drafts: DraftMeta[]): DraftRow[] {
                 // parent column. Tee/corner is decided by the parent's caller.
                 branchConnector: null,
                 continuesRun: runContinuesBelow,
+                branchContinuationBelow: branches.length > 0 && !runContinuesBelow,
             });
 
             // Recurse into branches off `cur`. Our own run-spine (column

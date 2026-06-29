@@ -182,6 +182,17 @@ describe("DraftTreePanel", () => {
         expect(container.querySelector('[data-rail="branch-corner"]')).toBeInTheDocument();
     });
 
+    it("draws a branch-start rail when a leaf draft has a branch", () => {
+        const drafts = [
+            makeDraft("main", "main", { createdAt: 0 }),
+            makeDraft("b1", "new take", { branchedFrom: "main", createdAt: 1 }),
+        ];
+        const { container } = render(DraftTreePanel, {
+            props: defaultProps({ drafts, activeDraftId: "b1" }),
+        });
+        expect(container.querySelector('[data-rail="branch-start"]')).toBeInTheDocument();
+    });
+
     it("draws a run-continuation spine for an iteration that has a successor", () => {
         // main → v1: main continues its run downward, so it draws a spine below.
         const { container } = render(DraftTreePanel, { props: defaultProps() });
