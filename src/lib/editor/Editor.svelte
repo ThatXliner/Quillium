@@ -926,12 +926,14 @@ onMount(() => {
             ontabreorder={handleTabReorder}
         />
 
-        <!-- Draft tree for the active tab — hugs the document's left edge
-             (50% − half document width − panel width), hidden on viewports
-             too narrow to fit beside it. -->
+        <!-- Draft tree for the active tab — hugs the document's left edge,
+             hidden on viewports too narrow to fit beside it. -->
         {#if tabDrafts.length > 0}
             <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
-                <div class="pointer-events-auto absolute w-64" style="left: calc(50% - 408px - 17rem)">
+                <div
+                    class="pointer-events-auto absolute w-48"
+                    style="right: calc(50% + 408px + 1rem)"
+                >
                     <DraftTreePanel
                         drafts={tabDrafts}
                         activeDraftId={$currentDraftId}
