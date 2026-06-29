@@ -396,13 +396,13 @@ export class QuilliumPage {
                                     !d.deletedAt &&
                                     (d.parentDraftId === draft.id || d.branchedFrom === draft.id),
                             );
+                            const reattachAnchor = draft.parentDraftId ?? draft.branchedFrom;
                             for (const c of children) {
                                 rewrites.push({
                                     draftId: c.id,
                                     oldParentDraftId: c.parentDraftId,
                                     oldBranchedFrom: c.branchedFrom,
                                 });
-                                const reattachAnchor = draft.parentDraftId ?? draft.branchedFrom;
                                 if (c.branchedFrom === draft.id) {
                                     // Branch child re-points to D's anchor.
                                     c.branchedFrom = reattachAnchor;
