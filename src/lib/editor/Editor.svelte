@@ -278,8 +278,6 @@ const isLocked = $derived(currentDraft?.locked ?? false);
 const currentIsSuperseded = $derived(
     !!currentDraft && tabDrafts.some((d) => d.parentDraftId === currentDraft.id),
 );
-// Branch is offered only off a non-run-head (a top-level take is a new tab).
-const currentCanBranch = $derived(!!currentDraft?.parentDraftId);
 
 /** Flushes queued events + debounced meta writes before switching context. */
 async function flushPendingPersist(): Promise<void> {
@@ -933,7 +931,7 @@ onMount(() => {
              too narrow to fit beside it. -->
         {#if tabDrafts.length > 0}
             <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
-                <div class="pointer-events-auto absolute w-52" style="left: calc(50% - 408px - 14rem)">
+                <div class="pointer-events-auto absolute w-64" style="left: calc(50% - 408px - 17rem)">
                     <DraftTreePanel
                         drafts={tabDrafts}
                         activeDraftId={$currentDraftId}
@@ -980,17 +978,15 @@ onMount(() => {
                         onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
                         class="shrink-0 font-medium hover:text-amber-950 transition-colors"
                     >Edit anyway</button>
-                    {#if currentCanBranch}
-                        <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
-                        <button
-                            onclick={() => currentDraft && handleDraftBranch(currentDraft.id)}
-                            disabled={forking}
-                            class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
-                        >
-                            <GitBranchIcon size={11} />
-                            <span>New take</span>
-                        </button>
-                    {/if}
+                    <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
+                    <button
+                        onclick={() => currentDraft && handleDraftBranch(currentDraft.id)}
+                        disabled={forking}
+                        class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
+                    >
+                        <GitBranchIcon size={11} />
+                        <span>New take</span>
+                    </button>
                 </div>
             {/if}
             <div bind:this={element}></div>

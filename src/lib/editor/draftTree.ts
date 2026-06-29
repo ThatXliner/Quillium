@@ -38,6 +38,12 @@ export type DraftRow = {
      * under the dot.
      */
     continuesRun: boolean;
+    /**
+     * True when this draft has branch children but no later iteration below
+     * it. In that shape there is no grey run spine for branch elbows to meet,
+     * so the source row draws an amber segment down from its own dot.
+     */
+    branchContinuationBelow: boolean;
 };
 
 /**
@@ -119,6 +125,7 @@ export function layoutDraftRows(drafts: DraftMeta[]): DraftRow[] {
                 // parent column. Tee/corner is decided by the parent's caller.
                 branchConnector: null,
                 continuesRun: runContinuesBelow,
+                branchContinuationBelow: branches.length > 0 && !runContinuesBelow,
             });
 
             // Recurse into branches off `cur`. Our own run-spine (column
@@ -155,15 +162,20 @@ export function isRunHead(draft: DraftMeta): boolean {
     return draft.parentDraftId == null;
 }
 
+/** True for the tab's storyline root (`main`), not for branch roots. */
+export function isStorylineRoot(draft: DraftMeta): boolean {
+    return draft.parentDraftId == null && draft.branchedFrom == null;
+}
+
 /**
- * True when the draft can be deleted: it's unlocked and isn't the tab's only
- * live draft. A draft with children IS deletable now — the caller then offers
- * orphan vs cascade (see `hasLiveChildren`). The lock is the only protection.
+ * True when the draft can be deleted: it's unlocked, isn't the storyline root,
+ * and isn't the tab's only live draft. A draft with children IS deletable now
+ * — the caller then offers orphan vs cascade (see `hasLiveChildren`).
  */
 export function isDeletableDraft(draftId: string, drafts: DraftMeta[]): boolean {
     if (drafts.length <= 1) return false;
     const draft = drafts.find((d) => d.id === draftId);
-    return draft != null && !draft.locked;
+    return draft != null && !draft.locked && !isStorylineRoot(draft);
 }
 
 /** True when any draft iterates from or branches off `draftId`. */
