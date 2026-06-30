@@ -183,6 +183,7 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 | `src-tauri/src/db/migrations.rs` | Numbered schema migrations (#6 tabs, #7 branch relation) |
 | `src-tauri/src/db/load.rs` | Tab-aware default draft resolution |
 | `src/lib/editor/DocumentTabs.svelte` | Browser-style tab bar |
+| `src/lib/editor/tabReorder.ts` | Pure reorder math for tab drag-and-drop |
 | `src/lib/editor/DraftTreePanel.svelte` | Draft panel (flat runs, indented branches) |
 | `src/lib/editor/DraftDeleteModal.svelte` | Orphan-vs-cascade prompt for deleting a draft with children |
 | `src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
@@ -213,4 +214,3 @@ rendering multiple tabs later without changing the share identity.
 - Document-wide *content* checkpoints (one snapshot of all tabs/drafts at
   once); content snapshots remain per-draft, structural history is
   document-wide via `doc_events`
-- Tab drag-reordering

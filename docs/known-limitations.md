@@ -25,10 +25,10 @@ Current gaps and technical debt.
 | Limitation | Impact |
 |------------|--------|
 | **Live Room mode only** | Session ends when owner disconnects. Persistent shared-document ownership deferred. |
-| **No share links or permissions** | Joiners must manually paste document UUID. Share links deferred to v2. |
+| **Manual Live Room IDs** | Joiners paste a draft UUID manually. Invite links and room permissions are deferred. |
 | **No local persistence for joiners** | Joiners restored to prior local draft/library after leaving. |
 | **No offline queue** | If reconnect attempts exhausted, session enters `error` and must restart. |
-| **Web Preview not implemented** | Share modal shows as disabled future feature. |
+| **Single-view Web Preview** | Read-only public links publish the active tab+draft snapshot, not all tabs/drafts. |
 
 ## Persistence
 
@@ -44,6 +44,7 @@ Current gaps and technical debt.
 |------------|--------|
 | **Single API key per provider** | Can't configure multiple API keys for same provider. |
 | **No keyboard shortcut customization** | Shortcuts are hardcoded. |
+| **No full provenance attestation** | Authorship reports trust the local event log; they are evidence, not cryptographic proof. |
 
 ## Performance
 

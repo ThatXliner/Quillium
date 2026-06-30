@@ -6,7 +6,8 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 
 ## Quick Orientation
 
-- **Main routes**: `/` (editor), `/library` (document grid), `/history` (version browser)
+- **Main routes**: `/` (editor), `/library` (document grid), `/history`
+  (version browser), `/authorship` (provenance playback)
 - **Two state worlds**: CodeMirror (immutable, transaction-based) and Svelte stores (reactive, manually synced)
 - **Always use `isAnnotationOfType(annotation, "revision")`** — never compare `_type` directly
 
@@ -23,9 +24,12 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 6. [Persistence](./persistence.md) — If touching save/load or crash recovery
 
 ### Feature Areas (reference as needed)
+- [Tabs & Drafts](./tabs-and-drafts.md) — Document tabs, draft trees, forking, locks
 - [Collaboration](./collaboration.md) — Yjs sync, real-time collab
 - [AutoAI](./autoai.md) — Background AI review system
 - [AI Sidebar](./ai-sidebar.md) — Chat, Feedback, Revise modes
+- [Auth](./auth.md) — Supabase Auth, account UI, guest collaborators
+- [Provenance](./provenance.md) — Authorship report and playback
 
 ### Reference (look up when needed)
 - [File Structure](./file-structure.md) — "Where is X?"
@@ -44,7 +48,10 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 | [Nested Editors](./nested-editors.md) | Controller lifecycle, parent sync, infinite nesting |
 | [View Plugins](./view-plugins.md) | Decorations, atomic ranges, collapsed resolver, nudge |
 | [Persistence](./persistence.md) | Event log, snapshots, crash safety matrix, schema migrations |
+| [Tabs & Drafts](./tabs-and-drafts.md) | Document tabs, draft trees, iterate/branch, locks |
 | [Collaboration](./collaboration.md) | Yjs sync, relay architecture, awareness, owner/joiner flows |
+| [Auth](./auth.md) | Supabase Auth, account UI, anonymous guest sessions |
+| [Provenance](./provenance.md) | Authorship report, provenance classification, playback/export |
 | [AutoAI](./autoai.md) | Review engine, widget UI, face state machine |
 | [Reader Personas](./reader-personas.md) | Multi-persona parallel feedback system |
 | [AI Sidebar](./ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |

@@ -4,7 +4,8 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 
 ## Quick Orientation
 
-- **Main routes**: `/` (editor), `/library` (document grid), `/history` (version browser)
+- **Main routes**: `/` (editor), `/library` (document grid), `/history`
+  (version browser), `/authorship` (provenance playback)
 - **Document hierarchy**: document → tabs (top bar) → draft tree per tab (left panel); events/snapshots are draft-scoped
 - **Two state worlds**: CodeMirror (immutable, transaction-based) and Svelte stores (reactive, manually synced)
 - **Always use `isAnnotationOfType(annotation, "revision")`** — never compare `_type` directly
@@ -26,6 +27,7 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 | Document | Description |
 |----------|-------------|
 | [README](./docs/README.md) | Documentation index |
+| [Quickstart](./docs/quickstart.md) | Setup, running, and first-change guide |
 | [Architecture Overview](./docs/architecture-overview.md) | Core technologies, layers, data flow |
 | [File Structure](./docs/file-structure.md) | Complete source tree |
 | [State Management](./docs/state-management.md) | CodeMirror ↔ Svelte sync |
@@ -35,6 +37,8 @@ This file is a summary. Full documentation is in [`docs/`](./docs/).
 | [Persistence](./docs/persistence.md) | Event log, snapshots, crash safety, schema migrations |
 | [Tabs & Drafts](./docs/tabs-and-drafts.md) | Document tabs, draft trees, forking, locks |
 | [Collaboration](./docs/collaboration.md) | Yjs sync, relay, awareness |
+| [Auth](./docs/auth.md) | Supabase Auth, account UI, guest collaborator sessions |
+| [Provenance](./docs/provenance.md) | Authorship report, edit provenance, playback/export |
 | [AutoAI](./docs/autoai.md) | Review engine, widget, face FSM |
 | [Reader Personas](./docs/reader-personas.md) | Multi-persona feedback |
 | [AI Sidebar](./docs/ai-sidebar.md) | Chat, Feedback, Revise, Dictionary |

@@ -33,7 +33,7 @@ App-wide overlays (tutorial, beta disclaimer, changelog, licenses, stats modal, 
 ```mermaid
 flowchart TB
     subgraph UI["UI Layer"]
-        Pages["SvelteKit Pages<br/>+page.svelte, library/, history/"]
+        Pages["SvelteKit Pages<br/>+page.svelte, library/, history/, authorship/"]
         Components["Svelte Components<br/>modals, sidebars, cards"]
     end
 
@@ -110,6 +110,7 @@ sequenceDiagram
 | `+page.svelte` | App startup, navigation | Mount Editor, render modals, dispatch menu events |
 | `library/+page.svelte` | `goToLibrary()` | Document grid, search, trash/restore |
 | `history/+page.svelte` | `goToHistory()` | Version history browser |
+| `authorship/+page.svelte` | `goToAuthorship()` | Provenance playback and authorship report |
 | `Editor.svelte` | Document load | Create EditorView, set up listeners, manage nested editors |
 | `AISidebar.svelte` | Tab selection | Route to Chat/Feedback/Revise/Context/Readers/Settings |
 | `engine.ts` (AutoAI) | `startAutoAI()` | Subscribe to content, debounce, trigger reviews |

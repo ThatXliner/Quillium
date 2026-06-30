@@ -130,6 +130,11 @@ src/
 │   │   └── tags.ts              # Document tagging system
 │   ├── save/
 │   │   └── Save.svelte          # Save indicator
+│   ├── provenance/
+│   │   ├── PlaybackViewer.svelte # Authorship/provenance playback UI
+│   │   ├── classify.ts          # Event-origin classifier
+│   │   ├── export.ts            # Authorship report export
+│   │   └── report.ts            # Authorship report builder
 │   ├── settings/
 │   │   ├── SettingsModal.svelte # App-level settings overlay
 │   │   ├── FontGuideModal.svelte # Font guide with samples
@@ -155,7 +160,7 @@ src/
 │   ├── constants.ts             # App-wide constants
 │   ├── errorGuard.ts            # Suspicious change detection
 │   ├── ErrorBanner.svelte       # Error/recovery banner UI
-│   ├── export.ts                # Document export (txt, json, md)
+│   ├── export.ts                # Document export (txt, json, md, pdf)
 │   ├── navigation.ts            # Page transitions
 │   ├── posthog.ts               # PostHog analytics init
 │   ├── stores.ts                # Global Svelte stores
@@ -167,8 +172,10 @@ src/
 │   ├── +page.svelte             # Editor page
 │   ├── library/
 │   │   └── +page.svelte         # Library page
-│   └── history/
-│       └── +page.svelte         # Version history page
+│   ├── history/
+│   │   └── +page.svelte         # Version history page
+│   └── authorship/
+│       └── +page.svelte         # Authorship/provenance playback page
 ```
 
 ## Tauri Backend (`src-tauri/src/`)

@@ -39,7 +39,8 @@ All of this in a performant, focused interface. Keyboard-first.
 - **Frontend**: SvelteKit + TypeScript + Tailwind CSS
 - **Editor**: CodeMirror 6
 - **Desktop**: Tauri (cross-platform, native performance)
-- **AI**: Multiple providers supported — OpenAI, Anthropic, Google
+- **AI**: Multiple providers supported — OpenAI, OpenAI-compatible, Anthropic,
+  Google, DeepSeek
 
 ## Getting Started
 
