@@ -18,7 +18,11 @@
  */
 import { type EditorState, EditorSelection, type StateEffect } from "@codemirror/state";
 import { addAnnotation, removeAnnotation, annotationField } from "./plugins/annotations";
-import { RawAnnotationSchema } from "./plugins/annotations/models";
+import {
+    isAnnotationOfType,
+    normalizeRevision,
+    RawAnnotationSchema,
+} from "./plugins/annotations/models";
 import type { GenericAnnotation } from "./plugins/annotations/models";
 import type { EventRecord } from "$lib/db/types";
 import type { AnnotationEvent, EventPayload } from "$lib/db/events";
@@ -39,10 +43,11 @@ function deserializeAnnotation(raw: unknown): GenericAnnotation | null {
         console.warn("[replay] Annotation failed validation, skipping:", result.error.flatten());
         return null;
     }
-    return {
+    const annotation = {
         ...result.data,
         selection: EditorSelection.fromJSON(result.data.selection),
     } as GenericAnnotation;
+    return isAnnotationOfType(annotation, "revision") ? normalizeRevision(annotation) : annotation;
 }
 
 /**

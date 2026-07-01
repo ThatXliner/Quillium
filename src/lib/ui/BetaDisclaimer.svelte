@@ -27,30 +27,39 @@ function accept() {
         tabindex="-1"
     ></button>
 
+    <!--
+        WebKit glass-shadow-square fix: split into two layers. The OUTER keeps the
+        drop shadow + radius (no overflow, no backdrop-filter) so the shadow stays
+        rounded; the INNER clips the backdrop-blur to the radius via overflow-hidden.
+    -->
     <div
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] backdrop-blur-md bg-gray-300/85 border border-white/40 shadow-xl rounded-2xl p-6 flex flex-col gap-4"
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] shadow-xl rounded-2xl"
         role="document"
     >
-        <div>
-            <h3 class="text-sm font-semibold text-black/80 mb-1">Welcome to the Quillium Beta</h3>
-            <p class="text-xs text-black/60 leading-relaxed">
-                By continuing, you agree to the
-                <a
-                    href={TERMS_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="text-blue-500 hover:text-blue-600 underline transition-colors"
-                >beta terms</a>.
-            </p>
-        </div>
+        <div
+            class="overflow-hidden backdrop-blur-md bg-gray-300/85 border border-white/40 rounded-2xl p-6 flex flex-col gap-4"
+        >
+            <div>
+                <h3 class="text-sm font-semibold text-black/80 mb-1">Welcome to the Quillium Beta</h3>
+                <p class="text-xs text-black/60 leading-relaxed">
+                    By continuing, you agree to the
+                    <a
+                        href={TERMS_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-blue-500 hover:text-blue-600 underline transition-colors"
+                    >beta terms</a>.
+                </p>
+            </div>
 
-        <div class="flex items-center justify-end pt-1">
-            <button
-                onclick={accept}
-                class="text-xs px-4 py-1.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-colors font-medium"
-            >
-                I understand
-            </button>
+            <div class="flex items-center justify-end pt-1">
+                <button
+                    onclick={accept}
+                    class="text-xs px-4 py-1.5 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-colors font-medium"
+                >
+                    I understand
+                </button>
+            </div>
         </div>
     </div>
 </div>

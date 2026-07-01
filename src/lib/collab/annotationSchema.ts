@@ -238,10 +238,11 @@ export function getRawAnnotationField(version: VersionState): RawAnnotations | u
 }
 
 function rawAnnotationToCodeMirror(raw: RawAnnotation): GenericAnnotation {
-    return {
+    const annotation = {
         ...raw,
         selection: EditorSelection.fromJSON(raw.selection),
     } as GenericAnnotation;
+    return isAnnotationOfType(annotation, "revision") ? normalizeRevision(annotation) : annotation;
 }
 
 function codeMirrorAnnotationToRaw(annotation: GenericAnnotation): RawAnnotation {

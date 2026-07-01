@@ -48,6 +48,8 @@ import { tutorialModalGuide, tutorialNavCommand } from "$lib/stores";
         border-radius: 14px;
         box-shadow: 0 14px 28px -10px rgba(0, 0, 0, 0.25);
         backdrop-filter: blur(8px);
+        /* overflow: hidden clips the backdrop-blur to the rounded corners — WebKit won't otherwise */
+        overflow: hidden;
         padding: 12px;
         z-index: 40;
     }

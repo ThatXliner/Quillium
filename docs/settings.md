@@ -22,13 +22,15 @@ User preferences in a Svelte 5 `$state` proxy (`appSettings`) persisted to local
 | `aiEnabled` | boolean | `false` | AI features active |
 | `showShortcutHints` | boolean | `true` | Keyboard hints in panel |
 | `showWordCount` | boolean | `true` | Word count in status bar |
-| `wordCountDisplayMode` | enum | `"words"` | Words, chars, or both |
+| `wordCountDisplayMode` | enum | `"both"` | Words, chars, or both |
 | `autoVersionOnRevisionCreate` | boolean | `true` | Auto-add version when creating revision |
 | `showAiSuggestions` | boolean | `true` | Show AI suggestions in annotations |
+| `collapseContextSummary` | boolean | `false` | Move AI context summary into header info popover |
 | `checkForUpdates` | boolean | `true` | Auto-check for app updates |
 | `grammarCheckEnabled` | boolean | `true` | Harper grammar checking |
 | `grammarDialect` | enum | `"american"` | American, British, or Australian |
-| `annotationPanelWidth` | number | `320` | Width of annotation sidebar |
+| `annotationPanelWidth` | number | `280` | Width of annotation sidebar |
+| `annotationLayout` | enum | `"visual-split"` | Annotation placement when AI sidebar is hidden |
 
 ## Why localStorage Instead of SQLite
 
@@ -78,11 +80,19 @@ Separate from app settings. Stored in localStorage under `"quillium-ai-settings"
 
 | Setting | Type | Description |
 |---------|------|-------------|
-| `provider` | enum | OpenAI, Anthropic, Google |
+| `provider` | enum | OpenAI, OpenAI-compatible, Anthropic, Google, DeepSeek |
 | `model` | string | Model ID within provider |
-| `customModels` | object | User-added models per provider |
+| `baseURL` | string | OpenAI-compatible endpoint URL |
 
 API keys stored in OS keychain, not localStorage.
+
+The same module also owns:
+
+| State | Storage | Purpose |
+|-------|---------|---------|
+| `documentContext.freeform` | localStorage | Writer-provided context injected into AI calls |
+| `personaModes` | localStorage | Per-mode reader-persona opt-in for Feedback/Revise |
+| `aiProcessing` | memory | Sidebar glow / stop-all coordination |
 
 ## AutoAI Settings (`autoai/settings.svelte.ts`)
 

@@ -29,9 +29,8 @@ draft is created by one of *two* moves, stored as two separate links:
 - **Branch** — "a different take on the same idea." The rarer action. Linked
   by `branched_from`. A branch renders **indented** one level under its
   source and starts its own run. Branching **locks nothing** — the source
-  and the branch are parallel live explorations. Branch is *not* offered on
-  a run head (`main` or another branch's root): a top-level take is a new
-  tab, not a branch off main.
+  and the branch are parallel live explorations. Branching is allowed from
+  any live draft, including `main` and another branch's root.
 
 Why iterations are flat and branches nested (inverted from the obvious
 parent=child reading): the frequent action gets the cheap visual (a list),
@@ -59,7 +58,8 @@ doc_events (id, document_id, event_type, payload, created_at)
 ```
 
 A draft sets at most one of `parent_draft_id` (iteration) / `branched_from`
-(branch); `main` and branch roots set neither.
+(branch). The storyline root (`main`) sets neither; branch roots set
+`branched_from` and no `parent_draft_id`.
 
 Events and snapshots stay **draft-scoped** (unchanged) — every draft has an
 independent event log and version history. `_meta` keys `active_tab:{doc_id}`
@@ -96,8 +96,8 @@ They differ only in the link and the lock side effect:
 
 - **iterate** sets `parent_draft_id = source` and relocks the run so only the
   new tip is editable (the source, now superseded, locks).
-- **branch** sets `branched_from = source`, locks nothing, and is refused if
-  the source is a run head.
+- **branch** sets `branched_from = source` and locks nothing. Any live draft
+  can be the source, including the storyline root (`main`) and branch roots.
 
 ## Deleting drafts
 
@@ -111,10 +111,10 @@ delete action; unlock first). Three soft-delete paths, all reversible:
   `cmd_orphan_and_delete_draft(draft_id)` re-attaches every live child so the
   tree stays valid, then soft-deletes the draft. An iteration child splices
   the draft out of the run (adopts its `parent_draft_id`); a branch child
-  re-points to the draft's anchor, and is *promoted to a top-level run* when
-  the deleted draft was a run head (a branch may never point at a head, per
-  `branch_draft`). It returns the list of link rewrites so Undo can reverse
-  them via `cmd_reparent_draft` (after the parent is restored). Logs
+  re-points to the draft's anchor. When deleting a branch root, its iteration
+  children become branch roots off the deleted root's original source. It
+  returns the list of link rewrites so Undo can reverse them via
+  `cmd_reparent_draft` (after the parent is restored). Logs
   `draft_deleted {mode: "orphan"}` + one `draft_reparented` per moved child.
 - **Cascade** (a draft *with* children, "Delete all N") —
   `cmd_cascade_delete_draft(draft_id)` soft-deletes the draft and its whole
@@ -142,7 +142,7 @@ A draft is locked when either is true:
 While locked, the editor state is built with `EditorState.readOnly.of(true)`.
 An amber strip inside the page reads "This is an older version." (superseded)
 or "This draft is locked." (manual), and offers "Edit anyway" (persistent
-unlock) plus "New take" (branch — shown only on a non-run-head).
+unlock) plus "New take" (branch from the locked draft into an editable run).
 
 **Annotation creation is refused on locked drafts**: the comment/revision
 keyboard commands and the programmatic `createComment`/`createSuggestion`/
@@ -171,8 +171,9 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
   them, re-attached) vs cascade (delete the subtree). All deletions are soft
   and reversible (Undo toast immediately, version-history timeline later).
 - Locking is derived from supersession or set manually; iterate locks the
-  source, branch locks nothing. A locked draft can't be deleted until
-  unlocked.
+  source, branch locks nothing. Branching from a locked draft does not unlock
+  the source, but the new branch starts editable. A locked draft can't be
+  deleted until unlocked.
 
 ## Key files
 
@@ -182,6 +183,7 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 | `src-tauri/src/db/migrations.rs` | Numbered schema migrations (#6 tabs, #7 branch relation) |
 | `src-tauri/src/db/load.rs` | Tab-aware default draft resolution |
 | `src/lib/editor/DocumentTabs.svelte` | Browser-style tab bar |
+| `src/lib/editor/tabReorder.ts` | Pure reorder math for tab drag-and-drop |
 | `src/lib/editor/DraftTreePanel.svelte` | Draft panel (flat runs, indented branches) |
 | `src/lib/editor/DraftDeleteModal.svelte` | Orphan-vs-cascade prompt for deleting a draft with children |
 | `src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
@@ -212,4 +214,3 @@ rendering multiple tabs later without changing the share identity.
 - Document-wide *content* checkpoints (one snapshot of all tabs/drafts at
   once); content snapshots remain per-draft, structural history is
   document-wide via `doc_events`
-- Tab drag-reordering

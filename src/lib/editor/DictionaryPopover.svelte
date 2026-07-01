@@ -293,14 +293,20 @@ async function handleDescribeSubmit(e: Event) {
 {/if}
 
 <!-- Popover -->
+<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+     inner carries backdrop-blur + radius + overflow-hidden + the flex/max-h layout so
+     the blur is clipped to the corner. A single element with backdrop-filter + radius +
+     overflow-hidden + box-shadow squares the shadow at the corners in WebKit. -->
 <div
     bind:this={popoverEl}
-    class="dictionary-popover fixed z-[100] w-80 max-h-[480px] flex flex-col
-        backdrop-blur-md bg-white/90 border border-white/40 shadow-xl rounded-2xl
-        overflow-hidden transition-all duration-150
+    class="dictionary-popover fixed z-[100] w-80 shadow-xl rounded-2xl transition-all duration-150
         {visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}"
     style="left: {posX}px; top: {posY}px;"
 >
+  <div
+      class="flex flex-col max-h-[480px] backdrop-blur-md bg-white/90 border border-white/40
+          rounded-2xl overflow-hidden"
+  >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
         <div class="flex items-baseline gap-2 min-w-0">
@@ -448,15 +454,19 @@ async function handleDescribeSubmit(e: Event) {
             </div>
         {/if}
     </div>
+  </div>
 </div>
 
 {#each stackedLookups as stacked, stackIndex (stacked.id)}
+    <!-- Two-layer split (see main popover above): shadow+radius on outer, blur+clip on inner. -->
     <div
-        class="dictionary-popover fixed z-[101] w-80 max-h-[420px] flex flex-col
-            backdrop-blur-md bg-white/95 border border-white/50 shadow-2xl rounded-2xl
-            overflow-hidden transition-all duration-150"
+        class="dictionary-popover fixed z-[101] w-80 shadow-2xl rounded-2xl transition-all duration-150"
         style="left: {stacked.posX}px; top: {stacked.posY + stackIndex * 10}px;"
     >
+      <div
+          class="flex flex-col max-h-[420px] backdrop-blur-md bg-white/95 border border-white/50
+              rounded-2xl overflow-hidden"
+      >
         <div class="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
             <div class="flex items-baseline gap-2 min-w-0">
                 <span class="font-semibold text-gray-900 truncate">{stacked.word}</span>
@@ -544,5 +554,6 @@ async function handleDescribeSubmit(e: Event) {
                 {/if}
             {/if}
         </div>
+      </div>
     </div>
 {/each}

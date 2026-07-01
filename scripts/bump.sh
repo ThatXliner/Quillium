@@ -66,15 +66,20 @@ if [[ "$PART" == "minor" || "$PART" == "major" ]]; then
         echo "         Add a \"$MINOR_KEY\" entry to src/lib/changelog.json manually."
     else
         # Don't let a claude failure abort the whole bump (manifests are already written).
-        claude --print --allowedTools "Read,Write,Edit" "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
+        claude --allowedTools "Read,Write,Edit,Bash" --print "The app was just bumped from $CURRENT to $NEXT (a $PART bump).
 
 Check src/lib/changelog.json — if there is no entry for \"$MINOR_KEY\", add one.
 
 To decide what to write:
 1. Run: git log v${CURRENT}..HEAD --oneline  (if the tag exists, otherwise just use recent commits)
 2. Read the changelog guidelines in CONTRIBUTING.md (search for 'Writing Changelog Entries').
-3. Write the entry following those guidelines exactly: conversational prose, bold keywords, no bullets, no mentions of AI features, 2-5 short paragraphs.
+3. Write the entry following those guidelines exactly: conversational prose, bold keywords, no bullets, no mentions of AI features, short paragraphs. The text should be clear, concise, and coherent.
 4. Set the date field to $(date -u +%Y-%m-%d).
+
+If the release has a visual headline feature, also add a feature image:
+5. Read the 'Adding a feature image' steps in CONTRIBUTING.md.
+6. Capture it with the harness: 'bun run changelog:shot --version $MINOR_KEY --scene <scene> --crop \"<selector>\" --pad 24'. Run 'bun run changelog:shot' with no args to list scenes. If no built-in scene fits, add one to the SCENES map in scripts/changelog-shot.ts, then capture. This writes static/changelog/$MINOR_KEY.png.
+7. Embed it in the entry's content with Markdown: ![<alt>](/changelog/$MINOR_KEY.png). Skip the image only if the release has no visual feature worth showing.
 
 If an entry for \"$MINOR_KEY\" already exists, say so and do nothing." || echo "WARNING: claude exited non-zero — verifying changelog below."
 

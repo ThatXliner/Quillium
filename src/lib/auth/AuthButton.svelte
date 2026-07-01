@@ -9,11 +9,11 @@
       - onauthclick: () => void — callback when sign in button clicked
 -->
 <script lang="ts">
-import { getCurrentUserName, getUserEmail, signOut, isAuthenticated } from "./auth.svelte";
-import { initials, avatarColor } from "./avatarUtils";
 import { toast } from "svelte-sonner";
 import AvatarDropdown from "./AvatarDropdown.svelte";
 import ProfileModal from "./ProfileModal.svelte";
+import { getCurrentUserName, getUserEmail, isAuthenticated, signOut } from "./auth.svelte";
+import { avatarColor, initials } from "./avatarUtils";
 
 const { onauthclick }: { onauthclick: () => void } = $props();
 
@@ -66,14 +66,24 @@ function openProfile() {
             />
         {/if}
     {:else}
-        <!-- Logged out: Sign In button per D-15 (glassy, matching StatusBar style) -->
+        <!-- Logged out: Sign In button per D-15 (glassy, matching StatusBar style)
+             Two layers on purpose. The OUTER button carries the shadow + radius but
+             NO overflow clip, and the INNER carries the backdrop-blur + radius +
+             overflow-hidden + background. In WebKit (Tauri) a single element with
+             backdrop-filter + border-radius leaks a square blur halo unless it has
+             overflow:hidden — but overflow:hidden on an element with a box-shadow
+             makes WebKit clip the shadow to a square. Splitting fixes both. -->
         <button
             onclick={onauthclick}
-            class="px-4 py-2 text-xs font-medium text-black/50 bg-white/50 backdrop-blur-md
-                rounded-full shadow-md inset-shadow-sm inset-shadow-white
-                hover:text-black/70 hover:bg-white/60 transition-colors"
+            class="rounded-full shadow-md hover:text-black/70 text-black/50 transition-colors"
         >
-            Sign in
+            <span
+                class="flex px-4 py-2 text-xs font-medium bg-white/50 backdrop-blur-md
+                    rounded-full inset-shadow-sm inset-shadow-white overflow-hidden
+                    hover:bg-white/60 transition-colors"
+            >
+                Sign in
+            </span>
         </button>
     {/if}
 </div>

@@ -12,9 +12,9 @@
       ondismiss — called when the user closes the modal
 -->
 <script lang="ts">
-import { X } from "lucide-svelte";
 import { renderMarkdown } from "$lib/ai/utils";
 import { capture } from "$lib/posthog";
+import { X } from "lucide-svelte";
 
 const {
     date,
@@ -52,27 +52,27 @@ function dismiss() {
     ></button>
 
     <div
-        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] max-h-[75vh] bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-black/[0.06]"
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[680px] max-w-[calc(100vw-2rem)] max-h-[85vh] bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden border border-black/[0.06]"
         role="document"
     >
         <!-- Header -->
-        <div class="flex items-start justify-between px-7 pt-7 pb-0 shrink-0">
+        <div class="flex items-start justify-between px-9 pt-9 pb-0 shrink-0">
             <div>
-                <h3 class="text-xl font-bold text-black/85 leading-tight">What's New</h3>
-                <p class="text-xs text-black/35 mt-1">{date}</p>
+                <h3 class="text-2xl font-bold text-black/85 leading-tight">What's New</h3>
+                <p class="text-sm text-black/35 mt-1.5">{date}</p>
             </div>
             <button
                 onclick={dismiss}
                 aria-label="Close"
-                class="flex items-center justify-center w-8 h-8 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
+                class="flex items-center justify-center w-9 h-9 rounded-lg bg-black/[0.05] text-black/35 hover:text-black/60 hover:bg-black/[0.1] transition-colors"
             >
-                <X size={16} />
+                <X size={18} />
             </button>
         </div>
 
         <!-- Scrollable content -->
-        <div class="flex-1 overflow-y-auto px-7 pt-5 pb-7">
-            <div class="changelog-content text-sm text-black/55 leading-relaxed">
+        <div class="flex-1 overflow-y-auto px-9 pt-6 pb-9">
+            <div class="changelog-content text-[15px] text-black/55 leading-relaxed">
                 {@html html}
             </div>
         </div>
@@ -96,5 +96,18 @@ function dismiss() {
     }
     .changelog-content :global(a:hover) {
         color: #2563eb;
+    }
+    /* Feature images embedded via markdown (![alt](/changelog/<version>.png)).
+       Rendered as a card inset within the body padding — rounded corners and a
+       subtle border. Capture them with `bun run changelog:shot` — see
+       CONTRIBUTING.md. */
+    .changelog-content :global(img) {
+        display: block;
+        width: 100%;
+        height: auto;
+        margin: 6px 0 20px 0;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: #f5f5f0;
     }
 </style>

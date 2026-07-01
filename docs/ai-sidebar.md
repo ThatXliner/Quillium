@@ -42,11 +42,11 @@ AI-powered text revision:
 
 ## Context Mode
 
-Shows the document context that will be sent to AI:
-- Summary of document
-- Key topics and themes
-- "Generate" button to create/refresh context
-- "Clear" button to remove context
+Shows writer-provided context that will be sent to AI:
+- Freeform document-context textarea persisted to localStorage
+- Optional prompt/brief input that can generate context with the selected model
+- "Clear" button to remove stored context
+- Same context appears as the `writer-context` source in the context lens
 
 ## Readers Mode
 
@@ -55,8 +55,9 @@ See [Reader Personas](./reader-personas.md) for full documentation.
 ## Settings Mode
 
 AI provider configuration:
-- Provider selection (OpenAI, Anthropic, Google)
+- Provider selection (OpenAI, OpenAI-compatible, Anthropic, Google, DeepSeek)
 - Model selection per provider
+- Custom base URL + freeform model id for OpenAI-compatible endpoints
 - API key management (stored in OS keychain)
 - Custom quick actions configuration
 
@@ -124,6 +125,7 @@ sources currently in play.
 | Provider | Models |
 |----------|--------|
 | OpenAI | gpt-5.5, gpt-5.4-mini, gpt-5.4-nano |
+| OpenAI-compatible | User-provided model id and base URL |
 | Anthropic | claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5 |
 | Google | gemini-3.5-flash, gemini-3.1-pro-preview, gemini-3-flash-preview |
 | DeepSeek | deepseek-v4-pro, deepseek-v4-flash |
@@ -136,6 +138,9 @@ Keys stored in OS keychain via `src-tauri/src/keychain.rs`:
 - Linux: Secret Service
 
 Not stored in localStorage (security).
+
+OpenAI-compatible endpoints can run without a stored API key; `createModel()`
+passes a placeholder key and uses the configured `baseURL`.
 
 ## Event Bus Integration
 

@@ -49,23 +49,37 @@ const itemClass =
 </script>
 
 <DropdownMenu.Root>
+    <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+         inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
+         corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
+         + box-shadow squares the shadow at the corners; splitting avoids it while still
+         clipping the blur. The bits-ui trigger keeps its behavior/aria/ref on the outer. -->
     <DropdownMenu.Trigger
         aria-label="Menu"
         class="fixed bottom-6 right-6 z-50 hidden max-[899px]:flex w-12 h-12 rounded-full
-            bg-white/60 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-lg
-            items-center justify-center text-black/70 hover:bg-gray-50/40 transition-colors"
+            shadow-lg items-center justify-center text-black/70"
     >
-        <MenuIcon size={22} />
+        <div
+            class="absolute inset-0 rounded-full overflow-hidden bg-white/60 backdrop-blur-md
+                inset-shadow-sm inset-shadow-white hover:bg-gray-50/40 transition-colors"
+        ></div>
+        <MenuIcon size={22} class="relative" />
     </DropdownMenu.Trigger>
 
+    <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+         inner carries backdrop-blur + radius + overflow-hidden + bg + border (clips the
+         blur to the corner). In WebKit a single element with backdrop-filter + radius +
+         overflow-hidden + box-shadow squares the shadow at the corners; splitting avoids it
+         while still clipping the blur. The bits-ui popper positioning stays on the outer. -->
     <DropdownMenu.Content
-        class="z-50 w-56 bg-white/10 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 py-2"
+        class="z-50 w-56 rounded-2xl shadow-xl"
         strategy="absolute"
         side="top"
         align="end"
         preventScroll={false}
         sideOffset={6}
     >
+      <div class="rounded-2xl overflow-hidden bg-white/10 backdrop-blur-md border border-gray-100 py-2">
         <DropdownMenu.Group>
             <DropdownMenu.Item class="w-full" onSelect={onsettings}>
                 <div class={itemClass}>
@@ -102,5 +116,6 @@ const itemClass =
                 </DropdownMenu.Item>
             {/each}
         </DropdownMenu.Group>
+      </div>
     </DropdownMenu.Content>
 </DropdownMenu.Root>

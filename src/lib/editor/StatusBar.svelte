@@ -235,14 +235,24 @@ $effect(() => {
     </div>
 {/if}
 
+<!--
+    Two layers on purpose. The OUTER wrapper carries the shadow + radius but NO
+    overflow clip, and the INNER carries the backdrop-blur + radius + overflow-hidden.
+    In WebKit (Tauri) a single element with backdrop-filter + border-radius leaks a
+    square blur halo past the corners unless it has overflow:hidden — BUT adding
+    overflow:hidden to an element that ALSO has a box-shadow makes WebKit clip the
+    shadow to a square. Splitting the two responsibilities fixes both: the shadow
+    stays rounded (outer, unclipped) and the blur is clipped to the radius (inner).
+-->
 <div
     id="status-bar"
     role="region"
     aria-label="Status bar"
-    class="relative max-w-[30rem] mx-auto backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg"
+    class="relative max-w-[30rem] mx-auto rounded-[2rem] shadow-lg"
     onmouseenter={onMouseEnter}
     onmouseleave={onMouseLeave}
 >
+  <div class="overflow-hidden backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30">
     <div class="flex gap-4 items-center py-2 px-8 min-w-0">
         <!-- Save status (pinned left) -- shows collab state when active, otherwise save state -->
         <div class="flex items-center gap-2 shrink-0">
@@ -319,7 +329,7 @@ $effect(() => {
                 onclick={goToLibrary}
                 title="Library ({modKey}O)"
                 aria-label="Open library"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-blue-400 hover:text-blue-600 shrink-0"
+                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-blue-400 hover:text-blue-600 shrink-0"
             >
                 <LayoutGrid size={20} />
             </button>
@@ -327,7 +337,7 @@ $effect(() => {
                 onclick={goToHistory}
                 aria-label="Version history"
                 title="Version History ({modKey}Shift+H)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-amber-400 hover:text-amber-600 shrink-0"
+                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-amber-400 hover:text-amber-600 shrink-0"
             >
                 <History size={20} />
             </button>
@@ -335,7 +345,7 @@ $effect(() => {
                 onclick={() => ($settingsOpen = !$settingsOpen)}
                 aria-label="Open settings"
                 title="Settings ({modKey},)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
                     {$settingsOpen ? 'text-gray-600' : 'text-gray-400 hover:text-gray-600'}"
             >
                 <Settings size={20} />
@@ -344,7 +354,7 @@ $effect(() => {
                 onclick={() => ($statsOpen = !$statsOpen)}
                 aria-label="Writing statistics"
                 title="Writing Statistics"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
                     {$statsOpen ? 'text-emerald-600' : 'text-emerald-400 hover:text-emerald-600'}"
             >
                 <BarChart3 size={20} />
@@ -353,7 +363,7 @@ $effect(() => {
                 onclick={() => (exportOpen = true)}
                 aria-label="Export document"
                 title="Export ({modKey}Shift+E)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
+                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors shrink-0
                     {exportOpen ? 'text-purple-600' : 'text-purple-400 hover:text-purple-600'}"
             >
                 <Download size={20} />
@@ -362,7 +372,7 @@ $effect(() => {
                 onclick={goToAuthorship}
                 aria-label="Authorship playback"
                 title="Authorship Report ({modKey}Shift+A)"
-                class="w-12 h-12 rounded-full bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-violet-400 hover:text-violet-600 shrink-0"
+                class="w-12 h-12 rounded-full overflow-hidden bg-white/50 backdrop-blur-md inset-shadow-sm inset-shadow-white shadow-md flex items-center justify-center hover:bg-gray-50/30 transition-colors text-violet-400 hover:text-violet-600 shrink-0"
             >
                 <Play size={20} />
             </button>
@@ -397,6 +407,7 @@ $effect(() => {
         </div>
     </div>
     {/if}
+  </div>
 </div>
 
 <style>

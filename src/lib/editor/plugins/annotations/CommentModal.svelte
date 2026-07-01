@@ -1,4 +1,11 @@
 <script lang="ts">
+import { aiSettings } from "$lib/ai/settings.svelte";
+import { getCurrentUserName } from "$lib/auth";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
+import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
+import Kbd from "$lib/ui/Kbd.svelte";
+import type { EditorView } from "@codemirror/view";
 /**
  * CommentModal.svelte — Full-screen modal that shows a comment
  * thread expanded, making long discussions easy to read and reply to.
@@ -19,8 +26,8 @@
  * Children: Thread.svelte
  */
 import {
-    ChevronRight,
     ChevronDown,
+    ChevronRight,
     ChevronUp,
     MessageSquare,
     SparklesIcon,
@@ -28,18 +35,11 @@ import {
     X,
 } from "lucide-svelte";
 import { slide } from "svelte/transition";
-import { getCurrentUserName } from "$lib/auth";
-import type { EditorView } from "@codemirror/view";
-import { modalStack, annotations as annotationsStore, modalAnnotationStores } from "$lib/stores";
-import { updateThread, removeAnnotation, annotationField } from "./annotationField";
 import type { Annotation, Thread as ThreadType } from ".";
 import Thread from "./Thread.svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
-import { aiSettings } from "$lib/ai/settings.svelte";
-import { appSettings } from "$lib/settings.svelte";
+import { annotationField, removeAnnotation, updateThread } from "./annotationField";
 import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
-import posthog from "$lib/posthog";
 
 const {
     commentId,
@@ -423,11 +423,13 @@ async function aiSuggestion() {
                                         onclick={() => scrollCommentIntoCenter()}
                                         title="Jump to comment"
                                     >
-                                        {#if commentDirection === "above"}
-                                            <ChevronUp size={14} />
-                                        {:else}
-                                            <ChevronDown size={14} />
-                                        {/if}
+                                        <span class="context-jump-inner">
+                                            {#if commentDirection === "above"}
+                                                <ChevronUp size={14} />
+                                            {:else}
+                                                <ChevronDown size={14} />
+                                            {/if}
+                                        </span>
                                     </button>
                                 {/if}
                             </div>
@@ -510,10 +512,24 @@ async function aiSuggestion() {
         box-shadow: inset 0 0 0 1px rgba(253, 224, 71, 0.45);
     }
 
+    /* Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+       inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
+       corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
+       + box-shadow squares the shadow at the corners; splitting avoids it. */
     .context-jump-btn {
         position: absolute;
         left: 50%;
         transform: translateX(-50%);
+        border-radius: 99px;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+        cursor: pointer;
+        padding: 0;
+        border: none;
+        background: transparent;
+        z-index: 2;
+    }
+
+    .context-jump-inner {
         display: flex;
         align-items: center;
         gap: 3px;
@@ -526,13 +542,11 @@ async function aiSuggestion() {
         -webkit-backdrop-filter: blur(8px);
         border: 1px solid rgba(147, 197, 253, 0.5);
         border-radius: 99px;
-        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
-        cursor: pointer;
+        overflow: hidden;
         transition: background 0.15s, color 0.15s;
-        z-index: 2;
     }
 
-    .context-jump-btn:hover {
+    .context-jump-btn:hover .context-jump-inner {
         background: rgba(219, 234, 254, 0.95);
         color: rgba(37, 99, 235, 1);
     }

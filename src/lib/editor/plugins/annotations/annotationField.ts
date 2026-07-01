@@ -257,9 +257,7 @@ export function setActiveRevisionVersion(
     // Each switch is one _updateActiveRevisionVersion effect + one doc replacement
     // at that revision's range; bundling them into ONE transaction makes the whole
     // group move atomic and revert in a single undo.
-    const switches: Array<{ annotationId: number; toId: string }> = [
-        { annotationId, toId },
-    ];
+    const switches: Array<{ annotationId: number; toId: string }> = [{ annotationId, toId }];
     for (const partner of groupSwitchTargets(state, annotationId, toId)) {
         switches.push(partner);
     }
@@ -271,7 +269,9 @@ export function setActiveRevisionVersion(
         if (!isAnnotationOfType(rev, "revision")) continue;
         const v = versionById(rev, sw.toId);
         if (!v) continue;
-        effects.push(_updateActiveRevisionVersion.of({ annotationId: sw.annotationId, to: sw.toId }));
+        effects.push(
+            _updateActiveRevisionVersion.of({ annotationId: sw.annotationId, to: sw.toId }),
+        );
         changeSpecs.push({
             from: rev.selection.main.from,
             to: rev.selection.main.to,

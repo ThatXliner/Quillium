@@ -4,15 +4,16 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 
 ## Native App Menu
 
-`lib.rs` builds a native menu with five submenus:
+`lib.rs` builds a native menu with six submenus:
 
 | Submenu | Custom Items | Accelerator |
 |---------|--------------|-------------|
 | Quillium | Settings…, Open Source Licenses… | `Cmd+,` / `Ctrl+,` |
 | File | Library, Open in New Window, Export variants | `Cmd+O`, `Cmd+Shift+O`, `Cmd+Shift+E` |
 | Edit | Undo, Redo, Cut, Copy, Paste, Select All | Standard |
-| View | Version History | `Cmd+Shift+H` |
+| View | Version History, Authorship Report | `Cmd+Shift+H`, `Cmd+Shift+A` |
 | Window | Minimize, Maximize, Close | Standard |
+| Help | Send Feedback | None |
 
 ### Export Menu Items
 
@@ -22,7 +23,8 @@ Tauri provides native desktop capabilities: app menu, keychain, auto-updater, fi
 | Export Text + Annotations | `.txt` with JSON after `---` |
 | Export JSON | `.json` structured object |
 | Export Markdown | `.md` with footnotes |
-| Export PDF | `.pdf` with annotation cards |
+| Export PDF | `.pdf` document body only |
+| Export PDF + Annotations | `.pdf` with expanded annotation cards |
 
 ### Event Bridge
 
@@ -33,13 +35,16 @@ Custom menu items emit Tauri events to frontend. `+page.svelte` listens via `@ta
 | `menu:settings` | Toggle settings modal |
 | `menu:library` | Navigate to library |
 | `menu:history` | Navigate to version history |
+| `menu:authorship` | Navigate to authorship/provenance playback |
 | `menu:open-in-new-window` | Open selected document in a new window (library page) |
 | `menu:licenses` | Open licenses modal |
+| `menu:feedback` | Open the feedback URL |
 | `menu:export-txt` | Export plain text |
 | `menu:export-txt-json` | Export text + annotations |
 | `menu:export-json` | Export JSON |
 | `menu:export-md` | Export Markdown |
 | `menu:export-pdf` | Export PDF |
+| `menu:export-pdf-annotations` | Export PDF with annotations |
 
 `settingsOpen` store is shared between native menu and in-app UI.
 
@@ -177,8 +182,11 @@ Frontend export helpers:
 | Text + annotations | `.txt` | Text + JSON after `---` |
 | JSON | `.json` | Structured object with title, timestamp, text, annotations |
 | Markdown | `.md` | Text with annotations as footnotes |
+| PDF | `.pdf` | Document body only |
+| PDF + Annotations | `.pdf` | PDF with expanded annotation cards |
 
-`exportDocument(view, format)` serializes current state, derives filename from title, triggers download via `Blob` + `<a>` click.
+`exportDocument(view, format)` serializes current state, derives a filename
+from the title, and writes through the native Tauri save dialog.
 
 ## Changelog ("What's New")
 

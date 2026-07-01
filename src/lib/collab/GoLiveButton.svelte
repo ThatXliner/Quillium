@@ -8,8 +8,43 @@
     Per D-70: Updated for Yjs migration.
 -->
 <script lang="ts">
-import { isAuthenticated, getUser, getSession } from "$lib/auth/auth.svelte";
+import { getSession, getUser, isAuthenticated } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
+import {
+    MAX_RECONNECT_ATTEMPTS,
+    collabState,
+    disableCollab,
+    enableCollab,
+    ownerLeftSignal,
+    reconnectAttempt,
+    registerDocumentForCollab,
+    relayConfigured,
+    restoreJoinerPriorView,
+} from "$lib/collab";
+import {
+    type ReadonlyShare,
+    buildReadonlyShareUrl,
+    buildSharePreviewText,
+    disableReadonlyShare,
+    getReadonlyShare,
+    publishReadonlyShare,
+    readonlyShareState,
+} from "$lib/collab/share";
+import {
+    READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
+    READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS,
+    READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS,
+    normalizeReadonlyShareAutoUpdateDebounceMs,
+    shouldScheduleReadonlyShareAutoUpdate,
+} from "$lib/collab/readonlyShareAutoUpdate";
+import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
+import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
+import { OMNI_WAITLIST_URL } from "$lib/constants";
+import { createNamedSnapshot } from "$lib/db";
+import { savedFields } from "$lib/editor/extensions";
+import { annotationField } from "$lib/editor/plugins/annotations";
+import posthog from "$lib/posthog";
+import { appSettings, persistSettings } from "$lib/settings.svelte";
 import {
     annotations,
     currentDocumentId,
@@ -19,34 +54,6 @@ import {
     editorView,
     lastPersistedEventId,
 } from "$lib/stores";
-import { createNamedSnapshot } from "$lib/db";
-import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
-import { savedFields } from "$lib/editor/extensions";
-import { annotationField } from "$lib/editor/plugins/annotations";
-import { OMNI_WAITLIST_URL } from "$lib/constants";
-import {
-    buildSharePreviewText,
-    buildReadonlyShareUrl,
-    disableReadonlyShare,
-    getReadonlyShare,
-    publishReadonlyShare,
-    readonlyShareState,
-    type ReadonlyShare,
-} from "$lib/collab/share";
-import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
-import {
-    enableCollab,
-    disableCollab,
-    restoreJoinerPriorView,
-    relayConfigured,
-    registerDocumentForCollab,
-    ownerLeftSignal,
-    collabState,
-    reconnectAttempt,
-    MAX_RECONNECT_ATTEMPTS,
-} from "$lib/collab";
-import { get } from "svelte/store";
-import { toast } from "svelte-sonner";
 import {
     ArrowLeftRight,
     Cloud,
@@ -60,7 +67,8 @@ import {
     Share2,
     X,
 } from "lucide-svelte";
-import posthog from "$lib/posthog";
+import { toast } from "svelte-sonner";
+import { get } from "svelte/store";
 
 const { onauthclick }: { onauthclick?: () => void } = $props();
 
@@ -78,6 +86,8 @@ let tabPillStyle = $state("");
 let shareLoading = $state(false);
 let shareBusy = $state(false);
 let readonlyShare = $state<ReadonlyShare | null>(null);
+let autoSharePublishQueued = $state(false);
+let autoSharePublishFailedFingerprint = $state("");
 
 function shouldShowForScreenshot(): boolean {
     return (
@@ -129,6 +139,14 @@ const shareUpToDate = $derived(
     !!readonlyShare?.enabled && currentShareFingerprint === publishedShareFingerprint,
 );
 const shareNeedsUpdate = $derived(!!readonlyShare?.enabled && !shareUpToDate);
+const autoUpdateDebounceMs = $derived(
+    normalizeReadonlyShareAutoUpdateDebounceMs(appSettings.readonlyShareAutoUpdateDebounceMs),
+);
+const autoUpdateDelaySeconds = $derived(Math.round(autoUpdateDebounceMs / 1000));
+const autoUpdatePausedAfterFailure = $derived(
+    autoSharePublishFailedFingerprint !== "" &&
+        autoSharePublishFailedFingerprint === currentShareFingerprint,
+);
 const draftAnnotationCount = $derived(
     modalOpen && activeTab === "preview" && !readonlyShare?.enabled
         ? serializeAnnotations($documentContent, $annotations).length
@@ -176,6 +194,38 @@ $effect(() => {
         return;
     }
     refreshReadonlyShare();
+});
+
+$effect(() => {
+    const debounceMs = autoUpdateDebounceMs;
+    const fingerprint = currentShareFingerprint;
+    const shouldAutoPublish = shouldScheduleReadonlyShareAutoUpdate({
+        enabled: appSettings.readonlyShareAutoUpdate,
+        authenticated,
+        shareId,
+        shareEnabled: readonlyShare?.enabled ?? false,
+        shareNeedsUpdate,
+        shareBusy,
+        shareLoading,
+        currentFingerprint: fingerprint,
+        lastFailedFingerprint: autoSharePublishFailedFingerprint,
+    });
+
+    if (!shouldAutoPublish) {
+        autoSharePublishQueued = false;
+        return;
+    }
+
+    autoSharePublishQueued = true;
+    const timer = window.setTimeout(() => {
+        autoSharePublishQueued = false;
+        void publishCurrentSnapshot({ automatic: true });
+    }, debounceMs);
+
+    return () => {
+        window.clearTimeout(timer);
+        autoSharePublishQueued = false;
+    };
 });
 
 // React when owner ends the session (ownerLeftSignal is incremented by yjsProvider)
@@ -273,6 +323,27 @@ function buildPublishPayload() {
     };
 }
 
+function setReadonlyShareAutoUpdate(enabled: boolean) {
+    appSettings.readonlyShareAutoUpdate = enabled;
+    appSettings.readonlyShareAutoUpdateDebounceMs = autoUpdateDebounceMs;
+    autoSharePublishFailedFingerprint = "";
+    persistSettings();
+    posthog.capture("readonly_share_auto_update_toggled", { enabled });
+}
+
+function handleAutoUpdateDebounceInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    appSettings.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
+        Number(input.value) * 1000,
+    );
+    persistSettings();
+}
+
+function resetAutoUpdateDebounce() {
+    appSettings.readonlyShareAutoUpdateDebounceMs = READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS;
+    persistSettings();
+}
+
 async function copyReadonlyLink() {
     if (!shareUrl) return;
     await navigator.clipboard.writeText(shareUrl);
@@ -280,7 +351,7 @@ async function copyReadonlyLink() {
     toast.success("Public link copied");
 }
 
-async function publishCurrentSnapshot() {
+async function publishCurrentSnapshot(options: { automatic?: boolean } = {}) {
     const user = getUser();
     if (!user || !shareId) {
         toast.error("Open a document and sign in to publish it");
@@ -289,6 +360,11 @@ async function publishCurrentSnapshot() {
 
     const payload = buildPublishPayload();
     payload.ownerId = user.id;
+    const payloadFingerprint = buildShareFingerprint(
+        payload.title,
+        payload.content,
+        payload.annotations,
+    );
 
     shareBusy = true;
     try {
@@ -301,11 +377,27 @@ async function publishCurrentSnapshot() {
             publishedAnnotations: payload.annotations,
         };
         readonlyShareState.set(readonlyShare);
-        posthog.capture(hadShare ? "readonly_share_updated" : "readonly_share_published");
-        toast.success(hadShare ? "Public page updated" : "Public page published");
+        autoSharePublishFailedFingerprint = "";
+        posthog.capture(
+            options.automatic
+                ? "readonly_share_auto_updated"
+                : hadShare
+                  ? "readonly_share_updated"
+                  : "readonly_share_published",
+        );
+        if (!options.automatic) {
+            toast.success(hadShare ? "Public page updated" : "Public page published");
+        }
     } catch (err) {
         console.error("[share] Failed to publish readonly share:", err);
-        toast.error("Couldn't publish your public page");
+        if (options.automatic) {
+            autoSharePublishFailedFingerprint = payloadFingerprint;
+        }
+        toast.error(
+            options.automatic
+                ? "Couldn't auto-update your public page"
+                : "Couldn't publish your public page",
+        );
     } finally {
         shareBusy = false;
     }
@@ -470,25 +562,40 @@ async function handleToggle() {
 
 {#if canShowShare}
     <div class="group relative flex flex-col items-end gap-2">
-        <button
-            onclick={() => (modalOpen = true)}
-            class="relative inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-md transition-colors
-                {isLive
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
-            aria-haspopup="dialog"
-            aria-label={shareNeedsUpdate ? "Share, public link has unpublished changes" : "Share"}
-        >
-            <Share2 size={14} />
-            Share
+        <div class="relative">
+            <!-- Split into two layers: WebKit renders a square drop-shadow when backdrop-filter
+                 and overflow-hidden share an element. OUTER keeps the shadow + radius (no
+                 backdrop-filter, no overflow-hidden) so the shadow stays rounded; INNER carries the
+                 backdrop-blur + same radius + overflow-hidden + background so the blur is clipped. -->
+            <button
+                onclick={() => (modalOpen = true)}
+                class="relative inline-flex rounded-full text-xs font-semibold shadow-md transition-colors"
+                aria-haspopup="dialog"
+                aria-label={shareNeedsUpdate
+                    ? "Share, public link has unpublished changes"
+                    : "Share"}
+            >
+                <span
+                    class="inline-flex items-center gap-2 overflow-hidden rounded-full px-4 py-2
+                        {isLive
+                            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                            : 'text-black/55 bg-white/55 backdrop-blur-md hover:text-black/75 hover:bg-white/70'}"
+                >
+                    <Share2 size={14} />
+                    Share
+                </span>
+            </button>
 
+            <!-- Badge is a sibling, not a button child: overflow-hidden on the button (needed to
+                 clip backdrop-blur to the rounded corner in WebKit) would otherwise clip this
+                 negatively-offset dot and its outer ring shadow. -->
             {#if shareNeedsUpdate}
                 <span
-                    class="absolute -right-[3px] -top-[3px] size-2.5 rounded-full bg-blue-600 shadow-[0_0_0_3px_rgba(255,255,255,0.92),0_4px_10px_rgba(59,130,246,0.2)]"
+                    class="pointer-events-none absolute -right-[3px] -top-[3px] size-2.5 rounded-full bg-blue-600 shadow-[0_0_0_3px_rgba(255,255,255,0.92),0_4px_10px_rgba(59,130,246,0.2)]"
                     aria-hidden="true"
                 ></span>
             {/if}
-        </button>
+        </div>
 
         {#if shareNeedsUpdate}
             <button
@@ -579,8 +686,8 @@ async function handleToggle() {
                                     <div>
                                         <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Anyone with the link can read your document</h3>
                                         <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Publish a read-only web page with Quillium branding. It only updates when
-                                            you explicitly publish again.
+                                            Publish a read-only web page with Quillium branding. Keep updates manual
+                                            or let them publish after your edits settle.
                                         </p>
                                     </div>
                                 </div>
@@ -609,6 +716,77 @@ async function handleToggle() {
                                     </button>
                                 </div>
 
+                                <div class="grid gap-2.5 rounded-2xl bg-black/[0.035] px-4 py-[14px]">
+                                    <div class="flex items-center justify-between gap-4">
+                                        <div>
+                                            <div class="text-[13px] font-bold text-black/75">Auto update</div>
+                                            <div class="mt-1 text-xs/[1.45] text-black/50">
+                                                {#if appSettings.readonlyShareAutoUpdate}
+                                                    {#if readonlyShare?.enabled}
+                                                        {autoUpdatePausedAfterFailure
+                                                            ? "Paused after a failed update."
+                                                            : autoSharePublishQueued
+                                                              ? "Waiting for edits to settle."
+                                                              : "On. Local changes publish after a short pause."}
+                                                    {:else}
+                                                        On. Publish the link once to start automatic updates.
+                                                    {/if}
+                                                {:else}
+                                                    Off. Use the update button when you want to refresh the web page.
+                                                {/if}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class={`relative h-[31px] w-[52px] shrink-0 rounded-full p-[3px] transition-colors duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-45 ${appSettings.readonlyShareAutoUpdate ? "bg-[linear-gradient(135deg,rgba(37,99,235,0.95),rgba(29,78,216,0.95))]" : "bg-black/10"}`}
+                                            role="switch"
+                                            aria-checked={appSettings.readonlyShareAutoUpdate}
+                                            aria-label="Toggle automatic public link updates"
+                                            onclick={() =>
+                                                setReadonlyShareAutoUpdate(
+                                                    !appSettings.readonlyShareAutoUpdate,
+                                                )}
+                                            disabled={shareBusy || shareLoading || !shareId}
+                                        >
+                                            <span class={`block size-[25px] rounded-full bg-white shadow-[0_3px_10px_rgba(0,0,0,0.18)] transition-transform duration-200 ease-out ${appSettings.readonlyShareAutoUpdate ? "translate-x-[21px]" : "translate-x-0"}`}></span>
+                                        </button>
+                                    </div>
+
+                                    {#if appSettings.readonlyShareAutoUpdate}
+                                        <div class="grid gap-2 border-t border-black/[0.06] pt-2.5">
+                                            <div class="flex items-center justify-between gap-3">
+                                                <label
+                                                    for="readonly-share-auto-delay"
+                                                    class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40"
+                                                >
+                                                    Delay: {autoUpdateDelaySeconds}s
+                                                </label>
+                                                {#if autoUpdateDebounceMs !== READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS}
+                                                    <button
+                                                        type="button"
+                                                        class="text-[11px] font-[650] text-blue-600 transition-colors hover:text-blue-700"
+                                                        onclick={resetAutoUpdateDebounce}
+                                                        disabled={shareBusy || shareLoading || !shareId}
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                {/if}
+                                            </div>
+                                            <input
+                                                id="readonly-share-auto-delay"
+                                                type="range"
+                                                min={READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS / 1000}
+                                                max={READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS / 1000}
+                                                step="1"
+                                                value={autoUpdateDelaySeconds}
+                                                oninput={handleAutoUpdateDebounceInput}
+                                                disabled={shareBusy || shareLoading || !shareId}
+                                                class="h-2 w-full accent-blue-600 disabled:opacity-45"
+                                            />
+                                        </div>
+                                    {/if}
+                                </div>
+
                                 <div class="grid gap-2.5 rounded-2xl border border-black/[0.055] bg-black/[0.035] px-4 py-[14px]">
                                     <div class="grid gap-1">
                                         <span class="text-[10px] font-[750] uppercase tracking-[0.06em] text-black/40">Public URL</span>
@@ -631,7 +809,7 @@ async function handleToggle() {
                                 <div class="mt-1 flex flex-wrap gap-2.5 max-[520px]:flex-col max-[520px]:items-stretch">
                                     <button
                                         class={`inline-flex min-h-[38px] flex-1 basis-[220px] items-center justify-center gap-[7px] rounded-[10px] px-4 text-[13px] font-[650] text-white transition-[background,opacity] duration-150 max-[520px]:w-full ${shareUpToDate ? "bg-black/20 text-white/90" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-45`}
-                                        onclick={publishCurrentSnapshot}
+                                        onclick={() => publishCurrentSnapshot()}
                                         disabled={shareBusy || shareLoading || !shareId || shareUpToDate}
                                     >
                                         {#if shareBusy}
@@ -667,6 +845,11 @@ async function handleToggle() {
                                     <p class="mt-1 text-xs/[1.45] text-black/50">
                                         {#if shareUpToDate}
                                             The public page already matches this draft.
+                                        {:else if autoUpdatePausedAfterFailure}
+                                            Auto update hit an error. Use
+                                            <strong>Update shared version</strong> to retry this draft.
+                                        {:else if appSettings.readonlyShareAutoUpdate}
+                                            Auto update will refresh the public page after edits settle.
                                         {:else}
                                             Readers keep seeing the current snapshot until you click
                                             <strong>Update shared version</strong>.

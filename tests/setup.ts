@@ -30,6 +30,12 @@ const mockAppSettings = {
     customQuickActions: [],
     titleVisibility: "hover",
     autoVersionOnRevisionCreate: true,
+    readonlyShareAutoUpdate: false,
+    readonlyShareAutoUpdateDebounceMs: 5000,
 };
 
-vi.mock("$lib/settings.svelte", () => ({ appSettings: mockAppSettings }));
+vi.mock("$lib/settings.svelte", () => ({
+    appSettings: mockAppSettings,
+    applySettings: vi.fn(),
+    persistSettings: vi.fn(),
+}));

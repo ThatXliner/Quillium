@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { createNewAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import {
+    activeVersionIndex,
+    createNewAnnotation,
+    isAnnotationOfType,
+} from "$lib/editor/plugins/annotations/models";
 import { replayEvents } from "$lib/editor/replay";
 import type { EventRecord } from "$lib/db/types";
 
@@ -140,6 +144,35 @@ describe("replayEvents", () => {
         const annotations = Object.values(result.field(annotationField));
         expect(annotations).toHaveLength(1);
         expect(annotations[0].thread[0]?.message).toBe("Updated comment");
+    });
+
+    it("normalizes legacy revision payloads during replay", () => {
+        const base = createBaseState("Hello");
+        const legacyRevision = {
+            id: 0,
+            _type: "revision",
+            thread: [],
+            selection: EditorSelection.single(0, 5).toJSON(),
+            activeVersionIndex: 1,
+            versions: [{ doc: "Hello" }, { doc: "Hallo" }],
+        };
+
+        const result = replayEvents(base, [
+            makeRecord(0, { type: "annotation_update", annotation: legacyRevision }),
+        ]);
+
+        const [annotation] = Object.values(result.field(annotationField));
+        expect(annotation).toBeDefined();
+        expect(isAnnotationOfType(annotation, "revision")).toBe(true);
+        if (!annotation || !isAnnotationOfType(annotation, "revision")) return;
+
+        expect(annotation.versions.every((version) => typeof version.id === "string")).toBe(true);
+        expect(activeVersionIndex(annotation)).toBe(1);
+        expect(annotation.activeVersionId).toBe(annotation.versions[1].id);
+        expect("activeVersionIndex" in annotation).toBe(false);
+        expect(
+            annotation.versions.filter((version) => version.id === annotation.activeVersionId),
+        ).toHaveLength(1);
     });
 
     it("replays a compound event (doc change + annotation add)", () => {

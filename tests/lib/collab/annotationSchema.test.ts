@@ -169,6 +169,34 @@ describe("annotationSchema", () => {
             );
             expect(nestedMap.size).toBe(1);
         });
+
+        it("normalizes legacy raw revisions before syncing them to Yjs", () => {
+            const legacyAnnotations: RawAnnotations = {
+                "0": {
+                    id: 0,
+                    _type: "revision",
+                    selection: EditorSelection.single(0, 5).toJSON(),
+                    thread: [],
+                    activeVersionIndex: 1,
+                    versions: [{ doc: "hello" }, { doc: "hullo" }],
+                },
+            };
+
+            syncRawAnnotationsToYjsMap(
+                legacyAnnotations,
+                ymap,
+                ytext,
+                CLIENT_ID,
+                ydoc,
+                new AnnotationIdMap(),
+            );
+
+            const node = Array.from(ymap.values())[0];
+            expect(node.get("_type")).toBe("revision");
+            expect(node.get("activeVersionIndex")).toBe(1);
+            const versions = node.get("versions") as Y.Map<Y.Map<unknown>>;
+            expect(versions.size).toBe(2);
+        });
     });
 
     describe("yjsAnnotationToCodeMirror", () => {

@@ -519,21 +519,29 @@ function handleKeydown(e: KeyboardEvent) {
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+     inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
+     corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
+     + box-shadow squares the shadow at the corners; splitting avoids it while still
+     clipping the blur. The .ai-processing animation targets box-shadow, so it stays on
+     the outer layer alongside the radius. Resize handles and the context popover live
+     inside the inner layer so its overflow-hidden still clips their intentional overhang. -->
 <div
   id="ai-sidebar"
   bind:this={container}
   onclick={handleSidebarClick}
   style={containerSizeStyle}
   class="
-        fixed left-4 top-1/2 -translate-y-1/2 z-50
-        backdrop-blur-md bg-gray-300/70 border border-white/30 shadow-lg
-        overflow-hidden {transitionClass}
-        {expanded
-    ? 'w-[320px] h-[520px] rounded-[14px]'
-    : 'w-[52px] h-[280px] rounded-[100px]'}
+        fixed left-4 top-1/2 -translate-y-1/2 z-50 shadow-lg {transitionClass}
+        {expanded ? 'w-[320px] h-[520px] rounded-[14px]' : 'w-[52px] h-[280px] rounded-[100px]'}
         {aiProcessing.active ? 'ai-processing' : ''}
     "
 >
+  <div
+    class="w-full h-full backdrop-blur-md bg-gray-300/70 border border-white/30
+        overflow-hidden {transitionClass}
+        {expanded ? 'rounded-[14px]' : 'rounded-[100px]'}"
+  >
   <!-- Collapsed pill icons -->
   <div
     class="absolute inset-0 flex flex-col items-center py-3 px-2 transition-opacity duration-150
@@ -665,45 +673,52 @@ function handleKeydown(e: KeyboardEvent) {
             <InfoIcon size={14} />
           </button>
           {#if showContextPopover}
+            <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays
+                 rounded); inner carries backdrop-blur + radius + overflow-hidden so the
+                 blur is clipped without WebKit squaring the shadow at the corners. -->
             <div
               class="context-popover absolute right-0 top-full mt-1.5 z-10 w-64
-                                rounded-xl border border-black/10 bg-white/95 backdrop-blur-md
-                                shadow-lg p-3 text-left"
+                                rounded-xl shadow-lg"
               role="dialog"
               aria-label="AI context details"
             >
-              <p class="text-[11px] font-semibold text-black/70 leading-snug">
-                {contextScopeLabel(headerContextPacket)}
-              </p>
-              <p class="mt-0.5 text-[10px] text-black/45 leading-relaxed">
-                {contextScopeDetail(headerContextPacket)}
-              </p>
-              <div class="mt-2.5 flex flex-col gap-1.5">
-                {#each contextPopoverSources as source (source.id)}
-                  <div class="flex items-start gap-2">
-                    <span
-                      class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full
+              <div
+                class="rounded-xl border border-black/10 bg-white/95 backdrop-blur-md
+                                p-3 text-left overflow-hidden"
+              >
+                <p class="text-[11px] font-semibold text-black/70 leading-snug">
+                  {contextScopeLabel(headerContextPacket)}
+                </p>
+                <p class="mt-0.5 text-[10px] text-black/45 leading-relaxed">
+                  {contextScopeDetail(headerContextPacket)}
+                </p>
+                <div class="mt-2.5 flex flex-col gap-1.5">
+                  {#each contextPopoverSources as source (source.id)}
+                    <div class="flex items-start gap-2">
+                      <span
+                        class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full
                                                 {source.active
-                        ? 'bg-emerald-500'
-                        : 'bg-black/15'}"
-                    ></span>
-                    <div class="min-w-0 flex-1">
-                      <p
-                        class="text-[10px] font-medium leading-tight
+                          ? 'bg-emerald-500'
+                          : 'bg-black/15'}"
+                      ></span>
+                      <div class="min-w-0 flex-1">
+                        <p
+                          class="text-[10px] font-medium leading-tight
                                                     {source.active
-                          ? 'text-black/70'
-                          : 'text-black/35'}"
-                      >
-                        {source.label}
-                      </p>
-                      <p
-                        class="text-[10px] text-black/40 leading-snug truncate"
-                      >
-                        {source.detail}
-                      </p>
+                            ? 'text-black/70'
+                            : 'text-black/35'}"
+                        >
+                          {source.label}
+                        </p>
+                        <p
+                          class="text-[10px] text-black/40 leading-snug truncate"
+                        >
+                          {source.detail}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
             </div>
           {/if}
@@ -799,25 +814,33 @@ function handleKeydown(e: KeyboardEvent) {
       onpointerdown={(e) => startResize(e, "corner")}
     ></div>
   {/if}
+  </div>
 </div>
 
 <!-- Stop button — appears below the sidebar when AI is processing -->
 {#if aiProcessing.active}
-  <button
-    id="ai-stop-button"
-    onclick={stopAllAi}
-    aria-label="Stop AI"
-    title="Stop AI request"
-    class="fixed left-4 z-50 flex items-center gap-1.5 px-3 py-1.5
-            backdrop-blur-md bg-red-500/80 hover:bg-red-600/90
-            text-white text-xs font-medium rounded-full
-            shadow-lg transition-all duration-200
-            animate-fade-in"
+  <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+       inner button carries backdrop-blur + radius + overflow-hidden so the blur is
+       clipped without WebKit squaring the shadow. (rounded-full makes the squaring
+       geometrically invisible here, but split for consistency.) -->
+  <div
+    class="fixed left-4 z-50 rounded-full shadow-lg animate-fade-in"
     style="top: calc(50% + {expanded ? effectiveHeight / 2 : 280 / 2}px + 8px);"
   >
-    <SquareIcon size={12} fill="currentColor" />
-    Stop
-  </button>
+    <button
+      id="ai-stop-button"
+      onclick={stopAllAi}
+      aria-label="Stop AI"
+      title="Stop AI request"
+      class="flex items-center gap-1.5 px-3 py-1.5
+              backdrop-blur-md bg-red-500/80 hover:bg-red-600/90
+              text-white text-xs font-medium rounded-full
+              transition-all duration-200 overflow-hidden"
+    >
+      <SquareIcon size={12} fill="currentColor" />
+      Stop
+    </button>
+  </div>
 {/if}
 
 <style>

@@ -32,14 +32,26 @@ const label = $derived.by(() => {
 </script>
 
 {#if appSettings.showWordCount}
+<!--
+    Two layers on purpose. The OUTER wrapper carries the shadow + radius but NO
+    overflow clip, and the INNER carries the backdrop-blur + radius + overflow-hidden.
+    In WebKit (Tauri) a single element with backdrop-filter + border-radius leaks a
+    square blur halo past the corners unless it has overflow:hidden — BUT adding
+    overflow:hidden to an element that ALSO has a box-shadow makes WebKit clip the
+    shadow to a square. Splitting the two responsibilities fixes both: the shadow
+    stays rounded (outer, unclipped) and the blur is clipped to the radius (inner).
+-->
 <button
     onclick={cycleMode}
     aria-label="Word count — click to change display"
     title="Click to cycle display mode"
-    class="backdrop-blur-md rounded-[2rem] bg-gray-300/70 border border-white/30 shadow-lg
-           px-4 py-2 text-sm text-black/80 tabular-nums cursor-pointer
-           hover:bg-gray-200/80 transition-colors select-none"
+    class="rounded-[2rem] shadow-lg cursor-pointer select-none"
 >
-    {label}
+    <div
+        class="backdrop-blur-md rounded-[2rem] overflow-hidden bg-gray-300/70 border border-white/30
+               px-4 py-2 text-sm text-black/80 tabular-nums hover:bg-gray-200/80 transition-colors"
+    >
+        {label}
+    </div>
 </button>
 {/if}

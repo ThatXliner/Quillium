@@ -1,6 +1,13 @@
 # Real-time Collaboration (Quillium Omni)
 
-Quillium Omni enables Live Room collaboration between multiple Quillium instances. The local editor remains CodeMirror, but live document state is mirrored through Yjs CRDTs.
+Quillium Omni has two sharing surfaces:
+
+- **Web Preview** — a read-only public page generated from the currently
+  active tab+draft snapshot.
+- **Live Room** — an owner-led real-time session between Quillium instances.
+
+The Live Room editor remains CodeMirror locally, while live document state is
+mirrored through Yjs CRDTs.
 
 ## Architecture Overview
 
@@ -22,7 +29,9 @@ flowchart LR
     Relay --> Supabase
 ```
 
-Current mode is owner-led: the owner's local SQLite draft is the source of truth when a room starts, joiners are ephemeral, and the room ends when the owner leaves.
+Current Live Room mode is owner-led: the owner's local SQLite draft is the
+source of truth when a room starts, joiners are ephemeral, and the room ends
+when the owner leaves.
 
 ## Files
 
@@ -38,6 +47,8 @@ Current mode is owner-led: the owner's local SQLite draft is the source of truth
 | `yjsUndo.ts` | Unified undo via Y.UndoManager |
 | `store.ts` | Svelte stores for collab state |
 | `GoLiveButton.svelte` | Share modal UI |
+| `share.ts` | Supabase read-only share CRUD and URL building |
+| `sharePayload.ts` | Public-share annotation serialization |
 
 ## Yjs Data Model
 
@@ -158,7 +169,42 @@ Remote cursors outside the revision range return `null` and aren't rendered.
 
 Click a collaborator avatar to follow their cursor. Each awareness tick scrolls the active editor toward that user's decoded cursor. Auto-clears when target disappears.
 
-## Owner vs Joiner Flow
+## Sharing Flows
+
+### Read-only Web Preview
+
+The Web Preview tab in `GoLiveButton.svelte` publishes a read-only snapshot to
+Supabase:
+
+```mermaid
+sequenceDiagram
+    participant UI as GoLiveButton
+    participant Share as share.ts
+    participant Supabase
+
+    UI->>UI: Build title/content/serialized annotations
+    UI->>Share: publishReadonlyShare(...)
+    Share->>Supabase: upsert sync_documents
+    Share->>Supabase: upsert shares
+    Supabase-->>Share: share_token + published fields
+    Share-->>UI: ReadonlyShare
+```
+
+The share row is keyed by **document id**, not draft id. Publishing from a
+different tab or draft replaces the single public view for that document. See
+[Tabs & Drafts](./tabs-and-drafts.md#omni-web-preview-and-the-single-view) for
+why that keeps the door open for a future multi-tab public renderer.
+
+| Action | Function | Notes |
+|--------|----------|-------|
+| Load status | `getReadonlyShare(documentId)` | Reads existing share row |
+| Publish/update | `publishReadonlyShare(...)` | Stores current snapshot + annotations |
+| Copy link | `buildReadonlyShareUrl(token)` | `https://quillium.bryanhu.com/share/{token}` |
+| Disable | `disableReadonlyShare(documentId)` | Deletes the share row |
+
+The public payload intentionally uses the share renderer's compatibility shape:
+revision versions are serialized with index-style active state even though local
+annotations use stable version ids.
 
 ### Owner Goes Live
 
@@ -240,6 +286,9 @@ If `PUBLIC_RELAY_URL` is not configured, GoLiveButton is hidden.
 ## Known Limitations
 
 - **Live Room mode only** — no persistent shared documents yet
-- **No share links or permissions** — joiners paste UUID manually
+- **Manual Live Room IDs** — joiners paste a draft UUID manually; there are no
+  invite links or room permissions yet
 - **No local persistence for joiners** — restored to prior state after leaving
 - **No offline queue** — if reconnects exhaust, must restart session
+- **Single-view public preview** — read-only shares publish one active tab+draft
+  snapshot, not the whole document tab set

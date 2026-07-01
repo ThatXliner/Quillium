@@ -10,6 +10,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `editor_undo` | Undo from native menu | `Editor.svelte` |
 | `editor_redo` | Redo from native menu | `Editor.svelte` |
 | `editor_select_all` | Select all from native menu | `Editor.svelte` |
+| `beta_terms_accepted` | First-run beta disclaimer accepted | `BetaDisclaimer.svelte` |
 
 ## AI Sidebar
 
@@ -19,6 +20,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `ai_message_sent` | Any AI request dispatched | `chatFactory.ts` |
 | `ai_chat_message_sent` | Chat message sent | `Chat.svelte` |
 | `ai_chat_quick_prompt_used` | Chat quick prompt used | `Chat.svelte` |
+| `ai_context_action_used` | Context-aware action card used | `Chat.svelte`, `Feedback.svelte`, `Revise.svelte` |
 | `ai_feedback_requested` | Feedback requested | `Feedback.svelte` |
 | `ai_feedback_quick_prompt_used` | Feedback quick prompt used | `Feedback.svelte` |
 | `ai_revise_requested` | Revision triggered | `Revise.svelte` |
@@ -39,7 +41,10 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `suggestion_diff_viewed` | Inline diff viewed | `Suggestion.svelte` |
 | `suggestion_diff_modal_opened` | Full-screen diff modal | `Suggestion.svelte` |
 | `revision_version_created` | New revision version | `Revision.svelte`, `RevisionModal.svelte` |
+| `revision_version_switched` | Revision version switched | `Revision.svelte`, `RevisionModal.svelte` |
+| `revision_modal_opened` | Full-screen revision modal opened | `Revision.svelte` |
 | `annotation_deleted` | Annotation deleted | `Comment.svelte`, `Suggestion.svelte`, `Revision.svelte` |
+| `ai_target_text_ellipsis_stripped` | AI target cleanup removed ellipsis | `annotations/index.ts` |
 | `nested_editor_flush_to_parent_meaningful` | Meaningful nested sync | `NestedEditorController.ts` |
 | `modal_stack_duplicate_push` | Duplicate modal prevented | `stores.ts` |
 
@@ -47,6 +52,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 
 | Event | When | File |
 |-------|------|------|
+| `dictionary_opened` | Dictionary popover opened | `dictionaryPlugin.ts` |
 | `dictionary_synonym_replaced` | Synonym replacement | `DictionaryPopover.svelte` |
 | `dictionary_chip_lookup` | Chip click lookup | `DictionaryPopover.svelte` |
 | `dictionary_open_in_chat` | Open in AI chat | `DictionaryPopover.svelte` |
@@ -56,9 +62,13 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 
 | Event | When | File |
 |-------|------|------|
+| `settings_opened` | Settings dialog opened | `SettingsModal.svelte` |
 | `settings_saved` | Settings saved | `SettingsModal.svelte` |
 | `ai_settings_provider_changed` | Provider changed | `AISettings.svelte` |
 | `ai_settings_model_changed` | Model changed | `AISettings.svelte` |
+| `semantic_search_toggled` | Search-by-meaning toggled | `SettingsModal.svelte` |
+| `semantic_search_model_uninstalled` | Semantic model removed | `SettingsModal.svelte` |
+| `shortcut_hints_hidden` | Annotation shortcut hints hidden | `Annotations.svelte` |
 
 ## Reader Personas
 
@@ -69,6 +79,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `reader_persona_created` | Custom persona created | `Readers.svelte` |
 | `reader_persona_removed` | Custom persona deleted | `Readers.svelte` |
 | `reader_persona_review_completed` | Persona finishes feedback | `chatFactory.ts` |
+| `persona_mode_toggled` | Feedback/Revise persona mode toggled | `Feedback.svelte`, `Revise.svelte` |
 
 ## AutoAI
 
@@ -83,6 +94,9 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 
 | Event | When | File |
 |-------|------|------|
+| `tutorial_started` | Tutorial started | `Tutorial.svelte` |
+| `tutorial_step_advanced` | Tutorial next step | `Tutorial.svelte` |
+| `tutorial_step_back` | Tutorial previous step | `Tutorial.svelte` |
 | `tutorial_completed` | Tutorial completed | `Tutorial.svelte` |
 | `tutorial_skipped` | Tutorial skipped | `Tutorial.svelte` |
 
@@ -95,6 +109,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `document_opened` | Document opened | `library/+page.svelte` |
 | `document_opened_new_window` | Document opened in a new window | `library/+page.svelte` |
 | `document_renamed` | Document renamed | `library/+page.svelte` |
+| `document_tags_updated` | Tags updated | `library/+page.svelte` |
 | `document_trashed` | Document trashed | `library/+page.svelte` |
 | `document_restored` | Document restored | `library/+page.svelte` |
 | `document_deleted_permanently` | Permanent delete | `library/+page.svelte` |
@@ -107,6 +122,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `tab_created` | New tab via + button | `Editor.svelte` |
 | `tab_switched` | Tab clicked | `Editor.svelte` |
 | `tab_renamed` | Tab renamed inline | `Editor.svelte` |
+| `tab_reordered` | Tab drag-reordered | `Editor.svelte` |
 | `tab_deleted` | Tab soft-deleted | `Editor.svelte` |
 | `tab_restored` | Tab restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
 | `draft_iterated` | Next version made (iterate) | `Editor.svelte` |
@@ -116,6 +132,27 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `draft_restored` | Draft restored (undo toast or history) | `Editor.svelte`, `VersionHistory.svelte` |
 | `draft_locked` / `draft_unlocked` | Lock toggled | `Editor.svelte` |
 | `draft_scrapped` | Draft scrapped | `Save.svelte` |
+| `delete_toast_view_history` | Delete undo toast opens history | `Editor.svelte` |
+
+## Sharing & Provenance
+
+| Event | When | File |
+|-------|------|------|
+| `readonly_share_published` | Read-only public page first published | `GoLiveButton.svelte` |
+| `readonly_share_updated` | Read-only public page updated | `GoLiveButton.svelte` |
+| `readonly_share_link_copied` | Public link copied | `GoLiveButton.svelte` |
+| `readonly_share_disabled` | Public link disabled | `GoLiveButton.svelte` |
+| `authorship_report_exported` | Authorship report exported | `provenance/export.ts` |
+| `feedback_menu_opened` | Feedback survey opened/requested | `posthog.ts` |
+
+## Navigation
+
+| Event | When | File |
+|-------|------|------|
+| `navigated_to_library` | App navigates to library | `navigation.ts` |
+| `navigated_to_history` | App navigates to version history | `navigation.ts` |
+| `navigated_to_authorship` | App navigates to authorship route | `navigation.ts` |
+| `navigated_to_editor` | App navigates back to editor | `navigation.ts` |
 
 ## Error & Recovery
 
@@ -127,6 +164,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `crash_app_reloaded` | App reloaded | `ErrorBanner.svelte` |
 | `editor_replay_event_failed` | Event replay failed | `replay.ts` |
 | `editor_replay_completed_with_failures` | Replay with failures | `replay.ts` |
+| `perf_coords_at_pos` | Slow `coordsAtPos` measurement captured | `listeners.ts` |
 
 ## Updates
 
@@ -138,6 +176,7 @@ Analytics event catalog (curated subset). All events are captured via `posthog.c
 | `update_relaunched` | Relaunch clicked | `+page.svelte` |
 | `update_dismissed` | Banner dismissed | `+page.svelte` |
 | `update_failed` | Update failed | `+page.svelte` |
+| `update_app_store_opened` | App Store update link opened | `+page.svelte` |
 
 ## Changelog
 

@@ -12,6 +12,7 @@ import type { SyntaxNode, SyntaxNodeRef, Tree } from "@lezer/common";
 const hiddenMarkdownMark = Decoration.replace({});
 const strongMark = Decoration.mark({ class: "cm-rich-markdown-strong" });
 const emphasisMark = Decoration.mark({ class: "cm-rich-markdown-emphasis" });
+const horizontalRuleMark = Decoration.line({ class: "cm-rich-markdown-horizontal-rule" });
 const headingLineMarks = {
     ATXHeading1: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-1" }),
     ATXHeading2: Decoration.line({ class: "cm-rich-markdown-heading cm-rich-markdown-heading-2" }),
@@ -100,6 +101,18 @@ export function _buildRichMarkdownDecorationsForTree(
                 if (!selectionTouches(selection, node.from, node.to)) {
                     hideHeadingMarks(ranges, node, doc);
                 }
+                return;
+            }
+
+            // Render `---`/`***`/`___` as a visual rule, but reveal the raw markers
+            // (and drop the rule styling) while the cursor is on the line so it stays editable.
+            if (
+                node.name === "HorizontalRule" &&
+                !selectionTouches(selection, node.from, node.to)
+            ) {
+                const line = doc.lineAt(node.from);
+                ranges.push(horizontalRuleMark.range(line.from));
+                ranges.push(hiddenMarkdownMark.range(node.from, node.to));
             }
         },
     });
@@ -178,6 +191,19 @@ const richMarkdownTheme = EditorView.baseTheme({
         fontSize: "0.9em",
         paddingBottom: "0.04em",
         paddingTop: "0.16em",
+    },
+    // The `---` text is replaced (collapsed to zero width), so the rule is drawn as a
+    // pseudo-element. position: relative anchors it; the line keeps its caret target.
+    ".cm-line.cm-rich-markdown-horizontal-rule": {
+        position: "relative",
+    },
+    ".cm-line.cm-rich-markdown-horizontal-rule::after": {
+        content: '""',
+        position: "absolute",
+        left: "0",
+        right: "0",
+        top: "50%",
+        borderTop: "1px solid rgba(0, 0, 0, 0.18)",
     },
 });
 

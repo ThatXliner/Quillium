@@ -943,6 +943,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init());
 
+    // Dev-only MCP automation bridge. Double-gated: the `mcp-bridge` feature keeps
+    // the crate out of production builds entirely, and `debug_assertions` ensures it
+    // can never activate in a release binary even if the feature were enabled.
+    #[cfg(all(debug_assertions, feature = "mcp-bridge"))]
+    {
+        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+    }
+
     // Self-update and relaunch only exist on desktop; mobile updates go through
     // the App Store / Play Store.
     #[cfg(desktop)]

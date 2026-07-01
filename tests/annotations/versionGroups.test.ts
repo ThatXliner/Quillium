@@ -96,8 +96,14 @@ afterEach(() => {
 function setupLinkedDoc() {
     // doc: "AAAA BBBB" — revision A over [0,4), revision B over [5,9).
     const v = createView("AAAA BBBB");
-    const a = addRevision(v, 0, 4, [{ doc: "AAAA", label: "formal" }, { doc: "aaaa", label: "casual" }]);
-    const b = addRevision(v, 5, 9, [{ doc: "BBBB", label: "formal" }, { doc: "bbbb", label: "casual" }]);
+    const a = addRevision(v, 0, 4, [
+        { doc: "AAAA", label: "formal" },
+        { doc: "aaaa", label: "casual" },
+    ]);
+    const b = addRevision(v, 5, 9, [
+        { doc: "BBBB", label: "formal" },
+        { doc: "bbbb", label: "casual" },
+    ]);
     // Group the two "formal" versions (index 0) and the two "casual" (index 1).
     const formal = createVersionGroup("Formal", [
         { revisionId: a.id, versionId: a.versionIds[0] },
@@ -179,9 +185,8 @@ describe("exclusive membership", () => {
         // a.formal no longer in Formal...
         const formal = g[formalId];
         const stillInFormal =
-            formal?.members.some(
-                (m) => m.revisionId === a.id && m.versionId === a.versionIds[0],
-            ) ?? false;
+            formal?.members.some((m) => m.revisionId === a.id && m.versionId === a.versionIds[0]) ??
+            false;
         expect(stillInFormal).toBe(false);
         // ...and Formal dropped to one member (b.formal), so it dissolved.
         expect(g[formalId]).toBeUndefined();
@@ -209,9 +214,7 @@ describe("one version per revision per group", () => {
         // Still only the original two members; the second a-version was rejected.
         expect(formal.members.length).toBe(2);
         expect(
-            formal.members.some(
-                (m) => m.revisionId === a.id && m.versionId === a.versionIds[1],
-            ),
+            formal.members.some((m) => m.revisionId === a.id && m.versionId === a.versionIds[1]),
         ).toBe(false);
     });
 });
@@ -271,9 +274,7 @@ describe("switch moves the cursor into the revision (no double-selection)", () =
         expect(getActiveAnnotation(v.state)?.id).toBe(a.id);
 
         // Switch revision B with moveCursor → B becomes active, not A.
-        v.dispatch(
-            setActiveRevisionVersion(v.state, b.id, b.versionIds[1], { moveCursor: true }),
-        );
+        v.dispatch(setActiveRevisionVersion(v.state, b.id, b.versionIds[1], { moveCursor: true }));
         expect(getActiveAnnotation(v.state)?.id).toBe(b.id);
     });
 

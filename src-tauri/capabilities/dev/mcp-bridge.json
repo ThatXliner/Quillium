@@ -1,0 +1,7 @@
+{
+  "$schema": "../../gen/schemas/desktop-schema.json",
+  "identifier": "mcp-bridge-dev",
+  "description": "DEV-ONLY: grants the Tauri MCP bridge plugin its commands for live debugging. Only compiled in when the `mcp-bridge` Cargo feature is enabled (see build.rs); never present in production builds.",
+  "windows": ["main", "editor-*"],
+  "permissions": ["mcp-bridge:default"]
+}

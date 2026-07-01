@@ -585,14 +585,21 @@ onDestroy(() => {
 });
 </script>
 
+<!-- The glass blur+tint is rendered by the `.revision-glass::before` pseudo-element
+     (see <style>), NOT inline on this element. WebKit does not clip a backdrop-filter
+     to border-radius (it leaks a square halo past the rounded corners), and neither
+     `clip-path` nor a clip on the root works here: the version-pill link dropdown
+     intentionally escapes the card's bottom edge, so the root must stay unclipped.
+     The ::before is an inset, overflow-clipped, rounded layer behind the content
+     (z-index:-1) that carries the blur, so it clips cleanly while the dropdown still
+     escapes the root. -->
 <div
     data-tutorial-role="revision-card"
     data-revision-id={revision.id}
-    class="border rounded-[14px] transition-all duration-200
+    class="revision-glass relative border rounded-[14px] transition-all duration-200
         {isActive
-            ? 'bg-purple-50/90 border-purple-200/60 shadow-xl'
-            : 'bg-purple-50/60 border-purple-200/40 shadow-lg opacity-90 hover:opacity-100'}"
-    style="backdrop-filter: blur(12px); clip-path: inset(0 round 14px);"
+            ? 'border-purple-200/60 shadow-xl revision-glass-active'
+            : 'border-purple-200/40 shadow-lg opacity-90 hover:opacity-100'}"
 >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-3 pb-2">
@@ -637,7 +644,7 @@ onDestroy(() => {
     <!-- Version pills -->
     <div class="px-3 pb-2 flex flex-wrap items-center gap-1">
         {#each revision.versions as version, i}
-            {@const versionActive = version.id === revision.activeVersionId}
+            {@const versionActive = i === activeVersionIndex(revision)}
             {@const isEditingThis = editingLabelIndex === i}
             {@const versionGroup = groupForVersion(version.id)}
             <!-- Outer wrapper is the positioning context for the link dropdown and
@@ -910,6 +917,29 @@ onDestroy(() => {
 
 
 <style>
+    /* Glass blur layer for the revision card. Lives on a ::before so it can be
+       overflow-clipped (the only thing that clips backdrop-filter in WebKit) and sit
+       behind the content (z-index:-1) WITHOUT clipping the card root — the version
+       link dropdown escapes the root's bottom edge, so the root must stay unclipped. */
+    .revision-glass {
+        isolation: isolate;
+    }
+    .revision-glass::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: 14px;
+        overflow: hidden;
+        background: rgba(250, 245, 255, 0.6); /* purple-50/60 */
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        pointer-events: none;
+    }
+    .revision-glass-active::before {
+        background: rgba(250, 245, 255, 0.9); /* purple-50/90 */
+    }
+
     .revision-inline-editor {
         min-height: 220px;
     }

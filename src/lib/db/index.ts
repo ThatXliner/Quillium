@@ -260,8 +260,8 @@ export async function iterateDraft(
 
 /**
  * Branch: a different take off `sourceDraftId`, seeded with `stateJson`,
- * starting its own run (rendered indented). Nothing locks. Rejected on a
- * run head (main / branch root) — a top-level take is a new tab.
+ * starting its own run (rendered indented). Nothing locks. Any draft can be
+ * branched, including the storyline root and branch roots.
  */
 export async function branchDraft(
     sourceDraftId: string,

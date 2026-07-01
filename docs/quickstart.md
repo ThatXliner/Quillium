@@ -30,7 +30,7 @@ bun run tauri dev
 
 ```
 src/
-├── routes/           # SvelteKit pages (/, /library, /history)
+├── routes/           # SvelteKit pages (/, /library, /history, /authorship)
 ├── lib/
 │   ├── editor/       # CodeMirror setup, extensions, plugins
 │   │   └── plugins/annotations/  # THE CORE — comments, revisions, suggestions

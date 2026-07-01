@@ -33,6 +33,7 @@ Each handler returns `false` to fall through if it doesn't apply. `redirectToNes
 | `Mod-O` | Navigate to library |
 | `Mod-Shift-O` | Open selected document in new window (library) |
 | `Mod-Shift-H` | Navigate to version history |
+| `Mod-Shift-A` | Navigate to authorship report |
 | `Mod-Shift-E` | Export plain text |
 
 ## Revision Modal Shortcuts
@@ -93,6 +94,7 @@ Guarded by `revisionModalKeyguard` — skipped if CodeMirror editor or input has
 | `Cmd-,` | Open settings |
 | `Cmd-O` | Open library |
 | `Cmd-Shift-H` | Open version history |
+| `Cmd-Shift-A` | Open authorship report |
 
 ## Shortcut Hints
 

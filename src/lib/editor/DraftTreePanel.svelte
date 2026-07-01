@@ -19,7 +19,7 @@
 <script lang="ts">
 import type { DraftMeta } from "$lib/db/types";
 import { ChevronsDownIcon, GitBranchIcon, LockIcon, LockOpenIcon, Trash2Icon } from "lucide-svelte";
-import { isDeletableDraft, isRunHead, layoutDraftRows } from "./draftTree";
+import { hasLiveChildren, isDeletableDraft, isRunHead, layoutDraftRows } from "./draftTree";
 
 const {
     drafts,
@@ -73,10 +73,13 @@ function commitRename(draftId: string) {
 }
 </script>
 
-<div
-    class="w-52 rounded-lg bg-white/45 backdrop-blur-sm shadow-md py-2 px-1.5 select-none"
-    aria-label="Draft tree"
->
+<!-- Two layers: outer carries shadow + radius (no overflow → shadow stays rounded);
+     inner carries backdrop-blur + radius + overflow-hidden (clips the blur to the
+     corner). In WebKit a single element with backdrop-filter + radius + overflow-hidden
+     + box-shadow squares the shadow at the corners; splitting avoids it while still
+     clipping the blur. -->
+<div class="w-48 rounded-lg shadow-md" aria-label="Draft tree">
+<div class="overflow-hidden rounded-lg bg-white/45 backdrop-blur-sm py-2 px-1.5 select-none">
     <div class="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-black/35">
         <GitBranchIcon size={12} />
         <span>Drafts</span>
@@ -85,6 +88,7 @@ function commitRename(draftId: string) {
     {#each rows as row (row.draft.id)}
         {@const isActive = row.draft.id === activeDraftId}
         {@const isRenaming = renamingDraftId === row.draft.id}
+        {@const showLeafActions = isActive && !hasLiveChildren(row.draft.id, drafts)}
         <div
             class="group relative flex items-stretch gap-1 rounded-md pr-1 transition-colors
                 {isActive ? 'bg-white shadow-sm' : 'hover:bg-white/50'}"
@@ -138,11 +142,20 @@ function commitRename(draftId: string) {
                         data-rail="run-continues"
                     ></div>
                 {/if}
+                {#if row.branchContinuationBelow}
+                    <div
+                        class="absolute bottom-0 h-1/2 w-px border-l border-amber-400/70"
+                        style="left: {row.depth * COL_W + DOT_X}px"
+                        data-rail="branch-start"
+                    ></div>
+                {/if}
             </div>
             <button
                 onclick={() => { if (!isActive) ondraftselect(row.draft.id); }}
                 ondblclick={() => startRename(row.draft)}
-                class="z-10 flex-1 min-w-0 flex items-center gap-2 py-1.5 pr-2.5 text-left
+                class="z-10 flex-1 min-w-0 flex items-center gap-2 py-1.5 text-left
+                    {showLeafActions ? 'pr-20 group-hover:pr-24 group-focus-within:pr-24' : 'pr-2.5 group-hover:pr-24 group-focus-within:pr-24'}
+                    transition-[padding]
                     {isActive ? 'text-black/80 font-medium cursor-default' : 'text-black/50 hover:text-black/70'}"
                 style="padding-left: {row.depth * COL_W + DOT_X - 3}px"
                 aria-current={isActive ? "true" : undefined}
@@ -169,7 +182,24 @@ function commitRename(draftId: string) {
                 {/if}
             </button>
 
-            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <div
+                class="absolute right-1 top-1/2 z-20 flex -translate-y-1/2 items-center gap-1
+                    transition-opacity
+                    {showLeafActions ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}
+                    group-hover:opacity-100 group-hover:pointer-events-auto
+                    group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+            >
+                {#if isDeletableDraft(row.draft.id, drafts)}
+                    <button
+                        onclick={() => ondraftdelete(row.draft.id)}
+                        title="Delete draft (undoable)"
+                        aria-label="Delete {row.draft.label}"
+                        class="hidden p-1 rounded text-black/30 hover:text-red-500 hover:bg-black/5
+                            group-hover:block group-focus-within:block"
+                    >
+                        <Trash2Icon size={13} />
+                    </button>
+                {/if}
                 <!-- Iterate: next version, only offered on a run's live tip
                      (iterating a superseded draft would fork the chain). -->
                 {#if row.isRunTip}
@@ -182,18 +212,15 @@ function commitRename(draftId: string) {
                         <ChevronsDownIcon size={13} />
                     </button>
                 {/if}
-                <!-- Branch: a different take. Not on a run head (main / branch
-                     root) — a top-level take is a new tab. -->
-                {#if !isRunHead(row.draft)}
-                    <button
-                        onclick={() => ondraftbranch(row.draft.id)}
-                        title="Branch a different take from this draft"
-                        aria-label="Branch from {row.draft.label}"
-                        class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
-                    >
-                        <GitBranchIcon size={13} />
-                    </button>
-                {/if}
+                <!-- Branch: a different take off any draft, including run heads. -->
+                <button
+                    onclick={() => ondraftbranch(row.draft.id)}
+                    title="Branch a different take from this draft"
+                    aria-label="Branch from {row.draft.label}"
+                    class="p-1 rounded text-black/30 hover:text-black/60 hover:bg-black/5"
+                >
+                    <GitBranchIcon size={13} />
+                </button>
                 {#if row.draft.locked}
                     <button
                         onclick={() => ontogglelock(row.draft.id, false)}
@@ -213,17 +240,8 @@ function commitRename(draftId: string) {
                         <LockIcon size={13} />
                     </button>
                 {/if}
-                {#if isDeletableDraft(row.draft.id, drafts)}
-                    <button
-                        onclick={() => ondraftdelete(row.draft.id)}
-                        title="Delete draft (undoable)"
-                        aria-label="Delete {row.draft.label}"
-                        class="p-1 rounded text-black/30 hover:text-red-500 hover:bg-black/5"
-                    >
-                        <Trash2Icon size={13} />
-                    </button>
-                {/if}
             </div>
         </div>
     {/each}
+</div>
 </div>
