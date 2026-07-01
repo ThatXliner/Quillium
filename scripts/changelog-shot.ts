@@ -478,6 +478,26 @@ const SCENES: Record<string, { needs: BootOptions; run: Scene }> = {
         },
     },
 
+    /** Editor showing a markdown thematic break rendered as a horizontal rule
+        (0.21). Cursor is clicked off the divider line so the `---` renders as a
+        rule rather than revealing its raw markers. */
+    "horizontal-rule": {
+        // Compact viewport so the centered document card hugs its content and a
+        // #editor-document crop has little dead space above/below the sections.
+        needs: { viewport: { width: 1000, height: 540 } },
+        run: async (page) => {
+            await waitForEditor(page);
+            await setEditorText(
+                page,
+                "# The Argument\n\nRenewable energy rests on three pillars: cost, reliability, and resilience. Each has moved decisively in its favor over the past decade.\n\n---\n\n# The Cost\n\nThe cheapest path to new electricity is now also the cleanest across two-thirds of the world.",
+            );
+            // Click well below the text so the caret leaves the divider line and
+            // the rule renders instead of its raw `---` markers.
+            await page.mouse.click(500, 500);
+            await page.waitForTimeout(400);
+        },
+    },
+
     /** Editor with a revision card open (version pills + nested editor). */
     "revision-active": {
         needs: {},
