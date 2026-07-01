@@ -24,7 +24,7 @@ offline states.
 | Variable | Purpose |
 |----------|---------|
 | `PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY` | Browser-safe publishable/anon key |
+| `PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe Supabase publishable key |
 
 If either variable is missing, `supabaseConfigured` is false and auth features
 show an offline/not-configured state. The desktop client never embeds a

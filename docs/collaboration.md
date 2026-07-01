@@ -279,7 +279,7 @@ Provider close reason "Owner left" → handleOwnerLeft()
 |----------|---------|
 | `PUBLIC_RELAY_URL` | WebSocket relay server |
 | `PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY` | Supabase anon key |
+| `PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
 
 If `PUBLIC_RELAY_URL` is not configured, GoLiveButton is hidden.
 
