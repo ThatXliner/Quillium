@@ -5,6 +5,11 @@
  * that needs to respect user-configured behavior.
  */
 
+import {
+    READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
+    normalizeReadonlyShareAutoUpdateDebounceMs,
+} from "$lib/collab/readonlyShareAutoUpdate";
+
 const STORAGE_KEY = "quillium-app-settings";
 
 export type CustomQuickAction = {
@@ -43,6 +48,8 @@ type AppSettings = {
     grammarCheckEnabled: boolean;
     grammarDialect: "american" | "british" | "australian";
     annotationPanelWidth: number;
+    readonlyShareAutoUpdate: boolean;
+    readonlyShareAutoUpdateDebounceMs: number;
     // Where annotation cards are placed when the AI sidebar is hidden (AI off):
     //   "visual-split" — balance cards across a left and right column
     //   "by-type"      — comments on the left, revisions/suggestions on the right
@@ -79,6 +86,8 @@ const DEFAULTS: AppSettings = {
     grammarCheckEnabled: true,
     grammarDialect: "american",
     annotationPanelWidth: 280,
+    readonlyShareAutoUpdate: false,
+    readonlyShareAutoUpdateDebounceMs: READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
     annotationLayout: "visual-split",
 };
 
@@ -99,6 +108,10 @@ function loadSettings(): AppSettings {
         if (typeof merged.docFontFamily === "string" && merged.docFontFamily.includes("Inter")) {
             merged.docFontFamily = DEFAULTS.docFontFamily;
         }
+        merged.readonlyShareAutoUpdate = merged.readonlyShareAutoUpdate === true;
+        merged.readonlyShareAutoUpdateDebounceMs = normalizeReadonlyShareAutoUpdateDebounceMs(
+            merged.readonlyShareAutoUpdateDebounceMs,
+        );
         return merged;
     } catch {
         return { ...DEFAULTS };
