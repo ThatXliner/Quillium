@@ -165,7 +165,7 @@ export class NestedEditorController {
                 selection: { anchor: from, head: to },
                 scrollIntoView: true,
             });
-            this._editor.focus();
+            if (from !== to) this._editor.focus();
         }
 
         // Snapshot only the serialized nested editor state that requires a
@@ -284,14 +284,16 @@ export class NestedEditorController {
         const event = annotationEventBus.consumePendingSelection(this.revisionId);
         if (!event) return;
         const docLen = this._editor.state.doc.length;
+        const from = Math.min(event.from, docLen);
+        const to = Math.min(event.to, docLen);
         this._editor.dispatch({
             selection: {
-                anchor: Math.min(event.from, docLen),
-                head: Math.min(event.to, docLen),
+                anchor: from,
+                head: to,
             },
             scrollIntoView: true,
         });
-        this._editor.focus();
+        if (from !== to) this._editor.focus();
     }
 
     /**
