@@ -1,6 +1,7 @@
 # Contributing to Quillium
 
-Thank you for your interest in contributing to Quillium! This guide will help you get started with development and understand our contribution process.
+Thank you for your interest in contributing to Quillium! This guide will help you get
+started with development and understand our contribution process.
 
 ## Getting Started
 
@@ -38,6 +39,10 @@ Before you begin, ensure you have the following installed:
 
    > **Note**: Both AI and analytics features are optional for most development work.
 
+   Package-specific env examples live beside the package that consumes them:
+   `packages/desktop/.env.example`, `packages/landing/.env.example`, and
+   `packages/relay/.env.example`.
+
 4. **Start Development Server**
    ```bash
    # For desktop development
@@ -53,11 +58,18 @@ Before you begin, ensure you have the following installed:
 | `bun run desktop:build` | Build desktop frontend |
 | `bun run desktop:preview` | Preview desktop production build |
 | `bun run desktop:check` | Desktop TypeScript type checking |
+| `bun run landing:dev` | Start landing site development server |
 | `bun run landing:check` | Landing TypeScript type checking |
+| `bun run relay:dev` | Start Omni relay development server |
 | `bun run relay:typecheck` | Relay TypeScript type checking |
+| `bun run share:test:run` | Run shared package tests |
+| `bun run check:all` | Type check all packages |
 | `bun run format` | Format code with Biome |
 | `bun run lint` | Lint code with Biome |
 | `bun run biome` | Run both format and lint |
+
+See [docs/monorepo.md](./docs/monorepo.md) for package boundaries, deployment roots,
+and the verification checklist.
 
 ## Code Style & Standards
 
@@ -66,7 +78,7 @@ Before you begin, ensure you have the following installed:
 Quillium uses [Biome](https://biomejs.dev/) for consistent code formatting and linting:
 
 - **Indentation**: 4 spaces (2 spaces for JSON files)
-- **Line width**: 80 characters
+- **Line width**: 100 characters
 - **Semicolons**: Required
 - **Trailing commas**: Required where valid
 - **Import organization**: Automatic sorting and grouping
@@ -94,7 +106,8 @@ bun run lint
 
 ### File Organization
 
-See [architecture](./ARCHITECTURE.md)
+See [docs/monorepo.md](./docs/monorepo.md) for package layout and
+[docs/architecture-overview.md](./docs/architecture-overview.md) for system architecture.
 
 ## Contribution Workflow
 
@@ -119,9 +132,9 @@ Before starting work:
 
 3. **Run quality checks**
    ```bash
-   bun run check:all      # TypeScript validation
-   bun run biome      # Format and lint
-   bun run desktop:tauri:build      # Ensure build works
+   bun run check:all             # TypeScript validation
+   bun run biome                 # Format and lint
+   bun run desktop:tauri:build   # Build the desktop package
    ```
 
 ### 3. Commit Guidelines
@@ -206,7 +219,9 @@ Quillium uses [PostHog](https://posthog.com) for product analytics. Events are c
 
 ### Setup
 
-PostHog is initialized once in `src/hooks.client.ts` at app boot. It also registers `app_version` as a super property (sent with every event automatically) and forwards unhandled client exceptions to PostHog.
+PostHog is initialized once in `packages/desktop/src/hooks.client.ts` at app boot. It
+also registers `app_version` as a super property (sent with every event automatically)
+and forwards unhandled client exceptions to PostHog.
 
 Add these to your `.env.local` for analytics to work locally:
 
@@ -332,7 +347,9 @@ Feature flags are evaluated with `posthog.getFeatureFlag(flagName)` at the call 
 
 ### Error Tracking
 
-Unhandled client errors are automatically forwarded to PostHog via `posthog.captureException()` in `src/hooks.client.ts`. No manual instrumentation is needed for routine error tracking.
+Unhandled client errors are automatically forwarded to PostHog via
+`posthog.captureException()` in `packages/desktop/src/hooks.client.ts`. No manual
+instrumentation is needed for routine error tracking.
 
 ---
 
@@ -405,10 +422,10 @@ We follow the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUCT.md). Plea
 
 ### Understanding the Codebase
 
-1. **Start with the README** and ARCHITECTURE.md
+1. **Start with the README**, [docs/monorepo.md](./docs/monorepo.md), and ARCHITECTURE.md
 2. **Explore the file structure** to understand organization
-3. **Read through key components** like Editor.svelte
-4. **Check the CLAUDE.md** file for development context
+3. **Read through key components** like `packages/desktop/src/lib/editor/Editor.svelte`
+4. **Check AGENTS.md** for development context
 
 ### Working with CodeMirror
 

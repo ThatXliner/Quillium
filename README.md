@@ -44,6 +44,19 @@ All of this in a performant, focused interface. Keyboard-first.
 
 ## Getting Started
 
+### Monorepo Layout
+
+Quillium uses one Bun workspace rooted at this repository:
+
+- `packages/desktop` - the Tauri desktop app
+- `packages/landing` - the public site deployed on Vercel
+- `packages/relay` - the Omni WebSocket relay deployed with Fly/Docker
+- `packages/share` - shared wire types, rendering utilities, and read-only share UI
+- `supabase` - the single Omni schema and migration source
+
+See [docs/monorepo.md](./docs/monorepo.md) for package boundaries, deployment notes,
+and the verification checklist.
+
 ### Prerequisites
 
 - Bun

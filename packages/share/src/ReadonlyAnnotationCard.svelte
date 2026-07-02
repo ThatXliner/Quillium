@@ -3,7 +3,7 @@ import { ChevronDownIcon, GitBranchIcon, Maximize2, SparklesIcon } from "lucide-
 import { scale } from "svelte/transition";
 import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
 import ReadonlyThreadMessage from "./ReadonlyThreadMessage.svelte";
-import type { AnnotationId, RevisionVersionSelections } from "./rendering";
+import { previewVersionText, type AnnotationId, type RevisionVersionSelections } from "./rendering";
 import type { SerializedAnnotation } from "./types";
 
 let {
@@ -106,6 +106,15 @@ const selectedRevisionVersion = $derived(
 					AI Suggestion
 				</h3>
 			</div>
+			<button
+				class="rounded-md p-1 text-green-400/50 transition-colors hover:bg-[color:var(--surface)]/40 hover:text-green-600/70"
+				type="button"
+				onclick={onOpen}
+				title="Expand diff"
+				aria-label="Expand suggestion diff"
+			>
+				<Maximize2 size={14} />
+			</button>
 		</div>
 
 		{#if annotation.thread.length > 0 && annotation.thread[0].author === 'AI'}
@@ -140,18 +149,10 @@ const selectedRevisionVersion = $derived(
 				<button
 					class="flex items-center gap-1 text-[10px] text-green-700/60 transition-colors hover:text-green-700/80"
 					type="button"
-					onclick={onSelect}
+					onclick={onOpen}
 				>
 					<ChevronDownIcon size={12} />
 					<span>View changes</span>
-				</button>
-				<button
-					class="flex items-center gap-1 text-[10px] text-green-700/40 transition-colors hover:text-green-700/70"
-					type="button"
-					onclick={onOpen}
-					title="Expand to full view"
-				>
-					<Maximize2 size={10} />
 				</button>
 			</div>
 		</div>
@@ -186,6 +187,15 @@ const selectedRevisionVersion = $derived(
 			<h3 class="text-[10px] font-semibold tracking-wider text-purple-600/70 uppercase">
 				Revision
 			</h3>
+			<button
+				class="rounded-md p-1 text-purple-400/50 transition-colors hover:bg-[color:var(--surface)]/40 hover:text-purple-600/70"
+				type="button"
+				onclick={onOpen}
+				title="Expand editor"
+				aria-label="Expand revision editor"
+			>
+				<Maximize2 size={14} />
+			</button>
 		</div>
 
 		<div class="flex flex-wrap items-center gap-1 px-3 pb-2">
@@ -205,21 +215,10 @@ const selectedRevisionVersion = $derived(
 						title={version.text || '(empty)'}
 						onclick={() => onSelectRevisionVersion(version.index)}
 					>
-						{version.label ?? (version.text.slice(0, 24) || `Version ${i + 1}`)}
+						{version.label ?? previewVersionText(version)}
 					</button>
 				</div>
 			{/each}
-		</div>
-
-		<div class="flex justify-end gap-1.5 px-3 pb-3">
-			<button
-				class="ml-auto flex items-center gap-1 rounded-md bg-[color:var(--surface-2)] px-2 py-1 text-[11px] font-medium text-purple-600/60 ring-1 ring-purple-200/40 transition-colors hover:bg-[color:var(--surface)]"
-				type="button"
-				onclick={onOpen}
-				title="Expand editor"
-			>
-				<Maximize2 size={10} />
-			</button>
 		</div>
 
 		{#if selectedRevisionVersion}
@@ -233,6 +232,23 @@ const selectedRevisionVersion = $derived(
 						onSelectAnnotation={(annotationId) => onSelectAnnotation?.(annotationId)}
 						compact
 					/>
+				</div>
+			</div>
+		{/if}
+
+		{#if annotation.thread.length > 0}
+			<div class="border-t border-purple-100/60 px-3 py-2.5">
+				<div class="space-y-3">
+					{#each active ? annotation.thread : annotation.thread.slice(0, 1) as message, i (message.time)}
+						<ReadonlyThreadMessage {message} truncate={!active} />
+						{#if !active && i === 0 && annotation.thread.length > 1}
+							<p class="pl-9 text-[10px] text-[color:var(--text-faint)]">
+								{annotation.thread.length - 1} more repl{annotation.thread.length === 2
+									? 'y'
+									: 'ies'}
+							</p>
+						{/if}
+					{/each}
 				</div>
 			</div>
 		{/if}

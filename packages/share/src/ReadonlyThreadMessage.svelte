@@ -4,21 +4,31 @@ import type { SerializedThreadMessage } from "./types";
 let { message, truncate = false }: { message: SerializedThreadMessage; truncate?: boolean } =
     $props();
 
-function avatarInitials(author: string): string {
-    return author
-        .trim()
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((part) => part[0]?.toUpperCase() ?? "")
-        .join("");
+const AVATAR_COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4"];
+
+function normalizeDisplayName(displayName: string): string {
+    return displayName.trim().replace(/\s+/g, " ");
 }
 
-function avatarColor(author: string): string {
+function initials(displayName: string): string {
+    const normalized = normalizeDisplayName(displayName);
+    if (!normalized) return "?";
+    return normalized
+        .split(" ")
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+}
+
+function avatarColor(displayName: string): string {
+    const normalized = normalizeDisplayName(displayName);
+    if (!normalized) return AVATAR_COLORS[0];
     let hash = 0;
-    for (let i = 0; i < author.length; i += 1) {
-        hash = (hash * 31 + author.charCodeAt(i)) % 360;
+    for (let i = 0; i < normalized.length; i += 1) {
+        hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
     }
-    return `hsl(${hash} 62% 48%)`;
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
 function formatTime(ts: number) {
@@ -37,7 +47,7 @@ function formatTime(ts: number) {
 		style={`background: ${avatarColor(message.author)};`}
 		title={message.author}
 	>
-		{avatarInitials(message.author)}
+		{initials(message.author)}
 	</div>
 	<div class="min-w-0 flex-1">
 		<div class="flex items-baseline gap-1.5">

@@ -84,6 +84,11 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 
 **Always use `isAnnotationOfType(annotation, "revision")` — never compare `_type` directly.**
 
+This repository is a single-folder Bun workspace monorepo. Package roots are
+`packages/desktop`, `packages/landing`, `packages/relay`, and `packages/share`.
+Run dependency installs and cross-package scripts from the repository root; see
+`docs/monorepo.md` before changing workspace, deploy, env, or shared-package wiring.
+
 Desktop routes: `/` (editor) and `/library` (document grid). Page transitions via `packages/desktop/src/lib/navigation.ts`.
 
 Documents contain tabs (top bar); each draft-type tab holds a tree of drafts (left panel). Events and snapshots are draft-scoped. See `docs/tabs-and-drafts.md`.
