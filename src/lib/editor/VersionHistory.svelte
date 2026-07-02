@@ -176,8 +176,9 @@ async function selectItem(item: TimelineItem) {
     confirmingRestore = false;
     // Default the viewed tab to the coordinate's target tab, else the first tab
     // live at this point. The user can switch tabs in the structure map after.
-    // The structure is computed once here and threaded into loadContent so the
-    // O(events) replay runs once per selection, not twice.
+    // The structure computed here is threaded into loadContent so IT doesn't
+    // redo the O(events) replay (the `previewStructure` derived still runs its
+    // own replay for the map render).
     const structure = reconstructStructureAsOf(
         allTabs,
         allDrafts,
