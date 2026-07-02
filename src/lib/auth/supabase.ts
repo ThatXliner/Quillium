@@ -6,19 +6,19 @@
  */
 import { processLock } from "@supabase/auth-js";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY } from "$env/static/public";
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY } from "$env/static/public";
 
 export const SUPABASE_URL = PUBLIC_SUPABASE_URL;
-export const SUPABASE_ANON_KEY = PUBLIC_SUPABASE_PUBLISHABLE_ANON_KEY;
+export const SUPABASE_PUBLISHABLE_KEY = PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-export const supabaseConfigured = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+export const supabaseConfigured = !!(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
 if (!supabaseConfigured) {
     console.warn("[supabase] Missing environment variables — auth features will not work");
 }
 
 export const supabase: SupabaseClient | null = supabaseConfigured
-    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
           auth: {
               storage: localStorage,
               autoRefreshToken: true,

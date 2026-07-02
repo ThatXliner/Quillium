@@ -5,7 +5,7 @@
  * Initializes via initAuth() on app mount, subscribes to auth changes.
  */
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
-import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from "./supabase";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabase } from "./supabase";
 
 type AuthConnectionState = "idle" | "connecting" | "online" | "offline";
 
@@ -45,7 +45,7 @@ async function canReachAuthServer(): Promise<boolean> {
         const response = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
             cache: "no-store",
             headers: {
-                apikey: SUPABASE_ANON_KEY,
+                apikey: SUPABASE_PUBLISHABLE_KEY,
             },
             signal: controller.signal,
         });
