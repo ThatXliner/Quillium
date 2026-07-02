@@ -242,7 +242,12 @@ export function resolveTimelineTarget(item: TimelineItem, allDrafts: DraftMeta[]
  * from `listDocumentStructure`) and replays `docEvents ≤ t` to decide which
  * were live then and their labels. Existence is gated by each node's real
  * `createdAt` (so a node created after `t` is excluded even though it has no
- * events ≤ t), mirroring the Rust `restore_structure_to`.
+ * events ≤ t) — EXCEPT nodes whose creation was never logged at all: those are
+ * legacy rows whose `createdAt` is a backfilled migration timestamp (the #160
+ * migration stamps the backfilled "Main" tab with the migration time, not the
+ * document's real age), so they are kept rather than hiding the document's
+ * only tab on pre-migration coordinates. Mirrors the Rust
+ * `restore_structure_to` / `logged_creations`.
  *
  * Returns the live-at-`t` tabs and drafts, with labels rewound to `t`. Drafts
  * keep their structural links (parent/branch) from the row, so `layoutDraftRows`
@@ -254,6 +259,25 @@ export function reconstructStructureAsOf(
     docEvents: DocEventRecord[],
     coordinate: TimelineCoordinate,
 ): { tabs: TabMeta[]; drafts: DraftMeta[] } {
+    // Nodes whose creation is recorded anywhere in the FULL log (not just
+    // ≤ t) — used to tell "created after t" apart from "never logged".
+    const loggedTabs = new Set<string>();
+    const loggedDrafts = new Set<string>();
+    for (const ev of docEvents) {
+        const p = parsePayload(ev.payload);
+        if (ev.eventType === "tab_created") {
+            if (typeof p.tabId === "string") loggedTabs.add(p.tabId);
+            if (typeof p.rootDraftId === "string") loggedDrafts.add(p.rootDraftId);
+        } else if (
+            (ev.eventType === "draft_created" ||
+                ev.eventType === "draft_iterated" ||
+                ev.eventType === "draft_branched") &&
+            typeof p.draftId === "string"
+        ) {
+            loggedDrafts.add(p.draftId);
+        }
+    }
+
     // Replay events at/before the exact coordinate (oldest first) into
     // deleted-state + label maps.
     const events = [...docEvents]
@@ -338,7 +362,9 @@ export function reconstructStructureAsOf(
 
     const liveTabs = allTabs
         .filter(
-            (tab) => tab.createdAt <= coordinate.createdAt && !(tabDeleted.get(tab.id) ?? false),
+            (tab) =>
+                (tab.createdAt <= coordinate.createdAt || !loggedTabs.has(tab.id)) &&
+                !(tabDeleted.get(tab.id) ?? false),
         )
         .map((tab) => ({ ...tab, label: tabLabel.get(tab.id) ?? tab.label }));
 
@@ -356,7 +382,11 @@ export function reconstructStructureAsOf(
         .map(({ tab }) => tab);
 
     const drafts = allDrafts
-        .filter((d) => d.createdAt <= coordinate.createdAt && !(draftDeleted.get(d.id) ?? false))
+        .filter(
+            (d) =>
+                (d.createdAt <= coordinate.createdAt || !loggedDrafts.has(d.id)) &&
+                !(draftDeleted.get(d.id) ?? false),
+        )
         .map((d) => ({ ...d, label: draftLabel.get(d.id) ?? d.label }));
 
     return { tabs, drafts };

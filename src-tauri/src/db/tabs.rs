@@ -1215,6 +1215,50 @@ fn reconstruct_structure(
     Ok((tabs, drafts, tab_order))
 }
 
+/// The tab/draft ids whose CREATION is recorded anywhere in the doc-event log
+/// (the FULL log, not just events ≤ T). A row whose `created_at` postdates T
+/// but whose creation was never logged is a legacy row with a backfilled
+/// timestamp — e.g. the #160 migration stamps the backfilled "Main" tab with
+/// the *migration* time, not the document's real age. The rewind must leave
+/// those alone: treating them as "created after T" would try to delete the
+/// document's only tab on any pre-migration coordinate, trip the last-tab
+/// guard, and fail the whole restore.
+fn logged_creations(
+    conn: &Connection,
+    doc_id: &str,
+) -> Result<(
+    std::collections::HashSet<String>,
+    std::collections::HashSet<String>,
+)> {
+    use std::collections::HashSet;
+    let mut tabs: HashSet<String> = HashSet::new();
+    let mut drafts: HashSet<String> = HashSet::new();
+    let mut stmt = conn.prepare(
+        "SELECT event_type, payload FROM doc_events
+         WHERE document_id = ?1
+           AND event_type IN ('tab_created', 'draft_created', 'draft_iterated', 'draft_branched')",
+    )?;
+    let rows = stmt.query_map(params![doc_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (event_type, payload_str) = row?;
+        let p: serde_json::Value = serde_json::from_str(&payload_str).unwrap_or(json!({}));
+        let s = |k: &str| p.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        if event_type == "tab_created" {
+            if let Some(id) = s("tabId") {
+                tabs.insert(id);
+            }
+            if let Some(root) = s("rootDraftId") {
+                drafts.insert(root);
+            }
+        } else if let Some(id) = s("draftId") {
+            drafts.insert(id);
+        }
+    }
+    Ok((tabs, drafts))
+}
+
 /// Non-destructively rewinds the document's tab/draft *structure* to the moment
 /// `as_of_ms`. Reconstructs which tabs/drafts existed (and their labels/order)
 /// at T from the `doc_events` log, then applies the minimal set of forward,
@@ -1234,6 +1278,7 @@ fn restore_structure_to_inner(
 ) -> Result<()> {
     let (target_tabs, target_drafts, target_order) =
         reconstruct_structure(conn, doc_id, as_of_ms, as_of_event_id)?;
+    let (logged_tabs, logged_drafts) = logged_creations(conn, doc_id)?;
 
     // Live tabs/drafts (id, deleted-now, label, created_at). `created_at` lets
     // us tell "created after T" (must not exist at T) apart from "never logged"
@@ -1273,14 +1318,28 @@ fn restore_structure_to_inner(
 
     // Whether a node should be LIVE at T, given its real creation time and the
     // replayed delete state: `Some(true/false)` to act, `None` to leave as-is.
-    // - created after T → must not exist at T → Some(false).
+    // - created after T, creation logged → must not exist at T → Some(false).
+    // - created after T, creation NEVER logged → a legacy row whose
+    //   `created_at` is a backfilled migration timestamp, not a real creation
+    //   time → None (leave as-is; see `logged_creations`).
     // - created by T → live iff the replay didn't have it deleted at T.
-    let should_be_live = |created_at: i64, replayed: Option<&NodeState>| -> Option<bool> {
-        if created_at > as_of_ms {
-            return Some(false);
-        }
-        // Created by T; deleted at T only if a delete event landed by then.
-        Some(replayed.map(|n| !n.deleted).unwrap_or(true))
+    let should_be_live =
+        |created_at: i64, ever_logged: bool, replayed: Option<&NodeState>| -> Option<bool> {
+            if created_at > as_of_ms {
+                return if ever_logged { Some(false) } else { None };
+            }
+            // Created by T; deleted at T only if a delete event landed by then.
+            Some(replayed.map(|n| !n.deleted).unwrap_or(true))
+        };
+    let tab_should_be_live = |id: &String, created_at: i64| -> Option<bool> {
+        should_be_live(created_at, logged_tabs.contains(id), target_tabs.get(id))
+    };
+    let draft_should_be_live = |id: &String, created_at: i64| -> Option<bool> {
+        should_be_live(
+            created_at,
+            logged_drafts.contains(id),
+            target_drafts.get(id),
+        )
     };
 
     // Corrective ops run in a strict RESTORE-then-DELETE order. Doing every
@@ -1292,16 +1351,12 @@ fn restore_structure_to_inner(
 
     // 1. Restore everything that should be live at T (tabs, then their drafts).
     for (id, is_deleted, _, created_at) in &live_tabs {
-        if matches!(should_be_live(*created_at, target_tabs.get(id)), Some(true)) && *is_deleted {
+        if matches!(tab_should_be_live(id, *created_at), Some(true)) && *is_deleted {
             restore_tab_inner(conn, id)?;
         }
     }
     for (id, is_deleted, _, created_at) in &live_drafts {
-        if matches!(
-            should_be_live(*created_at, target_drafts.get(id)),
-            Some(true)
-        ) && *is_deleted
-        {
+        if matches!(draft_should_be_live(id, *created_at), Some(true)) && *is_deleted {
             restore_draft_inner(conn, id)?;
         }
     }
@@ -1314,11 +1369,7 @@ fn restore_structure_to_inner(
     //    bypassing that guard, then delete the tab.
     let mut deleting_tabs: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (id, is_deleted, _, created_at) in &live_tabs {
-        if matches!(
-            should_be_live(*created_at, target_tabs.get(id)),
-            Some(false)
-        ) && !*is_deleted
-        {
+        if matches!(tab_should_be_live(id, *created_at), Some(false)) && !*is_deleted {
             deleting_tabs.insert(id.clone());
         }
     }
@@ -1352,10 +1403,7 @@ fn restore_structure_to_inner(
         if *is_deleted || just_deleted.contains(id) {
             continue;
         }
-        if matches!(
-            should_be_live(*created_at, target_drafts.get(id)),
-            Some(false)
-        ) {
+        if matches!(draft_should_be_live(id, *created_at), Some(false)) {
             let ids = cascade_delete_draft_inner(conn, id)?;
             just_deleted.extend(ids);
         }
@@ -1365,8 +1413,7 @@ fn restore_structure_to_inner(
     for (id, _, label, created_at) in &live_tabs {
         if let Some(node) = target_tabs.get(id) {
             if let Some(target) = &node.label {
-                if target != label && matches!(should_be_live(*created_at, Some(node)), Some(true))
-                {
+                if target != label && matches!(tab_should_be_live(id, *created_at), Some(true)) {
                     rename_tab_inner(conn, id, target)?;
                 }
             }
@@ -1377,7 +1424,7 @@ fn restore_structure_to_inner(
             if let Some(target) = &node.label {
                 if target != label
                     && !just_deleted.contains(id)
-                    && matches!(should_be_live(*created_at, Some(node)), Some(true))
+                    && matches!(draft_should_be_live(id, *created_at), Some(true))
                 {
                     rename_draft_inner(conn, id, target)?;
                 }
@@ -1897,6 +1944,70 @@ mod tests {
 
         assert!(tab_is_live(&conn, &tab1), "failed rewind keeps tab live");
         assert!(is_live(&conn, &main), "failed rewind keeps draft live");
+    }
+
+    #[test]
+    fn restore_structure_leaves_legacy_backfilled_tabs_alone() {
+        // Pre-#160 documents: the migration backfills a "Main" tab stamped
+        // with the MIGRATION time, so old snapshots predate the tab row's
+        // created_at. A rewind to such a coordinate must leave the
+        // never-logged tab (and so the document) intact instead of trying to
+        // delete it and failing on the last-tab guard.
+        let (conn, tab1, main) = setup();
+        // Simulate the legacy shape: no tab_created was ever logged, the tab
+        // row is stamped "at migration time" (1000), but the draft (and the
+        // coordinate being restored) genuinely predate it.
+        conn.execute("DELETE FROM doc_events WHERE document_id = 'doc'", [])
+            .unwrap();
+        conn.execute(
+            "UPDATE tabs SET created_at = 1000 WHERE id = ?1",
+            params![tab1],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE drafts SET created_at = 500 WHERE id = ?1",
+            params![main],
+        )
+        .unwrap();
+
+        restore_structure_to(&conn, "doc", 600, None).unwrap();
+
+        assert!(tab_is_live(&conn, &tab1), "legacy tab is left as-is");
+        assert!(is_live(&conn, &main), "legacy draft stays live");
+    }
+
+    #[test]
+    fn coordinate_restore_works_for_pre_migration_snapshots() {
+        // End-to-end version of the legacy case: restoring to a snapshot
+        // older than the backfilled tab row must succeed and seed a new tip.
+        let (conn, tab1, main) = setup();
+        conn.execute("DELETE FROM doc_events WHERE document_id = 'doc'", [])
+            .unwrap();
+        conn.execute(
+            "UPDATE tabs SET created_at = 1000 WHERE id = ?1",
+            params![tab1],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE drafts SET created_at = 500 WHERE id = ?1",
+            params![main],
+        )
+        .unwrap();
+        let snap_id: i64 = conn
+            .query_row(
+                "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
+                 VALUES (?1, 3, '{\"doc\":\"old\"}', 600) RETURNING id",
+                params![main],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let landing = restore_coordinate_nondestructive(&conn, "doc", 600, None, Some(snap_id))
+            .unwrap()
+            .expect("content coordinate returns a landing");
+
+        assert!(is_live(&conn, &landing.id), "restored tip is live");
+        assert!(tab_is_live(&conn, &tab1), "legacy tab survives the restore");
     }
 
     #[test]

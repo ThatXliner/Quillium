@@ -260,6 +260,33 @@ describe("reconstructStructureAsOf", () => {
             "Renamed",
         );
     });
+
+    it("keeps a legacy tab whose creation was never logged (backfilled createdAt)", () => {
+        // Pre-#160 documents: the migration backfills the "Main" tab stamped
+        // with the MIGRATION time, so pre-migration coordinates predate the
+        // tab row's createdAt. With no tab_created event anywhere in the log,
+        // the tab (and its never-logged draft) must still render — otherwise
+        // every pre-migration snapshot previews as "No tabs at this point".
+        const legacyTabs = [tab("legacy-tab", 1000, "Main")];
+        const legacyDrafts = [{ ...draft("legacy-draft", 500, "main"), tabId: "legacy-tab" }];
+
+        const { tabs: t, drafts: d } = reconstructStructureAsOf(
+            legacyTabs,
+            legacyDrafts,
+            [],
+            coord(600),
+        );
+
+        expect(t.map((x) => x.id)).toEqual(["legacy-tab"]);
+        expect(d.map((x) => x.id)).toEqual(["legacy-draft"]);
+    });
+
+    it("still excludes a logged tab created after T", () => {
+        // The legacy leniency must not leak: a tab whose creation IS logged
+        // (just after T) stays excluded.
+        const { tabs: t } = reconstructStructureAsOf(tabs, drafts, events, coord(100, 1));
+        expect(t.map((x) => x.id)).not.toContain("tab2");
+    });
 });
 
 // ── resolveTabContentAt ─────────────────────────────────────────────
