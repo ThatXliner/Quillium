@@ -43,7 +43,7 @@ async function installTauriMockWithTutorial(page: Page) {
                     ];
                 if (cmd === "cmd_create_document") return "doc-1";
                 if (cmd === "cmd_create_draft") return "draft-1";
-                if (cmd === "cmd_list_drafts")
+                if (cmd === "cmd_list_drafts" || cmd === "cmd_list_tab_drafts")
                     return [
                         {
                             id: "draft-1",
@@ -51,8 +51,26 @@ async function installTauriMockWithTutorial(page: Page) {
                             label: "Draft",
                             createdAt: 0,
                             isActive: true,
+                            tabId: "tab-1",
+                            parentDraftId: null,
+                            branchedFrom: null,
+                            locked: false,
                         },
                     ];
+                // One tab holding the draft above (refreshTabState needs these)
+                if (cmd === "cmd_list_tabs")
+                    return [
+                        {
+                            id: "tab-1",
+                            documentId: "doc-1",
+                            tabType: "draft",
+                            label: "Main",
+                            position: 0,
+                            createdAt: 0,
+                        },
+                    ];
+                if (cmd === "cmd_get_active_tab") return "tab-1";
+                if (cmd === "cmd_get_active_draft") return "draft-1";
                 if (cmd === "cmd_load_document_state")
                     return { snapshotStateJson: null, snapshotEventId: -1, eventsSince: [] };
                 if (cmd === "cmd_append_event") return { eventId: 0, needsSnapshot: false };
