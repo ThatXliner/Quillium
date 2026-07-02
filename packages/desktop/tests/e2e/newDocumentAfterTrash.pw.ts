@@ -28,12 +28,24 @@ async function installMock(page: Page, options: MockOptions = {}) {
         );
 
         const docs: MockDoc[] = [];
+        const tabs: Array<{
+            id: string;
+            documentId: string;
+            tabType: string;
+            label: string;
+            position: number;
+            createdAt: number;
+        }> = [];
         const drafts: Array<{
             id: string;
             documentId: string;
             label: string;
             createdAt: number;
             isActive: boolean;
+            tabId: string | null;
+            parentDraftId: string | null;
+            branchedFrom: string | null;
+            locked: boolean;
         }> = [];
         const events: Array<{
             id: number;
@@ -135,11 +147,54 @@ async function installMock(page: Page, options: MockOptions = {}) {
                         label: args.label ?? "Draft",
                         createdAt: Date.now(),
                         isActive: true,
+                        tabId: args.tabId ?? null,
+                        parentDraftId: null,
+                        branchedFrom: null,
+                        locked: false,
                     });
                     return id;
                 }
                 if (cmd === "cmd_list_drafts") {
                     return drafts.filter((d) => d.documentId === args.docId);
+                }
+                if (cmd === "cmd_list_tabs") {
+                    return tabs.filter((t) => t.documentId === args.docId);
+                }
+                if (cmd === "cmd_create_tab") {
+                    // Like the real backend, creating a tab seeds its root draft.
+                    const tab = {
+                        id: `tab-${Math.random().toString(36).slice(2, 10)}`,
+                        documentId: args.docId,
+                        tabType: "draft",
+                        label: args.label ?? "Main",
+                        position: tabs.filter((t) => t.documentId === args.docId).length,
+                        createdAt: Date.now(),
+                    };
+                    tabs.push(tab);
+                    drafts.push({
+                        id: `draft-${Math.random().toString(36).slice(2, 10)}`,
+                        documentId: args.docId,
+                        label: "main",
+                        createdAt: Date.now(),
+                        isActive: true,
+                        tabId: tab.id,
+                        parentDraftId: null,
+                        branchedFrom: null,
+                        locked: false,
+                    });
+                    return tab;
+                }
+                if (cmd === "cmd_get_active_tab") {
+                    return tabs.find((t) => t.documentId === args.docId)?.id ?? null;
+                }
+                if (cmd === "cmd_list_tab_drafts") {
+                    return drafts.filter((d) => d.tabId === args.tabId);
+                }
+                if (cmd === "cmd_get_active_draft") {
+                    return drafts.find((d) => d.tabId === args.tabId)?.id ?? null;
+                }
+                if (cmd === "cmd_set_active_tab" || cmd === "cmd_set_active_draft") {
+                    return null;
                 }
                 if (cmd === "cmd_load_document_state") {
                     const draftId = args.draftId;

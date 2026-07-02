@@ -56,7 +56,7 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
                     // Document / draft creation
                     if (cmd === "cmd_create_document") return "doc-test-1";
                     if (cmd === "cmd_create_draft") return "draft-test-1";
-                    if (cmd === "cmd_list_drafts")
+                    if (cmd === "cmd_list_drafts" || cmd === "cmd_list_tab_drafts")
                         return [
                             {
                                 id: "draft-test-1",
@@ -64,8 +64,27 @@ async function installTauriMock(page: Page, options: Partial<TauriMockOptions> =
                                 label: "Draft",
                                 createdAt: 0,
                                 isActive: true,
+                                tabId: "tab-test-1",
+                                parentDraftId: null,
+                                branchedFrom: null,
+                                locked: false,
                             },
                         ];
+
+                    // One tab holding the draft above (refreshTabState needs these)
+                    if (cmd === "cmd_list_tabs")
+                        return [
+                            {
+                                id: "tab-test-1",
+                                documentId: "doc-test-1",
+                                tabType: "draft",
+                                label: "Main",
+                                position: 0,
+                                createdAt: 0,
+                            },
+                        ];
+                    if (cmd === "cmd_get_active_tab") return "tab-test-1";
+                    if (cmd === "cmd_get_active_draft") return "draft-test-1";
 
                     // Load returns empty (blank editor)
                     if (cmd === "cmd_load_document_state")
