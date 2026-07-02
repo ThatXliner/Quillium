@@ -225,21 +225,19 @@ pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
 /// Soft-deletes a tab. Its drafts, events, and snapshots are untouched —
 /// the tab disappears from the bar but can be restored from the
 /// document's version history. Refuses to delete the last live tab.
-fn delete_tab_inner(conn: &Connection, tab_id: &str, enforce_last_tab_guard: bool) -> Result<()> {
+fn delete_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM tabs WHERE id = ?1",
         params![tab_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    if enforce_last_tab_guard {
-        let live: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL",
-            params![doc_id],
-            |row| row.get(0),
-        )?;
-        if live <= 1 {
-            return Err(refuse("Cannot delete the last tab of a document"));
-        }
+    let live: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL",
+        params![doc_id],
+        |row| row.get(0),
+    )?;
+    if live <= 1 {
+        return Err(refuse("Cannot delete the last tab of a document"));
     }
     conn.execute(
         "UPDATE tabs SET deleted_at = ?1 WHERE id = ?2",
@@ -256,7 +254,7 @@ fn delete_tab_inner(conn: &Connection, tab_id: &str, enforce_last_tab_guard: boo
 
 pub fn delete_tab(conn: &Connection, tab_id: &str) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
-    delete_tab_inner(&tx, tab_id, true)?;
+    delete_tab_inner(&tx, tab_id)?;
     tx.commit()?;
     Ok(())
 }
@@ -925,11 +923,7 @@ pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<
 /// (iterations and branches, transitively). Refuses if that would empty the
 /// tab or delete the storyline root. Returns the deleted ids (the root first)
 /// so Undo can restore them all.
-fn cascade_delete_draft_inner(
-    conn: &Connection,
-    draft_id: &str,
-    enforce_tab_guard: bool,
-) -> Result<Vec<String>> {
+fn cascade_delete_draft_inner(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
     let (doc_id, label, tab_id, parent_draft_id, branched_from): (
         String,
         String,
@@ -968,9 +962,7 @@ fn cascade_delete_draft_inner(
         }
     }
 
-    if enforce_tab_guard {
-        guard_tab_not_emptied(conn, &tab_id, subtree.len() as i64)?;
-    }
+    guard_tab_not_emptied(conn, &tab_id, subtree.len() as i64)?;
 
     let now = now_ms();
     for id in &subtree {
@@ -1000,7 +992,7 @@ fn cascade_delete_draft_inner(
 
 pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
     let tx = conn.unchecked_transaction()?;
-    let subtree = cascade_delete_draft_inner(&tx, draft_id, true)?;
+    let subtree = cascade_delete_draft_inner(&tx, draft_id)?;
     tx.commit()?;
     Ok(subtree)
 }
@@ -1349,7 +1341,7 @@ fn restore_structure_to_inner(
                 just_deleted.insert(id.clone());
             }
         }
-        delete_tab_inner(conn, tab, true)?;
+        delete_tab_inner(conn, tab)?;
     }
 
     // 3. Delete drafts in SURVIVING tabs that shouldn't exist at T. Here the
@@ -1364,7 +1356,7 @@ fn restore_structure_to_inner(
             should_be_live(*created_at, target_drafts.get(id)),
             Some(false)
         ) {
-            let ids = cascade_delete_draft_inner(conn, id, true)?;
+            let ids = cascade_delete_draft_inner(conn, id)?;
             just_deleted.extend(ids);
         }
     }
