@@ -15,22 +15,22 @@ use db::{
     },
     events::{
         append_event, create_named_snapshot, create_snapshot, get_snapshot_retention,
-        get_snapshot_storage_size, label_snapshot, list_draft_events, list_snapshots,
-        load_snapshot_state, prune_snapshots_keep_last_n, prune_snapshots_older_than,
-        restore_to_snapshot, set_snapshot_retention,
+        get_snapshot_storage_size, label_snapshot, list_document_snapshots, list_draft_events,
+        list_snapshots, load_snapshot_state, prune_snapshots_keep_last_n,
+        prune_snapshots_older_than, restore_to_snapshot, set_snapshot_retention,
     },
     load::load_document_state,
     schema::open_db,
     search::{search_documents, SearchHit},
     tabs::{
         branch_draft, cascade_delete_draft, create_tab, delete_draft, delete_tab, get_active_draft,
-        get_active_tab, iterate_draft, list_doc_events, list_tab_drafts, list_tabs,
-        orphan_and_delete_draft, rename_draft, rename_tab, reorder_tabs, reparent_draft,
-        restore_draft, restore_tab, set_active_draft, set_active_tab, set_draft_locked,
-        ReparentEntry,
+        get_active_tab, iterate_draft, list_doc_events, list_document_structure, list_tab_drafts,
+        list_tabs, orphan_and_delete_draft, rename_draft, rename_tab, reorder_tabs, reparent_draft,
+        restore_coordinate_nondestructive, restore_draft, restore_tab, set_active_draft,
+        set_active_tab, set_draft_locked, ReparentEntry,
     },
-    AppendEventResult, DocEventRecord, DocumentMeta, DraftMeta, EventRecord, LoadResult,
-    SnapshotMeta, TabMeta,
+    AppendEventResult, DocEventRecord, DocumentMeta, DocumentSnapshotMeta, DocumentStructure,
+    DraftMeta, EventRecord, LoadResult, SnapshotMeta, TabMeta,
 };
 use keychain::{delete_api_key, get_api_key, set_api_key};
 use pdf_export::{export_pdf_to_path, PdfExportPayload};
@@ -496,6 +496,61 @@ fn cmd_restore_to_snapshot(
 ) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     restore_to_snapshot(&conn, &draft_id, snapshot_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_document_snapshots(
+    state: tauri::State<DbState>,
+    doc_id: String,
+) -> Result<Vec<DocumentSnapshotMeta>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_document_snapshots(&conn, &doc_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cmd_list_document_structure(
+    state: tauri::State<DbState>,
+    doc_id: String,
+) -> Result<DocumentStructure, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_document_structure(&conn, &doc_id).map_err(|e| e.to_string())
+}
+
+/// Where the editor should land after a coordinate restore.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreLanding {
+    tab_id: Option<String>,
+    draft_id: Option<String>,
+}
+
+/// Non-destructively restores the whole document to a timeline coordinate (the
+/// "git reflog" reset). `as_of_ms` plus optional `as_of_event_id` identify the
+/// exact structural coordinate; when `snapshot_id` is given, the relevant
+/// draft's content is restored too as a new iteration tip. Nothing is deleted;
+/// later coordinates remain in the timeline.
+#[tauri::command]
+fn cmd_restore_to_coordinate(
+    state: tauri::State<DbState>,
+    doc_id: String,
+    as_of_ms: i64,
+    as_of_event_id: Option<i64>,
+    snapshot_id: Option<i64>,
+) -> Result<RestoreLanding, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let landing =
+        restore_coordinate_nondestructive(&conn, &doc_id, as_of_ms, as_of_event_id, snapshot_id)
+            .map_err(|e| e.to_string())?;
+    match landing {
+        Some(draft) => Ok(RestoreLanding {
+            tab_id: draft.tab_id,
+            draft_id: Some(draft.id),
+        }),
+        None => Ok(RestoreLanding {
+            tab_id: None,
+            draft_id: None,
+        }),
+    }
 }
 
 #[tauri::command]
@@ -1006,9 +1061,12 @@ pub fn run() {
             cmd_load_document_state,
             cmd_list_draft_events,
             cmd_list_snapshots,
+            cmd_list_document_snapshots,
+            cmd_list_document_structure,
             cmd_load_snapshot_state,
             cmd_label_snapshot,
             cmd_restore_to_snapshot,
+            cmd_restore_to_coordinate,
             cmd_create_named_snapshot,
             cmd_get_snapshot_retention,
             cmd_set_snapshot_retention,

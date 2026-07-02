@@ -17,7 +17,7 @@ use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use super::{DocEventRecord, DraftMeta, TabMeta};
+use super::{DocEventRecord, DocumentStructure, DraftMeta, TabMeta};
 
 /// One link rewrite made by `orphan_and_delete_draft`: the child that was
 /// re-attached and the parent/branch links it held before. Returned to the
@@ -122,6 +122,34 @@ pub fn list_tabs(conn: &Connection, doc_id: &str) -> Result<Vec<TabMeta>> {
     rows.collect()
 }
 
+/// The document's full tab/draft roster INCLUDING soft-deleted rows — the
+/// universe the version-history preview map rewinds over. Carries real labels
+/// and structural links (parent/branch) so the historical tree renders
+/// faithfully regardless of what the audit log recorded.
+pub fn list_document_structure(conn: &Connection, doc_id: &str) -> Result<DocumentStructure> {
+    let tabs = {
+        let mut stmt = conn.prepare(
+            "SELECT id, document_id, tab_type, label, position, created_at
+             FROM tabs WHERE document_id = ?1
+             ORDER BY position ASC, created_at ASC",
+        )?;
+        let v = stmt
+            .query_map(params![doc_id], read_tab)?
+            .collect::<Result<Vec<_>>>()?;
+        v
+    };
+    let drafts = {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {DRAFT_COLS} FROM drafts WHERE document_id = ?1 ORDER BY created_at ASC",
+        ))?;
+        let v = stmt
+            .query_map(params![doc_id], read_draft)?
+            .collect::<Result<Vec<_>>>()?;
+        v
+    };
+    Ok(DocumentStructure { tabs, drafts })
+}
+
 /// Creates a tab plus its root draft ("main") atomically.
 pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMeta> {
     let tab_id = Uuid::new_v4().to_string();
@@ -147,7 +175,15 @@ pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMet
         &tx,
         doc_id,
         "tab_created",
-        &json!({ "tabId": tab_id, "label": label }),
+        // `rootDraftId` + `position` let the version-history replay reconstruct
+        // the tab (and its auto-created "main" draft) at any past point without
+        // consulting the live `drafts`/`tabs` rows.
+        &json!({
+            "tabId": tab_id,
+            "label": label,
+            "rootDraftId": draft_id,
+            "position": position,
+        }),
     )?;
     tx.commit()?;
     Ok(TabMeta {
@@ -160,23 +196,28 @@ pub fn create_tab(conn: &Connection, doc_id: &str, label: &str) -> Result<TabMet
     })
 }
 
-pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
+fn rename_tab_inner(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
     let (doc_id, previous): (String, String) = conn.query_row(
         "SELECT document_id, label FROM tabs WHERE id = ?1",
         params![tab_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
+    conn.execute(
         "UPDATE tabs SET label = ?1 WHERE id = ?2",
         params![label, tab_id],
     )?;
     log_doc_event(
-        &tx,
+        conn,
         &doc_id,
         "tab_renamed",
         &json!({ "tabId": tab_id, "label": label, "previousLabel": previous }),
     )?;
+    Ok(())
+}
+
+pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    rename_tab_inner(&tx, tab_id, label)?;
     tx.commit()?;
     Ok(())
 }
@@ -184,7 +225,7 @@ pub fn rename_tab(conn: &Connection, tab_id: &str, label: &str) -> Result<()> {
 /// Soft-deletes a tab. Its drafts, events, and snapshots are untouched —
 /// the tab disappears from the bar but can be restored from the
 /// document's version history. Refuses to delete the last live tab.
-pub fn delete_tab(conn: &Connection, tab_id: &str) -> Result<()> {
+fn delete_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM tabs WHERE id = ?1",
         params![tab_id],
@@ -198,57 +239,80 @@ pub fn delete_tab(conn: &Connection, tab_id: &str) -> Result<()> {
     if live <= 1 {
         return Err(refuse("Cannot delete the last tab of a document"));
     }
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
+    conn.execute(
         "UPDATE tabs SET deleted_at = ?1 WHERE id = ?2",
         params![now_ms(), tab_id],
     )?;
     log_doc_event(
-        &tx,
+        conn,
         &doc_id,
         "tab_deleted",
         &json!({ "tabId": tab_id, "label": label }),
     )?;
+    Ok(())
+}
+
+pub fn delete_tab(conn: &Connection, tab_id: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    delete_tab_inner(&tx, tab_id)?;
     tx.commit()?;
     Ok(())
 }
 
 /// Restores a soft-deleted tab (from the version history or undo toast).
-pub fn restore_tab(conn: &Connection, tab_id: &str) -> Result<()> {
+fn restore_tab_inner(conn: &Connection, tab_id: &str) -> Result<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM tabs WHERE id = ?1",
         params![tab_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
+    conn.execute(
         "UPDATE tabs SET deleted_at = NULL WHERE id = ?1",
         params![tab_id],
     )?;
     log_doc_event(
-        &tx,
+        conn,
         &doc_id,
         "tab_restored",
         &json!({ "tabId": tab_id, "label": label }),
     )?;
+    Ok(())
+}
+
+pub fn restore_tab(conn: &Connection, tab_id: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    restore_tab_inner(&tx, tab_id)?;
     tx.commit()?;
     Ok(())
 }
 
 /// Persists a new tab order. `ordered_ids` is the full list of the
 /// document's live tabs in their new left-to-right order; each tab's
-/// `position` is rewritten to its index. Reordering is purely cosmetic, so
-/// it isn't logged to the doc-event audit trail.
-pub fn reorder_tabs(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> Result<()> {
-    let tx = conn.unchecked_transaction()?;
+/// `position` is rewritten to its index. The new order is logged to the
+/// doc-event audit trail so the version-history replay can reconstruct
+/// historical tab order (the `position` column alone only reflects the
+/// latest order).
+fn reorder_tabs_inner(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> Result<()> {
     for (position, tab_id) in ordered_ids.iter().enumerate() {
         // Scope the update to the document so a stale/foreign id can't
         // stomp another document's tab positions.
-        tx.execute(
+        conn.execute(
             "UPDATE tabs SET position = ?1 WHERE id = ?2 AND document_id = ?3",
             params![position as i64, tab_id, doc_id],
         )?;
     }
+    log_doc_event(
+        conn,
+        doc_id,
+        "tabs_reordered",
+        &json!({ "order": ordered_ids }),
+    )?;
+    Ok(())
+}
+
+pub fn reorder_tabs(conn: &Connection, doc_id: &str, ordered_ids: &[String]) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    reorder_tabs_inner(&tx, doc_id, ordered_ids)?;
     tx.commit()?;
     Ok(())
 }
@@ -503,23 +567,28 @@ pub fn branch_draft(
     })
 }
 
-pub fn rename_draft(conn: &Connection, draft_id: &str, label: &str) -> Result<()> {
+fn rename_draft_inner(conn: &Connection, draft_id: &str, label: &str) -> Result<()> {
     let (doc_id, previous): (String, String) = conn.query_row(
         "SELECT document_id, label FROM drafts WHERE id = ?1",
         params![draft_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
+    conn.execute(
         "UPDATE drafts SET label = ?1 WHERE id = ?2",
         params![label, draft_id],
     )?;
     log_doc_event(
-        &tx,
+        conn,
         &doc_id,
         "draft_renamed",
         &json!({ "draftId": draft_id, "label": label, "previousLabel": previous }),
     )?;
+    Ok(())
+}
+
+pub fn rename_draft(conn: &Connection, draft_id: &str, label: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    rename_draft_inner(&tx, draft_id, label)?;
     tx.commit()?;
     Ok(())
 }
@@ -549,6 +618,111 @@ pub fn set_draft_locked(conn: &Connection, draft_id: &str, locked: bool) -> Resu
     Ok(())
 }
 
+/// Non-destructively restores a draft's content to a past snapshot. Rather
+/// than truncating the event log (the old, destructive `restore_to_snapshot`),
+/// this seeds a *new iteration tip* on the snapshot's draft run with that
+/// snapshot's exact serialized state — exactly how `iterate_draft` plants a
+/// seed. The original draft and its whole history stay intact, so the restore
+/// is reversible (restore forward to any later coordinate) and the timeline
+/// stays append-only, matching the "git reflog" model.
+///
+/// Returns the new tip draft so the caller can make it active.
+fn restore_content_nondestructive_inner(conn: &Connection, snapshot_id: i64) -> Result<DraftMeta> {
+    let (source_draft_id, state_json): (String, String) = conn.query_row(
+        "SELECT draft_id, state_json FROM snapshots WHERE id = ?1",
+        params![snapshot_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let (doc_id, tab_id, source_label): (String, Option<String>, String) = conn.query_row(
+        "SELECT document_id, tab_id, label FROM drafts WHERE id = ?1",
+        params![source_draft_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    // Restore lands on the live tip of the source's run — a new iteration off
+    // whichever draft is currently the run's editable tip — so the restored
+    // content continues the active line rather than reviving a locked older one.
+    let tip = run_tip(conn, &source_draft_id)?;
+    let label = format!("{} (restored)", source_label);
+    let draft_id = Uuid::new_v4().to_string();
+    let now = now_ms();
+    insert_draft(
+        conn,
+        &draft_id,
+        &doc_id,
+        &tab_id,
+        Some(&tip),
+        None,
+        &label,
+        now,
+        Some(&state_json),
+    )?;
+    relock_run(conn, &draft_id)?;
+    log_doc_event(
+        conn,
+        &doc_id,
+        "draft_iterated",
+        &json!({
+            "draftId": draft_id,
+            "label": label,
+            "parentDraftId": tip,
+            "tabId": tab_id,
+            "restoredFromSnapshot": snapshot_id,
+        }),
+    )?;
+    Ok(DraftMeta {
+        id: draft_id,
+        document_id: doc_id,
+        label,
+        created_at: now,
+        is_active: true,
+        tab_id,
+        parent_draft_id: Some(tip),
+        branched_from: None,
+        locked: false,
+    })
+}
+
+pub fn restore_content_nondestructive(conn: &Connection, snapshot_id: i64) -> Result<DraftMeta> {
+    let tx = conn.unchecked_transaction()?;
+    let draft = restore_content_nondestructive_inner(&tx, snapshot_id)?;
+    tx.commit()?;
+    Ok(draft)
+}
+
+/// Walks *down* the iteration chain from `member`'s run head to the newest
+/// live iteration (the run's editable tip). Mirrors `relock_run`'s walk.
+fn run_tip(conn: &Connection, member: &str) -> Result<String> {
+    let head = run_head(conn, member)?;
+    // Track only LIVE drafts: a fully soft-deleted run must not return a dead
+    // draft as the tip (callers attach a new iteration off it). `tip` stays the
+    // newest live draft seen; if none are live we fall back to the head.
+    let mut tip: Option<(String, i64)> = None;
+    let mut current = Some(head.clone());
+    while let Some(id) = current {
+        if let Some(created_at) = conn
+            .query_row(
+                "SELECT created_at FROM drafts WHERE id = ?1 AND deleted_at IS NULL",
+                params![id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+        {
+            if tip.as_ref().is_none_or(|(_, c)| created_at >= *c) {
+                tip = Some((id.clone(), created_at));
+            }
+        }
+        current = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE parent_draft_id = ?1 AND deleted_at IS NULL
+                 ORDER BY created_at ASC LIMIT 1",
+                params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+    }
+    Ok(tip.map(|(id, _)| id).unwrap_or(head))
+}
+
 /// Refuses if `tab_id` is set and the tab would be left with fewer than
 /// `keep` live drafts after a delete (a tab must keep ≥ 1 live draft). `keep`
 /// is the number of drafts the pending delete removes from this tab.
@@ -566,6 +740,21 @@ fn guard_tab_not_emptied(conn: &Connection, tab_id: &Option<String>, removing: i
     Ok(())
 }
 
+fn guard_draft_has_no_live_children(conn: &Connection, draft_id: &str) -> Result<()> {
+    let live_children: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM drafts
+         WHERE (parent_draft_id = ?1 OR branched_from = ?1) AND deleted_at IS NULL",
+        params![draft_id],
+        |row| row.get(0),
+    )?;
+    if live_children > 0 {
+        return Err(refuse(
+            "Cannot delete a draft with live children; orphan or cascade it instead",
+        ));
+    }
+    Ok(())
+}
+
 fn guard_not_storyline_root(
     parent_draft_id: &Option<String>,
     branched_from: &Option<String>,
@@ -576,12 +765,12 @@ fn guard_not_storyline_root(
     Ok(())
 }
 
-/// Soft-deletes a single draft. Its events and snapshots are untouched, so
-/// restoring from the version history brings the text back exactly. Refuses
-/// if it is the storyline root or the tab's last live draft — a draft with
-/// iterations or branches off it can be deleted, but callers must first
-/// detach/relocate or cascade those children (see `orphan_and_delete_draft` /
-/// `cascade_delete_draft`). The draft's run relocks (the tip may move back).
+/// Soft-deletes a single leaf draft. Its events and snapshots are untouched,
+/// so restoring from the version history brings the text back exactly. Refuses
+/// if it is the storyline root, the tab's last live draft, or has live children.
+/// Parent drafts must be deleted with `orphan_and_delete_draft` or
+/// `cascade_delete_draft`, which keep the tree valid. The draft's run relocks
+/// (the tip may move back).
 pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
     let (doc_id, label, tab_id, parent_draft_id, branched_from): (
         String,
@@ -597,6 +786,7 @@ pub fn delete_draft(conn: &Connection, draft_id: &str) -> Result<()> {
         )?;
     guard_not_storyline_root(&parent_draft_id, &branched_from)?;
     guard_tab_not_emptied(conn, &tab_id, 1)?;
+    guard_draft_has_no_live_children(conn, draft_id)?;
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
@@ -730,10 +920,10 @@ pub fn orphan_and_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<
 }
 
 /// Soft-deletes `draft_id` together with every live draft under it
-/// (iterations and branches, transitively). Refuses if that would delete the
-/// storyline root or empty the tab. Returns the deleted ids (the root first)
+/// (iterations and branches, transitively). Refuses if that would empty the
+/// tab or delete the storyline root. Returns the deleted ids (the root first)
 /// so Undo can restore them all.
-pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
+fn cascade_delete_draft_inner(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
     let (doc_id, label, tab_id, parent_draft_id, branched_from): (
         String,
         String,
@@ -774,20 +964,19 @@ pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<Str
 
     guard_tab_not_emptied(conn, &tab_id, subtree.len() as i64)?;
 
-    let tx = conn.unchecked_transaction()?;
     let now = now_ms();
     for id in &subtree {
-        tx.execute(
+        conn.execute(
             "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
             params![now, id],
         )?;
     }
     // The deleted root's old run may have a new tip; relock from its parent.
     if let Some(ref parent) = parent_draft_id {
-        relock_run(&tx, parent)?;
+        relock_run(conn, parent)?;
     }
     log_doc_event(
-        &tx,
+        conn,
         &doc_id,
         "draft_deleted",
         &json!({
@@ -798,8 +987,41 @@ pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<Str
             "ids": subtree,
         }),
     )?;
+    Ok(subtree)
+}
+
+pub fn cascade_delete_draft(conn: &Connection, draft_id: &str) -> Result<Vec<String>> {
+    let tx = conn.unchecked_transaction()?;
+    let subtree = cascade_delete_draft_inner(&tx, draft_id)?;
     tx.commit()?;
     Ok(subtree)
+}
+
+/// Soft-deletes a single draft WITHOUT the last-draft-of-tab guard. Only the
+/// structural restore uses this, to delete the drafts of a tab that is itself
+/// being deleted (where "would empty the tab" is moot). Logs `draft_deleted`
+/// and relocks the run, like the guarded variants.
+fn soft_delete_draft_unguarded_inner(conn: &Connection, draft_id: &str) -> Result<()> {
+    let (doc_id, label, tab_id, parent_draft_id): (String, String, Option<String>, Option<String>) =
+        conn.query_row(
+            "SELECT document_id, label, tab_id, parent_draft_id FROM drafts WHERE id = ?1",
+            params![draft_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+    conn.execute(
+        "UPDATE drafts SET deleted_at = ?1 WHERE id = ?2",
+        params![now_ms(), draft_id],
+    )?;
+    if let Some(ref parent) = parent_draft_id {
+        relock_run(conn, parent)?;
+    }
+    log_doc_event(
+        conn,
+        &doc_id,
+        "draft_deleted",
+        &json!({ "draftId": draft_id, "label": label, "tabId": tab_id, "mode": "simple" }),
+    )?;
+    Ok(())
 }
 
 /// Reverses an `orphan_and_delete_draft` re-parent: restores `draft_id`'s
@@ -823,26 +1045,483 @@ pub fn reparent_draft(
 
 /// Restores a soft-deleted draft. Its run relocks (the restored draft may
 /// reclaim or yield the tip), so lock state stays consistent.
-pub fn restore_draft(conn: &Connection, draft_id: &str) -> Result<()> {
+fn restore_draft_inner(conn: &Connection, draft_id: &str) -> Result<()> {
     let (doc_id, label): (String, String) = conn.query_row(
         "SELECT document_id, label FROM drafts WHERE id = ?1",
         params![draft_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
+    conn.execute(
         "UPDATE drafts SET deleted_at = NULL WHERE id = ?1",
         params![draft_id],
     )?;
-    relock_run(&tx, draft_id)?;
+    relock_run(conn, draft_id)?;
     log_doc_event(
-        &tx,
+        conn,
         &doc_id,
         "draft_restored",
         &json!({ "draftId": draft_id, "label": label }),
     )?;
+    Ok(())
+}
+
+pub fn restore_draft(conn: &Connection, draft_id: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    restore_draft_inner(&tx, draft_id)?;
     tx.commit()?;
     Ok(())
+}
+
+// ── Structural restore (version-history "reflog") ─────────────────
+
+/// The state of one tab or draft reconstructed at a point in time by
+/// replaying `doc_events`.
+#[derive(Default, Clone)]
+struct NodeState {
+    /// Whether the node was in a soft-deleted state at time T. (Existence at T
+    /// is decided from the live row's `created_at`, not from this map, so a
+    /// node created after T is handled even though it has no events ≤ T.)
+    deleted: bool,
+    /// The node's label at time T (last rename ≤ T, else its create label).
+    label: Option<String>,
+}
+
+/// Replays the document's `doc_events` up to and including `as_of_ms` to derive
+/// the live tab/draft structure (existence, deletion, labels) and tab order at
+/// that moment. Returns `(tabs, drafts, tab_order)` keyed by id. Lock state is
+/// intentionally omitted — it is re-derived by `relock_run` after restore.
+///
+/// Tolerates pre-G1/G2 payloads: a `tab_created` without `rootDraftId` simply
+/// doesn't seed the root draft here (the live row's own `created_at` still
+/// gates it during the diff), and a missing `tabs_reordered` history leaves the
+/// order empty (the live `position` order is kept).
+fn reconstruct_structure(
+    conn: &Connection,
+    doc_id: &str,
+    as_of_ms: i64,
+    as_of_event_id: Option<i64>,
+) -> Result<(
+    std::collections::HashMap<String, NodeState>,
+    std::collections::HashMap<String, NodeState>,
+    Vec<String>,
+)> {
+    use std::collections::HashMap;
+    let mut tabs: HashMap<String, NodeState> = HashMap::new();
+    let mut drafts: HashMap<String, NodeState> = HashMap::new();
+    let mut tab_order: Vec<String> = Vec::new();
+
+    let mut stmt = conn.prepare(
+        "SELECT event_type, payload FROM doc_events
+         WHERE document_id = ?1
+           AND (
+               created_at < ?2
+               OR (created_at = ?2 AND ?3 IS NOT NULL AND id <= ?3)
+           )
+         ORDER BY created_at ASC, id ASC",
+    )?;
+    let rows = stmt.query_map(params![doc_id, as_of_ms, as_of_event_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    for row in rows {
+        let (event_type, payload_str) = row?;
+        let p: serde_json::Value = serde_json::from_str(&payload_str).unwrap_or(json!({}));
+        let s = |k: &str| p.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        // Like the TS replay's `if (label)` guard: only treat a non-empty label
+        // as a real value, so a missing/empty label never clears or blanks the
+        // node's label (which would otherwise make the restore rename it to "").
+        let s_label = || s("label").filter(|l| !l.is_empty());
+        match event_type.as_str() {
+            "tab_created" => {
+                if let Some(id) = s("tabId") {
+                    let node = tabs.entry(id.clone()).or_default();
+                    node.deleted = false;
+                    if let Some(label) = s_label() {
+                        node.label = Some(label);
+                    }
+                    if !tab_order.contains(&id) {
+                        tab_order.push(id.clone());
+                    }
+                    // G1: seed the auto-created root draft when recorded.
+                    if let Some(root) = s("rootDraftId") {
+                        let d = drafts.entry(root).or_default();
+                        d.deleted = false;
+                        d.label = Some("main".to_string());
+                    }
+                }
+            }
+            "tab_renamed" => {
+                if let (Some(id), Some(label)) = (s("tabId"), s_label()) {
+                    tabs.entry(id).or_default().label = Some(label);
+                }
+            }
+            "tab_deleted" => {
+                if let Some(id) = s("tabId") {
+                    tabs.entry(id).or_default().deleted = true;
+                }
+            }
+            "tab_restored" => {
+                if let Some(id) = s("tabId") {
+                    tabs.entry(id).or_default().deleted = false;
+                }
+            }
+            "tabs_reordered" => {
+                if let Some(order) = p.get("order").and_then(|v| v.as_array()) {
+                    tab_order = order
+                        .iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect();
+                }
+            }
+            "draft_iterated" | "draft_branched" => {
+                if let Some(id) = s("draftId") {
+                    let node = drafts.entry(id).or_default();
+                    node.deleted = false;
+                    if let Some(label) = s_label() {
+                        node.label = Some(label);
+                    }
+                }
+            }
+            "draft_renamed" => {
+                if let (Some(id), Some(label)) = (s("draftId"), s_label()) {
+                    drafts.entry(id).or_default().label = Some(label);
+                }
+            }
+            "draft_deleted" => {
+                // Simple/orphan delete one id; cascade deletes the `ids` list.
+                if p.get("mode").and_then(|v| v.as_str()) == Some("cascade") {
+                    if let Some(ids) = p.get("ids").and_then(|v| v.as_array()) {
+                        for v in ids {
+                            if let Some(id) = v.as_str() {
+                                drafts.entry(id.to_string()).or_default().deleted = true;
+                            }
+                        }
+                    }
+                } else if let Some(id) = s("draftId") {
+                    drafts.entry(id).or_default().deleted = true;
+                }
+            }
+            "draft_restored" => {
+                if let Some(id) = s("draftId") {
+                    drafts.entry(id).or_default().deleted = false;
+                }
+            }
+            // draft_locked / draft_unlocked / draft_reparented / checkpoint_created:
+            // lock is re-derived; reparent links live on the soft-deleted row;
+            // checkpoints are not structural. All no-ops here.
+            _ => {}
+        }
+    }
+    Ok((tabs, drafts, tab_order))
+}
+
+/// The tab/draft ids whose CREATION is recorded anywhere in the doc-event log
+/// (the FULL log, not just events ≤ T). A row whose `created_at` postdates T
+/// but whose creation was never logged is a legacy row with a backfilled
+/// timestamp — e.g. the #160 migration stamps the backfilled "Main" tab with
+/// the *migration* time, not the document's real age. The rewind must leave
+/// those alone: treating them as "created after T" would try to delete the
+/// document's only tab on any pre-migration coordinate, trip the last-tab
+/// guard, and fail the whole restore.
+fn logged_creations(
+    conn: &Connection,
+    doc_id: &str,
+) -> Result<(
+    std::collections::HashSet<String>,
+    std::collections::HashSet<String>,
+)> {
+    use std::collections::HashSet;
+    let mut tabs: HashSet<String> = HashSet::new();
+    let mut drafts: HashSet<String> = HashSet::new();
+    let mut stmt = conn.prepare(
+        "SELECT event_type, payload FROM doc_events
+         WHERE document_id = ?1
+           AND event_type IN ('tab_created', 'draft_created', 'draft_iterated', 'draft_branched')",
+    )?;
+    let rows = stmt.query_map(params![doc_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (event_type, payload_str) = row?;
+        let p: serde_json::Value = serde_json::from_str(&payload_str).unwrap_or(json!({}));
+        let s = |k: &str| p.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        if event_type == "tab_created" {
+            if let Some(id) = s("tabId") {
+                tabs.insert(id);
+            }
+            if let Some(root) = s("rootDraftId") {
+                drafts.insert(root);
+            }
+        } else if let Some(id) = s("draftId") {
+            drafts.insert(id);
+        }
+    }
+    Ok((tabs, drafts))
+}
+
+/// Non-destructively rewinds the document's tab/draft *structure* to the moment
+/// `as_of_ms`. Reconstructs which tabs/drafts existed (and their labels/order)
+/// at T from the `doc_events` log, then applies the minimal set of forward,
+/// individually-logged operations to reach it — restoring nodes that were live
+/// at T, soft-deleting ones that hadn't been created yet (or had been deleted),
+/// fixing labels, and reordering tabs. Every corrective op is itself a normal
+/// logged operation, so the reflog stays append-only and the rewind is
+/// reversible. Lock state is re-derived by the underlying delete/restore calls.
+///
+/// Callers wrap this in a transaction so a failed corrective op rolls back the
+/// entire rewind.
+fn restore_structure_to_inner(
+    conn: &Connection,
+    doc_id: &str,
+    as_of_ms: i64,
+    as_of_event_id: Option<i64>,
+) -> Result<()> {
+    let (target_tabs, target_drafts, target_order) =
+        reconstruct_structure(conn, doc_id, as_of_ms, as_of_event_id)?;
+    let (logged_tabs, logged_drafts) = logged_creations(conn, doc_id)?;
+
+    // Live tabs/drafts (id, deleted-now, label, created_at). `created_at` lets
+    // us tell "created after T" (must not exist at T) apart from "never logged"
+    // (legacy — leave as-is), which the replay maps alone can't distinguish.
+    let live_tabs: Vec<(String, bool, String, i64)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, deleted_at IS NOT NULL, label, created_at FROM tabs WHERE document_id = ?1",
+        )?;
+        let v = stmt
+            .query_map(params![doc_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, bool>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        v
+    };
+    let live_drafts: Vec<(String, bool, String, i64)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, deleted_at IS NOT NULL, label, created_at FROM drafts WHERE document_id = ?1",
+        )?;
+        let v = stmt
+            .query_map(params![doc_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, bool>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        v
+    };
+
+    // Whether a node should be LIVE at T, given its real creation time and the
+    // replayed delete state: `Some(true/false)` to act, `None` to leave as-is.
+    // - created after T, creation logged → must not exist at T → Some(false).
+    // - created after T, creation NEVER logged → a legacy row whose
+    //   `created_at` is a backfilled migration timestamp, not a real creation
+    //   time → None (leave as-is; see `logged_creations`).
+    // - created by T → live iff the replay didn't have it deleted at T.
+    let should_be_live =
+        |created_at: i64, ever_logged: bool, replayed: Option<&NodeState>| -> Option<bool> {
+            if created_at > as_of_ms {
+                return if ever_logged { Some(false) } else { None };
+            }
+            // Created by T; deleted at T only if a delete event landed by then.
+            Some(replayed.map(|n| !n.deleted).unwrap_or(true))
+        };
+    let tab_should_be_live = |id: &String, created_at: i64| -> Option<bool> {
+        should_be_live(created_at, logged_tabs.contains(id), target_tabs.get(id))
+    };
+    let draft_should_be_live = |id: &String, created_at: i64| -> Option<bool> {
+        should_be_live(
+            created_at,
+            logged_drafts.contains(id),
+            target_drafts.get(id),
+        )
+    };
+
+    // Corrective ops run in a strict RESTORE-then-DELETE order. Doing every
+    // restore first means the `delete_tab` last-tab guard and the
+    // `guard_tab_not_emptied` last-draft guard always see the final live count,
+    // so a delete is never spuriously refused just because a sibling that
+    // should be restored hasn't been processed yet (the old single interleaved
+    // loop made the outcome depend on arbitrary SQLite row order).
+
+    // 1. Restore everything that should be live at T (tabs, then their drafts).
+    for (id, is_deleted, _, created_at) in &live_tabs {
+        if matches!(tab_should_be_live(id, *created_at), Some(true)) && *is_deleted {
+            restore_tab_inner(conn, id)?;
+        }
+    }
+    for (id, is_deleted, _, created_at) in &live_drafts {
+        if matches!(draft_should_be_live(id, *created_at), Some(true)) && *is_deleted {
+            restore_draft_inner(conn, id)?;
+        }
+    }
+
+    // 2. Delete tabs that shouldn't exist at T, together with the drafts of
+    //    theirs that also shouldn't exist at T. Those drafts are deleted
+    //    directly, bypassing the last-draft guard — it would refuse the last
+    //    one (it "empties" a tab we are about to delete anyway), leaving live
+    //    post-T drafts orphaned under a soft-deleted tab. Drafts that WERE
+    //    live at T keep their rows live: that is exactly the state
+    //    `delete_tab` leaves behind (it never touches drafts), so the result
+    //    matches the document's real shape at T. Liveness is re-checked
+    //    against the DB, not `live_drafts`, because step 1 may have just
+    //    restored some of these rows.
+    let mut deleting_tabs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (id, is_deleted, _, created_at) in &live_tabs {
+        if matches!(tab_should_be_live(id, *created_at), Some(false)) && !*is_deleted {
+            deleting_tabs.insert(id.clone());
+        }
+    }
+    let mut just_deleted: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for tab in &deleting_tabs {
+        for (id, _, _, created_at) in &live_drafts {
+            if just_deleted.contains(id)
+                || matches!(draft_should_be_live(id, *created_at), Some(true))
+            {
+                continue;
+            }
+            let live_in_tab = conn
+                .query_row(
+                    "SELECT 1 FROM drafts WHERE id = ?1 AND tab_id = ?2 AND deleted_at IS NULL",
+                    params![id, tab],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            if live_in_tab {
+                soft_delete_draft_unguarded_inner(conn, id)?;
+                just_deleted.insert(id.clone());
+            }
+        }
+        delete_tab_inner(conn, tab)?;
+    }
+
+    // 3. Delete drafts in SURVIVING tabs that shouldn't exist at T. Here the
+    //    last-draft guard stays enforced (the tab lives on, so it must keep
+    //    ≥1 draft). A refusal propagates and aborts the whole restore — the
+    //    caller's transaction rolls everything back — rather than leaving a
+    //    state that is neither T nor now. (After step 1 the tab always
+    //    retains its at-T drafts, so a refusal here means a genuine invariant
+    //    breach, not an ordering artifact.) A cascade removes a whole subtree
+    //    at once; track those to avoid double-logging.
+    for (id, is_deleted, _, created_at) in &live_drafts {
+        if *is_deleted || just_deleted.contains(id) {
+            continue;
+        }
+        if matches!(draft_should_be_live(id, *created_at), Some(false)) {
+            let ids = cascade_delete_draft_inner(conn, id)?;
+            just_deleted.extend(ids);
+        }
+    }
+
+    // 4. Labels: rename any node whose current label differs from T's.
+    for (id, _, label, created_at) in &live_tabs {
+        if let Some(node) = target_tabs.get(id) {
+            if let Some(target) = &node.label {
+                if target != label && matches!(tab_should_be_live(id, *created_at), Some(true)) {
+                    rename_tab_inner(conn, id, target)?;
+                }
+            }
+        }
+    }
+    for (id, _, label, created_at) in &live_drafts {
+        if let Some(node) = target_drafts.get(id) {
+            if let Some(target) = &node.label {
+                if target != label
+                    && !just_deleted.contains(id)
+                    && matches!(draft_should_be_live(id, *created_at), Some(true))
+                {
+                    rename_draft_inner(conn, id, target)?;
+                }
+            }
+        }
+    }
+
+    // 5. Tab order: apply T's order over the tabs that are live now. Read the
+    //    current order too, and only reorder when it actually differs —
+    //    `reorder_tabs` always logs a `tabs_reordered` event, so calling it
+    //    unconditionally would append a spurious "Reordered tabs" coordinate to
+    //    the very log this restore replays, on every restore.
+    if !target_order.is_empty() {
+        let current_order: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM tabs WHERE document_id = ?1 AND deleted_at IS NULL
+                 ORDER BY position ASC, created_at ASC",
+            )?;
+            let v = stmt
+                .query_map(params![doc_id], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>>>()?;
+            v
+        };
+        let live_now: std::collections::HashSet<&String> = current_order.iter().collect();
+        let ordered: Vec<String> = target_order
+            .iter()
+            .filter(|id| live_now.contains(id))
+            .cloned()
+            .collect();
+        if ordered.len() == live_now.len() && !ordered.is_empty() && ordered != current_order {
+            reorder_tabs_inner(conn, doc_id, &ordered)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn restore_structure_to(
+    conn: &Connection,
+    doc_id: &str,
+    as_of_ms: i64,
+    as_of_event_id: Option<i64>,
+) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    restore_structure_to_inner(&tx, doc_id, as_of_ms, as_of_event_id)?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn restore_coordinate_nondestructive(
+    conn: &Connection,
+    doc_id: &str,
+    as_of_ms: i64,
+    as_of_event_id: Option<i64>,
+    snapshot_id: Option<i64>,
+) -> Result<Option<DraftMeta>> {
+    if let Some(id) = snapshot_id {
+        let belongs: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1
+                FROM snapshots s
+                JOIN drafts d ON d.id = s.draft_id
+                WHERE s.id = ?1 AND d.document_id = ?2
+             )",
+            params![id, doc_id],
+            |row| row.get(0),
+        )?;
+        if !belongs {
+            return Err(refuse("Snapshot does not belong to this document"));
+        }
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    restore_structure_to_inner(&tx, doc_id, as_of_ms, as_of_event_id)?;
+    let landing = match snapshot_id {
+        Some(id) => {
+            let draft = restore_content_nondestructive_inner(&tx, id)?;
+            if let Some(tab) = &draft.tab_id {
+                set_active_tab(&tx, doc_id, tab)?;
+                set_active_draft(&tx, tab, &draft.id)?;
+            }
+            Some(draft)
+        }
+        None => None,
+    };
+    tx.commit()?;
+    Ok(landing)
 }
 
 pub fn get_active_draft(conn: &Connection, tab_id: &str) -> Result<Option<String>> {
@@ -958,15 +1637,15 @@ mod tests {
     }
 
     #[test]
-    fn delete_draft_allows_a_parent_now() {
-        // main → v1 → v2; deleting v1 (a non-leaf) used to be refused.
+    fn delete_draft_refuses_live_children() {
+        // main → v1 → v2; deleting v1 directly would leave v2 attached to a
+        // hidden parent. Callers must choose orphan or cascade instead.
         let (conn, _tab, main) = setup();
         let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
-        let _v2 = iterate_draft(&conn, &v1, "v2", None).unwrap().id;
-        // delete_draft itself is the childless primitive; the orphan/cascade
-        // callers handle children. It must still reject the tab's last draft.
-        assert!(delete_draft(&conn, &v1).is_ok());
-        assert!(!is_live(&conn, &v1));
+        let v2 = iterate_draft(&conn, &v1, "v2", None).unwrap().id;
+        assert!(delete_draft(&conn, &v1).is_err());
+        assert!(is_live(&conn, &v1));
+        assert!(is_live(&conn, &v2));
     }
 
     #[test]
@@ -1090,5 +1769,385 @@ mod tests {
         // Back to main → v1 → v2.
         assert_eq!(parent_of(&conn, &v2).as_deref(), Some(v1.as_str()));
         assert!(is_live(&conn, &v1));
+    }
+
+    /// `(created_at, id)` of the most recent doc_event — used as a restore coordinate.
+    fn latest_doc_event_coordinate(conn: &Connection, doc_id: &str) -> (i64, i64) {
+        conn.query_row(
+            "SELECT created_at, id FROM doc_events WHERE document_id = ?1 ORDER BY id DESC LIMIT 1",
+            params![doc_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    fn tab_is_live(conn: &Connection, id: &str) -> bool {
+        conn.query_row(
+            "SELECT deleted_at IS NULL FROM tabs WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, bool>(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn restore_structure_redeletes_a_tab_created_after_t() {
+        // One tab exists at T0; create a second tab; rewind to T0 → the second
+        // tab is soft-deleted (not destroyed), the first stays live.
+        let (conn, tab1, _main) = setup();
+        let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
+        // Ensure a strictly later timestamp for the second tab's create event.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let tab2 = create_tab(&conn, "doc", "Second").unwrap().id;
+
+        restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
+
+        assert!(tab_is_live(&conn, &tab1), "original tab stays live");
+        assert!(
+            !tab_is_live(&conn, &tab2),
+            "tab created after T is soft-deleted"
+        );
+        // Non-destructive: the row still exists.
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM tabs WHERE id = ?1)",
+                params![tab2],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(exists, "soft-deleted tab row is preserved");
+    }
+
+    #[test]
+    fn restore_structure_redeletes_a_tabs_root_draft_too() {
+        // Re-deleting a tab created after T must also soft-delete its root
+        // draft — otherwise a live draft is orphaned under a soft-deleted tab.
+        let (conn, _tab1, _main) = setup();
+        let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let tab2 = create_tab(&conn, "doc", "Second").unwrap().id;
+        let tab2_root: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab2],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
+
+        assert!(!tab_is_live(&conn, &tab2), "tab is soft-deleted");
+        assert!(
+            !is_live(&conn, &tab2_root),
+            "the tab's root draft must not be left live under a deleted tab"
+        );
+    }
+
+    #[test]
+    fn restore_structure_handles_restore_and_delete_in_the_same_tab() {
+        // In one tab: D1 is live at T but later deleted; D2 is an iteration
+        // created after T. Rewind to T → D1 restored, D2 deleted, regardless of
+        // the order the corrective ops happen to visit the rows.
+        let (conn, tab1, main) = setup();
+        // main + an iteration d1 both live at T0.
+        let d1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+        let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        // After T0: iterate again (d2, created after T) and orphan-delete d1.
+        let d2 = iterate_draft(&conn, &d1, "v2", None).unwrap().id;
+        orphan_and_delete_draft(&conn, &d1).unwrap();
+
+        restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
+
+        assert!(is_live(&conn, &main), "main stays live");
+        assert!(is_live(&conn, &d1), "draft live at T is restored");
+        assert!(!is_live(&conn, &d2), "draft created after T is deleted");
+        assert!(tab_is_live(&conn, &tab1), "the tab stays live throughout");
+    }
+
+    #[test]
+    fn restore_structure_revives_a_tab_deleted_after_t() {
+        // Two tabs live at T0; delete the second; rewind to T0 → it's restored.
+        let (conn, _tab1, _main) = setup();
+        let tab2 = create_tab(&conn, "doc", "Second").unwrap().id;
+        let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        delete_tab(&conn, &tab2).unwrap();
+
+        restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
+
+        assert!(tab_is_live(&conn, &tab2), "tab deleted after T is restored");
+    }
+
+    #[test]
+    fn restore_structure_rewinds_a_tab_label() {
+        let (conn, tab1, _main) = setup();
+        let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        rename_tab(&conn, &tab1, "Renamed").unwrap();
+
+        restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
+
+        let label: String = conn
+            .query_row("SELECT label FROM tabs WHERE id = ?1", params![tab1], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(label, "Tab", "label rewound to its value at T");
+    }
+
+    #[test]
+    fn restore_structure_uses_event_id_to_split_same_ms_events() {
+        let (conn, tab1, main) = setup();
+        conn.execute("DELETE FROM doc_events WHERE document_id = 'doc'", [])
+            .unwrap();
+        conn.execute(
+            "UPDATE tabs SET label = 'Renamed', created_at = 0 WHERE id = ?1",
+            params![tab1],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE drafts SET created_at = 0 WHERE id = ?1",
+            params![main],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO doc_events (document_id, event_type, payload, created_at)
+             VALUES ('doc', 'tab_created', ?1, 100)",
+            params![json!({
+                "tabId": tab1,
+                "label": "Tab",
+                "rootDraftId": main,
+                "position": 0,
+            })
+            .to_string()],
+        )
+        .unwrap();
+        let first_event = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO doc_events (document_id, event_type, payload, created_at)
+             VALUES ('doc', 'tab_renamed', ?1, 100)",
+            params![json!({
+                "tabId": tab1,
+                "label": "Renamed",
+                "previousLabel": "Tab",
+            })
+            .to_string()],
+        )
+        .unwrap();
+
+        restore_structure_to(&conn, "doc", 100, Some(first_event)).unwrap();
+
+        let label: String = conn
+            .query_row("SELECT label FROM tabs WHERE id = ?1", params![tab1], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(label, "Tab");
+    }
+
+    #[test]
+    fn restore_structure_rolls_back_when_a_rewind_would_empty_the_document() {
+        let (conn, tab1, main) = setup();
+
+        assert!(restore_structure_to(&conn, "doc", -1, None).is_err());
+
+        assert!(tab_is_live(&conn, &tab1), "failed rewind keeps tab live");
+        assert!(is_live(&conn, &main), "failed rewind keeps draft live");
+    }
+
+    #[test]
+    fn restore_structure_leaves_legacy_backfilled_tabs_alone() {
+        // Pre-#160 documents: the migration backfills a "Main" tab stamped
+        // with the MIGRATION time, so old snapshots predate the tab row's
+        // created_at. A rewind to such a coordinate must leave the
+        // never-logged tab (and so the document) intact instead of trying to
+        // delete it and failing on the last-tab guard.
+        let (conn, tab1, main) = setup();
+        // Simulate the legacy shape: no tab_created was ever logged, the tab
+        // row is stamped "at migration time" (1000), but the draft (and the
+        // coordinate being restored) genuinely predate it.
+        conn.execute("DELETE FROM doc_events WHERE document_id = 'doc'", [])
+            .unwrap();
+        conn.execute(
+            "UPDATE tabs SET created_at = 1000 WHERE id = ?1",
+            params![tab1],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE drafts SET created_at = 500 WHERE id = ?1",
+            params![main],
+        )
+        .unwrap();
+
+        restore_structure_to(&conn, "doc", 600, None).unwrap();
+
+        assert!(tab_is_live(&conn, &tab1), "legacy tab is left as-is");
+        assert!(is_live(&conn, &main), "legacy draft stays live");
+    }
+
+    #[test]
+    fn coordinate_restore_works_for_pre_migration_snapshots() {
+        // End-to-end version of the legacy case: restoring to a snapshot
+        // older than the backfilled tab row must succeed and seed a new tip.
+        let (conn, tab1, main) = setup();
+        conn.execute("DELETE FROM doc_events WHERE document_id = 'doc'", [])
+            .unwrap();
+        conn.execute(
+            "UPDATE tabs SET created_at = 1000 WHERE id = ?1",
+            params![tab1],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE drafts SET created_at = 500 WHERE id = ?1",
+            params![main],
+        )
+        .unwrap();
+        let snap_id: i64 = conn
+            .query_row(
+                "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
+                 VALUES (?1, 3, '{\"doc\":\"old\"}', 600) RETURNING id",
+                params![main],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let landing = restore_coordinate_nondestructive(&conn, "doc", 600, None, Some(snap_id))
+            .unwrap()
+            .expect("content coordinate returns a landing");
+
+        assert!(is_live(&conn, &landing.id), "restored tip is live");
+        assert!(tab_is_live(&conn, &tab1), "legacy tab survives the restore");
+    }
+
+    #[test]
+    fn restore_structure_keeps_at_t_drafts_of_a_redeleted_tab() {
+        // tab2 was deleted at T (its draft rows left live, as delete_tab
+        // does). After T the tab is restored, iterated, and one draft is
+        // orphan-deleted. Rewinding to T must re-delete the tab, delete the
+        // post-T draft, and leave the at-T drafts exactly as they were then:
+        // live rows under the soft-deleted tab. The old code read liveness
+        // captured BEFORE step 1's restores and blanket-deleted every live
+        // draft of the doomed tab, so the outcome depended on each draft's
+        // pre-restore deletion state instead of its state at T.
+        let (conn, _tab1, _main) = setup();
+        let tab2 = create_tab(&conn, "doc", "Second").unwrap().id;
+        let r2: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab2],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let d2 = iterate_draft(&conn, &r2, "v1", None).unwrap().id;
+        delete_tab(&conn, &tab2).unwrap();
+        let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        restore_tab(&conn, &tab2).unwrap();
+        let d3 = iterate_draft(&conn, &d2, "v2", None).unwrap().id;
+        orphan_and_delete_draft(&conn, &d2).unwrap();
+
+        restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
+
+        assert!(!tab_is_live(&conn, &tab2), "tab returns to deleted-at-T");
+        assert!(is_live(&conn, &r2), "at-T draft stays live under the tab");
+        assert!(
+            is_live(&conn, &d2),
+            "at-T draft deleted after T is restored"
+        );
+        assert!(!is_live(&conn, &d3), "post-T draft is deleted");
+    }
+
+    #[test]
+    fn coordinate_restore_rejects_foreign_snapshots_before_mutating() {
+        let (conn, _tab1, _main) = setup();
+        conn.execute(
+            "INSERT INTO documents (id, title, created_at, updated_at)
+             VALUES ('other-doc', 'Other', 0, 0)",
+            [],
+        )
+        .unwrap();
+        let other_tab = create_tab(&conn, "other-doc", "Other").unwrap();
+        let other_draft: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![other_tab.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let foreign_snapshot: i64 = conn
+            .query_row(
+                "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
+                 VALUES (?1, 0, '{\"doc\":\"foreign\"}', 0)
+                 RETURNING id",
+                params![other_draft],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM drafts WHERE document_id = 'doc'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        assert!(
+            restore_coordinate_nondestructive(&conn, "doc", 0, None, Some(foreign_snapshot))
+                .is_err()
+        );
+
+        let after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM drafts WHERE document_id = 'doc'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn restore_content_seeds_a_new_tip_without_deleting_history() {
+        // Build some content history, snapshot it, iterate again, then restore
+        // to the snapshot. The original drafts and snapshot must survive, and a
+        // new tip seeded from the snapshot's state appears.
+        let (conn, _tab, main) = setup();
+        let snap_state = r#"{"doc":"hello"}"#;
+        let snap_id: i64 = conn
+            .query_row(
+                "INSERT INTO snapshots (draft_id, up_to_event_id, state_json, created_at)
+                 VALUES (?1, 0, ?2, 0) RETURNING id",
+                params![main, snap_state],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let v1 = iterate_draft(&conn, &main, "v1", None).unwrap().id;
+
+        let restored = restore_content_nondestructive(&conn, snap_id).unwrap();
+
+        // New tip is a live iteration off the run's previous tip (v1).
+        assert!(is_live(&conn, &restored.id));
+        assert_eq!(parent_of(&conn, &restored.id).as_deref(), Some(v1.as_str()));
+        // History preserved: source draft, v1, and the snapshot all still exist.
+        assert!(is_live(&conn, &main));
+        assert!(is_live(&conn, &v1));
+        let snap_state_now: String = conn
+            .query_row(
+                "SELECT state_json FROM snapshots WHERE id = ?1",
+                params![snap_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(snap_state_now, snap_state);
+        // The new tip is seeded with the snapshot's state (a "Branch point" seed).
+        let seeded: String = conn
+            .query_row(
+                "SELECT state_json FROM snapshots WHERE draft_id = ?1 AND up_to_event_id = -1",
+                params![restored.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(seeded, snap_state);
     }
 }

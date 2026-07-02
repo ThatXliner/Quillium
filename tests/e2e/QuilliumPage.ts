@@ -13,6 +13,8 @@ import { type Locator, type Page, expect } from "@playwright/test";
 export type MockSnapshot = {
     id: number;
     draftId: string;
+    draftLabel?: string;
+    tabId?: string | null;
     upToEventId: number;
     createdAt: number;
     label: string | null;
@@ -26,6 +28,29 @@ export type MockDocEvent = {
     eventType: string;
     payload: string;
     createdAt: number;
+};
+
+export type MockTab = {
+    id: string;
+    documentId: string;
+    tabType: string;
+    label: string;
+    position: number;
+    createdAt: number;
+    deletedAt: number | null;
+};
+
+export type MockDraft = {
+    id: string;
+    documentId: string;
+    label: string;
+    createdAt: number;
+    isActive: boolean;
+    tabId: string | null;
+    parentDraftId: string | null;
+    branchedFrom: string | null;
+    locked: boolean;
+    deletedAt: number | null;
 };
 
 export type TauriMockOptions = {
@@ -47,6 +72,10 @@ export type TauriMockOptions = {
     snapshots: MockSnapshot[];
     /** Pre-seeded document activity records returned by cmd_list_doc_events. */
     docEvents: MockDocEvent[];
+    /** Full tab roster returned by cmd_list_document_structure. */
+    tabs: MockTab[];
+    /** Full draft roster returned by cmd_list_document_structure. */
+    drafts: MockDraft[];
 };
 
 const DEFAULT_OPTIONS: TauriMockOptions = {
@@ -61,6 +90,8 @@ const DEFAULT_OPTIONS: TauriMockOptions = {
     initialDoc: null,
     snapshots: [],
     docEvents: [],
+    tabs: [],
+    drafts: [],
 };
 
 // ── Page object ─────────────────────────────────────────────────────────────
@@ -120,6 +151,8 @@ export class QuilliumPage {
                 initialDoc: string | null;
                 snapshots: MockSnapshot[];
                 docEvents: MockDocEvent[];
+                tabs: MockTab[];
+                drafts: MockDraft[];
             }) => {
                 if (payload.skipTutorial) {
                     localStorage.setItem("quillium_tutorial_seen", "1");
@@ -159,9 +192,7 @@ export class QuilliumPage {
                     locked: boolean;
                     deletedAt: number | null;
                 };
-                let nextTabIndex = 2;
-                let nextDraftIndex = 2;
-                const tabs: MockTab[] = [
+                const defaultTabs: MockTab[] = [
                     {
                         id: "tab-test-1",
                         documentId: "doc-test-1",
@@ -172,7 +203,7 @@ export class QuilliumPage {
                         deletedAt: null,
                     },
                 ];
-                const drafts: MockDraft[] = [
+                const defaultDrafts: MockDraft[] = [
                     {
                         id: "draft-test-1",
                         documentId: "doc-test-1",
@@ -186,6 +217,27 @@ export class QuilliumPage {
                         deletedAt: null,
                     },
                 ];
+                const tabs: MockTab[] =
+                    payload.tabs.length > 0 ? payload.tabs.map((tab) => ({ ...tab })) : defaultTabs;
+                const drafts: MockDraft[] =
+                    payload.drafts.length > 0
+                        ? payload.drafts.map((draft) => ({ ...draft }))
+                        : defaultDrafts;
+                const nextIndex = (ids: string[], prefix: string) =>
+                    Math.max(
+                        1,
+                        ...ids.map((id) =>
+                            id.startsWith(prefix) ? Number(id.slice(prefix.length)) || 0 : 0,
+                        ),
+                    ) + 1;
+                let nextTabIndex = nextIndex(
+                    tabs.map((tab) => tab.id),
+                    "tab-test-",
+                );
+                let nextDraftIndex = nextIndex(
+                    drafts.map((draft) => draft.id),
+                    "draft-test-",
+                );
                 const activeTabByDoc: Record<string, string> = {};
                 const activeDraftByTab: Record<string, string> = {};
 
@@ -495,6 +547,24 @@ export class QuilliumPage {
                         if (cmd === "get_api_key") return payload.apiKey;
 
                         // Version history
+                        if (cmd === "cmd_list_document_snapshots")
+                            return payload.snapshots.map((s) => {
+                                const draft = drafts.find((d) => d.id === s.draftId);
+                                return {
+                                    id: s.id,
+                                    draftId: s.draftId,
+                                    draftLabel: s.draftLabel ?? draft?.label ?? s.draftId,
+                                    tabId: s.tabId ?? draft?.tabId ?? null,
+                                    upToEventId: s.upToEventId,
+                                    createdAt: s.createdAt,
+                                    label: s.label,
+                                };
+                            });
+                        if (cmd === "cmd_list_document_structure")
+                            return {
+                                tabs: tabs.map(({ deletedAt: _deletedAt, ...tab }) => tab),
+                                drafts: drafts.map(({ deletedAt: _deletedAt, ...draft }) => draft),
+                            };
                         if (cmd === "cmd_list_snapshots")
                             return payload.snapshots.map((s) => ({
                                 id: s.id,
@@ -519,6 +589,8 @@ export class QuilliumPage {
                             return null;
                         }
                         if (cmd === "cmd_restore_to_snapshot") return null;
+                        if (cmd === "cmd_restore_to_coordinate")
+                            return { tabId: null, draftId: null };
                         if (cmd === "cmd_get_snapshot_storage_size") {
                             // Return sum of state_json byte lengths for mock snapshots
                             return payload.snapshots.reduce(
@@ -591,6 +663,8 @@ export class QuilliumPage {
                 initialDoc: opts.initialDoc,
                 snapshots: opts.snapshots,
                 docEvents: opts.docEvents,
+                tabs: opts.tabs,
+                drafts: opts.drafts,
             },
         );
     }

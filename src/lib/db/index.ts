@@ -11,10 +11,13 @@ import type {
     AppendEventResult,
     DocEventRecord,
     DocumentMeta,
+    DocumentSnapshotMeta,
+    DocumentStructure,
     DraftMeta,
     EventRecord,
     LoadResult,
     ReparentEntry,
+    RestoreLanding,
     SearchHit,
     SnapshotMeta,
     TabMeta,
@@ -220,6 +223,14 @@ export async function listDocEvents(docId: string): Promise<DocEventRecord[]> {
     return invoke<DocEventRecord[]>("cmd_list_doc_events", { docId });
 }
 
+/**
+ * The document's full tab/draft roster INCLUDING soft-deleted rows — the
+ * universe the version-history preview map rewinds over.
+ */
+export async function listDocumentStructure(docId: string): Promise<DocumentStructure> {
+    return invoke<DocumentStructure>("cmd_list_document_structure", { docId });
+}
+
 export async function getActiveTab(docId: string): Promise<string | null> {
     return invoke<string | null>("cmd_get_active_tab", { docId });
 }
@@ -270,9 +281,8 @@ export async function setDraftLocked(draftId: string, locked: boolean): Promise<
 
 /**
  * Soft-deletes a single draft (restorable). Rejects only if it is the tab's
- * last live draft. A draft with children must be deleted via
- * `orphanAndDeleteDraft` or `cascadeDeleteDraft` (this primitive leaves its
- * children dangling otherwise).
+ * last live draft or has live children. A draft with children must be deleted
+ * via `orphanAndDeleteDraft` or `cascadeDeleteDraft` so the tree stays valid.
  */
 export async function deleteDraft(draftId: string): Promise<void> {
     return invoke<void>("cmd_delete_draft", { draftId });
@@ -382,6 +392,15 @@ export async function listSnapshots(draftId: string): Promise<SnapshotMeta[]> {
     return invoke<SnapshotMeta[]>("cmd_list_snapshots", { draftId });
 }
 
+/**
+ * Lists every snapshot across a whole document — all drafts, including
+ * soft-deleted ones — for the document-wide version-history timeline. Excludes
+ * internal "Branch point" seeds. Newest first.
+ */
+export async function listDocumentSnapshots(docId: string): Promise<DocumentSnapshotMeta[]> {
+    return invoke<DocumentSnapshotMeta[]>("cmd_list_document_snapshots", { docId });
+}
+
 /** Returns the state_json blob for a specific snapshot, or null if not found. */
 export async function loadSnapshotState(snapshotId: number): Promise<string | null> {
     return invoke<string | null>("cmd_load_snapshot_state", { snapshotId });
@@ -393,6 +412,28 @@ export async function labelSnapshot(snapshotId: number, label: string): Promise<
 
 export async function restoreToSnapshot(draftId: string, snapshotId: number): Promise<void> {
     return invoke<void>("cmd_restore_to_snapshot", { draftId, snapshotId });
+}
+
+/**
+ * Non-destructively restores the whole document to a timeline coordinate (the
+ * "git reflog" reset): rewinds the tab/draft structure to `asOfMs`, and — for a
+ * content coordinate — restores the relevant draft's content as a new iteration
+ * tip. Nothing is deleted; later coordinates remain in the timeline. Pass
+ * `snapshotId` for a content coordinate, or null for a purely structural one.
+ * Returns where the editor should land (empty for a structural-only restore).
+ */
+export async function restoreToCoordinate(
+    docId: string,
+    asOfMs: number,
+    asOfEventId: number | null,
+    snapshotId: number | null,
+): Promise<RestoreLanding> {
+    return invoke<RestoreLanding>("cmd_restore_to_coordinate", {
+        docId,
+        asOfMs,
+        asOfEventId,
+        snapshotId,
+    });
 }
 
 /** Returns the auto-prune retention in days, or null if disabled. */
