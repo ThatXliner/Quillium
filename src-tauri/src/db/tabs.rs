@@ -1361,12 +1361,16 @@ fn restore_structure_to_inner(
         }
     }
 
-    // 2. Delete tabs that shouldn't exist at T, together with all their drafts.
-    //    A tab created after T has all its drafts created after T too; the
-    //    last-draft guard would refuse the cascade (it would "empty" a tab we
-    //    are about to delete anyway), leaving live drafts orphaned under a
-    //    soft-deleted tab. So soft-delete the tab's drafts directly here,
-    //    bypassing that guard, then delete the tab.
+    // 2. Delete tabs that shouldn't exist at T, together with the drafts of
+    //    theirs that also shouldn't exist at T. Those drafts are deleted
+    //    directly, bypassing the last-draft guard — it would refuse the last
+    //    one (it "empties" a tab we are about to delete anyway), leaving live
+    //    post-T drafts orphaned under a soft-deleted tab. Drafts that WERE
+    //    live at T keep their rows live: that is exactly the state
+    //    `delete_tab` leaves behind (it never touches drafts), so the result
+    //    matches the document's real shape at T. Liveness is re-checked
+    //    against the DB, not `live_drafts`, because step 1 may have just
+    //    restored some of these rows.
     let mut deleting_tabs: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (id, is_deleted, _, created_at) in &live_tabs {
         if matches!(tab_should_be_live(id, *created_at), Some(false)) && !*is_deleted {
@@ -1375,19 +1379,21 @@ fn restore_structure_to_inner(
     }
     let mut just_deleted: std::collections::HashSet<String> = std::collections::HashSet::new();
     for tab in &deleting_tabs {
-        for (id, is_deleted, _, _) in &live_drafts {
-            if *is_deleted || just_deleted.contains(id) {
+        for (id, _, _, created_at) in &live_drafts {
+            if just_deleted.contains(id)
+                || matches!(draft_should_be_live(id, *created_at), Some(true))
+            {
                 continue;
             }
-            let in_tab = conn
+            let live_in_tab = conn
                 .query_row(
-                    "SELECT 1 FROM drafts WHERE id = ?1 AND tab_id = ?2",
+                    "SELECT 1 FROM drafts WHERE id = ?1 AND tab_id = ?2 AND deleted_at IS NULL",
                     params![id, tab],
                     |_| Ok(()),
                 )
                 .optional()?
                 .is_some();
-            if in_tab {
+            if live_in_tab {
                 soft_delete_draft_unguarded_inner(conn, id)?;
                 just_deleted.insert(id.clone());
             }
@@ -1396,9 +1402,13 @@ fn restore_structure_to_inner(
     }
 
     // 3. Delete drafts in SURVIVING tabs that shouldn't exist at T. Here the
-    //    last-draft guard is legitimate (the tab stays, so it must keep ≥1
-    //    draft), so a refused cascade is correctly skipped. A cascade removes a
-    //    whole subtree at once; track those to avoid double-logging.
+    //    last-draft guard stays enforced (the tab lives on, so it must keep
+    //    ≥1 draft). A refusal propagates and aborts the whole restore — the
+    //    caller's transaction rolls everything back — rather than leaving a
+    //    state that is neither T nor now. (After step 1 the tab always
+    //    retains its at-T drafts, so a refusal here means a genuine invariant
+    //    breach, not an ordering artifact.) A cascade removes a whole subtree
+    //    at once; track those to avoid double-logging.
     for (id, is_deleted, _, created_at) in &live_drafts {
         if *is_deleted || just_deleted.contains(id) {
             continue;
@@ -2008,6 +2018,44 @@ mod tests {
 
         assert!(is_live(&conn, &landing.id), "restored tip is live");
         assert!(tab_is_live(&conn, &tab1), "legacy tab survives the restore");
+    }
+
+    #[test]
+    fn restore_structure_keeps_at_t_drafts_of_a_redeleted_tab() {
+        // tab2 was deleted at T (its draft rows left live, as delete_tab
+        // does). After T the tab is restored, iterated, and one draft is
+        // orphan-deleted. Rewinding to T must re-delete the tab, delete the
+        // post-T draft, and leave the at-T drafts exactly as they were then:
+        // live rows under the soft-deleted tab. The old code read liveness
+        // captured BEFORE step 1's restores and blanket-deleted every live
+        // draft of the doomed tab, so the outcome depended on each draft's
+        // pre-restore deletion state instead of its state at T.
+        let (conn, _tab1, _main) = setup();
+        let tab2 = create_tab(&conn, "doc", "Second").unwrap().id;
+        let r2: String = conn
+            .query_row(
+                "SELECT id FROM drafts WHERE tab_id = ?1",
+                params![tab2],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let d2 = iterate_draft(&conn, &r2, "v1", None).unwrap().id;
+        delete_tab(&conn, &tab2).unwrap();
+        let (t0, event_id) = latest_doc_event_coordinate(&conn, "doc");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        restore_tab(&conn, &tab2).unwrap();
+        let d3 = iterate_draft(&conn, &d2, "v2", None).unwrap().id;
+        orphan_and_delete_draft(&conn, &d2).unwrap();
+
+        restore_structure_to(&conn, "doc", t0, Some(event_id)).unwrap();
+
+        assert!(!tab_is_live(&conn, &tab2), "tab returns to deleted-at-T");
+        assert!(is_live(&conn, &r2), "at-T draft stays live under the tab");
+        assert!(
+            is_live(&conn, &d2),
+            "at-T draft deleted after T is restored"
+        );
+        assert!(!is_live(&conn, &d3), "post-T draft is deleted");
     }
 
     #[test]
