@@ -268,6 +268,33 @@ async function installMock(page: Page, options: MockOptions = {}) {
                 if (cmd === "cmd_load_snapshot_state") {
                     return snapshots.find((s) => s.id === args.snapshotId)?.stateJson ?? null;
                 }
+                if (cmd === "cmd_list_document_snapshots") {
+                    return snapshots
+                        .filter(
+                            (s) =>
+                                drafts.find((d) => d.id === s.draftId)?.documentId === args.docId,
+                        )
+                        .sort((a, b) => b.createdAt - a.createdAt)
+                        .map((s) => {
+                            const draft = drafts.find((d) => d.id === s.draftId);
+                            return {
+                                id: s.id,
+                                draftId: s.draftId,
+                                draftLabel: draft?.label ?? s.draftId,
+                                tabId: draft?.tabId ?? null,
+                                upToEventId: s.upToEventId,
+                                createdAt: s.createdAt,
+                                label: s.label,
+                            };
+                        });
+                }
+                if (cmd === "cmd_list_doc_events") return [];
+                if (cmd === "cmd_list_document_structure") {
+                    return {
+                        tabs: tabs.filter((t) => t.documentId === args.docId),
+                        drafts: drafts.filter((d) => d.documentId === args.docId),
+                    };
+                }
                 if (cmd === "cmd_get_snapshot_storage_size") return 0;
                 if (cmd === "cmd_get_snapshot_retention") return null;
                 if (cmd === "cmd_set_snapshot_retention") return null;
