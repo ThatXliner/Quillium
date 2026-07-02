@@ -137,7 +137,7 @@ test.describe("dictionary popover", () => {
         await expectPopoverHidden(page);
     });
 
-    test("synonym click replaces word in editor", async ({ page }) => {
+    test("synonym click opens a stacked lookup whose Replace swaps the word", async ({ page }) => {
         await mockDictionaryApi(page);
         const q = new QuilliumPage(page);
         await q.init();
@@ -145,7 +145,13 @@ test.describe("dictionary popover", () => {
         await openDictionaryOn(q, "helpful");
         await expectPopoverVisible(page);
 
+        // Clicking a synonym chip explores it in a stacked lookup card…
         await page.locator(".dictionary-popover button", { hasText: "useful" }).first().click();
+        const stacked = page.locator(".dictionary-popover").last();
+        await expect(stacked).toContainText("useful");
+
+        // …and its Replace button swaps the word in the editor.
+        await stacked.getByRole("button", { name: "Replace" }).click();
         await q.expectEditorText("useful");
     });
 
