@@ -41,6 +41,7 @@ import {
 import Kbd from "$lib/ui/Kbd.svelte";
 import { ArrowLeft, BookmarkPlus, ChevronRight, Clock, RotateCcw } from "lucide-svelte";
 import { onMount } from "svelte";
+import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import PreviewPane from "./history/PreviewPane.svelte";
 import TimelinePanel from "./history/TimelinePanel.svelte";
@@ -237,6 +238,15 @@ async function loadContent(structure?: { tabs: TabMeta[]; drafts: DraftMeta[] })
         previewCurrentJson = currentJson;
         previewPreviousText = docTextFromStateJson(previousJson);
         previewHasContent = true;
+    } catch (e) {
+        // Called from event handlers — swallow instead of leaking an
+        // unhandled rejection; show the empty-content state.
+        console.error("[VersionHistory] preview load failed:", e);
+        if (token === previewToken) {
+            previewCurrentJson = null;
+            previewPreviousText = "";
+            previewHasContent = false;
+        }
     } finally {
         if (token === previewToken) previewLoading = false;
     }
@@ -284,6 +294,12 @@ async function handleRestore() {
     } catch (e) {
         confirmingRestore = false;
         console.error("[VersionHistory] restore failed:", e);
+        // Restores can be legitimately refused (e.g. rewinding to before the
+        // document existed rolls back on the last-tab guard) — without a
+        // toast, the confirm button silently resetting is the only signal.
+        toast.error("Restore failed", {
+            description: e instanceof Error ? e.message : String(e),
+        });
         posthog.captureException(e instanceof Error ? e : new Error(String(e)));
         return;
     }
