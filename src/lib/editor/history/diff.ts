@@ -40,18 +40,59 @@ function tokenize(text: string): string[] {
  * tokens of the same type are coalesced into one segment. An empty `before`
  * yields all-add; an empty `after` yields all-del.
  *
- * Uses the classic LCS dynamic-program, capped so very large documents fall
- * back to an undecorated current preview instead of locking the renderer.
+ * The common prefix and suffix are trimmed before the LCS dynamic-program
+ * runs, so the O(n·m) table covers only the CHANGED middle — a small edit in
+ * a long document stays cheap regardless of document length. If the changed
+ * middle alone still exceeds the cap (a wholesale rewrite), the middle falls
+ * back to one coarse del+add pair: still truthful ("all of this was
+ * replaced"), unlike pretending nothing changed.
  */
 export function wordDiff(before: string, after: string): DiffSegment[] {
     const a = tokenize(before);
     const b = tokenize(after);
+
+    // Trim the common prefix/suffix; only the middle needs the LCS. The
+    // suffix scan is bounded so it never overlaps the prefix.
+    let start = 0;
+    while (start < a.length && start < b.length && a[start] === b[start]) start++;
+    let end = 0;
+    while (
+        end < a.length - start &&
+        end < b.length - start &&
+        a[a.length - 1 - end] === b[b.length - 1 - end]
+    )
+        end++;
+
+    const aMid = a.slice(start, a.length - end);
+    const bMid = b.slice(start, b.length - end);
+    const raw: DiffSegment[] = [];
+    if (start > 0) raw.push({ type: "same", text: a.slice(0, start).join("") });
+    diffTokens(aMid, bMid, raw);
+    if (end > 0) raw.push({ type: "same", text: a.slice(a.length - end).join("") });
+
+    // Coalesce adjacent same-type runs so the renderer emits fewer nodes.
+    const out: DiffSegment[] = [];
+    for (const seg of raw) {
+        const last = out[out.length - 1];
+        if (last && last.type === seg.type) last.text += seg.text;
+        else out.push({ ...seg });
+    }
+    return out;
+}
+
+/** LCS over the trimmed middle, appending same/del/add tokens to `raw`. */
+function diffTokens(a: string[], b: string[], raw: DiffSegment[]): void {
     const n = a.length;
     const m = b.length;
     const maxCells = 1_000_000;
 
+    if (n === 0 && m === 0) return;
     if (n * m > maxCells) {
-        return after ? [{ type: "same", text: after }] : [];
+        // Wholesale rewrite: one coarse replacement instead of an O(n·m)
+        // table that would lock the renderer.
+        if (n > 0) raw.push({ type: "del", text: a.join("") });
+        if (m > 0) raw.push({ type: "add", text: b.join("") });
+        return;
     }
 
     // lcs[i][j] = length of the longest common subsequence of a[i..] and b[j..].
@@ -64,7 +105,6 @@ export function wordDiff(before: string, after: string): DiffSegment[] {
     }
 
     // Walk the table, emitting same/del/add tokens.
-    const raw: DiffSegment[] = [];
     let i = 0;
     let j = 0;
     while (i < n && j < m) {
@@ -82,13 +122,4 @@ export function wordDiff(before: string, after: string): DiffSegment[] {
     }
     while (i < n) raw.push({ type: "del", text: a[i++] });
     while (j < m) raw.push({ type: "add", text: b[j++] });
-
-    // Coalesce adjacent same-type runs so the renderer emits fewer nodes.
-    const out: DiffSegment[] = [];
-    for (const seg of raw) {
-        const last = out[out.length - 1];
-        if (last && last.type === seg.type) last.text += seg.text;
-        else out.push({ ...seg });
-    }
-    return out;
 }

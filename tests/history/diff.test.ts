@@ -89,9 +89,37 @@ describe("wordDiff", () => {
         expect(rebuiltAfter).toBe("line one\nline 2");
     });
 
-    it("falls back instead of allocating a huge LCS table", () => {
+    it("diffs a small edit in a long document (prefix/suffix trimming)", () => {
+        // Far beyond the raw LCS cap — but only one word changed, so the
+        // trimmed middle is tiny and the diff must still be word-precise.
+        const words = Array.from({ length: 5000 }, (_, i) => `word${i}`);
+        const before = words.join(" ");
+        const changed = [...words];
+        changed[2500] = "CHANGED";
+        const after = changed.join(" ");
+
+        const segs = wordDiff(before, after);
+
+        expect(text(segs, "del")).toBe("word2500");
+        expect(text(segs, "add")).toBe("CHANGED");
+        const rebuiltAfter = segs
+            .filter((s) => s.type !== "del")
+            .map((s) => s.text)
+            .join("");
+        expect(rebuiltAfter).toBe(after);
+    });
+
+    it("represents a wholesale rewrite as one del+add, never as unchanged", () => {
+        // Middle exceeds the LCS cap with no common prefix/suffix: the
+        // fallback must still show "replaced", not silently render the new
+        // text as if nothing changed.
         const before = Array.from({ length: 1100 }, (_, i) => `before${i}`).join(" ");
         const after = Array.from({ length: 1100 }, (_, i) => `after${i}`).join(" ");
-        expect(wordDiff(before, after)).toEqual([{ type: "same", text: after }]);
+
+        const segs = wordDiff(before, after);
+
+        expect(text(segs, "del")).toBe(before);
+        expect(text(segs, "add")).toBe(after);
+        expect(text(segs, "same")).toBe("");
     });
 });
