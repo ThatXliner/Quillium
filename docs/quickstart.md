@@ -20,16 +20,16 @@ cd Quillium
 bun install
 
 # Run in browser (faster iteration, no Tauri features)
-bun run dev
+bun run desktop:dev
 
 # Run as desktop app (full features)
-bun run tauri dev
+bun run desktop:tauri:dev
 ```
 
 ## Project Structure at a Glance
 
 ```
-src/
+packages/desktop/src/
 ├── routes/           # SvelteKit pages (/, /library, /history, /authorship)
 ├── lib/
 │   ├── editor/       # CodeMirror setup, extensions, plugins
@@ -37,7 +37,7 @@ src/
 │   ├── ai/           # AI sidebar modes
 │   ├── collab/       # Real-time collaboration (Yjs)
 │   └── db/           # Tauri command wrappers
-src-tauri/src/        # Rust backend (SQLite, keychain, menu)
+packages/desktop/src-tauri/src/        # Rust backend (SQLite, keychain, menu)
 ```
 
 ## The Mental Model
@@ -73,7 +73,7 @@ src-tauri/src/        # Rust backend (SQLite, keychain, menu)
 
 ### Adding a new annotation feature
 
-1. Define types in `src/lib/editor/plugins/annotations/models.ts`
+1. Define types in `packages/desktop/src/lib/editor/plugins/annotations/models.ts`
 2. Add StateEffect in `annotationField.ts`
 3. Handle in `annotationField.update()` Phase 2
 4. Add inversion in `invertedAnnotationFieldEffects`
@@ -81,15 +81,15 @@ src-tauri/src/        # Rust backend (SQLite, keychain, menu)
 
 ### Adding a new AI mode
 
-1. Create component in `src/lib/ai/`
+1. Create component in `packages/desktop/src/lib/ai/`
 2. Add tab in `AISidebar.svelte`
 3. Add stream handler in `clientStreams.ts` if needed
 
 ### Adding a Tauri command
 
-1. Add Rust function in `src-tauri/src/lib.rs` or appropriate module
+1. Add Rust function in `packages/desktop/src-tauri/src/lib.rs` or appropriate module
 2. Register in `tauri::Builder`
-3. Add TypeScript wrapper in `src/lib/db/index.ts`
+3. Add TypeScript wrapper in `packages/desktop/src/lib/db/index.ts`
 
 ### Adding a keybinding
 
@@ -100,19 +100,19 @@ src-tauri/src/        # Rust backend (SQLite, keychain, menu)
 
 | File | What it does |
 |------|--------------|
-| `src/lib/editor/Editor.svelte` | Mounts CodeMirror, sets up all extensions |
-| `src/lib/editor/extensions.ts` | The extension stack |
-| `src/lib/editor/listeners.ts` | Persistence + store sync |
-| `src/lib/editor/plugins/annotations/annotationField.ts` | THE core state management |
-| `src/lib/stores.ts` | All Svelte stores |
-| `src/routes/+page.svelte` | Main editor page, modal rendering |
+| `packages/desktop/src/lib/editor/Editor.svelte` | Mounts CodeMirror, sets up all extensions |
+| `packages/desktop/src/lib/editor/extensions.ts` | The extension stack |
+| `packages/desktop/src/lib/editor/listeners.ts` | Persistence + store sync |
+| `packages/desktop/src/lib/editor/plugins/annotations/annotationField.ts` | THE core state management |
+| `packages/desktop/src/lib/stores.ts` | All Svelte stores |
+| `packages/desktop/src/routes/+page.svelte` | Main editor page, modal rendering |
 
 ## Running Tests
 
 ```bash
-bun run test:run              # Unit tests
-bun run test:e2e              # E2E tests (headless)
-bun run test:e2e:headed       # E2E with browser window
+bun run desktop:test:run              # Unit tests
+bun run desktop:test:e2e              # E2E tests (headless)
+bun run desktop:test:e2e:headed       # E2E with browser window
 ```
 
 ## Code Style

@@ -10,12 +10,18 @@
     "ignore": [
       ".svelte-kit/**",
       "build/**",
+      "dist/**",
       "package/**",
       "playwright-report/**",
       "test-results/**",
-      "src-tauri/target/**",
-      "src-tauri/gen/**",
-      "src/lib/editor/plugins/dont-use-for-now-history/**",
+      "packages/*/.svelte-kit/**",
+      "packages/*/build/**",
+      "packages/*/coverage/**",
+      "packages/*/dist/**",
+      "packages/*/.vercel/**",
+      "packages/desktop/src-tauri/target/**",
+      "packages/desktop/src-tauri/gen/**",
+      "packages/desktop/src/lib/editor/plugins/dont-use-for-now-history/**",
       ".worktrees/**"
     ]
   },
@@ -63,7 +69,7 @@
       }
     },
     {
-      "include": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "include": ["tests/**/*.ts", "tests/**/*.tsx", "packages/*/tests/**/*.ts"],
       "linter": {
         "rules": {
           "style": {

@@ -1,11 +1,15 @@
 .DS_Store
 node_modules
-/build
-/.svelte-kit
-/package
+build
+.svelte-kit
+package
+dist
+.output
+.vercel
 .env
 .env.*
 !.env.example
+!packages/*/.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 playwright-report/
@@ -13,6 +17,5 @@ test-results/
 coverage/
 tests/e2e/screenshots/
 .superpowers/
-src-tauri/embedded.provisionprofile
+packages/desktop/src-tauri/embedded.provisionprofile
 .planning/
-coverage/

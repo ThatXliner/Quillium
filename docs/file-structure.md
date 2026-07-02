@@ -2,7 +2,7 @@
 
 Complete source tree with file purposes.
 
-## Frontend (`src/`)
+## Desktop Frontend (`packages/desktop/src/`)
 
 ```
 src/
@@ -178,10 +178,10 @@ src/
 │       └── +page.svelte         # Authorship/provenance playback page
 ```
 
-## Tauri Backend (`src-tauri/src/`)
+## Tauri Backend (`packages/desktop/src-tauri/src/`)
 
 ```
-src-tauri/src/
+packages/desktop/src-tauri/src/
 ├── lib.rs                       # Command registration + native app menu
 ├── main.rs                      # Entry point
 ├── keychain.rs                  # OS keychain for API key storage
@@ -201,9 +201,9 @@ src-tauri/src/
 
 | File | Purpose |
 |------|---------|
-| `static/logo.svg` | Quill mark on transparent background |
-| `static/icon.svg` | Source of truth for app icon |
-| `src-tauri/icons/Quillium.png` | Pre-rendered 512×512 PNG |
-| `src-tauri/icons/*` | Generated platform icons |
+| `packages/desktop/static/logo.svg` | Quill mark on transparent background |
+| `packages/desktop/static/icon.svg` | Source of truth for app icon |
+| `packages/desktop/src-tauri/icons/Quillium.png` | Pre-rendered 512×512 PNG |
+| `packages/desktop/src-tauri/icons/*` | Generated platform icons |
 
-To regenerate icons: `bun run icons`
+To regenerate icons: `bun run desktop:icons`

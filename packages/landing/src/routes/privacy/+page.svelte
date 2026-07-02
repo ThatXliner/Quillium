@@ -1,0 +1,637 @@
+<script lang="ts">
+import Nav from "$lib/components/Nav.svelte";
+import Footer from "$lib/components/Footer.svelte";
+import { Clock, Star, Lock, Globe, AlignLeft, Mail } from "@lucide/svelte";
+
+let activeTab: "plain" | "legal" = $state("plain");
+</script>
+
+<svelte:head>
+	<title>Privacy Policy – Quillium</title>
+	<meta
+		name="description"
+		content="Quillium's privacy policy — what data we collect, how we use it, and your rights."
+	/>
+	<link rel="canonical" href="https://quillium.bryanhu.com/privacy" />
+
+	<!-- Open Graph -->
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="https://quillium.bryanhu.com/privacy" />
+	<meta property="og:title" content="Privacy Policy – Quillium" />
+	<meta
+		property="og:description"
+		content="Quillium's privacy policy — what data we collect, how we use it, and your rights."
+	/>
+	<meta property="og:site_name" content="Quillium" />
+
+	<!-- Twitter Card -->
+	<meta name="twitter:card" content="summary" />
+	<meta name="twitter:title" content="Privacy Policy – Quillium" />
+	<meta
+		name="twitter:description"
+		content="Quillium's privacy policy — what data we collect, how we use it, and your rights."
+	/>
+
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link
+		href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap"
+		rel="stylesheet"
+	/>
+</svelte:head>
+
+<Nav />
+
+<main class="min-h-screen px-6 pt-32 pb-20">
+	<div class="mx-auto max-w-[720px]">
+		<header class="mb-12">
+			<p class="section-eyebrow">Legal</p>
+			<h1
+				class="mb-2 font-[Newsreader,Georgia,serif] text-[clamp(1.75rem,4vw,2.5rem)] leading-[1.15] font-normal tracking-[-0.02em] text-[color:var(--text-strong)] italic"
+			>
+				Privacy Policy
+			</h1>
+			<p class="mb-8 text-[0.8rem] text-[color:var(--text-faint)]">
+				Last updated: April 8, 2026 · Quillium Beta
+			</p>
+
+			<div
+				class="inline-flex gap-0.5 rounded-full bg-[color:var(--surface)] p-1 shadow-sm backdrop-blur-md"
+			>
+				<button
+					role="tab"
+					aria-selected={activeTab === 'plain'}
+					class="tab-btn"
+					class:active={activeTab === 'plain'}
+					onclick={() => (activeTab = 'plain')}
+				>
+					Plain English
+				</button>
+				<button
+					role="tab"
+					aria-selected={activeTab === 'legal'}
+					class="tab-btn"
+					class:active={activeTab === 'legal'}
+					onclick={() => (activeTab = 'legal')}
+				>
+					Full Legal
+				</button>
+			</div>
+		</header>
+
+		{#if activeTab === 'plain'}
+			<div role="tabpanel">
+				<div
+					class="mb-8 flex items-start gap-3 rounded-xl border border-[#3b82f6]/15 bg-[#3b82f6]/5 px-5 py-4"
+				>
+					<span
+						class="shrink-0 rounded bg-[#3b82f6]/10 px-2 py-0.5 text-[0.65rem] font-bold tracking-[0.08em] text-[#3b82f6] uppercase"
+						>TL;DR</span
+					>
+					<p class="m-0 text-[0.875rem] leading-relaxed text-[color:var(--text-strong)]">
+						We collect anonymous usage analytics and send error reports automatically. If you use AI
+						features, your text goes directly to your chosen AI provider—never through us. We don't
+						know who you are, and we never sell your data.
+					</p>
+				</div>
+
+				<div class="grid gap-3">
+					<div
+						class="flex gap-4 rounded-xl bg-[color:var(--surface)] p-5 shadow-md inset-shadow-sm inset-shadow-white backdrop-blur-md"
+					>
+						<div
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]/8"
+						>
+							<Clock size={20} strokeWidth={1.5} color="#3b82f6" />
+						</div>
+						<div>
+							<h3 class="mb-1 text-[0.875rem] font-semibold text-[color:var(--text-strong)]">What we collect</h3>
+							<p class="m-0 text-[0.8rem] leading-relaxed text-[color:var(--text-soft)]">
+								Anonymous usage analytics—things like which features you use, session length, and
+								device type. We also collect anonymous session recordings of UI interactions (your
+								editor text is masked by default) and automatic error reports. We use PostHog for
+								all of this. <strong class="text-[color:var(--text-strong)]">No names, emails, or login info.</strong>
+							</p>
+						</div>
+					</div>
+
+					<div
+						class="flex gap-4 rounded-xl bg-[color:var(--surface)] p-5 shadow-md inset-shadow-sm inset-shadow-white backdrop-blur-md"
+					>
+						<div
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]/8"
+						>
+							<Star size={20} strokeWidth={1.5} color="#3b82f6" />
+						</div>
+						<div>
+							<h3 class="mb-1 text-[0.875rem] font-semibold text-[color:var(--text-strong)]">Why we collect it</h3>
+							<p class="m-0 text-[0.8rem] leading-relaxed text-[color:var(--text-soft)]">
+								Analytics help us understand usage, fix bugs, and improve the app. Email is used
+								only to send you beta access, updates, and respond to feedback. No ads or profiling.
+							</p>
+						</div>
+					</div>
+
+					<div
+						class="flex gap-4 rounded-xl bg-[color:var(--surface)] p-5 shadow-md inset-shadow-sm inset-shadow-white backdrop-blur-md"
+					>
+						<div
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]/8"
+						>
+							<Lock size={20} strokeWidth={1.5} color="#3b82f6" />
+						</div>
+						<div>
+							<h3 class="mb-1 text-[0.875rem] font-semibold text-[color:var(--text-strong)]">Who can see it</h3>
+							<p class="m-0 text-[0.8rem] leading-relaxed text-[color:var(--text-soft)]">
+								Analytics go to PostHog only—anonymized and not linked to you. If you use AI
+								features, your text goes directly to your chosen provider (OpenAI, Anthropic, or
+								Google)—we never see it. Dictionary lookups are sent to an external dictionary
+								service. We don't sell or share data with third parties for their own use.
+							</p>
+						</div>
+					</div>
+
+					<div
+						class="flex gap-4 rounded-xl bg-[color:var(--surface)] p-5 shadow-md inset-shadow-sm inset-shadow-white backdrop-blur-md"
+					>
+						<div
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]/8"
+						>
+							<Globe size={20} strokeWidth={1.5} color="#3b82f6" />
+						</div>
+						<div>
+							<h3 class="mb-1 text-[0.875rem] font-semibold text-[color:var(--text-strong)]">Your rights</h3>
+							<p class="m-0 text-[0.8rem] leading-relaxed text-[color:var(--text-soft)]">
+								Since we don't collect personal data, there's no profile to delete. On the website,
+								opt out via the <strong class="text-[color:var(--text-strong)]">Cookie Settings</strong>
+								link in the footer. In the desktop app, disable analytics via the toggle in
+								<strong class="text-[color:var(--text-strong)]">Settings &gt; Privacy &gt; "Usage analytics"</strong>.
+								California residents have additional rights under the CCPA.
+							</p>
+						</div>
+					</div>
+
+					<div
+						class="flex gap-4 rounded-xl bg-[color:var(--surface)] p-5 shadow-md inset-shadow-sm inset-shadow-white backdrop-blur-md"
+					>
+						<div
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]/8"
+						>
+							<AlignLeft size={20} strokeWidth={1.5} color="#3b82f6" />
+						</div>
+						<div>
+							<h3 class="mb-1 text-[0.875rem] font-semibold text-[color:var(--text-strong)]">Cookies</h3>
+							<p class="m-0 text-[0.8rem] leading-relaxed text-[color:var(--text-soft)]">
+								PostHog assigns a random identifier to track usage behavior. On the website, this
+								only persists if you accept cookies: if you decline, no identifier is stored. In the
+								desktop app, the identifier persists for the lifetime of your install. Either way,
+								it contains no personal information and cannot be linked back to you. No marketing
+								or tracking cookies are used.
+							</p>
+						</div>
+					</div>
+
+					<div
+						class="flex gap-4 rounded-xl bg-[color:var(--surface)] p-5 shadow-md inset-shadow-sm inset-shadow-white backdrop-blur-md"
+					>
+						<div
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#3b82f6]/8"
+						>
+							<Mail size={20} strokeWidth={1.5} color="#3b82f6" />
+						</div>
+						<div>
+							<h3 class="mb-1 text-[0.875rem] font-semibold text-[color:var(--text-strong)]">Questions?</h3>
+							<p class="m-0 text-[0.8rem] leading-relaxed text-[color:var(--text-soft)]">
+								Email us at <a
+									href="mailto:support@quillium.bryanhu.com"
+									class="text-[#3b82f6] no-underline hover:underline">support@quillium.bryanhu.com</a
+								>. We're a small team and we'll respond personally.
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<p class="mt-8 text-center text-[0.8rem] text-[color:var(--text-faint)]">
+					Want the full legal text?
+					<button class="inline-tab-switch" onclick={() => (activeTab = 'legal')}
+						>Switch to Full Legal view</button
+					>
+				</p>
+			</div>
+		{:else}
+			<div class="legal-content" role="tabpanel">
+				<section>
+					<h2>1. Introduction</h2>
+					<p>
+						Quillium ("we," "us," or "our") operates quillium.bryanhu.com (the "Service"). This
+						Privacy Policy explains how we collect, use, disclose, and safeguard your information
+						when you use the beta version of the Service. Please read this policy carefully. By
+						accessing or using the Service, you acknowledge that you have read, understood, and
+						agree to be bound by this Privacy Policy.
+					</p>
+					<p>
+						This policy is designed to comply with applicable data protection laws, including the
+						California Consumer Privacy Act (CCPA) for California residents.
+					</p>
+				</section>
+
+				<section>
+					<h2>2. Information We Collect</h2>
+					<h3>2.1 Analytics Data (Collected Automatically)</h3>
+					<p>We collect anonymous, aggregated usage analytics through PostHog, including:</p>
+					<ul>
+						<li>Feature interactions and click events</li>
+						<li>Session duration and frequency</li>
+						<li>Device type, operating system, and browser type</li>
+						<li>General geographic region (country/region level only, not precise location)</li>
+						<li>Referral source and page navigation paths</li>
+					</ul>
+					<p>
+						This data is collected in a manner that does not allow us to identify you personally. No
+						IP addresses are stored in identifiable form beyond what PostHog uses for session
+						deduplication (which is anonymized).
+					</p>
+
+					<h3>2.2 Session Recordings</h3>
+					<p>
+						PostHog session recording is enabled in the desktop app, which captures UI interactions
+						such as clicks, scrolls, and navigation. <strong
+							>Editor text content is masked by default</strong
+						> — your writing appears as asterisks in recordings. Session recordings help us understand
+						how users navigate the app and diagnose UI issues. See Section 2.7 for the optional setting
+						that controls content masking.
+					</p>
+
+					<h3>2.3 Error and Exception Reports</h3>
+					<p>
+						The desktop app automatically reports JavaScript errors and stack traces to PostHog when
+						they occur. These reports help us identify and fix bugs. Stack traces may occasionally
+						contain fragments of data that was being processed when the error occurred, but we do
+						not intentionally collect user content through this mechanism. Error reporting is
+						disabled when you turn off analytics entirely (see Section 7.1).
+					</p>
+
+					<h3>2.4 Email for Beta Signups</h3>
+					<p>When you join the beta, we collect your email address. We use it solely to:</p>
+					<ul>
+						<li>Send you the app link and access instructions</li>
+						<li>Notify you of beta updates and releases</li>
+						<li>Respond to feedback or support requests</li>
+					</ul>
+					<p>
+						We do not sell your email or use it for marketing beyond beta-related communications.
+						You can unsubscribe from non-critical emails at any time.
+					</p>
+
+					<h3>2.5 Information We Do Not Collect</h3>
+					<p>We do not collect:</p>
+					<ul>
+						<li>Account credentials or social login data</li>
+						<li>Payment or financial information</li>
+						<li>
+							User-generated content from within the editor with two exceptions: (a) if you enable
+							the optional "Share document analytics" setting (see Section 2.7), some
+							document-related properties may appear in analytics events and session recordings; and
+							(b) if you use AI features, your text is sent directly to your chosen AI provider (see
+							Section 2.6)
+						</li>
+						<li>Precise geolocation data</li>
+					</ul>
+
+					<h3>2.6 AI Features and Third-Party AI Providers</h3>
+					<p>
+						Quillium offers optional AI features that are off by default. When enabled, your
+						document text is sent directly from your device to your chosen AI provider — OpenAI,
+						Anthropic, or Google Gemini. <strong
+							>This data does not pass through Quillium's servers.</strong
+						> We do not see, store, or have access to the text you send or the responses you receive.
+					</p>
+					<p>
+						Your API keys are stored in your operating system's secure keychain and are never stored
+						in the app's local storage. Quillium never transmits your API keys to any server we
+						operate.
+					</p>
+					<p>
+						Each AI provider has its own terms of service, privacy policy, and data retention
+						practices. By using AI features in Quillium, you agree to the terms of your chosen
+						provider. We encourage you to review your provider's policies:
+					</p>
+					<ul>
+						<li>
+							<a
+								href="https://openai.com/policies/privacy-policy"
+								target="_blank"
+								rel="noopener noreferrer">OpenAI Privacy Policy</a
+							>
+						</li>
+						<li>
+							<a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener noreferrer"
+								>Anthropic Privacy Policy</a
+							>
+						</li>
+						<li>
+							<a
+								href="https://policies.google.com/privacy"
+								target="_blank"
+								rel="noopener noreferrer">Google Privacy Policy</a
+							>
+						</li>
+					</ul>
+
+					<h3>2.7 Two-Tier Privacy Controls (Desktop App)</h3>
+					<p>The desktop app provides two independent privacy settings:</p>
+					<ul>
+						<li>
+							<strong>Usage analytics</strong> (Settings &gt; Privacy) — controls whether any analytics
+							events, session recordings, or error reports are sent to PostHog. When off, all telemetry
+							stops immediately.
+						</li>
+						<li>
+							<strong>Share document analytics</strong> (Settings &gt; Privacy) — an additional, separate
+							opt-in that is off by default. When enabled, it removes editor content masking from session
+							recordings and stops redacting document-related properties (such as words looked up, synonyms
+							selected, and original text) from analytics events. This setting exists so you can help
+							us debug document-specific issues if you choose. It has no effect when usage analytics is
+							off.
+						</li>
+					</ul>
+
+					<h3>2.8 Dictionary and Thesaurus Lookups</h3>
+					<p>
+						When you use the built-in dictionary or thesaurus, the word you look up is sent to an
+						external dictionary API to retrieve definitions and synonyms. These lookups happen
+						directly between your device and the dictionary service — they do not pass through
+						Quillium's servers. We do not store or log the words you look up.
+					</p>
+
+					<h3>2.9 Update Checks</h3>
+					<p>
+						The desktop app periodically contacts our update server to check whether a newer version
+						is available and to download updates. These requests include your current app version
+						and operating system. No personal information or document content is transmitted during
+						update checks.
+					</p>
+				</section>
+
+				<section>
+					<h2>3. How We Use Your Information</h2>
+					<p>We use the analytics data we collect solely to:</p>
+					<ul>
+						<li>Understand how users interact with the Service</li>
+						<li>Identify and fix bugs and performance issues</li>
+						<li>Improve and prioritize product features</li>
+						<li>Measure the general reach of the Service</li>
+					</ul>
+					<p>
+						We use beta signup emails to send you access instructions, beta updates, release notes,
+						and respond to your feedback. We do not use your email for marketing unrelated to the
+						beta.
+					</p>
+					<p>
+						We do not use any data for targeted advertising, behavioral profiling, or any purpose
+						unrelated to improving the Service.
+					</p>
+				</section>
+
+				<section>
+					<h2>4. Disclosure of Information</h2>
+					<p>
+						We do not sell, trade, rent, or otherwise transfer your information to third parties for
+						their own commercial purposes.
+					</p>
+					<p>The following third-party services may receive data from the app:</p>
+					<ul>
+						<li>
+							<strong>PostHog, Inc.</strong> — receives anonymous analytics data, session
+							recordings, and error reports. See
+							<a href="https://posthog.com/privacy" target="_blank" rel="noopener noreferrer"
+								>PostHog's Privacy Policy</a
+							>.
+						</li>
+						<li>
+							<strong>AI providers (OpenAI, Anthropic, Google)</strong> — receive document text only when
+							you actively use AI features. Requests go directly from your device to the provider. See
+							Section 2.6.
+						</li>
+						<li>
+							<strong>Dictionary API</strong> — receives individual words when you use dictionary or thesaurus
+							lookups.
+						</li>
+						<li>
+							<strong>Update server</strong> — receives your app version and OS when checking for updates.
+						</li>
+					</ul>
+					<p>
+						We may disclose information if required to do so by law or in response to valid requests
+						by public authorities.
+					</p>
+				</section>
+
+				<section>
+					<h2>5. Cookies and Tracking Technologies</h2>
+					<p>
+						PostHog assigns a randomly generated identifier to track usage behavior. This
+						identifier:
+					</p>
+					<ul>
+						<li>Is a random UUID with no personal information attached</li>
+						<li>Persists across sessions to stitch together usage behavior over time</li>
+						<li>Cannot be linked back to you — no name, email, or account is associated with it</li>
+						<li>Is used solely for analytics session management</li>
+					</ul>
+					<p>
+						On the website, the identifier is only stored if you accept cookies; declining puts
+						PostHog into cookieless mode with no persistent ID. In the desktop app, the identifier
+						persists for the lifetime of your install (until you uninstall or clear app data).
+					</p>
+					<p>
+						We do not use marketing, advertising, or cross-site tracking cookies. On the website,
+						you can manage your cookie preferences using the "Cookie Settings" link in the footer.
+						In the desktop app, you can disable analytics entirely via the toggle in Settings &gt;
+						Privacy.
+					</p>
+				</section>
+
+				<section>
+					<h2>6. Data Retention</h2>
+					<p>
+						Anonymous analytics data, including session recordings and error reports, is retained in
+						PostHog for up to <strong>24 months</strong>, after which it is aggregated or deleted.
+						Because the data is anonymous, retention periods under CCPA for personal data do not
+						apply; however, we apply the same standards as a matter of good practice.
+					</p>
+					<p>
+						Data sent to third-party AI providers when you use AI features is subject to each
+						provider's own retention policy. Quillium does not control or have access to data held
+						by AI providers. We encourage you to review your provider's data retention practices
+						(see Section 2.6).
+					</p>
+				</section>
+
+				<section>
+					<h2>7. Your Rights</h2>
+					<h3>7.1 All Users — Opt-Out</h3>
+					<p>
+						You may opt out of analytics data collection at any time. On the website, use the
+						"Cookie Settings" link in the footer. In the desktop app, use the toggle in Settings
+						&gt; Privacy &gt; "Usage analytics." Once opted out, no new analytics events, session
+						recordings, or error reports will be sent from your device.
+					</p>
+
+					<h3>7.2 California Residents (CCPA / CPRA)</h3>
+					<p>Under the California Consumer Privacy Act, California residents have the right to:</p>
+					<ul>
+						<li>Know what personal information is collected, used, shared, or sold</li>
+						<li>Delete personal information held by us</li>
+						<li>Opt out of the sale or sharing of personal information</li>
+						<li>Non-discrimination for exercising CCPA rights</li>
+					</ul>
+					<p>
+						We do not sell or share personal information as defined under the CCPA. The analytics
+						data we collect is anonymous and does not constitute "personal information" under
+						California law. To submit a CCPA request, contact us at <a
+							href="mailto:support@quillium.bryanhu.com">support@quillium.bryanhu.com</a
+						>.
+					</p>
+				</section>
+
+				<section>
+					<h2>8. Data Security</h2>
+					<p>
+						We implement reasonable administrative, technical, and physical safeguards to protect
+						the data we process. However, no method of transmission over the Internet or electronic
+						storage is 100% secure, and we cannot guarantee absolute security.
+					</p>
+				</section>
+
+				<section>
+					<h2>9. Children's Privacy</h2>
+					<p>
+						The Service is not directed to individuals under the age of 13. We do not knowingly
+						collect personal information from children. If you believe a child has provided us
+						personal information, please contact us and we will take steps to delete it.
+					</p>
+				</section>
+
+				<section>
+					<h2>10. Changes to This Policy</h2>
+					<p>
+						We may update this Privacy Policy from time to time. Material changes will be indicated
+						by updating the "Last Updated" date at the top of this policy. We encourage you to
+						review this policy periodically. Continued use of the Service after changes constitutes
+						acceptance of the revised policy.
+					</p>
+				</section>
+
+				<section>
+					<h2>11. Contact Us</h2>
+					<p>
+						If you have questions, concerns, or requests regarding this Privacy Policy or our data
+						practices, please contact us:
+					</p>
+					<p>
+						<strong>Quillium</strong><br />
+						Email: <a href="mailto:support@quillium.bryanhu.com">support@quillium.bryanhu.com</a>
+					</p>
+					<p>We aim to respond to all inquiries within 30 days.</p>
+				</section>
+
+				<p class="mt-8 text-center text-[0.8rem] text-[color:var(--text-faint)]">
+					Prefer a simpler summary?
+					<button class="inline-tab-switch" onclick={() => (activeTab = 'plain')}
+						>Switch to Plain English view</button
+					>
+				</p>
+			</div>
+		{/if}
+	</div>
+</main>
+
+<Footer />
+
+<style>
+	/* ── Tabs ── */
+	.tab-btn {
+		padding: 7px 20px;
+		border-radius: 9999px;
+		border: none;
+		background: transparent;
+		font-size: 0.8rem;
+		font-weight: 500;
+		font-family: 'Inter', sans-serif;
+		color: var(--text-soft);
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.tab-btn.active {
+		background: var(--surface);
+		color: var(--text-strong);
+		box-shadow: 0 1px 4px rgba(var(--shadow-color), 0.08);
+	}
+	.tab-btn:not(.active):hover {
+		color: var(--text-strong);
+	}
+
+	/* ── Legal content ── */
+	.legal-content section {
+		margin-bottom: 40px;
+	}
+	.legal-content h2 {
+		font-family: 'Newsreader', Georgia, serif;
+		font-size: 1.2rem;
+		font-weight: 400;
+		font-style: italic;
+		color: var(--text-strong);
+		margin: 0 0 12px 0;
+		padding-bottom: 8px;
+		border-bottom: 1px solid var(--border);
+	}
+	.legal-content h3 {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-strong);
+		margin: 20px 0 8px 0;
+	}
+	.legal-content p {
+		font-size: 0.875rem;
+		color: var(--text-soft);
+		line-height: 1.75;
+		margin: 0 0 12px 0;
+	}
+	.legal-content ul {
+		margin: 8px 0 12px 0;
+		padding-left: 20px;
+	}
+	.legal-content li {
+		font-size: 0.875rem;
+		color: var(--text-soft);
+		line-height: 1.75;
+		margin-bottom: 4px;
+	}
+	.legal-content a {
+		color: var(--accent-blue);
+		text-decoration: none;
+	}
+	.legal-content a:hover {
+		text-decoration: underline;
+	}
+	.legal-content strong {
+		color: var(--text-strong);
+	}
+
+	/* ── Tab switch link ── */
+	.inline-tab-switch {
+		background: none;
+		border: none;
+		color: var(--accent-blue);
+		font-size: 0.8rem;
+		font-family: 'Inter', sans-serif;
+		cursor: pointer;
+		padding: 0;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.inline-tab-switch:hover {
+		color: var(--accent-blue-deep);
+	}
+</style>

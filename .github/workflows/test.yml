@@ -25,13 +25,13 @@ jobs:
         run: bun install
 
       # - name: Type check
-      #   run: bun run check
+      #   run: bun run check:all
 
       # - name: Lint
       #   run: bun run lint
 
       - name: Unit tests with coverage
-        run: bun run test:coverage
+        run: bun --cwd packages/desktop run test:coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -52,7 +52,7 @@ jobs:
   #       run: bunx playwright install chromium --with-deps
 
   #     - name: Run e2e tests
-  #       run: bun run test:e2e
+  #       run: bun run desktop:test:e2e
 
   #     - name: Upload test results on failure
   #       if: ${{ !cancelled() }}

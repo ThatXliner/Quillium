@@ -1,0 +1,286 @@
+@import "tailwindcss";
+@source '../../../share/src';
+
+/* ============================================================================
+   DESIGN TOKENS  —  the single source of truth for colour in both themes.
+   Light values live in :root; the dark overrides flip them under the OS
+   `prefers-color-scheme: dark` query. Components must reference these vars
+   (var(--text-medium), var(--surface), …) instead of hardcoding colours, so a
+   theme is one edit here, not a sweep across 30 files. See DARK_MODE.md.
+
+   Naming:
+     --bg                page background
+     --surface           card / panel fill          (raised above --bg)
+     --surface-2         nested / inset fill
+     --text-strong       headings, primary copy
+     --text              body copy
+     --text-soft         secondary copy
+     --text-faint        captions, fine print, hints
+     --border            hairline dividers / card edges
+     --border-strong     more visible borders
+     --shadow-color      base rgb for box-shadows (used as rgba(var(),α))
+   Brand accents (--accent-*) are theme-INDEPENDENT: identical in light & dark.
+   ============================================================================ */
+:root {
+    color-scheme: light;
+
+    /* surfaces */
+    --bg: #f5f4f1;
+    --surface: #fffefb;
+    --surface-2: #faf9f7;
+
+    /* neutral text — these stand in for the ~177 rgba(0,0,0,α) uses */
+    --text-strong: rgba(0, 0, 0, 0.9);
+    --text: rgba(0, 0, 0, 0.75);
+    --text-soft: rgba(0, 0, 0, 0.6);
+    --text-faint: rgba(0, 0, 0, 0.45);
+
+    /* lines & elevation */
+    --border: rgba(0, 0, 0, 0.08);
+    --border-strong: rgba(0, 0, 0, 0.18);
+    --shadow-color: 44, 38, 34; /* used as rgba(var(--shadow-color), α) */
+
+    /* translucent glass for the fixed nav (sits over any hero, either theme) */
+    --nav-glass: rgba(245, 244, 241, 0.75);
+    --nav-glass-solid: rgba(245, 244, 241, 0.95); /* mobile dropdown */
+    --nav-glass-border: rgba(255, 255, 255, 0.3);
+
+    /* brand accents — same in both themes */
+    --accent-blue: #3b82f6;
+    --accent-blue-deep: #2563eb;
+    --accent-purple: #a855f7;
+    --accent-purple-deep: #9333ea;
+    --accent-green: #22c55e;
+    --accent-green-deep: #16a34a;
+    --accent-amber: #fcbc05;
+    --accent-red: #ef4444;
+
+    /* Readable amber FOR TEXT on a pale amber-tint chip. Unlike the accents
+	   above this one DOES flip: deep amber reads on the light chip, bright amber
+	   reads on the dark chip. (The chip's translucent fill stays the same hue.) */
+    --accent-amber-text: #d97706;
+
+    /* Annotation card tints (share page): colour-coded by type — blue=comment,
+	   green=suggestion, purple=revision. These FLIP: pale tint in light, deep
+	   same-hue tint in dark, so the colour-coding survives and the body text
+	   (--text*) stays legible on top in both themes. `-active` is the raised/
+	   selected state; `-border` is the matching edge. */
+    --tint-blue: rgba(239, 246, 255, 0.6);
+    --tint-blue-active: rgba(239, 246, 255, 0.9);
+    --tint-blue-border: rgba(191, 219, 254, 0.5);
+    --tint-green: rgba(240, 253, 244, 0.6);
+    --tint-green-active: rgba(240, 253, 244, 0.9);
+    --tint-green-border: rgba(187, 247, 208, 0.5);
+    --tint-purple: rgba(250, 245, 255, 0.6);
+    --tint-purple-active: rgba(250, 245, 255, 0.9);
+    --tint-purple-border: rgba(221, 214, 254, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        color-scheme: dark;
+
+        --bg: #171310;
+        --surface: #211b16;
+        --surface-2: #1e1c1a;
+
+        /* Warm cream, mirroring the opacity tiers of the light neutrals — but the
+		   faint tier is lifted to 0.58 (vs 0.45 in light): cream at 0.45 on the
+		   dark surfaces lands ~4.1:1, just under AA, so fine-print/hints would fail.
+		   0.58 clears ~5:1 while staying clearly the quietest tier. */
+        --text-strong: rgba(247, 241, 227, 0.95);
+        --text: rgba(247, 241, 227, 0.82);
+        --text-soft: rgba(247, 241, 227, 0.64);
+        --text-faint: rgba(247, 241, 227, 0.58);
+
+        --border: rgba(255, 255, 255, 0.1);
+        --border-strong: rgba(255, 255, 255, 0.22);
+        --shadow-color: 0, 0, 0;
+
+        --nav-glass: rgba(23, 19, 16, 0.72);
+        --nav-glass-solid: rgba(23, 19, 16, 0.95);
+        --nav-glass-border: rgba(255, 255, 255, 0.08);
+
+        /* bright amber reads on the dark amber-tint chip */
+        --accent-amber-text: #fcbc05;
+
+        /* Deep same-hue annotation tints: colour-coding preserved on dark, cream
+		   text reads cleanly. Raised above --surface (#211b16) so cards still read
+		   as cards. */
+        --tint-blue: rgba(37, 60, 92, 0.55);
+        --tint-blue-active: rgba(40, 68, 107, 0.85);
+        --tint-blue-border: rgba(96, 140, 200, 0.45);
+        --tint-green: rgba(30, 60, 44, 0.55);
+        --tint-green-active: rgba(33, 70, 50, 0.85);
+        --tint-green-border: rgba(90, 170, 120, 0.45);
+        --tint-purple: rgba(56, 44, 82, 0.55);
+        --tint-purple-active: rgba(64, 50, 96, 0.85);
+        --tint-purple-border: rgba(150, 120, 200, 0.45);
+    }
+}
+
+/* ── Base ── */
+body {
+    background-color: var(--bg);
+    color: var(--text-strong);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 300ms ease, color 300ms ease;
+}
+html {
+    scroll-behavior: smooth;
+}
+
+/* ── Shared ── */
+/* Sections after the hero; positioned so they paint above the 3D flight
+   hero's sticky stage. Inert for other variants. The footer needs the same
+   treatment or the stage paints over it. */
+.post-hero,
+footer {
+    position: relative;
+    background: var(--bg);
+}
+
+/* The footer now follows the global theme via tokens — it goes dark whenever
+   the OS does, so the 3D night-flight hero runs straight into a dark footer
+   with no special-casing. (Previously this was gated behind [data-nav-dark].) */
+footer {
+    border-color: var(--border);
+}
+footer p {
+    color: var(--text-faint);
+}
+footer a,
+footer button {
+    color: var(--text-soft);
+}
+footer a:hover,
+footer button:hover {
+    color: var(--text-strong);
+}
+footer input {
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--text);
+}
+footer input::placeholder {
+    color: var(--text-faint);
+}
+footer form button {
+    background: var(--surface-2);
+    border-color: var(--border);
+}
+footer form button:hover {
+    background: var(--surface);
+}
+.warm-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), transparent);
+}
+.section-divider {
+    max-width: 80rem;
+    margin: 0 auto;
+}
+.section-eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 12px 0;
+}
+.section-eyebrow--centered {
+    text-align: center;
+}
+.section-heading {
+    font-family: "Newsreader", Georgia, serif;
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--text-strong);
+    margin: 0;
+}
+
+/* ── Scroll reveal (initial state, animated by GSAP) ── */
+.reveal {
+    opacity: 0;
+    transform: translateY(48px);
+}
+
+/* ── Buttons (shared across components) ── */
+.btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.75rem;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-blue-deep));
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: all 300ms ease;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3), 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(59, 130, 246, 0.4), 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Feature mock buttons (used in Features.svelte carousels) ── */
+.btn-accept {
+    background: var(--accent-purple);
+    color: white;
+    border: none;
+    border-radius: 9999px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: "Inter", sans-serif;
+    transition: background 0.15s;
+}
+.btn-accept:hover {
+    background: var(--accent-purple-deep);
+}
+.btn-dismiss {
+    background: transparent;
+    color: var(--text-faint);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: "Inter", sans-serif;
+    transition: all 0.15s;
+}
+.btn-dismiss:hover {
+    border-color: var(--border-strong);
+    color: var(--text-soft);
+}
+.btn-branch-instead {
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: "Inter", sans-serif;
+    margin-left: auto;
+    cursor: pointer;
+}
+
+@media (prefers-contrast: more) {
+    .section-eyebrow {
+        color: var(--text-soft);
+    }
+    .btn-dismiss {
+        color: var(--text-soft);
+    }
+    .btn-dismiss:hover {
+        color: var(--text);
+    }
+    .btn-branch-instead {
+        color: var(--text-soft);
+    }
+}

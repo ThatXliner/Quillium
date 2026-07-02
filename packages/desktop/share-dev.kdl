@@ -1,0 +1,17 @@
+// Zellij layout for collab development
+// Usage from packages/desktop: zellij --layout share-dev.kdl
+
+layout {
+    pane split_direction="horizontal" {
+        pane {
+            name "Quillium"
+            command "bun"
+            args "run" "tauri" "dev"
+        }
+        pane {
+            name "Server"
+            command "bash"
+            args "-c" "cd ../landing && bun run dev"
+        }
+    }
+}

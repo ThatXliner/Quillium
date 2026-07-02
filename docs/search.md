@@ -20,7 +20,7 @@ library search box (≥2 chars, 200 ms debounce)
 
 ## Schema & migrations
 
-Schema changes go through `src-tauri/src/db/migrations.rs` — a versioned
+Schema changes go through `packages/desktop/src-tauri/src/db/migrations.rs` — a versioned
 migration runner keyed on `PRAGMA user_version`. Each migration is plain SQL
 or a Rust function (for backfills), runs once, in its own transaction. To
 change the schema, **append a new numbered migration**; never edit shipped ones.
@@ -37,9 +37,9 @@ change the schema, **append a new numbered migration**; never edit shipped ones.
 
 Key files:
 
-- `src-tauri/src/db/migrations.rs` — framework + all migrations
-- `src-tauri/src/db/search.rs` — FTS query building, KNN, RRF fusion, `SearchHit`
-- `src-tauri/src/embeddings.rs` — chunking, hashing, model, worker thread
+- `packages/desktop/src-tauri/src/db/migrations.rs` — framework + all migrations
+- `packages/desktop/src-tauri/src/db/search.rs` — FTS query building, KNN, RRF fusion, `SearchHit`
+- `packages/desktop/src-tauri/src/embeddings.rs` — chunking, hashing, model, worker thread
 - `src/lib/db/index.ts` — `searchDocuments()`, `getSearchStatus()`
 - `src/lib/library/snippet.ts` — highlight-sentinel parsing for snippets
 - `src/routes/library/+page.svelte` — debounced backend search merged with the instant client filter

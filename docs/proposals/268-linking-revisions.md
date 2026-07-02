@@ -189,7 +189,7 @@ The `.passthrough()` already in place keeps unknown keys safe.
 - Clipboard: copy revision → paste → version ids regenerated, active preserved.
 - Existing revision/nested-editor tests must stay green (behavior identical).
 
-**PR 1 ships when:** `bun run check`, `bun run test:run`, and the revision/collab
+**PR 1 ships when:** `bun run desktop:check`, `bun run desktop:test:run`, and the revision/collab
 test suites are green, with behavior identical to today.
 
 ---

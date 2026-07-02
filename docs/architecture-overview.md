@@ -60,7 +60,7 @@ flowchart TB
 
     subgraph Collab["Collaboration Layer"]
         Yjs["Yjs CRDT<br/>Y.Text, Y.Map"]
-        Relay["WebSocket Relay<br/>quillium-landing/relay"]
+        Relay["WebSocket Relay<br/>packages/relay"]
     end
 
     UI --> Editor

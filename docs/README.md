@@ -80,12 +80,12 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 ## Development Commands
 
 ```bash
-bun run dev          # Development server
-bun run build        # Production build
-bun run check        # Type checking
+bun run desktop:dev  # Desktop development server
+bun run desktop:build # Desktop production build
+bun run check:all    # Type checking
 bun run biome        # Lint and format
-bun run test:run     # Run tests
-bun run tauri dev    # Tauri development mode
+bun run test:all     # Run tests
+bun run desktop:tauri:dev # Tauri development mode
 ```
 
 See `CLAUDE.md` for the complete command reference.
