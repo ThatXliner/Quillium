@@ -1,0 +1,152 @@
+<script lang="ts">
+import { Pen, Lock, ShieldCheck } from "@lucide/svelte";
+import VideoEmbed from "./VideoEmbed.svelte";
+import DownloadButton from "./DownloadButton.svelte";
+
+interface ReleaseAsset {
+    name: string;
+    url: string;
+}
+
+let {
+    videoId,
+    release,
+}: {
+    videoId: string;
+    release: { version: string | null; assets: ReleaseAsset[] };
+} = $props();
+</script>
+
+<section class="hero-video-section">
+	<div class="hero-video-inner">
+		<div class="hero-copy">
+			<div class="logo-tile">
+				<img src="/logo.svg" alt="Quillium mark" width="56" height="56" />
+			</div>
+			<p class="eyebrow">The Non-Linear Writing App</p>
+			<h1 class="headline" style="font-family: 'Newsreader', Georgia, serif;">
+				Prose for <span class="italic">Pros</span>.
+			</h1>
+			<p class="subhead">
+				Write a sentence three different ways, and decide which to pick later. Branch any phrase
+				without losing a single word.
+			</p>
+		</div>
+
+		<div class="hero-cta">
+			<DownloadButton {release} location="hero-video" />
+		</div>
+
+		<div
+			class="trust-row"
+			style="border-image: linear-gradient(90deg, transparent, #3b82f6, #a855f7, #22c55e, #fcbc05, transparent) 1;"
+		>
+			<a href="/blog/quillium-is-not-an-ai-app" class="trust-link"
+				><Pen size={14} strokeWidth={2} class="opacity-60" /> Write every word (No AI bs).</a
+			>
+			<a href="/blog/quillium-privacy" class="trust-link"
+				><Lock size={14} strokeWidth={2} class="opacity-60" /> Fully private.</a
+			>
+			<a href="/blog/how-quillium-keeps-your-writing-safe" class="trust-link"
+				><ShieldCheck size={14} strokeWidth={2} class="opacity-60" /> Safe and secure.</a
+			>
+		</div>
+
+		<div class="hero-media">
+			<VideoEmbed {videoId} location="hero-video" />
+		</div>
+	</div>
+</section>
+
+<style>
+	.hero-video-section {
+		width: 100%;
+		background: var(--bg);
+		padding: clamp(2.5rem, 6vw, 5rem) 1.25rem 0;
+		transition:
+			background-color 300ms ease,
+			color 300ms ease;
+	}
+	.hero-video-inner {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: clamp(1.5rem, 3vw, 2.25rem);
+		width: min(94vw, 980px);
+		margin: 0 auto;
+	}
+	.hero-copy {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+	}
+	.logo-tile {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 72px;
+		height: 72px;
+		margin-bottom: 1rem;
+		border-radius: 22px;
+		border: 1px solid rgba(255, 255, 255, 0.35);
+		background: radial-gradient(at 40% 35%, #eceef2, #cdd1d9);
+	}
+	.eyebrow {
+		margin: 0 0 0.75rem;
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.13em;
+		text-transform: uppercase;
+		color: var(--text-faint);
+	}
+	.headline {
+		margin: 0 0 1rem;
+		font-size: clamp(2.2rem, 4.5vw, 3.4rem);
+		line-height: 1.12;
+		letter-spacing: -0.03em;
+		font-weight: 400;
+		color: var(--text-strong);
+	}
+	.headline .italic {
+		font-style: italic;
+	}
+	.subhead {
+		margin: 0;
+		max-width: 600px;
+		font-size: 1.1rem;
+		line-height: 1.6;
+		color: var(--text-soft);
+	}
+	.hero-cta {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+	}
+	.hero-media {
+		width: 100%;
+	}
+	.trust-row {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.85rem;
+		width: min(100%, 720px);
+		padding-top: 0.9rem;
+		border-top: 2px solid;
+	}
+	.trust-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.9rem;
+		color: var(--text-soft);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		transition: color 0.3s;
+	}
+	.trust-link:hover {
+		color: var(--text);
+	}
+</style>

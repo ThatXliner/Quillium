@@ -132,7 +132,7 @@ sources currently in play.
 
 ### API Key Storage
 
-Keys stored in OS keychain via `src-tauri/src/keychain.rs`:
+Keys stored in OS keychain via `packages/desktop/src-tauri/src/keychain.rs`:
 - macOS: Keychain
 - Windows: Credential Manager
 - Linux: Secret Service

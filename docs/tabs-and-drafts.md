@@ -179,9 +179,9 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 
 | File | Role |
 |------|------|
-| `src-tauri/src/db/tabs.rs` | Tab CRUD, iterate/branch, run relocking, active pointers |
-| `src-tauri/src/db/migrations.rs` | Numbered schema migrations (#6 tabs, #7 branch relation) |
-| `src-tauri/src/db/load.rs` | Tab-aware default draft resolution |
+| `packages/desktop/src-tauri/src/db/tabs.rs` | Tab CRUD, iterate/branch, run relocking, active pointers |
+| `packages/desktop/src-tauri/src/db/migrations.rs` | Numbered schema migrations (#6 tabs, #7 branch relation) |
+| `packages/desktop/src-tauri/src/db/load.rs` | Tab-aware default draft resolution |
 | `src/lib/editor/DocumentTabs.svelte` | Browser-style tab bar |
 | `src/lib/editor/tabReorder.ts` | Pure reorder math for tab drag-and-drop |
 | `src/lib/editor/DraftTreePanel.svelte` | Draft panel (flat runs, indented branches) |

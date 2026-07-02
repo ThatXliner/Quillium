@@ -19,7 +19,7 @@ flowchart LR
     JoinerExt["Joiner Extensions<br/>binding + annotations + awareness<br/>+ Y.UndoManager"]
     OwnerDoc["Owner Y.Doc<br/>Y.Text + Y.Map"]
     JoinerDoc["Joiner Y.Doc<br/>Y.Text + Y.Map"]
-    Relay["Relay Server<br/>quillium-landing/relay"]
+    Relay["Relay Server<br/>packages/relay"]
     Supabase["Supabase<br/>Auth + persistence"]
 
     Owner --> OwnerExt --> OwnerDoc

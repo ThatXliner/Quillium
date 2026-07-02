@@ -19,7 +19,7 @@ The `documents` table has **no `state_json` column**. Document state lives entir
 ## Schema migrations
 
 The schema is built and evolved by a versioned migration runner in
-`src-tauri/src/db/migrations.rs`, keyed on `PRAGMA user_version`. `open_db()`
+`packages/desktop/src-tauri/src/db/migrations.rs`, keyed on `PRAGMA user_version`. `open_db()`
 (`schema.rs`) opens the connection, sets WAL/foreign-key pragmas, then calls
 `migrate()`, which applies every migration newer than the DB's recorded
 version — each in its own transaction, so a failed migration leaves the DB at

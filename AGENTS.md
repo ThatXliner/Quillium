@@ -9,20 +9,23 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 ## Development Commands
 
 ```bash
-# Development server
-bun run dev
+# Desktop development server
+bun run desktop:dev
 
-# Build for production
-bun run build
+# Desktop build for production
+bun run desktop:build
 
-# Preview production build
-bun run preview
+# Preview desktop production build
+bun run desktop:preview
 
 # Type checking
-bun run check
+bun run desktop:check
+bun run landing:check
+bun run share:check
+bun run check:all
 
 # Type checking (watch mode)
-bun run check:watch
+bun run --cwd packages/desktop check:watch
 
 # Linting and formatting (uses Biome)
 bun run format    # Format code
@@ -30,24 +33,28 @@ bun run lint      # Lint code
 bun run biome     # Run both format and lint
 
 # Testing (uses Vitest — must use `bun run test`, NOT `bun test`)
-bun run test          # Watch mode
-bun run test:run      # Single run
-bun run test:run src/lib/editor/plugins/annotations/annotations.fuzz.test.ts  # Single file
+bun run desktop:test          # Watch mode
+bun run desktop:test:run      # Single run
+bun run --cwd packages/desktop test:run tests/lib/editor/plugins/annotations/annotations.fuzz.test.ts  # Single file
 
 # End-to-end tests (Playwright)
-bun run test:e2e              # Headless
-bun run test:e2e:headed       # With browser window
+bun run desktop:test:e2e              # Headless
+bun run desktop:test:e2e:headed       # With browser window
 
 # Tauri commands
-bun run tauri dev        # Run Tauri development mode
-bun run tauri build      # Build Tauri application
+bun run desktop:tauri:dev        # Run Tauri development mode
+bun run desktop:tauri:build      # Build Tauri application
+
+# Landing and relay
+bun run landing:dev
+bun run relay:dev
 
 # Utility scripts
-bun run bump              # Patch version bump
-bun run bump:minor        # Minor version bump
-bun run bump:major        # Major version bump
-bun run screenshots       # Generate screenshots
-bun run icons             # Generate app icons
+bun run desktop:bump                            # Patch version bump
+bun run desktop:bump:minor                      # Minor version bump
+bun run desktop:bump:major                      # Major version bump
+bun run desktop:screenshots                      # Generate screenshots
+bun run desktop:icons                            # Generate app icons
 ```
 
 ## Architecture
@@ -77,7 +84,12 @@ See `ARCHITECTURE.md` for the full deep dive. It covers:
 
 **Always use `isAnnotationOfType(annotation, "revision")` — never compare `_type` directly.**
 
-Two routes: `/` (editor) and `/library` (document grid). Page transitions via `src/lib/navigation.ts`.
+This repository is a single-folder Bun workspace monorepo. Package roots are
+`packages/desktop`, `packages/landing`, `packages/relay`, and `packages/share`.
+Run dependency installs and cross-package scripts from the repository root; see
+`docs/monorepo.md` before changing workspace, deploy, env, or shared-package wiring.
+
+Desktop routes: `/` (editor) and `/library` (document grid). Page transitions via `packages/desktop/src/lib/navigation.ts`.
 
 Documents contain tabs (top bar); each draft-type tab holds a tree of drafts (left panel). Events and snapshots are draft-scoped. See `docs/tabs-and-drafts.md`.
 
@@ -106,7 +118,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 ### Constraints
 
 - **Auth**: Supabase Auth (email/password) — decided over license keys for collab identity
-- **Relay location**: Lives in quillium-landing repo
+- **Relay location**: Lives in packages/relay
 - **Timeline**: A few weeks, no hard deadline
 - **Quality bar**: Dogfoodable — stable enough to use for real writing across devices
 - **Dependencies**: Supabase (Auth + Postgres), Fly.io for relay (~$7/mo)
@@ -115,15 +127,15 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 
 ## Languages
 - TypeScript ~5.6.3 - Frontend application, SvelteKit components, configuration
-- Svelte 5.55.3 - Reactive UI framework for components in `src/routes` and `src/lib`
-- Rust 2021 edition - Desktop app backend via Tauri (`src-tauri/src/`)
+- Svelte 5.55.3 - Reactive UI framework for components in `packages/desktop/src/routes` and `packages/desktop/src/lib`
+- Rust 2021 edition - Desktop app backend via Tauri (`packages/desktop/src-tauri/src/`)
 - JavaScript - Vite build configuration, scripts in `scripts/`
 ## Runtime
 - Tauri 2.10.1 - Desktop application framework (wraps web frontend in native shell)
 - Node.js - Development runtime (via bun package manager)
 - bun - Primary package manager for frontend dependencies
-- Lockfile: `bun.lockb` (binary lock format used by bun)
-- Cargo - Rust dependency management (`src-tauri/Cargo.lock`)
+- Lockfile: `bun.lock` at the repository root
+- Cargo - Rust dependency management (`packages/desktop/src-tauri/Cargo.lock`)
 ## Frameworks
 - SvelteKit 2.57.1 - Meta-framework for Svelte with file-based routing
 - Vite 6.4.2 - Build tool and dev server
@@ -171,8 +183,8 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - `svelte.config.js` - SvelteKit config with static adapter (Tauri doesn't support SSR)
 - `tsconfig.json` - TypeScript strict mode, source maps, path aliases
 - `biome.json` - Linting and formatting rules (4-space indent, 100-char line width)
-- `tauri.conf.json` - Tauri app config (`src-tauri/tauri.conf.json`)
-- `src-tauri/Cargo.toml` - Rust dependencies (see Rust section below)
+- `tauri.conf.json` - Tauri app config (`packages/desktop/src-tauri/tauri.conf.json`)
+- `packages/desktop/src-tauri/Cargo.toml` - Rust dependencies (see Rust section below)
 - Strict mode enabled: `forceConsistentCasingInFileNames`, `resolveJsonModule`, etc.
 - Source maps enabled for debugging
 - SvelteKit extends `./.svelte-kit/tsconfig.json` (auto-generated)
@@ -310,7 +322,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - `src/routes/` — SvelteKit pages and layouts
 - `src/lib/ui/` — Reusable UI components
 - `tests/` — Unit, integration, and E2E tests
-- `src-tauri/` — Tauri backend (Rust)
+- `packages/desktop/src-tauri/` — Tauri backend (Rust)
 
 ## Architecture
 
@@ -337,7 +349,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - Depends on: CodeMirror state, undo/redo history, event bus
 - Used by: Editor, nested editors, annotation cards, AI features
 - Purpose: SQLite-based crash-safe storage of document state and events
-- Location: `src-tauri/src/db/` (Rust), `src/lib/db/` (TypeScript wrappers)
+- Location: `packages/desktop/src-tauri/src/db/` (Rust), `src/lib/db/` (TypeScript wrappers)
 - Contains: Event log, snapshots, document metadata, migrations
 - Depends on: Tauri invoke(), SQLite (WAL mode), schema versioning
 - Used by: listeners.ts, load flow, version history browser
@@ -347,7 +359,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - Depends on: Universal AI SDK, CodeMirror state, annotation factory functions
 - Used by: User interaction, AutoAI engine, comment suggestion threads
 - Purpose: File I/O, native menu, keyboard shortcuts, OS integration
-- Location: `src-tauri/src/` (Rust backend), Tauri bridging in frontend
+- Location: `packages/desktop/src-tauri/src/` (Rust backend), Tauri bridging in frontend
 - Contains: Tauri commands (invoke wrappers), menu registration, keychain
 - Depends on: Tauri API, Rust crates (rusqlite, keyring)
 - Used by: Frontend via `invoke()` calls, system events
@@ -374,7 +386,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - Examples: `src/lib/stores.ts` (global), `src/lib/editor/plugins/annotations/index.ts` (annotation-specific)
 - Pattern: Writable stores (`editorView`, `annotations`, `documentContent`, `modalStack`, etc.) are manually updated by `updateListener` or explicit dispatches. Derived stores recalculate from dependencies (e.g., `activeAnnotation` derived from `annotations` and `editorView.state.selection`). Components consume via `$store` syntax.
 - Purpose: Crash-safe, append-only record of changes with periodic snapshots
-- Examples: `src/lib/db/index.ts` (TypeScript), `src-tauri/src/db/` (Rust)
+- Examples: `src/lib/db/index.ts` (TypeScript), `packages/desktop/src-tauri/src/db/` (Rust)
 - Pattern: Every significant change (`docChanged` or annotation mutation) extracts an event payload, appends to SQLite `events` table atomically, returns `needsSnapshot` flag. Snapshots created when ≥50 events accumulated or ≥120 seconds elapsed. Load flow: fetch latest snapshot + events since, restore snapshot, replay events. Undo/redo handled entirely by CodeMirror history; changes are re-recorded as events.
 - Purpose: Provider-agnostic streaming and tool-call handling
 - Examples: `src/lib/ai/provider.ts` (client setup), `src/lib/ai/chatFactory.ts` (request builders), `src/lib/ai/clientStreams.ts` (stream handlers)
@@ -404,7 +416,7 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 - Annotation field ranges validated via `cleanRangesOf()` helper (collapses zero-width ranges)
 - Event log replay wraps each event in try-catch; events that fail to apply are logged as PostHog events
 - Type guards throughout: `isAnnotationOfType(annotation, "revision")` never `_type ===`
-- AI provider API keys stored in OS keychain via Tauri `src-tauri/src/keychain.rs`
+- AI provider API keys stored in OS keychain via Tauri `packages/desktop/src-tauri/src/keychain.rs`
 - Keys retrieved on demand, not cached in memory
 - Missing/invalid keys caught on first AI request; banner prompts user to configure
 - No multi-user or access control (single-user desktop app)
@@ -424,13 +436,11 @@ A dogfoodable prototype of Quillium Omni — the paid sync and real-time collabo
 | `src/lib/editor/plugins/annotations/eventBus.ts` | Typed pub/sub for ViewPlugin → component events |
 | `src/lib/stores.ts` | Global Svelte stores (annotations, documentContent, modalStack, etc.) |
 | `src/lib/db/index.ts` | TypeScript Tauri invoke() wrappers for all DB commands |
-| `src-tauri/src/db/mod.rs` | DB module exports and shared types |
-| `src-tauri/src/db/schema.rs` | SQLite schema, migrations, WAL mode setup |
-| `src-tauri/src/db/events.rs` | Event log append, snapshot thresholds |
-| `src-tauri/src/db/load.rs` | State reconstruction from snapshot + event replay |
+| `packages/desktop/src-tauri/src/db/mod.rs` | DB module exports and shared types |
+| `packages/desktop/src-tauri/src/db/schema.rs` | SQLite schema, migrations, WAL mode setup |
+| `packages/desktop/src-tauri/src/db/events.rs` | Event log append, snapshot thresholds |
+| `packages/desktop/src-tauri/src/db/load.rs` | State reconstruction from snapshot + event replay |
 | `src/lib/ai/chatFactory.ts` | Multi-persona execution, request building, tool dispatch |
 | `src/lib/autoai/engine.ts` | AutoAI review orchestration and annotation dispatch |
 | `src/lib/editor/replay.ts` | Event log replay with error handling |
 | `src/lib/errorGuard.ts` | Suspicious deletion detection before persistence |
-
-

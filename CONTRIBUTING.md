@@ -1,6 +1,7 @@
 # Contributing to Quillium
 
-Thank you for your interest in contributing to Quillium! This guide will help you get started with development and understand our contribution process.
+Thank you for your interest in contributing to Quillium! This guide will help you get
+started with development and understand our contribution process.
 
 ## Getting Started
 
@@ -26,7 +27,7 @@ Before you begin, ensure you have the following installed:
 
 3. **Environment Setup**
 
-   Create a `.env.local` file in the project root:
+   Create a `.env.local` file in `packages/desktop`:
    ```bash
    # AI features (optional — app works without these)
    OPENAI_API_KEY=your_openai_api_key_here
@@ -38,25 +39,37 @@ Before you begin, ensure you have the following installed:
 
    > **Note**: Both AI and analytics features are optional for most development work.
 
+   Package-specific env examples live beside the package that consumes them:
+   `packages/desktop/.env.example`, `packages/landing/.env.example`, and
+   `packages/relay/.env.example`.
+
 4. **Start Development Server**
    ```bash
    # For desktop development
-   bun tauri dev
+   bun run desktop:tauri:dev
    ```
 
 ### Development Commands
 
 | Command | Description |
 |---------|-------------|
-| `bun run dev` | Start development server (web) |
-| `bun run tauri dev` | Start Tauri development mode (desktop) |
-| `bun run build` | Build for production |
-| `bun run preview` | Preview production build |
-| `bun run check` | TypeScript type checking |
-| `bun run check:watch` | Type checking in watch mode |
+| `bun run desktop:dev` | Start desktop web development server |
+| `bun run desktop:tauri:dev` | Start Tauri development mode (desktop) |
+| `bun run desktop:build` | Build desktop frontend |
+| `bun run desktop:preview` | Preview desktop production build |
+| `bun run desktop:check` | Desktop TypeScript type checking |
+| `bun run landing:dev` | Start landing site development server |
+| `bun run landing:check` | Landing TypeScript type checking |
+| `bun run relay:dev` | Start Omni relay development server |
+| `bun run relay:typecheck` | Relay TypeScript type checking |
+| `bun run share:test:run` | Run shared package tests |
+| `bun run check:all` | Type check all packages |
 | `bun run format` | Format code with Biome |
 | `bun run lint` | Lint code with Biome |
 | `bun run biome` | Run both format and lint |
+
+See [docs/monorepo.md](./docs/monorepo.md) for package boundaries, deployment roots,
+and the verification checklist.
 
 ## Code Style & Standards
 
@@ -65,7 +78,7 @@ Before you begin, ensure you have the following installed:
 Quillium uses [Biome](https://biomejs.dev/) for consistent code formatting and linting:
 
 - **Indentation**: 4 spaces (2 spaces for JSON files)
-- **Line width**: 80 characters
+- **Line width**: 100 characters
 - **Semicolons**: Required
 - **Trailing commas**: Required where valid
 - **Import organization**: Automatic sorting and grouping
@@ -73,7 +86,7 @@ Quillium uses [Biome](https://biomejs.dev/) for consistent code formatting and l
 **Before submitting a PR, always run:**
 
 ```bash
-bun run check
+bun run check:all
 bun run lint
 ```
 
@@ -93,7 +106,8 @@ bun run lint
 
 ### File Organization
 
-See [architecture](./ARCHITECTURE.md)
+See [docs/monorepo.md](./docs/monorepo.md) for package layout and
+[docs/architecture-overview.md](./docs/architecture-overview.md) for system architecture.
 
 ## Contribution Workflow
 
@@ -118,9 +132,9 @@ Before starting work:
 
 3. **Run quality checks**
    ```bash
-   bun run check      # TypeScript validation
-   bun run biome      # Format and lint
-   bun run tauri build      # Ensure build works
+   bun run check:all             # TypeScript validation
+   bun run biome                 # Format and lint
+   bun run desktop:tauri:build   # Build the desktop package
    ```
 
 ### 3. Commit Guidelines
@@ -205,7 +219,9 @@ Quillium uses [PostHog](https://posthog.com) for product analytics. Events are c
 
 ### Setup
 
-PostHog is initialized once in `src/hooks.client.ts` at app boot. It also registers `app_version` as a super property (sent with every event automatically) and forwards unhandled client exceptions to PostHog.
+PostHog is initialized once in `packages/desktop/src/hooks.client.ts` at app boot. It
+also registers `app_version` as a super property (sent with every event automatically)
+and forwards unhandled client exceptions to PostHog.
 
 Add these to your `.env.local` for analytics to work locally:
 
@@ -331,7 +347,9 @@ Feature flags are evaluated with `posthog.getFeatureFlag(flagName)` at the call 
 
 ### Error Tracking
 
-Unhandled client errors are automatically forwarded to PostHog via `posthog.captureException()` in `src/hooks.client.ts`. No manual instrumentation is needed for routine error tracking.
+Unhandled client errors are automatically forwarded to PostHog via
+`posthog.captureException()` in `packages/desktop/src/hooks.client.ts`. No manual
+instrumentation is needed for routine error tracking.
 
 ---
 
@@ -404,10 +422,10 @@ We follow the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUCT.md). Plea
 
 ### Understanding the Codebase
 
-1. **Start with the README** and ARCHITECTURE.md
+1. **Start with the README**, [docs/monorepo.md](./docs/monorepo.md), and ARCHITECTURE.md
 2. **Explore the file structure** to understand organization
-3. **Read through key components** like Editor.svelte
-4. **Check the CLAUDE.md** file for development context
+3. **Read through key components** like `packages/desktop/src/lib/editor/Editor.svelte`
+4. **Check AGENTS.md** for development context
 
 ### Working with CodeMirror
 
@@ -443,7 +461,7 @@ Maintainers handle releases, but contributors can:
 
 ### Writing Changelog Entries
 
-Quillium shows a "What's New" modal on startup after minor version bumps. Changelog entries live in `src/lib/changelog.json`, keyed by `major.minor` version:
+Quillium shows a "What's New" modal on startup after minor version bumps. Changelog entries live in `packages/desktop/src/lib/changelog.json`, keyed by `major.minor` version:
 
 ```json
 {
@@ -472,21 +490,21 @@ Entries can embed a screenshot. The modal renders the `content` as Markdown, so 
 "content": "Quillium now tracks **how a document was written**…\n\n![Authorship playback](/changelog/0.20.png)\n\nOpen it from the status bar…"
 ```
 
-Don't hand-craft screenshots. Use the reproducible harness, which boots the app, mocks Tauri, seeds realistic state, and crops a clean, modal-sized PNG into `static/changelog/<version>.png` (served at `/changelog/<version>.png`):
+Don't hand-craft screenshots. Use the reproducible harness, which boots the app, mocks Tauri, seeds realistic state, and crops a clean, modal-sized PNG into `packages/desktop/static/changelog/<version>.png` (served at `/changelog/<version>.png`):
 
 ```bash
 # A built-in scene (full-screen scenes self-size to avoid dead space):
-bun run changelog:shot --version 0.20 --scene authorship-playback
+bun run desktop:changelog:shot --version 0.20 --scene authorship-playback
 
 # Or crop to a specific element of a scene, with padding:
-bun run changelog:shot --version 0.21 --scene editor --crop "#editor-document" --pad 24
+bun run desktop:changelog:shot --version 0.21 --scene editor --crop "#editor-document" --pad 24
 ```
 
-Run `bun run changelog:shot` with no args to list available scenes. Pass `--crop` to frame a single element, or `--width`/`--height` to trim a full-screen capture — full 1440px app chrome reads poorly in the modal.
+Run `bun run desktop:changelog:shot` with no args to list available scenes. Pass `--crop` to frame a single element, or `--width`/`--height` to trim a full-screen capture — full 1440px app chrome reads poorly in the modal.
 
 **Creating a custom scene.** A "scene" leaves the app in a captureable state (the right page open, the right state seeded, the right element on screen). When the built-in scenes don't fit your feature, you have two options.
 
-_Option A — add it to the `SCENES` map (preferred when the scene will recur across releases)._ In `scripts/changelog-shot.ts`, add an entry keyed by scene name. `needs` is the boot config (mock flags + an optional `viewport` to size full-screen captures); `run` drives the page into the shot. The harness exports `applyDebugScenario(page, id)` to seed state via any `screenshot-*` scenario in `src/lib/debug/scenarios.ts`, and the app exposes DEV bridges on `window` (e.g. `__goToAuthorship__`, `__runScenario__`):
+_Option A — add it to the `SCENES` map (preferred when the scene will recur across releases)._ In `packages/desktop/scripts/changelog-shot.ts`, add an entry keyed by scene name. `needs` is the boot config (mock flags + an optional `viewport` to size full-screen captures); `run` drives the page into the shot. The harness exports `applyDebugScenario(page, id)` to seed state via any `screenshot-*` scenario in `packages/desktop/src/lib/debug/scenarios.ts`, and the app exposes DEV bridges on `window` (e.g. `__goToAuthorship__`, `__runScenario__`):
 
 ```ts
 const SCENES: Record<string, { needs: BootOptions; run: Scene }> = {
@@ -506,10 +524,10 @@ const SCENES: Record<string, { needs: BootOptions; run: Scene }> = {
 Then capture it like any built-in scene:
 
 ```bash
-bun run changelog:shot --version 0.21 --scene export-menu --crop ".export-dropdown" --pad 16
+bun run desktop:changelog:shot --version 0.21 --scene export-menu --crop ".export-dropdown" --pad 16
 ```
 
-_Option B — a throwaway driver (for a true one-off you won't reuse)._ Import the helper API in a small script, run it, then delete it. `boot()` starts/reuses the dev server and returns `{ page, … }`; `cropShot()` writes `static/changelog/<version>.png`; `shutdown()` tears everything down:
+_Option B — a throwaway driver (for a true one-off you won't reuse)._ Import the helper API in a small script, run it, then delete it. `boot()` starts/reuses the dev server and returns `{ page, … }`; `cropShot()` writes `packages/desktop/static/changelog/<version>.png`; `shutdown()` tears everything down:
 
 ```ts
 // scripts/_my-shot.ts  — delete after running

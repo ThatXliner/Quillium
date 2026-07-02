@@ -12,10 +12,10 @@ Read the [Manifesto](./MANIFESTO.md).
 
 ## Screenshots
 
-![Editor](screenshots/01-editor.png)
+![Editor](packages/desktop/screenshots/01-editor.png)
 *Focused writing environment*
 
-![Revision with nested editor](screenshots/05-revision-active.png)
+![Revision with nested editor](packages/desktop/screenshots/05-revision-active.png)
 *Non-linear editing: version pills and the inline nested editor*
 
 → [Full screenshot gallery](./SCREENSHOTS.md)
@@ -44,6 +44,19 @@ All of this in a performant, focused interface. Keyboard-first.
 
 ## Getting Started
 
+### Monorepo Layout
+
+Quillium uses one Bun workspace rooted at this repository:
+
+- `packages/desktop` - the Tauri desktop app
+- `packages/landing` - the public site deployed on Vercel
+- `packages/relay` - the Omni WebSocket relay deployed with Fly/Docker
+- `packages/share` - shared wire types, rendering utilities, and read-only share UI
+- `supabase` - the single Omni schema and migration source
+
+See [docs/monorepo.md](./docs/monorepo.md) for package boundaries, deployment notes,
+and the verification checklist.
+
 ### Prerequisites
 
 - Bun
@@ -60,20 +73,26 @@ cd Quillium
 bun install
 
 # Start development server
-bun run dev
+bun run desktop:dev
 
 # Or run with Tauri for desktop development
-bun run tauri dev
+bun run desktop:tauri:dev
+
+# Start the landing site
+bun run landing:dev
+
+# Start the Omni relay
+bun run relay:dev
 ```
 
 ### Building
 
 ```bash
 # Build web version
-bun run build
+bun run desktop:build
 
 # Build desktop application
-bun run tauri build
+bun run desktop:tauri:build
 ```
 
 ## Contributing
@@ -89,8 +108,10 @@ bun run lint      # Lint with Biome
 bun run biome     # Run both
 
 # Type checking
-bun run check           # One-time check
-bun run check:watch     # Watch mode
+bun run desktop:check   # Desktop app
+bun run landing:check   # Landing app
+bun run share:check     # Shared package
+bun run check:all       # All package checks
 ```
 
 ### Recommended Editor Setup

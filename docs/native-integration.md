@@ -196,7 +196,7 @@ Discord-style modal shown on startup when upgrading to a new **minor** version. 
 
 1. `+page.svelte` calls `tryShowChangelog()` after beta disclaimer
 2. `minorVersion()` extracts `"major.minor"` from `__APP_VERSION__`
-3. Key looked up in `src/lib/changelog.json`
+3. Key looked up in `packages/desktop/src/lib/changelog.json`
 4. Compared against `localStorage("quillium_changelog_seen")`
 5. On dismiss, current minor saved to localStorage
 

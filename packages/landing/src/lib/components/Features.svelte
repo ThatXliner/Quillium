@@ -1,0 +1,282 @@
+<script lang="ts">
+import { onMount } from "svelte";
+import posthog from "posthog-js";
+import { GitBranch, MessageSquare, Star, CircleCheck, Play, Monitor } from "@lucide/svelte";
+import revisionsImg from "$lib/assets/screenshots/revisions.png";
+import aiAnnotationsImg from "$lib/assets/screenshots/ai-annotations.png";
+import annotationsBelongImg from "$lib/assets/screenshots/annotations-belong.png";
+
+let showAiSection = $state(true);
+let showRevisionsDemo = $state(false);
+let revisionsGif = $state("");
+
+onMount(() => {
+    posthog.onFeatureFlags(() => {
+        const variant = posthog.getFeatureFlag("hide-ai-feature-section");
+        showAiSection = variant !== "hide-ai";
+    });
+});
+</script>
+
+<!-- ==================== FEATURES ==================== -->
+<section id="features" class="features-section">
+	<div class="reveal features-header">
+		<p class="section-eyebrow">What makes it different</p>
+		<h2 class="section-heading">The tools your writing actually needs.</h2>
+	</div>
+
+	<!-- Feature 1: Branches / Revisions -->
+	<div class="reveal feature-row">
+		<div class="feature-media">
+			{#if showRevisionsDemo && revisionsGif}
+				<img
+					src={revisionsGif}
+					alt="Quillium revision branches demo showing inline version control in action"
+					class="feature-screenshot"
+				/>
+			{:else}
+				<img
+					src={revisionsImg}
+					alt="Quillium revision branches UI showing inline version control for prose"
+					class="feature-screenshot"
+					loading="lazy"
+				/>
+			{/if}
+			<button
+				class="demo-toggle"
+				onclick={async () => {
+					if (!revisionsGif) {
+						const mod = await import('$lib/assets/QuilliumShortDemo.gif');
+						revisionsGif = mod.default;
+					}
+					showRevisionsDemo = !showRevisionsDemo;
+					posthog.capture('demo_toggle_clicked', {
+						feature: 'revisions',
+						showing_demo: showRevisionsDemo
+					});
+				}}
+			>
+				{#if showRevisionsDemo}
+					<Monitor size={16} strokeWidth={2} />
+					Show screenshot
+				{:else}
+					<Play size={16} strokeWidth={2} />
+					See it in action
+				{/if}
+			</button>
+		</div>
+
+		<div class="feature-text">
+			<div class="feature-icon-wrap" style="background:rgba(168,85,247,0.08);">
+				<GitBranch size={24} strokeWidth={1.5} color="#a855f7" />
+			</div>
+			<h3 class="feature-heading">Write in Branches</h3>
+			<p class="feature-lead">
+				Fork any sentence. Keep every version. Navigate your creative decisions freely and try what
+				might work.
+			</p>
+		</div>
+	</div>
+
+	<!-- Feature 2: Annotations -->
+	<div class="reveal feature-row feature-row--reversed">
+		<div class="feature-text">
+			<div class="feature-icon-wrap" style="background:rgba(252,188,5,0.1);">
+				<MessageSquare size={24} strokeWidth={1.5} color="#d97706" />
+			</div>
+			<h3 class="feature-heading">Great Minds Think Together</h3>
+			<p class="feature-lead">
+				Comments, revisions, and suggestions float beside the text they're about.
+				<a href="/omni" class="text-[color:var(--text-faint)] underline underline-offset-2 hover:text-[color:var(--text-soft)]"
+					>Collaborate with your editor, anytime and anywhere</a
+				>.
+			</p>
+		</div>
+
+		<img
+			src={annotationsBelongImg}
+			alt="Quillium annotations and comments anchored beside the text they reference"
+			class="feature-screenshot"
+			loading="lazy"
+		/>
+	</div>
+
+	<!-- Feature 3: A Second Voice -->
+	{#if showAiSection}
+		<div class="reveal feature-row">
+			<img
+				src={aiAnnotationsImg}
+				alt="Quillium AI annotation panel providing inline writing feedback"
+				class="feature-screenshot"
+				loading="lazy"
+			/>
+
+			<div class="feature-text">
+				<div class="feature-icon-wrap" style="background:rgba(34,197,94,0.08);">
+					<Star size={24} strokeWidth={1.5} color="#22c55e" />
+				</div>
+				<h3 class="feature-heading">A Second Set of Eyes</h3>
+				<p class="feature-lead">
+					Not everyone is free to review your work. Now, you don't have to wait. Ask for feedback,
+					find the right word, get clarity — all without leaving your flow.
+				</p>
+				<div class="tag-list">
+					<span class="tag tag--green">Review &amp; revise</span>
+					<span class="tag tag--green">Find the right word</span>
+					<span class="tag tag--green">Tone feedback</span>
+					<span class="tag tag--green">Clarity &amp; conciseness</span>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Feature 4: Offline-First -->
+	<div class="reveal feature-row feature-row--full">
+		<div class="feature-text">
+			<div class="feature-icon-wrap" style="background:rgba(59,130,246,0.08);">
+				<CircleCheck size={24} strokeWidth={1.5} color="#3b82f6" />
+			</div>
+			<h3 class="feature-heading">Never Lose Your Work</h3>
+			<p class="feature-lead">
+				Your work is saved locally. It's durable, reliable, instant, and no internet connection is
+				required. A database with 25+ years of experience means even if your computer crashes
+				mid-sentence, nothing is lost.
+			</p>
+			<div class="tag-list">
+				<span class="tag tag--blue">Offline-first</span>
+				<span class="tag tag--blue">SQLite-backed</span>
+				<span class="tag tag--blue">Crash-resistant</span>
+			</div>
+		</div>
+	</div>
+</section>
+
+<style>
+	/* ── Features ── */
+	.features-section {
+		padding: 56px 24px;
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+	@media (min-width: 768px) {
+		.features-section {
+			padding: 80px 24px;
+		}
+	}
+	.features-header {
+		margin-bottom: 64px;
+		max-width: 32rem;
+	}
+	.feature-row {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 48px;
+		margin-bottom: 80px;
+		align-items: center;
+	}
+	@media (min-width: 768px) {
+		.feature-row {
+			grid-template-columns: 3fr 2fr;
+			gap: 80px;
+		}
+		.feature-row--reversed {
+			grid-template-columns: 2fr 3fr;
+		}
+		.feature-row--reversed .feature-text {
+			order: -1;
+		}
+	}
+	.feature-icon-wrap {
+		width: 48px;
+		height: 48px;
+		border-radius: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 20px;
+	}
+	.feature-heading {
+		font-family: 'Newsreader', Georgia, serif;
+		font-size: 1.65rem;
+		font-weight: 400;
+		color: var(--text-strong);
+		margin: 0 0 12px 0;
+		line-height: 1.2;
+		letter-spacing: -0.01em;
+	}
+	.feature-lead {
+		font-size: 15.5px;
+		color: var(--text-soft);
+		line-height: 1.8;
+		margin: 0 0 16px 0;
+	}
+	.tag-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 20px;
+	}
+	.tag {
+		border-radius: 9999px;
+		padding: 3px 11px;
+		font-size: 12px;
+		font-family: 'Inter', sans-serif;
+		font-weight: 500;
+	}
+	.tag--purple {
+		background: rgba(168, 85, 247, 0.08);
+		border: 1px solid rgba(168, 85, 247, 0.2);
+		color: #7c3aed;
+	}
+	.tag--green {
+		background: rgba(34, 197, 94, 0.08);
+		border: 1px solid rgba(34, 197, 94, 0.2);
+		color: #16a34a;
+	}
+	.tag--blue {
+		background: rgba(59, 130, 246, 0.08);
+		border: 1px solid rgba(59, 130, 246, 0.2);
+		color: #2563eb;
+	}
+	.feature-row--full {
+		grid-template-columns: 1fr;
+		max-width: 36rem;
+	}
+
+	/* ── Demo toggle ── */
+	.feature-media {
+		position: relative;
+	}
+	.demo-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 12px;
+		padding: 6px 14px;
+		font-size: 13px;
+		font-family: 'Inter', sans-serif;
+		font-weight: 500;
+		color: #7c3aed;
+		background: rgba(168, 85, 247, 0.08);
+		border: 1px solid rgba(168, 85, 247, 0.2);
+		border-radius: 9999px;
+		cursor: pointer;
+		transition:
+			background 0.2s,
+			border-color 0.2s;
+	}
+	.demo-toggle:hover {
+		background: rgba(168, 85, 247, 0.14);
+		border-color: rgba(168, 85, 247, 0.35);
+	}
+
+	/* ── Screenshot images ── */
+	.feature-screenshot {
+		width: 100%;
+		height: auto;
+		border-radius: 10px;
+		box-shadow:
+			0 8px 32px rgba(var(--shadow-color), 0.1),
+			0 2px 8px rgba(var(--shadow-color), 0.06);
+	}
+</style>

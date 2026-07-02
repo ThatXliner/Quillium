@@ -15,13 +15,14 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 
 ### Essential (read first)
 1. [Quickstart](./quickstart.md) — Setup, running, making your first change
-2. [Architecture Overview](./architecture-overview.md) — Mental model of the system
-3. [State Management](./state-management.md) — The dual-state system is the #1 source of confusion
+2. [Monorepo Guide](./monorepo.md) — Package layout, commands, deploy roots, shared package rules
+3. [Architecture Overview](./architecture-overview.md) — Mental model of the system
+4. [State Management](./state-management.md) — The dual-state system is the #1 source of confusion
 
 ### Core Systems (read based on what you're touching)
-4. [Annotations](./annotations.md) — If touching comments, suggestions, or revisions
-5. [Nested Editors](./nested-editors.md) — If touching revision modals or inline editors
-6. [Persistence](./persistence.md) — If touching save/load or crash recovery
+5. [Annotations](./annotations.md) — If touching comments, suggestions, or revisions
+6. [Nested Editors](./nested-editors.md) — If touching revision modals or inline editors
+7. [Persistence](./persistence.md) — If touching save/load or crash recovery
 
 ### Feature Areas (reference as needed)
 - [Tabs & Drafts](./tabs-and-drafts.md) — Document tabs, draft trees, forking, locks
@@ -41,6 +42,7 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 
 | Document | Description |
 |----------|-------------|
+| [Monorepo Guide](./monorepo.md) | Package layout, workspace commands, deployment boundaries |
 | [Architecture Overview](./architecture-overview.md) | Core technologies, layers, data flow |
 | [File Structure](./file-structure.md) | Complete source tree with descriptions |
 | [State Management](./state-management.md) | CodeMirror ↔ Svelte sync, transactions vs effects |
@@ -80,12 +82,13 @@ Quillium is a modern writing application built with Tauri + SvelteKit + TypeScri
 ## Development Commands
 
 ```bash
-bun run dev          # Development server
-bun run build        # Production build
-bun run check        # Type checking
+bun run desktop:dev  # Desktop development server
+bun run desktop:build # Desktop production build
+bun run check:all    # Type checking
 bun run biome        # Lint and format
-bun run test:run     # Run tests
-bun run tauri dev    # Tauri development mode
+bun run test:all     # Run tests
+bun run desktop:tauri:dev # Tauri development mode
 ```
 
-See `CLAUDE.md` for the complete command reference.
+See the root `README.md`, `AGENTS.md`, and [Monorepo Guide](./monorepo.md) for the
+complete command reference.
