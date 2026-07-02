@@ -344,7 +344,10 @@ test.describe("markdown formatting", () => {
 
         await q.typeInEditor("hello world");
         await q.selectRange(0, 5);
-        await page.keyboard.press("ControlOrMeta+b");
+        // The test browser reports a Windows UA, so CodeMirror maps Mod-b to
+        // Ctrl-b — while ControlOrMeta would send Meta on a macOS host and
+        // miss the keymap entirely (same convention as q.undo()).
+        await page.keyboard.press("Control+b");
 
         await q.expectEditorText("**hello** world");
         await expect(page.getByRole("button", { name: "Bold" })).toHaveCount(0);
