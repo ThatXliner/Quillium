@@ -37,6 +37,7 @@ Current gaps and technical debt.
 | **Non-active revision version text is snapshot-only** | If crash occurs between snapshots, non-active versions may be stale. |
 | **`activeVersionId` is snapshot-only** | Same crash window concern. |
 | **Version labels are snapshot-only** | Same crash window concern. |
+| **History storage/prune tools are draft-scoped** | The version-history timeline is document-wide, but storage size and pruning act on the active draft's snapshots only (labeled as such in the panel). |
 
 ## UI
 

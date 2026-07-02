@@ -530,6 +530,13 @@ function handleKeydown(e: KeyboardEvent) {
                 {#if showStoragePanel}
                     <div class="border border-black/[0.08] rounded-lg p-3 space-y-2.5 bg-black/[0.015]">
                         <p class="text-xs font-semibold text-black/60">Manage storage</p>
+                        <!-- The size/prune commands are draft-scoped while the
+                             timeline is document-wide — say so, or "keep last
+                             50" reads as applying to the whole visible list. -->
+                        <p class="text-[11px] text-black/40 leading-snug">
+                            Applies to the current draft's auto-saves only. Named
+                            checkpoints are never pruned.
+                        </p>
 
                         <!-- Auto-retention -->
                         <div class="flex items-center justify-between gap-2">
