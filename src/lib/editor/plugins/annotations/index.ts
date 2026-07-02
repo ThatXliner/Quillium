@@ -993,8 +993,20 @@ export const annotationKeymap: KeyBinding[] = [
 //   5. collapsedRevisionResolver ViewPlugin (auto-cleanup).
 //   6. invertedAnnotationFieldEffects (undo/redo support).
 // -------------------------------------------------------
+export function _shouldHandleRevisionFocusMouseEvent(event: MouseEvent): boolean {
+    return (
+        !event.defaultPrevented &&
+        event.button === 0 &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey
+    );
+}
+
 const revisionClickHandler = EditorView.domEventHandlers({
     mousedown(event, view) {
+        if (!_shouldHandleRevisionFocusMouseEvent(event)) return false;
         if (!appSettings.atomicRevisions) return false;
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (pos === null) return false;

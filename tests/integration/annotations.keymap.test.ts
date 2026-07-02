@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { history } from "@codemirror/commands";
 import { appSettings } from "$lib/settings.svelte";
 import {
+    _shouldHandleRevisionFocusMouseEvent,
     annotationKeymap,
     annotations as annotationExtensions,
 } from "$lib/editor/plugins/annotations";
@@ -228,6 +229,21 @@ describe("annotation keymap integration", () => {
         expect(consumed).toBe(true);
         expect(view.state.doc.toString()).toBe("Alpha  Gamma");
         expect(Object.values(view.state.field(annotationField))).toHaveLength(0);
+    });
+});
+
+describe("revision mouse focus guard", () => {
+    it("only treats plain primary-button mouse events as focus requests", () => {
+        expect(_shouldHandleRevisionFocusMouseEvent(new MouseEvent("mousedown"))).toBe(true);
+        expect(
+            _shouldHandleRevisionFocusMouseEvent(new MouseEvent("mousedown", { button: 2 })),
+        ).toBe(false);
+        expect(
+            _shouldHandleRevisionFocusMouseEvent(new MouseEvent("mousedown", { altKey: true })),
+        ).toBe(false);
+        const prevented = new MouseEvent("mousedown", { cancelable: true });
+        prevented.preventDefault();
+        expect(_shouldHandleRevisionFocusMouseEvent(prevented)).toBe(false);
     });
 });
 
