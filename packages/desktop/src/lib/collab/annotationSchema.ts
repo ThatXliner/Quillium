@@ -3,7 +3,10 @@
  *
  * Per D-90/D-92: YjsAnnotation is a Y.Map<unknown> with Y.Text/Y.Array/Y.Map children.
  * Per D-93: Comment threads are Y.Array<ThreadMessage> (append-only, sorted on read).
- * Per D-94: No migration; Phase 8 wire format was never shipped.
+ * Per #269: Revision versions are id-native on the wire. The versions Y.Map is
+ * keyed by VersionState.id, `order` stores display order, and `activeVersionId`
+ * stores the active pointer. The reader still accepts the older index-keyed
+ * shape for rooms that have not been migrated yet.
  *
  * Converter invariants:
  *   - codeMirrorToYjsAnnotation runs structural child-Y-type creation inside a
@@ -17,21 +20,20 @@
  *   - ./relativePosition for position encoding
  *   - ../editor/plugins/annotations/models for CM types
  */
-import { EditorSelection } from "@codemirror/state";
-import * as Y from "yjs";
-import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
 import {
-    activeVersionIndex,
-    isAnnotationOfType,
-    normalizeRevision,
-    RawAnnotationsSchema,
     type GenericAnnotation,
     type RawAnnotation,
     type RawAnnotations,
+    RawAnnotationsSchema,
     type SuggestionReplacement,
     type ThreadMessage,
     type VersionState,
+    isAnnotationOfType,
+    normalizeRevision,
 } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
+import * as Y from "yjs";
+import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
 import type { YjsAnnotationNode } from "./types";
 
 // ── ID generation ─────────────────────────────────────────────────────
@@ -91,23 +93,36 @@ export function codeMirrorToYjsAnnotation(
             }
         } else if (isAnnotationOfType(annotation, "revision")) {
             const versionsMap = new Y.Map<Y.Map<unknown>>();
-            annotation.versions.forEach((v, idx) => {
+            const order = new Y.Array<string>();
+            const versionIds: string[] = [];
+            for (const v of annotation.versions) {
                 const versionNode = new Y.Map<unknown>();
                 const vtext = new Y.Text();
                 if (v.doc.length > 0) {
                     vtext.insert(0, v.doc);
                 }
+                versionNode.set("id", v.id);
                 versionNode.set("text", vtext);
                 if (v.label !== undefined) {
                     versionNode.set("label", v.label);
                 }
                 versionNode.set("annotations", new Y.Map<YjsAnnotationNode>());
-                versionsMap.set(String(idx), versionNode);
-            });
+                versionsMap.set(v.id, versionNode);
+                versionIds.push(v.id);
+            }
+            if (versionIds.length > 0) {
+                order.push(versionIds);
+            }
             node.set("versions", versionsMap);
-            // Relay schema stays index-based for now (see issue #269); derive the
-            // positional index from the stable activeVersionId.
-            node.set("activeVersionIndex", activeVersionIndex(annotation));
+            node.set("order", order);
+            const activeVersionId = annotation.versions.some(
+                (v) => v.id === annotation.activeVersionId,
+            )
+                ? annotation.activeVersionId
+                : annotation.versions[0]?.id;
+            if (activeVersionId !== undefined) {
+                node.set("activeVersionId", activeVersionId);
+            }
         }
     }, "init");
 
@@ -182,28 +197,27 @@ export function yjsAnnotationToCodeMirror(
         console.warn("[annotationSchema] Revision missing versions map");
         return null;
     }
-    const keys = Array.from(versionsMap.keys())
-        .map((k) => Number(k))
-        .filter((n) => Number.isFinite(n))
-        .sort((a, b) => a - b);
+    const keys = orderedVersionKeys(node, versionsMap);
     if (keys.length === 0) {
         console.warn("[annotationSchema] Revision has empty versions map");
         return null;
     }
-    // Loose pre-normalization versions: no ids yet (the Yjs schema is still
-    // index-based, issue #269). normalizeRevision() mints position-stable ids
-    // below, so this stays a plain record rather than a VersionState[].
-    const versions: Record<string, unknown>[] = keys.map((k) => {
-        const v = versionsMap.get(String(k)) as Y.Map<unknown>;
+    // Loose pre-normalization versions: legacy index-keyed rooms may have no
+    // version ids yet. normalizeRevision() mints ids for those below, while
+    // id-native rooms preserve the stable key/id.
+    const versions: Record<string, unknown>[] = keys.map((key) => {
+        const v = versionsMap.get(key) as Y.Map<unknown>;
         const vtext = v.get("text");
         const doc = vtext instanceof Y.Text ? vtext.toString() : "";
         const label = v.get("label");
+        const versionId = versionIdForYjsKey(key, v);
         const nestedAnnotations = v.get("annotations");
         const annotationField =
             nestedAnnotations instanceof Y.Map && vtext instanceof Y.Text
                 ? yjsAnnotationMapToRawAnnotations(nestedAnnotations, ydoc, vtext, options)
                 : undefined;
         return {
+            ...(versionId !== undefined ? { id: versionId } : {}),
             doc,
             ...(typeof label === "string" ? { label } : {}),
             ...(annotationField && Object.keys(annotationField).length > 0
@@ -217,17 +231,61 @@ export function yjsAnnotationToCodeMirror(
             ? (node.get("activeVersionIndex") as number)
             : 0;
 
-    // The Yjs read path produces a legacy-shaped revision: versions without ids
-    // and an index-based active pointer (the relay schema stays index-based until
-    // issue #269). normalizeRevision heals it into the new id-native shape —
-    // minting position-stable version ids and deriving activeVersionId from the
-    // clamped index — so the collab read path always yields valid new-shape data.
+    const activeVersionId = node.get("activeVersionId");
+
+    // normalizeRevision heals legacy rooms into the runtime id-native shape:
+    // versions without ids get ids, and activeVersionIndex is translated into
+    // activeVersionId when the newer pointer is missing or stale.
     return normalizeRevision({
         ...base,
         _type: "revision",
         versions,
+        ...(typeof activeVersionId === "string" ? { activeVersionId } : {}),
         activeVersionIndex: rawIndex,
     });
+}
+
+function orderedVersionKeys(node: YjsAnnotationNode, versionsMap: Y.Map<Y.Map<unknown>>): string[] {
+    const knownKeys = new Set(versionsMap.keys());
+    const order = node.get("order");
+    const ordered =
+        order instanceof Y.Array
+            ? order.toArray().filter((id): id is string => typeof id === "string")
+            : [];
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    for (const key of ordered) {
+        if (knownKeys.has(key) && !seen.has(key)) {
+            result.push(key);
+            seen.add(key);
+        }
+    }
+
+    const remaining = Array.from(knownKeys)
+        .filter((key) => !seen.has(key))
+        .sort(compareVersionMapKeys);
+    return [...result, ...remaining];
+}
+
+function compareVersionMapKeys(a: string, b: string): number {
+    const aIndex = legacyVersionIndex(a);
+    const bIndex = legacyVersionIndex(b);
+    if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
+    if (aIndex !== undefined) return -1;
+    if (bIndex !== undefined) return 1;
+    return a.localeCompare(b);
+}
+
+function legacyVersionIndex(key: string): number | undefined {
+    const parsed = Number(key);
+    return Number.isInteger(parsed) && parsed >= 0 && String(parsed) === key ? parsed : undefined;
+}
+
+function versionIdForYjsKey(key: string, node: Y.Map<unknown>): string | undefined {
+    const nodeId = node.get("id");
+    if (typeof nodeId === "string" && nodeId.length > 0) return nodeId;
+    return legacyVersionIndex(key) === undefined ? key : undefined;
 }
 
 export function getRawAnnotationField(version: VersionState): RawAnnotations | undefined {
@@ -300,12 +358,12 @@ function syncIntegratedAnnotationSubtrees(
     const versionsMap = node.get("versions");
     if (!(versionsMap instanceof Y.Map)) return;
 
-    annotation.versions.forEach((version, index) => {
-        const versionNode = versionsMap.get(String(index));
-        if (!(versionNode instanceof Y.Map)) return;
+    for (const version of annotation.versions) {
+        const versionNode = versionsMap.get(version.id);
+        if (!(versionNode instanceof Y.Map)) continue;
 
         const vtext = versionNode.get("text");
-        if (!(vtext instanceof Y.Text)) return;
+        if (!(vtext instanceof Y.Text)) continue;
 
         let nestedAnnotations = versionNode.get("annotations");
         if (!(nestedAnnotations instanceof Y.Map)) {
@@ -322,7 +380,7 @@ function syncIntegratedAnnotationSubtrees(
             options?.nestedIdMapFor?.(nestedAnnotations) ?? new AnnotationIdMap(),
             options,
         );
-    });
+    }
 }
 
 function yjsAnnotationMapToRawAnnotations(

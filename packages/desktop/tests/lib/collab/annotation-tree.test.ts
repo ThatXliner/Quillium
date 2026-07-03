@@ -1,3 +1,11 @@
+import { codeMirrorToYjsAnnotation, yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import {
+    type GenericAnnotation,
+    activeVersionIndex,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
 /**
  * annotation-tree.test.ts -- Recursive Y.Map shape integrity (D-90, D-92).
  *
@@ -8,22 +16,14 @@
  *     createAnnotationSyncPlugin in yjsAnnotations.ts still expects the legacy
  *     flat YjsAnnotation shape until Plan 8.5b-01 rewires it).
  *   - thread ordering roundtrip (Y.Array is ordered, not set-based).
- *   - revision activeVersionIndex bounds clamp.
+ *   - legacy revision activeVersionIndex bounds clamp.
  *   - null selection when anchored text is deleted.
  *
  * The remaining `it.todo` entry ("observeDeep fires for descendant Y.Text changes")
  * is wired by Plan 8.5b-01 when the annotation sync plugin switches to observeDeep.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { EditorSelection } from "@codemirror/state";
-import { codeMirrorToYjsAnnotation, yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
-import {
-    activeVersionIndex,
-    makeVersion,
-    type GenericAnnotation,
-} from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode } from "$lib/collab/types";
 
 const CLIENT_ID = "client-A";
 
@@ -112,8 +112,15 @@ describe("annotation tree", () => {
             expect(vNode.get("text") instanceof Y.Text).toBe(true);
             expect(vNode.get("annotations") instanceof Y.Map).toBe(true);
         }
-        const v0 = vmap.get("0") as Y.Map<unknown>;
-        const v1 = vmap.get("1") as Y.Map<unknown>;
+        const order = revisionNode.get("order") as Y.Array<string>;
+        expect(order.toArray()).toEqual(revisionVersions.map((version) => version.id));
+        expect(revisionNode.get("activeVersionId")).toBe(revisionVersions[0].id);
+        expect(revisionNode.get("activeVersionIndex")).toBeUndefined();
+
+        const v0 = vmap.get(revisionVersions[0].id) as Y.Map<unknown>;
+        const v1 = vmap.get(revisionVersions[1].id) as Y.Map<unknown>;
+        expect(v0.get("id")).toBe(revisionVersions[0].id);
+        expect(v1.get("id")).toBe(revisionVersions[1].id);
         expect((v0.get("text") as Y.Text).toString()).toBe("Hello");
         expect((v1.get("text") as Y.Text).toString()).toBe("Greetings");
     });

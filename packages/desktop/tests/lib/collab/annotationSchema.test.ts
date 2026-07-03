@@ -1,28 +1,28 @@
+import {
+    AnnotationIdMap,
+    codeMirrorToYjsAnnotation,
+    generateAnnotationId,
+    syncRawAnnotationsToYjsMap,
+    yjsAnnotationToCodeMirror,
+} from "$lib/collab/annotationSchema";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import {
+    type GenericAnnotation,
+    type RawAnnotations,
+    type VersionState,
+    activeVersionIndex,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
 /**
  * annotationSchema.test.ts -- Tests for Yjs annotation schema and bidirectional converters.
  *
  * Per D-90/D-92: YjsAnnotationNode is a recursive Y.Map structure with Y.Array for
  * threads and Y.Map for versions. Tests verify converters handle the new shape.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { EditorSelection } from "@codemirror/state";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import {
-    codeMirrorToYjsAnnotation,
-    syncRawAnnotationsToYjsMap,
-    yjsAnnotationToCodeMirror,
-    generateAnnotationId,
-    AnnotationIdMap,
-} from "$lib/collab/annotationSchema";
-import {
-    activeVersionIndex,
-    makeVersion,
-    type GenericAnnotation,
-    type RawAnnotations,
-    type VersionState,
-} from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode } from "$lib/collab/types";
-import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 
 describe("annotationSchema", () => {
     let ydoc: Y.Doc;
@@ -119,11 +119,16 @@ describe("annotationSchema", () => {
             const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
             expect(versions).toBeInstanceOf(Y.Map);
             expect(versions.size).toBe(1);
-            const v0 = versions.get("0") as Y.Map<unknown>;
+            const order = retrieved.get("order") as Y.Array<string>;
+            expect(order).toBeInstanceOf(Y.Array);
+            expect(order.toArray()).toEqual([revVersion.id]);
+            const v0 = versions.get(revVersion.id) as Y.Map<unknown>;
+            expect(v0.get("id")).toBe(revVersion.id);
             expect(v0.get("text")).toBeInstanceOf(Y.Text);
             expect((v0.get("text") as Y.Text).toString()).toBe("version text");
             expect(v0.get("label")).toBe("v1");
-            expect(retrieved.get("activeVersionIndex")).toBe(0);
+            expect(retrieved.get("activeVersionId")).toBe(revVersion.id);
+            expect(retrieved.get("activeVersionIndex")).toBeUndefined();
         });
 
         it("syncs nested annotations inside integrated revision versions", () => {
@@ -152,7 +157,7 @@ describe("annotationSchema", () => {
             ydoc.transact(() => ymap.set("test", node));
             const retrieved = ymap.get("test")!;
             const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
-            const v0 = versions.get("0") as Y.Map<unknown>;
+            const v0 = versions.get(version.id) as Y.Map<unknown>;
             const nestedMap = v0.get("annotations") as Y.Map<YjsAnnotationNode>;
             const vtext = v0.get("text") as Y.Text;
 
@@ -193,9 +198,18 @@ describe("annotationSchema", () => {
 
             const node = Array.from(ymap.values())[0];
             expect(node.get("_type")).toBe("revision");
-            expect(node.get("activeVersionIndex")).toBe(1);
+            expect(node.get("activeVersionIndex")).toBeUndefined();
+            const activeVersionId = node.get("activeVersionId");
+            expect(typeof activeVersionId).toBe("string");
             const versions = node.get("versions") as Y.Map<Y.Map<unknown>>;
             expect(versions.size).toBe(2);
+            const order = node.get("order") as Y.Array<string>;
+            expect(order).toBeInstanceOf(Y.Array);
+            expect(order.length).toBe(2);
+            expect(activeVersionId).toBe(order.get(1));
+            for (const versionId of order.toArray()) {
+                expect(versions.get(versionId)).toBeInstanceOf(Y.Map);
+            }
         });
     });
 
@@ -295,7 +309,7 @@ describe("annotationSchema", () => {
             ydoc.transact(() => ymap.set("test", node));
             const retrieved = ymap.get("test")!;
             const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
-            const v0 = versions.get("0") as Y.Map<unknown>;
+            const v0 = versions.get(version.id) as Y.Map<unknown>;
             syncRawAnnotationsToYjsMap(
                 nestedAnnotations,
                 v0.get("annotations") as Y.Map<YjsAnnotationNode>,

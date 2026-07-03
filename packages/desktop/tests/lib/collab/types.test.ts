@@ -1,13 +1,13 @@
+import type { CollabSession, YjsAnnotationNode } from "$lib/collab/types";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 /**
  * types.test.ts -- Type smoke tests for YjsAnnotationNode and CollabSession types.
  *
  * Per D-90/D-92: YjsAnnotationNode is now a recursive Y.Map structure.
  * These tests verify the shapes of the types at runtime using Y.Map construction.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import type { YjsAnnotationNode, CollabSession } from "$lib/collab/types";
-import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 
 describe("YjsAnnotationNode type", () => {
     it("can construct a comment YjsAnnotationNode", () => {
@@ -81,13 +81,18 @@ describe("YjsAnnotationNode type", () => {
             const versions = new Y.Map<Y.Map<unknown>>();
             const v0 = new Y.Map<unknown>();
             const v0Text = new Y.Text();
+            const versionId = "version-1";
             v0Text.insert(0, "version 1 text");
+            v0.set("id", versionId);
             v0.set("text", v0Text);
             v0.set("label", "v1");
             v0.set("annotations", new Y.Map<YjsAnnotationNode>());
-            versions.set("0", v0);
+            versions.set(versionId, v0);
             node.set("versions", versions);
-            node.set("activeVersionIndex", 0);
+            const order = new Y.Array<string>();
+            order.push([versionId]);
+            node.set("order", order);
+            node.set("activeVersionId", versionId);
 
             ymap.set("test", node as YjsAnnotationNode);
         });
@@ -95,10 +100,13 @@ describe("YjsAnnotationNode type", () => {
         const retrieved = ymap.get("test")!;
         expect(retrieved.get("_type")).toBe("revision");
         expect(retrieved.get("versions")).toBeInstanceOf(Y.Map);
-        expect(retrieved.get("activeVersionIndex")).toBe(0);
+        expect(retrieved.get("order")).toBeInstanceOf(Y.Array);
+        expect(retrieved.get("activeVersionId")).toBe("version-1");
+        expect(retrieved.get("activeVersionIndex")).toBeUndefined();
 
         const versions = retrieved.get("versions") as Y.Map<Y.Map<unknown>>;
-        const v0 = versions.get("0") as Y.Map<unknown>;
+        const v0 = versions.get("version-1") as Y.Map<unknown>;
+        expect(v0.get("id")).toBe("version-1");
         expect(v0.get("text")).toBeInstanceOf(Y.Text);
         expect((v0.get("text") as Y.Text).toString()).toBe("version 1 text");
 
@@ -127,6 +135,8 @@ describe("YjsAnnotationNode type", () => {
         expect(retrieved.get("replacements")).toBeUndefined();
         expect(retrieved.get("author")).toBeUndefined();
         expect(retrieved.get("versions")).toBeUndefined();
+        expect(retrieved.get("order")).toBeUndefined();
+        expect(retrieved.get("activeVersionId")).toBeUndefined();
         expect(retrieved.get("activeVersionIndex")).toBeUndefined();
 
         ydoc.destroy();
