@@ -16,7 +16,7 @@ import { EditorSelection } from "@codemirror/state";
  *     createAnnotationSyncPlugin in yjsAnnotations.ts still expects the legacy
  *     flat YjsAnnotation shape until Plan 8.5b-01 rewires it).
  *   - thread ordering roundtrip (Y.Array is ordered, not set-based).
- *   - revision activeVersionIndex bounds clamp.
+ *   - legacy revision activeVersionIndex bounds clamp.
  *   - null selection when anchored text is deleted.
  *
  * The remaining `it.todo` entry ("observeDeep fires for descendant Y.Text changes")
@@ -112,8 +112,15 @@ describe("annotation tree", () => {
             expect(vNode.get("text") instanceof Y.Text).toBe(true);
             expect(vNode.get("annotations") instanceof Y.Map).toBe(true);
         }
-        const v0 = vmap.get("0") as Y.Map<unknown>;
-        const v1 = vmap.get("1") as Y.Map<unknown>;
+        const order = revisionNode.get("order") as Y.Array<string>;
+        expect(order.toArray()).toEqual(revisionVersions.map((version) => version.id));
+        expect(revisionNode.get("activeVersionId")).toBe(revisionVersions[0].id);
+        expect(revisionNode.get("activeVersionIndex")).toBeUndefined();
+
+        const v0 = vmap.get(revisionVersions[0].id) as Y.Map<unknown>;
+        const v1 = vmap.get(revisionVersions[1].id) as Y.Map<unknown>;
+        expect(v0.get("id")).toBe(revisionVersions[0].id);
+        expect(v1.get("id")).toBe(revisionVersions[1].id);
         expect((v0.get("text") as Y.Text).toString()).toBe("Hello");
         expect((v1.get("text") as Y.Text).toString()).toBe("Greetings");
     });

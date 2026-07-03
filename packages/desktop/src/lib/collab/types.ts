@@ -22,10 +22,12 @@ import type { AnnotationIdMap } from "./annotationSchema";
  *   "annotations":        Y.Map<YjsAnnotationNode>
  *   "replacements"?:      Y.Array<SuggestionReplacement>  (suggestion only)
  *   "author"?:            string                           (suggestion only)
- *   "versions"?:          Y.Map<string, Y.Map<unknown>>    (revision only; key = vIdx string)
+ *   "versions"?:          Y.Map<string, Y.Map<unknown>>    (revision only; key = version.id)
  *                            each version Y.Map has { text: Y.Text, label?: string,
  *                                                   annotations: Y.Map<YjsAnnotationNode> }
- *   "activeVersionIndex"?: number                          (revision only)
+ *   "order"?:             Y.Array<string>                  (revision only; ordered version ids)
+ *   "activeVersionId"?:   string                           (revision only)
+ *   "activeVersionIndex"?: number                          (legacy revision rooms only)
  *
  * The TypeScript alias is `Y.Map<unknown>` because Yjs does not support
  * discriminated-union typing of child types; runtime validation is the

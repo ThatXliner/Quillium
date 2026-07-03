@@ -82,20 +82,18 @@ Annotations stored as recursive Y.Map structures:
 
 // Revision-only
 {
-    versions: Y.Map<string, Y.Map<unknown>>;  // keyed by String(index)
-    // versionNode: { text: Y.Text, label?: string, annotations: Y.Map }
-    activeVersionIndex: number;
+    versions: Y.Map<string, Y.Map<unknown>>;  // keyed by stable version.id
+    order: Y.Array<string>;                   // ordered version ids
+    // versionNode: { id: string, text: Y.Text, label?: string, annotations: Y.Map }
+    activeVersionId: string;
 }
 ```
 
-> **Note — wire shape is still index-based.** Locally, revision versions use a
-> stable `id` and a revision points at `activeVersionId` (see
-> [annotations.md → Version identity](./annotations.md#version-identity)). The Yjs
-> wire schema above is intentionally *not yet* migrated: the versions `Y.Map` is
-> keyed by `String(index)` and the active pointer is `activeVersionIndex: number`.
-> The CM→Yjs write path derives the index from `activeVersionId`, and the Yjs→CM
-> read path runs `normalizeRevision()` to mint local ids. The relay has no schema
-> migration framework yet, so the id-native rewrite is deferred — see issue #269.
+The relay stores a private Y.Doc metadata map (`__quillium.schemaVersion`) and
+runs versioned migrations when a room is loaded. Schema v2 migrated legacy
+revision rooms from numeric version keys plus `activeVersionIndex` to the
+id-native shape above. The desktop read path still accepts the old shape so
+partially migrated or pre-v2 rooms can be projected safely.
 
 ## Sync Loops
 

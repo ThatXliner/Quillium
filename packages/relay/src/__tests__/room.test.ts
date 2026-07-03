@@ -26,9 +26,44 @@ import {
     getYjsRoom,
     scheduleRoomCleanup,
 } from "../yjs/rooms.js";
-
 function fakeWebSocket(): WebSocket {
     return {} as WebSocket;
+}
+
+function makeLegacyYdoc(): Y.Doc {
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("document");
+    const annotations = ydoc.getMap<Y.Map<unknown>>("annotations");
+    const revision = new Y.Map<unknown>();
+
+    ydoc.transact(() => {
+        ytext.insert(0, "hello");
+        annotations.set("rev", revision);
+        revision.set("id", "rev");
+        revision.set("_type", "revision");
+        revision.set(
+            "startPos",
+            Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(ytext, 0)),
+        );
+        revision.set(
+            "endPos",
+            Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(ytext, 5)),
+        );
+        revision.set("thread", new Y.Array());
+        revision.set("annotations", new Y.Map());
+        revision.set("activeVersionIndex", 0);
+
+        const versions = new Y.Map<Y.Map<unknown>>();
+        revision.set("versions", versions);
+        const version = new Y.Map<unknown>();
+        const versionText = new Y.Text();
+        versions.set("0", version);
+        version.set("text", versionText);
+        versionText.insert(0, "hello");
+        version.set("annotations", new Y.Map());
+    }, "init");
+
+    return ydoc;
 }
 
 describe("Yjs room manager", () => {
@@ -59,6 +94,20 @@ describe("Yjs room manager", () => {
 
         expect(room1).toBe(room2);
         expect(loadYjsState).toHaveBeenCalledTimes(1);
+    });
+
+    it("migrates and snapshots legacy Yjs schema on room creation", async () => {
+        const legacyYdoc = makeLegacyYdoc();
+        vi.mocked(loadYjsState).mockResolvedValueOnce({ ydoc: legacyYdoc, stateVector: null });
+
+        const room = await getOrCreateYjsRoom("doc-legacy");
+
+        const revision = room.ydoc.getMap<Y.Map<unknown>>("annotations").get("rev");
+        if (!(revision instanceof Y.Map)) throw new Error("Expected migrated revision");
+        expect(revision.get("activeVersionIndex")).toBeUndefined();
+        expect(revision.get("activeVersionId")).toBe("legacy-0");
+        expect(persistYjsState).toHaveBeenCalledWith("doc-legacy", legacyYdoc);
+        expect(clearYjsUpdates).toHaveBeenCalledWith("doc-legacy");
     });
 
     it("getYjsRoom returns undefined for unknown rooms", () => {
@@ -104,6 +153,8 @@ describe("Yjs room manager", () => {
         vi.useFakeTimers();
         const room = await getOrCreateYjsRoom("doc-active");
         room.clients.add(fakeWebSocket());
+        vi.mocked(persistYjsState).mockClear();
+        vi.mocked(clearYjsUpdates).mockClear();
 
         scheduleRoomCleanup(room);
         await vi.advanceTimersByTimeAsync(45_000);
