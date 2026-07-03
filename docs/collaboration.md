@@ -33,6 +33,11 @@ Current Live Room mode is owner-led: the owner's local SQLite draft is the
 source of truth when a room starts, joiners are ephemeral, and the room ends
 when the owner leaves.
 
+The Live Room id is the **document id**. The beta room still mirrors one active
+editor view, so the owner seeds the room from the active tab+draft when the
+session starts. Local persistence remains draft-scoped; only the relay identity
+is document-scoped.
+
 ## Files
 
 | File | Purpose |
@@ -209,19 +214,19 @@ annotations use stable version ids.
 ### Owner Goes Live
 
 1. User opens Share → clicks "Start live room"
-2. Creates named snapshot: "Before going live (auto)"
-3. `registerDocumentForCollab()` upserts `sync_documents`
-4. `createYjsProvider()` opens WebsocketProvider with JWT
+2. Creates active-draft named snapshot: "Before going live (auto)"
+3. `registerDocumentForCollab(documentId, ...)` upserts `sync_documents`
+4. `createYjsProvider(documentId)` opens WebsocketProvider with JWT
 5. After sync, owner replaces relay Y.Text with local doc
 6. `enableCollab()` installs Yjs extensions
 7. UI shows "You're live!"
 
 ### Joiner Joins
 
-1. User pastes document UUID
+1. User pastes document UUID / room ID
 2. Capture prior draft ID and state in `joinerPriorView`
 3. `currentDraftId = null`, `isCollabJoiner = true` — persistence disabled
-4. `createYjsProvider()` opens WebsocketProvider
+4. `createYjsProvider(documentId)` opens WebsocketProvider
 5. After sync, replace local editor with relay Y.Text
 6. Clear local annotations, project shared annotations
 7. `enableCollab()` installs Yjs extensions + Y.UndoManager

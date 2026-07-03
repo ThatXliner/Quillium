@@ -12,6 +12,7 @@ import { getSession, getUser, isAuthenticated } from "$lib/auth/auth.svelte";
 import { supabaseConfigured } from "$lib/auth/supabase";
 import {
     MAX_RECONNECT_ATTEMPTS,
+    collabSession,
     collabState,
     disableCollab,
     enableCollab,
@@ -38,6 +39,7 @@ import {
     shouldScheduleReadonlyShareAutoUpdate,
 } from "$lib/collab/readonlyShareAutoUpdate";
 import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
+import { getLiveRelayRoomId } from "$lib/collab/roomIdentity";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
 import { createNamedSnapshot } from "$lib/db";
@@ -99,8 +101,16 @@ function shouldShowForScreenshot(): boolean {
 
 const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured || shouldShowForScreenshot());
-// Live-collab room key: still per-draft (the live room mirrors one editor view).
-const currentId = $derived($currentDraftId ?? "");
+// Live-collab room key: document-scoped. The live content is still the one
+// active editor view, but the room identity follows the document container so
+// future multi-tab Omni sessions can grow under the same key.
+const liveRoomId = $derived(
+    getLiveRelayRoomId({
+        activeRoomId: $collabSession?.docId,
+        documentId: $currentDocumentId,
+        draftId: $currentDraftId,
+    }),
+);
 // Web-preview / read-only share key: one share per *document*. Omni renders a
 // single view today, so the preview always reflects the last active tab+draft
 // the user published from — not a separate link per draft. Re-keying on the
@@ -273,8 +283,8 @@ $effect(() => {
 });
 
 function copyId() {
-    navigator.clipboard.writeText(currentId);
-    toast.success("Document ID copied");
+    navigator.clipboard.writeText(liveRoomId);
+    toast.success("Room ID copied");
 }
 
 function closeModal() {
@@ -429,9 +439,9 @@ async function toggleReadonlyShare() {
 }
 
 async function joinById() {
-    const id = joinIdInput.trim();
-    if (!id) return;
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    const documentId = joinIdInput.trim();
+    if (!documentId) return;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentId)) {
         toast.error("Invalid document ID format");
         return;
     }
@@ -462,7 +472,7 @@ async function joinById() {
         // D-100: Clear local draft ID -- joiner is NOT editing a local doc.
         // The collab view is ephemeral and backed entirely by the room's Y.Doc.
         // Setting to null ensures persistence listeners skip this session.
-        // Note: We still pass `id` to enableCollab for room identification.
+        // Note: We still pass `documentId` to enableCollab for room identification.
         currentDraftId.set(null);
 
         // Mark this client as an ephemeral joiner BEFORE connecting so the
@@ -472,7 +482,7 @@ async function joinById() {
         isCollabJoiner.set(true);
 
         // Connect as joiner -- relay's content becomes source of truth
-        await enableCollab(view, id, user.id, false);
+        await enableCollab(view, documentId, user.id, false);
 
         joinIdInput = "";
         isLive = true;
@@ -518,12 +528,14 @@ async function handleToggle() {
         connecting = true;
         try {
             const view = get(editorView);
+            const documentId = get(currentDocumentId);
             const draftId = get(currentDraftId);
             const eventId = get(lastPersistedEventId);
+            const title = get(currentDocumentTitle).trim() || "Untitled";
             const user = getUser();
             const session = getSession();
 
-            if (!view || !draftId || !user || !session) {
+            if (!view || !documentId || !draftId || !user || !session) {
                 throw new Error("Missing required state");
             }
 
@@ -532,11 +544,11 @@ async function handleToggle() {
             await createNamedSnapshot(draftId, stateJson, eventId, "Before going live (auto)");
 
             // Register document with relay's sync_documents table (auto-creates if missing)
-            await registerDocumentForCollab(draftId, user.id, "Untitled");
+            await registerDocumentForCollab(documentId, user.id, title);
 
             // Per D-50: clientID is user.id for per-user undo
             // Version comes from relay's initial state
-            await enableCollab(view, draftId, user.id);
+            await enableCollab(view, documentId, user.id);
 
             isLive = true;
             toast.success("You're live!");
@@ -889,8 +901,8 @@ async function handleToggle() {
                                     <div>
                                         <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Live collaboration</h3>
                                         <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Bring another writer into this draft right now. Omni will expand this into
-                                            persistent sync later, but this room flow still works today.
+                                            Bring another writer into the active draft right now. The room belongs to
+                                            the document, while this beta mirrors the single view you start from.
                                         </p>
                                     </div>
                                 </div>
@@ -903,12 +915,12 @@ async function handleToggle() {
                                     </div>
                                     <div>
                                         <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">{isLive ? ($isCollabJoiner ? "You're in a Live Room" : "Live Room is open") : "Live Room is off"}</h3>
-                                        <p class="m-0 text-xs/[1.45] text-black/50">Invite another writer into this draft.</p>
+                                        <p class="m-0 text-xs/[1.45] text-black/50">Invite another writer into this document.</p>
                                     </div>
                                 </div>
                                 <button
                                     onclick={handleToggle}
-                                    disabled={!isLive && !(authenticated && relayConfigured && !!currentId && !connecting)}
+                                    disabled={!isLive && !(authenticated && relayConfigured && !!liveRoomId && !connecting)}
                                     class={`inline-flex min-h-[38px] min-w-[142px] items-center justify-center gap-[7px] rounded-[10px] border px-4 text-[13px] font-[650] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-[background,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full ${isLive ? "border-black/[0.08] bg-black/[0.055] text-black/65 hover:bg-black/[0.085] hover:text-black/80" : "border-emerald-500/20 bg-emerald-500/10 text-black/70 hover:bg-emerald-500/20 hover:text-emerald-800"}`}
                                 >
                                     {#if connecting}
@@ -942,13 +954,13 @@ async function handleToggle() {
                                         <div class="flex gap-2 max-[520px]:flex-col">
                                             <input
                                                 readonly
-                                                value={currentId}
+                                                value={liveRoomId}
                                                 aria-label="Current document room ID"
                                                 class="h-9 min-w-0 flex-1 rounded-[10px] border border-black/[0.08] bg-blue-600/[0.04] px-2.5 font-mono text-[11px] text-black/65 outline-none transition-[border-color,box-shadow] focus:border-blue-600/40 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
                                             />
                                             <button
                                                 onclick={copyId}
-                                                disabled={!currentId}
+                                                disabled={!liveRoomId}
                                                 aria-label="Copy document room ID"
                                                 class="inline-flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-[10px] bg-black/[0.055] px-3 text-xs font-[650] text-black/60 transition-[background,color,opacity] duration-150 hover:bg-black/[0.085] hover:text-black/75 disabled:cursor-not-allowed disabled:opacity-45 max-[520px]:w-full"
                                             >
