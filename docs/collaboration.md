@@ -182,7 +182,7 @@ sequenceDiagram
     participant Share as share.ts
     participant Supabase
 
-    UI->>UI: Build title/content/serialized annotations
+    UI->>UI: Build title + active draft for each live text tab
     UI->>Share: publishReadonlyShare(...)
     Share->>Supabase: upsert sync_documents
     Share->>Supabase: upsert shares
@@ -190,15 +190,15 @@ sequenceDiagram
     Share-->>UI: ReadonlyShare
 ```
 
-The share row is keyed by **document id**, not draft id. Publishing from a
-different tab or draft replaces the single public view for that document. See
-[Tabs & Drafts](./tabs-and-drafts.md#omni-web-preview-and-the-single-view) for
-why that keeps the door open for a future multi-tab public renderer.
+The share row is keyed by **document id**, not draft id. Publishing updates the
+same public link with a versioned payload for the document's live text tabs. See
+[Tabs & Drafts](./tabs-and-drafts.md#omni-web-preview) for the tab/draft scope
+details.
 
 | Action | Function | Notes |
 |--------|----------|-------|
 | Load status | `getReadonlyShare(documentId)` | Reads existing share row |
-| Publish/update | `publishReadonlyShare(...)` | Stores current snapshot + annotations |
+| Publish/update | `publishReadonlyShare(...)` | Stores a versioned multi-tab snapshot |
 | Copy link | `buildReadonlyShareUrl(token)` | `https://quillium.bryanhu.com/share/{token}` |
 | Disable | `disableReadonlyShare(documentId)` | Deletes the share row |
 
@@ -290,5 +290,5 @@ If `PUBLIC_RELAY_URL` is not configured, GoLiveButton is hidden.
   invite links or room permissions yet
 - **No local persistence for joiners** — restored to prior state after leaving
 - **No offline queue** — if reconnects exhaust, must restart session
-- **Single-view public preview** — read-only shares publish one active tab+draft
-  snapshot, not the whole document tab set
+- **No per-tab public preview scope controls yet** — read-only shares publish
+  the active draft from every live prose tab

@@ -8,8 +8,15 @@ import type {
     SerializedSuggestionAnnotation,
     SerializedThreadMessage,
 } from "@quillium/share";
-export { buildShareFingerprint } from "@quillium/share";
+export {
+    buildReadonlyShareFingerprint,
+    buildShareFingerprint,
+    decodeReadonlySharePayload,
+    encodeReadonlySharePayload,
+    getActiveReadonlyShareTab,
+} from "@quillium/share";
 export type {
+    ReadonlyShareTab,
     SerializedAnnotation,
     SerializedCommentAnnotation,
     SerializedRevisionAnnotation,

@@ -39,12 +39,37 @@ export type SerializedAnnotation =
     | SerializedSuggestionAnnotation
     | SerializedRevisionAnnotation;
 
+export type ReadonlyShareTab = {
+    id: string;
+    label: string;
+    draftId: string | null;
+    content: string;
+    annotations: SerializedAnnotation[];
+};
+
+export type ReadonlySharePayloadV2 = {
+    kind: "quillium-readonly-share";
+    version: 2;
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
+};
+
+export type DecodedReadonlySharePayload = {
+    content: string;
+    annotations: SerializedAnnotation[];
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
+    isMultiTabPayload: boolean;
+};
+
 export type ReadonlyShareDocument = {
     token: string;
     title: string;
     excerpt: string;
     content: string;
     annotations: SerializedAnnotation[];
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
     authorName: string | null;
     publishedAt: string | null;
     canonicalUrl: string;

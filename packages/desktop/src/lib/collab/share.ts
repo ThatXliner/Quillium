@@ -1,7 +1,13 @@
 import { getCurrentUserName } from "$lib/auth/auth.svelte";
 import { supabase } from "$lib/auth/supabase";
 import { writable } from "svelte/store";
-import type { SerializedAnnotation } from "./sharePayload";
+import {
+    decodeReadonlySharePayload,
+    encodeReadonlySharePayload,
+    getActiveReadonlyShareTab,
+    type ReadonlyShareTab,
+    type SerializedAnnotation,
+} from "./sharePayload";
 
 const SHARE_BASE_URL = "https://quillium.bryanhu.com/share";
 
@@ -12,6 +18,8 @@ export type ReadonlyShare = {
     previewText: string;
     publishedContent: string;
     publishedAnnotations: SerializedAnnotation[];
+    publishedTabs: ReadonlyShareTab[];
+    publishedActiveTabId: string | null;
     authorName: string | null;
     publishedAt: string | null;
     updatedAt: string;
@@ -35,8 +43,8 @@ type PublishReadonlyShareInput = {
     documentId: string;
     ownerId: string;
     title: string;
-    content: string;
-    annotations: SerializedAnnotation[];
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
 };
 
 function requireSupabase() {
@@ -47,13 +55,17 @@ function requireSupabase() {
 }
 
 function mapShare(row: ShareRow): ReadonlyShare {
+    const decoded = decodeReadonlySharePayload(row.published_content, row.published_annotations);
+
     return {
         shareToken: row.share_token,
         enabled: row.enabled,
         publishedTitle: row.published_title,
         previewText: row.preview_text,
-        publishedContent: row.published_content,
-        publishedAnnotations: row.published_annotations ?? [],
+        publishedContent: decoded.content,
+        publishedAnnotations: decoded.annotations,
+        publishedTabs: decoded.tabs,
+        publishedActiveTabId: decoded.activeTabId,
         authorName: row.author_name,
         publishedAt: row.published_at,
         updatedAt: row.updated_at,
@@ -109,6 +121,13 @@ export async function publishReadonlyShare(
     const client = requireSupabase();
     await registerSyncDocument(input.documentId, input.ownerId, input.title);
 
+    const activeTab = getActiveReadonlyShareTab(input.tabs, input.activeTabId);
+    const publishedContent = encodeReadonlySharePayload({
+        activeTabId: activeTab?.id ?? null,
+        tabs: input.tabs,
+    });
+    const previewSource = input.tabs.map((tab) => tab.content).join("\n\n");
+
     const { data, error } = await client
         .from("shares")
         .upsert(
@@ -117,9 +136,9 @@ export async function publishReadonlyShare(
                 enabled: true,
                 permission: "read",
                 published_title: input.title.trim() || "Untitled",
-                preview_text: buildSharePreviewText(input.content),
-                published_content: input.content,
-                published_annotations: input.annotations,
+                preview_text: buildSharePreviewText(previewSource),
+                published_content: publishedContent,
+                published_annotations: activeTab?.annotations ?? [],
                 author_name: getCurrentUserName(),
                 published_at: new Date().toISOString(),
             },

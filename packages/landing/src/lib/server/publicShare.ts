@@ -1,6 +1,10 @@
 import { env } from "$env/dynamic/public";
+import {
+    decodeReadonlySharePayload,
+    type ReadonlyShareDocument,
+    type SerializedAnnotation,
+} from "@quillium/share";
 import { createClient } from "@supabase/supabase-js";
-import type { ReadonlyShareDocument, SerializedAnnotation } from "@quillium/share";
 
 export type PublicShare = ReadonlyShareDocument;
 
@@ -76,13 +80,19 @@ export async function loadPublicShare(
 
     const share = data;
     if (!share) return null;
+    const decoded = decodeReadonlySharePayload(
+        share.published_content || "",
+        share.published_annotations ?? [],
+    );
 
     return {
         token,
         title: share.published_title || "Untitled",
         excerpt: share.preview_text || "",
-        content: share.published_content || "",
-        annotations: share.published_annotations ?? [],
+        content: decoded.content,
+        annotations: decoded.annotations,
+        activeTabId: decoded.activeTabId,
+        tabs: decoded.tabs,
         authorName: share.author_name,
         publishedAt: share.published_at,
         canonicalUrl: `${SITE_URL}/share/${token}`,

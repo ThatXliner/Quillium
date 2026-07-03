@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
     buildDisplayedShare,
     buildParagraphBlocks,
+    buildReadonlyShareFingerprint,
     buildShareFingerprint,
+    decodeReadonlySharePayload,
+    encodeReadonlySharePayload,
     findAnnotationPath,
 } from "../src/rendering";
 import type { SerializedAnnotation } from "../src/types";
@@ -36,6 +39,98 @@ describe("buildShareFingerprint", () => {
         expect(buildShareFingerprint("Doc", "Hello", [])).not.toBe(
             buildShareFingerprint("Doc", "Hello", [comment]),
         );
+    });
+});
+
+describe("readonly share payloads", () => {
+    it("round-trips a multi-tab share payload", () => {
+        const encoded = encodeReadonlySharePayload({
+            activeTabId: "notes",
+            tabs: [
+                {
+                    id: "draft",
+                    label: "Draft",
+                    draftId: "draft-1",
+                    content: "Draft body",
+                    annotations: [comment],
+                },
+                {
+                    id: "notes",
+                    label: "Notes",
+                    draftId: "draft-2",
+                    content: "Notes body",
+                    annotations: [],
+                },
+            ],
+        });
+
+        const decoded = decodeReadonlySharePayload(encoded, [comment]);
+
+        expect(decoded.isMultiTabPayload).toBe(true);
+        expect(decoded.activeTabId).toBe("notes");
+        expect(decoded.content).toBe("Notes body");
+        expect(decoded.tabs.map((tab) => tab.label)).toEqual(["Draft", "Notes"]);
+    });
+
+    it("falls back to a legacy single-tab payload", () => {
+        const decoded = decodeReadonlySharePayload("Legacy body", [comment]);
+
+        expect(decoded.isMultiTabPayload).toBe(false);
+        expect(decoded.content).toBe("Legacy body");
+        expect(decoded.tabs).toEqual([
+            {
+                id: "legacy",
+                label: "Document",
+                draftId: null,
+                content: "Legacy body",
+                annotations: [comment],
+            },
+        ]);
+    });
+
+    it("fingerprints tab order and content", () => {
+        const first = buildReadonlyShareFingerprint(
+            "Doc",
+            [
+                {
+                    id: "a",
+                    label: "A",
+                    draftId: "draft-a",
+                    content: "A",
+                    annotations: [],
+                },
+                {
+                    id: "b",
+                    label: "B",
+                    draftId: "draft-b",
+                    content: "B",
+                    annotations: [],
+                },
+            ],
+            "a",
+        );
+        const reordered = buildReadonlyShareFingerprint(
+            "Doc",
+            [
+                {
+                    id: "b",
+                    label: "B",
+                    draftId: "draft-b",
+                    content: "B",
+                    annotations: [],
+                },
+                {
+                    id: "a",
+                    label: "A",
+                    draftId: "draft-a",
+                    content: "A",
+                    annotations: [],
+                },
+            ],
+            "a",
+        );
+
+        expect(first).not.toBe(reordered);
     });
 });
 

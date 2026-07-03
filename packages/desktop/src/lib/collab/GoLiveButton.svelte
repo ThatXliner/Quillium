@@ -37,16 +37,29 @@ import {
     normalizeReadonlyShareAutoUpdateDebounceMs,
     shouldScheduleReadonlyShareAutoUpdate,
 } from "$lib/collab/readonlyShareAutoUpdate";
-import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
+import {
+    buildReadonlyShareFingerprint,
+    getActiveReadonlyShareTab,
+    serializeAnnotations,
+    type ReadonlyShareTab,
+} from "$lib/collab/sharePayload";
+import { serializeLoadedShareState } from "$lib/collab/shareState";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
-import { createNamedSnapshot } from "$lib/db";
+import {
+    createNamedSnapshot,
+    getActiveDraft,
+    listTabDrafts,
+    listTabs,
+    loadDocumentState,
+} from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
 import { annotationField } from "$lib/editor/plugins/annotations";
 import posthog from "$lib/posthog";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import {
     annotations,
+    currentTabId,
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
@@ -88,6 +101,7 @@ let shareBusy = $state(false);
 let readonlyShare = $state<ReadonlyShare | null>(null);
 let autoSharePublishQueued = $state(false);
 let autoSharePublishFailedFingerprint = $state("");
+let currentShareFingerprint = $state("");
 
 function shouldShowForScreenshot(): boolean {
     return (
@@ -101,44 +115,29 @@ const authenticated = $derived(isAuthenticated());
 const canShowShare = $derived(relayConfigured || supabaseConfigured || shouldShowForScreenshot());
 // Live-collab room key: still per-draft (the live room mirrors one editor view).
 const currentId = $derived($currentDraftId ?? "");
-// Web-preview / read-only share key: one share per *document*. Omni renders a
-// single view today, so the preview always reflects the last active tab+draft
-// the user published from — not a separate link per draft. Re-keying on the
-// document id (rather than adding a multi-tab payload) keeps the door open for
-// Omni rendering multiple tabs later without changing the share identity.
+// Web-preview / read-only share key: one share per *document*. There is no
+// tab-level publish/include flag in the tab metadata yet, so public preview
+// publishes the active draft from every live draft tab. Keep future scope
+// controls centered on buildPublishPayload() so share identity remains stable.
 const shareId = $derived($currentDocumentId ?? "");
 const shareUrl = $derived(readonlyShare ? buildReadonlyShareUrl(readonlyShare.shareToken) : "");
-const shareComparisonPayload = $derived(
-    readonlyShare?.enabled
-        ? {
-              title: $currentDocumentTitle,
-              content: $documentContent,
-              annotations: serializeAnnotations($documentContent, $annotations),
-          }
-        : null,
-);
-const currentShareFingerprint = $derived(
-    shareComparisonPayload
-        ? buildShareFingerprint(
-              shareComparisonPayload.title,
-              shareComparisonPayload.content,
-              shareComparisonPayload.annotations,
-          )
-        : "",
-);
 const publishedShareFingerprint = $derived(
     readonlyShare?.enabled
-        ? buildShareFingerprint(
+        ? buildReadonlyShareFingerprint(
               readonlyShare.publishedTitle,
-              readonlyShare.publishedContent,
-              readonlyShare.publishedAnnotations,
+              readonlyShare.publishedTabs,
+              readonlyShare.publishedActiveTabId,
           )
         : "",
 );
 const shareUpToDate = $derived(
-    !!readonlyShare?.enabled && currentShareFingerprint === publishedShareFingerprint,
+    !!readonlyShare?.enabled &&
+        currentShareFingerprint !== "" &&
+        currentShareFingerprint === publishedShareFingerprint,
 );
-const shareNeedsUpdate = $derived(!!readonlyShare?.enabled && !shareUpToDate);
+const shareNeedsUpdate = $derived(
+    !!readonlyShare?.enabled && currentShareFingerprint !== "" && !shareUpToDate,
+);
 const autoUpdateDebounceMs = $derived(
     normalizeReadonlyShareAutoUpdateDebounceMs(appSettings.readonlyShareAutoUpdateDebounceMs),
 );
@@ -191,9 +190,52 @@ $effect(() => {
     if (!authenticated || !shareId) {
         readonlyShare = null;
         readonlyShareState.set(null);
+        currentShareFingerprint = "";
         return;
     }
     refreshReadonlyShare();
+});
+
+$effect(() => {
+    const title = $currentDocumentTitle;
+    const content = $documentContent;
+    const annotationSnapshot = $annotations;
+    const tabId = $currentTabId;
+    const draftId = $currentDraftId;
+
+    if (!authenticated || !shareId || !readonlyShare?.enabled) {
+        currentShareFingerprint = "";
+        return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+        void (async () => {
+            try {
+                const payload = await buildPublishPayload();
+                if (cancelled) return;
+                currentShareFingerprint = buildReadonlyShareFingerprint(
+                    payload.title,
+                    payload.tabs,
+                    payload.activeTabId,
+                );
+            } catch (err) {
+                console.error("[share] Failed to fingerprint readonly share payload:", err);
+                if (!cancelled) currentShareFingerprint = "";
+            }
+        })();
+    }, 150);
+
+    void title;
+    void content;
+    void annotationSnapshot;
+    void tabId;
+    void draftId;
+
+    return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+    };
 });
 
 $effect(() => {
@@ -306,20 +348,80 @@ function formatShareTimestamp(value: string | null): string {
     }).format(new Date(value));
 }
 
-function buildPublishPayload() {
+type PublishPayload = {
+    documentId: string;
+    ownerId: string;
+    title: string;
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
+};
+
+async function buildPublishPayload(): Promise<PublishPayload> {
     const view = get(editorView);
-    // Content + annotations come from the live editor view — i.e. the last
-    // active tab+draft. The share row is keyed by the *document* (shareId), so
-    // updating from a different draft replaces what the single Omni view shows.
-    const content = view?.state.doc.toString() ?? $documentContent;
-    const liveAnnotations = view?.state.field(annotationField, false) ?? $annotations;
+    const liveDraftId = get(currentDraftId);
+    const activeTabId = get(currentTabId);
+    const tabs = await listTabs(shareId);
+    const publishTabs: ReadonlyShareTab[] = [];
+
+    // No tab metadata currently carries a public/private include flag. Publish
+    // every live prose tab's active draft, and add the filter here when scope
+    // controls exist.
+    for (const tab of tabs) {
+        if (tab.tabType !== "draft") continue;
+
+        const drafts = await listTabDrafts(tab.id);
+        const persistedDraftId = await getActiveDraft(tab.id);
+        const draft =
+            drafts.find((candidate) => candidate.id === persistedDraftId) ??
+            drafts.find((candidate) => candidate.isActive) ??
+            drafts[0];
+        if (!draft) continue;
+
+        if (view && draft.id === liveDraftId) {
+            const content = view.state.doc.toString();
+            const liveAnnotations = view.state.field(annotationField, false);
+            publishTabs.push({
+                id: tab.id,
+                label: tab.label,
+                draftId: draft.id,
+                content,
+                annotations: serializeAnnotations(content, liveAnnotations),
+            });
+            continue;
+        }
+
+        const loaded = await loadDocumentState(shareId, draft.id);
+        const serialized = serializeLoadedShareState(loaded);
+        publishTabs.push({
+            id: tab.id,
+            label: tab.label,
+            draftId: draft.id,
+            content: serialized.content,
+            annotations: serialized.annotations,
+        });
+    }
+
+    if (publishTabs.length === 0) {
+        const content = view?.state.doc.toString() ?? $documentContent;
+        const liveAnnotations = view?.state.field(annotationField, false) ?? $annotations;
+        publishTabs.push({
+            id: activeTabId ?? "current",
+            label: "Document",
+            draftId: liveDraftId,
+            content,
+            annotations: serializeAnnotations(content, liveAnnotations),
+        });
+    }
+
+    const activePublishedTab =
+        getActiveReadonlyShareTab(publishTabs, activeTabId) ?? publishTabs[0];
 
     return {
         documentId: shareId,
         ownerId: getUser()?.id ?? "",
         title: $currentDocumentTitle,
-        content,
-        annotations: serializeAnnotations(content, liveAnnotations),
+        activeTabId: activePublishedTab?.id ?? null,
+        tabs: publishTabs,
     };
 }
 
@@ -358,25 +460,30 @@ async function publishCurrentSnapshot(options: { automatic?: boolean } = {}) {
         return;
     }
 
-    const payload = buildPublishPayload();
-    payload.ownerId = user.id;
-    const payloadFingerprint = buildShareFingerprint(
-        payload.title,
-        payload.content,
-        payload.annotations,
-    );
-
+    let payloadFingerprint = "";
     shareBusy = true;
     try {
+        const payload = await buildPublishPayload();
+        payload.ownerId = user.id;
+        const activePublishedTab = getActiveReadonlyShareTab(payload.tabs, payload.activeTabId);
+        payloadFingerprint = buildReadonlyShareFingerprint(
+            payload.title,
+            payload.tabs,
+            payload.activeTabId,
+        );
+
         const hadShare = readonlyShare?.enabled ?? false;
         const publishedShare = await publishReadonlyShare(payload);
         readonlyShare = {
             ...publishedShare,
             publishedTitle: payload.title.trim() || "Untitled",
-            publishedContent: payload.content,
-            publishedAnnotations: payload.annotations,
+            publishedContent: activePublishedTab?.content ?? "",
+            publishedAnnotations: activePublishedTab?.annotations ?? [],
+            publishedTabs: payload.tabs,
+            publishedActiveTabId: activePublishedTab?.id ?? null,
         };
         readonlyShareState.set(readonlyShare);
+        currentShareFingerprint = payloadFingerprint;
         autoSharePublishFailedFingerprint = "";
         posthog.capture(
             options.automatic
@@ -390,7 +497,7 @@ async function publishCurrentSnapshot(options: { automatic?: boolean } = {}) {
         }
     } catch (err) {
         console.error("[share] Failed to publish readonly share:", err);
-        if (options.automatic) {
+        if (options.automatic && payloadFingerprint.length > 0) {
             autoSharePublishFailedFingerprint = payloadFingerprint;
         }
         toast.error(
@@ -684,10 +791,10 @@ async function handleToggle() {
                                         <Link size={18} />
                                     </div>
                                     <div>
-                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Anyone with the link can read your document</h3>
+                                        <h3 class="mb-1 text-sm/[1.25] font-[650] text-black/70">Anyone with the link can read your published tabs</h3>
                                         <p class="m-0 text-xs/[1.45] text-black/50">
-                                            Publish a read-only web page with Quillium branding. Keep updates manual
-                                            or let them publish after your edits settle.
+                                            Publishes the active draft from each live text tab. Keep updates manual or
+                                            let them publish after your edits settle.
                                         </p>
                                     </div>
                                 </div>
@@ -697,9 +804,9 @@ async function handleToggle() {
                                         <div class="text-[13px] font-bold text-black/75">Public link</div>
                                         <div class="mt-1 text-xs/[1.45] text-black/50">
                                             {#if readonlyShare?.enabled}
-                                                On. Readers can open the last published snapshot.
+                                                On. Readers can open the last published tab set.
                                             {:else}
-                                                Off. Your document stays private until you publish it.
+                                                Off. Your tabs stay private until you publish them.
                                             {/if}
                                         </div>
                                     </div>
@@ -801,7 +908,7 @@ async function handleToggle() {
                                         <strong class={`break-words text-[13px]/[1.45] ${shareUpToDate ? "text-black/50" : "text-black/75"}`}>{readonlyShare?.enabled
                                             ? shareUpToDate
                                                 ? "Already up to date"
-                                                : "Local draft has unpublished changes"
+                                                : "Local tabs have unpublished changes"
                                             : `Ready to publish${buildSharePreviewText($documentContent).length > 0 ? ` • ${draftAnnotationCount} annotation${draftAnnotationCount === 1 ? "" : "s"}` : ""}`}</strong>
                                     </div>
                                 </div>
@@ -844,10 +951,10 @@ async function handleToggle() {
                                 {:else if readonlyShare?.enabled}
                                     <p class="mt-1 text-xs/[1.45] text-black/50">
                                         {#if shareUpToDate}
-                                            The public page already matches this draft.
+                                            The public page already matches these tabs.
                                         {:else if autoUpdatePausedAfterFailure}
                                             Auto update hit an error. Use
-                                            <strong>Update shared version</strong> to retry this draft.
+                                            <strong>Update shared version</strong> to retry these tabs.
                                         {:else if appSettings.readonlyShareAutoUpdate}
                                             Auto update will refresh the public page after edits settle.
                                         {:else}

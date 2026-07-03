@@ -1,4 +1,9 @@
-import type { SerializedAnnotation } from "./types";
+import type {
+    DecodedReadonlySharePayload,
+    ReadonlySharePayloadV2,
+    ReadonlyShareTab,
+    SerializedAnnotation,
+} from "./types";
 
 export type AnnotationId = SerializedAnnotation["id"];
 export type RevisionVersionSelections = Record<string, number>;
@@ -28,6 +33,9 @@ export type DisplayShare = {
 export type BuildDisplayedShareOptions = {
     includeNestedAnnotations?: boolean;
 };
+
+export const READONLY_SHARE_PAYLOAD_KIND = "quillium-readonly-share";
+export const READONLY_SHARE_PAYLOAD_VERSION = 2;
 
 type RenderingRevisionAnnotation = Extract<SerializedAnnotation, { type: "revision" }>;
 export type SerializedRevisionVersion = RenderingRevisionAnnotation["versions"][number];
@@ -127,6 +135,122 @@ function stableSerialize(value: unknown): string {
     return JSON.stringify(value);
 }
 
+function normalizeReadonlyShareTab(tab: ReadonlyShareTab): ReadonlyShareTab {
+    return {
+        id: tab.id,
+        label: tab.label.trim() || "Untitled tab",
+        draftId: tab.draftId,
+        content: tab.content,
+        annotations: tab.annotations,
+    };
+}
+
+function legacyReadonlyShareTab(
+    content: string,
+    annotations: SerializedAnnotation[],
+): ReadonlyShareTab {
+    return {
+        id: "legacy",
+        label: "Document",
+        draftId: null,
+        content,
+        annotations,
+    };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSerializedAnnotationArray(value: unknown): value is SerializedAnnotation[] {
+    return Array.isArray(value);
+}
+
+function parseReadonlyShareTab(value: unknown): ReadonlyShareTab | null {
+    if (!isRecord(value)) return null;
+    if (typeof value.id !== "string" || value.id.length === 0) return null;
+    if (typeof value.content !== "string") return null;
+
+    return normalizeReadonlyShareTab({
+        id: value.id,
+        label: typeof value.label === "string" ? value.label : "Untitled tab",
+        draftId: typeof value.draftId === "string" ? value.draftId : null,
+        content: value.content,
+        annotations: isSerializedAnnotationArray(value.annotations) ? value.annotations : [],
+    });
+}
+
+export function getActiveReadonlyShareTab(
+    tabs: ReadonlyShareTab[],
+    activeTabId: string | null,
+): ReadonlyShareTab | undefined {
+    return tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
+}
+
+export function encodeReadonlySharePayload(input: {
+    activeTabId: string | null;
+    tabs: ReadonlyShareTab[];
+}): string {
+    const tabs = input.tabs.map(normalizeReadonlyShareTab);
+    const activeTab = getActiveReadonlyShareTab(tabs, input.activeTabId);
+    const payload: ReadonlySharePayloadV2 = {
+        kind: READONLY_SHARE_PAYLOAD_KIND,
+        version: READONLY_SHARE_PAYLOAD_VERSION,
+        activeTabId: activeTab?.id ?? null,
+        tabs,
+    };
+
+    return JSON.stringify(payload);
+}
+
+export function decodeReadonlySharePayload(
+    content: string,
+    annotations: SerializedAnnotation[] | null | undefined,
+): DecodedReadonlySharePayload {
+    const legacyAnnotations = annotations ?? [];
+    const legacyTab = legacyReadonlyShareTab(content, legacyAnnotations);
+
+    try {
+        const parsed = JSON.parse(content) as unknown;
+        if (!isRecord(parsed)) {
+            throw new Error("Share payload is not an object");
+        }
+
+        const parsedTabs = parsed.tabs;
+        if (
+            parsed.kind === READONLY_SHARE_PAYLOAD_KIND &&
+            parsed.version === READONLY_SHARE_PAYLOAD_VERSION &&
+            Array.isArray(parsedTabs)
+        ) {
+            const tabs = parsedTabs
+                .map(parseReadonlyShareTab)
+                .filter((tab): tab is ReadonlyShareTab => tab !== null);
+            if (tabs.length === 0) {
+                throw new Error("Share payload has no readable tabs");
+            }
+
+            const activeTabId = typeof parsed.activeTabId === "string" ? parsed.activeTabId : null;
+            const activeTab = getActiveReadonlyShareTab(tabs, activeTabId) ?? tabs[0];
+            return {
+                content: activeTab.content,
+                annotations: activeTab.annotations,
+                activeTabId: activeTab.id,
+                tabs,
+                isMultiTabPayload: true,
+            };
+        }
+        throw new Error("Share payload version is unsupported");
+    } catch {
+        return {
+            content,
+            annotations: legacyAnnotations,
+            activeTabId: legacyTab.id,
+            tabs: [legacyTab],
+            isMultiTabPayload: false,
+        };
+    }
+}
+
 export function buildShareFingerprint(
     title: string,
     content: string,
@@ -136,6 +260,18 @@ export function buildShareFingerprint(
         title: title.trim() || "Untitled",
         content,
         annotations,
+    });
+}
+
+export function buildReadonlyShareFingerprint(
+    title: string,
+    tabs: ReadonlyShareTab[],
+    activeTabId: string | null,
+): string {
+    return stableSerialize({
+        title: title.trim() || "Untitled",
+        activeTabId: getActiveReadonlyShareTab(tabs, activeTabId)?.id ?? null,
+        tabs: tabs.map(normalizeReadonlyShareTab),
     });
 }
 

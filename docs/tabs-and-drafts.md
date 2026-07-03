@@ -189,26 +189,28 @@ for the frontend by `resolveActiveDraftId()` in `src/lib/db/index.ts`
 | `src/lib/editor/draftTree.ts` | Pure helpers (`layoutDraftRows`, `isDeletableDraft`, `hasLiveChildren`, `collectSubtree`) |
 | `src/lib/editor/Editor.svelte` | Tab/draft switching, iterate/branch/delete, lock banner |
 
-## Omni (web preview) and the single view
+## Omni (web preview)
 
-Omni renders a **single view** per document. The read-only web preview /
-public share is therefore keyed by **document id**, not draft id: one share
-link per document. Pressing **Update now** publishes whatever tab+draft is
-*currently active* in the editor — the last one you clicked into — so updating
-from a different draft simply replaces what the single shared view shows. (The
-live "Go Live" relay room still keys on draft id; that's a separate, per-view
-mechanism, and not functional yet — #260 tracks bringing it in line with the
-tabs/drafts model.) The share key lives in `GoLiveButton.svelte` as `shareId`
-(document) vs `currentId` (draft). Keying on the document — rather than baking
-a multi-draft payload into the share — is what keeps the door open for Omni
-rendering multiple tabs later without changing the share identity.
+Omni's read-only web preview / public share is keyed by **document id**, not
+draft id: one share link per document. Pressing **Update now** publishes a
+versioned payload containing the active draft from every live draft tab, and
+the public `/share` page renders those tabs in one view. The share key lives in
+`GoLiveButton.svelte` as `shareId` (document) vs `currentId` (draft), so this
+multi-tab payload did not change existing share identities.
+
+There is not yet a tab-level public/private include flag in tab metadata. Until
+that exists, the dogfoodable default is explicit: all live prose tabs are
+included, while future non-draft tab types are skipped by the publisher because
+the web preview only renders text tabs today. (The live "Go Live" relay room
+still keys on draft id; that's a separate, per-view mechanism, and not
+functional yet — #260 tracks bringing it in line with the tabs/drafts model.)
 
 ## Out of scope (follow-ups)
 
-- Omni rendering **multiple tabs** in one preview (#261) — today it's a single
-  view of the last active tab+draft; the share is already document-keyed for this
 - Omni **live relay room** on the tabs/drafts model (#260) — still per-draft and
   not functional yet
+- Per-tab public preview include/exclude controls — today every live prose tab's
+  active draft is included in the document-keyed share payload
 - Canvas tabs (#197) — `tab_type` column is ready, no implementation yet
 - Merge workflow between draft branches (UX undecided in #160)
 - Document-wide *content* checkpoints (one snapshot of all tabs/drafts at

@@ -11,7 +11,7 @@ import {
     type AnnotationId,
     type RevisionVersionSelections,
 } from "./rendering";
-import type { ReadonlyShareDocument, SerializedAnnotation } from "./types";
+import type { ReadonlyShareDocument, ReadonlyShareTab, SerializedAnnotation } from "./types";
 
 let {
     share,
@@ -31,8 +31,27 @@ let activeInlineAnnotationId = $state<AnnotationId | null>(null);
 let modalAnnotationStack = $state<AnnotationId[]>([]);
 let initializedSelection = $state(false);
 let revisionVersionSelections = $state<RevisionVersionSelections>({});
+let selectedTabId = $state<string | null>(null);
 
 const modalAnnotationId = $derived(modalAnnotationStack.at(-1) ?? null);
+const shareTabs = $derived(
+    (share.tabs?.length ?? 0) > 0
+        ? share.tabs
+        : ([
+              {
+                  id: "legacy",
+                  label: "Document",
+                  draftId: null,
+                  content: share.content,
+                  annotations: share.annotations,
+              },
+          ] satisfies ReadonlyShareTab[]),
+);
+const selectedTab = $derived(
+    shareTabs.find((tab) => tab.id === selectedTabId) ?? shareTabs[0] ?? null,
+);
+const selectedContent = $derived(selectedTab?.content ?? share.content);
+const selectedAnnotations = $derived(selectedTab?.annotations ?? share.annotations);
 
 function formatPublishedAt(value: string | null): string {
     if (!value) return "Shared from Quillium";
@@ -46,9 +65,22 @@ function selectAnnotation(id: AnnotationId) {
     activeInlineAnnotationId = id;
 }
 
+function selectShareTab(id: string) {
+    if (id === selectedTabId) return;
+    selectedTabId = id;
+    activeInlineAnnotationId = null;
+    modalAnnotationStack = [];
+    revisionVersionSelections = {};
+    initializedSelection = false;
+}
+
 function openAnnotationModal(id: AnnotationId) {
     activeInlineAnnotationId = id;
-    const path = findAnnotationPath(id, share.content, share.annotations) as AnnotationPath | null;
+    const path = findAnnotationPath(
+        id,
+        selectedContent,
+        selectedAnnotations,
+    ) as AnnotationPath | null;
     if (path) {
         const selections = { ...revisionVersionSelections };
         for (const entry of path) {
@@ -77,13 +109,13 @@ function selectRevisionVersion(annotationId: AnnotationId, versionIndex: number)
 }
 
 const sortedAnnotations = $derived(
-    [...share.annotations].sort(
+    [...selectedAnnotations].sort(
         (a, b) => a.from - b.from || a.to - b.to || a.id.localeCompare(b.id),
     ),
 );
 
 const displayedShare = $derived(
-    buildDisplayedShare(share.content, sortedAnnotations, revisionVersionSelections),
+    buildDisplayedShare(selectedContent, sortedAnnotations, revisionVersionSelections),
 );
 
 const displayAnnotations = $derived(displayedShare.annotations);
@@ -92,8 +124,8 @@ const modalAnnotationPath = $derived(
     modalAnnotationId
         ? ((findAnnotationPath(
               modalAnnotationId,
-              share.content,
-              share.annotations,
+              selectedContent,
+              selectedAnnotations,
           ) as AnnotationPath | null) ?? [])
         : [],
 );
@@ -108,6 +140,15 @@ const activeDocumentAnnotationId = $derived(
         : ((modalAnnotationPath[0]?.annotation.id as AnnotationId | undefined) ??
               activeInlineAnnotationId),
 );
+
+$effect(() => {
+    if (shareTabs.some((tab) => tab.id === selectedTabId)) return;
+    selectedTabId = share.activeTabId ?? shareTabs[0]?.id ?? null;
+    activeInlineAnnotationId = null;
+    modalAnnotationStack = [];
+    revisionVersionSelections = {};
+    initializedSelection = false;
+});
 
 $effect(() => {
     if (initializedSelection) return;
@@ -145,6 +186,20 @@ onMount(() => {
 				</a>
 			</div>
 		</div>
+
+		{#if shareTabs.length > 1}
+			<nav class="share-tab-strip" aria-label="Published tabs" in:fade={{ duration: 280 }}>
+				{#each shareTabs as tab (tab.id)}
+					<button
+						type="button"
+						class:selected={tab.id === selectedTabId}
+						onclick={() => selectShareTab(tab.id)}
+					>
+						<span>{tab.label}</span>
+					</button>
+				{/each}
+			</nav>
+		{/if}
 
 		<div class="editor-stage">
 			<section class="editor-sheet" in:fade={{ duration: 420 }}>
@@ -189,10 +244,10 @@ onMount(() => {
 </main>
 
 {#if modalAnnotation}
-	<ReadonlyAnnotationModal
+<ReadonlyAnnotationModal
 		annotation={modalAnnotation}
-		rootContent={share.content}
-		rootAnnotations={share.annotations}
+		rootContent={selectedContent}
+		rootAnnotations={selectedAnnotations}
 		activeAnnotationId={activeInlineAnnotationId}
 		{revisionVersionSelections}
 		onClose={closeAnnotationModal}
@@ -289,6 +344,62 @@ onMount(() => {
 			inset 0 1px 0 rgba(255, 255, 255, 0.16);
 		font-size: 0.78rem;
 		white-space: nowrap;
+	}
+
+	.share-tab-strip {
+		display: flex;
+		gap: 0.35rem;
+		width: min(816px, 100%);
+		margin: -1.5rem auto 1.25rem;
+		overflow-x: auto;
+		padding: 0.25rem;
+		border: 1px solid var(--border);
+		border-radius: 0.5rem;
+		background: color-mix(in srgb, var(--surface) 72%, transparent);
+		box-shadow: 0 10px 22px rgba(var(--shadow-color), 0.08);
+		scrollbar-width: thin;
+		scrollbar-color: var(--border-strong) transparent;
+	}
+
+	.share-tab-strip button {
+		display: inline-flex;
+		flex: 0 0 auto;
+		align-items: center;
+		justify-content: center;
+		min-width: 6rem;
+		max-width: 14rem;
+		min-height: 2.35rem;
+		padding: 0 0.85rem;
+		border: 0;
+		border-radius: 0.4rem;
+		background: transparent;
+		color: var(--text-faint);
+		font: inherit;
+		font-size: 0.82rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition:
+			background-color 160ms ease,
+			color 160ms ease,
+			box-shadow 160ms ease;
+	}
+
+	.share-tab-strip button span {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.share-tab-strip button:hover {
+		background: var(--surface-2);
+		color: var(--text-soft);
+	}
+
+	.share-tab-strip button.selected {
+		background: var(--surface);
+		box-shadow: 0 1px 6px rgba(var(--shadow-color), 0.1);
+		color: var(--text-strong);
 	}
 
 	.editor-stage {
