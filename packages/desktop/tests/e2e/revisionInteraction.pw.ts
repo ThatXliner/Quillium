@@ -5,8 +5,8 @@
  *   - Annotation visibility in revision modal
  */
 
-import { expect, test, type Page } from "@playwright/test";
-import { installTauriMock, getCmText } from "./utils";
+import { type Page, expect, test } from "@playwright/test";
+import { getCmText, installTauriMock } from "./utils";
 
 /**
  * Create a revision over "world" in "hello world", leaving "hello "

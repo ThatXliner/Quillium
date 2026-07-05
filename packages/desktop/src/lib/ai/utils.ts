@@ -1,3 +1,9 @@
+import type { UserModelMessage } from "ai";
+import DOMPurify from "dompurify";
+import rehypeStringify from "rehype-stringify";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
 /**
  * Shared utilities for the AI subsystem.
  *
@@ -20,18 +26,12 @@
  * Dependencies: unified ecosystem, dompurify, ai SDK types.
  */
 import { unified } from "unified";
-import remarkParse from "remark-parse";
-import remarkGfm from "remark-gfm";
-import remarkRehype from "remark-rehype";
-import rehypeStringify from "rehype-stringify";
-import DOMPurify from "dompurify";
-import type { UserModelMessage } from "ai";
 import {
-    buildAiContextPacket,
-    contextPacketToUserMessage,
     type AiTextRange,
     type AnnotationContextInput,
     type DocumentContextLike,
+    buildAiContextPacket,
+    contextPacketToUserMessage,
 } from "./context";
 
 export async function renderMarkdown(markdown: string): Promise<string> {

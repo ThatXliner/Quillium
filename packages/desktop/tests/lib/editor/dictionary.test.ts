@@ -1,3 +1,11 @@
+import {
+    type DictEntry,
+    type Meaning,
+    collectAntonyms,
+    collectSynonyms,
+    extractDictionaryWord,
+    getPhonetic,
+} from "$lib/editor/dictionaryUtils";
 /**
  * Unit tests for dictionary/thesaurus helpers.
  *
@@ -7,14 +15,6 @@
  *   - collectSynonyms / collectAntonyms: deduplication, limits, nested collection
  */
 import { describe, expect, it } from "vitest";
-import {
-    collectAntonyms,
-    collectSynonyms,
-    extractDictionaryWord,
-    getPhonetic,
-    type DictEntry,
-    type Meaning,
-} from "$lib/editor/dictionaryUtils";
 
 // ── Helpers ─────────────────────────────────────────────────────
 

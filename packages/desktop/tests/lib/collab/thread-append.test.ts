@@ -1,3 +1,23 @@
+import { codeMirrorToYjsAnnotation } from "$lib/collab/annotationSchema";
+import {
+    type Peer,
+    connect,
+    flushAll,
+    makePeerWithAnnotationSync,
+    teardown,
+} from "$lib/collab/test-helpers/twoPeerHarness";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
+import { createYjsBinding } from "$lib/collab/yjsBinding";
+import {
+    addAnnotation,
+    annotationField,
+    updateThread,
+} from "$lib/editor/plugins/annotations/annotationField";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
+import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 /**
  * thread-append.test.ts -- Y.Array append-only threads (D-93).
  *
@@ -12,28 +32,8 @@
  * Phase 10: Write path (CM -> Yjs) disabled. Tests that depend on write path skipped.
  * Phase 11 will rebuild and re-enable these tests.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { EditorState, EditorSelection } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import {
-    makePeerWithAnnotationSync,
-    connect,
-    teardown,
-    flushAll,
-    type Peer,
-} from "$lib/collab/test-helpers/twoPeerHarness";
-import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
-import { createYjsBinding } from "$lib/collab/yjsBinding";
-import {
-    annotationField,
-    addAnnotation,
-    updateThread,
-} from "$lib/editor/plugins/annotations/annotationField";
-import { codeMirrorToYjsAnnotation } from "$lib/collab/annotationSchema";
-import type { YjsAnnotationNode } from "$lib/collab/types";
-import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 describe("thread Y.Array sync", () => {
     let peerA: Peer;

@@ -1,9 +1,9 @@
 <script lang="ts">
-import { onMount } from "svelte";
-import posthog from "posthog-js";
 import { trackDownload as captureDownload } from "$lib/analytics";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import posthog from "posthog-js";
+import { onMount } from "svelte";
 
 const REPO = "ThatXliner/quillium-releases";
 
@@ -229,7 +229,10 @@ async function initScene(
     scene.add(key);
 
     const disposables: { dispose(): void }[] = [];
-    const track = <T extends { dispose(): void }>(d: T): T => (disposables.push(d), d);
+    const track = <T extends { dispose(): void }>(d: T): T => {
+        disposables.push(d);
+        return d;
+    };
 
     // ── Flight paths: one shared trunk that splits into three ────
     const trunk: [number, number, number][] = [
@@ -506,7 +509,9 @@ async function initScene(
             trigger: wrapper,
             start: "top top",
             end: "bottom bottom",
-            onUpdate: (self) => (target = self.progress),
+            onUpdate: (self) => {
+                target = self.progress;
+            },
         });
         ScrollTrigger.refresh();
     }
@@ -521,7 +526,7 @@ async function initScene(
     const applyFrame = (t: number) => {
         const ft = flightT(progress);
         centroid.set(0, 0, 0);
-        planes.forEach(({ mesh, curve, stagger, phase }) => {
+        for (const { mesh, curve, stagger, phase } of planes) {
             const pt = THREE.MathUtils.clamp(ft + stagger, 0.02, 0.985);
             curve.getPoint(pt, mesh.position);
             mesh.position.y += Math.sin(t * 1.4 + phase) * 0.06;
@@ -530,7 +535,7 @@ async function initScene(
             mesh.quaternion.setFromRotationMatrix(tmpMat);
             mesh.rotateZ(Math.sin(t * 1.1 + phase) * 0.12);
             centroid.add(mesh.position);
-        });
+        }
         centroid.divideScalar(planes.length);
 
         // Final chapter: on wide screens the camera pans so the flight owns the
@@ -545,11 +550,11 @@ async function initScene(
         // Smoke trails: uHead = the flight head (scroll position), so the ribbon
         // is revealed/scrubbed in and out with scroll and trails the flown path.
         // uTime only drifts the warp so the smoke breathes; it never dissipates.
-        smokeTrails.forEach(({ mat }) => {
+        for (const { mat } of smokeTrails) {
             mat.uniforms.uHead.value = ft;
             mat.uniforms.uTime.value = t;
             mat.uniforms.uDim.value = dim;
-        });
+        }
 
         camCurve.getPoint(progress, camera.position);
         camera.position.z *= dolly;
@@ -562,15 +567,15 @@ async function initScene(
         const [c3a, c3b] = CHAPTERS[2];
         const chipAlpha =
             window01(progress, c3a, c3a + 0.05) * (1 - window01(progress, c3b - 0.04, c3b + 0.01));
-        chipEls.forEach((el, i) => {
-            if (!el) return;
+        for (const [i, el] of chipEls.entries()) {
+            if (!el) continue;
             chipV.copy(planes[i].mesh.position);
             chipV.y += 0.55;
             chipV.project(camera);
             el.style.left = `${(chipV.x * 0.5 + 0.5) * (host.clientWidth || 1)}px`;
             el.style.top = `${(-chipV.y * 0.5 + 0.5) * (host.clientHeight || 1)}px`;
             el.style.opacity = String(chipAlpha);
-        });
+        }
 
         motes.rotation.y = t * 0.01;
         motes.rotation.z = t * 0.004;
@@ -579,15 +584,15 @@ async function initScene(
     };
 
     const updateChapters = () => {
-        chapterEls.forEach((el, i) => {
-            if (!el) return;
+        for (const [i, el] of chapterEls.entries()) {
+            if (!el) continue;
             const [a, b] = CHAPTERS[i];
             const alphaIn = i === 0 ? 1 : window01(progress, a, a + 0.05);
             const alpha = alphaIn * (1 - window01(progress, b - 0.04, b + 0.01));
             el.style.opacity = String(alpha);
             el.style.setProperty("--off", `${(1 - alpha) * 28}px`);
             el.style.pointerEvents = alpha > 0.5 && INTERACTIVE.has(i) ? "auto" : "none";
-        });
+        }
     };
 
     let rafId = 0;
@@ -620,10 +625,11 @@ async function initScene(
     // camera and motion are theme-agnostic, so there's nothing to rebuild.
     const recolor = (t: Theme) => {
         (scene.background as InstanceType<ThreeNS["Color"]>).set(t.sky);
-        scene.fog!.color.set(t.sky);
-        smokeTrails.forEach(({ mat, draft }) =>
-            mat.uniforms.uColor.value.copy(smokeColor(draft, t)),
-        );
+        if (!scene.fog) throw new Error("Missing hero scene fog");
+        scene.fog.color.set(t.sky);
+        for (const { mat, draft } of smokeTrails) {
+            mat.uniforms.uColor.value.copy(smokeColor(draft, t));
+        }
         moteMat.color.set(t.mote.color);
         moteMat.opacity = t.mote.opacity;
         moteMat.blending = t.mote.additive ? THREE.AdditiveBlending : THREE.NormalBlending;
@@ -636,7 +642,9 @@ async function initScene(
         io.disconnect();
         ro.disconnect();
         if (rafId) cancelAnimationFrame(rafId);
-        disposables.forEach((d) => d.dispose());
+        for (const d of disposables) {
+            d.dispose();
+        }
         renderer.dispose();
         renderer.domElement.remove();
     };
@@ -674,7 +682,8 @@ function makePaperPlaneGeometry(THREE: ThreeNS) {
 function makeMoteTexture(THREE: ThreeNS) {
     const c = document.createElement("canvas");
     c.width = c.height = 64;
-    const ctx = c.getContext("2d")!;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("Could not create mote texture context");
     // White-alpha falloff; the PointsMaterial.color tints it (dark ink dust)
     const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
     g.addColorStop(0, "rgba(255, 255, 255, 1)");

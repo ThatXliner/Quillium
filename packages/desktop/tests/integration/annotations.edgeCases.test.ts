@@ -6,8 +6,8 @@
  * Uses EditorHarness for fluent, non-repetitive test bodies.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
 import { isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import { afterEach, describe, expect, it } from "vitest";
 import { EditorHarness } from "../helpers/EditorHarness";
 
 let h: EditorHarness;

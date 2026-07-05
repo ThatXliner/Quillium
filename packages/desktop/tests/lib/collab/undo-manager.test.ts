@@ -1,3 +1,8 @@
+import {
+    addSubtreeToUndoScope,
+    breakUndoCapture,
+    createYjsUndoExtension,
+} from "$lib/collab/yjsUndo";
 /**
  * undo-manager.test.ts -- Y.UndoManager behavior matrix (Phase 8.5).
  *
@@ -6,11 +11,6 @@
  */
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import {
-    addSubtreeToUndoScope,
-    breakUndoCapture,
-    createYjsUndoExtension,
-} from "$lib/collab/yjsUndo";
 
 describe("yjs undo manager", () => {
     it("chronological across scopes", () => {

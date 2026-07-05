@@ -1,8 +1,8 @@
 import {
-    isAnnotationOfType,
-    versionText,
     type Annotations,
     type GenericAnnotation,
+    isAnnotationOfType,
+    versionText,
 } from "$lib/editor/plugins/annotations/models";
 import type { AiTextRange, AnnotationContextInput } from "./context";
 

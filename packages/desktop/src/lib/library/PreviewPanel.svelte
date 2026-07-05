@@ -5,20 +5,20 @@
 <script lang="ts">
 import type { DocumentMeta } from "$lib/db/types";
 import { type ExportFormat, exportDocumentById } from "$lib/export";
-import DocumentPreview from "./DocumentPreview.svelte";
+import Kbd from "$lib/ui/Kbd.svelte";
 import {
-    FileText,
-    ExternalLink,
     AppWindow,
-    Trash2,
-    RotateCcw,
-    Pencil,
     CheckSquare,
     Download,
+    ExternalLink,
+    FileText,
+    Pencil,
+    RotateCcw,
     Tag,
+    Trash2,
     X,
 } from "lucide-svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
+import DocumentPreview from "./DocumentPreview.svelte";
 import { normalizeTag, parseTags, serializeTags } from "./tags";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);

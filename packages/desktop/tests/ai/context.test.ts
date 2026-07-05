@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import {
     buildAiContextPacket,
     contextPacketToPrompt,
@@ -6,6 +5,7 @@ import {
     contextScopeLabel,
     getContextAwareActions,
 } from "$lib/ai/context";
+import { describe, expect, it } from "vitest";
 
 describe("buildAiContextPacket", () => {
     it("uses selection focus without duplicating nearby context when the full draft fits", () => {

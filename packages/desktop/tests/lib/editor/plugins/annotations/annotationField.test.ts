@@ -1,3 +1,22 @@
+import {
+    deleteRevisionVersion as _deleteRevisionVersion,
+    _nestedEditRevision,
+    setActiveRevisionVersion as _setActiveRevisionVersion,
+    _updateRevisionVersionLabel,
+    updateRevisionVersionState as _updateRevisionVersionState,
+    addAnnotation,
+    annotationField,
+    createNewRevision,
+    invertedAnnotationFieldEffects,
+    nestedEditorEdit,
+} from "$lib/editor/plugins/annotations/annotationField";
+import {
+    type Annotations,
+    activeVersionIndex as activeVersionIndexOf,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import { history, redo, undo } from "@codemirror/commands";
 /**
  * annotationField.test.ts — Integration tests for the annotationField StateField.
  *
@@ -8,28 +27,9 @@
  * These are pure CodeMirror state-level tests — no DOM or Svelte needed.
  */
 import { EditorSelection, EditorState } from "@codemirror/state";
-import { describe, expect, it } from "vitest";
-import {
-    addAnnotation,
-    annotationField,
-    createNewRevision,
-    deleteRevisionVersion as _deleteRevisionVersion,
-    invertedAnnotationFieldEffects,
-    nestedEditorEdit,
-    _nestedEditRevision,
-    setActiveRevisionVersion as _setActiveRevisionVersion,
-    updateRevisionVersionState as _updateRevisionVersionState,
-    _updateRevisionVersionLabel,
-} from "$lib/editor/plugins/annotations/annotationField";
 import type { TransactionSpec } from "@codemirror/state";
 import { Transaction } from "@codemirror/state";
-import {
-    activeVersionIndex as activeVersionIndexOf,
-    isAnnotationOfType,
-    makeVersion,
-    type Annotations,
-} from "$lib/editor/plugins/annotations/models";
-import { history, undo, redo } from "@codemirror/commands";
+import { describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

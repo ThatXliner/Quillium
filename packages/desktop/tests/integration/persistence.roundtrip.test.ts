@@ -1,15 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, historyField, redo, undo } from "@codemirror/commands";
-import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
     activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
+import { history, historyField, redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it } from "vitest";
 
 const roundtripFields = { historyField, annotationField };
 

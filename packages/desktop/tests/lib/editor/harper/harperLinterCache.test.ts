@@ -1,11 +1,11 @@
+import type { EditorView } from "@codemirror/view";
 /**
  * Tests for lintWithCache caching behavior.
  *
  * Mocks harper.js so we can count organizedLints() calls without WASM.
  * Stubs EditorView.visibleRanges to control which paragraphs are "visible".
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { EditorView } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockOrganizedLints = vi.fn();
 

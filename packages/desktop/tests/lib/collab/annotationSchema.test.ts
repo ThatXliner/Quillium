@@ -1,28 +1,28 @@
+import {
+    AnnotationIdMap,
+    codeMirrorToYjsAnnotation,
+    generateAnnotationId,
+    syncRawAnnotationsToYjsMap,
+    yjsAnnotationToCodeMirror,
+} from "$lib/collab/annotationSchema";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import {
+    type GenericAnnotation,
+    type RawAnnotations,
+    type VersionState,
+    activeVersionIndex,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
 /**
  * annotationSchema.test.ts -- Tests for Yjs annotation schema and bidirectional converters.
  *
  * Per D-90/D-92: YjsAnnotationNode is a recursive Y.Map structure with Y.Array for
  * threads and Y.Map for versions. Tests verify converters handle the new shape.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { EditorSelection } from "@codemirror/state";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import {
-    codeMirrorToYjsAnnotation,
-    syncRawAnnotationsToYjsMap,
-    yjsAnnotationToCodeMirror,
-    generateAnnotationId,
-    AnnotationIdMap,
-} from "$lib/collab/annotationSchema";
-import {
-    activeVersionIndex,
-    makeVersion,
-    type GenericAnnotation,
-    type RawAnnotations,
-    type VersionState,
-} from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode } from "$lib/collab/types";
-import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 
 describe("annotationSchema", () => {
     let ydoc: Y.Doc;

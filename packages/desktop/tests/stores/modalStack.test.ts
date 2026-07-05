@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { get } from "svelte/store";
 import { modalStack } from "$lib/stores";
 import type { ModalEntry } from "$lib/stores";
 import type { EditorView } from "@codemirror/view";
+import { get } from "svelte/store";
+import { beforeEach, describe, expect, it } from "vitest";
 
 // Minimal EditorView stub — modalStack only stores the reference, never calls methods.
 const fakeView = {} as EditorView;

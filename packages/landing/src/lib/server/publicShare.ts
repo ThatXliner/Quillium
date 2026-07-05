@@ -1,6 +1,6 @@
 import { env } from "$env/dynamic/public";
-import { createClient } from "@supabase/supabase-js";
 import type { ReadonlyShareDocument, SerializedAnnotation } from "@quillium/share";
+import { createClient } from "@supabase/supabase-js";
 
 export type PublicShare = ReadonlyShareDocument;
 

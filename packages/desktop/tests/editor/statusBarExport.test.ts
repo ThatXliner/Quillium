@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, within } from "@testing-library/svelte";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRawSnippet } from "svelte";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 // StatusBar requires a `children` snippet; an empty one suffices for these tests.
@@ -19,8 +19,8 @@ beforeAll(() => {
 const { exportDocument } = vi.hoisted(() => ({ exportDocument: vi.fn(async () => {}) }));
 vi.mock("$lib/export", () => ({ exportDocument }));
 
-import { editorView } from "$lib/stores";
 import StatusBar from "$lib/editor/StatusBar.svelte";
+import { editorView } from "$lib/stores";
 
 afterEach(() => {
     cleanup();

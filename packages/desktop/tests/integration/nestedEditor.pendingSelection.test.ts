@@ -1,14 +1,14 @@
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
-import { NestedEditorController } from "$lib/editor/plugins/annotations/NestedEditorController";
 import {
     annotations as annotationExtensions,
     createNewAnnotation,
     makeVersion,
 } from "$lib/editor/plugins/annotations";
+import { NestedEditorController } from "$lib/editor/plugins/annotations/NestedEditorController";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createRevisionView() {
     const state = EditorState.create({

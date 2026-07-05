@@ -2,8 +2,8 @@
     EmptyState.svelte — Shown when no documents exist yet.
 -->
 <script lang="ts">
-import { BookOpen, Plus } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { BookOpen, Plus } from "lucide-svelte";
 
 interface Props {
     onNew: () => void;

@@ -20,9 +20,9 @@
  *   5. Suggestion replacements array not corrupted
  */
 
-import { afterEach, describe, expect, it } from "vitest";
-import fc from "fast-check";
 import { activeVersionIndex, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import fc from "fast-check";
+import { afterEach, describe, expect, it } from "vitest";
 import { EditorHarness } from "../helpers/EditorHarness";
 
 // ── Command types ───────────────────────────────────────────────────────────

@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
 import {
-    isSuspiciousDeletion,
-    isSuspiciousAnnotationChange,
-    isDeepAnnotationLoss,
-    saveEmergencyBackup,
-    readBackup,
     clearBackup,
+    isDeepAnnotationLoss,
+    isSuspiciousAnnotationChange,
+    isSuspiciousDeletion,
+    readBackup,
+    saveEmergencyBackup,
 } from "$lib/errorGuard";
 import { currentDocumentTitle, documentContent } from "$lib/stores";
 import { EditorSelection } from "@codemirror/state";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── localStorage mock ─────────────────────────────────────────────
 const store: Record<string, string> = {};

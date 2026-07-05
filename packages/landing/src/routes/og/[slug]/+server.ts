@@ -1,6 +1,6 @@
+import { error } from "@sveltejs/kit";
 import { ImageResponse } from "@vercel/og";
 import type { RequestHandler } from "./$types";
-import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params }) => {
     let meta: { title: string; date: string; author?: string };
