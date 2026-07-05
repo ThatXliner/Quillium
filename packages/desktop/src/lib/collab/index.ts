@@ -23,9 +23,14 @@ import {
     annotationField,
     removeAnnotation,
 } from "$lib/editor/plugins/annotations/annotationField";
+import {
+    _restoreVersionGroups,
+    versionGroupField,
+} from "$lib/editor/plugins/annotations/versionGroupField";
 import { AnnotationIdMap } from "./annotationSchema";
 import { colorForClient, createAwarenessExtension } from "./awareness";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
+import { createVersionGroupSyncPlugin } from "./yjsVersionGroups";
 // Yjs modules
 import { createYjsBinding } from "./yjsBinding";
 import {
@@ -135,7 +140,8 @@ export async function enableCollab(
     asOwner = true,
 ): Promise<void> {
     // Connect to Yjs relay
-    const { provider, awareness, ydoc, ytext, ymap } = await createYjsProvider(docId);
+    const { provider, awareness, ydoc, ytext, ymap, yVersionGroups } =
+        await createYjsProvider(docId);
 
     // Get local content before connecting
     const localDoc = view.state.doc.toString();
@@ -204,7 +210,15 @@ export async function enableCollab(
     const preJoinLocalAnnotations = !asOwner
         ? Object.values(view.state.field(annotationField, false) ?? {})
         : [];
-    if (currentContent !== authoritativeContent || preJoinLocalAnnotations.length > 0) {
+    const preJoinLocalVersionGroups = !asOwner
+        ? (view.state.field(versionGroupField, false) ?? {})
+        : {};
+    const shouldClearVersionGroups = Object.keys(preJoinLocalVersionGroups).length > 0;
+    if (
+        currentContent !== authoritativeContent ||
+        preJoinLocalAnnotations.length > 0 ||
+        shouldClearVersionGroups
+    ) {
         view.dispatch({
             ...(currentContent !== authoritativeContent
                 ? {
@@ -215,7 +229,10 @@ export async function enableCollab(
                       },
                   }
                 : {}),
-            effects: preJoinLocalAnnotations.map((annotation) => removeAnnotation.of(annotation)),
+            effects: [
+                ...preJoinLocalAnnotations.map((annotation) => removeAnnotation.of(annotation)),
+                ...(shouldClearVersionGroups ? [_restoreVersionGroups.of({ groups: {} })] : []),
+            ],
             annotations: [Transaction.addToHistory.of(false)],
         });
     }
@@ -233,6 +250,7 @@ export async function enableCollab(
     // Plan 8.5c-02: Caller-owned idMap so subtree controllers can resolve CM ids
     const mainIdMap = new AnnotationIdMap();
     const annotationSync = createAnnotationSyncPlugin(ytext, ymap, clientID, mainIdMap);
+    const versionGroupSync = createVersionGroupSyncPlugin(yVersionGroups);
 
     currentUndoManager = undoManager;
 
@@ -247,6 +265,7 @@ export async function enableCollab(
         provider,
         awareness,
         ymap,
+        yVersionGroups,
         ytext,
         undoManager,
         mainIdMap,
@@ -255,8 +274,8 @@ export async function enableCollab(
     // Install Yjs collab extension - includes annotation sync.
     // Joiners use Y.UndoManager only; owners keep their existing CM history.
     const collabExts = asOwner
-        ? [binding, awarenessExt, annotationSync]
-        : [binding, undoExt, awarenessExt, annotationSync];
+        ? [binding, awarenessExt, annotationSync, versionGroupSync]
+        : [binding, undoExt, awarenessExt, annotationSync, versionGroupSync];
     view.dispatch({
         effects: [
             collabCompartment.reconfigure(collabExts),

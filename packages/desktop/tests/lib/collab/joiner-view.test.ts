@@ -12,6 +12,7 @@ import {
 } from "$lib/collab/test-helpers/twoPeerHarness";
 import type { YjsAnnotationNode } from "$lib/collab/types";
 import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
+import { createVersionGroupSyncPlugin } from "$lib/collab/yjsVersionGroups";
 import { createYjsBinding } from "$lib/collab/yjsBinding";
 import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
 import { historyCompartment } from "$lib/editor/extensions";
@@ -24,6 +25,7 @@ import {
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     type GenericAnnotation,
+    type VersionGroup,
     activeVersionIndex,
     isAnnotationOfType,
     makeVersion,
@@ -74,6 +76,7 @@ describe("joiner view hardening", () => {
         const ydoc = new Y.Doc();
         const ytext = ydoc.getText("document");
         const ymap = ydoc.getMap<YjsAnnotationNode>("annotations");
+        const yVersionGroups = ydoc.getMap<VersionGroup>("versionGroups");
         const idMap = new AnnotationIdMap();
         if (initialText) {
             ydoc.transact(() => ytext.insert(0, initialText), "init");
@@ -85,6 +88,7 @@ describe("joiner view hardening", () => {
                 annotationExtensions(),
                 createYjsBinding(ytext),
                 createAnnotationSyncPlugin(ytext, ymap, clientId, idMap),
+                createVersionGroupSyncPlugin(yVersionGroups),
                 ...(undo ? [undo.extension] : []),
             ],
         });
@@ -93,6 +97,7 @@ describe("joiner view hardening", () => {
             ydoc,
             ytext,
             ymap: ymap as Y.Map<unknown>,
+            yVersionGroups,
             view,
             clientId,
             idMap,
@@ -251,6 +256,7 @@ describe("joiner view hardening", () => {
         Y.applyUpdate(joinerYdoc, Y.encodeStateAsUpdate(owner.ydoc), "remote");
         const joinerYtext = joinerYdoc.getText("document");
         const joinerYmap = joinerYdoc.getMap<YjsAnnotationNode>("annotations");
+        const joinerYVersionGroups = joinerYdoc.getMap<VersionGroup>("versionGroups");
         const idMap = new AnnotationIdMap();
         const undo = createYjsUndoExtension(joinerYtext, joinerYmap);
         const joinerState = EditorState.create({
@@ -259,6 +265,7 @@ describe("joiner view hardening", () => {
                 annotationExtensions(),
                 createYjsBinding(joinerYtext),
                 createAnnotationSyncPlugin(joinerYtext, joinerYmap, "joiner", idMap),
+                createVersionGroupSyncPlugin(joinerYVersionGroups),
                 undo.extension,
             ],
         });
@@ -266,6 +273,7 @@ describe("joiner view hardening", () => {
             ydoc: joinerYdoc,
             ytext: joinerYtext,
             ymap: joinerYmap as Y.Map<unknown>,
+            yVersionGroups: joinerYVersionGroups,
             view: new EditorView({ state: joinerState, parent: document.body }),
             clientId: "joiner",
             idMap,

@@ -1,5 +1,6 @@
 import type { Awareness } from "y-protocols/awareness";
 import type { WebsocketProvider } from "y-websocket";
+import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 /**
  * types.ts — Collab-related types.
  *
@@ -47,6 +48,7 @@ export type CollabSession = {
     awareness: Awareness;
     ytext: Y.Text; // Main document Y.Text
     ymap: Y.Map<YjsAnnotationNode>; // Annotation sync map (recursive Y.Map entries)
+    yVersionGroups: Y.Map<VersionGroup>; // Version-group sync map (plain JSON entries)
     undoManager: Y.UndoManager; // Plan 8.5c-02: For subtree undo scope registration
     mainIdMap: AnnotationIdMap; // Plan 8.5c-02: For CM ID ↔ Yjs ID resolution
 };
