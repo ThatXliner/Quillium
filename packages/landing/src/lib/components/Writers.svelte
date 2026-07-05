@@ -1,5 +1,5 @@
 <script lang="ts">
-import { BookOpen, PenLine, Clock } from "@lucide/svelte";
+import { BookOpen, Clock, PenLine } from "@lucide/svelte";
 </script>
 
 <!-- ==================== WHO IT'S FOR ==================== -->

@@ -10,8 +10,8 @@
  *   Actual:   "some junk" — wrong content, bad offset translation
  */
 
-import { expect, test, type Page } from "@playwright/test";
-import { installTauriMock, getCmText } from "./utils";
+import { type Page, expect, test } from "@playwright/test";
+import { getCmText, installTauriMock } from "./utils";
 
 /**
  * Simple version: create revision over all text (no prefix/suffix).

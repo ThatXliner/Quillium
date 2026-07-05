@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { installTauriMock, getCmText } from "./utils";
+import { getCmText, installTauriMock } from "./utils";
 
 test.describe("annotation undo state safety", () => {
     test.beforeEach(async ({ page }) => {

@@ -1,6 +1,6 @@
-import type { PageServerLoad } from "./$types";
-import { error } from "@sveltejs/kit";
 import { loadPublicShare } from "$lib/server/publicShare";
+import { error } from "@sveltejs/kit";
+import type { PageServerLoad } from "./$types";
 
 export const prerender = false;
 

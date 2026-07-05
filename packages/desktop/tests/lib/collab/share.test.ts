@@ -1,7 +1,7 @@
-import { EditorSelection } from "@codemirror/state";
 import { buildReadonlyShareUrl, buildSharePreviewText } from "$lib/collab/share";
 import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
 import { makeVersion } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
 describe("buildReadonlyShareUrl", () => {

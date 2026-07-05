@@ -1,23 +1,23 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { isMobile } from "$lib/breakpoints";
+import Footer from "$lib/components/Footer.svelte";
+import Nav from "$lib/components/Nav.svelte";
+import { initReveal } from "$lib/reveal";
+import {
+    ArrowRight,
+    Check,
+    Cloud,
+    GitBranch,
+    Laptop,
+    MessageSquare,
+    Monitor,
+    Smartphone,
+    WifiOff,
+} from "@lucide/svelte";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import posthog from "posthog-js";
-import { initReveal } from "$lib/reveal";
-import { isMobile } from "$lib/breakpoints";
-import Nav from "$lib/components/Nav.svelte";
-import Footer from "$lib/components/Footer.svelte";
-import {
-    Cloud,
-    MessageSquare,
-    GitBranch,
-    WifiOff,
-    Smartphone,
-    Laptop,
-    Monitor,
-    Check,
-    ArrowRight,
-} from "@lucide/svelte";
+import { onMount } from "svelte";
 
 let email = $state("");
 let submitting = $state(false);
@@ -161,13 +161,15 @@ onMount(() => {
 
     // Phase 2: stagger initial packet starts widely so activity isn't clustered
     tl.call(() => {
-        packets.forEach((el) => {
+        for (const el of packets) {
             gsap.delayedCall(gsap.utils.random(0, 8), () => flyPacket(el));
-        });
+        }
     });
 
     return () => {
-        packetTweens.forEach((t) => t.kill());
+        for (const t of packetTweens) {
+            t.kill();
+        }
         gsap.killTweensOf(packets);
         tl.scrollTrigger?.kill();
         tl.kill();

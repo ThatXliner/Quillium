@@ -1,5 +1,16 @@
+import {
+    type AwarenessState,
+    colorForClient,
+    createAwarenessExtension,
+} from "$lib/collab/awareness";
+import { followedClientId } from "$lib/collab/store";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { createNewAnnotation, makeVersion } from "$lib/editor/plugins/annotations/models";
+import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
+import { activeAnnotation, modalStack } from "$lib/stores";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { get } from "svelte/store";
 /**
  * awareness.test.ts -- Tests for awareness-based cursor sync.
  *
@@ -16,17 +27,6 @@ import { EditorView } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
-import {
-    type AwarenessState,
-    colorForClient,
-    createAwarenessExtension,
-} from "$lib/collab/awareness";
-import { get } from "svelte/store";
-import { activeAnnotation, modalStack } from "$lib/stores";
-import { followedClientId } from "$lib/collab/store";
-import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { createNewAnnotation, makeVersion } from "$lib/editor/plugins/annotations/models";
-import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
 
 /**
  * Build a remote awareness cursor state using RelativePosition encoded

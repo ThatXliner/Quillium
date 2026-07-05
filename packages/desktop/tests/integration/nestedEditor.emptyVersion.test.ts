@@ -9,15 +9,12 @@
  * nested editor's empty content with the old text.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo } from "@codemirror/commands";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
-    annotationField,
-    addAnnotation,
-    nestedEditorEdit,
     _nestedEditRevision,
+    addAnnotation,
+    annotationField,
+    nestedEditorEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     activeVersion,
@@ -26,7 +23,10 @@ import {
     makeVersion,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { history, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────
 

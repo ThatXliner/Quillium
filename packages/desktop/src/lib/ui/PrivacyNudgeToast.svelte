@@ -14,7 +14,9 @@ let copied = $state(false);
 function copyCode() {
     navigator.clipboard.writeText(code);
     copied = true;
-    setTimeout(() => (copied = false), 1500);
+    setTimeout(() => {
+        copied = false;
+    }, 1500);
 }
 </script>
 

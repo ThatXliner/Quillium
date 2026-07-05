@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { installTauriMock, getCmText } from "./utils";
+import { getCmText, installTauriMock } from "./utils";
 
 test.describe("rapid ctrl+z spam resilience", () => {
     test.beforeEach(async ({ page }) => {

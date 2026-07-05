@@ -5,8 +5,8 @@
  * (Hand-crafted; SVG filter rendering varies across tools,
  *  so we use a pre-rendered PNG instead of icon.svg.)
  */
-import { execSync } from "child_process";
-import { resolve } from "path";
+import { execSync } from "node:child_process";
+import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const srcIcon = resolve(root, "src-tauri/icons/Quillium.png");

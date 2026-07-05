@@ -1,16 +1,19 @@
+import * as encoding from "lib0/encoding";
 /**
  * sync.test.ts -- Tests for Yjs sync protocol handler.
  *
  * Verifies that updates from one client are broadcast to OTHER clients
  * (and not echoed back to the sender, and not dropped).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import * as Y from "yjs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WebSocket } from "ws";
 import { Awareness } from "y-protocols/awareness";
-import * as encoding from "lib0/encoding";
 import * as syncProtocol from "y-protocols/sync";
-import { setupYjsConnection, MESSAGE_SYNC } from "../yjs/sync.js";
-import type { YjsRoom, YjsClientData } from "../yjs/types.js";
+import * as Y from "yjs";
+import { MESSAGE_SYNC, setupYjsConnection } from "../yjs/sync.js";
+import type { YjsClientData, YjsRoom } from "../yjs/types.js";
+
+type FakeListener = (...args: unknown[]) => void;
 
 /**
  * Minimal WebSocket mock that records sent messages and can simulate
@@ -19,7 +22,7 @@ import type { YjsRoom, YjsClientData } from "../yjs/types.js";
 class FakeWebSocket {
     public sent: Uint8Array[] = [];
     public readyState = 1; // OPEN
-    private listeners: Record<string, Array<(...args: any[]) => void>> = {};
+    private listeners: Record<string, FakeListener[]> = {};
 
     send(data: Uint8Array): void {
         this.sent.push(data);
@@ -30,16 +33,19 @@ class FakeWebSocket {
         this.emit("close");
     }
 
-    on(event: string, cb: (...args: any[]) => void): void {
-        (this.listeners[event] ||= []).push(cb);
+    on(event: string, cb: FakeListener): void {
+        if (!this.listeners[event]) {
+            this.listeners[event] = [];
+        }
+        this.listeners[event].push(cb);
     }
 
-    off(event: string, cb: (...args: any[]) => void): void {
+    off(event: string, cb: FakeListener): void {
         if (!this.listeners[event]) return;
         this.listeners[event] = this.listeners[event].filter((f) => f !== cb);
     }
 
-    emit(event: string, ...args: any[]): void {
+    emit(event: string, ...args: unknown[]): void {
         for (const cb of this.listeners[event] || []) cb(...args);
     }
 
@@ -47,6 +53,16 @@ class FakeWebSocket {
     receive(data: Uint8Array): void {
         this.emit("message", data);
     }
+}
+
+function asWebSocket(ws: FakeWebSocket): WebSocket {
+    return ws as unknown as WebSocket;
+}
+
+function requireUpdate(update: Uint8Array | null): Uint8Array {
+    expect(update).not.toBeNull();
+    if (!update) throw new Error("Expected Yjs update");
+    return update;
 }
 
 function buildUpdateMessage(update: Uint8Array): Uint8Array {
@@ -88,8 +104,8 @@ describe("Yjs sync broadcast", () => {
         room = makeRoom();
         wsA = new FakeWebSocket();
         wsB = new FakeWebSocket();
-        setupYjsConnection(wsA as any, room, makeClient("user-a", true));
-        setupYjsConnection(wsB as any, room, makeClient("user-b", false));
+        setupYjsConnection(asWebSocket(wsA), room, makeClient("user-a", true));
+        setupYjsConnection(asWebSocket(wsB), room, makeClient("user-b", false));
         // Clear initial sync step 1/2 messages from the setup phase
         wsA.sent = [];
         wsB.sent = [];
@@ -112,10 +128,9 @@ describe("Yjs sync broadcast", () => {
             producedUpdate = u;
         });
         clientYtext.insert(0, "hi");
-        expect(producedUpdate).not.toBeNull();
 
         // Client A sends that update to the server
-        wsA.receive(buildUpdateMessage(producedUpdate!));
+        wsA.receive(buildUpdateMessage(requireUpdate(producedUpdate)));
 
         // B should have received the broadcast
         expect(wsB.sent.length).toBeGreaterThanOrEqual(1);
@@ -138,9 +153,8 @@ describe("Yjs sync broadcast", () => {
             producedUpdate = u;
         });
         clientYtext.insert(0, "hello");
-        expect(producedUpdate).not.toBeNull();
 
-        wsB.receive(buildUpdateMessage(producedUpdate!));
+        wsB.receive(buildUpdateMessage(requireUpdate(producedUpdate)));
 
         expect(wsA.sent.length).toBeGreaterThanOrEqual(1);
         const bReceivedBroadcast = wsB.sent.some((msg) => msg.length > 5);
@@ -150,7 +164,7 @@ describe("Yjs sync broadcast", () => {
 
     it("with 3 clients, A's update reaches B and C exactly once each", () => {
         const wsC = new FakeWebSocket();
-        setupYjsConnection(wsC as any, room, makeClient("user-c", false));
+        setupYjsConnection(asWebSocket(wsC), room, makeClient("user-c", false));
         wsA.sent = [];
         wsB.sent = [];
         wsC.sent = [];
@@ -163,7 +177,7 @@ describe("Yjs sync broadcast", () => {
         });
         clientYtext.insert(0, "xyz");
 
-        wsA.receive(buildUpdateMessage(producedUpdate!));
+        wsA.receive(buildUpdateMessage(requireUpdate(producedUpdate)));
 
         const bBroadcasts = wsB.sent.filter((m) => m.length > 5);
         const cBroadcasts = wsC.sent.filter((m) => m.length > 5);
@@ -185,9 +199,9 @@ describe("Yjs sync broadcast", () => {
         const wsX = new FakeWebSocket();
         const wsY = new FakeWebSocket();
         const wsZ = new FakeWebSocket();
-        setupYjsConnection(wsX as any, freshRoom, makeClient("x", true), onUpdate);
-        setupYjsConnection(wsY as any, freshRoom, makeClient("y", false), onUpdate);
-        setupYjsConnection(wsZ as any, freshRoom, makeClient("z", false), onUpdate);
+        setupYjsConnection(asWebSocket(wsX), freshRoom, makeClient("x", true), onUpdate);
+        setupYjsConnection(asWebSocket(wsY), freshRoom, makeClient("y", false), onUpdate);
+        setupYjsConnection(asWebSocket(wsZ), freshRoom, makeClient("z", false), onUpdate);
 
         const clientYdoc = new Y.Doc();
         const clientYtext = clientYdoc.getText("document");
@@ -197,7 +211,7 @@ describe("Yjs sync broadcast", () => {
         });
         clientYtext.insert(0, "persist-me");
 
-        wsX.receive(buildUpdateMessage(producedUpdate!));
+        wsX.receive(buildUpdateMessage(requireUpdate(producedUpdate)));
 
         expect(onUpdate).toHaveBeenCalledTimes(1);
 

@@ -1,23 +1,29 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
-import { gsap } from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Pen, Lock, ShieldCheck } from "@lucide/svelte";
 import { browser } from "$app/environment";
 import { isMobile } from "$lib/breakpoints";
+import { Lock, Pen, ShieldCheck } from "@lucide/svelte";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { onDestroy, onMount } from "svelte";
 if (browser) gsap.registerPlugin(ScrollTrigger);
 
-import revisionImg from "$lib/assets/screenshots/05-revision-active.png";
 import commentImg from "$lib/assets/screenshots/04-comment-active.png";
-import inlineImg from "$lib/assets/screenshots/13-inline-nested-revision.png";
+import revisionImg from "$lib/assets/screenshots/05-revision-active.png";
 import libraryImg from "$lib/assets/screenshots/06-library.png";
+import inlineImg from "$lib/assets/screenshots/13-inline-nested-revision.png";
 
 let { release }: { release: { assets: { name: string; url: string }[] } } = $props();
 
 function findAsset(pattern: string): string {
     const match = release.assets.find((a: { url: string }) => a.url.includes(pattern));
     if (match) return match.url;
-    return `https://github.com/ThatXliner/quillium-releases/releases/latest`;
+    return "https://github.com/ThatXliner/quillium-releases/releases/latest";
+}
+
+function requireElement(id: string): HTMLElement {
+    const element = document.getElementById(id);
+    if (!element) throw new Error(`Missing hero element: ${id}`);
+    return element;
 }
 
 let detected = $state("unknown");
@@ -53,79 +59,77 @@ onMount(() => {
             clearInterval(interval);
             setTimeout(() => {
                 showPeriod = true;
-                setTimeout(() => (showCursor = false), 600);
+                setTimeout(() => {
+                    showCursor = false;
+                }, 600);
             }, 100);
         }
     }, 100);
 
     // Mobile: skip all GSAP setup, ensure elements visible
     if (mobile) {
-        document
-            .querySelectorAll<HTMLElement>(
-                "#shot-editor, #shot-revision, #shot-comment, #shot-inline, #shot-library",
-            )
-            .forEach((el) => {
-                el.style.opacity = "1";
-                el.style.transform = "none";
-            });
-        document
-            .querySelectorAll<HTMLElement>(
-                "#copy-editor, #copy-branches, #copy-comments, #copy-inline, #copy-safety",
-            )
-            .forEach((el) => {
-                el.style.opacity = "1";
-                el.style.transform = "none";
-                el.style.pointerEvents = "auto";
-            });
+        for (const el of document.querySelectorAll<HTMLElement>(
+            "#shot-editor, #shot-revision, #shot-comment, #shot-inline, #shot-library",
+        )) {
+            el.style.opacity = "1";
+            el.style.transform = "none";
+        }
+        for (const el of document.querySelectorAll<HTMLElement>(
+            "#copy-editor, #copy-branches, #copy-comments, #copy-inline, #copy-safety",
+        )) {
+            el.style.opacity = "1";
+            el.style.transform = "none";
+            el.style.pointerEvents = "auto";
+        }
         return () => clearInterval(interval);
     }
 
     const stage = document.getElementById("features");
     if (!stage) return () => clearInterval(interval);
 
-    const textCol = document.getElementById("text-col")!;
-    const shotWrap = document.getElementById("shot-wrap")!;
+    const textCol = requireElement("text-col");
+    const shotWrap = requireElement("shot-wrap");
 
     const shots = [
-        document.getElementById("shot-editor")!,
-        document.getElementById("shot-revision")!,
-        document.getElementById("shot-comment")!,
-        document.getElementById("shot-inline")!,
-        document.getElementById("shot-library")!,
-    ].filter(Boolean);
+        requireElement("shot-editor"),
+        requireElement("shot-revision"),
+        requireElement("shot-comment"),
+        requireElement("shot-inline"),
+        requireElement("shot-library"),
+    ];
 
     const callouts = [
-        { el: document.getElementById("callout-1")!, line: document.getElementById("line-1")! },
-        { el: document.getElementById("callout-2")!, line: document.getElementById("line-2")! },
-        { el: document.getElementById("callout-3")!, line: document.getElementById("line-3")! },
-        { el: document.getElementById("callout-4")!, line: document.getElementById("line-4")! },
-    ].filter((c) => c.el && c.line);
+        { el: requireElement("callout-1"), line: requireElement("line-1") },
+        { el: requireElement("callout-2"), line: requireElement("line-2") },
+        { el: requireElement("callout-3"), line: requireElement("line-3") },
+        { el: requireElement("callout-4"), line: requireElement("line-4") },
+    ];
 
     const copies = [
-        document.getElementById("copy-editor")!,
-        document.getElementById("copy-branches")!,
-        document.getElementById("copy-comments")!,
-        document.getElementById("copy-inline")!,
-        document.getElementById("copy-safety")!,
-    ].filter(Boolean);
+        requireElement("copy-editor"),
+        requireElement("copy-branches"),
+        requireElement("copy-comments"),
+        requireElement("copy-inline"),
+        requireElement("copy-safety"),
+    ];
 
     const dots = document.querySelectorAll<HTMLElement>(".progress-dot");
 
     // Initial state: hide non-first shots, callouts, non-first copies
-    shots.forEach((s, idx) => {
+    for (const [idx, s] of shots.entries()) {
         if (idx > 0) gsap.set(s, { opacity: 0 });
-    });
-    callouts.forEach((c) => {
+    }
+    for (const c of callouts) {
         gsap.set(c.el, { opacity: 0, y: 12 });
         gsap.set(c.line, { strokeDashoffset: 200 });
-    });
-    copies.forEach((c, idx) => {
+    }
+    for (const [idx, c] of copies.entries()) {
         gsap.set(c, { pointerEvents: idx === 0 ? "auto" : "none" });
         if (idx > 0) gsap.set(c, { opacity: 0, y: 16 });
-    });
-    dots.forEach((d, idx) => {
+    }
+    for (const [idx, d] of dots.entries()) {
         if (idx > 0) gsap.set(d, { opacity: 0.25 });
-    });
+    }
 
     // Measure where the shot naturally sits (in the right grid column), calculate center offset
     const stageRect = stage.getBoundingClientRect();
@@ -148,7 +152,7 @@ onMount(() => {
             scrub: 1.2,
             onUpdate(self) {
                 const p = self.progress;
-                dots.forEach((dot, idx) => {
+                for (const [idx, dot] of dots.entries()) {
                     const threshold = idx / (dots.length - 1);
                     const active = p >= threshold - 0.02;
                     gsap.to(dot, {
@@ -157,7 +161,7 @@ onMount(() => {
                         duration: 0.08,
                         overwrite: true,
                     });
-                });
+                }
             },
         },
     });
@@ -209,7 +213,8 @@ onMount(() => {
     tl.to(callouts[3].el, { opacity: 0, y: -10, duration: 0.03 }, 0.9);
     tl.to(callouts[3].line, { strokeDashoffset: 200, duration: 0.03 }, 0.9);
 
-    scrollCtx = tl.scrollTrigger!;
+    if (!tl.scrollTrigger) throw new Error("Missing hero scroll trigger");
+    scrollCtx = tl.scrollTrigger;
     return () => clearInterval(interval);
 });
 

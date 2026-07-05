@@ -1,9 +1,5 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { get } from "svelte/store";
-import { EditorView } from "@codemirror/view";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { mockIPC } from "@tauri-apps/api/mocks";
 import { listeners } from "$lib/editor/listeners";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     addAnnotation,
     annotationField,
@@ -14,9 +10,13 @@ import {
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { history } from "@codemirror/commands";
 import { currentDocumentId, currentDraftId, lastPersistedEventId, lastSavedAt } from "$lib/stores";
+import { history } from "@codemirror/commands";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { mockIPC } from "@tauri-apps/api/mocks";
+import { get } from "svelte/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function makeView(options: Parameters<typeof listeners>[0] = {}) {
     const state = EditorState.create({

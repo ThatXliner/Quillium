@@ -10,17 +10,13 @@
  * Mod-z in the nested editor delegates to undo(parentView).
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { nestedSavedFields } from "$lib/editor/extensions";
-import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
-    annotationField,
-    addAnnotation,
-    nestedEditorEdit,
     _nestedEditRevision,
+    addAnnotation,
+    annotationField,
+    nestedEditorEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     activeVersion,
@@ -29,7 +25,11 @@ import {
     makeVersion,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
+import { history, redo, undo, undoDepth } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

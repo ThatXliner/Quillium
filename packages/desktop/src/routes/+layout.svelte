@@ -9,10 +9,10 @@
 <script>
 import "../app.css";
 import { onNavigate } from "$app/navigation";
-import posthog from "$lib/posthog";
-import { saveEmergencyBackup, saveEmergencySnapshot, readBackup } from "$lib/errorGuard";
-import { errorBanner } from "$lib/stores";
 import ErrorBanner from "$lib/ErrorBanner.svelte";
+import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
+import posthog from "$lib/posthog";
+import { errorBanner } from "$lib/stores";
 
 const { children } = $props();
 

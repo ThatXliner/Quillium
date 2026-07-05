@@ -5,13 +5,13 @@
  * Snapshots are seeded via the `snapshots` option and served in-memory.
  */
 
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
-    QuilliumPage,
     type MockDocEvent,
     type MockDraft,
     type MockSnapshot,
     type MockTab,
+    QuilliumPage,
 } from "./QuilliumPage";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────

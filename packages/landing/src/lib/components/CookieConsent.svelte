@@ -1,8 +1,8 @@
 <script lang="ts">
+import { dev } from "$app/environment";
 import posthog from "posthog-js";
 import { onMount } from "svelte";
 import { fly } from "svelte/transition";
-import { dev } from "$app/environment";
 
 let visible = $state(false);
 

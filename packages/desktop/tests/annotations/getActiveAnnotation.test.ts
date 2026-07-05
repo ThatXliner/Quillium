@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { EditorState, EditorSelection } from "@codemirror/state";
-import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { type GenericAnnotation, makeVersion } from "$lib/editor/plugins/annotations/models";
 import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
-import { makeVersion, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { describe, expect, it } from "vitest";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

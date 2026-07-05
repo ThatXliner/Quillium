@@ -1,25 +1,25 @@
 <script lang="ts">
+import { page } from "$app/stores";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-    X,
     AlertTriangle,
-    OctagonAlert,
-    Download,
-    RotateCcw,
-    History,
-    RefreshCw,
+    Check,
     ChevronDown,
     ChevronUp,
     Copy,
-    Check,
+    Download,
+    History,
+    OctagonAlert,
+    RefreshCw,
+    RotateCcw,
+    X,
 } from "lucide-svelte";
-import { errorBanner } from "./stores";
-import { readBackup, clearBackup } from "./errorGuard";
-import type { BackupEntry } from "./errorGuard";
 import { FEEDBACK_FORM_URL } from "./constants";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { page } from "$app/stores";
-import posthog from "$lib/posthog";
-import { appEventBus } from "$lib/events/appEventBus";
+import { clearBackup, readBackup } from "./errorGuard";
+import type { BackupEntry } from "./errorGuard";
+import { errorBanner } from "./stores";
 
 let showDetails = $state(false);
 let copied = $state(false);
@@ -28,7 +28,9 @@ async function copyDetails() {
     if (!$errorBanner?.details) return;
     await navigator.clipboard.writeText($errorBanner.details);
     copied = true;
-    setTimeout(() => (copied = false), 2000);
+    setTimeout(() => {
+        copied = false;
+    }, 2000);
 }
 
 function dismiss() {

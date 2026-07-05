@@ -11,8 +11,8 @@
       - onviewprofile: () => void — callback when view profile is clicked
 -->
 <script lang="ts">
-import { initials, avatarColor } from "./avatarUtils";
 import { LogOut, UserRound } from "lucide-svelte";
+import { avatarColor, initials } from "./avatarUtils";
 
 const {
     displayName,

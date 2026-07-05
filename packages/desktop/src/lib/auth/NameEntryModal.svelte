@@ -10,11 +10,11 @@
       - onjoin: () => void — called after successful anonymous sign-in
 -->
 <script lang="ts">
-import { signInAnonymously } from "./auth.svelte";
-import { displayNameSchema } from "./schemas";
-import { initials, avatarColor } from "./avatarUtils";
-import { toast } from "svelte-sonner";
 import { X } from "lucide-svelte";
+import { toast } from "svelte-sonner";
+import { signInAnonymously } from "./auth.svelte";
+import { avatarColor, initials } from "./avatarUtils";
+import { displayNameSchema } from "./schemas";
 
 const { onclose, onjoin }: { onclose: () => void; onjoin: () => void } = $props();
 

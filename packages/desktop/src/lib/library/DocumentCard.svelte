@@ -3,9 +3,9 @@
 -->
 <script lang="ts">
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
-import { AppWindow, Sparkles, Trash2, RotateCcw, X } from "lucide-svelte";
+import { AppWindow, RotateCcw, Sparkles, Trash2, X } from "lucide-svelte";
 import { onDestroy } from "svelte";
-import { snippetSegments, type SnippetSegment } from "./snippet";
+import { type SnippetSegment, snippetSegments } from "./snippet";
 import { parseTags } from "./tags";
 
 interface Props {

@@ -36,14 +36,14 @@ import {
     type EditorState,
     type SelectionRange,
 } from "@codemirror/state";
-import {
-    isAnnotationOfType,
-    type Annotation,
-    type Annotations,
-    type AnnotationType,
-    type GenericAnnotation,
-} from "./models";
 import { annotationField } from "./annotationField";
+import {
+    type Annotation,
+    type AnnotationType,
+    type Annotations,
+    type GenericAnnotation,
+    isAnnotationOfType,
+} from "./models";
 
 // Filters out collapsed (zero-width) and inverted (from > to)
 // ranges from a selection. Returns null if no valid ranges

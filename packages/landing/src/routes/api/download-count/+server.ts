@@ -1,6 +1,6 @@
-import { json } from "@sveltejs/kit";
 import { env as privateEnv } from "$env/dynamic/private";
 import { env as publicEnv } from "$env/dynamic/public";
+import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 
 const PROJECT_ID = "334824";
@@ -11,7 +11,7 @@ let cache: { count: number; fetchedAt: number } | null = null;
 function roundTo1SigFig(n: number): number {
     if (n === 0) return 0;
     const d = Math.ceil(Math.log10(Math.abs(n)));
-    const power = Math.pow(10, d - 1);
+    const power = 10 ** (d - 1);
     return Math.round(n / power) * power;
 }
 

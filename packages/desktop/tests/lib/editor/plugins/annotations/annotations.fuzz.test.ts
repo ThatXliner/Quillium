@@ -1,3 +1,21 @@
+import {
+    type Annotations,
+    type GenericAnnotation,
+    RawAnnotationSchema,
+    RawAnnotationsSchema,
+    clone,
+    createNewAnnotation,
+    getLastId,
+    getNewId,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import {
+    canCreateNewComment,
+    canCreateRevision,
+    cleanRangesOf,
+    positionIntersects,
+} from "$lib/editor/plugins/annotations/utils";
 /**
  * Property-based fuzz tests for the annotation subsystem.
  * Uses fast-check to generate arbitrary inputs and verify invariants.
@@ -10,24 +28,6 @@
 import { EditorSelection } from "@codemirror/state";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import {
-    RawAnnotationSchema,
-    RawAnnotationsSchema,
-    clone,
-    createNewAnnotation,
-    getLastId,
-    getNewId,
-    isAnnotationOfType,
-    makeVersion,
-    type Annotations,
-    type GenericAnnotation,
-} from "$lib/editor/plugins/annotations/models";
-import {
-    canCreateNewComment,
-    canCreateRevision,
-    cleanRangesOf,
-    positionIntersects,
-} from "$lib/editor/plugins/annotations/utils";
 
 // ── Arbitraries ─────────────────────────────────────────────────────────────
 

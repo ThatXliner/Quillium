@@ -1,7 +1,7 @@
 /**
  * persistence.test.ts -- Tests for Yjs persistence and retry helpers.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 
 vi.mock("../auth/supabase.js", () => ({
@@ -12,19 +12,36 @@ vi.mock("../auth/supabase.js", () => ({
 }));
 
 import { supabase } from "../auth/supabase.js";
-import { withRetry, MAX_RETRIES, BASE_DELAY_MS, MAX_DELAY_MS } from "../persistence/retry.js";
 import {
+    flushAllDocumentUpdates,
+    flushDocumentUpdates,
+    queueYjsUpdate,
+} from "../persistence/debouncedUpdates.js";
+import { BASE_DELAY_MS, MAX_DELAY_MS, MAX_RETRIES, withRetry } from "../persistence/retry.js";
+import {
+    clearYjsUpdates,
+    loadYjsState,
     persistYjsState,
     persistYjsUpdate,
     persistYjsUpdates,
-    loadYjsState,
-    clearYjsUpdates,
 } from "../persistence/yjsUpdates.js";
-import {
-    queueYjsUpdate,
-    flushDocumentUpdates,
-    flushAllDocumentUpdates,
-} from "../persistence/debouncedUpdates.js";
+
+type MockFunction = ReturnType<typeof vi.fn>;
+
+interface MockSupabase {
+    from: MockFunction;
+}
+
+function mockedSupabase(): MockSupabase {
+    if (!supabase) throw new Error("Expected mocked Supabase client");
+    return supabase as unknown as MockSupabase;
+}
+
+function requireUpdate(update: Uint8Array | null): Uint8Array {
+    expect(update).not.toBeNull();
+    if (!update) throw new Error("Expected Yjs update");
+    return update;
+}
 
 describe("Retry wrapper", () => {
     beforeEach(() => {
@@ -86,7 +103,7 @@ describe("Yjs persistence", () => {
 
     it("persists full Yjs state snapshots", async () => {
         const upsert = vi.fn().mockResolvedValue({ error: null });
-        vi.mocked(supabase!.from).mockReturnValue({ upsert } as any);
+        mockedSupabase().from.mockReturnValue({ upsert });
 
         const ydoc = new Y.Doc();
         ydoc.getText("document").insert(0, "hello");
@@ -94,7 +111,7 @@ describe("Yjs persistence", () => {
         const result = await persistYjsState("doc-123", ydoc);
 
         expect(result.success).toBe(true);
-        expect(supabase!.from).toHaveBeenCalledWith("yjs_documents");
+        expect(mockedSupabase().from).toHaveBeenCalledWith("yjs_documents");
         expect(upsert).toHaveBeenCalledWith(
             expect.objectContaining({
                 document_id: "doc-123",
@@ -108,12 +125,12 @@ describe("Yjs persistence", () => {
 
     it("persists a single incremental Yjs update", async () => {
         const insert = vi.fn().mockResolvedValue({ error: null });
-        vi.mocked(supabase!.from).mockReturnValue({ insert } as any);
+        mockedSupabase().from.mockReturnValue({ insert });
 
         const result = await persistYjsUpdate("doc-123", new Uint8Array([1, 2, 3]));
 
         expect(result.success).toBe(true);
-        expect(supabase!.from).toHaveBeenCalledWith("yjs_updates");
+        expect(mockedSupabase().from).toHaveBeenCalledWith("yjs_updates");
         expect(insert).toHaveBeenCalledWith({
             document_id: "doc-123",
             update_data: Buffer.from([1, 2, 3]).toString("base64"),
@@ -123,7 +140,7 @@ describe("Yjs persistence", () => {
 
     it("persists batched incremental updates", async () => {
         const insert = vi.fn().mockResolvedValue({ error: null });
-        vi.mocked(supabase!.from).mockReturnValue({ insert } as any);
+        mockedSupabase().from.mockReturnValue({ insert });
 
         const result = await persistYjsUpdates("doc-123", [
             new Uint8Array([1]),
@@ -166,14 +183,20 @@ describe("Yjs persistence", () => {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
             order: vi.fn().mockResolvedValue({
-                data: [{ update_data: Buffer.from(incrementalUpdate!).toString("base64") }],
+                data: [
+                    {
+                        update_data: Buffer.from(requireUpdate(incrementalUpdate)).toString(
+                            "base64",
+                        ),
+                    },
+                ],
                 error: null,
             }),
         };
 
-        vi.mocked(supabase!.from).mockImplementation((table) => {
-            if (table === "yjs_documents") return snapshotQuery as any;
-            if (table === "yjs_updates") return updatesQuery as any;
+        mockedSupabase().from.mockImplementation((table: string) => {
+            if (table === "yjs_documents") return snapshotQuery;
+            if (table === "yjs_updates") return updatesQuery;
             throw new Error(`Unexpected table: ${table}`);
         });
 
@@ -186,11 +209,11 @@ describe("Yjs persistence", () => {
     it("clears incremental update log after snapshot", async () => {
         const eq = vi.fn().mockResolvedValue({ error: null });
         const deleteFn = vi.fn().mockReturnValue({ eq });
-        vi.mocked(supabase!.from).mockReturnValue({ delete: deleteFn } as any);
+        mockedSupabase().from.mockReturnValue({ delete: deleteFn });
 
         await clearYjsUpdates("doc-123");
 
-        expect(supabase!.from).toHaveBeenCalledWith("yjs_updates");
+        expect(mockedSupabase().from).toHaveBeenCalledWith("yjs_updates");
         expect(deleteFn).toHaveBeenCalled();
         expect(eq).toHaveBeenCalledWith("document_id", "doc-123");
     });
@@ -198,7 +221,7 @@ describe("Yjs persistence", () => {
     it("debounces high-frequency update persistence and flushes manually", async () => {
         vi.useFakeTimers();
         const insert = vi.fn().mockResolvedValue({ error: null });
-        vi.mocked(supabase!.from).mockReturnValue({ insert } as any);
+        mockedSupabase().from.mockReturnValue({ insert });
 
         queueYjsUpdate("doc-batch", new Uint8Array([1]));
         queueYjsUpdate("doc-batch", new Uint8Array([2]));

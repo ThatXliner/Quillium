@@ -1,3 +1,7 @@
+import { createYjsBinding } from "$lib/collab/yjsBinding";
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import fc from "fast-check";
 /**
  * yjsBinding.convergence.test.ts -- Two-client convergence tests.
  *
@@ -6,12 +10,8 @@
  * Verifies that both sides converge to identical text after arbitrary
  * transactions from either side.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { createYjsBinding } from "$lib/collab/yjsBinding";
-import fc from "fast-check";
 
 interface Peer {
     ydoc: Y.Doc;

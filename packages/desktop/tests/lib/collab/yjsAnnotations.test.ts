@@ -1,3 +1,20 @@
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import { createAnnotationSyncPlugin, yjsAnnotationSync } from "$lib/collab/yjsAnnotations";
+import {
+    addAnnotation,
+    annotationField,
+    removeAnnotation,
+    updateThread,
+} from "$lib/editor/plugins/annotations/annotationField";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
+import {
+    type GenericAnnotation,
+    activeVersionIndex,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 /**
  * yjsAnnotations.test.ts -- Unit tests for annotation sync plugin.
  *
@@ -10,25 +27,8 @@
  * Phase 10: Write path (CM -> Yjs) disabled. Tests for write path skipped.
  * Phase 11 will rebuild and re-enable these tests.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { EditorState, EditorSelection } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { createAnnotationSyncPlugin, yjsAnnotationSync } from "$lib/collab/yjsAnnotations";
-import {
-    addAnnotation,
-    removeAnnotation,
-    updateThread,
-    annotationField,
-} from "$lib/editor/plugins/annotations/annotationField";
-import type { YjsAnnotationNode } from "$lib/collab/types";
-import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
-import {
-    activeVersionIndex,
-    isAnnotationOfType,
-    makeVersion,
-    type GenericAnnotation,
-} from "$lib/editor/plugins/annotations/models";
 
 function requireYNode<T>(map: Y.Map<T>, key: string): T {
     const node = map.get(key);

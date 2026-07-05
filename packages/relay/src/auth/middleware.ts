@@ -1,3 +1,7 @@
+import { createLogger } from "../logger.js";
+import { AuthErrorCode, HandshakeAuthSchema } from "../schemas.js";
+import { getYjsRoom } from "../yjs/rooms.js";
+import type { YjsClientData } from "../yjs/types.js";
 /**
  * middleware.ts -- JWT validation for WebSocket upgrade.
  *
@@ -5,10 +9,6 @@
  * Validates JWT and document permissions.
  */
 import { supabase, supabaseConfigured } from "./supabase.js";
-import { HandshakeAuthSchema, AuthErrorCode } from "../schemas.js";
-import type { YjsClientData } from "../yjs/types.js";
-import { getYjsRoom } from "../yjs/rooms.js";
-import { createLogger } from "../logger.js";
 
 const logger = createLogger("auth");
 

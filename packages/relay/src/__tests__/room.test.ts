@@ -1,7 +1,8 @@
 /**
  * room.test.ts -- Tests for Yjs room lifecycle management.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WebSocket } from "ws";
 import * as Y from "yjs";
 
 vi.mock("../persistence/yjsUpdates.js", () => ({
@@ -14,17 +15,21 @@ vi.mock("../persistence/debouncedUpdates.js", () => ({
     flushDocumentUpdates: vi.fn(async () => undefined),
 }));
 
+import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";
+import { clearYjsUpdates, loadYjsState, persistYjsState } from "../persistence/yjsUpdates.js";
 import {
+    _clearAllRooms,
+    cancelRoomCleanup,
+    clearRoomState,
     getOrCreateYjsRoom,
+    getRoomCount,
     getYjsRoom,
     scheduleRoomCleanup,
-    cancelRoomCleanup,
-    getRoomCount,
-    clearRoomState,
-    _clearAllRooms,
 } from "../yjs/rooms.js";
-import { loadYjsState, persistYjsState, clearYjsUpdates } from "../persistence/yjsUpdates.js";
-import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";
+
+function fakeWebSocket(): WebSocket {
+    return {} as WebSocket;
+}
 
 describe("Yjs room manager", () => {
     beforeEach(() => {
@@ -98,7 +103,7 @@ describe("Yjs room manager", () => {
     it("does not remove rooms that receive a client before cleanup fires", async () => {
         vi.useFakeTimers();
         const room = await getOrCreateYjsRoom("doc-active");
-        room.clients.add({} as any);
+        room.clients.add(fakeWebSocket());
 
         scheduleRoomCleanup(room);
         await vi.advanceTimersByTimeAsync(45_000);

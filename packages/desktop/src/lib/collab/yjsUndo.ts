@@ -1,3 +1,4 @@
+import { EditorSelection, type Extension, Prec } from "@codemirror/state";
 /**
  * yjsUndo.ts -- Per-user undo via Yjs UndoManager.
  *
@@ -17,9 +18,8 @@
  *   - Keymap intercepts Mod-z/Mod-Shift-z for undo/redo
  *   - Phase 02: paired ViewPlugin restores CM selection on undo/redo via stackItem.meta.
  */
-import { keymap, ViewPlugin, type EditorView, type KeyBinding } from "@codemirror/view";
+import { type EditorView, type KeyBinding, ViewPlugin, keymap } from "@codemirror/view";
 import * as Y from "yjs";
-import { EditorSelection, Prec, type Extension } from "@codemirror/state";
 
 /**
  * Create UndoManager extension for per-user undo.

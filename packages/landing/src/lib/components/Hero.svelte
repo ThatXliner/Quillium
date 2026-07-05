@@ -1,6 +1,6 @@
 	<script lang="ts">
+import { Lock, Pen, ShieldCheck } from "@lucide/svelte";
 import { onMount } from "svelte";
-import { Pen, Lock, ShieldCheck } from "@lucide/svelte";
 
 import posthog from "posthog-js";
 

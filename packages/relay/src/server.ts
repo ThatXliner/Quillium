@@ -9,15 +9,15 @@
  * 2. Auth validation in upgrade handler
  * 3. WebSocket accepted, Yjs sync established
  */
-import { createServer, type Server as HttpServer, type IncomingMessage } from "http";
-import { WebSocketServer, type WebSocket } from "ws";
-import type { Duplex } from "stream";
+import { type Server as HttpServer, type IncomingMessage, createServer } from "node:http";
+import type { Duplex } from "node:stream";
+import { type WebSocket, WebSocketServer } from "ws";
 import { authenticateWebSocket } from "./auth/middleware.js";
-import { getOrCreateYjsRoom, scheduleRoomCleanup, getRoomCount } from "./yjs/rooms.js";
-import { setupYjsConnection } from "./yjs/sync.js";
-import { queueYjsUpdate } from "./persistence/debouncedUpdates.js";
-import { isOriginAllowed } from "./origins.js";
 import { createLogger } from "./logger.js";
+import { isOriginAllowed } from "./origins.js";
+import { queueYjsUpdate } from "./persistence/debouncedUpdates.js";
+import { getOrCreateYjsRoom, getRoomCount, scheduleRoomCleanup } from "./yjs/rooms.js";
+import { setupYjsConnection } from "./yjs/sync.js";
 
 const logger = createLogger("server");
 
@@ -54,8 +54,14 @@ export function createRelayServer(): { wss: WebSocketServer; httpServer: HttpSer
                 return;
             }
 
+            if (!request.url) {
+                socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+                socket.destroy();
+                return;
+            }
+
             // Parse URL for auth params
-            const url = new URL(request.url!, `http://${request.headers.host}`);
+            const url = new URL(request.url, `http://${request.headers.host}`);
             const token = url.searchParams.get("auth");
             const documentId = url.pathname.slice(1); // /docId -> docId
 
@@ -75,13 +81,14 @@ export function createRelayServer(): { wss: WebSocketServer; httpServer: HttpSer
                 socket.destroy();
                 return;
             }
+            const clientData = authResult.data;
 
             // Upgrade to WebSocket
             wss.handleUpgrade(request, socket, head, async (ws: WebSocket) => {
                 const room = await getOrCreateYjsRoom(documentId);
 
                 // Setup Yjs connection with persistence callback
-                setupYjsConnection(ws, room, authResult.data!, (update) => {
+                setupYjsConnection(ws, room, clientData, (update) => {
                     queueYjsUpdate(documentId, update);
                 });
 

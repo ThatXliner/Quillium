@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import VideoEmbed from "./VideoEmbed.svelte";
 import Showcase from "./Showcase.svelte";
+import VideoEmbed from "./VideoEmbed.svelte";
 
 let {
     videoId,

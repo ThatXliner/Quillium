@@ -13,6 +13,10 @@ import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
 import ReadonlyThreadMessage from "./ReadonlyThreadMessage.svelte";
 import {
+    type AnnotationId,
+    type AnnotationPathEntry,
+    type RevisionContextLayer,
+    type RevisionVersionSelections,
     annotationLabel,
     buildDisplayedShare,
     buildRevisionContextLayers,
@@ -20,10 +24,6 @@ import {
     getSelectedRevisionVersion,
     getSelectedRevisionVersionIndex,
     previewVersionText,
-    type AnnotationId,
-    type AnnotationPathEntry,
-    type RevisionContextLayer,
-    type RevisionVersionSelections,
 } from "./rendering";
 import type { SerializedAnnotation, SerializedRevisionAnnotation } from "./types";
 

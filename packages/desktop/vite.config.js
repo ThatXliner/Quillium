@@ -1,7 +1,7 @@
+import { readFileSync } from "node:fs";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
-import { readFileSync } from "node:fs";
 
 const host = process.env.TAURI_DEV_HOST;
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));

@@ -11,33 +11,33 @@
  *   expect(h.doc).toBe("hello world");
  */
 
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
-    annotationField,
-    addAnnotation,
-    removeAnnotation,
-    nestedEditorEdit,
     _nestedEditRevision,
-    setActiveRevisionVersion,
+    addAnnotation,
+    annotationField,
+    applySuggestion,
     createNewRevision,
     deleteRevisionVersion,
-    applySuggestion,
+    nestedEditorEdit,
+    removeAnnotation,
+    setActiveRevisionVersion,
     updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    type Annotations,
+    type GenericAnnotation,
+    type VersionState,
     activeVersion,
     activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
     versionText,
-    type Annotations,
-    type GenericAnnotation,
-    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { history, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
 // ── Harness ─────────────────────────────────────────────────────────────────
 
