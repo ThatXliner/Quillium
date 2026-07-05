@@ -13,6 +13,28 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { get } from "svelte/store";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "$lib/collab/store";
 
+type MockHandler = (data: unknown) => void;
+type MockFunction = ReturnType<typeof vi.fn>;
+
+interface MockWebsocketProviderOptions {
+    params?: {
+        auth?: string;
+    };
+    connect?: boolean;
+    maxBackoffTime?: number;
+}
+
+interface TestWebsocketProvider {
+    _opts?: MockWebsocketProviderOptions;
+    destroy: MockFunction;
+    disconnect: MockFunction;
+    _testEmit(event: string, data: unknown): void;
+}
+
+function testProvider(provider: unknown): TestWebsocketProvider {
+    return provider as TestWebsocketProvider;
+}
+
 // Mock y-websocket - factory must define class inline
 vi.mock("y-websocket", () => {
     class MockWebsocketProvider {
@@ -23,30 +45,32 @@ vi.mock("y-websocket", () => {
             off: vi.fn(),
             destroy: vi.fn(),
         };
-        handlers: Map<string, Set<Function>> = new Map();
+        handlers: Map<string, Set<MockHandler>> = new Map();
         destroy = vi.fn();
         disconnect = vi.fn();
-        _opts: any;
+        _opts?: MockWebsocketProviderOptions;
         url: string;
         roomname: string;
 
-        constructor(url: string, room: string, _doc: any, opts?: any) {
+        constructor(url: string, room: string, _doc: unknown, opts?: MockWebsocketProviderOptions) {
             this.url = url;
             this.roomname = room;
             this._opts = opts;
         }
 
-        on(event: string, handler: Function) {
+        on(event: string, handler: MockHandler) {
             if (!this.handlers.has(event)) this.handlers.set(event, new Set());
             this.handlers.get(event)!.add(handler);
         }
 
-        off(event: string, handler: Function) {
+        off(event: string, handler: MockHandler) {
             this.handlers.get(event)?.delete(handler);
         }
 
         _testEmit(event: string, data: unknown) {
-            this.handlers.get(event)?.forEach((h) => h(data));
+            for (const handler of this.handlers.get(event) ?? []) {
+                handler(data);
+            }
         }
     }
 
@@ -98,7 +122,7 @@ describe("yjsProvider", () => {
         const { provider } = await createYjsProvider("doc-123");
 
         // Access the stored opts from the mock
-        expect((provider as any)._opts?.params?.auth).toBe("test-jwt-token");
+        expect(testProvider(provider)._opts?.params?.auth).toBe("test-jwt-token");
     });
 
     it("sets collabState to connecting on start", async () => {
@@ -118,7 +142,7 @@ describe("yjsProvider", () => {
         expect(get(collabState)).toBe("connecting");
 
         // Simulate sync event from WebsocketProvider
-        (provider as any)._testEmit("sync", true);
+        testProvider(provider)._testEmit("sync", true);
 
         expect(get(collabState)).toBe("connected");
     });
@@ -127,7 +151,7 @@ describe("yjsProvider", () => {
         reconnectAttempt.set(3);
         const { provider } = await createYjsProvider("doc-123");
 
-        (provider as any)._testEmit("sync", true);
+        testProvider(provider)._testEmit("sync", true);
 
         expect(get(reconnectAttempt)).toBe(0);
     });
@@ -145,7 +169,7 @@ describe("yjsProvider", () => {
 
         disconnectYjsProvider();
 
-        expect((provider as any).destroy).toHaveBeenCalled();
+        expect(testProvider(provider).destroy).toHaveBeenCalled();
     });
 
     it("increments ownerLeftSignal and disconnects on handleOwnerLeft", async () => {
@@ -166,7 +190,7 @@ describe("yjsProvider", () => {
         const { provider: provider2 } = await createYjsProvider("doc-456");
 
         // First provider should have been destroyed
-        expect((provider1 as any).destroy).toHaveBeenCalled();
+        expect(testProvider(provider1).destroy).toHaveBeenCalled();
 
         // Second provider should be active
         expect(provider2).toBeDefined();
@@ -176,7 +200,7 @@ describe("yjsProvider", () => {
         const { provider } = await createYjsProvider("doc-123");
 
         // Simulate disconnect
-        (provider as any)._testEmit("status", { status: "disconnected" });
+        testProvider(provider)._testEmit("status", { status: "disconnected" });
 
         expect(get(collabState)).toBe("reconnecting");
         expect(get(reconnectAttempt)).toBe(1);
@@ -186,14 +210,14 @@ describe("yjsProvider", () => {
         const { provider } = await createYjsProvider("doc-123");
 
         // First disconnect sets attempt to 1
-        (provider as any)._testEmit("status", { status: "disconnected" });
+        testProvider(provider)._testEmit("status", { status: "disconnected" });
         expect(get(reconnectAttempt)).toBe(1);
 
         // Subsequent connection-close events increment the counter
-        (provider as any)._testEmit("connection-close", {});
+        testProvider(provider)._testEmit("connection-close", {});
         expect(get(reconnectAttempt)).toBe(2);
 
-        (provider as any)._testEmit("connection-close", {});
+        testProvider(provider)._testEmit("connection-close", {});
         expect(get(reconnectAttempt)).toBe(3);
     });
 
@@ -201,12 +225,12 @@ describe("yjsProvider", () => {
         const { provider } = await createYjsProvider("doc-123");
 
         // First disconnect
-        (provider as any)._testEmit("status", { status: "disconnected" });
+        testProvider(provider)._testEmit("status", { status: "disconnected" });
         expect(get(reconnectAttempt)).toBe(1);
 
         // 4 more connection-close events (total 5 attempts)
         for (let i = 0; i < 4; i++) {
-            (provider as any)._testEmit("connection-close", {});
+            testProvider(provider)._testEmit("connection-close", {});
         }
 
         expect(get(collabState)).toBe("error");
@@ -218,17 +242,17 @@ describe("yjsProvider", () => {
         const { provider } = await createYjsProvider("doc-123");
 
         // First disconnect
-        (provider as any)._testEmit("status", { status: "disconnected" });
+        testProvider(provider)._testEmit("status", { status: "disconnected" });
 
         // 4 more connection-close events (total 5 attempts)
         for (let i = 0; i < 4; i++) {
-            (provider as any)._testEmit("connection-close", {});
+            testProvider(provider)._testEmit("connection-close", {});
         }
 
         // disconnect() is called via setTimeout to avoid stack overflow
         vi.runAllTimers();
 
-        expect((provider as any).disconnect).toHaveBeenCalled();
+        expect(testProvider(provider).disconnect).toHaveBeenCalled();
         vi.useRealTimers();
     });
 
@@ -236,13 +260,13 @@ describe("yjsProvider", () => {
         const { provider } = await createYjsProvider("doc-123");
 
         // First disconnect then a connection-close
-        (provider as any)._testEmit("status", { status: "disconnected" });
-        (provider as any)._testEmit("connection-close", {});
+        testProvider(provider)._testEmit("status", { status: "disconnected" });
+        testProvider(provider)._testEmit("connection-close", {});
         expect(get(reconnectAttempt)).toBe(2);
         expect(get(collabState)).toBe("reconnecting");
 
         // Simulate successful reconnect (sync event)
-        (provider as any)._testEmit("sync", true);
+        testProvider(provider)._testEmit("sync", true);
 
         expect(get(reconnectAttempt)).toBe(0);
         expect(get(collabState)).toBe("connected");
