@@ -1,3 +1,11 @@
+import { codeMirrorToYjsAnnotation, yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import {
+    type GenericAnnotation,
+    activeVersionIndex,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
 /**
  * annotation-tree.test.ts -- Recursive Y.Map shape integrity (D-90, D-92).
  *
@@ -14,16 +22,8 @@
  * The remaining `it.todo` entry ("observeDeep fires for descendant Y.Text changes")
  * is wired by Plan 8.5b-01 when the annotation sync plugin switches to observeDeep.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { EditorSelection } from "@codemirror/state";
-import { codeMirrorToYjsAnnotation, yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
-import {
-    activeVersionIndex,
-    makeVersion,
-    type GenericAnnotation,
-} from "$lib/editor/plugins/annotations/models";
-import type { YjsAnnotationNode } from "$lib/collab/types";
 
 const CLIENT_ID = "client-A";
 

@@ -1,11 +1,11 @@
-import { EditorSelection } from "@codemirror/state";
-import { describe, expect, it } from "vitest";
 import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import {
-    makeVersion,
     type Annotations,
     type GenericAnnotation,
+    makeVersion,
 } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
+import { describe, expect, it } from "vitest";
 
 function commentAnnotation({
     id,

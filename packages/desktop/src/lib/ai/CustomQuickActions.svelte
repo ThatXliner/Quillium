@@ -1,6 +1,6 @@
 <script lang="ts">
-import { ChevronDownIcon, ChevronRightIcon, SlidersHorizontalIcon } from "lucide-svelte";
 import { settingsOpen } from "$lib/stores";
+import { ChevronDownIcon, ChevronRightIcon, SlidersHorizontalIcon } from "lucide-svelte";
 
 type QuickAction = {
     label: string;

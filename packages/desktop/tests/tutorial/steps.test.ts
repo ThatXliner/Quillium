@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { steps, type Step } from "$lib/tutorial/steps";
+import { type Step, steps } from "$lib/tutorial/steps";
+import { describe, expect, it } from "vitest";
 
 // ── steps array ──────────────────────────────────────────────────────────────
 

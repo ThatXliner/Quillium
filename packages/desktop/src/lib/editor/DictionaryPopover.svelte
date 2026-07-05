@@ -9,17 +9,17 @@
     Always mounted, hidden when `visible = false`.
 -->
 <script lang="ts">
-import { get } from "svelte/store";
-import { editorView, selectedText } from "$lib/stores";
 import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
-import { renderMarkdown } from "$lib/ai/utils";
 import { hasApiKey } from "$lib/ai/settings.svelte";
-import { Transaction } from "@codemirror/state";
-import { ExternalLinkIcon, XIcon } from "lucide-svelte";
+import { renderMarkdown } from "$lib/ai/utils";
+import { appEventBus } from "$lib/events/appEventBus";
 import { capture } from "$lib/posthog";
 import { appSettings } from "$lib/settings.svelte";
-import { appEventBus } from "$lib/events/appEventBus";
-import { getPhonetic, collectSynonyms, collectAntonyms, type DictEntry } from "./dictionaryUtils";
+import { editorView, selectedText } from "$lib/stores";
+import { Transaction } from "@codemirror/state";
+import { ExternalLinkIcon, XIcon } from "lucide-svelte";
+import { get } from "svelte/store";
+import { type DictEntry, collectAntonyms, collectSynonyms, getPhonetic } from "./dictionaryUtils";
 
 // ── State ──────────────────────────────────────────────────────
 

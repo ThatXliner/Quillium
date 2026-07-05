@@ -20,16 +20,16 @@
  * anchor text within the version's doc string.
  */
 
-import type { EditorView } from "@codemirror/view";
-import { EditorSelection, Text } from "@codemirror/state";
 import { SearchCursor } from "@codemirror/search";
-import { annotationField, addAnnotation, removeAnnotation } from "./plugins/annotations";
+import { EditorSelection, Text } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+import { addAnnotation, annotationField, removeAnnotation } from "./plugins/annotations";
 import {
+    type GenericAnnotation,
+    type VersionState,
     activeVersion,
     isAnnotationOfType,
     versionText,
-    type GenericAnnotation,
-    type VersionState,
 } from "./plugins/annotations/models";
 
 type RawNestedAnnotation = {

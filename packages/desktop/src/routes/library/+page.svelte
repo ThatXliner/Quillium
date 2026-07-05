@@ -2,36 +2,36 @@
     /library — Document gallery page.
 -->
 <script lang="ts">
-import { onDestroy, onMount } from "svelte";
 import {
+    createDocument,
+    deleteDocument,
+    getDocumentMeta,
+    getTrashRetention,
+    isDocOpenElsewhere,
+    isSearchStatusPreparing,
     listDocuments,
     listTrashedDocuments,
-    createDocument,
-    trashDocument,
-    restoreDocument,
-    deleteDocument,
-    getTrashRetention,
-    setTrashRetention,
-    updateDocumentMeta,
-    getDocumentMeta,
-    isDocOpenElsewhere,
     openInNewWindow,
-    searchDocuments,
-    isSearchStatusPreparing,
     pollSearchStatus,
+    restoreDocument,
+    searchDocuments,
+    setTrashRetention,
+    trashDocument,
+    updateDocumentMeta,
 } from "$lib/db";
 import type { DocumentMeta, SearchHit } from "$lib/db/types";
-import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
+import ContinuePill from "$lib/library/ContinuePill.svelte";
+import DocumentGrid from "$lib/library/DocumentGrid.svelte";
+import EmptyState from "$lib/library/EmptyState.svelte";
+import LibraryTopBar from "$lib/library/LibraryTopBar.svelte";
+import PreviewPanel from "$lib/library/PreviewPanel.svelte";
+import { parseTags } from "$lib/library/tags";
 import { goToEditor } from "$lib/navigation";
 import posthog from "$lib/posthog";
-import LibraryTopBar from "$lib/library/LibraryTopBar.svelte";
-import DocumentGrid from "$lib/library/DocumentGrid.svelte";
-import PreviewPanel from "$lib/library/PreviewPanel.svelte";
-import ContinuePill from "$lib/library/ContinuePill.svelte";
-import EmptyState from "$lib/library/EmptyState.svelte";
-import { parseTags } from "$lib/library/tags";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { currentDocumentId, currentDocumentTitle } from "$lib/stores";
 import { type UnlistenFn, listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { onDestroy, onMount } from "svelte";
 import { Toaster, toast } from "svelte-sonner";
 
 let searchInputEl = $state<HTMLInputElement | null>(null);

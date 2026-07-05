@@ -1,7 +1,7 @@
+import { readBackup, saveEmergencyBackup, saveEmergencySnapshot } from "$lib/errorGuard";
 import posthog from "$lib/posthog";
-import type { HandleClientError } from "@sveltejs/kit";
-import { saveEmergencyBackup, saveEmergencySnapshot, readBackup } from "$lib/errorGuard";
 import { errorBanner } from "$lib/stores";
+import type { HandleClientError } from "@sveltejs/kit";
 
 // ── Crash safety net ─────────────────────────────────────────────
 // Capture unhandled errors and promise rejections before SvelteKit

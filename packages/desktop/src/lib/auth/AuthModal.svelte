@@ -9,12 +9,12 @@
       - onclose: () => void — called when modal closes
 -->
 <script lang="ts">
-import { signUp, signIn } from "./auth.svelte";
-import { loginSchema, signUpSchema } from "./schemas";
-import { toast } from "svelte-sonner";
-import { X } from "lucide-svelte";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
 import { debugAuthWaitlistMode } from "$lib/debug/store.svelte";
+import { X } from "lucide-svelte";
+import { toast } from "svelte-sonner";
+import { signIn, signUp } from "./auth.svelte";
+import { loginSchema, signUpSchema } from "./schemas";
 
 const { onclose }: { onclose: () => void } = $props();
 const signupsEnabled = $derived(import.meta.env.DEV && !$debugAuthWaitlistMode);

@@ -1,3 +1,19 @@
+import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
+import posthog from "$lib/posthog";
+import type { ReaderPersona } from "$lib/readers/presets";
+import {
+    activeAnnotation,
+    annotations,
+    currentDocumentId,
+    documentContent,
+    editorView,
+    selectedText,
+    selectedTextRange,
+} from "$lib/stores";
+import { Chat } from "@ai-sdk/svelte";
+import type { EditorView } from "@codemirror/view";
+import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
+import { toast } from "svelte-sonner";
 /**
  * Chat factory — wires AI streaming to the Svelte Chat class.
  *
@@ -30,40 +46,24 @@
  *   settings.svelte.ts, clientStreams.ts, annotation system.
  */
 import { get } from "svelte/store";
-import { Chat } from "@ai-sdk/svelte";
-import type { UIMessage, UIMessageChunk, ChatTransport } from "ai";
-import type { EditorView } from "@codemirror/view";
-import { toast } from "svelte-sonner";
-import posthog from "$lib/posthog";
+import { buildAnnotationContextInputs } from "./annotationContext";
 import {
-    activeAnnotation,
-    annotations,
-    currentDocumentId,
-    documentContent,
-    selectedText,
-    selectedTextRange,
-    editorView,
-} from "$lib/stores";
+    type CommentInput,
+    type RevisionInput,
+    type StreamOpts,
+    type SuggestionInput,
+    streamChat,
+    streamDictionary,
+    streamFeedback,
+    streamRevise,
+} from "./clientStreams";
 import {
     aiSettings,
     documentContext,
     ensureApiKeyLoaded,
-    setAiProcessing,
     getAiAbortSignal,
+    setAiProcessing,
 } from "./settings.svelte";
-import { createComment, createRevision, createSuggestion } from "$lib/editor/plugins/annotations";
-import {
-    streamChat,
-    streamFeedback,
-    streamRevise,
-    streamDictionary,
-    type CommentInput,
-    type RevisionInput,
-    type SuggestionInput,
-    type StreamOpts,
-} from "./clientStreams";
-import type { ReaderPersona } from "$lib/readers/presets";
-import { buildAnnotationContextInputs } from "./annotationContext";
 
 type ToolCall =
     | { toolName: "createComment"; input: CommentInput }

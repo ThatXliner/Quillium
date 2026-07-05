@@ -1,4 +1,9 @@
 <script lang="ts">
+import { getCurrentUserName } from "$lib/auth";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { editorView } from "$lib/stores";
+import Kbd from "$lib/ui/Kbd.svelte";
+import type { EditorView } from "@codemirror/view";
 /**
  * Thread.svelte — Renders a message list, reply textarea, and optional
  * AI suggest button for a comment/revision/suggestion thread.
@@ -20,16 +25,11 @@
  * Children: ThreadMessage.svelte (one per message)
  */
 import { SparklesIcon } from "lucide-svelte";
-import { getCurrentUserName } from "$lib/auth";
-import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
+import { slide } from "svelte/transition";
+import type { Thread as ThreadType } from ".";
 import ThreadMessage from "./ThreadMessage.svelte";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
-import type { Thread as ThreadType } from ".";
-import { editorView } from "$lib/stores";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
-import Kbd from "$lib/ui/Kbd.svelte";
-import type { EditorView } from "@codemirror/view";
 
 let {
     thread,

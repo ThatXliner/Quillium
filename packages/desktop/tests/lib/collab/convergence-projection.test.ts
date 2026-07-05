@@ -1,3 +1,13 @@
+import { yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
+import {
+    type Peer,
+    connect,
+    flushAll,
+    makePeerWithAnnotationSync,
+    teardown,
+} from "$lib/collab/test-helpers/twoPeerHarness";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
 /**
  * convergence-projection.test.ts -- HARNESS-02 (Phase 1 SC-2).
  *
@@ -14,16 +24,6 @@
  */
 import * as fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { yjsAnnotationToCodeMirror } from "$lib/collab/annotationSchema";
-import {
-    type Peer,
-    connect,
-    flushAll,
-    makePeerWithAnnotationSync,
-    teardown,
-} from "$lib/collab/test-helpers/twoPeerHarness";
-import type { YjsAnnotationNode } from "$lib/collab/types";
 
 // -- helpers ---------------------------------------------------------------
 

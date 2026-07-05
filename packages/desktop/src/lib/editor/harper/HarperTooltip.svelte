@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 import { editorView } from "$lib/stores";
-import { forEachDiagnostic, forceLinting, type Diagnostic, type Action } from "./lint";
+import { type Action, type Diagnostic, forEachDiagnostic, forceLinting } from "./lint";
 
 let visible = $state(false);
 let posX = $state(0);

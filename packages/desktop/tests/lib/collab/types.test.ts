@@ -1,13 +1,13 @@
+import type { CollabSession, YjsAnnotationNode } from "$lib/collab/types";
+import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 /**
  * types.test.ts -- Type smoke tests for YjsAnnotationNode and CollabSession types.
  *
  * Per D-90/D-92: YjsAnnotationNode is now a recursive Y.Map structure.
  * These tests verify the shapes of the types at runtime using Y.Map construction.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import type { YjsAnnotationNode, CollabSession } from "$lib/collab/types";
-import type { ThreadMessage } from "$lib/editor/plugins/annotations/models";
 
 describe("YjsAnnotationNode type", () => {
     it("can construct a comment YjsAnnotationNode", () => {

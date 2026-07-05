@@ -1,14 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { mockIPC } from "@tauri-apps/api/mocks";
 import {
-    listSnapshots,
-    labelSnapshot,
-    restoreToSnapshot,
     createNamedSnapshot,
     getSnapshotStorageSize,
+    labelSnapshot,
+    listSnapshots,
     pruneSnapshotsKeepLastN,
     pruneSnapshotsOlderThan,
+    restoreToSnapshot,
 } from "$lib/db";
+import { mockIPC } from "@tauri-apps/api/mocks";
+import { describe, expect, it } from "vitest";
 
 describe("version history db functions", () => {
     describe("listSnapshots", () => {

@@ -1,3 +1,6 @@
+import { annotationField, nestedEditorEdit } from "$lib/editor/plugins/annotations/annotationField";
+import { type GenericAnnotation, isAnnotationOfType } from "$lib/editor/plugins/annotations/models";
+import { type ModalEntry, activeAnnotation, modalStack } from "$lib/stores";
 import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 /**
  * awareness.ts -- Awareness-based cursor sync via y-protocols.
@@ -31,9 +34,6 @@ import { get } from "svelte/store";
 import type { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { collabPresenceUsers, followedClientId } from "./store";
-import { activeAnnotation, modalStack, type ModalEntry } from "$lib/stores";
-import { annotationField, nestedEditorEdit } from "$lib/editor/plugins/annotations/annotationField";
-import { isAnnotationOfType, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

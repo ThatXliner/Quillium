@@ -14,29 +14,29 @@
  * changes.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { history, undo } from "@codemirror/commands";
 import { nestedSavedFields } from "$lib/editor/extensions";
-import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
-    annotationField,
-    addAnnotation,
-    nestedEditorEdit,
     _nestedEditRevision,
+    addAnnotation,
+    annotationField,
+    nestedEditorEdit,
     updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
-    createNewAnnotation,
-    isAnnotationOfType,
-    versionText,
-    makeVersion,
+    type VersionState,
     activeVersion,
     activeVersionIndex,
-    type VersionState,
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+    versionText,
 } from "$lib/editor/plugins/annotations/models";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { translateAndDispatch } from "$lib/editor/plugins/annotations/nestedEditor";
+import { history, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

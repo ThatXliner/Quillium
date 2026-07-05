@@ -13,35 +13,35 @@
  * on the transaction itself, which is always in scope and timing-safe.
  */
 
+import { nestedSavedFields } from "$lib/editor/extensions";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import posthog from "$lib/posthog";
 import { Annotation, Transaction } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import {
-    addAnnotation,
-    annotationField,
-    removeAnnotation,
-    updateRevisionVersionState,
-    updateThread,
-    addSuggestion,
     _addVersionToRevision,
+    _applySuggestion,
     _deleteVersionFromRevision,
     _updateActiveRevisionVersion,
     _updateRevisionVersionDoc,
     _updateRevisionVersionLabel,
     _updateRevisionVersionState,
-    _applySuggestion,
+    addAnnotation,
+    addSuggestion,
+    annotationField,
+    removeAnnotation,
+    updateRevisionVersionState,
+    updateThread,
 } from "./annotationField";
+import type { Annotation as AnnotationType, Annotations, VersionState } from "./models";
+import type { GenericAnnotation } from "./models";
+import { versionById } from "./models";
 import {
     createNestedEditorState,
     mergeNestedVersionState,
     translateAndDispatch,
 } from "./nestedEditor";
-import { nestedSavedFields } from "$lib/editor/extensions";
 import { getActiveAnnotation } from "./utils";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
-import type { VersionState, Annotation as AnnotationType, Annotations } from "./models";
-import type { GenericAnnotation } from "./models";
-import { versionById } from "./models";
-import posthog from "$lib/posthog";
 
 /** Transaction annotation marking a sync from the parent document. */
 const parentSyncEdit = Annotation.define<true>();

@@ -1,3 +1,4 @@
+import { Awareness, removeAwarenessStates } from "y-protocols/awareness";
 /**
  * rooms.ts -- Yjs room lifecycle management.
  *
@@ -5,11 +6,10 @@
  * Per D-37: Room cleanup delay (45 seconds after last client leaves).
  */
 import * as Y from "yjs";
-import { Awareness, removeAwarenessStates } from "y-protocols/awareness";
-import type { YjsRoom } from "./types.js";
-import { loadYjsState, persistYjsState, clearYjsUpdates } from "../persistence/yjsUpdates.js";
-import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";
 import { createLogger } from "../logger.js";
+import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";
+import { clearYjsUpdates, loadYjsState, persistYjsState } from "../persistence/yjsUpdates.js";
+import type { YjsRoom } from "./types.js";
 
 const logger = createLogger("yjs/rooms");
 

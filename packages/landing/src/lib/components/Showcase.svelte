@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
+import { onDestroy, onMount } from "svelte";
 
 import editorImg from "$lib/assets/screenshots/01-editor.png";
 import commentActiveImg from "$lib/assets/screenshots/04-comment-active.png";

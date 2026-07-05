@@ -14,16 +14,12 @@
  *      mutation) so Svelte reactivity fires correctly.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo, redo } from "@codemirror/commands";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     addAnnotation,
     annotationField,
-    updateRevisionVersionState,
     setActiveRevisionVersion,
+    updateRevisionVersionState,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
     activeVersion,
@@ -33,6 +29,10 @@ import {
     makeVersion,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
+import { history, redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it } from "vitest";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

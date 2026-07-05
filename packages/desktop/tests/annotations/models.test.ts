@@ -1,15 +1,15 @@
-import { describe, it, expect } from "vitest";
-import { EditorSelection } from "@codemirror/state";
 import {
-    getNewId,
-    getLastId,
-    createNewAnnotation,
-    isAnnotationOfType,
-    clone,
-    versionText,
     type Annotations,
     type GenericAnnotation,
+    clone,
+    createNewAnnotation,
+    getLastId,
+    getNewId,
+    isAnnotationOfType,
+    versionText,
 } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
+import { describe, expect, it } from "vitest";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -7,9 +7,9 @@
  * See: .planning/phases/07.5-yjs-migration/07.5-RESEARCH.md for architecture.
  */
 import "dotenv/config";
-import { createRelayServer } from "./server.js";
-import { flushAllDocumentUpdates } from "./persistence/debouncedUpdates.js";
 import { createLogger } from "./logger.js";
+import { flushAllDocumentUpdates } from "./persistence/debouncedUpdates.js";
+import { createRelayServer } from "./server.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "3001", 10);
 const HOST = process.env.HOST ?? "0.0.0.0";

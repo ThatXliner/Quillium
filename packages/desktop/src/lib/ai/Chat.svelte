@@ -18,6 +18,11 @@
     stores (selectedText, documentContent), posthog.
 -->
 <script lang="ts">
+import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
+import { renderMarkdown } from "$lib/ai/utils";
+import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
 /*
  * Chat.svelte
  *
@@ -50,12 +55,7 @@
  *   ready -> submitted -> streaming -> ready
  *                                   \-> error
  */
-import { selectedText, documentContent } from "$lib/stores";
-import { renderMarkdown } from "$lib/ai/utils";
-import { createAiChat, useAiChatEffects } from "$lib/ai/chatFactory";
-import { appSettings } from "$lib/settings.svelte";
-import { appEventBus } from "$lib/events/appEventBus";
-import posthog from "$lib/posthog";
+import { documentContent, selectedText } from "$lib/stores";
 import ContextLens from "./ContextLens.svelte";
 import CustomQuickActions from "./CustomQuickActions.svelte";
 import type { ContextAction } from "./context";

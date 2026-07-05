@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import { renderMarkdown } from "$lib/ai/utils";
+import { describe, expect, it } from "vitest";
 
 describe("renderMarkdown", () => {
     it("renders **bold** as <strong>", async () => {

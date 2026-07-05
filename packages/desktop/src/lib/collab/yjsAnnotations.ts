@@ -1,3 +1,24 @@
+import {
+    _addVersionToRevision,
+    _deleteVersionFromRevision,
+    _updateActiveRevisionVersion,
+    _updateRevisionVersionDoc,
+    _updateRevisionVersionLabel,
+    _updateRevisionVersionState,
+    addAnnotation,
+    annotationField,
+    nestedEditorEdit,
+    removeAnnotation,
+    updateThread,
+} from "$lib/editor/plugins/annotations/annotationField";
+import {
+    type Annotation as AnnotationType,
+    type GenericAnnotation,
+    type ThreadMessage,
+    activeVersionIndex,
+    isAnnotationOfType,
+} from "$lib/editor/plugins/annotations/models";
+import { Annotation, Transaction } from "@codemirror/state";
 /**
  * yjsAnnotations.ts -- Yjs <-> CodeMirror annotation sync plugin (scoped).
  *
@@ -68,38 +89,17 @@
  *    T-08.5-03-02: Remote payloads pass through yjsAnnotationToCodeMirror which
  *                  returns null on malformed data; null entries are skipped.
  */
-import { ViewPlugin, type ViewUpdate, type EditorView } from "@codemirror/view";
-import { Annotation, Transaction } from "@codemirror/state";
+import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import * as Y from "yjs";
 import {
+    AnnotationIdMap,
     codeMirrorToYjsAnnotation,
     getRawAnnotationField,
     syncRawAnnotationsToYjsMap,
     yjsAnnotationToCodeMirror,
-    AnnotationIdMap,
 } from "./annotationSchema";
 import { absoluteToRelative } from "./relativePosition";
 import type { YjsAnnotationNode } from "./types";
-import {
-    addAnnotation,
-    removeAnnotation,
-    updateThread,
-    annotationField,
-    nestedEditorEdit,
-    _updateActiveRevisionVersion,
-    _addVersionToRevision,
-    _deleteVersionFromRevision,
-    _updateRevisionVersionDoc,
-    _updateRevisionVersionLabel,
-    _updateRevisionVersionState,
-} from "$lib/editor/plugins/annotations/annotationField";
-import {
-    activeVersionIndex,
-    isAnnotationOfType,
-    type GenericAnnotation,
-    type Annotation as AnnotationType,
-    type ThreadMessage,
-} from "$lib/editor/plugins/annotations/models";
 
 export const yjsAnnotationSync = Annotation.define<boolean>();
 
