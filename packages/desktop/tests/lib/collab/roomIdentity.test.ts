@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { getLiveRelayRoomId } from "$lib/collab/roomIdentity";
+import { describe, expect, it } from "vitest";
 
 describe("live relay room identity", () => {
     it("uses the document id even when an active draft id exists", () => {
