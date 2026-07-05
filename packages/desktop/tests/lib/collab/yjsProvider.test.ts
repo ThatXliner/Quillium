@@ -1,3 +1,5 @@
+import { collabState, ownerLeftSignal, reconnectAttempt } from "$lib/collab/store";
+import { get } from "svelte/store";
 /**
  * yjsProvider.test.ts -- Tests for WebsocketProvider wrapper.
  *
@@ -9,9 +11,7 @@
  * 5. collabState updates to 'disconnected' on disconnect
  * 6. disconnectYjsProvider destroys provider and clears state
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { get } from "svelte/store";
-import { collabState, ownerLeftSignal, reconnectAttempt } from "$lib/collab/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type MockHandler = (data: unknown) => void;
 type MockFunction = ReturnType<typeof vi.fn>;

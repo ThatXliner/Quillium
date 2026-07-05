@@ -12,10 +12,6 @@
  *   5. Rename, and ungrouped switches stay independent.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, redo, undo } from "@codemirror/commands";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     addAnnotation,
@@ -25,11 +21,6 @@ import {
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
-    addVersionToGroup,
-    createVersionGroup,
-    versionGroupField,
-} from "$lib/editor/plugins/annotations/versionGroupField";
-import {
     activeVersion,
     createNewAnnotation,
     isAnnotationOfType,
@@ -37,6 +28,15 @@ import {
     versionText,
 } from "$lib/editor/plugins/annotations/models";
 import { getActiveAnnotation } from "$lib/editor/plugins/annotations/utils";
+import {
+    addVersionToGroup,
+    createVersionGroup,
+    versionGroupField,
+} from "$lib/editor/plugins/annotations/versionGroupField";
+import { history, redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it } from "vitest";
 
 function createView(doc: string) {
     const state = EditorState.create({

@@ -1,12 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history } from "@codemirror/commands";
-import { appSettings } from "$lib/settings.svelte";
 import {
     _shouldHandleRevisionFocusMouseEvent,
-    annotationKeymap,
     annotations as annotationExtensions,
+    annotationKeymap,
 } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
@@ -16,6 +11,11 @@ import {
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { appSettings } from "$lib/settings.svelte";
+import { history } from "@codemirror/commands";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function createView(doc: string) {
     const state = EditorState.create({

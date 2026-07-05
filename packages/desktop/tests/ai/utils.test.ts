@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import { buildDocumentContextPrompt, injectDocumentContext } from "$lib/ai/utils";
+import { describe, expect, it } from "vitest";
 
 // ── buildDocumentContextPrompt ────────────────────────────────────────────────
 

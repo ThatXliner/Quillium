@@ -1,3 +1,36 @@
+import { AnnotationIdMap } from "$lib/collab/annotationSchema";
+import { collabCompartment, disableCollab } from "$lib/collab/index";
+import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
+import {
+    type Peer,
+    connect,
+    flushAll,
+    makeJoinerPeer,
+    makeOwnerPeer,
+    makePeerWithAnnotationSync,
+    teardown,
+} from "$lib/collab/test-helpers/twoPeerHarness";
+import type { YjsAnnotationNode } from "$lib/collab/types";
+import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
+import { createYjsBinding } from "$lib/collab/yjsBinding";
+import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
+import { createVersionGroupSyncPlugin } from "$lib/collab/yjsVersionGroups";
+import { historyCompartment } from "$lib/editor/extensions";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import {
+    addAnnotation,
+    annotationField,
+    removeAnnotation,
+    setActiveRevisionVersion,
+} from "$lib/editor/plugins/annotations/annotationField";
+import {
+    type GenericAnnotation,
+    type VersionGroup,
+    activeVersionIndex,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import { currentDraftId } from "$lib/stores";
 // joiner-view.test.ts - End-to-end Phase 02 verification: JOINER-01/-03/-05
 // + criteria #6 (own-edits-only undo), #7 (owner history excludes remote text),
 // and #8 (selection restored on undo/redo). Uses Phase 1 flushAll primitive
@@ -5,42 +38,9 @@
 import { history, historyField, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { get } from "svelte/store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { get } from "svelte/store";
-import {
-    connect,
-    flushAll,
-    makeJoinerPeer,
-    makeOwnerPeer,
-    makePeerWithAnnotationSync,
-    teardown,
-    type Peer,
-} from "$lib/collab/test-helpers/twoPeerHarness";
-import { AnnotationIdMap } from "$lib/collab/annotationSchema";
-import { collabCompartment, disableCollab } from "$lib/collab/index";
-import { createAnnotationSyncPlugin } from "$lib/collab/yjsAnnotations";
-import { createVersionGroupSyncPlugin } from "$lib/collab/yjsVersionGroups";
-import { createYjsBinding } from "$lib/collab/yjsBinding";
-import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
-import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
-import type { YjsAnnotationNode } from "$lib/collab/types";
-import {
-    addAnnotation,
-    annotationField,
-    removeAnnotation,
-    setActiveRevisionVersion,
-} from "$lib/editor/plugins/annotations/annotationField";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import {
-    activeVersionIndex,
-    isAnnotationOfType,
-    makeVersion,
-    type GenericAnnotation,
-    type VersionGroup,
-} from "$lib/editor/plugins/annotations/models";
-import { historyCompartment } from "$lib/editor/extensions";
-import { currentDraftId } from "$lib/stores";
 
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 

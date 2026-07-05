@@ -3,8 +3,8 @@
     view toggle, and "+ New" merged into one pill.
 -->
 <script lang="ts">
-import { LayoutGrid, List, Plus, Search, Trash2, Timer } from "lucide-svelte";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { LayoutGrid, List, Plus, Search, Timer, Trash2 } from "lucide-svelte";
 
 interface Props {
     viewMode: "grid" | "list";

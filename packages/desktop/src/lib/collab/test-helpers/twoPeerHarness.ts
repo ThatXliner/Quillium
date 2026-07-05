@@ -1,3 +1,7 @@
+import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
+import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
+import { history } from "@codemirror/commands";
 /**
  * twoPeerHarness.ts -- Shared 2-peer fixture for Yjs convergence tests.
  *
@@ -17,17 +21,13 @@
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { history } from "@codemirror/commands";
 import * as Y from "yjs";
-import { createYjsBinding } from "../yjsBinding";
-import { createAnnotationSyncPlugin } from "../yjsAnnotations";
-import { createVersionGroupSyncPlugin } from "../yjsVersionGroups";
-import { createYjsUndoExtension } from "../yjsUndo";
 import { AnnotationIdMap } from "../annotationSchema";
-import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
-import { versionGroupField } from "$lib/editor/plugins/annotations/versionGroupField";
 import type { YjsAnnotationNode } from "../types";
+import { createAnnotationSyncPlugin } from "../yjsAnnotations";
+import { createYjsBinding } from "../yjsBinding";
+import { createYjsUndoExtension } from "../yjsUndo";
+import { createVersionGroupSyncPlugin } from "../yjsVersionGroups";
 
 export interface Peer {
     ydoc: Y.Doc;

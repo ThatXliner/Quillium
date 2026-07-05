@@ -1,15 +1,15 @@
 <script lang="ts">
-import { onMount, tick } from "svelte";
-import posthog from "posthog-js";
-import { initReveal } from "$lib/reveal";
-import Nav from "$lib/components/Nav.svelte";
+import { MOBILE_BREAKPOINT } from "$lib/breakpoints";
+import Download from "$lib/components/Download.svelte";
+import Features from "$lib/components/Features.svelte";
+import Footer from "$lib/components/Footer.svelte";
 import Hero from "$lib/components/Hero.svelte";
 import Hero3DV2 from "$lib/components/Hero3DV2.svelte";
+import Nav from "$lib/components/Nav.svelte";
 import VideoOrCarousel from "$lib/components/VideoOrCarousel.svelte";
-import Features from "$lib/components/Features.svelte";
-import Download from "$lib/components/Download.svelte";
-import Footer from "$lib/components/Footer.svelte";
-import { MOBILE_BREAKPOINT } from "$lib/breakpoints";
+import { initReveal } from "$lib/reveal";
+import posthog from "posthog-js";
+import { onMount, tick } from "svelte";
 
 // The marketing demo (YouTube video id) shown above the feature list.
 const HERO_VIDEO_ID: string = "YKsJSmKGITA";
@@ -55,10 +55,12 @@ onMount(() => {
 
     const mql = matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
     isMobile = mql.matches;
-    mql.addEventListener("change", (e) => (isMobile = e.matches));
+    mql.addEventListener("change", (e) => {
+        isMobile = e.matches;
+    });
 
     // Smooth scroll for anchor links
-    document.querySelectorAll('a[href^="#"]').forEach((link) => {
+    for (const link of document.querySelectorAll('a[href^="#"]')) {
         link.addEventListener("click", (e) => {
             const href = (link as HTMLAnchorElement).getAttribute("href");
             if (!href) return;
@@ -68,7 +70,7 @@ onMount(() => {
                 target.scrollIntoView({ behavior: "smooth", block: "start" });
             }
         });
-    });
+    }
 });
 </script>
 

@@ -1,10 +1,10 @@
 <script lang="ts">
-import { onMount } from "svelte";
-import posthog from "posthog-js";
-import { GitBranch, MessageSquare, Star, CircleCheck, Play, Monitor } from "@lucide/svelte";
-import revisionsImg from "$lib/assets/screenshots/revisions.png";
 import aiAnnotationsImg from "$lib/assets/screenshots/ai-annotations.png";
 import annotationsBelongImg from "$lib/assets/screenshots/annotations-belong.png";
+import revisionsImg from "$lib/assets/screenshots/revisions.png";
+import { CircleCheck, GitBranch, MessageSquare, Monitor, Play, Star } from "@lucide/svelte";
+import posthog from "posthog-js";
+import { onMount } from "svelte";
 
 let showAiSection = $state(true);
 let showRevisionsDemo = $state(false);

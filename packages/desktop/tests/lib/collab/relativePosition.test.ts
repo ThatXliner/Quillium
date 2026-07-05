@@ -1,10 +1,10 @@
+import { absoluteToRelative, relativeToAbsolute } from "$lib/collab/relativePosition";
+import { EditorSelection } from "@codemirror/state";
 /**
  * relativePosition.test.ts -- Tests for RelativePosition utilities.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { EditorSelection } from "@codemirror/state";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { absoluteToRelative, relativeToAbsolute } from "$lib/collab/relativePosition";
 
 describe("relativePosition", () => {
     let ydoc: Y.Doc;

@@ -1,4 +1,10 @@
 <script lang="ts">
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
+import { linkAnchor, versionGroups } from "$lib/stores";
+import { modalStack } from "$lib/stores";
+import Kbd from "$lib/ui/Kbd.svelte";
 /**
  * Revision.svelte — Displays a single revision annotation card
  * with multiple named versions, a textarea for quick inline editing,
@@ -23,9 +29,12 @@
 import { EditorView } from "@codemirror/view";
 import { ChevronDown, ChevronUp, Link2, Maximize2, PlusIcon, Trash2, X } from "lucide-svelte";
 import { onDestroy, tick } from "svelte";
-import { slide } from "svelte/transition";
 import { cubicOut } from "svelte/easing";
+import { slide } from "svelte/transition";
 import {
+    type Annotation,
+    type GenericAnnotation,
+    type Thread as ThreadType,
     annotationField,
     annotationsChanged,
     createNewRevision,
@@ -33,22 +42,13 @@ import {
     isAnnotationOfType,
     setActiveRevisionVersion,
     updateRevisionVersionLabel,
-    type Annotation,
-    type GenericAnnotation,
-    type Thread as ThreadType,
 } from ".";
-import { activeVersionIndex, versionById, versionText, type VersionState } from "./models";
-import { addVersionToGroup, createVersionGroup, removeVersionFromGroup } from "./versionGroupField";
-import { canAddMemberToGroup, groupOfMember, type VersionGroupMember } from "./models";
-import { linkAnchor, versionGroups } from "$lib/stores";
-import { previewVersionText } from "./nestedEditor";
 import { NestedEditorController } from "./NestedEditorController";
-import { modalStack } from "$lib/stores";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
-import { appSettings } from "$lib/settings.svelte";
 import Thread from "./Thread.svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
-import posthog from "$lib/posthog";
+import { type VersionState, activeVersionIndex, versionById, versionText } from "./models";
+import { type VersionGroupMember, canAddMemberToGroup, groupOfMember } from "./models";
+import { previewVersionText } from "./nestedEditor";
+import { addVersionToGroup, createVersionGroup, removeVersionFromGroup } from "./versionGroupField";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";

@@ -1,6 +1,6 @@
 <script lang="ts">
-import { onMount } from "svelte";
 import { trackDownload as captureDownload } from "$lib/analytics";
+import { onMount } from "svelte";
 
 const REPO = "ThatXliner/quillium-releases";
 

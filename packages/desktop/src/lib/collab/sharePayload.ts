@@ -1,5 +1,5 @@
-import type { Annotations } from "$lib/editor/plugins/annotations";
 import { getRawAnnotationField } from "$lib/collab/annotationSchema";
+import type { Annotations } from "$lib/editor/plugins/annotations";
 import type {
     SerializedAnnotation,
     SerializedAnnotationBase,
@@ -22,7 +22,7 @@ import {
     normalizeRevision,
     versionText,
 } from "$lib/editor/plugins/annotations/models";
-import { RawAnnotationsSchema, type RawAnnotations } from "$lib/editor/plugins/annotations/models";
+import { type RawAnnotations, RawAnnotationsSchema } from "$lib/editor/plugins/annotations/models";
 
 export function serializeAnnotations(
     doc: string,

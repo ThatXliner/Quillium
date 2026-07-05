@@ -1,3 +1,4 @@
+import { EditorSelection } from "@codemirror/state";
 /**
  * relativePosition.ts -- RelativePosition utilities for annotation anchoring.
  *
@@ -10,7 +11,6 @@
  *   - @codemirror/state for EditorSelection
  */
 import * as Y from "yjs";
-import { EditorSelection } from "@codemirror/state";
 
 export interface EncodedPosition {
     startPos: Uint8Array;

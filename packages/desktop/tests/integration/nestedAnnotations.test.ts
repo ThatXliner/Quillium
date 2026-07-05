@@ -8,30 +8,30 @@
  * version management, and the nested editor dispatch pipeline.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo, redo, undoDepth } from "@codemirror/commands";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
+    _nestedEditRevision,
     addAnnotation,
     annotationField,
-    nestedEditorEdit,
-    _nestedEditRevision,
-    setActiveRevisionVersion,
     createNewRevision,
     deleteRevisionVersion,
+    nestedEditorEdit,
     removeAnnotation,
+    setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
-    createNewAnnotation,
-    isAnnotationOfType,
-    versionText,
-    makeVersion,
+    type Annotation as AnnotationType,
     activeVersion,
     activeVersionIndex,
-    type Annotation as AnnotationType,
+    createNewAnnotation,
+    isAnnotationOfType,
+    makeVersion,
+    versionText,
 } from "$lib/editor/plugins/annotations/models";
+import { history, redo, undo, undoDepth } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

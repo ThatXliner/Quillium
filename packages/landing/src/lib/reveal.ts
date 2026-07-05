@@ -7,7 +7,7 @@ gsap.registerPlugin(ScrollTrigger);
 // re-run after a variant swap (e.g. hero=video) renders new `.reveal` nodes
 // without double-animating the ones already wired up.
 export function initReveal() {
-    gsap.utils.toArray<HTMLElement>(".reveal:not([data-revealed])").forEach((el) => {
+    for (const el of gsap.utils.toArray<HTMLElement>(".reveal:not([data-revealed])")) {
         el.dataset.revealed = "";
 
         const delay = el.classList.contains("reveal-delay-1")
@@ -48,7 +48,7 @@ export function initReveal() {
                 },
             );
         }
-    });
+    }
 
     // Trigger positions are measured now, but sections below the fold (e.g. the
     // Showcase carousel) contain lazy/poster images that load later and shift the

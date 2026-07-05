@@ -1,7 +1,7 @@
 <script lang="ts">
-import { Pen, Lock, ShieldCheck } from "@lucide/svelte";
-import VideoEmbed from "./VideoEmbed.svelte";
+import { Lock, Pen, ShieldCheck } from "@lucide/svelte";
 import DownloadButton from "./DownloadButton.svelte";
+import VideoEmbed from "./VideoEmbed.svelte";
 
 interface ReleaseAsset {
     name: string;

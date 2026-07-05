@@ -1,3 +1,6 @@
+import type { AnnotationEvent, EventPayload } from "$lib/db/events";
+import type { EventRecord } from "$lib/db/types";
+import { capture } from "$lib/posthog";
 /**
  * replay.ts — Event log replay for crash recovery and session restore.
  *
@@ -16,17 +19,14 @@
  * corrupt or unexpected event does not block restoration of the rest
  * of the history.
  */
-import { type EditorState, EditorSelection, type StateEffect } from "@codemirror/state";
-import { addAnnotation, removeAnnotation, annotationField } from "./plugins/annotations";
+import { EditorSelection, type EditorState, type StateEffect } from "@codemirror/state";
+import { addAnnotation, annotationField, removeAnnotation } from "./plugins/annotations";
 import {
+    RawAnnotationSchema,
     isAnnotationOfType,
     normalizeRevision,
-    RawAnnotationSchema,
 } from "./plugins/annotations/models";
 import type { GenericAnnotation } from "./plugins/annotations/models";
-import type { EventRecord } from "$lib/db/types";
-import type { AnnotationEvent, EventPayload } from "$lib/db/events";
-import { capture } from "$lib/posthog";
 // TODO(#191): restore appSettings import when shareDocumentAnalytics is re-enabled
 // import { appSettings } from "$lib/settings.svelte";
 

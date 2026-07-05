@@ -1,3 +1,7 @@
+import { getSession } from "$lib/auth/auth.svelte";
+import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
+import type { Awareness } from "y-protocols/awareness";
+import { WebsocketProvider } from "y-websocket";
 /**
  * yjsProvider.ts -- WebsocketProvider wrapper with Quillium auth.
  *
@@ -23,10 +27,6 @@
  *   - yjsUndo.ts uses returned ytext for UndoManager
  */
 import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
-import type { Awareness } from "y-protocols/awareness";
-import { getSession } from "$lib/auth/auth.svelte";
-import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
 import type { YjsAnnotationNode } from "./types";
 

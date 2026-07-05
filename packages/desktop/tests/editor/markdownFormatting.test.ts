@@ -1,14 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import {
+    type MarkdownFormat,
+    applyMarkdownFormat,
+    formatMarkdownSelection,
+} from "$lib/editor/markdownFormatting";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import { createNewAnnotation } from "$lib/editor/plugins/annotations/models";
-import {
-    applyMarkdownFormat,
-    formatMarkdownSelection,
-    type MarkdownFormat,
-} from "$lib/editor/markdownFormatting";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it } from "vitest";
 
 describe("applyMarkdownFormat", () => {
     it("wraps a selection in bold markers", () => {

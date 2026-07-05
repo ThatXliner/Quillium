@@ -1,10 +1,10 @@
 <script lang="ts">
-import { onMount } from "svelte";
-import posthog from "posthog-js";
-import Nav from "$lib/components/Nav.svelte";
-import Footer from "$lib/components/Footer.svelte";
-import Features from "$lib/components/Features.svelte";
 import Download from "$lib/components/Download.svelte";
+import Features from "$lib/components/Features.svelte";
+import Footer from "$lib/components/Footer.svelte";
+import Nav from "$lib/components/Nav.svelte";
+import posthog from "posthog-js";
+import { onMount } from "svelte";
 
 const REPO = "ThatXliner/quillium-releases";
 

@@ -1,10 +1,10 @@
+import { Awareness, removeAwarenessStates } from "y-protocols/awareness";
 /**
  * rooms.ts -- Yjs room lifecycle management.
  *
  * Per D-71: Rooms hold Y.Doc instead of @codemirror/state Text.
  * Per D-37: Room cleanup delay (45 seconds after last client leaves).
  */
-import { Awareness, removeAwarenessStates } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { createLogger } from "../logger.js";
 import { flushDocumentUpdates } from "../persistence/debouncedUpdates.js";

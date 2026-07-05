@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock posthog-js before importing our module
 const { mockCapture, mockSetConfig, mockRegister, mockUnregister } = vi.hoisted(() => ({
@@ -31,9 +31,9 @@ vi.mock("$lib/settings.svelte", () => ({
 }));
 
 import {
-    capture,
     DOCUMENT_CONTENT_SELECTOR,
     REDACTED_KEYS,
+    capture,
     // TODO(#191): re-enable when syncShareDocumentAnalytics is restored
     // syncShareDocumentAnalytics,
 } from "$lib/posthog";

@@ -1,16 +1,9 @@
-/**
- * version-groups.test.ts -- Two-peer Yjs sync for versionGroupField (#273).
- *
- * Covers live create/rename/delete/member add/remove between peers. Each step
- * uses flushAll(), whose state-vector cap fails loudly on feedback loops.
- */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+    type Peer,
     connect,
     flushAll,
     makePeerWithVersionGroupSync,
     teardown,
-    type Peer,
 } from "$lib/collab/test-helpers/twoPeerHarness";
 import type { VersionGroupMember } from "$lib/editor/plugins/annotations/models";
 import {
@@ -21,6 +14,13 @@ import {
     renameVersionGroup,
     versionGroupField,
 } from "$lib/editor/plugins/annotations/versionGroupField";
+/**
+ * version-groups.test.ts -- Two-peer Yjs sync for versionGroupField (#273).
+ *
+ * Covers live create/rename/delete/member add/remove between peers. Each step
+ * uses flushAll(), whose state-vector cap fails loudly on feedback loops.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 function groups(peer: Peer) {
     return peer.view.state.field(versionGroupField);

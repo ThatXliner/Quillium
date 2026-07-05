@@ -1,4 +1,10 @@
 <script lang="ts">
+import { aiSettings } from "$lib/ai/settings.svelte";
+import posthog from "$lib/posthog";
+import { appSettings } from "$lib/settings.svelte";
+import { modalStack } from "$lib/stores";
+import { EditorSelection } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 /**
  * Comment.svelte — Displays a single comment annotation card with
  * its message thread and AI suggestion action.
@@ -21,17 +27,11 @@
  * message. When active, the full thread, reply input, and "Suggest"
  * button are visible.
  */
-import { Trash2, Maximize2 } from "lucide-svelte";
-import { aiSettings } from "$lib/ai/settings.svelte";
-import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
-import { appSettings } from "$lib/settings.svelte";
-import posthog from "$lib/posthog";
-import type { EditorView } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
+import { Maximize2, Trash2 } from "lucide-svelte";
 import type { Annotation, Thread as ThreadType } from ".";
 import { annotationField } from ".";
 import Thread from "./Thread.svelte";
-import { modalStack } from "$lib/stores";
+import { buildCommentAiPrompt, streamCommentAiResponse } from "./commentAi";
 
 const {
     comment,

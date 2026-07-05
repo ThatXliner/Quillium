@@ -1,6 +1,6 @@
+import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 import type { Awareness } from "y-protocols/awareness";
 import type { WebsocketProvider } from "y-websocket";
-import type { VersionGroup } from "$lib/editor/plugins/annotations/models";
 /**
  * types.ts — Collab-related types.
  *

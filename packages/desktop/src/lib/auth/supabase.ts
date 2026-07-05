@@ -5,7 +5,7 @@
  * directly with localStorage storage (not @supabase/ssr).
  */
 import { processLock } from "@supabase/auth-js";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 
 export const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL;
 export const SUPABASE_PUBLISHABLE_KEY = import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;

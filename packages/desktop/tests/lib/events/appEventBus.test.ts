@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
 import { appEventBus } from "$lib/events/appEventBus";
+import { afterEach, describe, expect, it } from "vitest";
 
 let unsubs: Array<() => void> = [];
 

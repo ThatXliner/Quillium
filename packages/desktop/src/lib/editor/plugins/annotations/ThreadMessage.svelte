@@ -1,4 +1,7 @@
 <script lang="ts">
+import { avatarColor, initials } from "$lib/auth/avatarUtils";
+import { lightTint, mediumTint } from "$lib/readers/colors";
+import { readersSettings } from "$lib/readers/settings.svelte";
 /**
  * ThreadMessage.svelte — Renders a single message within an
  * annotation thread (avatar, author, timestamp, body).
@@ -22,9 +25,6 @@
  *   - editMessage: draft text while editing
  */
 import type { Thread, ThreadMessage } from ".";
-import { avatarColor, initials } from "$lib/auth/avatarUtils";
-import { readersSettings } from "$lib/readers/settings.svelte";
-import { lightTint, mediumTint } from "$lib/readers/colors";
 
 let {
     message,

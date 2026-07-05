@@ -1,7 +1,7 @@
 <script lang="ts">
-import Nav from "$lib/components/Nav.svelte";
 import Footer from "$lib/components/Footer.svelte";
-import { CircleAlert, CircleX, CircleCheck, Download, Lock } from "@lucide/svelte";
+import Nav from "$lib/components/Nav.svelte";
+import { CircleAlert, CircleCheck, CircleX, Download, Lock } from "@lucide/svelte";
 
 let activeTab: "plain" | "legal" = $state("plain");
 </script>

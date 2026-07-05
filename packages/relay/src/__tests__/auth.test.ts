@@ -4,7 +4,7 @@
  * The relay uses the Supabase service_role key, so these tests verify the
  * relay's own authorization checks instead of relying on Postgres RLS.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../auth/supabase.js", () => ({
     supabaseConfigured: true,
@@ -23,13 +23,28 @@ vi.mock("../yjs/rooms.js", () => ({
 import { authenticateWebSocket } from "../auth/middleware.js";
 import { supabase } from "../auth/supabase.js";
 import { getYjsRoom } from "../yjs/rooms.js";
+import type { YjsRoom } from "../yjs/types.js";
+
+type MockFunction = ReturnType<typeof vi.fn>;
+
+interface MockSupabase {
+    auth: {
+        getUser: MockFunction;
+    };
+    from: MockFunction;
+}
+
+function mockedSupabase(): MockSupabase {
+    if (!supabase) throw new Error("Expected mocked Supabase client");
+    return supabase as unknown as MockSupabase;
+}
 
 function mockDocumentLookup(data: { owner_id: string } | null, error: unknown = null) {
     const maybeSingle = vi.fn().mockResolvedValue({ data, error });
     const eq = vi.fn().mockReturnValue({ maybeSingle });
     const select = vi.fn().mockReturnValue({ eq });
 
-    vi.mocked(supabase!.from).mockReturnValue({ select } as any);
+    mockedSupabase().from.mockReturnValue({ select });
 
     return { select, eq, maybeSingle };
 }
@@ -44,20 +59,20 @@ describe("authenticateWebSocket", () => {
         const result = await authenticateWebSocket(null, "123e4567-e89b-12d3-a456-426614174000");
 
         expect(result).toEqual({ success: false, error: "Missing auth token" });
-        expect(supabase!.auth.getUser).not.toHaveBeenCalled();
+        expect(mockedSupabase().auth.getUser).not.toHaveBeenCalled();
     });
 
     it("rejects connection without document ID", async () => {
         const result = await authenticateWebSocket("valid-token", "");
 
         expect(result).toEqual({ success: false, error: "Missing document ID" });
-        expect(supabase!.auth.getUser).not.toHaveBeenCalled();
+        expect(mockedSupabase().auth.getUser).not.toHaveBeenCalled();
     });
 
     it("rejects invalid Supabase JWTs", async () => {
-        vi.mocked(supabase!.auth.getUser).mockResolvedValue({
+        mockedSupabase().auth.getUser.mockResolvedValue({
             data: { user: null },
-            error: { message: "Invalid token", status: 401 } as any,
+            error: { message: "Invalid token", status: 401 },
         });
 
         const result = await authenticateWebSocket(
@@ -69,8 +84,8 @@ describe("authenticateWebSocket", () => {
     });
 
     it("rejects when the document does not exist", async () => {
-        vi.mocked(supabase!.auth.getUser).mockResolvedValue({
-            data: { user: { id: "user-123", is_anonymous: false } as any },
+        mockedSupabase().auth.getUser.mockResolvedValue({
+            data: { user: { id: "user-123", is_anonymous: false } },
             error: null,
         });
         mockDocumentLookup(null);
@@ -84,8 +99,8 @@ describe("authenticateWebSocket", () => {
     });
 
     it("rejects authenticated non-owners when the owner is not live", async () => {
-        vi.mocked(supabase!.auth.getUser).mockResolvedValue({
-            data: { user: { id: "user-456", is_anonymous: false } as any },
+        mockedSupabase().auth.getUser.mockResolvedValue({
+            data: { user: { id: "user-456", is_anonymous: false } },
             error: null,
         });
         mockDocumentLookup({ owner_id: "user-123" });
@@ -99,15 +114,15 @@ describe("authenticateWebSocket", () => {
     });
 
     it("accepts authenticated non-owners while the owner is live", async () => {
-        vi.mocked(supabase!.auth.getUser).mockResolvedValue({
-            data: { user: { id: "user-456", is_anonymous: false } as any },
+        mockedSupabase().auth.getUser.mockResolvedValue({
+            data: { user: { id: "user-456", is_anonymous: false } },
             error: null,
         });
         mockDocumentLookup({ owner_id: "user-123" });
         vi.mocked(getYjsRoom).mockReturnValue({
             isOwnerConnected: true,
             ownerId: "user-123",
-        } as any);
+        } as YjsRoom);
 
         const result = await authenticateWebSocket(
             "valid-token",
@@ -126,8 +141,8 @@ describe("authenticateWebSocket", () => {
     });
 
     it("accepts document owners", async () => {
-        vi.mocked(supabase!.auth.getUser).mockResolvedValue({
-            data: { user: { id: "owner-user", is_anonymous: false } as any },
+        mockedSupabase().auth.getUser.mockResolvedValue({
+            data: { user: { id: "owner-user", is_anonymous: false } },
             error: null,
         });
         mockDocumentLookup({ owner_id: "owner-user" });
@@ -149,8 +164,8 @@ describe("authenticateWebSocket", () => {
     });
 
     it("preserves anonymous owner identity", async () => {
-        vi.mocked(supabase!.auth.getUser).mockResolvedValue({
-            data: { user: { id: "anon-owner", is_anonymous: true } as any },
+        mockedSupabase().auth.getUser.mockResolvedValue({
+            data: { user: { id: "anon-owner", is_anonymous: true } },
             error: null,
         });
         mockDocumentLookup({ owner_id: "anon-owner" });

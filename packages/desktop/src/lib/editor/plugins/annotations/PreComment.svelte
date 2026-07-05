@@ -1,4 +1,7 @@
 <script lang="ts">
+import { getCurrentUserName } from "$lib/auth";
+import { avatarColor, initials } from "$lib/auth/avatarUtils";
+import posthog from "$lib/posthog";
 /**
  * PreComment.svelte — Inline "new comment" composer shown when
  * the user has created a comment annotation but hasn't typed a
@@ -21,14 +24,11 @@
  * on submit / cancel.
  */
 import type { EditorView } from "@codemirror/view";
-import { getCurrentUserName } from "$lib/auth";
-import { avatarColor, initials } from "$lib/auth/avatarUtils";
 import { tick } from "svelte";
-import { updateThread, removeAnnotation } from "./annotationField";
+import { removeAnnotation, updateThread } from "./annotationField";
 import { clearDraft, getDraft, setDraft } from "./drafts.svelte";
+import { type Annotations, type GenericAnnotation, isAnnotationOfType } from "./models";
 import { canCreateNewComment } from "./utils";
-import { isAnnotationOfType, type Annotations, type GenericAnnotation } from "./models";
-import posthog from "$lib/posthog";
 
 const {
     view,

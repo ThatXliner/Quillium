@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { afterEach, describe, expect, it } from "vitest";
 
 let unsubs: Array<() => void> = [];
 

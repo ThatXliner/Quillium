@@ -1,7 +1,7 @@
 <script lang="ts">
+import { LogOut, Mail, UserRound, X } from "lucide-svelte";
 import { isAnonymous } from "./auth.svelte";
 import { avatarColor, initials } from "./avatarUtils";
-import { Mail, LogOut, UserRound, X } from "lucide-svelte";
 
 const {
     displayName,

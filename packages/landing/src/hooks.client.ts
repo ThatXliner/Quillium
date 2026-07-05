@@ -1,7 +1,7 @@
-import posthog from "posthog-js";
-import { env } from "$env/dynamic/public";
 import { dev } from "$app/environment";
+import { env } from "$env/dynamic/public";
 import type { HandleClientError } from "@sveltejs/kit";
+import posthog from "posthog-js";
 
 export async function init() {
     if (dev) return;

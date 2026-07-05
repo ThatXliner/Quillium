@@ -3,7 +3,7 @@ import { ChevronDownIcon, GitBranchIcon, Maximize2, SparklesIcon } from "lucide-
 import { scale } from "svelte/transition";
 import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
 import ReadonlyThreadMessage from "./ReadonlyThreadMessage.svelte";
-import { previewVersionText, type AnnotationId, type RevisionVersionSelections } from "./rendering";
+import { type AnnotationId, type RevisionVersionSelections, previewVersionText } from "./rendering";
 import type { SerializedAnnotation } from "./types";
 
 let {

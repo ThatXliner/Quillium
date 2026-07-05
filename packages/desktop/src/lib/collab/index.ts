@@ -30,7 +30,6 @@ import {
 import { AnnotationIdMap } from "./annotationSchema";
 import { colorForClient, createAwarenessExtension } from "./awareness";
 import { createAnnotationSyncPlugin } from "./yjsAnnotations";
-import { createVersionGroupSyncPlugin } from "./yjsVersionGroups";
 // Yjs modules
 import { createYjsBinding } from "./yjsBinding";
 import {
@@ -42,6 +41,7 @@ import {
     relayConfigured,
 } from "./yjsProvider";
 import { createYjsUndoExtension } from "./yjsUndo";
+import { createVersionGroupSyncPlugin } from "./yjsVersionGroups";
 
 // Stores
 import {

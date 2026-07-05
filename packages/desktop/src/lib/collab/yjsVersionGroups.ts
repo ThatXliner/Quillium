@@ -1,3 +1,18 @@
+import {
+    type VersionGroup,
+    type VersionGroupMember,
+    VersionGroupSchema,
+    type VersionGroups,
+} from "$lib/editor/plugins/annotations/models";
+import {
+    _addMemberToGroup,
+    _createVersionGroup,
+    _deleteVersionGroup,
+    _removeMemberFromGroup,
+    _renameVersionGroup,
+    _restoreVersionGroups,
+    versionGroupField,
+} from "$lib/editor/plugins/annotations/versionGroupField";
 /**
  * yjsVersionGroups.ts -- Yjs <-> CodeMirror version-group sync plugin.
  *
@@ -12,21 +27,6 @@
  */
 import { Annotation, Transaction } from "@codemirror/state";
 import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
-import {
-    type VersionGroup,
-    type VersionGroupMember,
-    type VersionGroups,
-    VersionGroupSchema,
-} from "$lib/editor/plugins/annotations/models";
-import {
-    _addMemberToGroup,
-    _createVersionGroup,
-    _deleteVersionGroup,
-    _removeMemberFromGroup,
-    _renameVersionGroup,
-    _restoreVersionGroups,
-    versionGroupField,
-} from "$lib/editor/plugins/annotations/versionGroupField";
 import type * as Y from "yjs";
 
 export const yjsVersionGroupSync = Annotation.define<boolean>();

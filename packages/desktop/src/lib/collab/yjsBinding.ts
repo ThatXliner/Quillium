@@ -1,3 +1,5 @@
+import { revisionInternalEdit } from "$lib/editor/plugins/annotations/annotationField";
+import { Annotation, Transaction } from "@codemirror/state";
 /**
  * yjsBinding.ts -- Custom Y.Text <-> CodeMirror 6 binding.
  *
@@ -10,10 +12,8 @@
  * - yjsAnnotation marks remote changes to prevent feedback loops
  * - 'local' origin for UndoManager tracking (per D-74)
  */
-import { ViewPlugin, type ViewUpdate, type EditorView } from "@codemirror/view";
-import { Annotation, Transaction } from "@codemirror/state";
+import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type * as Y from "yjs";
-import { revisionInternalEdit } from "$lib/editor/plugins/annotations/annotationField";
 
 /** Annotation to mark transactions originating from Y.Text (prevents feedback loop) */
 export const yjsAnnotation = Annotation.define<boolean>();

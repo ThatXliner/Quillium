@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { EditorHarness } from "../helpers/EditorHarness";
-import { restoreBackup } from "$lib/editor/restore";
 import { isAnnotationOfType, versionText } from "$lib/editor/plugins/annotations/models";
+import { restoreBackup } from "$lib/editor/restore";
+import { afterEach, describe, expect, it } from "vitest";
+import { EditorHarness } from "../helpers/EditorHarness";
 
 let h: EditorHarness;
 afterEach(() => h?.destroy());

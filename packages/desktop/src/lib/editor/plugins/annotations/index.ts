@@ -98,7 +98,6 @@ import {
     suggestionPreviewField,
 } from "./annotationField";
 import { nestedEditorEdit } from "./annotationField";
-import { invertedVersionGroupEffects, versionGroupField } from "./versionGroupField";
 import {
     type Annotation,
     type AnnotationType,
@@ -114,6 +113,7 @@ import {
     canCreateSuggestion,
     getActiveAnnotation,
 } from "./utils";
+import { invertedVersionGroupEffects, versionGroupField } from "./versionGroupField";
 
 export * from "./annotationField";
 // Detects whether the annotation map changed between the

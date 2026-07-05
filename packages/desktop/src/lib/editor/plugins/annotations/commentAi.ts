@@ -5,14 +5,14 @@
  * to build prompts and stream AI responses, ensuring both flows stay in sync.
  */
 import { streamChat } from "$lib/ai/clientStreams";
+import type { Provider } from "$lib/ai/provider";
 import {
-    documentContext,
     beginAiTask,
+    documentContext,
     endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
-import type { Provider } from "$lib/ai/provider";
 import type { Thread } from ".";
 
 /**
