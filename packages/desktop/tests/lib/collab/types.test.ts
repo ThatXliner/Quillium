@@ -152,4 +152,10 @@ describe("CollabSession ymap field", () => {
         const result: HasYmap = true;
         expect(result).toBe(true);
     });
+
+    it("CollabSession type includes yVersionGroups field (type-level check)", () => {
+        type HasVersionGroups = CollabSession extends { yVersionGroups: unknown } ? true : false;
+        const result: HasVersionGroups = true;
+        expect(result).toBe(true);
+    });
 });
