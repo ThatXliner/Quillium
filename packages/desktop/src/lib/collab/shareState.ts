@@ -1,9 +1,9 @@
+import type { LoadResult } from "$lib/db/types";
+import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
+import { replayEvents } from "$lib/editor/replay";
 import { history, historyField } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
-import type { LoadResult } from "$lib/db/types";
-import { replayEvents } from "$lib/editor/replay";
-import { annotationField, versionGroupField } from "$lib/editor/plugins/annotations";
-import { serializeAnnotations, type SerializedAnnotation } from "./sharePayload";
+import { type SerializedAnnotation, serializeAnnotations } from "./sharePayload";
 
 type SerializedShareState = {
     content: string;

@@ -22,6 +22,13 @@ import {
     restoreJoinerPriorView,
 } from "$lib/collab";
 import {
+    READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
+    READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS,
+    READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS,
+    normalizeReadonlyShareAutoUpdateDebounceMs,
+    shouldScheduleReadonlyShareAutoUpdate,
+} from "$lib/collab/readonlyShareAutoUpdate";
+import {
     type ReadonlyShare,
     buildReadonlyShareUrl,
     buildSharePreviewText,
@@ -31,17 +38,10 @@ import {
     readonlyShareState,
 } from "$lib/collab/share";
 import {
-    READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
-    READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS,
-    READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS,
-    normalizeReadonlyShareAutoUpdateDebounceMs,
-    shouldScheduleReadonlyShareAutoUpdate,
-} from "$lib/collab/readonlyShareAutoUpdate";
-import {
+    type ReadonlyShareTab,
     buildReadonlyShareFingerprint,
     getActiveReadonlyShareTab,
     serializeAnnotations,
-    type ReadonlyShareTab,
 } from "$lib/collab/sharePayload";
 import { serializeLoadedShareState } from "$lib/collab/shareState";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
@@ -59,10 +59,10 @@ import posthog from "$lib/posthog";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import {
     annotations,
-    currentTabId,
     currentDocumentId,
     currentDocumentTitle,
     currentDraftId,
+    currentTabId,
     documentContent,
     editorView,
     lastPersistedEventId,

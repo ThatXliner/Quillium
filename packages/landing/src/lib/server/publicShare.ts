@@ -1,8 +1,8 @@
 import { env } from "$env/dynamic/public";
 import {
-    decodeReadonlySharePayload,
     type ReadonlyShareDocument,
     type SerializedAnnotation,
+    decodeReadonlySharePayload,
 } from "@quillium/share";
 import { createClient } from "@supabase/supabase-js";
 

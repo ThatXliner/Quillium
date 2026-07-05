@@ -2,11 +2,11 @@ import { getCurrentUserName } from "$lib/auth/auth.svelte";
 import { supabase } from "$lib/auth/supabase";
 import { writable } from "svelte/store";
 import {
+    type ReadonlyShareTab,
+    type SerializedAnnotation,
     decodeReadonlySharePayload,
     encodeReadonlySharePayload,
     getActiveReadonlyShareTab,
-    type ReadonlyShareTab,
-    type SerializedAnnotation,
 } from "./sharePayload";
 
 const SHARE_BASE_URL = "https://quillium.bryanhu.com/share";
