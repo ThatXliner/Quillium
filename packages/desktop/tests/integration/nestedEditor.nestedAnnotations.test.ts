@@ -6,35 +6,35 @@
  *   - Creating nested annotations and flushing to parent history (undoable)
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, type ViewUpdate } from "@codemirror/view";
-import { history, undo, redo } from "@codemirror/commands";
-import {
-    annotationField,
-    addAnnotation,
-    applySuggestion,
-    nestedEditorEdit,
-    _nestedEditRevision,
-    updateRevisionVersionState,
-} from "$lib/editor/plugins/annotations/annotationField";
+import { nestedSavedFields } from "$lib/editor/extensions";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
     NestedEditorController,
     serializedNestedAnnotationSnapshot,
     transactionsHaveAnnotationMutationEffect,
 } from "$lib/editor/plugins/annotations/NestedEditorController";
 import {
+    _nestedEditRevision,
+    addAnnotation,
+    annotationField,
+    applySuggestion,
+    nestedEditorEdit,
+    updateRevisionVersionState,
+} from "$lib/editor/plugins/annotations/annotationField";
+import {
+    type VersionState,
     activeVersion,
     activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
     versionText,
-    type VersionState,
 } from "$lib/editor/plugins/annotations/models";
 import { normalizeSerializedSelection } from "$lib/editor/plugins/annotations/nestedEditor";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { nestedSavedFields } from "$lib/editor/extensions";
+import { history, redo, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

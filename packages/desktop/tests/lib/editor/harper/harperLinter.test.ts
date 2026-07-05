@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { hashText, splitParagraphs, shiftLints, mergeLints } from "$lib/editor/harper/harperLinter";
+import { hashText, mergeLints, shiftLints, splitParagraphs } from "$lib/editor/harper/harperLinter";
+import { describe, expect, it } from "vitest";
 
 describe("hashText", () => {
     it("returns a number", () => {

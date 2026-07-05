@@ -1,3 +1,4 @@
+import { currentDocumentId } from "$lib/stores";
 /**
  * drafts.svelte.ts — Shared in-progress composer text, keyed by annotation id.
  *
@@ -15,7 +16,6 @@
  * practice and preferable to losing drafts.
  */
 import { get } from "svelte/store";
-import { currentDocumentId } from "$lib/stores";
 
 const drafts = $state<Record<number, string>>({});
 

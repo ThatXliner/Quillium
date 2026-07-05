@@ -43,6 +43,8 @@
  *   - Svelte stores sync with this field via updateListener.
  */
 
+import { invertedEffects } from "@codemirror/commands";
+import { SearchCursor } from "@codemirror/search";
 import {
     Annotation,
     EditorSelection,
@@ -53,7 +55,15 @@ import {
     Transaction,
     type TransactionSpec,
 } from "@codemirror/state";
+import { mapValues } from "lodash-es";
 import {
+    type Annotations,
+    type GenericAnnotation,
+    type RawAnnotations,
+    RawAnnotationsSchema,
+    type SuggestionReplacement,
+    type Thread,
+    type VersionState,
     activeVersionIndex,
     createNewAnnotation,
     getLastId,
@@ -65,22 +75,12 @@ import {
     versionById,
     versionIndexById,
     versionText,
-    RawAnnotationsSchema,
-    type Annotations,
-    type GenericAnnotation,
-    type RawAnnotations,
-    type SuggestionReplacement,
-    type Thread,
-    type VersionState,
 } from "./models";
 import { cleanRangesOf, mapRange } from "./utils";
 // Lazily-used (function-body only) import — see groupSwitchTargets. The
 // annotationField ↔ versionGroupField pair forms a safe ESM cycle because all
 // cross-references happen inside functions, never at module top level.
 import { versionGroupField } from "./versionGroupField";
-import { invertedEffects } from "@codemirror/commands";
-import { SearchCursor } from "@codemirror/search";
-import { mapValues } from "lodash-es";
 // -------------------------------------------------------
 // StateEffect declarations
 //

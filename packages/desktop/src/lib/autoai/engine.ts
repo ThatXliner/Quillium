@@ -8,22 +8,17 @@
  * only fired when content changes meaningfully (>= MIN_DIFF_CHARS).
  */
 
-import { get, writable } from "svelte/store";
-import { generateObject } from "ai";
-import { z } from "zod";
-import { annotations, documentContent, editorView } from "$lib/stores";
-import posthog from "$lib/posthog";
+import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
+import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
 import { createModel } from "$lib/ai/provider";
 import {
     aiSettings,
-    documentContext,
-    ensureApiKeyLoaded,
     beginAiTask,
+    documentContext,
     endAiTask,
+    ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
-import { buildAiContextPacket, contextPacketToPrompt } from "$lib/ai/context";
-import { buildAnnotationContextInputs } from "$lib/ai/annotationContext";
 import { buildDocumentContextPrompt } from "$lib/ai/utils";
 import {
     createComment,
@@ -31,7 +26,12 @@ import {
     createSuggestion,
 } from "$lib/editor/plugins/annotations/index";
 import { appEventBus } from "$lib/events/appEventBus";
+import posthog from "$lib/posthog";
+import { annotations, documentContent, editorView } from "$lib/stores";
+import { generateObject } from "ai";
 import { toast } from "svelte-sonner";
+import { get, writable } from "svelte/store";
+import { z } from "zod";
 import { type AutoAIConservativeness, autoAISettings } from "./settings.svelte";
 
 export type AutoAIPhase = "idle" | "thinking" | "reviewing";

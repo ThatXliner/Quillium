@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     DEFAULT_RATE_LIMIT_BACKOFF_MS,
     UPDATE_CHECK_NOT_BEFORE_KEY,
@@ -7,6 +6,7 @@ import {
     deferUpdateChecksUntil,
     nextUpdateCheckAfterRateLimit,
 } from "$lib/updater/schedule";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const NOW = Date.UTC(2026, 3, 29, 12, 0, 0);
 

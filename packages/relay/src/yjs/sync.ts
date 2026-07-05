@@ -1,3 +1,8 @@
+import * as decoding from "lib0/decoding";
+import * as encoding from "lib0/encoding";
+import type { WebSocket as WsWebSocket } from "ws";
+import * as awarenessProtocol from "y-protocols/awareness";
+import * as syncProtocol from "y-protocols/sync";
 /**
  * sync.ts -- Yjs sync protocol handler.
  *
@@ -10,17 +15,12 @@
  * 3 = custom (owner disconnect, etc.)
  */
 import * as Y from "yjs";
-import * as syncProtocol from "y-protocols/sync";
-import * as awarenessProtocol from "y-protocols/awareness";
-import * as encoding from "lib0/encoding";
-import * as decoding from "lib0/decoding";
-import type { WebSocket as WsWebSocket } from "ws";
 
 // Use ws package WebSocket type
 type WebSocket = WsWebSocket;
-import type { YjsRoom, YjsClientData } from "./types.js";
-import { clearRoomState } from "./rooms.js";
 import { createLogger } from "../logger.js";
+import { clearRoomState } from "./rooms.js";
+import type { YjsClientData, YjsRoom } from "./types.js";
 
 const logger = createLogger("yjs");
 

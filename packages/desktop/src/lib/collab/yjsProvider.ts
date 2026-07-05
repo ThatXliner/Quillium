@@ -1,3 +1,6 @@
+import { getSession } from "$lib/auth/auth.svelte";
+import type { Awareness } from "y-protocols/awareness";
+import { WebsocketProvider } from "y-websocket";
 /**
  * yjsProvider.ts -- WebsocketProvider wrapper with Quillium auth.
  *
@@ -23,9 +26,6 @@
  *   - yjsUndo.ts uses returned ytext for UndoManager
  */
 import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
-import type { Awareness } from "y-protocols/awareness";
-import { getSession } from "$lib/auth/auth.svelte";
 import { collabState, ownerLeftSignal, reconnectAttempt } from "./store";
 import type { YjsAnnotationNode } from "./types";
 
@@ -137,7 +137,10 @@ export async function createYjsProvider(docId: string): Promise<YjsProviderResul
     // Handle connection close - fires on EVERY close including failed retry attempts
     // y-websocket only emits "disconnected" status on first disconnect, but connection-close
     // fires each time, so we track retry attempts here
-    provider.on("connection-close" as any, (_event: any) => {
+    const providerWithConnectionClose = provider as unknown as {
+        on(event: "connection-close", handler: (event: unknown) => void): void;
+    };
+    providerWithConnectionClose.on("connection-close", () => {
         console.log(`[yjsProvider] Connection closed (attempt ${currentAttemptCount})`);
         if (currentProvider === provider && currentAttemptCount > 0) {
             // Already in reconnection mode, increment attempt

@@ -1,7 +1,7 @@
 <script lang="ts">
+import { Menu, X } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { slide } from "svelte/transition";
-import { Menu, X } from "@lucide/svelte";
 
 let menuOpen = $state(false);
 

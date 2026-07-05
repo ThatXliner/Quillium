@@ -1,22 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { get } from "svelte/store";
-import { mount, unmount } from "svelte";
+import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { history } from "@codemirror/commands";
+import { mount, unmount } from "svelte";
+import { get } from "svelte/store";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import Revision from "$lib/editor/plugins/annotations/Revision.svelte";
+import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import Revision from "$lib/editor/plugins/annotations/Revision.svelte";
-import RevisionModal from "$lib/editor/plugins/annotations/RevisionModal.svelte";
-import { modalStack, type NestedEditorCommand } from "$lib/stores";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { appSettings } from "$lib/settings.svelte";
+import { type NestedEditorCommand, modalStack } from "$lib/stores";
 
 function createView(doc: string) {
     const state = EditorState.create({

@@ -1,3 +1,11 @@
+import {
+    type Update,
+    collab,
+    getSyncedVersion,
+    receiveUpdates,
+    sendableUpdates,
+} from "@codemirror/collab";
+import { ChangeSet, Compartment } from "@codemirror/state";
 /**
  * collabPlugin.ts -- ViewPlugin for collab push/pull loop.
  *
@@ -8,15 +16,7 @@
  * Per D-51: Static collab extension in stack, enabled/disabled via Compartment.
  * Per D-50: Per-user undo via clientID in collab() config.
  */
-import { ViewPlugin, type ViewUpdate, type EditorView } from "@codemirror/view";
-import { Compartment, ChangeSet } from "@codemirror/state";
-import {
-    collab,
-    sendableUpdates,
-    receiveUpdates,
-    getSyncedVersion,
-    type Update,
-} from "@codemirror/collab";
+import { type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Socket } from "socket.io-client";
 import type { SerializedUpdate } from "./protocol";
 

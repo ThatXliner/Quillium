@@ -1,3 +1,4 @@
+import { invertedEffects } from "@codemirror/commands";
 /**
  * versionGroupField.ts — Version groups (linking revision versions, #268)
  *
@@ -31,8 +32,8 @@ import {
     Transaction,
     type TransactionSpec,
 } from "@codemirror/state";
-import { invertedEffects } from "@codemirror/commands";
 import { mapValues } from "lodash-es";
+import { _deleteVersionFromRevision, removeAnnotation } from "./annotationField";
 import {
     type VersionGroup,
     type VersionGroupMember,
@@ -43,7 +44,6 @@ import {
     membersEqual,
     newGroupId,
 } from "./models";
-import { _deleteVersionFromRevision, removeAnnotation } from "./annotationField";
 
 // ── Effects ─────────────────────────────────────────────────────
 // All carry enough to invert for undo.

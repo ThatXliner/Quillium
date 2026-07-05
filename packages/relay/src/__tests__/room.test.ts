@@ -27,6 +27,10 @@ import {
     scheduleRoomCleanup,
 } from "../yjs/rooms.js";
 
+function fakeWebSocket(): WebSocket {
+    return {} as WebSocket;
+}
+
 function makeLegacyYdoc(): Y.Doc {
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText("document");
@@ -149,7 +153,7 @@ describe("Yjs room manager", () => {
     it("does not remove rooms that receive a client before cleanup fires", async () => {
         vi.useFakeTimers();
         const room = await getOrCreateYjsRoom("doc-active");
-        room.clients.add({} as WebSocket);
+        room.clients.add(fakeWebSocket());
         vi.mocked(persistYjsState).mockClear();
         vi.mocked(clearYjsUpdates).mockClear();
 

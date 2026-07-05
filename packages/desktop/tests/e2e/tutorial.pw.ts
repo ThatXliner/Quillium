@@ -6,7 +6,7 @@
  * the guided tour's interactive steps.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 /**
  * Install the Tauri mock WITHOUT setting quillium_tutorial_seen,

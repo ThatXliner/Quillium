@@ -1,17 +1,17 @@
+import { createYjsBinding, yjsAnnotation } from "$lib/collab/yjsBinding";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { isAnnotationOfType, makeVersion } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 /**
  * yjsBinding.test.ts -- Tests for Y.Text <-> CodeMirror binding.
  *
  * Tests bidirectional sync between Y.Text shared type and CodeMirror EditorState.
  * Verifies origin tracking for UndoManager compatibility (D-74).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { EditorSelection, EditorState, StateEffect } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { createYjsBinding, yjsAnnotation } from "$lib/collab/yjsBinding";
-import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { isAnnotationOfType, makeVersion } from "$lib/editor/plugins/annotations/models";
 
 describe("yjsBinding", () => {
     let ydoc: Y.Doc;

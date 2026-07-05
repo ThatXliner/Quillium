@@ -1,9 +1,9 @@
 <script lang="ts">
-import { onMount } from "svelte";
-import { initReveal } from "$lib/reveal";
-import Nav from "$lib/components/Nav.svelte";
-import Manifesto from "$lib/components/Manifesto.svelte";
 import Footer from "$lib/components/Footer.svelte";
+import Manifesto from "$lib/components/Manifesto.svelte";
+import Nav from "$lib/components/Nav.svelte";
+import { initReveal } from "$lib/reveal";
+import { onMount } from "svelte";
 
 onMount(() => {
     initReveal();

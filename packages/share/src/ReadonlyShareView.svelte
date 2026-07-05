@@ -5,11 +5,11 @@ import ReadonlyAnnotatedText from "./ReadonlyAnnotatedText.svelte";
 import ReadonlyAnnotationCard from "./ReadonlyAnnotationCard.svelte";
 import ReadonlyAnnotationModal from "./ReadonlyAnnotationModal.svelte";
 import {
+    type AnnotationId,
+    type RevisionVersionSelections,
     buildDisplayedShare,
     findAnnotationPath,
     getSelectedRevisionVersionIndex,
-    type AnnotationId,
-    type RevisionVersionSelections,
 } from "./rendering";
 import type { ReadonlyShareDocument, SerializedAnnotation } from "./types";
 

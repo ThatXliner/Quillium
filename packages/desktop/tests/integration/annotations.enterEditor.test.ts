@@ -13,13 +13,9 @@
  * the revision to irreversibly disappear on the next keystroke).
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo } from "@codemirror/commands";
 import {
-    annotationKeymap,
     annotations as annotationExtensions,
+    annotationKeymap,
 } from "$lib/editor/plugins/annotations";
 import {
     addAnnotation,
@@ -32,8 +28,12 @@ import {
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { makeParentUndoKeymap } from "$lib/editor/plugins/annotations/nestedEditor";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { history, undo } from "@codemirror/commands";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────
 

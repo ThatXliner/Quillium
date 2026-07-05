@@ -1,6 +1,6 @@
+import { env } from "$env/dynamic/private";
 import { json } from "@sveltejs/kit";
 import { Resend } from "resend";
-import { env } from "$env/dynamic/private";
 import type { RequestHandler } from "./$types";
 
 const TOPIC_ID = "5627d275-9674-4dd4-937c-c3f2d2a00ec7";

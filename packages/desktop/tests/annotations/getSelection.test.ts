@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Text } from "@codemirror/state";
 import { getSelection } from "$lib/editor/plugins/annotations";
 import { appSettings } from "$lib/settings.svelte";
+import { Text } from "@codemirror/state";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCapture, mockShowPrivacyNudge } = vi.hoisted(() => ({
     mockCapture: vi.fn(),

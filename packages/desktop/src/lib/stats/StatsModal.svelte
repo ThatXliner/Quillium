@@ -8,19 +8,19 @@
       - onclose: () => void — called when the modal is dismissed.
 -->
 <script lang="ts">
-import { X, BarChart3, HelpCircle } from "lucide-svelte";
-import { computeStats } from "$lib/stats/compute";
-import { documentContent } from "$lib/stores";
-import { appSettings } from "$lib/settings.svelte";
+import { type CharacterizerResult, generateCharacterization } from "$lib/ai/clientStreams";
 import {
     aiSettings,
-    ensureApiKeyLoaded,
     beginAiTask,
     endAiTask,
+    ensureApiKeyLoaded,
     getAiAbortSignal,
 } from "$lib/ai/settings.svelte";
-import { generateCharacterization, type CharacterizerResult } from "$lib/ai/clientStreams";
+import { appSettings } from "$lib/settings.svelte";
 import StatsInfoModal from "$lib/stats/StatsInfoModal.svelte";
+import { computeStats } from "$lib/stats/compute";
+import { documentContent } from "$lib/stores";
+import { BarChart3, HelpCircle, X } from "lucide-svelte";
 
 const { onclose }: { onclose: () => void } = $props();
 
@@ -94,8 +94,8 @@ async function analyze() {
             documentContent: text,
             abortSignal,
         });
-    } catch (e: any) {
-        if (!abortSignal.aborted) error = e?.message ?? "Analysis failed";
+    } catch (e: unknown) {
+        if (!abortSignal.aborted) error = e instanceof Error ? e.message : "Analysis failed";
     } finally {
         analyzing = false;
         endAiTask(task);

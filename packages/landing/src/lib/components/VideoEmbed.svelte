@@ -1,7 +1,7 @@
 <script lang="ts">
-import { untrack } from "svelte";
 import { Play } from "@lucide/svelte";
 import posthog from "posthog-js";
+import { untrack } from "svelte";
 
 let {
     videoId,
@@ -23,8 +23,9 @@ let activated = $state(untrack(() => eager));
 
 // privacy-nocookie domain; mute+autoplay+loop only in eager (hero) mode
 let embedSrc = $derived(
-    `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1` +
-        (eager ? `&autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0` : `&autoplay=1`),
+    `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1${
+        eager ? `&autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0` : "&autoplay=1"
+    }`,
 );
 
 function activate() {

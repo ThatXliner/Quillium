@@ -1,3 +1,15 @@
+import {
+    type GenericAnnotation,
+    type RawAnnotation,
+    type RawAnnotations,
+    RawAnnotationsSchema,
+    type SuggestionReplacement,
+    type ThreadMessage,
+    type VersionState,
+    activeVersionIndex,
+    isAnnotationOfType,
+    normalizeRevision,
+} from "$lib/editor/plugins/annotations/models";
 /**
  * annotationSchema.ts — Yjs recursive-Y.Map annotation converters.
  *
@@ -20,17 +32,6 @@
  *   - ./relativePosition for position encoding
  *   - ../editor/plugins/annotations/models for CM types
  */
-import {
-    type GenericAnnotation,
-    type RawAnnotation,
-    type RawAnnotations,
-    RawAnnotationsSchema,
-    type SuggestionReplacement,
-    type ThreadMessage,
-    type VersionState,
-    isAnnotationOfType,
-    normalizeRevision,
-} from "$lib/editor/plugins/annotations/models";
 import { EditorSelection } from "@codemirror/state";
 import * as Y from "yjs";
 import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";

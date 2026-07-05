@@ -32,7 +32,7 @@ export async function load({ fetch }): Promise<{ release: ReleaseData }> {
     try {
         const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
         const token = env.GITHUB_PAT;
-        if (token) headers["Authorization"] = `Bearer ${token}`;
+        if (token) headers.Authorization = `Bearer ${token}`;
 
         const latestRes = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
             headers,

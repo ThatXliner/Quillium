@@ -1,4 +1,7 @@
 <script lang="ts">
+import posthog from "$lib/posthog";
+import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
+import type { EditorView } from "@codemirror/view";
 /**
  * DiffModal.svelte — Full-screen modal showing a token-level
  * diff between the original document text and a chosen AI
@@ -22,9 +25,9 @@
  * list with optional rationale text.
  */
 import { ChevronRight, GitBranchIcon, SparklesIcon, Trash2, X } from "lucide-svelte";
-import type { EditorView } from "@codemirror/view";
-import { annotations as annotationsStore, modalAnnotationStores, modalStack } from "$lib/stores";
 import {
+    type Annotation,
+    type Thread as ThreadType,
     annotationField,
     applySuggestion,
     branchSuggestion,
@@ -32,11 +35,8 @@ import {
     removeAnnotation,
     tokenize,
     updateThread,
-    type Annotation,
-    type Thread as ThreadType,
 } from ".";
 import Thread from "./Thread.svelte";
-import posthog from "$lib/posthog";
 
 const {
     suggestionId,

@@ -1,4 +1,6 @@
 <script lang="ts">
+import posthog from "$lib/posthog";
+import { modalStack } from "$lib/stores";
 /**
  * Suggestion.svelte — Displays an AI-generated suggestion card
  * with one or more replacement options, inline diff preview,
@@ -27,16 +29,14 @@
 import type { EditorView } from "@codemirror/view";
 import { ChevronDownIcon, GitBranchIcon, Maximize2, SparklesIcon, Trash2 } from "lucide-svelte";
 import {
+    type Annotation,
+    type Thread as ThreadType,
     applySuggestion,
     branchSuggestion,
     diffTokens,
     tokenize,
-    type Annotation,
-    type Thread as ThreadType,
 } from ".";
 import Thread from "./Thread.svelte";
-import { modalStack } from "$lib/stores";
-import posthog from "$lib/posthog";
 
 const {
     suggestion,
