@@ -42,6 +42,7 @@ import {
     annotationField,
     createNewRevision,
     deleteRevisionVersion,
+    makeVersionFromSelection,
     removeAnnotation,
     revisionInternalEdit,
     setActiveRevisionVersion,
@@ -595,11 +596,14 @@ function executePendingNestedCommand(
             canCreateRevision(s2.field(annotationField), s2.selection)
         ) {
             const sel = s2.selection.main;
-            const originalText = s2.sliceDoc(sel.from, sel.to);
             const autoVersion = appSettings.autoVersionOnRevisionCreate;
+            const { version: originalVersion, containedAnnotations } = makeVersionFromSelection(
+                s2,
+                s2.selection,
+            );
             const versions: VersionState[] = autoVersion
-                ? [makeVersion({ doc: originalText }), makeVersion({ doc: "" })]
-                : [makeVersion({ doc: originalText })];
+                ? [originalVersion, makeVersion({ doc: "" })]
+                : [originalVersion];
             const annotationSelection = autoVersion
                 ? EditorSelection.single(sel.from)
                 : s2.selection;
@@ -616,6 +620,9 @@ function executePendingNestedCommand(
             activeEditor.dispatch(
                 s2.update({
                     effects: [
+                        ...containedAnnotations.map((annotation) =>
+                            removeAnnotation.of(annotation),
+                        ),
                         addAnnotation.of({
                             ...newAnnotation,
                             activeVersionId: (autoVersion ? versions[1] : versions[0]).id,

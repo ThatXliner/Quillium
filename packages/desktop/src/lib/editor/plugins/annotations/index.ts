@@ -92,6 +92,7 @@ import {
     addAnnotation,
     annotationField,
     invertedAnnotationFieldEffects,
+    makeVersionFromSelection,
     removeAnnotation,
     revisionInternalEdit,
     setActiveRevisionVersion,
@@ -729,11 +730,11 @@ export function createRevision({
         document: state.doc,
     });
     if (!canCreateRevision(state.field(annotationField), selection)) return false;
-    const originalText = state.sliceDoc(selection.main.from, selection.main.to);
-    const originalVersion = makeVersion({
-        doc: originalText,
-        label: "Original",
-    });
+    const { version: originalVersion, containedAnnotations } = makeVersionFromSelection(
+        state,
+        selection,
+        { label: "Original" },
+    );
     const allVersions = [
         originalVersion,
         ...versions.map(({ label, text }) => makeVersion({ doc: text, label })),
@@ -741,6 +742,7 @@ export function createRevision({
     view.dispatch(
         state.update({
             effects: [
+                ...containedAnnotations.map((annotation) => removeAnnotation.of(annotation)),
                 addAnnotation.of({
                     ...createNewAnnotation(state.field(annotationField), selection, "revision"),
                     activeVersionId: originalVersion.id,
@@ -789,11 +791,12 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
         return true;
     }
     const sel = state.selection.main;
-    const originalText = state.sliceDoc(sel.from, sel.to);
     const autoVersion = appSettings.autoVersionOnRevisionCreate;
-    const versions = autoVersion
-        ? [makeVersion({ doc: originalText }), makeVersion({ doc: "" })]
-        : [makeVersion({ doc: originalText })];
+    const { version: originalVersion, containedAnnotations } = makeVersionFromSelection(
+        state,
+        state.selection,
+    );
+    const versions = autoVersion ? [originalVersion, makeVersion({ doc: "" })] : [originalVersion];
     // When autoVersion is on, the text under the revision is deleted in the
     // same transaction. Effects within a transaction are NOT remapped through
     // that transaction's changes, so the annotation must carry post-change
@@ -808,6 +811,7 @@ export const createRevisionCommand: StateCommand = ({ state, dispatch }) => {
     dispatch(
         state.update({
             effects: [
+                ...containedAnnotations.map((annotation) => removeAnnotation.of(annotation)),
                 addAnnotation.of({
                     ...newAnnotation,
                     activeVersionId: (autoVersion ? versions[1] : versions[0]).id,

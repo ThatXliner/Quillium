@@ -2,6 +2,7 @@ import {
     annotations as annotationExtensions,
     createComment,
     createRevision,
+    createRevisionCommand,
     createSuggestion,
 } from "$lib/editor/plugins/annotations";
 import {
@@ -11,6 +12,7 @@ import {
     revisionInternalEdit,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    type VersionState,
     activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
@@ -352,6 +354,52 @@ describe("annotation workflows integration", () => {
         expect(annotations[0].versions[1]?.doc).toBe("Therefore");
         expect(annotations[0].versions[2]?.doc).toBe("Then");
         expect(annotations[0].thread[0]?.message).toBe("Try alternatives");
+    });
+
+    it("createRevisionCommand transfers contained annotations into the original version", () => {
+        view = createView("Alpha Beta Gamma");
+        const comment = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(11, 16),
+                "comment",
+            ),
+            thread: [{ message: "Keep this note", author: "Reviewer", time: 1 }],
+        };
+        view.dispatch(view.state.update({ effects: [addAnnotation.of(comment)] }));
+        view.dispatch({ selection: EditorSelection.single(6, 16) });
+
+        const handled = createRevisionCommand({
+            state: view.state,
+            dispatch: (transaction) => view?.dispatch(transaction),
+        });
+
+        expect(handled).toBe(true);
+        const annotations = getAnnotations(view);
+        expect(annotations).toHaveLength(1);
+        expect(isAnnotationOfType(annotations[0], "revision")).toBe(true);
+        if (!isAnnotationOfType(annotations[0], "revision")) return;
+
+        const originalVersion = annotations[0].versions[0] as VersionState & {
+            annotationField?: Record<
+                string,
+                { selection: { ranges: Array<{ anchor: number; head: number }> } }
+            >;
+        };
+        expect(originalVersion.doc).toBe("Beta Gamma");
+        expect(originalVersion.annotationField?.[comment.id]?.selection.ranges[0]).toEqual({
+            anchor: 5,
+            head: 10,
+        });
+        expect(view.state.doc.toString()).toBe("Alpha ");
+
+        undo(view);
+        expect(view.state.doc.toString()).toBe("Alpha Beta Gamma");
+        const afterUndo = getAnnotations(view);
+        expect(afterUndo).toHaveLength(1);
+        expect(isAnnotationOfType(afterUndo[0], "comment")).toBe(true);
+        expect(afterUndo[0].selection.main.from).toBe(11);
+        expect(afterUndo[0].selection.main.to).toBe(16);
     });
 
     it("createComment throws when neither targetText nor editorSelection is provided", () => {

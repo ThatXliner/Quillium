@@ -326,6 +326,64 @@ function groupSwitchTargets(
     }
     return result;
 }
+
+function annotationFullyContainedInSelection(
+    annotation: GenericAnnotation,
+    selection: EditorSelection,
+): boolean {
+    const { from, to } = selection.main;
+    return annotation.selection.ranges.every((range) => range.from >= from && range.to <= to);
+}
+
+function rebaseSelectionToVersion(selection: EditorSelection, offset: number): EditorSelection {
+    const ranges = selection.ranges.map((range) =>
+        EditorSelection.range(range.anchor - offset, range.head - offset),
+    );
+    return EditorSelection.create(ranges, selection.mainIndex);
+}
+
+function serializeNestedAnnotation(
+    annotation: GenericAnnotation,
+    offset: number,
+): Record<string, unknown> {
+    return JSON.parse(
+        JSON.stringify({
+            ...annotation,
+            selection: rebaseSelectionToVersion(annotation.selection, offset).toJSON(),
+        }),
+    );
+}
+
+export function makeVersionFromSelection(
+    state: EditorState,
+    selection: EditorSelection,
+    options: { label?: string } = {},
+): { version: VersionState; containedAnnotations: GenericAnnotation[] } {
+    const { from, to } = selection.main;
+    const doc = state.sliceDoc(from, to);
+    const containedAnnotations = Object.values(state.field(annotationField)).filter((annotation) =>
+        annotationFullyContainedInSelection(annotation, selection),
+    );
+    const nestedAnnotationField =
+        containedAnnotations.length > 0
+            ? Object.fromEntries(
+                  containedAnnotations.map((annotation) => [
+                      annotation.id,
+                      serializeNestedAnnotation(annotation, from),
+                  ]),
+              )
+            : undefined;
+    const rawVersion: Omit<VersionState, "id"> & { id?: string } & Record<string, unknown> = {
+        doc,
+        ...(options.label !== undefined ? { label: options.label } : {}),
+        ...(nestedAnnotationField !== undefined ? { annotationField: nestedAnnotationField } : {}),
+    };
+    return {
+        version: makeVersion(rawVersion),
+        containedAnnotations,
+    };
+}
+
 export function createNewRevision(state: EditorState, annotationId: number) {
     const original = state.field(annotationField)[annotationId];
     if (!isAnnotationOfType(original, "revision")) {
