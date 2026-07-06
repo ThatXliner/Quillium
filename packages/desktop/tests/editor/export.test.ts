@@ -10,6 +10,7 @@ import { EditorHarness } from "../helpers/EditorHarness";
 let h: EditorHarness;
 let savedContent: string;
 let savedPath: string;
+let invokedTextPath: string;
 let invokedPdfPath: string;
 let invokedPdfPayload: unknown;
 let mockedDrafts: DraftMeta[];
@@ -31,7 +32,14 @@ vi.mock("@tauri-apps/api/core", () => ({
     invoke: vi
         .fn()
         .mockImplementation(
-            async (command: string, args?: { path?: string; payload?: unknown }) => {
+            async (
+                command: string,
+                args?: { path?: string; content?: string; payload?: unknown },
+            ) => {
+                if (command === "cmd_export_text") {
+                    invokedTextPath = args?.path ?? "";
+                    savedContent = args?.content ?? "";
+                }
                 if (command === "cmd_export_pdf") {
                     invokedPdfPath = args?.path ?? "";
                     invokedPdfPayload = args?.payload;
@@ -40,7 +48,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         ),
 }));
 
-// Mock Tauri dialog and fs plugins
+// Mock Tauri dialog plugin
 vi.mock("@tauri-apps/plugin-dialog", () => ({
     save: vi.fn().mockImplementation(async (opts: { defaultPath: string }) => {
         savedPath = opts.defaultPath;
@@ -48,15 +56,10 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
     }),
 }));
 
-vi.mock("@tauri-apps/plugin-fs", () => ({
-    writeTextFile: vi.fn().mockImplementation(async (_path: string, content: string) => {
-        savedContent = content;
-    }),
-}));
-
 beforeEach(() => {
     savedContent = "";
     savedPath = "";
+    invokedTextPath = "";
     invokedPdfPath = "";
     invokedPdfPayload = null;
     mockedDrafts = [
@@ -93,7 +96,12 @@ describe("exportDocument", () => {
             await exportDocument(h.view, "txt");
 
             expect(savedPath).toBe("Test Document.txt");
+            expect(invokedTextPath).toBe("/fake/path/Test Document.txt");
             expect(savedContent).toBe("Hello world");
+            expect(vi.mocked(invoke)).toHaveBeenCalledWith("cmd_export_text", {
+                path: "/fake/path/Test Document.txt",
+                content: "Hello world",
+            });
         });
     });
 

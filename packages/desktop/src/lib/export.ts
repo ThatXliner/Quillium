@@ -16,7 +16,7 @@ import type { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import { annotationField } from "./editor/plugins/annotations";
 import {
@@ -48,6 +48,20 @@ type PdfExportPayload = {
     annotations: PdfAnnotationCard[];
 };
 
+function exportErrorDescription(error: unknown): string {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "string" && error.trim()) return error;
+    return "The file could not be written.";
+}
+
+function reportExportFailure(format: ExportFormat, error: unknown): void {
+    console.error("[export] export failed", { format, error });
+    toast.error("Export failed", {
+        description: exportErrorDescription(error),
+    });
+    posthog.capture("document_export_failed", { format });
+}
+
 export async function saveWithDialog(
     content: string,
     defaultName: string,
@@ -68,7 +82,7 @@ export async function saveWithDialog(
         filters: [{ name: filterName, extensions: [extension] }],
     });
     if (!path) return false;
-    await writeTextFile(path, content);
+    await invoke("cmd_export_text", { path, content });
     return true;
 }
 
@@ -364,72 +378,88 @@ function buildContent(state: EditorState, format: TextExportFormat, title: strin
 }
 
 /** Export from an active EditorView (used from the editor). */
-export async function exportDocument(view: EditorView, format: ExportFormat) {
-    const rawTitle = get(currentDocumentTitle).trim() || "document";
-    const safeTitle = sanitizeFilename(rawTitle);
-    const saved =
-        format === "pdf" || format === "pdf+annotations"
-            ? await savePdfWithDialog(
-                  buildPdfPayload(view.state, rawTitle, format === "pdf+annotations"),
-                  `${safeTitle}.${fileExtensions[format]}`,
-              )
-            : await saveWithDialog(
-                  buildContent(view.state, format, rawTitle),
-                  `${safeTitle}.${fileExtensions[format]}`,
-                  fileExtensions[format],
-              );
-    if (saved) {
-        posthog.capture("document_exported", { format });
+export async function exportDocument(view: EditorView, format: ExportFormat): Promise<boolean> {
+    try {
+        const rawTitle = get(currentDocumentTitle).trim() || "document";
+        const safeTitle = sanitizeFilename(rawTitle);
+        const saved =
+            format === "pdf" || format === "pdf+annotations"
+                ? await savePdfWithDialog(
+                      buildPdfPayload(view.state, rawTitle, format === "pdf+annotations"),
+                      `${safeTitle}.${fileExtensions[format]}`,
+                  )
+                : await saveWithDialog(
+                      buildContent(view.state, format, rawTitle),
+                      `${safeTitle}.${fileExtensions[format]}`,
+                      fileExtensions[format],
+                  );
+        if (saved) {
+            posthog.capture("document_exported", { format });
+        }
+        return saved;
+    } catch (error) {
+        reportExportFailure(format, error);
+        return false;
     }
 }
 
 /** Export a document by loading its state from the database. */
-export async function exportDocumentById(docId: string, docTitle: string, format: ExportFormat) {
-    const { loadDocumentState, resolveActiveDraftId } = await import("./db");
-    const { replayEvents } = await import("./editor/replay");
-    const { history, historyField } = await import("@codemirror/commands");
-    const { EditorState } = await import("@codemirror/state");
-    const { annotationField } = await import("./editor/plugins/annotations");
+export async function exportDocumentById(
+    docId: string,
+    docTitle: string,
+    format: ExportFormat,
+): Promise<boolean> {
+    try {
+        const { loadDocumentState, resolveActiveDraftId } = await import("./db");
+        const { replayEvents } = await import("./editor/replay");
+        const { history, historyField } = await import("@codemirror/commands");
+        const { EditorState } = await import("@codemirror/state");
+        const { annotationField } = await import("./editor/plugins/annotations");
 
-    const activeDraftId = await resolveActiveDraftId(docId);
-    if (!activeDraftId) return;
+        const activeDraftId = await resolveActiveDraftId(docId);
+        if (!activeDraftId) return false;
 
-    const loaded = await loadDocumentState(docId, activeDraftId);
+        const loaded = await loadDocumentState(docId, activeDraftId);
 
-    const extensions = [history(), annotationField];
-    let state: EditorState;
-    if (loaded.snapshotStateJson && loaded.snapshotStateJson !== "{}") {
-        try {
-            state = EditorState.fromJSON(
-                JSON.parse(loaded.snapshotStateJson),
-                { extensions },
-                { historyField, annotationField },
-            );
-        } catch {
+        const extensions = [history(), annotationField];
+        let state: EditorState;
+        if (loaded.snapshotStateJson && loaded.snapshotStateJson !== "{}") {
+            try {
+                state = EditorState.fromJSON(
+                    JSON.parse(loaded.snapshotStateJson),
+                    { extensions },
+                    { historyField, annotationField },
+                );
+            } catch {
+                state = EditorState.create({ extensions });
+            }
+        } else {
             state = EditorState.create({ extensions });
         }
-    } else {
-        state = EditorState.create({ extensions });
-    }
 
-    if (loaded.eventsSince.length > 0) {
-        state = replayEvents(state, loaded.eventsSince);
-    }
+        if (loaded.eventsSince.length > 0) {
+            state = replayEvents(state, loaded.eventsSince);
+        }
 
-    const rawTitle = docTitle.trim() || "document";
-    const safeTitle = sanitizeFilename(rawTitle);
-    const saved =
-        format === "pdf" || format === "pdf+annotations"
-            ? await savePdfWithDialog(
-                  buildPdfPayload(state, rawTitle, format === "pdf+annotations"),
-                  `${safeTitle}.${fileExtensions[format]}`,
-              )
-            : await saveWithDialog(
-                  buildContent(state, format, rawTitle),
-                  `${safeTitle}.${fileExtensions[format]}`,
-                  fileExtensions[format],
-              );
-    if (saved) {
-        posthog.capture("document_exported", { format, source: "library" });
+        const rawTitle = docTitle.trim() || "document";
+        const safeTitle = sanitizeFilename(rawTitle);
+        const saved =
+            format === "pdf" || format === "pdf+annotations"
+                ? await savePdfWithDialog(
+                      buildPdfPayload(state, rawTitle, format === "pdf+annotations"),
+                      `${safeTitle}.${fileExtensions[format]}`,
+                  )
+                : await saveWithDialog(
+                      buildContent(state, format, rawTitle),
+                      `${safeTitle}.${fileExtensions[format]}`,
+                      fileExtensions[format],
+                  );
+        if (saved) {
+            posthog.capture("document_exported", { format, source: "library" });
+        }
+        return saved;
+    } catch (error) {
+        reportExportFailure(format, error);
+        return false;
     }
 }

@@ -3,7 +3,7 @@ pub mod embeddings;
 mod keychain;
 mod pdf_export;
 
-use std::sync::Mutex;
+use std::{fs, sync::Mutex};
 use tauri::Manager;
 
 use db::{
@@ -652,6 +652,11 @@ fn cmd_export_pdf(path: String, payload: PdfExportPayload) -> Result<(), String>
     export_pdf_to_path(&path, &payload)
 }
 
+#[tauri::command]
+fn cmd_export_text(path: String, content: String) -> Result<(), String> {
+    fs::write(path, content).map_err(|err| err.to_string())
+}
+
 // ── Debug reset command ───────────────────────────────────────────
 
 /// Wipes all user data from the database (documents, drafts, events,
@@ -1018,6 +1023,7 @@ pub fn run() {
             scrap,
             cmd_get_trash_retention,
             cmd_export_pdf,
+            cmd_export_text,
             cmd_set_trash_retention,
             cmd_purge_expired_trash,
             cmd_list_documents,
