@@ -142,6 +142,90 @@ describe("listeners integration", () => {
         expect(payload.annotation).toBeDefined();
     });
 
+    it("creates a named snapshot before a revision annotation is persisted", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        lastPersistedEventId.set(12);
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_create_named_snapshot") return 99;
+            if (cmd === "cmd_append_event") return { eventId: 13, needsSnapshot: false };
+            return null;
+        });
+
+        view = makeView();
+        const versions = [makeVersion({ doc: "Hello" })];
+        const revision = {
+            ...createNewAnnotation(
+                view.state.field(annotationField),
+                EditorSelection.single(0, 5),
+                "revision",
+            ),
+            activeVersionId: versions[0].id,
+            versions,
+        };
+        view.dispatch(view.state.update({ effects: [addAnnotation.of(revision)] }));
+        await flushMicrotasks();
+
+        const snapshotIndex = invoked.findIndex((call) => call.cmd === "cmd_create_named_snapshot");
+        const appendIndex = invoked.findIndex((call) => call.cmd === "cmd_append_event");
+        expect(snapshotIndex).toBeGreaterThanOrEqual(0);
+        expect(appendIndex).toBeGreaterThanOrEqual(0);
+        expect(snapshotIndex).toBeLessThan(appendIndex);
+
+        const args = invoked[snapshotIndex]?.args as {
+            draftId: string;
+            upToEventId: number;
+            label: string;
+            stateJson: string;
+        };
+        expect(args.draftId).toBe("draft-1");
+        expect(args.upToEventId).toBe(12);
+        expect(args.label).toBe("Before revision creation (auto)");
+        const snapshotState = JSON.parse(args.stateJson) as {
+            annotationField?: Record<string, unknown>;
+        };
+        expect(Object.keys(snapshotState.annotationField ?? {})).toHaveLength(0);
+    });
+
+    it("creates a named snapshot after a comment annotation is persisted", async () => {
+        const invoked: Array<{ cmd: string; args: unknown }> = [];
+        mockIPC((cmd, args) => {
+            invoked.push({ cmd, args });
+            if (cmd === "cmd_append_event") return { eventId: 21, needsSnapshot: false };
+            if (cmd === "cmd_create_named_snapshot") return 100;
+            return null;
+        });
+
+        view = makeView();
+        const comment = createNewAnnotation(
+            view.state.field(annotationField),
+            EditorSelection.single(0, 5),
+            "comment",
+        );
+        view.dispatch(view.state.update({ effects: [addAnnotation.of(comment)] }));
+        await flushMicrotasks();
+
+        const appendIndex = invoked.findIndex((call) => call.cmd === "cmd_append_event");
+        const snapshotIndex = invoked.findIndex((call) => call.cmd === "cmd_create_named_snapshot");
+        expect(appendIndex).toBeGreaterThanOrEqual(0);
+        expect(snapshotIndex).toBeGreaterThanOrEqual(0);
+        expect(appendIndex).toBeLessThan(snapshotIndex);
+
+        const args = invoked[snapshotIndex]?.args as {
+            draftId: string;
+            upToEventId: number;
+            label: string;
+            stateJson: string;
+        };
+        expect(args.draftId).toBe("draft-1");
+        expect(args.upToEventId).toBe(21);
+        expect(args.label).toBe("After comment annotation (auto)");
+        const snapshotState = JSON.parse(args.stateJson) as {
+            annotationField?: Record<string, unknown>;
+        };
+        expect(snapshotState.annotationField?.[comment.id]).toBeDefined();
+    });
+
     it("does not invoke cmd_append_event on selection-only updates", async () => {
         const invoked: Array<{ cmd: string; args: unknown }> = [];
         mockIPC((cmd, args) => {

@@ -50,6 +50,7 @@ import {
     type GenericAnnotation,
     addAnnotation,
     annotationsChanged,
+    isRawAnnotationOfType,
     nestedEditorEdit,
     removeAnnotation,
     revisionInternalEdit,
@@ -314,6 +315,44 @@ export function flushPersistQueue(): Promise<void> {
     return persistQueue.catch(() => {});
 }
 
+function annotationEventsForPayload(payload: EventPayload): AnnotationEvent[] {
+    if (payload.type === "compound") return payload.annotationEvents;
+    if (
+        payload.type === "annotation_add" ||
+        payload.type === "annotation_remove" ||
+        payload.type === "annotation_update"
+    ) {
+        return [payload];
+    }
+    return [];
+}
+
+function payloadAddsAnnotationOfType(payload: EventPayload, type: "comment" | "revision"): boolean {
+    return annotationEventsForPayload(payload).some(
+        (event) => event.type === "annotation_add" && isRawAnnotationOfType(event.annotation, type),
+    );
+}
+
+function isUndoRedoUpdate(update: ViewUpdate): boolean {
+    return update.transactions.some((tr) => tr.isUserEvent("undo") || tr.isUserEvent("redo"));
+}
+
+async function createAutosaveSnapshot(
+    draftId: string,
+    stateJson: string,
+    eventId: number,
+    label: string,
+): Promise<boolean> {
+    try {
+        await createNamedSnapshot(draftId, stateJson, eventId, label);
+        return true;
+    } catch (e) {
+        console.error(e);
+        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        return false;
+    }
+}
+
 async function doAppend(
     update: ViewUpdate,
     enqueueDocId: string | null,
@@ -326,12 +365,26 @@ async function doAppend(
 
     const payload = buildEventPayload(update);
     if (!payload) return;
+    const isUndoRedo = isUndoRedoUpdate(update);
+    const shouldSnapshotBeforeRevision =
+        !isUndoRedo && payloadAddsAnnotationOfType(payload, "revision");
+    const shouldSnapshotAfterComment =
+        !isUndoRedo && payloadAddsAnnotationOfType(payload, "comment");
+
+    if (shouldSnapshotBeforeRevision) {
+        await createAutosaveSnapshot(
+            draftId,
+            JSON.stringify(update.startState.toJSON(savedFields)),
+            get(lastPersistedEventId),
+            "Before revision creation (auto)",
+        );
+    }
 
     // Guard: check for suspiciously large deletions before writing to DB.
     // If suspicious, snapshot the pre-deletion state so version history
     // has a guaranteed recovery point. Skip if every doc-changing
     // transaction is an explicit user delete or a crash-restore operation.
-    if (update.docChanged) {
+    if (update.docChanged && !shouldSnapshotBeforeRevision) {
         const allUserInitiated = update.transactions
             .filter((tr) => tr.docChanged)
             .every((tr) => tr.isUserEvent("delete") || tr.isUserEvent("input.restore"));
@@ -456,7 +509,16 @@ async function doAppend(
         lastPersistedEventId.set(result.eventId);
         lastSavedAt.set(Date.now());
 
-        if (result.needsSnapshot) {
+        const wroteCommentSnapshot = shouldSnapshotAfterComment
+            ? await createAutosaveSnapshot(
+                  draftId,
+                  JSON.stringify(update.state.toJSON(savedFields)),
+                  result.eventId,
+                  "After comment annotation (auto)",
+              )
+            : false;
+
+        if (result.needsSnapshot && !wroteCommentSnapshot) {
             const stateJson = JSON.stringify(update.state.toJSON(savedFields));
             await createSnapshot(draftId, stateJson, result.eventId).catch((e) => {
                 console.error(e);

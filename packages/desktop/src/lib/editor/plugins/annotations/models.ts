@@ -290,6 +290,14 @@ export type RawAnnotation = z.infer<typeof RawAnnotationSchema>;
 export type RawAnnotations = z.infer<typeof RawAnnotationsSchema>;
 export type Annotations = { [id: number]: GenericAnnotation };
 
+export function isRawAnnotationOfType<T extends AnnotationType>(
+    annotation: unknown,
+    type: T,
+): annotation is RawAnnotation & { _type: T } {
+    const result = RawAnnotationSchema.safeParse(annotation);
+    return result.success && result.data._type === type;
+}
+
 // ── Version groups (linking revision versions together, #268) ───
 // A group links one version from each of several DIFFERENT revisions into a
 // matched set: activating any member switches every member to its partner.
