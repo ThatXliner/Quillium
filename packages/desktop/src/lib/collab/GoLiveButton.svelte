@@ -37,13 +37,16 @@ import {
     publishReadonlyShare,
     readonlyShareState,
 } from "$lib/collab/share";
+
 import {
     type ReadonlyShareTab,
     buildReadonlyShareFingerprint,
     getActiveReadonlyShareTab,
     serializeAnnotations,
+    buildShareFingerprint
 } from "$lib/collab/sharePayload";
 import { serializeLoadedShareState } from "$lib/collab/shareState";
+
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { OMNI_WAITLIST_URL } from "$lib/constants";
 import {
