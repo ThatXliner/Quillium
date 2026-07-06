@@ -9,25 +9,25 @@
  * versions and then editing.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history, undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
 import {
-    annotationField,
-    addAnnotation,
-    nestedEditorEdit,
     _nestedEditRevision,
+    addAnnotation,
+    annotationField,
+    nestedEditorEdit,
     setActiveRevisionVersion,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    activeVersion,
     createNewAnnotation,
     isAnnotationOfType,
-    versionText,
     makeVersion,
-    activeVersion,
+    versionText,
 } from "$lib/editor/plugins/annotations/models";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { history, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

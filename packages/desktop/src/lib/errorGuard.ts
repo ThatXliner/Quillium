@@ -29,18 +29,18 @@
  * }
  */
 
+import { createNamedSnapshot } from "$lib/db";
+import { savedFields } from "$lib/editor/extensions";
+import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
+import posthog from "$lib/posthog";
 import { get } from "svelte/store";
 import {
-    documentContent,
     currentDocumentTitle,
-    editorView,
     currentDraftId,
+    documentContent,
+    editorView,
     lastPersistedEventId,
 } from "./stores";
-import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
-import { savedFields } from "$lib/editor/extensions";
-import { createNamedSnapshot } from "$lib/db";
-import posthog from "$lib/posthog";
 
 export type BackupEntry = {
     timestamp: number;
@@ -85,13 +85,11 @@ function writeBackup(key: string, entry: BackupEntry): boolean {
                 const truncated: BackupEntry = {
                     ...entry,
                     documentText: entry.documentText.slice(-len),
-                    reason: entry.reason + ` [truncated to ${label}]`,
+                    reason: `${entry.reason} [truncated to ${label}]`,
                 };
                 localStorage.setItem(key, JSON.stringify(truncated));
                 return true;
-            } catch {
-                continue;
-            }
+            } catch {}
         }
         return false; // localStorage not available or completely full
     }
@@ -161,7 +159,7 @@ export function isSuspiciousAnnotationChange(oldCount: number, newCount: number)
  * annotations live under the "annotationField" key as a record of raw annotations.
  */
 function countNestedAnnotations(version: object): number {
-    const af = (version as Record<string, unknown>)["annotationField"];
+    const af = (version as Record<string, unknown>).annotationField;
     if (af == null || typeof af !== "object") return 0;
     return Object.keys(af as object).length;
 }
@@ -189,7 +187,7 @@ export function isDeepAnnotationLoss(
         let totalChildren = 0;
 
         for (const version of versions) {
-            const af = (version as Record<string, unknown>)["annotationField"];
+            const af = (version as Record<string, unknown>).annotationField;
             if (af == null || typeof af !== "object") continue;
             const children = Object.values(af as Record<string, unknown>);
             totalChildren += children.length;

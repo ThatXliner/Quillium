@@ -38,8 +38,8 @@ import {
     tool,
 } from "ai";
 import { z } from "zod";
-import { type Provider, createModel } from "./provider";
 import type { AiContextMode, AiTextRange, AnnotationContextInput } from "./context";
+import { type Provider, createModel } from "./provider";
 import { buildDocumentContextPrompt, injectDocumentContext } from "./utils";
 
 type DocumentContext = Record<string, string> | undefined;

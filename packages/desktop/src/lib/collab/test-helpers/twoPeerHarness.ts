@@ -1,3 +1,5 @@
+import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
+import { history } from "@codemirror/commands";
 /**
  * twoPeerHarness.ts -- Shared 2-peer fixture for Yjs convergence tests.
  *
@@ -17,14 +19,12 @@
  */
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { history } from "@codemirror/commands";
 import * as Y from "yjs";
-import { createYjsBinding } from "../yjsBinding";
-import { createAnnotationSyncPlugin } from "../yjsAnnotations";
-import { createYjsUndoExtension } from "../yjsUndo";
 import { AnnotationIdMap } from "../annotationSchema";
-import { annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import type { YjsAnnotationNode } from "../types";
+import { createAnnotationSyncPlugin } from "../yjsAnnotations";
+import { createYjsBinding } from "../yjsBinding";
+import { createYjsUndoExtension } from "../yjsUndo";
 
 export interface Peer {
     ydoc: Y.Doc;

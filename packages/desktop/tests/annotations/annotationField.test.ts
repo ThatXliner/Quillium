@@ -1,25 +1,25 @@
-import { describe, it, expect } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
 import {
-    annotationField,
     addAnnotation,
-    removeAnnotation,
-    updateThread,
     addSuggestion,
-    previewSuggestion,
-    suggestionPreviewField,
+    annotationField,
     applySuggestion,
-    setActiveRevisionVersion,
     createNewRevision,
     deleteRevisionVersion,
+    previewSuggestion,
+    removeAnnotation,
+    setActiveRevisionVersion,
+    suggestionPreviewField,
+    updateThread,
 } from "$lib/editor/plugins/annotations/annotationField";
 import {
+    type GenericAnnotation,
     activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
-    type GenericAnnotation,
 } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { describe, expect, it } from "vitest";
 
 // Resolve a positional version index to its stable id off the live state.
 function versionIdAt(state: EditorState, annotationId: number, index: number): string {

@@ -1,3 +1,4 @@
+import { type Peer, connect, makePeer, teardown } from "$lib/collab/test-helpers/twoPeerHarness";
 /**
  * main-text-sync.test.ts -- Phase 10 integration test proving main text sync works.
  *
@@ -7,8 +8,7 @@
  * This test uses the stripped twoPeerHarness (no annotation sync) to verify
  * that Yjs text binding still works after Phase 10's cleanup.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { makePeer, connect, teardown, type Peer } from "$lib/collab/test-helpers/twoPeerHarness";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("main text sync (Phase 10 verification)", () => {
     let peerA: Peer;

@@ -1,3 +1,15 @@
+import {
+    type GenericAnnotation,
+    type RawAnnotation,
+    type RawAnnotations,
+    RawAnnotationsSchema,
+    type SuggestionReplacement,
+    type ThreadMessage,
+    type VersionState,
+    activeVersionIndex,
+    isAnnotationOfType,
+    normalizeRevision,
+} from "$lib/editor/plugins/annotations/models";
 /**
  * annotationSchema.ts — Yjs recursive-Y.Map annotation converters.
  *
@@ -20,18 +32,6 @@
 import { EditorSelection } from "@codemirror/state";
 import * as Y from "yjs";
 import { absoluteToRelative, relativeToAbsolute } from "./relativePosition";
-import {
-    activeVersionIndex,
-    isAnnotationOfType,
-    normalizeRevision,
-    RawAnnotationsSchema,
-    type GenericAnnotation,
-    type RawAnnotation,
-    type RawAnnotations,
-    type SuggestionReplacement,
-    type ThreadMessage,
-    type VersionState,
-} from "$lib/editor/plugins/annotations/models";
 import type { YjsAnnotationNode } from "./types";
 
 // ── ID generation ─────────────────────────────────────────────────────

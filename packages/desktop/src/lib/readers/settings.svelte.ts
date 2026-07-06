@@ -1,4 +1,4 @@
-import { DEFAULT_PERSONAS, type ReaderPersona, type Chattiness } from "./presets";
+import { type Chattiness, DEFAULT_PERSONAS, type ReaderPersona } from "./presets";
 
 const STORAGE_KEY = "quillium-readers-settings";
 const VALID_CHATTINESS: Chattiness[] = ["quiet", "normal", "verbose"];

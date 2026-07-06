@@ -1,3 +1,30 @@
+import {
+    type Peer,
+    connect,
+    flushAll,
+    makePeerWithAnnotationSync,
+    teardown,
+} from "$lib/collab/test-helpers/twoPeerHarness";
+import {
+    addAnnotation,
+    annotationField,
+    createNewRevision as createNewRevisionTx,
+    deleteRevisionVersion,
+    nestedEditorEdit,
+    removeAnnotation,
+    setActiveRevisionVersion,
+    updateRevisionVersionState,
+    updateThread,
+} from "$lib/editor/plugins/annotations/annotationField";
+import {
+    type GenericAnnotation,
+    type RawAnnotations,
+    type VersionState,
+    activeVersionIndex,
+    isAnnotationOfType,
+    makeVersion,
+} from "$lib/editor/plugins/annotations/models";
+import { EditorSelection } from "@codemirror/state";
 /**
  * annotation-sync.test.ts -- Phase 11 integration tests for annotation sync.
  *
@@ -12,34 +39,7 @@
  *
  * Wave 0 scaffolds - tests filled in as write path is implemented.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { EditorSelection } from "@codemirror/state";
-import {
-    makePeerWithAnnotationSync,
-    connect,
-    flushAll,
-    teardown,
-    type Peer,
-} from "$lib/collab/test-helpers/twoPeerHarness";
-import {
-    annotationField,
-    addAnnotation,
-    removeAnnotation,
-    updateThread,
-    updateRevisionVersionState,
-    setActiveRevisionVersion,
-    createNewRevision as createNewRevisionTx,
-    deleteRevisionVersion,
-    nestedEditorEdit,
-} from "$lib/editor/plugins/annotations/annotationField";
-import {
-    activeVersionIndex,
-    isAnnotationOfType,
-    makeVersion,
-    type GenericAnnotation,
-    type RawAnnotations,
-    type VersionState,
-} from "$lib/editor/plugins/annotations/models";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 function createComment(id: number, from: number, to: number): GenericAnnotation {
     return {

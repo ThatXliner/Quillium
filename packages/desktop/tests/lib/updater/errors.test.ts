@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { isGithubRateLimitUpdateError } from "$lib/updater/errors";
+import { describe, expect, it } from "vitest";
 
 describe("isGithubRateLimitUpdateError", () => {
     it("matches GitHub update endpoint 403 failures", () => {

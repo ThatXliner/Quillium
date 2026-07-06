@@ -8,8 +8,8 @@
       ondismiss — called when the user closes the modal
 -->
 <script lang="ts">
-import { X } from "lucide-svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { X } from "lucide-svelte";
 import { onMount } from "svelte";
 
 type LicenseEntry = {

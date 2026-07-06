@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { shouldHandleRevisionModalKeydown } from "$lib/editor/plugins/annotations/revisionModalKeyguard";
+import { describe, expect, it } from "vitest";
 
 describe("shouldHandleRevisionModalKeydown", () => {
     it("ignores events that were already handled", () => {

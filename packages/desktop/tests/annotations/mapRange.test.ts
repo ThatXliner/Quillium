@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { type GenericAnnotation, makeVersion } from "$lib/editor/plugins/annotations/models";
 import { mapRange } from "$lib/editor/plugins/annotations/utils";
-import { makeVersion, type GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { describe, expect, it } from "vitest";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

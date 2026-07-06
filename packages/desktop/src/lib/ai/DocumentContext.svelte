@@ -12,18 +12,18 @@
     State persisted to localStorage via saveDocumentContext.
 -->
 <script lang="ts">
-import { SparklesIcon } from "lucide-svelte";
-import posthog from "$lib/posthog";
+import { generateContext } from "$lib/ai/clientStreams";
 import {
-    documentContext,
-    saveDocumentContext,
     aiSettings,
     beginAiTask,
+    documentContext,
     endAiTask,
     ensureApiKeyLoaded,
     getAiAbortSignal,
+    saveDocumentContext,
 } from "$lib/ai/settings.svelte";
-import { generateContext } from "$lib/ai/clientStreams";
+import posthog from "$lib/posthog";
+import { SparklesIcon } from "lucide-svelte";
 
 let promptInput = $state("");
 let generating = $state(false);

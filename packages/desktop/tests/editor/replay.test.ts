@@ -1,14 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { EditorSelection, EditorState } from "@codemirror/state";
-import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
+import type { EventRecord } from "$lib/db/types";
 import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
     activeVersionIndex,
     createNewAnnotation,
     isAnnotationOfType,
 } from "$lib/editor/plugins/annotations/models";
 import { replayEvents } from "$lib/editor/replay";
-import type { EventRecord } from "$lib/db/types";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import { describe, expect, it } from "vitest";
 
 function makeRecord(id: number, payload: object): EventRecord {
     return {

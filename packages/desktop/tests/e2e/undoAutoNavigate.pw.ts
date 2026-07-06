@@ -25,8 +25,8 @@
  *   6. Confirm the modal opens or inline revision scrolls into view
  */
 
-import { expect, test, type Page } from "@playwright/test";
-import { installTauriMock, getCmText } from "./utils";
+import { type Page, expect, test } from "@playwright/test";
+import { getCmText, installTauriMock } from "./utils";
 
 test.describe("collab undo auto-navigation", () => {
     test.skip("undo auto-navigates to nested revision", async ({ browser }) => {

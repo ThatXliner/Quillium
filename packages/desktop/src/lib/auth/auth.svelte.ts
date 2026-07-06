@@ -59,7 +59,9 @@ async function canReachAuthServer(): Promise<boolean> {
 }
 
 async function fetchCurrentSession(): Promise<Session | null> {
-    const result = await supabase!.auth.getSession();
+    if (!supabase) return null;
+
+    const result = await supabase.auth.getSession();
     if (result.error) throw result.error;
     return result.data.session;
 }

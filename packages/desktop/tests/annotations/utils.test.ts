@@ -1,12 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { EditorSelection, EditorState, ChangeSet } from "@codemirror/state";
-import {
-    cleanRangesOf,
-    positionIntersects,
-    canCreateNewComment,
-    equalAnnotationsSignature,
-} from "$lib/editor/plugins/annotations/utils";
 import type { Annotations, GenericAnnotation } from "$lib/editor/plugins/annotations/models";
+import {
+    canCreateNewComment,
+    cleanRangesOf,
+    equalAnnotationsSignature,
+    positionIntersects,
+} from "$lib/editor/plugins/annotations/utils";
+import { ChangeSet, EditorSelection, EditorState } from "@codemirror/state";
+import { describe, expect, it } from "vitest";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

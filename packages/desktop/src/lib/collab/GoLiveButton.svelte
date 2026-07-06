@@ -22,6 +22,13 @@ import {
     restoreJoinerPriorView,
 } from "$lib/collab";
 import {
+    READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
+    READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS,
+    READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS,
+    normalizeReadonlyShareAutoUpdateDebounceMs,
+    shouldScheduleReadonlyShareAutoUpdate,
+} from "$lib/collab/readonlyShareAutoUpdate";
+import {
     type ReadonlyShare,
     buildReadonlyShareUrl,
     buildSharePreviewText,
@@ -30,13 +37,6 @@ import {
     publishReadonlyShare,
     readonlyShareState,
 } from "$lib/collab/share";
-import {
-    READONLY_SHARE_AUTO_UPDATE_DEFAULT_DEBOUNCE_MS,
-    READONLY_SHARE_AUTO_UPDATE_MAX_DEBOUNCE_MS,
-    READONLY_SHARE_AUTO_UPDATE_MIN_DEBOUNCE_MS,
-    normalizeReadonlyShareAutoUpdateDebounceMs,
-    shouldScheduleReadonlyShareAutoUpdate,
-} from "$lib/collab/readonlyShareAutoUpdate";
 import { buildShareFingerprint, serializeAnnotations } from "$lib/collab/sharePayload";
 import { isCollabJoiner, joinerPriorView } from "$lib/collab/store";
 import { OMNI_WAITLIST_URL } from "$lib/constants";

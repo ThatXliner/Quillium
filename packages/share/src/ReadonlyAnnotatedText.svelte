@@ -1,13 +1,13 @@
 <script lang="ts">
 import {
+    type AnnotationId,
+    type RevisionVersionSelections,
     annotationInlineClass,
     annotationToneClass,
     buildDisplayedShare,
     buildParagraphBlocks,
     getPrimaryInlineAnnotation,
     markerSymbol,
-    type AnnotationId,
-    type RevisionVersionSelections,
 } from "./rendering";
 import type { SerializedAnnotation } from "./types";
 

@@ -18,20 +18,20 @@
  *   - The parentView reference is the parent view, not the nested editor
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { get } from "svelte/store";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { history } from "@codemirror/commands";
-import { annotationField, addAnnotation } from "$lib/editor/plugins/annotations/annotationField";
+import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
+import { addAnnotation, annotationField } from "$lib/editor/plugins/annotations/annotationField";
 import {
     createNewAnnotation,
     isAnnotationOfType,
     makeVersion,
 } from "$lib/editor/plugins/annotations/models";
-import { annotations as annotationExtensions } from "$lib/editor/plugins/annotations";
-import { modalStack } from "$lib/stores";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
+import { modalStack } from "$lib/stores";
+import { history } from "@codemirror/commands";
+import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { get } from "svelte/store";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -33,6 +33,7 @@ import { dev } from "$app/environment";
 import { createAwarenessExtension } from "$lib/collab/awareness";
 import { collabSession } from "$lib/collab/store";
 import { getExtensions, nestedSavedFields } from "$lib/editor/extensions";
+import { annotationEventBus } from "$lib/events/annotationEventBus";
 import { redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Prec, Transaction } from "@codemirror/state";
 import { type EditorView, type ViewUpdate, keymap } from "@codemirror/view";
@@ -44,7 +45,6 @@ import {
     setActiveRevisionVersion,
     updateRevisionVersionState,
 } from "./annotationField";
-import { annotationEventBus } from "$lib/events/annotationEventBus";
 import {
     type VersionState,
     activeVersion,

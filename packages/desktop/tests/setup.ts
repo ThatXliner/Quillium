@@ -1,6 +1,6 @@
-import { afterEach, beforeAll, vi } from "vitest";
-import { clearMocks } from "@tauri-apps/api/mocks";
 import { randomFillSync } from "node:crypto";
+import { clearMocks } from "@tauri-apps/api/mocks";
+import { afterEach, beforeAll, vi } from "vitest";
 
 // jsdom does not ship with WebCrypto; @tauri-apps/api uses crypto.getRandomValues
 // internally for event IDs and IPC correlation tokens.

@@ -1,11 +1,11 @@
+import type { WebSocket } from "ws";
+import type { Awareness } from "y-protocols/awareness";
 /**
  * types.ts -- Yjs room and connection types.
  *
  * Per D-71: Room holds Y.Doc instead of @codemirror/state Text.
  */
 import type * as Y from "yjs";
-import type { Awareness } from "y-protocols/awareness";
-import type { WebSocket } from "ws";
 
 export interface YjsRoom {
     documentId: string;

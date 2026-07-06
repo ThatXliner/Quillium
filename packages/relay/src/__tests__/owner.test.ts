@@ -1,24 +1,27 @@
+import * as decoding from "lib0/decoding";
 /**
  * owner.test.ts -- Tests for owner disconnect behavior in the Yjs relay.
  */
-import { describe, it, expect, afterEach } from "vitest";
-import * as Y from "yjs";
+import { afterEach, describe, expect, it } from "vitest";
+import type { WebSocket } from "ws";
 import { Awareness } from "y-protocols/awareness";
-import * as decoding from "lib0/decoding";
+import * as Y from "yjs";
 import {
-    setupYjsConnection,
-    MESSAGE_CUSTOM,
     CUSTOM_CLIENT_LEFT,
     CUSTOM_OWNER_LEFT,
+    MESSAGE_CUSTOM,
+    setupYjsConnection,
 } from "../yjs/sync.js";
 import type { YjsClientData, YjsRoom } from "../yjs/types.js";
+
+type FakeListener = (...args: unknown[]) => void;
 
 class FakeWebSocket {
     public sent: Uint8Array[] = [];
     public readyState = 1;
     public closeCode: number | null = null;
     public closeReason: string | null = null;
-    private listeners: Record<string, Array<(...args: any[]) => void>> = {};
+    private listeners: Record<string, FakeListener[]> = {};
 
     send(data: Uint8Array): void {
         this.sent.push(data);
@@ -31,18 +34,25 @@ class FakeWebSocket {
         this.emit("close");
     }
 
-    on(event: string, cb: (...args: any[]) => void): void {
-        (this.listeners[event] ||= []).push(cb);
+    on(event: string, cb: FakeListener): void {
+        if (!this.listeners[event]) {
+            this.listeners[event] = [];
+        }
+        this.listeners[event].push(cb);
     }
 
-    off(event: string, cb: (...args: any[]) => void): void {
+    off(event: string, cb: FakeListener): void {
         if (!this.listeners[event]) return;
         this.listeners[event] = this.listeners[event].filter((f) => f !== cb);
     }
 
-    emit(event: string, ...args: any[]): void {
+    emit(event: string, ...args: unknown[]): void {
         for (const cb of this.listeners[event] || []) cb(...args);
     }
+}
+
+function asWebSocket(ws: FakeWebSocket): WebSocket {
+    return ws as unknown as WebSocket;
 }
 
 function makeRoom(): YjsRoom {
@@ -103,7 +113,7 @@ describe("owner disconnect", () => {
         rooms.push(room);
         const owner = new FakeWebSocket();
 
-        setupYjsConnection(owner as any, room, makeClient("owner-user", true));
+        setupYjsConnection(asWebSocket(owner), room, makeClient("owner-user", true));
 
         expect(room.isOwnerConnected).toBe(true);
         expect(room.ownerId).toBe("owner-user");
@@ -119,8 +129,8 @@ describe("owner disconnect", () => {
         const owner = new FakeWebSocket();
         const collaborator = new FakeWebSocket();
 
-        setupYjsConnection(owner as any, room, makeClient("owner-user", true));
-        setupYjsConnection(collaborator as any, room, makeClient("collaborator-user", false));
+        setupYjsConnection(asWebSocket(owner), room, makeClient("owner-user", true));
+        setupYjsConnection(asWebSocket(collaborator), room, makeClient("collaborator-user", false));
         owner.sent = [];
         collaborator.sent = [];
 
@@ -140,8 +150,8 @@ describe("owner disconnect", () => {
         const owner = new FakeWebSocket();
         const collaborator = new FakeWebSocket();
 
-        setupYjsConnection(owner as any, room, makeClient("owner-user", true));
-        setupYjsConnection(collaborator as any, room, makeClient("collaborator-user", false));
+        setupYjsConnection(asWebSocket(owner), room, makeClient("owner-user", true));
+        setupYjsConnection(asWebSocket(collaborator), room, makeClient("collaborator-user", false));
         owner.sent = [];
 
         collaborator.close();
@@ -161,7 +171,7 @@ describe("owner disconnect", () => {
         room.ydoc.getText("document").insert(0, "draft text");
         room.ydoc.getMap("annotations").set("a1", { text: "note" });
 
-        setupYjsConnection(owner as any, room, makeClient("owner-user", true));
+        setupYjsConnection(asWebSocket(owner), room, makeClient("owner-user", true));
         owner.close();
 
         expect(room.ydoc.getText("document").toString()).toBe("");

@@ -1,3 +1,10 @@
+import {
+    type Peer,
+    connect,
+    flushAll,
+    makePeerWithAnnotationSync,
+    teardown,
+} from "$lib/collab/test-helpers/twoPeerHarness";
 /**
  * feedback-loop.test.ts -- SYNC-06 (Phase 1 SC-3).
  *
@@ -16,13 +23,6 @@
  * traffic.
  */
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import {
-    type Peer,
-    connect,
-    flushAll,
-    makePeerWithAnnotationSync,
-    teardown,
-} from "$lib/collab/test-helpers/twoPeerHarness";
 
 describe("SYNC-06: feedback-loop / amplification regression", () => {
     let peerA: Peer;

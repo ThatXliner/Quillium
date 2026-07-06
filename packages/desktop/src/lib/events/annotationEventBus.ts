@@ -13,9 +13,9 @@
  * once per emit.
  */
 
-import type { EditorView } from "@codemirror/view";
-import { TypedEventBus, type EventOfType } from "./createEventBus";
 import type { NestedEditorCommand } from "$lib/stores";
+import type { EditorView } from "@codemirror/view";
+import { type EventOfType, TypedEventBus } from "./createEventBus";
 
 export type AnnotationEvent =
     | { type: "revision-boundary-nudge"; revisionId: number }

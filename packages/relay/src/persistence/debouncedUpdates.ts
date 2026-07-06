@@ -1,8 +1,8 @@
+import { createLogger } from "../logger.js";
 /**
  * debouncedUpdates.ts -- Coalesce high-frequency Yjs update writes.
  */
 import { persistYjsUpdates } from "./yjsUpdates.js";
-import { createLogger } from "../logger.js";
 
 const DEFAULT_DEBOUNCE_MS = 500;
 const debounceMs = Number.parseInt(

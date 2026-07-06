@@ -1,3 +1,4 @@
+import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
 /**
  * yjsUndo.test.ts -- Tests for Yjs UndoManager integration.
  *
@@ -11,9 +12,8 @@
  *   - Rapid changes merge into single undo step (captureTimeout)
  *   - Keyboard shortcuts trigger undo/redo
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { createYjsUndoExtension } from "$lib/collab/yjsUndo";
 
 describe("yjsUndo", () => {
     let ydoc: Y.Doc;
