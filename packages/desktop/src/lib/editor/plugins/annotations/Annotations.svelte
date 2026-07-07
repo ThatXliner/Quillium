@@ -10,9 +10,16 @@ import {
 } from "$lib/editor/plugins/annotations";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog from "$lib/posthog";
-import { appSettings, persistSettings } from "$lib/settings.svelte";
+import {
+    ANNOTATION_PANEL_DEFAULT_WIDTH,
+    ANNOTATION_PANEL_MAX_WIDTH,
+    ANNOTATION_PANEL_MIN_WIDTH,
+    appSettings,
+    persistSettings,
+} from "$lib/settings.svelte";
 import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 /**
  * Annotations.svelte — Container that renders all annotation
  * cards (comments, revisions, suggestions) in either a
@@ -99,9 +106,6 @@ const effectiveLayout = $derived(appSettings.aiEnabled ? "single" : appSettings.
  * decoration opens a modal instead of the floating card.
  */
 const MIN_ANNOTATION_WIDTH = 150;
-const MIN_PANEL_WIDTH = 180;
-const MAX_PANEL_WIDTH = 420;
-const DEFAULT_PANEL_WIDTH = 280;
 // Minimum gap kept between the left annotation column and the window edge.
 const LEFT_MARGIN = 16;
 let narrowMode = $state(false);
@@ -262,7 +266,10 @@ function getAnnotationLeft(): number {
 
 /** Current annotation panel width, clamped to its allowed range. */
 function getPanelWidth(): number {
-    return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, appSettings.annotationPanelWidth));
+    return Math.min(
+        ANNOTATION_PANEL_MAX_WIDTH,
+        Math.max(ANNOTATION_PANEL_MIN_WIDTH, appSettings.annotationPanelWidth),
+    );
 }
 
 /**
@@ -284,8 +291,6 @@ function getAnnotationLeftColumnX(): number {
 let scrollContainer = $state<HTMLDivElement | undefined>(undefined);
 let scrollContainerLeft = $state<HTMLDivElement | undefined>(undefined);
 let resizingPanel = $state(false);
-let panelResizeStartX = 0;
-let panelResizeStartWidth = 0;
 
 // Per-card column assignment ("left" | "right") used in two-column mode.
 // Computed inside updateAnnotationPositions (NOT $derived — it calls
@@ -649,47 +654,34 @@ function updateScrollContainerSize(col: Column, lastBottom: number) {
     col.el.style.width = `${availableWidth}px`;
 }
 
-// Pointer events (instead of mouse events) so the annotation panel can be
-// resized with touch on tablets as well as a mouse on desktop. The pointer is
-// captured on the handle so move/up events keep flowing past its bounds.
-function startPanelResize(e: PointerEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    resizingPanel = true;
-    panelResizeStartX = e.clientX;
-    panelResizeStartWidth = appSettings.annotationPanelWidth;
-    (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
-    window.addEventListener("pointermove", onPanelResizeMove);
-    window.addEventListener("pointerup", onPanelResizeEnd);
-    window.addEventListener("pointercancel", onPanelResizeEnd);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "ew-resize";
-}
+// Drag gesture (pointer capture, window listeners, body style overrides,
+// unmount cleanup) is the shared pointerDrag action — same as the AI
+// sidebar's resize handles. Only the width semantics live here.
+let panelDragStartWidth = 0;
+const panelDragOptions: PointerDragOptions = {
+    cursor: "ew-resize",
+    onStart: () => {
+        resizingPanel = true;
+        panelDragStartWidth = appSettings.annotationPanelWidth;
+    },
+    onMove: (dx) => {
+        appSettings.annotationPanelWidth = Math.min(
+            ANNOTATION_PANEL_MAX_WIDTH,
+            Math.max(ANNOTATION_PANEL_MIN_WIDTH, Math.round(panelDragStartWidth + dx)),
+        );
+    },
+    onEnd: () => {
+        resizingPanel = false;
+        persistSettings();
+    },
+};
 
-function onPanelResizeMove(e: PointerEvent) {
-    if (!resizingPanel) return;
-    const dx = e.clientX - panelResizeStartX;
-    appSettings.annotationPanelWidth = Math.min(
-        MAX_PANEL_WIDTH,
-        Math.max(MIN_PANEL_WIDTH, Math.round(panelResizeStartWidth + dx)),
-    );
-}
-
-function onPanelResizeEnd() {
-    if (!resizingPanel) return;
-    resizingPanel = false;
-    window.removeEventListener("pointermove", onPanelResizeMove);
-    window.removeEventListener("pointerup", onPanelResizeEnd);
-    window.removeEventListener("pointercancel", onPanelResizeEnd);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
-    persistSettings();
-}
-
-const isCustomPanelWidth = $derived(appSettings.annotationPanelWidth !== DEFAULT_PANEL_WIDTH);
+const isCustomPanelWidth = $derived(
+    appSettings.annotationPanelWidth !== ANNOTATION_PANEL_DEFAULT_WIDTH,
+);
 
 function resetPanelWidth() {
-    appSettings.annotationPanelWidth = DEFAULT_PANEL_WIDTH;
+    appSettings.annotationPanelWidth = ANNOTATION_PANEL_DEFAULT_WIDTH;
     persistSettings();
 }
 
@@ -799,16 +791,6 @@ $effect(() => {
         clearTimeout(updateTimeout);
         resolvedView.scrollDOM.removeEventListener("scroll", update);
         window.removeEventListener("resize", update);
-    };
-});
-
-$effect(() => {
-    return () => {
-        window.removeEventListener("pointermove", onPanelResizeMove);
-        window.removeEventListener("pointerup", onPanelResizeEnd);
-        window.removeEventListener("pointercancel", onPanelResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
     };
 });
 </script>
@@ -945,14 +927,13 @@ $effect(() => {
     {/if}
     {#if isFloating && (renderMode === "two-column" || renderMode === "single")}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <div
                 role="separator"
                 aria-label="Resize annotations panel"
                 aria-orientation="vertical"
                 class="annotation-resize-handle"
                 class:is-resizing={resizingPanel}
-                onpointerdown={startPanelResize}
+                use:pointerDrag={panelDragOptions}
             >
                 {#if isCustomPanelWidth}
                     <button

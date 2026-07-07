@@ -11,10 +11,9 @@
         header row of icon tabs, title bar, and close/settings controls.
 
     State variables:
-      `action`         — which panel is active (null = collapsed).
-      `customWidth/Height` — user-resized dimensions (null = defaults).
-      `isResizing`     — true during a drag-resize (disables CSS
-                         transitions so the panel tracks the cursor).
+      `action` — which panel is active (null = collapsed).
+      `resize` — PanelResizeController (panelResize.svelte.ts) owning the
+                 user-resized dimensions and the drag lifecycle.
 
     The sidebar reads `aiProcessing.active` from settings.svelte.ts to
     show a rainbow glow animation while any AI request is in flight.
@@ -43,9 +42,9 @@ import {
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
+import { pointerDrag } from "$lib/ui/pointerDrag";
 import {
     CompassIcon,
-    InfoIcon,
     MessageCircleIcon,
     Minimize2Icon,
     PenLineIcon,
@@ -78,28 +77,21 @@ import {
  *   All six sub-panels are mounted eagerly and toggled via CSS
  *   visibility to avoid re-mount jank on tab switches.
  *
- * Resize system:
- *   - `startResize` attaches window-level pointermove/pointerup listeners
- *     (pointer events so touch drags work on tablets too).
- *   - `onResizeMove` clamps deltas to [MIN, MAX] width/height.
- *   - `onResizeEnd` cleans up listeners and resets cursor overrides.
- *   - `isResizing` disables CSS transitions so the panel tracks the
- *     cursor without animation lag.
+ * Resize system: see PanelResizeController in panelResize.svelte.ts.
+ * `resize.isResizing` disables CSS transitions so the panel tracks the
+ * cursor without animation lag.
  */
 import { tick } from "svelte";
 import AISettings from "./AISettings.svelte";
 import Chat from "./Chat.svelte";
+import ContextInfoButton from "./ContextInfoButton.svelte";
 import DocumentContext from "./DocumentContext.svelte";
 import Feedback from "./Feedback.svelte";
 import Readers from "./Readers.svelte";
 import Revise from "./Revise.svelte";
 import { buildAnnotationContextInputs } from "./annotationContext";
-import {
-    buildAiContextPacket,
-    contextScopeDetail,
-    contextScopeLabel,
-    shouldShowContextSummary,
-} from "./context";
+import { buildAiContextPacket, shouldShowContextSummary } from "./context";
+import { PanelResizeController } from "./panelResize.svelte";
 
 type Action = null | "chat" | "feedback" | "revise" | "context" | "readers" | "settings";
 type ContextPanelAction = "chat" | "feedback" | "revise";
@@ -187,29 +179,16 @@ const MAX_WIDTH = 600;
 const MIN_HEIGHT = 400;
 const MAX_HEIGHT = 800;
 
-// On narrow viewports the fixed MAX_WIDTH/MAX_HEIGHT (600/800) overflow the
-// screen, so clamp to a viewport-relative cap. On desktop these caps are far
-// larger than MAX_WIDTH/MAX_HEIGHT, so behavior is unchanged there.
-function widthCap(): number {
-    if (typeof window === "undefined") return MAX_WIDTH;
-    return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - 32));
-}
-function heightCap(): number {
-    if (typeof window === "undefined") return MAX_HEIGHT;
-    return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, window.innerHeight - 64));
-}
-
-let customWidth = $state<number | null>(null);
-let customHeight = $state<number | null>(null);
-let isResizing = $state(false);
-
-// Plain vars — not reactive, only used inside handlers
-let resizeStartX = 0;
-let resizeStartY = 0;
-let resizeStartWidth = 0;
-let resizeStartHeight = 0;
-let activeHandle: "right" | "bottom" | "corner" | null = null;
-let justResized = false;
+const resize: PanelResizeController = new PanelResizeController({
+    minWidth: MIN_WIDTH,
+    maxWidth: MAX_WIDTH,
+    minHeight: MIN_HEIGHT,
+    maxHeight: MAX_HEIGHT,
+    getEffectiveSize: (): { width: number; height: number } => ({
+        width: effectiveWidth,
+        height: effectiveHeight,
+    }),
+});
 
 const defaultWidthForTab = $derived(
     actions.find((a) => a.id === action)?.preferredWidth ?? DEFAULT_WIDTH,
@@ -217,9 +196,9 @@ const defaultWidthForTab = $derived(
 const defaultHeightForTab = $derived(
     actions.find((a) => a.id === action)?.preferredHeight ?? DEFAULT_HEIGHT,
 );
-const effectiveWidth = $derived(customWidth ?? defaultWidthForTab);
-const effectiveHeight = $derived(customHeight ?? defaultHeightForTab);
-const isCustomSize = $derived(customWidth !== null || customHeight !== null);
+const effectiveWidth = $derived(resize.customWidth ?? defaultWidthForTab);
+const effectiveHeight = $derived(resize.customHeight ?? defaultHeightForTab);
+const isCustomSize = $derived(resize.customWidth !== null || resize.customHeight !== null);
 const contextPanelMode = $derived(isContextPanelAction(action) ? action : null);
 const headerAnnotationContext = $derived(
     buildAnnotationContextInputs({
@@ -251,11 +230,6 @@ const showHeaderContextInfo = $derived(
     headerContextPacket !== null &&
         (appSettings.collapseContextSummary || !shouldShowContextSummary(headerContextPacket)),
 );
-const headerContextInfoLabel = $derived(
-    headerContextPacket
-        ? `${contextScopeLabel(headerContextPacket)}. ${contextScopeDetail(headerContextPacket)}`
-        : "",
-);
 const headerContextRing = $derived(
     action === "feedback"
         ? "focus:ring-green-500"
@@ -264,12 +238,11 @@ const headerContextRing = $derived(
           : "focus:ring-blue-500",
 );
 
-// Context detail popover (opened by the header info button). Lists each
-// context source from the packet so the writer can see exactly what the AI
-// will be shown. Closed on click-outside, Escape, panel switch, or when the
-// info button itself stops rendering.
+// Context detail popover (opened by the header info button, rendered by
+// ContextInfoButton). Closed on click-outside, Escape, panel switch, or when
+// the info button itself stops rendering — the dismissal coordination lives
+// in this component's window/sidebar handlers, so the open state does too.
 let showContextPopover = $state(false);
-const contextPopoverSources = $derived(headerContextPacket?.sources ?? []);
 
 // Auto-close the popover when the info button is no longer relevant (e.g. the
 // user switched to a panel without context, or selection/draft state changed
@@ -288,7 +261,7 @@ const containerSizeStyle = $derived(
 
 // Disable transition during active drag; keep it for expand/collapse
 const transitionClass = $derived(
-    isResizing
+    resize.isResizing
         ? ""
         : "transition-[width,height,border-radius] duration-[340ms] ease-[cubic-bezier(0.33,0,0.2,1)]",
 );
@@ -313,10 +286,8 @@ function isContextPanelAction(value: Action): value is ContextPanelAction {
 }
 
 function handleClickOutside(e: MouseEvent) {
-    if (justResized) {
-        justResized = false;
-        return;
-    }
+    // The click that ends a drag-resize must not collapse the panel.
+    if (resize.consumeJustResized()) return;
     const target = e.target as Node;
     if (
         expanded &&
@@ -360,56 +331,6 @@ function scrollActiveIntoCenter(id: NonNullable<Action>) {
     });
 }
 
-function resetSize() {
-    customWidth = null;
-    customHeight = null;
-}
-
-// Pointer events (instead of mouse events) so dragging the resize handles
-// works with touch on tablets as well as a mouse on desktop. The pointer is
-// captured on the handle element so move/up events keep flowing even when the
-// finger/cursor leaves the handle.
-function startResize(e: PointerEvent, handle: "right" | "bottom" | "corner") {
-    e.preventDefault();
-    e.stopPropagation();
-    activeHandle = handle;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    resizeStartWidth = effectiveWidth;
-    resizeStartHeight = effectiveHeight;
-    isResizing = true;
-    (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
-    window.addEventListener("pointermove", onResizeMove);
-    window.addEventListener("pointerup", onResizeEnd);
-    window.addEventListener("pointercancel", onResizeEnd);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor =
-        handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
-}
-
-function onResizeMove(e: PointerEvent) {
-    if (!activeHandle) return;
-    const dx = e.clientX - resizeStartX;
-    const dy = e.clientY - resizeStartY;
-    if (activeHandle === "right" || activeHandle === "corner") {
-        customWidth = Math.min(widthCap(), Math.max(MIN_WIDTH, resizeStartWidth + dx));
-    }
-    if (activeHandle === "bottom" || activeHandle === "corner") {
-        customHeight = Math.min(heightCap(), Math.max(MIN_HEIGHT, resizeStartHeight + dy));
-    }
-}
-
-function onResizeEnd() {
-    isResizing = false;
-    activeHandle = null;
-    justResized = true;
-    window.removeEventListener("pointermove", onResizeMove);
-    window.removeEventListener("pointerup", onResizeEnd);
-    window.removeEventListener("pointercancel", onResizeEnd);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
-}
-
 function openAiSettingsFromExternalRequest() {
     action = "settings";
 }
@@ -442,17 +363,6 @@ $effect(() => {
 // App-level event bus for cross-component AI navigation.
 $effect(() => {
     return appEventBus.on("ai-open-settings", openAiSettingsFromExternalRequest);
-});
-
-// Cleanup resize listeners on unmount
-$effect(() => {
-    return () => {
-        window.removeEventListener("pointermove", onResizeMove);
-        window.removeEventListener("pointerup", onResizeEnd);
-        window.removeEventListener("pointercancel", onResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-    };
 });
 
 // App-level requests to open the chat panel.
@@ -647,7 +557,7 @@ function handleKeydown(e: KeyboardEvent) {
       </span>
       {#if isCustomSize}
         <button
-          onclick={resetSize}
+          onclick={() => resize.reset()}
           aria-label="Reset to default size"
           title="Reset size"
           class="p-1.5 rounded-full text-black/30 hover:text-black/60 hover:bg-white/40 transition-colors shrink-0"
@@ -656,73 +566,11 @@ function handleKeydown(e: KeyboardEvent) {
         </button>
       {/if}
       {#if showHeaderContextInfo && headerContextPacket}
-        <div class="relative shrink-0">
-          <button
-            type="button"
-            data-context-info-button
-            onclick={() => (showContextPopover = !showContextPopover)}
-            aria-label="Context: {headerContextInfoLabel}"
-            aria-haspopup="dialog"
-            aria-expanded={showContextPopover}
-            title={headerContextInfoLabel}
-            class="p-1.5 rounded-full transition-colors focus:outline-none focus:ring-2 {headerContextRing}
-                            {showContextPopover
-              ? 'text-black/60 bg-white/60'
-              : 'text-black/30 hover:text-black/60 hover:bg-white/40'}"
-          >
-            <InfoIcon size={14} />
-          </button>
-          {#if showContextPopover}
-            <!-- Two layers: outer carries shadow + radius (no overflow → shadow stays
-                 rounded); inner carries backdrop-blur + radius + overflow-hidden so the
-                 blur is clipped without WebKit squaring the shadow at the corners. -->
-            <div
-              class="context-popover absolute right-0 top-full mt-1.5 z-10 w-64
-                                rounded-xl shadow-lg"
-              role="dialog"
-              aria-label="AI context details"
-            >
-              <div
-                class="rounded-xl border border-black/10 bg-white/95 backdrop-blur-md
-                                p-3 text-left overflow-hidden"
-              >
-                <p class="text-[11px] font-semibold text-black/70 leading-snug">
-                  {contextScopeLabel(headerContextPacket)}
-                </p>
-                <p class="mt-0.5 text-[10px] text-black/45 leading-relaxed">
-                  {contextScopeDetail(headerContextPacket)}
-                </p>
-                <div class="mt-2.5 flex flex-col gap-1.5">
-                  {#each contextPopoverSources as source (source.id)}
-                    <div class="flex items-start gap-2">
-                      <span
-                        class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full
-                                                {source.active
-                          ? 'bg-emerald-500'
-                          : 'bg-black/15'}"
-                      ></span>
-                      <div class="min-w-0 flex-1">
-                        <p
-                          class="text-[10px] font-medium leading-tight
-                                                    {source.active
-                            ? 'text-black/70'
-                            : 'text-black/35'}"
-                        >
-                          {source.label}
-                        </p>
-                        <p
-                          class="text-[10px] text-black/40 leading-snug truncate"
-                        >
-                          {source.detail}
-                        </p>
-                      </div>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            </div>
-          {/if}
-        </div>
+        <ContextInfoButton
+          packet={headerContextPacket}
+          ringClass={headerContextRing}
+          bind:open={showContextPopover}
+        />
       {/if}
       <button
         onclick={() => (action = action === "settings" ? null : "settings")}
@@ -790,28 +638,25 @@ function handleKeydown(e: KeyboardEvent) {
   </div>
 
   {#if expanded}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       role="separator"
       aria-label="Resize width"
       aria-orientation="vertical"
       class="resize-handle resize-handle-right"
-      onpointerdown={(e) => startResize(e, "right")}
+      use:pointerDrag={resize.dragOptions("right")}
     ></div>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       role="separator"
       aria-label="Resize height"
       aria-orientation="horizontal"
       class="resize-handle resize-handle-bottom"
-      onpointerdown={(e) => startResize(e, "bottom")}
+      use:pointerDrag={resize.dragOptions("bottom")}
     ></div>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       role="separator"
       aria-label="Resize panel"
       class="resize-handle resize-handle-corner"
-      onpointerdown={(e) => startResize(e, "corner")}
+      use:pointerDrag={resize.dragOptions("corner")}
     ></div>
   {/if}
   </div>
