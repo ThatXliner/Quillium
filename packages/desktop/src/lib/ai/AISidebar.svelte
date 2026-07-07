@@ -42,6 +42,7 @@ import {
     selectedText,
     selectedTextRange,
 } from "$lib/stores";
+import { pointerDrag } from "$lib/ui/pointerDrag";
 import {
     CompassIcon,
     MessageCircleIcon,
@@ -364,11 +365,6 @@ $effect(() => {
     return appEventBus.on("ai-open-settings", openAiSettingsFromExternalRequest);
 });
 
-// Cleanup resize listeners on unmount
-$effect(() => {
-    return () => resize.destroy();
-});
-
 // App-level requests to open the chat panel.
 $effect(() => {
     return appEventBus.on("ai-open-chat", openChatFromExternalRequest);
@@ -642,28 +638,25 @@ function handleKeydown(e: KeyboardEvent) {
   </div>
 
   {#if expanded}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       role="separator"
       aria-label="Resize width"
       aria-orientation="vertical"
       class="resize-handle resize-handle-right"
-      onpointerdown={(e) => resize.start(e, "right")}
+      use:pointerDrag={resize.dragOptions("right")}
     ></div>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       role="separator"
       aria-label="Resize height"
       aria-orientation="horizontal"
       class="resize-handle resize-handle-bottom"
-      onpointerdown={(e) => resize.start(e, "bottom")}
+      use:pointerDrag={resize.dragOptions("bottom")}
     ></div>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       role="separator"
       aria-label="Resize panel"
       class="resize-handle resize-handle-corner"
-      onpointerdown={(e) => resize.start(e, "corner")}
+      use:pointerDrag={resize.dragOptions("corner")}
     ></div>
   {/if}
   </div>

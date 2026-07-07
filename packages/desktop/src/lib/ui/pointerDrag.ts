@@ -1,13 +1,16 @@
 /**
- * pointerDrag.ts — Shared pointer-drag gesture primitive.
+ * pointerDrag.ts — Shared pointer-drag gesture for resize handles.
  *
- * One implementation of the drag plumbing that panel-resize handles need:
- * pointer capture on the handle, window-level move/up/cancel listeners (so
- * the gesture survives the pointer leaving the handle), body-level
- * user-select/cursor overrides for the duration, and guaranteed teardown.
+ * `pointerDrag` is a Svelte action (`use:pointerDrag={options}`): it attaches
+ * the pointerdown listener to the handle element and tears everything down on
+ * unmount, including an in-flight drag (silent cancel — `onEnd` only fires
+ * for a real pointerup/pointercancel).
  *
- * Pointer events (instead of mouse events) so drags work with touch on
- * tablets as well as a mouse on desktop.
+ * One implementation of the plumbing every drag handle needs: pointer capture
+ * on the handle, window-level move/up/cancel listeners (so the gesture
+ * survives the pointer leaving the handle), and body-level user-select/cursor
+ * overrides for the duration. Pointer events (instead of mouse events) so
+ * drags work with touch on tablets as well as a mouse on desktop.
  *
  * Used by PanelResizeController (AI sidebar) and the annotation panel's
  * width handle. NOT used by DocumentTabs' reorder drag: that gesture
@@ -15,32 +18,23 @@
  * dragging" there) and needs raw pointer coordinates for its FLIP math.
  */
 
-export type PointerDragHandle = {
-    /**
-     * Tear down listeners and body style overrides WITHOUT firing onEnd.
-     * For component unmount while a drag is in flight; a normal
-     * pointerup/pointercancel fires onEnd and then tears down itself.
-     */
-    cancel: () => void;
-};
+import type { ActionReturn } from "svelte/action";
 
 export type PointerDragOptions = {
     /** Cursor to force on <body> for the duration of the drag. */
     cursor: string;
+    /** Called on pointerdown, before any onMove — capture drag-start values here. */
+    onStart?: (event: PointerEvent) => void;
     /** Called on every pointermove with the delta from the drag origin. */
     onMove: (dx: number, dy: number, event: PointerEvent) => void;
-    /** Called once on pointerup/pointercancel, before teardown. */
+    /** Called once on pointerup/pointercancel (not on unmount-cancel). */
     onEnd?: () => void;
 };
 
-/**
- * Start a drag gesture from a pointerdown event on a handle element.
- * Prevents default and stops propagation of the initiating event.
- */
-export function startPointerDrag(
-    e: PointerEvent,
-    { cursor, onMove, onEnd }: PointerDragOptions,
-): PointerDragHandle {
+type ActiveDrag = { cancel: () => void };
+
+/** The gesture core; the `pointerDrag` action wires it to an element. */
+function beginDrag(e: PointerEvent, options: () => PointerDragOptions): ActiveDrag {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
@@ -50,7 +44,7 @@ export function startPointerDrag(
     (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
 
     const handleMove = (ev: PointerEvent) => {
-        onMove(ev.clientX - startX, ev.clientY - startY, ev);
+        options().onMove(ev.clientX - startX, ev.clientY - startY, ev);
     };
     const teardown = () => {
         window.removeEventListener("pointermove", handleMove);
@@ -60,7 +54,7 @@ export function startPointerDrag(
         document.body.style.cursor = "";
     };
     const handleUp = () => {
-        onEnd?.();
+        options().onEnd?.();
         teardown();
     };
 
@@ -68,7 +62,38 @@ export function startPointerDrag(
     window.addEventListener("pointerup", handleUp);
     window.addEventListener("pointercancel", handleUp);
     document.body.style.userSelect = "none";
-    document.body.style.cursor = cursor;
+    document.body.style.cursor = options().cursor;
 
     return { cancel: teardown };
+}
+
+/**
+ * Svelte action: `use:pointerDrag={{ cursor, onStart, onMove, onEnd }}`.
+ * Reads the latest options at event time, so reactive option objects
+ * (recreated on re-render) never leave stale closures behind.
+ */
+export function pointerDrag(
+    node: HTMLElement,
+    options: PointerDragOptions,
+): ActionReturn<PointerDragOptions> {
+    let current = options;
+    let active: ActiveDrag | null = null;
+
+    const onPointerDown = (e: PointerEvent) => {
+        current.onStart?.(e);
+        active = beginDrag(e, () => current);
+    };
+    node.addEventListener("pointerdown", onPointerDown);
+
+    return {
+        update(next) {
+            current = next;
+        },
+        destroy() {
+            node.removeEventListener("pointerdown", onPointerDown);
+            // Unmount mid-drag: tear down silently (no onEnd).
+            active?.cancel();
+            active = null;
+        },
+    };
 }

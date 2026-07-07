@@ -19,7 +19,7 @@ import {
 } from "$lib/settings.svelte";
 import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
-import { type PointerDragHandle, startPointerDrag } from "$lib/ui/pointerDrag";
+import { type PointerDragOptions, pointerDrag } from "$lib/ui/pointerDrag";
 /**
  * Annotations.svelte — Container that renders all annotation
  * cards (comments, revisions, suggestions) in either a
@@ -284,7 +284,6 @@ function getAnnotationLeftColumnX(): number {
 let scrollContainer = $state<HTMLDivElement | undefined>(undefined);
 let scrollContainerLeft = $state<HTMLDivElement | undefined>(undefined);
 let resizingPanel = $state(false);
-let panelDrag: PointerDragHandle | null = null;
 
 // Per-card column assignment ("left" | "right") used in two-column mode.
 // Computed inside updateAnnotationPositions (NOT $derived — it calls
@@ -776,26 +775,27 @@ function updateScrollContainerSize(col: Column, lastBottom: number) {
     col.el.style.width = `${availableWidth}px`;
 }
 
-// Drag plumbing (pointer capture, window listeners, body style overrides)
-// lives in $lib/ui/pointerDrag — shared with the AI sidebar's resize handles.
-function startPanelResize(e: PointerEvent) {
-    resizingPanel = true;
-    const startWidth = appSettings.annotationPanelWidth;
-    panelDrag = startPointerDrag(e, {
-        cursor: "ew-resize",
-        onMove: (dx) => {
-            appSettings.annotationPanelWidth = Math.min(
-                ANNOTATION_PANEL_MAX_WIDTH,
-                Math.max(ANNOTATION_PANEL_MIN_WIDTH, Math.round(startWidth + dx)),
-            );
-        },
-        onEnd: () => {
-            resizingPanel = false;
-            panelDrag = null;
-            persistSettings();
-        },
-    });
-}
+// Drag gesture (pointer capture, window listeners, body style overrides,
+// unmount cleanup) is the shared pointerDrag action — same as the AI
+// sidebar's resize handles. Only the width semantics live here.
+let panelDragStartWidth = 0;
+const panelDragOptions: PointerDragOptions = {
+    cursor: "ew-resize",
+    onStart: () => {
+        resizingPanel = true;
+        panelDragStartWidth = appSettings.annotationPanelWidth;
+    },
+    onMove: (dx) => {
+        appSettings.annotationPanelWidth = Math.min(
+            ANNOTATION_PANEL_MAX_WIDTH,
+            Math.max(ANNOTATION_PANEL_MIN_WIDTH, Math.round(panelDragStartWidth + dx)),
+        );
+    },
+    onEnd: () => {
+        resizingPanel = false;
+        persistSettings();
+    },
+};
 
 const isCustomPanelWidth = $derived(
     appSettings.annotationPanelWidth !== ANNOTATION_PANEL_DEFAULT_WIDTH,
@@ -913,11 +913,6 @@ $effect(() => {
         resolvedView.scrollDOM.removeEventListener("scroll", update);
         window.removeEventListener("resize", update);
     };
-});
-
-// Drop an in-flight panel drag on unmount (silent teardown; no persist).
-$effect(() => {
-    return () => panelDrag?.cancel();
 });
 </script>
 
@@ -1053,14 +1048,13 @@ $effect(() => {
     {/if}
     {#if isFloating && (renderMode === "two-column" || renderMode === "single")}
         <div class="annotation-scroll-container" bind:this={scrollContainer}>
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <div
                 role="separator"
                 aria-label="Resize annotations panel"
                 aria-orientation="vertical"
                 class="annotation-resize-handle"
                 class:is-resizing={resizingPanel}
-                onpointerdown={startPanelResize}
+                use:pointerDrag={panelDragOptions}
             >
                 {#if isCustomPanelWidth}
                     <button

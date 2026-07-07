@@ -3,15 +3,15 @@
  *
  * Owns the custom width/height overrides (null = use the tab's default size)
  * and the resize semantics (per-handle axes, min/max + viewport caps). The
- * drag gesture plumbing itself (pointer capture, window listeners, body
- * cursor/user-select overrides) lives in $lib/ui/pointerDrag.
+ * drag gesture itself is the `pointerDrag` action from $lib/ui/pointerDrag:
+ * each handle element gets `use:pointerDrag={controller.dragOptions(handle)}`,
+ * and the action's own destroy covers unmount-mid-drag cleanup.
  *
  * The caller supplies the effective size at drag start (custom override or
- * tab default) via `getEffectiveSize`, and must call `destroy()` on unmount
- * to drop any in-flight drag listeners.
+ * tab default) via `getEffectiveSize`.
  */
 
-import { type PointerDragHandle, startPointerDrag } from "$lib/ui/pointerDrag";
+import type { PointerDragOptions } from "$lib/ui/pointerDrag";
 
 export type ResizeHandle = "right" | "bottom" | "corner";
 
@@ -30,7 +30,6 @@ export class PanelResizeController {
     /** True during a drag — the panel disables CSS transitions while set. */
     isResizing = $state(false);
 
-    #drag: PointerDragHandle | null = null;
     #justResized = false;
 
     readonly #options: PanelResizeOptions;
@@ -53,16 +52,22 @@ export class PanelResizeController {
         return Math.min(maxHeight, Math.max(minHeight, window.innerHeight - 64));
     }
 
-    start = (e: PointerEvent, handle: ResizeHandle) => {
-        const { width: startWidth, height: startHeight } = this.#options.getEffectiveSize();
-        this.isResizing = true;
-        this.#drag = startPointerDrag(e, {
+    /** Options for `use:pointerDrag` on the given resize handle. */
+    dragOptions(handle: ResizeHandle): PointerDragOptions {
+        // Captured on each drag start; onMove computes from these anchors.
+        let startWidth = 0;
+        let startHeight = 0;
+        return {
             cursor:
                 handle === "right"
                     ? "ew-resize"
                     : handle === "bottom"
                       ? "ns-resize"
                       : "nwse-resize",
+            onStart: () => {
+                ({ width: startWidth, height: startHeight } = this.#options.getEffectiveSize());
+                this.isResizing = true;
+            },
             onMove: (dx, dy) => {
                 if (handle === "right" || handle === "corner") {
                     this.customWidth = Math.min(
@@ -80,10 +85,9 @@ export class PanelResizeController {
             onEnd: () => {
                 this.isResizing = false;
                 this.#justResized = true;
-                this.#drag = null;
             },
-        });
-    };
+        };
+    }
 
     /**
      * True exactly once after a drag ends. The window click that ends a drag
@@ -98,11 +102,5 @@ export class PanelResizeController {
     reset() {
         this.customWidth = null;
         this.customHeight = null;
-    }
-
-    /** Drop any in-flight drag listeners; call on component unmount. */
-    destroy() {
-        this.#drag?.cancel();
-        this.#drag = null;
     }
 }
