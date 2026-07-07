@@ -55,9 +55,7 @@ type BaseAnnotation = {
 };
 
 export function getNewId(annotations: Annotations) {
-    const keys = Object.keys(annotations);
-    if (keys.length === 0) return 0;
-    return Math.max(...keys.map(Number)) + 1;
+    return getLastId(annotations) + 1;
 }
 export function getLastId(annotations: Annotations) {
     const keys = Object.keys(annotations);
@@ -113,14 +111,19 @@ export function versionText(version: VersionState): string {
     return version.doc;
 }
 
-// Monotonic counter for version ids within this session. The id only needs to be
-// unique within a single revision's versions[], so a session-scoped counter plus
-// a short random suffix (to avoid collisions when two collab clients add a
-// version concurrently) is sufficient and cheap. Not persisted — ids are.
-let _versionIdCounter = 0;
+// Monotonic counter for locally-minted ids within this session. These ids only
+// need to be unique within their container (a revision's versions[], the group
+// map), so a session-scoped counter plus a short random suffix (to avoid
+// collisions when two collab clients mint concurrently) is sufficient and
+// cheap. Not persisted — ids are.
+let _localIdCounter = 0;
+function newLocalId(prefix: string): string {
+    _localIdCounter += 1;
+    return `${prefix}${_localIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function newVersionId(): string {
-    _versionIdCounter += 1;
-    return `v${_versionIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
+    return newLocalId("v");
 }
 
 type RevisionAnnotation = BaseAnnotation & {
@@ -316,10 +319,8 @@ export type VersionGroups = { [groupId: string]: VersionGroup };
 
 // Session counter + random suffix, same rationale as newVersionId (see above):
 // group ids are local keys, not global identifiers, so a UUID is unnecessary.
-let _groupIdCounter = 0;
 export function newGroupId(): string {
-    _groupIdCounter += 1;
-    return `g${_groupIdCounter}_${Math.random().toString(36).slice(2, 8)}`;
+    return newLocalId("g");
 }
 
 export function membersEqual(a: VersionGroupMember, b: VersionGroupMember): boolean {

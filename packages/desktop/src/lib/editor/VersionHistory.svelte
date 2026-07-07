@@ -30,7 +30,7 @@ import {
 import type { DocEventRecord, DocumentSnapshotMeta, DraftMeta, TabMeta } from "$lib/db/types";
 import { savedFields } from "$lib/editor/extensions";
 import { goToEditor } from "$lib/navigation";
-import posthog from "$lib/posthog";
+import posthog, { captureException } from "$lib/posthog";
 import {
     currentDocumentId,
     currentDraftId,
@@ -301,7 +301,7 @@ async function handleRestore() {
         toast.error("Restore failed", {
             description: e instanceof Error ? e.message : String(e),
         });
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
         return;
     }
     goToEditor();

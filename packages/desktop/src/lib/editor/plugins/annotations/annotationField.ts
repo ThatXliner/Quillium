@@ -66,7 +66,6 @@ import {
     type VersionState,
     activeVersionIndex,
     createNewAnnotation,
-    getLastId,
     getNewId,
     groupPartnersOf,
     isAnnotationOfType,

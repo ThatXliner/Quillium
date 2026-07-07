@@ -31,7 +31,7 @@ import {
     updateDocumentMeta,
 } from "$lib/db";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import posthog from "$lib/posthog";
+import posthog, { captureException } from "$lib/posthog";
 import {
     activeAnnotation,
     annotations,
@@ -163,14 +163,14 @@ async function suggestTitle() {
                     text,
                 ).catch((e) => {
                     console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                    captureException(e);
                 });
             }
         }
     } catch (e) {
         if (!abortSignal.aborted) {
             console.error("[suggestTitle]", e);
-            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+            captureException(e);
         }
     } finally {
         titleSuggesting = false;
@@ -191,7 +191,7 @@ async function commitTitle() {
         updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]", text).catch(
             (e) => {
                 console.error(e);
-                posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                captureException(e);
             },
         );
     }
@@ -656,7 +656,7 @@ async function handleDraftIterate(sourceId: string) {
         await switchToDraft(next.id);
     } catch (e) {
         console.error("[Editor] iterate draft failed", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     } finally {
         forking = false;
     }
@@ -680,7 +680,7 @@ async function handleDraftBranch(sourceId: string) {
         await switchToDraft(branch.id);
     } catch (e) {
         console.error("[Editor] branch draft failed", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     } finally {
         forking = false;
     }

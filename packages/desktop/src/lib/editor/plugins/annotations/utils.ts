@@ -128,80 +128,37 @@ export function getActiveAnnotation<T extends AnnotationType>(
     )?.[0]?.associatedAnnotation;
 }
 
-// export function getActiveAnnotations(state: EditorState): GenericAnnotation[] {
-//   const cursor = state.selection.main;
-//   const cursorPos = cursor.head;
-
-//   const annotations = state.field(annotationField);
-//   const rangesWhereCursorIsInside: {
-//     range: SelectionRange;
-//     associatedAnnotation: GenericAnnotation;
-//   }[] = [];
-
-//   for (const annotation of Object.values(annotations)) {
-//     // TODO: change these "active checks" to use the state machine
-//     if (
-//       isAnnotationOfType(annotation, "comment") &&
-//       annotation.thread.length === 0
-//     )
-//       return [annotation];
-//     if (
-//       isAnnotationOfType(annotation, "revision") &&
-//       annotation.versions.length === 0
-//     )
-//       return [annotation];
-
-//     for (const range of annotation.selection.ranges)
-//       if (
-//         positionIntersects(cursorPos, range) &&
-//         // Having this extra condition makes it feel like Google docs
-//         // Basically what this is doing that if the cursor is a selection,
-//         // we only want to show the annotation if the entire selection is within
-//         // a single annotation
-//         (!cursor.empty ? positionIntersects(cursor.anchor, range) : true)
-//       ) {
-//         rangesWhereCursorIsInside.push({
-//           range,
-//           associatedAnnotation: annotation,
-//         });
-//       }
-//   }
-//   return rangesWhereCursorIsInside
-//     .sort((a, b) => a.range.to - a.range.from - (b.range.to - b.range.from))
-//     ?.map((x) => x.associatedAnnotation);
-// }
+// True if the selection overlaps any existing annotation of the given type.
+function selectionOverlapsType(
+    annotations: Annotations,
+    selection: EditorSelection,
+    type: AnnotationType,
+) {
+    return Object.values(annotations).some((annotation) => {
+        if (!isAnnotationOfType(annotation, type)) return false;
+        return selection.ranges.some((newRange) =>
+            annotation.selection.ranges.some((r) => newRange.from < r.to && newRange.to > r.from),
+        );
+    });
+}
 
 // Returns true if the given selection does not overlap any existing revision.
 // Revisions must not overlap because their nested-editor state and version
 // switching logic assumes non-intersecting ranges — overlapping revisions
 // produce undefined behaviour.
 export function canCreateRevision(annotations: Annotations, selection: EditorSelection) {
-    return !Object.values(annotations).some((annotation) => {
-        if (!isAnnotationOfType(annotation, "revision")) return false;
-        return selection.ranges.some((newRange) =>
-            annotation.selection.ranges.some((r) => newRange.from < r.to && newRange.to > r.from),
-        );
-    });
+    return !selectionOverlapsType(annotations, selection, "revision");
 }
 // Returns true if the given selection does not overlap any existing suggestion.
 export function canCreateSuggestion(annotations: Annotations, selection: EditorSelection) {
-    return !Object.values(annotations).some((annotation) => {
-        if (!isAnnotationOfType(annotation, "suggestion")) return false;
-        return selection.ranges.some((newRange) =>
-            annotation.selection.ranges.some((r) => newRange.from < r.to && newRange.to > r.from),
-        );
-    });
+    return !selectionOverlapsType(annotations, selection, "suggestion");
 }
 // Returns true if a new comment can be created. Enforces
 // that at most one "pending" comment (thread.length === 0)
 // exists at a time, preventing orphaned comment highlights.
 export function canCreateNewComment(annotations: Annotations) {
-    return (
-        Object.values(annotations).length === 0 ||
-        !Object.values(annotations).some(
-            (annotation) =>
-                isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0,
-        )
+    return !Object.values(annotations).some(
+        (annotation) => isAnnotationOfType(annotation, "comment") && annotation.thread.length === 0,
     );
 }
 // Maps an annotation's selection through a document change.

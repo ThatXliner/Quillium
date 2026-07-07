@@ -14,7 +14,7 @@ import {
     isSuspiciousDeletion,
 } from "$lib/errorGuard";
 import { appEventBus } from "$lib/events/appEventBus";
-import posthog from "$lib/posthog";
+import posthog, { captureException } from "$lib/posthog";
 import { classifyOrigin } from "$lib/provenance/classify";
 import {
     currentDocumentId,
@@ -337,6 +337,27 @@ function isUndoRedoUpdate(update: ViewUpdate): boolean {
     return update.transactions.some((tr) => tr.isUserEvent("undo") || tr.isUserEvent("redo"));
 }
 
+/**
+ * Suspicious-change guard action: write a named recovery snapshot of the
+ * pre-change state (fire-and-forget) and surface a banner pointing the user
+ * at version history. Shared by the deletion/annotation-loss guards below.
+ */
+function snapshotAndWarn(
+    draftId: string,
+    update: ViewUpdate,
+    label: string,
+    message: string,
+): void {
+    const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
+    createNamedSnapshot(draftId, preStateJson, get(lastPersistedEventId), label).catch((e) => {
+        console.error(e);
+        captureException(e);
+    });
+    setTimeout(() => {
+        errorBanner.set({ message, hasBackup: false, backupType: "auto" });
+    }, 0);
+}
+
 async function createAutosaveSnapshot(
     draftId: string,
     stateJson: string,
@@ -348,7 +369,7 @@ async function createAutosaveSnapshot(
         return true;
     } catch (e) {
         console.error(e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
         return false;
     }
 }
@@ -393,26 +414,12 @@ async function doAppend(
             const newText = update.state.doc.toString();
             if (isSuspiciousDeletion(oldText, newText)) {
                 // Snapshot the pre-deletion state so /history has a recovery point.
-                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-                const eventId = get(lastPersistedEventId);
-                createNamedSnapshot(
+                snapshotAndWarn(
                     draftId,
-                    preStateJson,
-                    eventId,
+                    update,
                     "Before large deletion (auto)",
-                ).catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                });
-
-                setTimeout(() => {
-                    errorBanner.set({
-                        message:
-                            "A large deletion was detected. A recovery snapshot has been saved to your version history.",
-                        hasBackup: false,
-                        backupType: "auto",
-                    });
-                }, 0);
+                    "A large deletion was detected. A recovery snapshot has been saved to your version history.",
+                );
             }
         }
     }
@@ -430,52 +437,24 @@ async function doAppend(
             let triggered = false;
 
             if (isSuspiciousAnnotationChange(oldCount, newCount)) {
-                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-                const eventId = get(lastPersistedEventId);
-                createNamedSnapshot(
+                snapshotAndWarn(
                     draftId,
-                    preStateJson,
-                    eventId,
+                    update,
                     "Before mass annotation removal (auto)",
-                ).catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                });
-
-                setTimeout(() => {
-                    errorBanner.set({
-                        message:
-                            "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
-                        hasBackup: false,
-                        backupType: "auto",
-                    });
-                }, 0);
+                    "A large number of annotations were removed. A recovery snapshot has been saved to your version history.",
+                );
                 triggered = true;
             }
 
             // Guard: check for removal of annotations with deep nested content.
             // A single revision with many sub-annotations represents significant work.
             if (!triggered && isDeepAnnotationLoss(oldAnnotations, newAnnotations)) {
-                const preStateJson = JSON.stringify(update.startState.toJSON(savedFields));
-                const eventId = get(lastPersistedEventId);
-                createNamedSnapshot(
+                snapshotAndWarn(
                     draftId,
-                    preStateJson,
-                    eventId,
+                    update,
                     "Before nested annotation loss (auto)",
-                ).catch((e) => {
-                    console.error(e);
-                    posthog.captureException(e instanceof Error ? e : new Error(String(e)));
-                });
-
-                setTimeout(() => {
-                    errorBanner.set({
-                        message:
-                            "An annotation with deeply nested content was removed. A recovery snapshot has been saved to your version history.",
-                        hasBackup: false,
-                        backupType: "auto",
-                    });
-                }, 0);
+                    "An annotation with deeply nested content was removed. A recovery snapshot has been saved to your version history.",
+                );
             }
         }
     }
@@ -522,14 +501,14 @@ async function doAppend(
             const stateJson = JSON.stringify(update.state.toJSON(savedFields));
             await createSnapshot(draftId, stateJson, result.eventId).catch((e) => {
                 console.error(e);
-                posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+                captureException(e);
             });
         }
 
         saveStatus.set("saved");
     } catch (e) {
         console.error("[listeners] appendEvent failed:", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
         if (savingIndicatorTimer !== null) {
             clearTimeout(savingIndicatorTimer);
             savingIndicatorTimer = null;
@@ -575,7 +554,7 @@ function writeMeta(docId: string, docText: string, wordCount: number, previewTex
     // docText doubles as the search-index body (FTS + semantic chunks).
     updateDocumentMeta(docId, title, wordCount, previewText, "[]", docText).catch((e) => {
         console.error(e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     });
 }
 

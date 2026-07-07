@@ -26,7 +26,7 @@ import {
     createSuggestion,
 } from "$lib/editor/plugins/annotations/index";
 import { appEventBus } from "$lib/events/appEventBus";
-import posthog from "$lib/posthog";
+import { captureException } from "$lib/posthog";
 import { annotations, documentContent, editorView } from "$lib/stores";
 import { generateObject } from "ai";
 import { toast } from "svelte-sonner";
@@ -235,7 +235,7 @@ async function runReview(content: string, manual = false) {
     } catch (e) {
         if (abortSignal.aborted) return;
         console.error("[AutoAI] review failed:", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     } finally {
         autoAIPhase.set("idle");
         endAiTask(task);

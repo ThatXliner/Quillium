@@ -225,12 +225,6 @@ export type NestedEditorCommand = {
 
 // ── Modal stack types ────────────────────────────────────────
 
-/** A single diff operation used in diff display. */
-export type DiffOp = {
-    type: "equal" | "delete" | "insert";
-    text: string;
-};
-
 /** A command queued for execution inside a nested revision editor. */
 export type PendingNestedCommand = {
     type: "comment" | "revision" | "cursor";

@@ -200,6 +200,14 @@ export function capture(event: string, props?: Record<string, unknown>) {
     posthog.capture(event, cleaned);
 }
 
+/**
+ * captureException wrapper that accepts any thrown value, coercing
+ * non-Errors so PostHog always receives an Error instance.
+ */
+export function captureException(error: unknown) {
+    posthog.captureException(error instanceof Error ? error : new Error(String(error)));
+}
+
 // TODO(#191): restore syncShareDocumentAnalytics when document sharing is re-enabled
 // export function syncShareDocumentAnalytics(sharing: boolean, key: string) { ... }
 

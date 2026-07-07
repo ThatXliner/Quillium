@@ -41,7 +41,7 @@ import {
 } from "$lib/ai/settings.svelte";
 import { stopAutoAI } from "$lib/autoai/engine";
 import { autoAISettings, persistAutoAISettings } from "$lib/autoai/settings.svelte";
-import posthog from "$lib/posthog";
+import posthog, { captureException } from "$lib/posthog";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -187,7 +187,7 @@ $effect(() => {
         .catch((e) => {
             if (cancelled) return;
             console.error("get_api_key error:", e);
-            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+            captureException(e);
             apiKey = "";
         })
         .finally(() => {
@@ -269,7 +269,7 @@ async function saveApiKey() {
         saveStatus = "error";
         saveError = String(e);
         console.error("saveApiKey failed:", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     }
     saveTimer = setTimeout(() => {
         saveStatus = "idle";

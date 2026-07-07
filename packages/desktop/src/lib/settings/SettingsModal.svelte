@@ -35,7 +35,7 @@ import {
 import { forceLinting } from "$lib/editor/harper/lint";
 import { appEventBus } from "$lib/events/appEventBus";
 import { showFeedbackSurvey, syncAnalyticsOptOut } from "$lib/posthog"; // TODO(#191): re-add syncShareDocumentAnalytics
-import posthog from "$lib/posthog";
+import posthog, { captureException } from "$lib/posthog";
 import { appSettings, applySettings, persistSettings } from "$lib/settings.svelte";
 import type { CustomQuickAction } from "$lib/settings.svelte";
 import { editorView } from "$lib/stores";
@@ -286,7 +286,7 @@ async function toggleSemanticSearch() {
         posthog.capture("semantic_search_toggled", { enabled: next });
     } catch (e) {
         console.error("[settings] failed to toggle semantic search:", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     } finally {
         semanticBusy = false;
     }
@@ -303,7 +303,7 @@ async function uninstallModel() {
         posthog.capture("semantic_search_model_uninstalled");
     } catch (e) {
         console.error("[settings] failed to uninstall semantic model:", e);
-        posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+        captureException(e);
     } finally {
         semanticBusy = false;
     }

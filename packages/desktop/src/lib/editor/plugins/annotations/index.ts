@@ -76,7 +76,7 @@ import {
     keymap,
 } from "@codemirror/view";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
-import { SuggestionDiffWidget, diffTokens, tokenize } from "./diff";
+import { SuggestionDiffWidget } from "./diff";
 export type { DiffOp } from "./diff";
 export { tokenize, diffTokens } from "./diff";
 
@@ -193,18 +193,6 @@ function nudgeBoundary(direction: "backward" | "forward"): StateCommand {
         });
         return false; // don't consume — let normal backspace/delete run
     };
-}
-
-// Returns the revision whose range contains the cursor, if any.
-function getActiveRevisionRange(state: EditorState): SelectionRange | null {
-    const cursor = state.selection.main;
-    for (const annotation of Object.values(state.field(annotationField))) {
-        if (!isAnnotationOfType(annotation, "revision")) continue;
-        const { from, to } = annotation.selection.main;
-        if (from === to) continue;
-        if (cursor.from >= from && cursor.to <= to) return annotation.selection.main;
-    }
-    return null;
 }
 
 // Returns the revision annotation whose range contains the cursor, if any.
@@ -894,6 +882,17 @@ function navigateRevisionVersion(direction: "prev" | "next"): StateCommand {
 // on Mod-Alt-m/k. If the first handler returns false, the
 // next binding for the same key is tried.
 // -------------------------------------------------------
+// Binds Mod-<suffix>, plus explicit Ctrl-/Meta- variants in dev builds
+// (where the browser-based dev shell can resolve Mod differently from the
+// packaged app).
+function bindWithDevAliases(suffix: string, run: KeyBinding["run"]): KeyBinding[] {
+    const bindings: KeyBinding[] = [{ key: `Mod-${suffix}`, run }];
+    if (dev) {
+        bindings.push({ key: `Ctrl-${suffix}`, run }, { key: `Meta-${suffix}`, run });
+    }
+    return bindings;
+}
+
 export const annotationKeymap: KeyBinding[] = [
     {
         key: "Ctrl-[",
@@ -919,70 +918,10 @@ export const annotationKeymap: KeyBinding[] = [
         key: "Delete",
         run: deleteAdjacentRevision("forward"),
     },
-    {
-        key: "Mod-Alt-m",
-        run: redirectToNestedEditor("comment"),
-    },
-    ...(dev
-        ? [
-              {
-                  key: "Ctrl-Alt-m",
-                  run: redirectToNestedEditor("comment"),
-              },
-              {
-                  key: "Meta-Alt-m",
-                  run: redirectToNestedEditor("comment"),
-              },
-          ]
-        : []),
-    {
-        key: "Mod-Alt-m",
-        run: createCommentCommand,
-    },
-    ...(dev
-        ? [
-              {
-                  key: "Ctrl-Alt-m",
-                  run: createCommentCommand,
-              },
-              {
-                  key: "Meta-Alt-m",
-                  run: createCommentCommand,
-              },
-          ]
-        : []),
-    {
-        key: "Mod-Alt-k",
-        run: redirectToNestedEditor("revision"),
-    },
-    ...(dev
-        ? [
-              {
-                  key: "Ctrl-Alt-k",
-                  run: redirectToNestedEditor("revision"),
-              },
-              {
-                  key: "Meta-Alt-k",
-                  run: redirectToNestedEditor("revision"),
-              },
-          ]
-        : []),
-    {
-        key: "Mod-Alt-k",
-        run: createRevisionCommand,
-    },
-    ...(dev
-        ? [
-              {
-                  key: "Ctrl-Alt-k",
-                  run: createRevisionCommand,
-              },
-              {
-                  key: "Meta-Alt-k",
-                  run: createRevisionCommand,
-              },
-          ]
-        : []),
+    ...bindWithDevAliases("Alt-m", redirectToNestedEditor("comment")),
+    ...bindWithDevAliases("Alt-m", createCommentCommand),
+    ...bindWithDevAliases("Alt-k", redirectToNestedEditor("revision")),
+    ...bindWithDevAliases("Alt-k", createRevisionCommand),
 ];
 
 // -------------------------------------------------------

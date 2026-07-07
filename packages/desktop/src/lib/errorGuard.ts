@@ -32,7 +32,7 @@
 import { createNamedSnapshot } from "$lib/db";
 import { savedFields } from "$lib/editor/extensions";
 import type { GenericAnnotation } from "$lib/editor/plugins/annotations";
-import posthog from "$lib/posthog";
+import { captureException } from "$lib/posthog";
 import { get } from "svelte/store";
 import {
     currentDocumentTitle,
@@ -245,7 +245,7 @@ export function saveEmergencySnapshot(label: string): void {
         const stateJson = JSON.stringify(view.state.toJSON(savedFields));
         createNamedSnapshot(draftId, stateJson, eventId, label).catch((e) => {
             console.error(e);
-            posthog.captureException(e instanceof Error ? e : new Error(String(e)));
+            captureException(e);
         });
     } catch {
         // Best-effort — don't let snapshot failures mask the original crash
