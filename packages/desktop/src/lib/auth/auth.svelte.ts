@@ -4,6 +4,7 @@
  * Uses Svelte 5 $state runes for reactive user tracking.
  * Initializes via initAuth() on app mount, subscribes to auth changes.
  */
+import { logAppEvent } from "$lib/appLog";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabase } from "./supabase";
 
@@ -67,6 +68,7 @@ async function canReachAuthServer(): Promise<boolean> {
         return response.ok || response.status < 500;
     } catch (error) {
         console.error("[auth] Failed to reach auth server:", error);
+        void logAppEvent("warn", "auth", "health check failed", { error: String(error) });
         return false;
     } finally {
         clearTimeout(timeoutId);
@@ -101,6 +103,10 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
     for (let attempt = 1; attempt <= AUTH_INIT_ATTEMPTS; attempt += 1) {
         if (await canReachAuthServer()) break;
         console.error(`[auth] Auth server unreachable (attempt ${attempt}/${AUTH_INIT_ATTEMPTS})`);
+        void logAppEvent("warn", "auth", "auth server unreachable", {
+            attempt,
+            of: AUTH_INIT_ATTEMPTS,
+        });
         if (attempt === AUTH_INIT_ATTEMPTS) {
             if (run !== initRun) return false;
 
@@ -108,6 +114,9 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
             user = null;
             connectionState = "offline";
             loading = false;
+            void logAppEvent("error", "auth", "marked offline after failed health checks", {
+                attempts: AUTH_INIT_ATTEMPTS,
+            });
             return false;
         }
         // Back-to-back retries all land inside the same network blip; give
@@ -124,8 +133,15 @@ async function loadSessionWithRetries(run: number): Promise<boolean> {
 
         session = existingSession;
         user = existingSession?.user ?? null;
+        void logAppEvent("info", "auth", "session loaded", {
+            hasSession: !!existingSession,
+        });
     } catch (error) {
         console.error("[auth] Failed to get session:", error);
+        void logAppEvent("error", "auth", "session fetch failed", {
+            error: String(error),
+            timedOut: error instanceof SessionFetchTimeoutError,
+        });
         if (run !== initRun) return false;
 
         if (error instanceof SessionFetchTimeoutError) {
@@ -170,7 +186,11 @@ export async function initAuth(): Promise<void> {
     const run = ++initRun;
     await loadSessionWithRetries(run);
 
-    supabase.auth.onAuthStateChange((_event: AuthChangeEvent, newSession: Session | null) => {
+    supabase.auth.onAuthStateChange((event: AuthChangeEvent, newSession: Session | null) => {
+        void logAppEvent("info", "auth", "auth state change", {
+            event,
+            hasSession: !!newSession,
+        });
         session = newSession;
         user = newSession?.user ?? null;
         connectionState = "online";
@@ -193,6 +213,7 @@ export async function reconnectAuth(): Promise<boolean> {
         return false;
     }
 
+    void logAppEvent("info", "auth", "manual reconnect requested");
     const run = ++initRun;
     return loadSessionWithRetries(run);
 }
