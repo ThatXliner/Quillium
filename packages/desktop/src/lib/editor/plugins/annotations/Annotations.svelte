@@ -13,6 +13,7 @@ import posthog from "$lib/posthog";
 import { appSettings, persistSettings } from "$lib/settings.svelte";
 import { activeAnnotation, annotations, editorView, modalStack, selectedText } from "$lib/stores";
 import Kbd from "$lib/ui/Kbd.svelte";
+import { type PointerDragHandle, startPointerDrag } from "$lib/ui/pointerDrag";
 /**
  * Annotations.svelte — Container that renders all annotation
  * cards (comments, revisions, suggestions) in either a
@@ -277,8 +278,7 @@ function getAnnotationLeftColumnX(): number {
 let scrollContainer = $state<HTMLDivElement | undefined>(undefined);
 let scrollContainerLeft = $state<HTMLDivElement | undefined>(undefined);
 let resizingPanel = $state(false);
-let panelResizeStartX = 0;
-let panelResizeStartWidth = 0;
+let panelDrag: PointerDragHandle | null = null;
 
 // Per-card column assignment ("left" | "right") used in two-column mode.
 // Computed inside updateAnnotationPositions (NOT $derived — it calls
@@ -770,41 +770,25 @@ function updateScrollContainerSize(col: Column, lastBottom: number) {
     col.el.style.width = `${availableWidth}px`;
 }
 
-// Pointer events (instead of mouse events) so the annotation panel can be
-// resized with touch on tablets as well as a mouse on desktop. The pointer is
-// captured on the handle so move/up events keep flowing past its bounds.
+// Drag plumbing (pointer capture, window listeners, body style overrides)
+// lives in $lib/ui/pointerDrag — shared with the AI sidebar's resize handles.
 function startPanelResize(e: PointerEvent) {
-    e.preventDefault();
-    e.stopPropagation();
     resizingPanel = true;
-    panelResizeStartX = e.clientX;
-    panelResizeStartWidth = appSettings.annotationPanelWidth;
-    (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
-    window.addEventListener("pointermove", onPanelResizeMove);
-    window.addEventListener("pointerup", onPanelResizeEnd);
-    window.addEventListener("pointercancel", onPanelResizeEnd);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "ew-resize";
-}
-
-function onPanelResizeMove(e: PointerEvent) {
-    if (!resizingPanel) return;
-    const dx = e.clientX - panelResizeStartX;
-    appSettings.annotationPanelWidth = Math.min(
-        MAX_PANEL_WIDTH,
-        Math.max(MIN_PANEL_WIDTH, Math.round(panelResizeStartWidth + dx)),
-    );
-}
-
-function onPanelResizeEnd() {
-    if (!resizingPanel) return;
-    resizingPanel = false;
-    window.removeEventListener("pointermove", onPanelResizeMove);
-    window.removeEventListener("pointerup", onPanelResizeEnd);
-    window.removeEventListener("pointercancel", onPanelResizeEnd);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
-    persistSettings();
+    const startWidth = appSettings.annotationPanelWidth;
+    panelDrag = startPointerDrag(e, {
+        cursor: "ew-resize",
+        onMove: (dx) => {
+            appSettings.annotationPanelWidth = Math.min(
+                MAX_PANEL_WIDTH,
+                Math.max(MIN_PANEL_WIDTH, Math.round(startWidth + dx)),
+            );
+        },
+        onEnd: () => {
+            resizingPanel = false;
+            panelDrag = null;
+            persistSettings();
+        },
+    });
 }
 
 const isCustomPanelWidth = $derived(appSettings.annotationPanelWidth !== DEFAULT_PANEL_WIDTH);
@@ -923,14 +907,9 @@ $effect(() => {
     };
 });
 
+// Drop an in-flight panel drag on unmount (silent teardown; no persist).
 $effect(() => {
-    return () => {
-        window.removeEventListener("pointermove", onPanelResizeMove);
-        window.removeEventListener("pointerup", onPanelResizeEnd);
-        window.removeEventListener("pointercancel", onPanelResizeEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-    };
+    return () => panelDrag?.cancel();
 });
 </script>
 

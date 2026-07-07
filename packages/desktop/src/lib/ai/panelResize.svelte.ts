@@ -2,15 +2,16 @@
  * panelResize.svelte.ts — Drag-resize controller for the AI sidebar panel.
  *
  * Owns the custom width/height overrides (null = use the tab's default size)
- * and the pointer-drag lifecycle. Pointer events (instead of mouse events) so
- * dragging the resize handles works with touch on tablets as well as a mouse
- * on desktop; the pointer is captured on the handle element so move/up events
- * keep flowing even when the finger/cursor leaves the handle.
+ * and the resize semantics (per-handle axes, min/max + viewport caps). The
+ * drag gesture plumbing itself (pointer capture, window listeners, body
+ * cursor/user-select overrides) lives in $lib/ui/pointerDrag.
  *
  * The caller supplies the effective size at drag start (custom override or
  * tab default) via `getEffectiveSize`, and must call `destroy()` on unmount
- * to drop any in-flight window listeners.
+ * to drop any in-flight drag listeners.
  */
+
+import { type PointerDragHandle, startPointerDrag } from "$lib/ui/pointerDrag";
 
 export type ResizeHandle = "right" | "bottom" | "corner";
 
@@ -29,12 +30,7 @@ export class PanelResizeController {
     /** True during a drag — the panel disables CSS transitions while set. */
     isResizing = $state(false);
 
-    // Plain fields — only used inside handlers, never rendered.
-    #startX = 0;
-    #startY = 0;
-    #startWidth = 0;
-    #startHeight = 0;
-    #activeHandle: ResizeHandle | null = null;
+    #drag: PointerDragHandle | null = null;
     #justResized = false;
 
     readonly #options: PanelResizeOptions;
@@ -58,56 +54,36 @@ export class PanelResizeController {
     }
 
     start = (e: PointerEvent, handle: ResizeHandle) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.#activeHandle = handle;
-        this.#startX = e.clientX;
-        this.#startY = e.clientY;
-        const { width, height } = this.#options.getEffectiveSize();
-        this.#startWidth = width;
-        this.#startHeight = height;
+        const { width: startWidth, height: startHeight } = this.#options.getEffectiveSize();
         this.isResizing = true;
-        (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
-        window.addEventListener("pointermove", this.#onMove);
-        window.addEventListener("pointerup", this.#onEnd);
-        window.addEventListener("pointercancel", this.#onEnd);
-        document.body.style.userSelect = "none";
-        document.body.style.cursor =
-            handle === "right" ? "ew-resize" : handle === "bottom" ? "ns-resize" : "nwse-resize";
+        this.#drag = startPointerDrag(e, {
+            cursor:
+                handle === "right"
+                    ? "ew-resize"
+                    : handle === "bottom"
+                      ? "ns-resize"
+                      : "nwse-resize",
+            onMove: (dx, dy) => {
+                if (handle === "right" || handle === "corner") {
+                    this.customWidth = Math.min(
+                        this.#widthCap(),
+                        Math.max(this.#options.minWidth, startWidth + dx),
+                    );
+                }
+                if (handle === "bottom" || handle === "corner") {
+                    this.customHeight = Math.min(
+                        this.#heightCap(),
+                        Math.max(this.#options.minHeight, startHeight + dy),
+                    );
+                }
+            },
+            onEnd: () => {
+                this.isResizing = false;
+                this.#justResized = true;
+                this.#drag = null;
+            },
+        });
     };
-
-    #onMove = (e: PointerEvent) => {
-        if (!this.#activeHandle) return;
-        const dx = e.clientX - this.#startX;
-        const dy = e.clientY - this.#startY;
-        if (this.#activeHandle === "right" || this.#activeHandle === "corner") {
-            this.customWidth = Math.min(
-                this.#widthCap(),
-                Math.max(this.#options.minWidth, this.#startWidth + dx),
-            );
-        }
-        if (this.#activeHandle === "bottom" || this.#activeHandle === "corner") {
-            this.customHeight = Math.min(
-                this.#heightCap(),
-                Math.max(this.#options.minHeight, this.#startHeight + dy),
-            );
-        }
-    };
-
-    #onEnd = () => {
-        this.isResizing = false;
-        this.#activeHandle = null;
-        this.#justResized = true;
-        this.#removeListeners();
-    };
-
-    #removeListeners() {
-        window.removeEventListener("pointermove", this.#onMove);
-        window.removeEventListener("pointerup", this.#onEnd);
-        window.removeEventListener("pointercancel", this.#onEnd);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-    }
 
     /**
      * True exactly once after a drag ends. The window click that ends a drag
@@ -124,8 +100,9 @@ export class PanelResizeController {
         this.customHeight = null;
     }
 
-    /** Remove any in-flight window listeners; call on component unmount. */
+    /** Drop any in-flight drag listeners; call on component unmount. */
     destroy() {
-        this.#removeListeners();
+        this.#drag?.cancel();
+        this.#drag = null;
     }
 }
