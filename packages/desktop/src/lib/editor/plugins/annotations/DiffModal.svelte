@@ -31,10 +31,9 @@ import {
     annotationField,
     applySuggestion,
     branchSuggestion,
-    diffTokens,
     removeAnnotation,
-    tokenize,
     updateThread,
+    wordDiff,
 } from ".";
 import Thread from "./Thread.svelte";
 
@@ -126,7 +125,7 @@ const ops = $derived.by(() => {
     if (!replacement) return [];
     const { from, to } = suggestion.selection.main;
     const original = parentView.state.sliceDoc(from, to);
-    return diffTokens(tokenize(original), tokenize(replacement.text));
+    return wordDiff(original, replacement.text);
 });
 
 function close() {

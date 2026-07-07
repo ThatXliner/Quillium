@@ -33,8 +33,7 @@ import {
     type Thread as ThreadType,
     applySuggestion,
     branchSuggestion,
-    diffTokens,
-    tokenize,
+    wordDiff,
 } from ".";
 import Thread from "./Thread.svelte";
 
@@ -77,7 +76,7 @@ function getDiffOps(replacementIndex: number) {
     const original = view.state.sliceDoc(from, to);
     const replacement = suggestion.replacements[replacementIndex];
     if (!replacement) return [];
-    return diffTokens(tokenize(original), tokenize(replacement.text));
+    return wordDiff(original, replacement.text);
 }
 </script>
 

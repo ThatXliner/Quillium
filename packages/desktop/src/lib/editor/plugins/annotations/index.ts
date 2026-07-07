@@ -23,7 +23,7 @@
  *   - Provides public factory functions (createComment,
  *     createSuggestion, createRevision) used by the AI
  *     sidebar to programmatically add annotations.
- *   - Contains inline diff utilities (tokenize, diffTokens)
+ *   - Re-exports the shared diff utilities ($lib/editor/diff)
  *     and the SuggestionDiffWidget for rendering suggestion
  *     previews.
  *
@@ -77,8 +77,8 @@ import {
 } from "@codemirror/view";
 import { clipboardAnnotationHandlers, clipboardPaste } from "./clipboardAnnotations";
 import { SuggestionDiffWidget } from "./diff";
-export type { DiffOp } from "./diff";
-export { tokenize, diffTokens } from "./diff";
+export type { DiffOp } from "$lib/editor/diff";
+export { tokenize, wordDiff } from "$lib/editor/diff";
 
 import { annotationEventBus } from "$lib/events/annotationEventBus";
 import posthog, { generateIncidentCode, showPrivacyNudge } from "$lib/posthog";

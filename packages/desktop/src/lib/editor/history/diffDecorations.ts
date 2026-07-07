@@ -10,7 +10,7 @@
  */
 import { type Extension, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
-import { type DiffSegment, wordDiff } from "./diff";
+import { type DiffOp, wordDiff } from "../diff";
 
 /** Renders a removed run as inline red, struck-through text. */
 class DeletionWidget extends WidgetType {
@@ -35,17 +35,17 @@ const addedMark = Decoration.mark({ class: "cm-history-diff-add" });
 
 /**
  * Builds the decoration set from the word diff. Offsets track position in the
- * CURRENT document (`add`/`same` advance it; `del` injects a widget there).
- * The document the decorations apply to must equal the diff's "after" text —
- * i.e. the current snapshot's text — for the offsets to line up.
+ * CURRENT document (`insert`/`equal` advance it; `delete` injects a widget
+ * there). The document the decorations apply to must equal the diff's "after"
+ * text — i.e. the current snapshot's text — for the offsets to line up.
  */
-function buildDecorations(segments: DiffSegment[], docLength: number): DecorationSet {
+function buildDecorations(segments: DiffOp[], docLength: number): DecorationSet {
     const builder = new RangeSetBuilder<Decoration>();
     let pos = 0;
     for (const seg of segments) {
-        if (seg.type === "same") {
+        if (seg.type === "equal") {
             pos += seg.text.length;
-        } else if (seg.type === "add") {
+        } else if (seg.type === "insert") {
             const end = Math.min(pos + seg.text.length, docLength);
             if (end > pos) builder.add(pos, end, addedMark);
             pos = end;
