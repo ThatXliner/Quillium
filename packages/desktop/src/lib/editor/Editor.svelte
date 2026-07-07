@@ -1,37 +1,18 @@
 <script lang="ts">
 import {
-    branchDraft,
-    cascadeDeleteDraft,
     createDocument,
     createDraft,
     createSnapshot,
-    createTab,
-    deleteDraft,
-    deleteTab,
     deregisterOpenDoc,
-    getActiveDraft,
-    getActiveTab,
     getDocumentMeta,
-    iterateDraft,
     listDocuments,
-    listTabDrafts,
-    listTabs,
     loadDocumentState,
-    orphanAndDeleteDraft,
     registerOpenDoc,
-    renameDraft,
-    renameTab,
-    reorderTabs,
-    reparentDraft,
-    restoreDraft,
-    restoreTab,
     setActiveDraft,
-    setActiveTab,
-    setDraftLocked,
     updateDocumentMeta,
 } from "$lib/db";
 import { annotationEventBus } from "$lib/events/annotationEventBus";
-import posthog, { captureException } from "$lib/posthog";
+import posthog from "$lib/posthog";
 import {
     activeAnnotation,
     annotations,
@@ -79,28 +60,13 @@ import { getExtensions, savedFields } from "./extensions";
 import { loadUserDictionary } from "./harper/harperLinter";
 import "./plugins/annotations/default.css";
 import "./harper/harper.css";
-import { createModel } from "$lib/ai/provider";
-import {
-    aiSettings,
-    beginAiTask,
-    endAiTask,
-    ensureApiKeyLoaded,
-    getAiAbortSignal,
-    hasApiKey,
-} from "$lib/ai/settings.svelte";
-import type { DraftMeta, EventRecord, TabMeta } from "$lib/db/types";
-import { goToHistory } from "$lib/navigation";
-import { appSettings } from "$lib/settings.svelte";
-import Kbd from "$lib/ui/Kbd.svelte";
+import type { EventRecord } from "$lib/db/types";
 import type { ViewUpdate } from "@codemirror/view";
-import { generateText } from "ai";
-import { GitBranchIcon, LockIcon, Pencil, SparklesIcon } from "lucide-svelte";
-import { toast } from "svelte-sonner";
+import { GitBranchIcon, LockIcon } from "lucide-svelte";
 import DocumentTabs from "./DocumentTabs.svelte";
+import DocumentTitleBar from "./DocumentTitleBar.svelte";
 import DraftDeleteModal from "./DraftDeleteModal.svelte";
 import DraftTreePanel from "./DraftTreePanel.svelte";
-import StatusBar from "./StatusBar.svelte";
-import { collectSubtree, hasLiveChildren } from "./draftTree";
 import type { ListenerOptions } from "./listeners";
 import { flushMetaDebounces, flushPersistQueue } from "./listeners";
 import { annotationField, versionGroupField } from "./plugins/annotations";
@@ -108,93 +74,19 @@ import Annotations from "./plugins/annotations/Annotations.svelte";
 import { getActiveAnnotation } from "./plugins/annotations/utils";
 import { reconstructState } from "./replay";
 import { SAMPLE_DOCUMENT_CONTENT, SAMPLE_DOCUMENT_TITLE } from "./sampleDocument";
+import { TabDraftController } from "./tabDrafts.svelte";
 
 // ── Multi-window ────────────────────────────────────────────────
 const windowLabel = getCurrentWebviewWindow().label;
 
 // ── Local UI state ──────────────────────────────────────────────
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const modKey = isMac ? "⌘" : "Ctrl";
-
 let element = $state<HTMLDivElement>();
-let titleEditing = $state(false);
-let titleInputEl = $state<HTMLInputElement | undefined>();
-let titleDraft = $state("");
-let titleSuggesting = $state(false);
 
+// Title editing lives in DocumentTitleBar; this delegate keeps the
+// component's public API (used by +page.svelte for the Cmd+L shortcut).
+let titleBar = $state<{ startEditing: () => void }>();
 export function startEditingTitle() {
-    titleDraft = $currentDocumentTitle;
-    titleEditing = true;
-    // Focus input on next tick after it mounts
-    setTimeout(() => titleInputEl?.select(), 0);
-}
-
-async function suggestTitle() {
-    const text = $editorView?.state.doc.toString() ?? "";
-    if (!text.trim() || titleSuggesting) return;
-    titleSuggesting = true;
-    const task = beginAiTask("title-suggestion");
-    const abortSignal = getAiAbortSignal();
-    try {
-        await ensureApiKeyLoaded();
-        const model = createModel(
-            aiSettings.provider,
-            aiSettings.apiKey,
-            aiSettings.model,
-            aiSettings.baseURL,
-        );
-        const { text: suggested } = await generateText({
-            model,
-            abortSignal,
-            prompt: `Suggest a single short, evocative title for this piece of writing. Reply with only the title — no quotes, no explanation, no punctuation at the end.\n\n${text.slice(0, 1000)}`,
-        });
-        const newTitle = suggested.trim().slice(0, 40);
-        if (newTitle) {
-            currentDocumentTitle.set(newTitle);
-            const docId = get(currentDocumentId);
-            if (docId) {
-                const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-                updateDocumentMeta(
-                    docId,
-                    newTitle,
-                    wordCount,
-                    text.slice(0, 200),
-                    "[]",
-                    text,
-                ).catch((e) => {
-                    console.error(e);
-                    captureException(e);
-                });
-            }
-        }
-    } catch (e) {
-        if (!abortSignal.aborted) {
-            console.error("[suggestTitle]", e);
-            captureException(e);
-        }
-    } finally {
-        titleSuggesting = false;
-        endAiTask(task);
-    }
-}
-
-async function commitTitle() {
-    if (!titleEditing) return;
-    titleEditing = false;
-    const newTitle = titleDraft.trim() || "Untitled";
-    if (newTitle === $currentDocumentTitle) return;
-    currentDocumentTitle.set(newTitle);
-    const docId = get(currentDocumentId);
-    if (docId) {
-        const text = $editorView?.state.doc.toString() ?? "";
-        const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-        updateDocumentMeta(docId, newTitle, wordCount, text.slice(0, 200), "[]", text).catch(
-            (e) => {
-                console.error(e);
-                captureException(e);
-            },
-        );
-    }
+    titleBar?.startEditing();
 }
 
 function getWordCount(doc: string): number {
@@ -264,58 +156,27 @@ const getExtensionOptions: ListenerOptions = {
     },
 };
 
-// ── Tabs & draft tree state (#160) ──────────────────────────────
-let tabs = $state<TabMeta[]>([]);
-let tabDrafts = $state<DraftMeta[]>([]);
-let forking = $state(false);
-// Set while the orphan-vs-cascade prompt is open for a draft with children.
-let pendingDelete = $state<{ id: string; label: string; descendants: number } | null>(null);
+// ── Tabs & draft tree (#160) ────────────────────────────────────
+// State + actions live in TabDraftController (tabDrafts.svelte.ts);
+// the editor supplies the lifecycle pieces via deps below.
+const drafts = new TabDraftController({
+    switchToDraft: (draftId) => switchToDraft(draftId),
+    flushPendingPersist: () => flushPendingPersist(),
+    seedStateJson: (sourceDraftId) => seedStateJson(sourceDraftId),
+});
 
-const currentDraft = $derived(tabDrafts.find((d) => d.id === $currentDraftId));
+const currentDraft = $derived(drafts.tabDrafts.find((d) => d.id === $currentDraftId));
 const isLocked = $derived(currentDraft?.locked ?? false);
 // A draft locks automatically when a newer iteration supersedes it (it has a
 // live iteration after it in its run); otherwise the lock was manual.
 const currentIsSuperseded = $derived(
-    !!currentDraft && tabDrafts.some((d) => d.parentDraftId === currentDraft.id),
+    !!currentDraft && drafts.tabDrafts.some((d) => d.parentDraftId === currentDraft.id),
 );
 
 /** Flushes queued events + debounced meta writes before switching context. */
 async function flushPendingPersist(): Promise<void> {
     flushMetaDebounces();
     await flushPersistQueue();
-}
-
-// ── Helpers ─────────────────────────────────────────────────────
-
-/**
- * Resolves the active tab + draft for a document, creating a default
- * "Main" tab (with its root draft) for documents that have none yet.
- * Refreshes the local tab/draft-tree state and the currentTabId store.
- */
-async function refreshTabState(docId: string): Promise<{ tabId: string; draftId: string } | null> {
-    let tabList = await listTabs(docId);
-    if (tabList.length === 0) {
-        tabList = [await createTab(docId, "Main")];
-    }
-    const persistedTab = await getActiveTab(docId);
-    const activeTab = tabList.find((t) => t.id === persistedTab) ?? tabList[0];
-
-    let drafts = await listTabDrafts(activeTab.id);
-    if (drafts.length === 0) {
-        // Should not happen (createTab seeds a root draft; deleting the
-        // last draft of a tab is rejected) — heal with a fresh tab.
-        const fresh = await createTab(docId, "Main");
-        tabList = [...tabList, fresh];
-        drafts = await listTabDrafts(fresh.id);
-        await setActiveTab(docId, fresh.id);
-    }
-    const persistedDraft = await getActiveDraft(activeTab.id);
-    const activeDraft = drafts.find((d) => d.id === persistedDraft) ?? drafts[0];
-
-    tabs = tabList;
-    tabDrafts = drafts;
-    currentTabId.set(activeTab.id);
-    return activeDraft ? { tabId: activeTab.id, draftId: activeDraft.id } : null;
 }
 
 /**
@@ -347,11 +208,11 @@ const fromSave = (async () => {
         if (doc) {
             currentDocumentTitle.set(doc.title);
         }
-        const resolved = await refreshTabState(docId);
+        const resolved = await drafts.refreshTabState(docId);
         currentDraftId.set(resolved?.draftId ?? null);
         if (resolved) {
             const loaded = await loadDocumentState(docId, resolved.draftId);
-            const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
+            const locked = drafts.lockedOf(resolved.draftId);
             return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
         }
     } else {
@@ -362,11 +223,11 @@ const fromSave = (async () => {
             currentDocumentId.set(doc.id);
             currentDocumentTitle.set(doc.title);
 
-            const resolved = await refreshTabState(doc.id);
+            const resolved = await drafts.refreshTabState(doc.id);
             currentDraftId.set(resolved?.draftId ?? null);
             if (resolved) {
                 const loaded = await loadDocumentState(doc.id, resolved.draftId);
-                const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
+                const locked = drafts.lockedOf(resolved.draftId);
                 return buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
             }
         }
@@ -383,7 +244,7 @@ const fromSave = (async () => {
     const newDocId = await createDocument(title);
     // createDraft also creates the document's "Main" tab when none exists.
     const newDraftId = await createDraft(newDocId, "main");
-    await refreshTabState(newDocId);
+    await drafts.refreshTabState(newDocId);
     const state = EditorState.create({
         doc: content,
         extensions: getExtensions(getExtensionOptions),
@@ -411,18 +272,6 @@ const fromSave = (async () => {
     return state;
 })();
 
-function extractTitleFromStateJson(stateJson: string): string {
-    try {
-        const parsed = JSON.parse(stateJson) as { doc?: string | string[] };
-        const firstLine = Array.isArray(parsed.doc)
-            ? (parsed.doc[0] ?? "")
-            : String(parsed.doc ?? "");
-        return firstLine.trim().slice(0, 40) || "Untitled";
-    } catch {
-        return "Unknown";
-    }
-}
-
 /**
  * Reloads the current document from the DB.
  * Used by the debug panel after writing a scenario.
@@ -447,7 +296,7 @@ export async function loadDocument(id: string) {
     // can't be consumed by a new document whose annotations share the same IDs.
     annotationEventBus.clearPendingSelections();
 
-    const resolved = await refreshTabState(id);
+    const resolved = await drafts.refreshTabState(id);
     if (gen !== loadGeneration) return;
     currentDraftId.set(resolved?.draftId ?? null);
     lastPersistedEventId.set(-1);
@@ -477,7 +326,7 @@ export async function loadDocument(id: string) {
               : -1;
     lastPersistedEventId.set(latestEventId);
 
-    const locked = tabDrafts.find((d) => d.id === resolved.draftId)?.locked ?? false;
+    const locked = drafts.lockedOf(resolved.draftId);
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
     $editorView.setState(state);
     syncStoresToEditorState(state);
@@ -512,104 +361,11 @@ async function switchToDraft(draftId: string): Promise<void> {
               : -1;
     lastPersistedEventId.set(latestEventId);
 
-    const locked = tabDrafts.find((d) => d.id === draftId)?.locked ?? false;
+    const locked = drafts.lockedOf(draftId);
     const state = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince, locked);
     $editorView.setState(state);
     const text = state.doc.toString();
     writingStats.set({ words: getWordCount(text), chars: text.length, selWords: 0, selChars: 0 });
-}
-
-async function handleTabSelect(tabId: string) {
-    const docId = get(currentDocumentId);
-    if (!docId || tabId === get(currentTabId)) return;
-    await flushPendingPersist();
-    await setActiveTab(docId, tabId);
-    currentTabId.set(tabId);
-
-    const drafts = await listTabDrafts(tabId);
-    tabDrafts = drafts;
-    const persisted = await getActiveDraft(tabId);
-    const draft = drafts.find((d) => d.id === persisted) ?? drafts[0];
-    if (draft) await switchToDraft(draft.id);
-    posthog.capture("tab_switched");
-}
-
-async function handleTabCreate() {
-    const docId = get(currentDocumentId);
-    if (!docId) return;
-    const tab = await createTab(docId, `Tab ${tabs.length + 1}`);
-    tabs = [...tabs, tab];
-    posthog.capture("tab_created");
-    await handleTabSelect(tab.id);
-}
-
-async function handleTabRename(tabId: string, label: string) {
-    await renameTab(tabId, label).catch(console.error);
-    tabs = tabs.map((t) => (t.id === tabId ? { ...t, label } : t));
-    posthog.capture("tab_renamed");
-}
-
-async function handleTabReorder(orderedIds: string[]) {
-    const docId = get(currentDocumentId);
-    if (!docId) return;
-    // Optimistically apply the new order, then persist. If persistence
-    // fails, reload from the DB so the bar reflects the true stored order.
-    const byId = new Map(tabs.map((t) => [t.id, t]));
-    tabs = orderedIds.map((id) => byId.get(id)).filter((t): t is TabMeta => t !== undefined);
-    try {
-        await reorderTabs(docId, orderedIds);
-        posthog.capture("tab_reordered");
-    } catch (e) {
-        console.error("[Editor] reorder tabs failed", e);
-        tabs = await listTabs(docId);
-    }
-}
-
-async function handleTabDelete(tabId: string) {
-    if (tabs.length <= 1) return;
-    const tab = tabs.find((t) => t.id === tabId);
-    await flushPendingPersist();
-    try {
-        await deleteTab(tabId);
-    } catch (e) {
-        console.error("[Editor] delete tab failed", e);
-        return;
-    }
-    const idx = tabs.findIndex((t) => t.id === tabId);
-    tabs = tabs.filter((t) => t.id !== tabId);
-    posthog.capture("tab_deleted");
-    if (get(currentTabId) === tabId) {
-        const next = tabs[Math.min(Math.max(idx, 0), tabs.length - 1)];
-        currentTabId.set(null); // force handleTabSelect to run for the neighbour
-        if (next) await handleTabSelect(next.id);
-    }
-    // Soft delete: the tab and all its drafts survive in the DB and can
-    // come back from here or from the document's version history.
-    toast(`Deleted tab “${tab?.label ?? "Tab"}”`, {
-        duration: 8000,
-        action: {
-            label: "Undo",
-            onClick: async () => {
-                await restoreTab(tabId).catch(console.error);
-                const docId = get(currentDocumentId);
-                if (docId) tabs = await listTabs(docId);
-                posthog.capture("tab_restored");
-            },
-        },
-        cancel: {
-            label: "View in history",
-            onClick: () => {
-                posthog.capture("delete_toast_view_history", { kind: "tab" });
-                goToHistory().catch(console.error);
-            },
-        },
-    });
-}
-
-async function handleDraftSelect(draftId: string) {
-    if (draftId === get(currentDraftId)) return;
-    await switchToDraft(draftId);
-    posthog.capture("draft_switched");
 }
 
 /**
@@ -625,198 +381,6 @@ async function seedStateJson(sourceDraftId: string): Promise<string> {
     const loaded = await loadDocumentState(docId ?? "", sourceDraftId);
     const sourceState = buildStateFromLoad(loaded.snapshotStateJson, loaded.eventsSince);
     return JSON.stringify(sourceState.toJSON(savedFields));
-}
-
-/**
- * Iterate (the common verb): the next version in `sourceId`'s run, seeded
- * from its state. Renders flat; the source locks (superseded), the new tip
- * stays editable.
- */
-async function handleDraftIterate(sourceId: string) {
-    const tabId = get(currentTabId);
-    if (!tabId || forking) return;
-    forking = true;
-    try {
-        await flushPendingPersist();
-        const stateJson = await seedStateJson(sourceId);
-        const next = await iterateDraft(sourceId, `v${tabDrafts.length}`, stateJson);
-        tabDrafts = await listTabDrafts(tabId);
-        posthog.capture("draft_iterated");
-        await switchToDraft(next.id);
-    } catch (e) {
-        console.error("[Editor] iterate draft failed", e);
-        captureException(e);
-    } finally {
-        forking = false;
-    }
-}
-
-/**
- * Branch (the rare verb): a different take off `sourceId`, seeded from its
- * state. Renders indented; nothing locks — source and branch are parallel
- * live explorations.
- */
-async function handleDraftBranch(sourceId: string) {
-    const tabId = get(currentTabId);
-    if (!tabId || forking) return;
-    forking = true;
-    try {
-        await flushPendingPersist();
-        const stateJson = await seedStateJson(sourceId);
-        const branch = await branchDraft(sourceId, "new take", stateJson);
-        tabDrafts = await listTabDrafts(tabId);
-        posthog.capture("draft_branched");
-        await switchToDraft(branch.id);
-    } catch (e) {
-        console.error("[Editor] branch draft failed", e);
-        captureException(e);
-    } finally {
-        forking = false;
-    }
-}
-
-async function handleDraftRename(draftId: string, label: string) {
-    await renameDraft(draftId, label).catch(console.error);
-    tabDrafts = tabDrafts.map((d) => (d.id === draftId ? { ...d, label } : d));
-}
-
-async function handleDraftDelete(draftId: string) {
-    // A childless draft deletes straight away; one with children prompts for
-    // orphan vs cascade (the modal then calls the matching handler).
-    if (!hasLiveChildren(draftId, tabDrafts)) {
-        await performDraftDelete(draftId, [draftId], "leaf");
-        return;
-    }
-    const draft = tabDrafts.find((d) => d.id === draftId);
-    const descendants = collectSubtree(draftId, tabDrafts).length - 1;
-    pendingDelete = { id: draftId, label: draft?.label ?? "draft", descendants };
-}
-
-/**
- * Switches the editor off `doomed` (the ids about to be soft-deleted) when the
- * open draft is among them, landing on a surviving draft so the editor never
- * points at a hidden one. Returns false if there's no survivor to land on
- * (shouldn't happen — the backend refuses emptying a tab — but guards anyway).
- */
-async function ensureEditorOffDeleted(doomed: string[]): Promise<boolean> {
-    if (!doomed.includes(get(currentDraftId) ?? "")) {
-        await flushPendingPersist();
-        return true;
-    }
-    const doomedSet = new Set(doomed);
-    const survivor = tabDrafts.find((d) => !doomedSet.has(d.id));
-    if (!survivor) return false;
-    await switchToDraft(survivor.id);
-    return true;
-}
-
-/** Soft-deletes a childless draft (or its subtree root) and offers Undo. */
-async function performDraftDelete(draftId: string, doomed: string[], mode: "leaf" | "cascade") {
-    const draft = tabDrafts.find((d) => d.id === draftId);
-    if (!(await ensureEditorOffDeleted(doomed))) return;
-    try {
-        if (mode === "cascade") {
-            await cascadeDeleteDraft(draftId);
-        } else {
-            await deleteDraft(draftId);
-        }
-    } catch (e) {
-        console.error("[Editor] delete draft failed", e);
-        return;
-    }
-    await refreshDraftsAndCurrentLock();
-    posthog.capture("draft_deleted", { mode });
-    // Soft delete: each draft's text and history survive in the DB, so Undo
-    // restores the whole set (root + any cascaded descendants).
-    toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
-        duration: 8000,
-        action: {
-            label: "Undo",
-            onClick: async () => {
-                // Restore parents before children so links land on live rows.
-                for (const id of doomed) {
-                    await restoreDraft(id).catch(console.error);
-                }
-                await refreshDraftsAndCurrentLock();
-                posthog.capture("draft_restored");
-            },
-        },
-    });
-}
-
-/** Cascade branch of the delete prompt: remove the draft and its whole subtree. */
-async function handleDeleteCascade(draftId: string) {
-    pendingDelete = null;
-    const doomed = collectSubtree(draftId, tabDrafts);
-    await performDraftDelete(draftId, doomed, "cascade");
-}
-
-/** Orphan branch of the delete prompt: keep the children, re-attaching them. */
-async function handleDeleteOrphan(draftId: string) {
-    pendingDelete = null;
-    const draft = tabDrafts.find((d) => d.id === draftId);
-    // Only the draft itself vanishes; its children survive re-attached.
-    if (!(await ensureEditorOffDeleted([draftId]))) return;
-    let rewrites: Awaited<ReturnType<typeof orphanAndDeleteDraft>>;
-    try {
-        rewrites = await orphanAndDeleteDraft(draftId);
-    } catch (e) {
-        console.error("[Editor] orphan-delete draft failed", e);
-        return;
-    }
-    await refreshDraftsAndCurrentLock();
-    posthog.capture("draft_deleted", { mode: "orphan" });
-    toast(`Deleted draft “${draft?.label ?? "draft"}”`, {
-        duration: 8000,
-        action: {
-            label: "Undo",
-            onClick: async () => {
-                // Restore the parent first, then re-point each moved child back
-                // at it (reversing the orphan rewrite).
-                await restoreDraft(draftId).catch(console.error);
-                for (const r of rewrites) {
-                    await reparentDraft(r.draftId, r.oldParentDraftId, r.oldBranchedFrom).catch(
-                        console.error,
-                    );
-                }
-                await refreshDraftsAndCurrentLock();
-                posthog.capture("draft_restored");
-            },
-        },
-        cancel: {
-            label: "View in history",
-            onClick: () => {
-                posthog.capture("delete_toast_view_history", { kind: "draft" });
-                goToHistory().catch(console.error);
-            },
-        },
-    });
-}
-
-/**
- * Re-reads the active tab's drafts and rebuilds the editor state when the
- * open draft's lock changed underneath it.
- */
-async function refreshDraftsAndCurrentLock() {
-    const tabId = get(currentTabId);
-    if (!tabId) return;
-    const wasLocked = isLocked;
-    tabDrafts = await listTabDrafts(tabId);
-    const current = get(currentDraftId);
-    const nowLocked = tabDrafts.find((d) => d.id === current)?.locked ?? false;
-    if (current && nowLocked !== wasLocked) {
-        await switchToDraft(current);
-    }
-}
-
-/** Toggles the soft lock and rebuilds the editor state's read-only flag. */
-async function handleDraftToggleLock(draftId: string, locked: boolean) {
-    await setDraftLocked(draftId, locked).catch(console.error);
-    tabDrafts = tabDrafts.map((d) => (d.id === draftId ? { ...d, locked } : d));
-    posthog.capture(locked ? "draft_locked" : "draft_unlocked");
-    if (draftId === get(currentDraftId)) {
-        await switchToDraft(draftId);
-    }
 }
 
 onMount(() => {
@@ -860,90 +424,50 @@ onMount(() => {
 <div class="w-full h-full overflow-y-auto relative">
     <div class="sticky top-4 z-50 flex flex-col items-center gap-2 pointer-events-none">
         <div class="pointer-events-auto">
-            <StatusBar titleVisibility={appSettings.titleVisibility} titleForced={titleEditing}>
-                {#snippet children()}
-                    <div class="flex items-center justify-center py-1.5 px-4 mx-auto mb-3 rounded-full {appSettings.titleVisibility !== 'always' ? 'max-w-full' : ''}">
-                        {#if titleEditing}
-                            <input
-                                bind:this={titleInputEl}
-                                bind:value={titleDraft}
-                                onblur={commitTitle}
-                                onkeydown={(e) => {
-                                    if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
-                                    if (e.key === "Escape") { titleEditing = false; }
-                                }}
-                                class="text-sm font-medium text-black/70 bg-transparent border-none outline-none min-w-[8rem] max-w-[28rem] text-center placeholder:text-black/30"
-                                aria-label="Document title"
-                            />
-                        {:else}
-                            <button
-                                onclick={startEditingTitle}
-                                title="Rename title ({modKey}L)"
-                                class="flex items-center gap-2 text-sm font-medium text-black/60 hover:text-black/80 transition-colors {appSettings.titleVisibility !== 'always' ? 'max-w-[28rem]' : ''}"
-                            >
-                                <span class={appSettings.titleVisibility !== 'always' ? 'truncate' : ''}>{$currentDocumentTitle}</span>
-                                <Pencil size={14} class="shrink-0 text-black/40" />
-                                <Kbd keys={[modKey, "L"]} />
-                            </button>
-                        {/if}
-                        {#if appSettings.aiEnabled && hasApiKey()}
-                            <div class="w-px h-3.5 bg-black/20 shrink-0 mx-1.5"></div>
-                            <button
-                                onclick={suggestTitle}
-                                disabled={titleSuggesting}
-                                title="Suggest a title with AI"
-                                class="flex items-center gap-1 pr-2 py-1 rounded-md text-[10px] font-medium text-black/35 hover:text-black/60 hover:bg-white/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-                            >
-                                <SparklesIcon size={11} />
-                                <span>{titleSuggesting ? "…" : "Suggest"}</span>
-                            </button>
-                        {/if}
-                    </div>
-                {/snippet}
-            </StatusBar>
+            <DocumentTitleBar bind:this={titleBar} />
         </div>
     </div>
 
     {#await fromSave then}
         <DocumentTabs
-            {tabs}
+            tabs={drafts.tabs}
             activeTabId={$currentTabId}
-            ontabselect={handleTabSelect}
-            ontabcreate={handleTabCreate}
-            ontabrename={handleTabRename}
-            ontabdelete={handleTabDelete}
-            ontabreorder={handleTabReorder}
+            ontabselect={(id) => drafts.handleTabSelect(id)}
+            ontabcreate={() => drafts.handleTabCreate()}
+            ontabrename={(id, label) => drafts.handleTabRename(id, label)}
+            ontabdelete={(id) => drafts.handleTabDelete(id)}
+            ontabreorder={(ids) => drafts.handleTabReorder(ids)}
         />
 
         <!-- Draft tree for the active tab — hugs the document's left edge,
              hidden on viewports too narrow to fit beside it. -->
-        {#if tabDrafts.length > 0}
+        {#if drafts.tabDrafts.length > 0}
             <div class="sticky top-24 z-30 h-0 pointer-events-none max-[1280px]:hidden">
                 <div
                     class="pointer-events-auto absolute w-48"
                     style="right: calc(50% + 408px + 1rem)"
                 >
                     <DraftTreePanel
-                        drafts={tabDrafts}
+                        drafts={drafts.tabDrafts}
                         activeDraftId={$currentDraftId}
-                        ondraftselect={handleDraftSelect}
-                        ondraftiterate={handleDraftIterate}
-                        ondraftbranch={handleDraftBranch}
-                        ondraftrename={handleDraftRename}
-                        ondraftdelete={handleDraftDelete}
-                        ontogglelock={handleDraftToggleLock}
+                        ondraftselect={(id) => drafts.handleDraftSelect(id)}
+                        ondraftiterate={(id) => drafts.handleDraftIterate(id)}
+                        ondraftbranch={(id) => drafts.handleDraftBranch(id)}
+                        ondraftrename={(id, label) => drafts.handleDraftRename(id, label)}
+                        ondraftdelete={(id) => drafts.handleDraftDelete(id)}
+                        ontogglelock={(id, locked) => drafts.handleDraftToggleLock(id, locked)}
                     />
                 </div>
             </div>
         {/if}
 
-        {#if pendingDelete}
+        {#if drafts.pendingDelete}
             <DraftDeleteModal
-                label={pendingDelete.label}
-                descendants={pendingDelete.descendants}
-                onorphan={() => handleDeleteOrphan(pendingDelete!.id)}
-                oncascade={() => handleDeleteCascade(pendingDelete!.id)}
-                oncancel={() => (pendingDelete = null)}
+                label={drafts.pendingDelete.label}
+                descendants={drafts.pendingDelete.descendants}
+                onorphan={() => drafts.handleDeleteOrphan(drafts.pendingDelete!.id)}
+                oncascade={() => drafts.handleDeleteCascade(drafts.pendingDelete!.id)}
+                oncancel={() => (drafts.pendingDelete = null)}
             />
         {/if}
 
@@ -966,13 +490,13 @@ onMount(() => {
                     <LockIcon size={11} class="shrink-0 text-amber-700/60" />
                     <span class="flex-1 min-w-0 truncate">{currentIsSuperseded ? "This is an older version." : "This draft is locked."}</span>
                     <button
-                        onclick={() => currentDraft && handleDraftToggleLock(currentDraft.id, false)}
+                        onclick={() => currentDraft && drafts.handleDraftToggleLock(currentDraft.id, false)}
                         class="shrink-0 font-medium hover:text-amber-950 transition-colors"
                     >Edit anyway</button>
                     <span class="shrink-0 w-px h-3 bg-amber-900/15"></span>
                     <button
-                        onclick={() => currentDraft && handleDraftBranch(currentDraft.id)}
-                        disabled={forking}
+                        onclick={() => currentDraft && drafts.handleDraftBranch(currentDraft.id)}
+                        disabled={drafts.forking}
                         class="shrink-0 flex items-center gap-1 font-medium hover:text-amber-950 transition-colors disabled:opacity-40"
                     >
                         <GitBranchIcon size={11} />
